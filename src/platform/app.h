@@ -63,6 +63,14 @@ private:
     void nextPalette();
     void applyTier(Tier t);
     void captureName(char* out, size_t capacity, u32 stripIndex) const;
+    // First-launch tier choice (TECH_SPEC 5.4): without --tier, interactive and benchmark runs use the tier
+    // cached for this GPU, or measure one first: the endgame stage at each tier from Ultra down, with a
+    // saturating GPU load so the GPU runs at its top clock, until a tier's GPU work fits 72% of the
+    // refresh period (PLAN §5: 12 ms at 60 Hz). Pictures (--screenshot) default to High.
+    void stepTierProbe();
+    void setProbeCandidate(u32 tierIndex);
+    void finishTierProbe(Tier chosen);
+    void beginBench();
 
     AppArgs args_;
     SDL_Window* window_ = nullptr;
@@ -78,6 +86,21 @@ private:
     Stage stage_;
     GlyphSheet sheet_;
     TierSettings tier_;
+    struct TierProbe {
+        bool active = false;
+        u32 candidate = 3;   // tier index being measured (Ultra first)
+        u64 fromFrame = 0;   // renderer frame from which GPU timings belong to the candidate
+        u32 frames = 0;      // frames rendered at the candidate
+        float samples[8] = {};
+        u32 count = 0;
+        float ms[4] = {-1.0f, -1.0f, -1.0f, -1.0f};  // median GPU work at the top clock, Low..Ultra
+        float budgetMs = 12.0f;
+        u64 startNs = 0;
+    } tierProbe_;
+    Stage probeStage_;
+    const char* tierSource_ = "argument";  // argument, cache, probe, picture default
+    char tierCachePath_[512] = {};
+    bool benchPending_ = false;  // the benchmark starts once the tier is known
     Governor governor_;
     bool governorOn_ = false;
     Background background_;

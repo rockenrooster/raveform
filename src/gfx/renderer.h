@@ -268,6 +268,9 @@ public:
     bool setTier(const RenderTier& tier);
     const RenderTier& tier() const { return tier_; }
     const GpuPassTimes& gpuTimes() const { return gpuTimes_; }
+    u64 frameCount() const { return frameCounter_; }  // frames recorded so far (GpuPassTimes::frame counts the same)
+    // Forgets every live spark (waits for the GPU): for a stage clock that starts again (start-up only).
+    void resetParticles();
     bool gpuTimersAvailable() const { return timestampPool_ != VK_NULL_HANDLE; }
     u32 lastGlyphCount() const { return lastGlyphs_; }
     u32 liveParticles() const { return lastLiveParticles_; }

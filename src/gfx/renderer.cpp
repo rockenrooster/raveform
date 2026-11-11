@@ -1014,6 +1014,12 @@ bool Renderer::setTier(const RenderTier& tier) {
     return true;
 }
 
+void Renderer::resetParticles() {
+    if (gpu_.device) vkDeviceWaitIdle(gpu_.device);  // no frame in flight still reads the ring
+    markFirst_ = markCount_ = 0;
+    particleClock_ = 0.0f;
+}
+
 bool Renderer::setGlyphs(const GlyphSet& glyphs) {
     if (glyphMesh_.buffer) {
         vkDeviceWaitIdle(gpu_.device);

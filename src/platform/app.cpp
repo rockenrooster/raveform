@@ -117,10 +117,23 @@ bool App::init() {
         return false;
     }
     if (!glyphs_.load(look_.jointFlatBelowDegrees)) return false;
+    // Tier (TECH_SPEC 5.4): --tier, else High for pictures and tests, else the cached first-launch choice
+    // for this GPU, else measured now (--tier auto measures again).
     Tier tier = Tier::High;
-    if (args_.tier[0] && !parseTier(args_.tier, tier)) {
-        RF_ERR("unknown tier '%s' (low, medium, high, ultra)", args_.tier);
-        return false;
+    const bool probeForced = std::strcmp(args_.tier, "auto") == 0;
+    const bool fixedDefault = args_.screenshot[0] || args_.sceneFile[0] || std::strcmp(args_.scenario, "glyph_sheet") == 0 ||
+                              std::strcmp(args_.scenario, "lifecycle_test") == 0;
+    bool tierFromDevice = false;
+    if (args_.tier[0] && !probeForced) {
+        if (!parseTier(args_.tier, tier)) {
+            RF_ERR("unknown tier '%s' (low, medium, high, ultra, auto)", args_.tier);
+            return false;
+        }
+        tierSource_ = "argument";
+    } else if (fixedDefault && !probeForced) {
+        tierSource_ = "picture default";
+    } else {
+        tierFromDevice = true;  // once the GPU is known
     }
     tier_ = tierSettings(tier);
     applyCuts(tier_, args_.cuts);
@@ -135,6 +148,22 @@ bool App::init() {
     rd.targetHz = args_.fps;
     refreshDisplay();
     if (!renderer_.init(window_, rd, look_)) return false;
+    if (tierFromDevice) {
+        char* pref = SDL_GetPrefPath("raveform", "raveform");  // start-up only (allocates)
+        std::snprintf(tierCachePath_, sizeof tierCachePath_, "%stier.txt", pref ? pref : "");
+        SDL_free(pref);
+        const GpuContext& g = renderer_.gpu();
+        Tier cached = Tier::High;
+        if (!probeForced && readTierCache(tierCachePath_, g.props.deviceName, g.driverVersionText, cached)) {
+            tier_ = tierSettings(cached);
+            applyCuts(tier_, args_.cuts);
+            tierSource_ = "cache";
+            RF_LOG("tier: %s, chosen on an earlier first launch (%s)", tier_.name, tierCachePath_);
+        } else {
+            tierProbe_.active = true;
+            tierSource_ = "probe";
+        }
+    }
     if (!renderer_.setGlyphs(glyphs_) || !renderer_.setTier(tier_.render)) return false;
     refreshDisplay();
     updateSafeArea();
@@ -182,8 +211,14 @@ bool App::init() {
         sheet_.init(look_, palettes_, *palette_, glyphs_, font_, args_.page);
         content_ = Content::Sheet;
     }
-    if (std::strcmp(args_.scenario, "bench_idle") == 0 || benchMid || benchEndgame) {
-        if (!bench_.begin(args_.scenario, args_.warmupSeconds, args_.seconds, startNs_)) return false;
+    const bool benchScenario = std::strcmp(args_.scenario, "bench_idle") == 0 || benchMid || benchEndgame;
+    if (benchScenario) {
+        // The run starts once the tier is known (after the first-launch probe, if one runs).
+        if (tierProbe_.active) {
+            benchPending_ = true;
+        } else if (!bench_.begin(args_.scenario, args_.warmupSeconds, args_.seconds, startNs_)) {
+            return false;
+        }
         // Room for every frame of the run at up to 240 Hz (allocated now, before measuring).
         const u32 cap = static_cast<u32>((args_.seconds + 5.0f) * 240.0f) + 1024;
         if (!probe_.init(cap)) return false;
@@ -205,11 +240,25 @@ bool App::init() {
         return false;
     }
     // Governor v1: on for interactive stages; benchmarks keep the tier fixed (TECH_SPEC 5.4).
-    governorOn_ = content_ == Content::Stage && (args_.governor == 1 || (args_.governor < 0 && !bench_.active()));
+    governorOn_ = content_ == Content::Stage && (args_.governor == 1 || (args_.governor < 0 && !benchScenario));
     governor_.reset(tier_.tier, static_cast<float>(renderer_.pacer().targetIntervalNs() * 1e-6));
-    RF_LOG("tier %s, %u cuts (bloom %u levels, afterglow %s, distortion %s, aberration %s, sparks x%.2f, glass %s, "
+    if (tierProbe_.active) {
+        // First launch on this GPU: measure the endgame stage tier by tier (TECH_SPEC 5.4).
+        if (!probeStage_.init(StageKind::Endgame, look_, palettes_, *palette_, glyphs_, tierSettings(Tier::Ultra))) return false;
+        if (!renderer_.gpuTimersAvailable()) {
+            RF_WARN("tier: no GPU timers to measure with; using medium");
+            finishTierProbe(Tier::Medium);
+        } else {
+            tierProbe_.budgetMs = 0.72f * static_cast<float>(renderer_.pacer().refreshPeriodNs() * 1e-6);
+            tierProbe_.startNs = nowNs();
+            RF_LOG("tier: first launch on this GPU, measuring (budget %.2f ms of GPU work at the top clock)",
+                   tierProbe_.budgetMs);
+            setProbeCandidate(static_cast<u32>(Tier::Ultra));
+        }
+    }
+    RF_LOG("tier %s (%s), %u cuts (bloom %u levels, afterglow %s, distortion %s, aberration %s, sparks x%.2f, glass %s, "
            "%u kill pools), governor %s",
-           tier_.name, tier_.cuts, tier_.render.bloomLevels, tier_.render.afterglowShift == 0 ? "off" : "on",
+           tierProbe_.active ? "to be measured" : tier_.name, tierSource_, tier_.cuts, tier_.render.bloomLevels, tier_.render.afterglowShift == 0 ? "off" : "on",
            tier_.render.distortionShift == 0 ? "off" : (tier_.render.distortionShift == 3 ? "1/8" : "1/4"),
            tier_.render.aberration ? "on" : "off", tier_.particleDensity, tier_.glass ? "on" : "off", tier_.killPools,
            governorOn_ ? "on" : "off");
@@ -482,7 +531,17 @@ void App::frame(u64 loopStartNs) {
     params.vignette = !args_.still;
     params.frameIndex = static_cast<u32>(frames_);
     params.gpuBurn = args_.gpuBurn;
-    if (content_ == Content::Stage) {
+    if (tierProbe_.active) {
+        // First-launch tier probe: the endgame stage under a saturating GPU load (the GPU at its top clock).
+        probeStage_.advance(1.0f / 60.0f);
+        probeStage_.render(draw, params, background_, w, h);
+        renderer_.setBackground(background_);
+        params.gpuBurn = 40;
+        TextStyle label;
+        label.capHeight = 30.0f * s;
+        label.color = kTitle;
+        font_.draw(draw.hud, {insetMin_.x + 60.0f * s, h - insetMax_.y - 80.0f * s}, label, "SETTING UP FOR THIS DEVICE");
+    } else if (content_ == Content::Stage) {
         stage_.advance(dt);
         stage_.render(draw, params, background_, w, h);
         // Analysis pictures: whole classes of soft light (core/args.h MuteBits).
@@ -583,6 +642,68 @@ void App::applyTier(Tier t) {
     if (overlayOn_) refreshOverlay(nowNs());
 }
 
+void App::setProbeCandidate(u32 tierIndex) {
+    TierProbe& p = tierProbe_;
+    p.candidate = tierIndex;
+    p.frames = 0;
+    p.count = 0;
+    const TierSettings ts = tierSettings(static_cast<Tier>(tierIndex));
+    renderer_.setTier(ts.render);
+    probeStage_.setTier(ts);
+    p.fromFrame = renderer_.frameCount() + 1;  // GPU times of frames at this tier, the first one skipped
+}
+
+void App::stepTierProbe() {
+    TierProbe& p = tierProbe_;
+    ++p.frames;
+    const GpuPassTimes& gt = renderer_.gpuTimes();
+    if (gt.valid && gt.frame >= p.fromFrame && gt.frame != gpuFrameSeen_ && p.count < countOf(p.samples)) {
+        gpuFrameSeen_ = gt.frame;
+        p.samples[p.count++] = gt.ms[GpuPassTimes::Total];
+    }
+    if (p.count < 5 && p.frames < 40) return;
+    float sorted[sizeof(TierProbe::samples) / sizeof(float)];
+    for (u32 i = 0; i < p.count; ++i) sorted[i] = p.samples[i];
+    std::sort(sorted, sorted + p.count);
+    const float median = p.count ? sorted[p.count / 2] : 1e9f;
+    p.ms[p.candidate] = median;
+    RF_LOG("tier probe: %s, %.2f ms of GPU work at the top clock (median of %u frames)", tierName(static_cast<Tier>(p.candidate)),
+           median, p.count);
+    if (median <= p.budgetMs || p.candidate == 0) {
+        finishTierProbe(static_cast<Tier>(p.candidate));
+    } else {
+        setProbeCandidate(p.candidate - 1);
+    }
+}
+
+void App::finishTierProbe(Tier chosen) {
+    TierProbe& p = tierProbe_;
+    p.active = false;
+    const GpuContext& g = renderer_.gpu();
+    if (!writeTierCache(tierCachePath_, g.props.deviceName, g.driverVersionText, chosen, p.ms, p.budgetMs))
+        RF_WARN("tier: could not write %s", tierCachePath_);
+    RF_LOG("tier probe: chose %s in %.1f s (GPU work at the top clock: low %.2f, medium %.2f, high %.2f, ultra %.2f ms; "
+           "budget %.2f ms); cached in %s",
+           tierName(chosen), p.startNs ? nsToSec(nowNs() - p.startNs) : 0.0, p.ms[0], p.ms[1], p.ms[2], p.ms[3], p.budgetMs,
+           tierCachePath_);
+    renderer_.resetParticles();  // the probe's sparks live on the probe's clock
+    applyTier(chosen);
+    governor_.reset(tier_.tier, static_cast<float>(renderer_.pacer().targetIntervalNs() * 1e-6));
+    lastFrameNs_ = 0;
+    if (benchPending_) {
+        benchPending_ = false;
+        beginBench();
+    }
+}
+
+void App::beginBench() {
+    if (!bench_.begin(args_.scenario, args_.warmupSeconds, args_.seconds, nowNs())) {
+        RF_ERR("bench: could not start %s", args_.scenario);
+        exitCode_ = 1;
+        quit_ = true;
+    }
+}
+
 void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
     ++frames_;
     // CPU frame time: the loop minus the time blocked in the fence wait, acquire and present.
@@ -630,6 +751,7 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
         }
     }
 
+    if (tierProbe_.active) stepTierProbe();
     if (bench_.active()) {
         // The bench records this interval when it was already measuring before this frame.
         const bool measuring = bench_.phase() == Bench::Phase::Measure && intervalMs >= 0.0f;
@@ -683,7 +805,7 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
                     pacer.votedHz(), displayHz_);
         }
     }
-    if (governorOn_ && intervalMs >= 0.0f) {
+    if (governorOn_ && intervalMs >= 0.0f && !tierProbe_.active) {
         // Governor v1 (TECH_SPEC 5.4): the share of the last 120 frames that missed a refresh, and the
         // GPU work per frame.
         if ((frames_ & 15u) == 0) {
@@ -957,6 +1079,7 @@ void App::reportBench() {
         j.integer("heap_allocs_other_threads", static_cast<i64>(allAllocsMeasured_ - mainAllocsMeasured_));
         j.integer("capsules", lastCapsules_);
         j.str("tier", tier_.name);
+        j.str("tier_source", tierSource_);
         j.integer("cuts", tier_.cuts);
         j.str("look", variant_->id);
         j.boolean("reduce_flashing", stage_.reduceFlashing());

@@ -39,6 +39,13 @@ constexpr u32 kMaxCuts = 11;
 bool parseTier(const char* name, Tier& out);
 const char* tierName(Tier t);
 
+// First-launch tier choice (TECH_SPEC 5.4): the start-up probe's result, cached in a small text file
+// per GPU and driver. Start-up only (file I/O). msPerTier: GPU work at the top clock, Low..Ultra,
+// negative when not measured.
+bool readTierCache(const char* path, const char* gpu, const char* driver, Tier& out);
+bool writeTierCache(const char* path, const char* gpu, const char* driver, Tier chosen, const float msPerTier[4],
+                    float budgetMs);
+
 // Governor v1 (TECH_SPEC 5.4): steps down after 0.5 s over budget, up after 10 s with room to spare.
 // First the spark density within the tier, then the tier. Off in benchmarks (fixed tier).
 // Inputs are what can be trusted on the phones: the share of recent frames that missed a refresh

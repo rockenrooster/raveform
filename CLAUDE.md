@@ -24,8 +24,10 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | Review copy of any PNG | `python scripts\shrink_png.py <png> [--max-width 1600]` |
 | Acceptance still (desktop) + compare | `scripts\run-desktop.ps1 -NoBuild -Res 2400x1080 -Frames 4 -Screenshot captures\m1\frame_reef.png -AppArgs '--scene design/scenes/frame_reef.rfscene --still --bloom on --no-overlay'`, then `python -I design\tools\scenes.py compare captures\m1\frame_reef.png frame_reef` (`look_card` also with `--bloom off` / `--nobloom`) |
 | Scene picture or strip (desktop, fixed 1/60 s steps) | `scripts\run-desktop.ps1 -NoBuild -Res 2400x1080 -Frames 600 -Screenshot captures\m1\x.png -AppArgs '--scenario bench_endgame --seconds 600 --warmup 0 --no-overlay [--look haze] [--palette furnace] [--strip 8]'` |
-| M1 contract run (Moto) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_endgame -Seconds 120 -Warmup 600 -AppArgs '--tier low'` (10-minute soak, then 120 s) |
-| GPU cost at the top clock | `scripts\bench-android.ps1 -Serial moto -Scenario bench_endgame -Seconds 15 -Warmup 4 -AppArgs '--tier low --gpu-burn 40'` |
+| M1 contract run (Moto) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_endgame -Seconds 120 -Warmup 600 -AppArgs '--tier low' -Deploy` (10-minute soak, then 120 s) |
+| GPU cost at the top clock | `scripts\bench-android.ps1 -Serial moto -Scenario bench_endgame -Seconds 15 -Warmup 4 -AppArgs '--tier low --gpu-burn 40' -Deploy` |
+| The M1 review set (stills + compare, glyph sheets, frame-600 pictures, both strips, `scenes.py light` lines) | `scripts\review-m1.ps1` (writes `captures\m1\`) |
+| Where a frame's light comes from (one class off at a time) | `scripts\light-breakdown.ps1 [-Frame 600] [-Out captures\light]` |
 
 Desktop exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 benchmark aborted,
 5 screenshot failed. Device serials: Moto `ZY22BXMJG3`, OnePlus 12R `a0e622a5`, Galaxy Tab `R5GL362BEHX`.
@@ -34,9 +36,14 @@ Desktop exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages,
 
 `--scenario bench_idle|bench_mid|bench_endgame|glyph_sheet|lifecycle_test` (`bench_mid` / `bench_endgame`:
 the scripted M1 stages of `design/scenes.md`; `glyph_sheet --page 1|2|3`: a still), `--tier
-low|medium|high|ultra` (effect tier, TECH_SPEC 5.4; default high; fixed in benchmarks), `--governor on|off`
-(governor v1; default on for interactive stages, off in benchmarks), `--look signal|laser|haze`, `--palette
-<id>` (default reef), `--scene <file.rfscene> --still --bloom on|off` (acceptance stills), `--strip N` (also
+low|medium|high|ultra|auto` (effect tier, TECH_SPEC 5.4; without it pictures and tests use high, everything else
+the tier the first-launch probe chose for this GPU, cached in `SDL_GetPrefPath()/tier.txt`; `auto` measures
+again), `--cuts N` (the first N cuts of look.md §10 on top of the tier), `--reduce-flashing` (look.md §7; key R),
+`--governor on|off` (governor v1; default on for interactive stages, off in benchmarks), `--look
+signal|laser|haze` (Signal is the game's look; the others are developer switches), `--palette <id>` (default
+reef), `--mute <names>` (analysis pictures: `background, grid, heat, enemy, elite, boss, aura, bullet, priority,
+sparks, flash, killpool, fx, warp, shard, player, afterglow, distortion, aberration, vignette, pump, sparkles,
+pools`; `core/args.h`), `--scene <file.rfscene> --still --bloom on|off` (acceptance stills), `--strip N` (also
 capture the N-1 frames before the `--screenshot` frame: `<name>_<k>.png`), `--fixed-step` (1/60 s per frame;
 implied by `--screenshot`), `--gpu-burn N` (profiling only: a saturating GPU load before the timed passes,
 so they show their cost at the GPU's top clock),
@@ -46,7 +53,7 @@ so they show their cost at the GPU's top clock),
 `--no-swappy` (plain FIFO), `--fps HZ` (Android target refresh; default = panel maximum), `--no-overlay`,
 `--affinity big|all` (Android: pin the main thread and the threads it starts to the non-little cores, or
 leave placement to the scheduler), `--cycles N`. Keys: F1 overlay, F12 screenshot, T tone hold, L next look, P next
-palette, K next tier, Esc / Back quit. Taps (decided when the last finger lifts): two fingers next look, three
+palette, K next tier, R reduce flashing, Esc / Back quit. Taps (decided when the last finger lifts): two fingers next look, three
 the overlay, four next palette. Raw launch: `adb -s <serial> shell "am start -n dev.raveform.game/.RaveformActivity --es args '--scenario bench_idle --seconds 60'"`.
 
 Log tags: `RAVEFORM` (everything), `RFBENCH` (one JSON line per benchmark or test, also on desktop
@@ -124,3 +131,8 @@ do the same for any manual adb command.
 5. Background/foreground cycles send HOME: run them in one short burst only while the launcher or our
    app is in front; if the phone stays busy, skip the check and report it as not verified.
 6. Every adb command needs `-s <serial>`.
+7. Between this project's coders (lead's rule, 2026-11-11): before using a phone write
+   `captures\locks\<serial>.lock` holding your name (e.g. `m1`) and the time, and delete it when the run ends;
+   a lock under 30 minutes old with another name means the phone is busy (refresh yours on runs past 30
+   minutes). Another coder installs its own `dev.raveform.game`: deploy your APK right before every device run
+   (`-Deploy`) and check which build ran before debugging a strange result.

@@ -1,5 +1,6 @@
 #include "game/tiers.h"
 
+#include <cstdio>
 #include <cstring>
 
 namespace rf {
@@ -89,6 +90,51 @@ bool parseTier(const char* name, Tier& out) {
 }
 
 const char* tierName(Tier t) { return tierSettings(t).name; }
+
+namespace {
+// "key=value\n" lines; value copied without the line end. False when the key is absent.
+bool cacheValue(const char* text, const char* key, char* out, size_t cap) {
+    const size_t n = std::strlen(key);
+    for (const char* line = text; line && *line;) {
+        if (std::strncmp(line, key, n) == 0 && line[n] == '=') {
+            const char* v = line + n + 1;
+            size_t len = std::strcspn(v, "\r\n");
+            if (len + 1 > cap) len = cap - 1;
+            std::memcpy(out, v, len);
+            out[len] = '\0';
+            return true;
+        }
+        line = std::strchr(line, '\n');
+        if (line) ++line;
+    }
+    return false;
+}
+}  // namespace
+
+bool readTierCache(const char* path, const char* gpu, const char* driver, Tier& out) {
+    FILE* f = std::fopen(path, "rb");
+    if (!f) return false;
+    char text[1024];
+    const size_t n = std::fread(text, 1, sizeof text - 1, f);
+    std::fclose(f);
+    text[n] = '\0';
+    char g[256], d[64], t[16];
+    if (std::strncmp(text, "raveform-tier 1", 15) != 0 || !cacheValue(text, "gpu", g, sizeof g) ||
+        !cacheValue(text, "driver", d, sizeof d) || !cacheValue(text, "tier", t, sizeof t))
+        return false;
+    // A new GPU or driver is probed again.
+    if (std::strcmp(g, gpu) != 0 || std::strcmp(d, driver) != 0) return false;
+    return parseTier(t, out);
+}
+
+bool writeTierCache(const char* path, const char* gpu, const char* driver, Tier chosen, const float msPerTier[4],
+                    float budgetMs) {
+    FILE* f = std::fopen(path, "wb");
+    if (!f) return false;
+    std::fprintf(f, "raveform-tier 1\ngpu=%s\ndriver=%s\ntier=%s\nbudget_ms=%.2f\nms_low_medium_high_ultra=%.2f %.2f %.2f %.2f\n",
+                 gpu, driver, tierName(chosen), budgetMs, msPerTier[0], msPerTier[1], msPerTier[2], msPerTier[3]);
+    return std::fclose(f) == 0;
+}
 
 void Governor::reset(Tier start, float periodMs) {
     tier_ = start;
