@@ -9,15 +9,107 @@
 - 2026-11-10: the contract is judged on the panel side (when each frame reached the display, counted in
   whole refresh periods); the present-call interval is reported, not graded (PLAN §5).
 
-## M1 Look and renderer — in progress (2026-11-11)
+## M1 Look and renderer — status 2026-11-11 (evening)
 
-Step 1 (stills) **done and accepted**: by the numbers (reproduced independently by the lead) and by the
-lead's 1:1 visual review (no corrections). Step 2 (motion) **built**: instanced glyphs, stateless sparks,
-the lattice, afterglow, distortion, chromatic aberration, the low-resolution background pass, beat
-envelopes, camera, events, live look and palette switching, `glyph_sheet`, `bench_mid`, `bench_endgame`.
-Step 3 (proof): tiers, governor v1 and GPU pass timers are built; `bench_endgame` holds 60 Hz on the Moto
-at Low, Medium and High in 30 s cold runs; the contract runs (10-minute soak, then 120 s) are next. Only
-the Moto is attached: every 12R item of M1 is pending. Nothing committed.
+Step 1 (stills) **done and accepted** (re-run below, unchanged). Step 2 (motion) **built** and now on
+look.md v2.1: the afterglow is the soft tail of §7, the light rules of §3 hold, the endgame carries the
+load of scenes.md §4 in view. Step 3 (proof): **`bench_endgame` meets the contract on the Moto at Low,
+Medium and High** (10-minute soak, then 120 s: 0 missed frames on the panel in each; GPU work at the top
+clock 11.05 / 12.21 / 14.28 ms at P95 against the 12 ms budget). **Open:** the endgame
+frame still misses the light targets of scenes.md §5 (13.3% dark, luminance 0.1725 against at least 15%
+and at most 0.16); per the brief this goes back to the lead with the breakdown, no look rule was changed.
+The 12R and the tablet are not attached: every item for them is pending. The look is Signal (user
+decision 2026-11-11); Laser and Haze are developer switches and were not re-shot.
+
+### This session (2026-11-11, afternoon)
+
+- **Afterglow v2.1** (look.md §7) was already in the code the previous coder left (renderer, `afterglow.frag`,
+  committed in `2976716`); the pictures that showed ghost rows (`captures/m1` of the morning, now in
+  `captures/archive/m1-2026-11-11-morning/`) were older than it. Checked against §7 line by line: source =
+  the bloom level of σ 6 ref px (level 3, W/8) less the 0.25 knee, history at that size re-aimed by the
+  camera, `0.7 × max(previous × e^(−dt/τ) − source, 0)` added. Strips show soft tails and no line-sharp
+  ghosts, but sparse fast shots still leave rows of soft dots (see "Light at endgame").
+- **Light rules** (look.md §3) checked one by one against the code: small kills sparkle-flash only, no pool,
+  no ring; ≤ 24 kill pools (oldest fades early); no tier auras; bullet and Shard sparkles High and up; ≤ 6
+  shock rings; warp-in rings from 2.5 × the glyph's extent (elites 90 wu); gains as in the §3 table. Fixed:
+  the boss stand-in drew an aura on each of its 48 parts (the target frame has none: they are ordinary
+  glyphs, not a boss design); kill pools lived 1.2 s for every kill (now the recipe's longest spark, 0.9 /
+  1.2 s, as in the target); the ship was 16 wu (glyphs.json: 14); Lancer and Sweeper as the target draws them.
+- **Load in view** (scenes.md §4): the endgame had about 515 enemies and 560 bullets in view (rings of
+  480–600 wu and ±900 × ±450 scatters do not fit a 720 wu tall view). Formations are now fitted to the 20:9
+  screen (rings squashed vertically as the target frame does, packs charging edge to edge, scatters and
+  boxes on screen, the boss 600 wu across and 180 wu up and down): **706 enemies and 961 bullets in view**
+  on average over the Moto run (max 709 / 1,247; the target frame holds 699 / 1,137).
+- **Boss stand-in** in the Caroms' hue (hue 3, violet in Reef). **Enemy bullets** upright diamonds
+  (`enemy_bullet`: points on the axes, `facesHeading` false); see the deviation below.
+- **`--cuts N`** applies look.md §10's cuts in order on top of a tier; Low is back to TECH_SPEC's Low with
+  glass and 24 kill pools (dropping them are cuts 1 and 7). **`--reduce-flashing`** (key R): every amount of
+  the §7 beat table × `beat.reduceFlashingScale`, no Drop burst. **First-launch tier probe** (TECH_SPEC 5.4,
+  below). **`--mute sparkles|pools`** and `scripts\light-breakdown.ps1` for the light table;
+  `scripts\review-m1.ps1` re-shoots the review set.
+
+### Light at endgame (scenes.md §5; `python -I design\tools\scenes.py light`)
+
+Desktop, 2400×1080, Signal, Reef, High (the picture default), frame 600 (fixed 1/60 s steps):
+
+| Picture | Dark (< 48) | Mean luminance |
+|---|---|---|
+| Target `design/previews/frame_endgame_ref.png` | 16.7% | 0.148 |
+| Required | at least 15% | at most 0.16 |
+| Before (HEAD `2976716`, the lead's measurement reproduced) | 8.5% | 0.193 |
+| **After** (this build) | **13.3%** | **0.1725** |
+| After, a quiet bar (frames 400–407, `strip_bench_endgame_407_*`) | 14.2–15.0% | 0.161–0.165 |
+| After, Low tier (desktop) | 28.1% | 0.149 |
+| `bench_mid` frame 600 (required ≥ 25%, ≤ 0.11) | 35.1% | 0.083 |
+
+Frame 600 is exactly on a kick (beat 22): the exposure (+8%), bloom (+10%) and enemy-swell pumps are at
+their peak, and the beat's kills (ten small, two medium, one large) and the enemies killed two beats
+earlier (finishing their warp-in) all flash on it. The target frame is a still at a quiet instant,
+without pumps or afterglow.
+
+Breakdown, frame 600, one class of light off at a time (`scripts\light-breakdown.ps1`, pictures in
+`captures/light/`; before = HEAD `2976716`):
+
+| Off | Before: dark / luminance | After: dark / luminance | After: luminance it adds |
+|---|---|---|---|
+| nothing | 8.5% / 0.193 | 13.3% / 0.1725 | — |
+| lattice | 10.3% / 0.185 | 16.0% / 0.1656 | 0.007 |
+| hulls (horde, elites, boss) | 11.8% / 0.142 | 18.0% / 0.1168 | 0.056 |
+| enemy bullets' scene light | 13.4% / 0.187 | 17.5% / 0.1658 | 0.007 |
+| sparks | 8.7% / 0.188 | 13.3% / 0.1690 | 0.004 |
+| pools (all soft light ≥ 16 ref px) | 11.0% / 0.156 | 16.8% / 0.1527 | 0.020 |
+| sparkles (all soft light < 16 ref px) | 9.4% / 0.186 | 14.1% / 0.1672 | 0.005 |
+| Shards | 8.6% / 0.181 | 13.3% / 0.1647 | 0.008 |
+| player (ship, shots, Riffs, trail, pool) | 9.0% / 0.182 | 16.4% / 0.1611 | 0.011 |
+| **afterglow** | 12.1% / 0.166 | **16.7% / 0.1523** | **0.020** |
+| background | 13.0% / 0.185 | 17.7% / 0.1643 | 0.008 |
+| bloom | 32.3% / 0.097 | 40.3% / 0.0921 | 0.080 |
+| priority layer | 7.0% / 0.198 | 10.8% / 0.1758 | −0.003 |
+| kick pump (frame 600 is on the kick) | 10.0% / 0.178 | 14.8% / 0.1588 | 0.014 |
+
+Before, the auras (20 elites' and the boss parts' 48) added 0.010 and the kill pools 0.023; before, the
+endgame also held only about 515 enemies and 560 bullets in view. Without the afterglow the frame meets
+both targets (16.7%, 0.152); without the pump it meets the luminance (0.159) but not the darkness (14.8%).
+The lead's own model of the v2.1 afterglow (`crowd.py study`, the whole horde drifting 5 px a frame) adds
+0.0085 to the target (15.4%, 0.157); in the engine it adds 0.020 because much of the light moves much
+faster than that (shots 37 px a frame, the Sweeper arm, Shards, charging packs, the boss's fans spawning
+on its turning arm tips) and the tail of each flash on the beat. Where its 0.020 comes from (afterglow
+on minus off, with one class muted): the player's light 0.005, the horde 0.003, Shards 0.002, sparkles
+0.002, the boss 0.001, bullets 0.001, sparks 0.000; the remaining 0.006 only exists where several classes
+overlap. Blurred to σ 6 the dense middle of the endgame sits above the 0.25 knee almost everywhere, so
+the tail is not limited to hot light at this density: 36% of the frame's pixels gain more than 8 levels
+from it (`captures/light/afterglow_adds_x3.png`: what it adds, ×3). The knee is absolute while the horde's
+light follows the crowd gain; whether to change the knee, the strength or the gains is the lead's call.
+At Low (lattice every 32 wu, so its lines survive the σ 6 blur) the afterglow adds 0.020 too (28.1% /
+0.149 with it, 34.5% / 0.129 without) and the lattice shows through its haze as a faint grid, cut out
+where the static lines already hold the light (`captures/light/afterglow_adds_low_x3.png`).
+
+**Ghost dots are not fully gone.** A shot moves 37.5 px a frame and the source is blurred to σ 6 px, so
+where shots are sparse (`bench_mid`) each shot head still leaves a row of soft dots about 37 px apart:
+`captures/m1/afterglow_shot_beads_mid600.png` (top: frame 600; bottom: the same frame without the
+afterglow). In the endgame the shots are dense and the dots merge into a haze along the lanes. This is
+the v2.1 afterglow as written; anything moving faster than about 2σ a frame (shots, young sparks, Shards
+near the ship) does it.
 
 ### Stills acceptance (`design/scenes.md`, `design/tools/scenes.py compare`)
 
@@ -36,7 +128,9 @@ composite): 0.35 / 1.23 / 1.05 mean error, luminance 0.997 / 0.984 / 0.983, soft
 within ±3, 0 validation messages (2026-11-11 09:20). After the low-resolution terms moved into the last
 bloom pass (below): 0.38 / 1.27 / 1.11, luminance 0.995 / 0.983 / 0.982, soft light p10-p90 0.98-1.00 /
 0.93-1.00 / 0.96-0.99, worst probe 4 (`pool_16` blue), 0 validation messages (2026-11-11 09:45). All
-inside the look.md §9 targets.
+inside the look.md §9 targets. **Re-run on this session's build (2026-11-11 17:00, `scripts\review-m1.ps1`):
+0.38 / 1.27 / 1.11 mean error, luminance 0.995 / 0.983 / 0.982, soft light p10-p90 0.98-1.00 / 0.93-1.00 /
+0.96-0.99, worst probe 4 (`pool_16`), 0 validation messages: unchanged, inside every target.**
 
 History of these numbers:
 
@@ -74,7 +168,7 @@ coverage formula stays as it is until then (the stills are matched to it).
 | 3 | Background | W/4 (W/2 on Ultra) | Radial gradient and up to 8 nebula clouds at the pixel centres they cover (TECH_SPEC 5.2 pass 0) |
 | 4 | Bloom down | W/2 … W/2^L | Level k from level k−1 (level 1: the scene plus the pools) with 4 bilinear taps at ±a_k source texels. a_k is solved at start-up so that the spread accumulated at level k, plus what the upsampling adds, equals the look's σ_k (`look.json`, reference px × H/1080). L = 6 / 5 / 4 by tier, weights renormalised |
 | 5 | Bloom up | … W/2 | Each level = bilinear coarser level × its weight + this level × w_k. The last one (W/2) also gathers the pools, the afterglow excess and the background, each divided by the bloom strength, so the composite reads one low-resolution texture (`bloom_final.frag`) |
-| 6 | Afterglow | W/2 (W/4 on Low) | Two outputs: history = max(scene, previous × e^(−dt/τ)) with the previous history re-aimed by the camera (scale and shift) and faded over 4% at its edges; excess = max(previous × decay − scene, 0). The scene comes from bloom level 1 (one tap) |
+| 6 | Afterglow | W/8 (the bloom level of σ 6 ref px) | look.md v2.1 §7. Source = bloom level 3 (σ 6 ref px) less the knee: `s × max(m − 0.25, 0) / m`. Two outputs: history = max(source, previous × e^(−dt/τ)) with the previous history re-aimed by the camera (scale and shift) and faded over 4% at its edges; excess = max(previous × decay − source, 0), added × 0.7 through the last bloom pass. No line-sharp history anywhere. Every tier with the afterglow on (off on Low only as cut 6) |
 | 7 | Distortion | W/8 (W/4 on Ultra) | `R16G16_SFLOAT` displacement in logical px from up to 8 rings (Gaussian profile, "wide" = full width at half maximum) and 4 wells, evaluated analytically |
 | 8 | Composite | swapchain | scene(uv + displacement) (three taps with chromatic aberration on High and up) + strength × gathered bloom (bloom + pools + afterglow + background) → drain toward white (the Build) → vignette → exposure → hue-preserving tone map with white bleed → ±½ code value of dither (interleaved gradient noise, moved to linear light through the sRGB slope on an sRGB target). Then, in the same render pass: the threat layer (all dark rims, then all cores, premultiplied over; capsules and instanced glyphs) and the HUD (additive) |
 
@@ -118,9 +212,9 @@ coverage formula stays as it is until then (the stills are matched to it).
   (f16×2), RGBA8 colour, 4 spare bytes: 32 bytes. Space-warp of sparks by wells (TECH_SPEC 5.3 details)
   is not built. Embers (10 per medium or large kill) are CPU-drawn sparkles; shatter pieces are CPU
   capsules; both are few.
-- **Afterglow** reads bloom level 1 (the scene at half resolution, slightly blurred, pools included)
-  instead of re-reading the full-resolution scene: one tap, 0.5 ms less on the Moto. It runs only when
-  the bloom does (stills turn both off anyway).
+- **Afterglow** (v2.1): the source is bloom level 3 as look.md asks (the pools are part of the bloom's
+  input, so they are part of the source too). It runs only when the bloom does (stills turn both off).
+  TECH_SPEC 5.4's "quarter res or off" on Low is now W/8 on every tier.
 - **Composite precision:** colour maths in half precision, positions in full; the dither is
   interleaved gradient noise (TECH_SPEC 5.2 allows it) and its amplitude in linear light uses
   max(1.82·√x, 1/12.92) for the sRGB slope (within −20% / +30% of exact).
@@ -140,11 +234,42 @@ coverage formula stays as it is until then (the stills are matched to it).
   (120 → 90 → 60) are not built yet. A tier change waits for the GPU and rebuilds the targets (one missed
   frame on the desktop). Off in benchmarks.
 - **Bench scenes** follow `design/scenes.md`; where it leaves freedom: shoal streams follow an
-  arc-length-parametrised figure of eight (650 × 260 wu); shots fly at 1,500 wu/s; kill pools live
-  1.2 s; medium and large shock rings reach 80 and 120 wu; the bass envelope decays in 180 ms; the
+  arc-length-parametrised figure of eight (650 × 260 wu); shots fly at 1,500 wu/s; kill pools live as
+  long as the recipe's longest spark (medium 0.9 s, large 1.2 s, as `crowd.py` draws the target);
+  medium and large shock rings reach 80 and 120 wu; the bass envelope decays in 180 ms; the
   background's 8° hue drift toward the accent is a small mix toward the accent's colour; the boss
   phase break falls on bar 16k + 12 and the Drop on every 8th bar; the far pool (3,072 − 709 slots)
   orbits 1,500-4,200 wu from the ship with far-mode updates only.
+- **Endgame formations fitted to the screen** (2026-11-11 pm), so the counts in view are scenes.md §4's:
+  the table's distances do not fit a 720 wu tall view (a 480–560 wu ring is 1,000 wu tall). Rings keep
+  their width and are squashed vertically (Sentries 0.55, Moths 0.82, Tethers 500 × 200, Weavers
+  0.45), as the target frame squashes its rings; the shoal's figure of eight and the Wyrms' paths are
+  softly fitted into ±680 × ±300 wu (tanh per axis); the spear and the Hound packs run to the edge of
+  that box's ellipse; Drifters and Caroms are scattered in that box; the boss stand-in is 600 wu across
+  and 180 wu up and down; Sentry arms have 16 wu between bullets (330 wu arms). `bench_mid` keeps its
+  explicit ±900 × ±450 and ring geometry: about 290 of its 500 enemies are in view at frame 600.
+- **Enemy bullets are drawn upright** (points on the screen's axes, never turning): the brief asked for
+  bullets that "point along their travel", but `enemy_bullet` is a square diamond with `facesHeading`
+  false, every reference picture draws it upright, and a square diamond turned to a diagonal travel is
+  an upright square — the defect the lead reported. One line in `Stage::render` to change.
+- **Boss stand-in:** no aura on its 48 parts (the target frame has none; look.md's boss aura would be
+  one aura for a real boss).
+- **Background:** the engine shows fewer nebula clouds than look.md's "about six on screen" (8 clouds on
+  a 3,600 × 1,800 wu tile, 1-3 on screen; the composite has 8 cloud slots and six on screen would need
+  about 34 on the tile) and about 270 star-dust sparkles on screen instead of 420 (tile 2,000 × 900 wu).
+  Not changed this session: both are faint (the whole background adds 0.008 luminance at frame 600).
+- **Tiers:** Low is TECH_SPEC's Low (4 bloom levels, no distortion, aberration or clouds, sparks × 0.35,
+  lattice 32 wu, simplified LOD) and keeps glass and 24 kill pools; look.md §10's cuts are `--cuts N` on
+  top of any tier. The afterglow is W/8 on every tier.
+- **First-launch tier choice** (TECH_SPEC 5.4): the probe runs on screen under a "SETTING UP FOR THIS
+  DEVICE" label, not off screen, and takes 6.3 s on the Moto (four tiers from Ultra down, 1-2 s each under
+  a 20-draw saturating load) instead of two seconds; the GPU name is not used as a hint (the cache is keyed
+  by GPU and driver). Budget: GPU work at the top clock ≤ 72% of the refresh period (PLAN §5's 12 ms at
+  60 Hz). Pictures (`--screenshot`, `--scene`) and tests default to High so they stay comparable.
+- **Reduce-flashing mode** halves the amounts of look.md §7's beat table (exposure, bloom, zoom, enemy
+  swell, aberration, lattice ripple and shimmer, background bass and hue drift) and removes the Drop's
+  bloom burst; the Drop's white front, confetti and zoom snap stay (scenes.md events, not in the table).
+  The Nova (§5) is not in M1.
 
 ### Corrections to M0 found in M1
 
@@ -170,7 +295,42 @@ coverage formula stays as it is until then (the stills are matched to it).
   the GPU is saturated (frames take 60-290 ms) and runs at its highest clock; the timed passes then show
   what they cost there. This is the number to hold against the 12 ms budget.
 
-### Moto results so far (bench_endgame, 2400×1080, Signal, Reef, Swappy 60 Hz, cold, 30 s unless noted)
+### Moto contract runs (2026-11-11 pm; PLAN §5: 10-minute soak, then 120 s, graded on the panel at P95)
+
+`bench_endgame`, 2400×1080 (surface matches the display mode), Signal, Reef, Swappy at 60 Hz, overlay
+on, main thread on the big cores, this session's build deployed right before each run (shared phone,
+quiet: 0.86-0.99 foreign cores on average, mostly SurfaceFlinger, the audio server and the composer). In view on
+average: 706 enemies, 961 bullets, 2,345 glyph instances; crowd gain 0.479, swarm 0.331. 0 heap
+allocations on our thread in every run; 0 audio underruns.
+
+| Tier | Panel: P95 / missed / max (CPU side) | Verdict | Present call P95 / P99 (ms) | Main thread P50 / P95 (ms) | GPU at the governor's clock P50 / P95 (ms) | GPU at the top clock P50 / P95 (ms) | Thermal, battery | Result file (`captures/bench/ZY22BXMJG3-bench_endgame-…`) |
+|---|---|---|---|---|---|---|---|---|
+| Low | 1 period (16.67 ms) / 0 of 7,188 / 24.9 ms | **PASS** | 17.72 / 18.58 | 4.59 / 4.81 | 13.35 / 13.72 | **10.74 / 11.05** | 0 → 0, 26.5 → 28.8 °C | `20261111-164531`, top clock `-171046` |
+| Medium | 1 period (16.67 ms) / 0 of 7,188 / 19.0 ms | **PASS** | 17.68 / 18.37 | 5.52 / 5.83 | 12.16 / 14.82 | **11.99 / 12.21** | 0 → 0, 28.8 → 29.7 °C | `-165823`, top clock `-171128` |
+| High | 1 period (16.67 ms) / 0 of 7,188 / 20.7 ms | **PASS** | 17.61 / 18.07 | 6.46 / 6.84 | 14.05 / 14.52 | **14.03 / 14.28** | 0 → 0, 29.7 → 30.6 °C | `-171253`, top clock `-171209` |
+
+GPU passes at the top clock (P50, ms): Low scene 3.15, pools 0.15, background 0.14, bloom (4 levels)
+2.98, afterglow 0.05, composite + threat + HUD + overlay 4.29; Medium 3.41 / 0.16 / 0.49 / 3.01 (5) /
+0.05 / distortion 0.04 / 4.79; High 4.37 / 0.17 / 0.49 / 3.06 (6) / 0.05 / 0.04 / 5.82. Against PLAN §5's
+12 ms: Low fits (11.05 at P95), Medium is at the line (12.21), High is over (14.28) and still holds 60 Hz
+with the GPU at about 86% of the period at its top clock (no headroom left for a hotter phone or a
+heavier scene). The three runs ran back to back over 40 minutes; thermal status stayed 0 (none). The v2.1 afterglow
+costs 0.05 ms (W/8) where the first version cost 0.33 (Low) and 0.72 (Medium). The load in view is
+up from about 500 enemies and 660 bullets this morning (Low then: 10.30 / 10.58 ms at the top clock).
+No cuts were needed: Low passes as TECH_SPEC defines it.
+
+In-app captures (`capture-android.ps1 -InApp`, upright, 2400×1080): `captures/m1/frame_reef_moto.png`
+compares with the reference at mean error 1.16, luminance ratio 0.982, soft light 0.96 / 0.98 / 0.99
+(desktop 1.11 / 0.982); `bench_endgame_600_moto_low.png` 28.1% dark, luminance 0.149 (the desktop's Low
+frame: 28.1%, 0.149); `bench_endgame_600_moto_medium.png` 19.8%, 0.163.
+
+First-launch tier probe on the Moto (`--tier auto`): GPU work at the top clock Low 10.81, Medium 12.10,
+High 14.01, Ultra 15.99 ms (the `--gpu-burn` runs above: 10.74 / 11.99 / 14.03); it chose **Low** in 6.3 s
+(Medium is 0.1 ms over the 12 ms line) and cached it (`files/tier.txt`, read with `run-as`). A first
+version measured the stage's first half second (load not yet built up) and chose Medium; the probe now
+pre-rolls two seconds of the stage and follows real time.
+
+### Moto results earlier on 2026-11-11 (bench_endgame, 2400×1080, Signal, Reef, Swappy 60 Hz, cold, 30 s unless noted)
 
 Per frame in view: about 500 enemies (max 660), 660 enemy bullets (max 870), 1,800 glyph instances,
 1,700 live sparks, 3,000 capsules; 3,072 enemy slots alive. Main thread pinned to the big cores.
@@ -184,8 +344,8 @@ Per frame in view: about 500 enemies (max 660), 660 enemy bullets (max 870), 1,8
 GPU passes at the top clock, Low: scene 2.63, pools 0.29, background 0.14, bloom (4 levels) 2.80,
 afterglow (1/4) 0.33, composite + threat + HUD 5.51 ms. Medium: scene 2.87, pools 0.53, background 0.49,
 bloom (5) 2.85, afterglow (1/2) 0.72, distortion 0.04, composite 5.94 ms. Heap allocations in the
-measured window: 0 on our thread in every run. These are short, cold runs on a shared phone; the
-contract runs (10-minute soak, then 120 s) follow.
+measured window: 0 on our thread in every run. These are short, cold runs on a shared phone, with the
+morning's lighter load in view and the first afterglow; the contract runs are above.
 
 Where the composite's time went (Low, top clock, by switching parts off): a constant output with the
 threat layer and the overlay 2.25 ms (the overlay 0.33 of it), the pools/bloom/afterglow taps 0.8 ms,
@@ -206,41 +366,54 @@ eight nebula clouds evaluated per full-resolution pixel).
 
 ### Desktop validation (Debug, validation and synchronization validation on)
 
-- `bench_endgame` 60 s at Ultra and at Low, 2400×1080: 0 validation and 0 loader messages, 0 heap
-  allocations in the window, 0 missed, 4 Drops and 2 boss breaks inside the run
-  (`captures/desktop_m1_endgame_ultra_60s_*.log`, `..._low_60s_*.log`).
-- `lifecycle_test` 20 cycles: 0 messages. The stills, the glyph sheet pages, every review picture and
-  strip: 0 messages.
+- This session's build (2026-11-11 17:00): `bench_endgame` 60 s at Ultra and at Low, 2400×1080: valid,
+  0 validation and 0 loader messages, 0 heap allocations in the window, 2 missed of 3,600 (desktop
+  timing is informational), 4 Drops and 2 boss breaks inside the run; 706 enemies and 953 / 962 bullets
+  in view on average, crowd gain 0.479 (`captures/desktop_m1_endgame_ultra_60s_20261111-1651.log`,
+  `..._low_60s_20261111-1653.log`). Every review picture, strip and still: 0 messages. The tier probe
+  (`--tier auto`) and `--reduce-flashing`: 0 messages.
+- Earlier build (morning): the same two runs clean; `lifecycle_test` 20 cycles: 0 messages (not re-run:
+  no lifecycle code changed).
 
 ### Pictures for review (`captures/m1/`, 2400×1080, desktop unless noted)
 
+Re-shot 2026-11-11 17:00 with `scripts\review-m1.ps1` (Signal only, per the user's decision); the
+morning's set is in `captures/archive/m1-2026-11-11-morning/`. `*.small.png` are 1600 px review copies;
+`light.txt` holds the `scenes.py light` line of every moving-scene picture.
+
+- `look_card_nobloom.png`, `look_card.png`, `frame_reef.png`, each with `.cmp.png` and `.compare.txt`.
 - `glyph_sheet_1.png`, `_2.png`, `_3.png` (families 1-9, 10-17, then marks, elites, the ship with every
   halo in the four player colours, a Shard and an enemy bullet).
-- `bench_mid_600_<look>_reef.png` and `bench_endgame_600_<look>_reef.png` for Signal, Laser and Haze;
+- `bench_mid_600_signal_reef.png`, `bench_endgame_600_signal_reef.png` (and `_low.png`: the Low tier),
   `bench_endgame_600_signal_ultraviolet.png`, `_furnace.png`.
 - Strips of eight consecutive frames: `strip_bench_endgame_879_0..7.png` across the first Drop (bar 8,
   frame 873) and `strip_bench_endgame_407_0..7.png` in a quiet bar; `_sheet.png` tiles each at half size.
-- `test/eg_still.png`: endgame frame 600 with every time-driven effect off (for comparison).
-- Measured for the lead: dark fraction (max channel under 48/255): endgame 3-7%, mid 11-33% by look,
-  the target frame 35%. Afterglow with the look.md numbers leaves long trails here, because the bench
-  formations ride with the ship (world speed about 320 px/s) and HDR cores of 2-5 stay visible for
-  about four τ.
+- Moto in-app captures: see "Moto contract runs".
+- Light analysis: `captures/light/` (one class off at a time; `afterglow_adds_x3.png`,
+  `afterglow_adds_low_x3.png`).
+
+Checked by eye against scenes.md §5's list: no line-sharp ghost rows (in the endgame shots, Shards and
+the Sweeper leave soft tails; in `bench_mid` sparse shots leave rows of soft dots; the boss's fans leave
+soft red smears where seven bullets spawn on one turning arm tip); no beads on rings; the danger diamonds and the ship (priority layer) read over the brightest
+light; the boss stand-in is violet. The Drop strip jumps in brightness at frame 873 (bloom burst, zoom
+snap, white front with an RGB fringe from the aberration of its distortion ring).
 
 ### Not built in M1 (or not verified)
 
-- Space-warp of sparks by wells; refresh-rate steps in the governor (120 → 90 → 60); reduce-flashing
-  mode; the 13-tap bloom prefilter for High; the first-launch tier bake (the device default tier is a
-  command-line choice for now).
-- 12R and tablet: not attached; every M1 item for them is pending (including the surface-size check).
+- Space-warp of sparks by wells (not in M1); refresh-rate steps in the governor (120 → 90 → 60; needs
+  the 12R); the 13-tap bloom prefilter for High. Reduce-flashing mode and the first-launch tier choice
+  are built (2026-11-11 pm); reduce-flashing has no on-device switch yet (argument or key R).
+- The light targets of scenes.md §5 for `bench_endgame` are not met (above): the lead's decision.
+- 12R and tablet: not attached; every M1 item for them is pending (including the surface-size check,
+  the contract at 120 / 90 Hz and the in-app captures).
 - Audio is still the M0 test tone: beat envelopes come from the scripted 132 BPM clock (M2 brings the
-  audio engine).
+  audio engine, in parallel on `m2-audio`).
 
 ### Waiting on the user (carried from M0 and the lead)
 
 Audible test tone, 180° rotation, lock/unlock, the 12R's refresh setting (High) and the 12R itself, the
-tablet, the choice of look variant and of sound variant, and whether M2 runs in parallel on its own
-branch. M2's design inputs are ready (`design/music/patches.json`, `variants.json`, `conductor.json`,
-`design/screens.md`); M2 has not started.
+tablet. Decided 2026-11-11: the look is Signal; the sound variants ship as a player setting; M2 runs in
+parallel on its own branch.
 
 ## M0 Bootstrap — status 2026-11-10 (evening): device checks done except the tablet and the user checks
 
