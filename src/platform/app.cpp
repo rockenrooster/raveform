@@ -536,7 +536,7 @@ void App::frame(u64 loopStartNs) {
         probeStage_.advance(1.0f / 60.0f);
         probeStage_.render(draw, params, background_, w, h);
         renderer_.setBackground(background_);
-        params.gpuBurn = 40;
+        params.gpuBurn = 40;  // as --gpu-burn 40: a lighter load leaves desktop GPUs below their top clock
         TextStyle label;
         label.capHeight = 30.0f * s;
         label.color = kTitle;
@@ -651,17 +651,20 @@ void App::setProbeCandidate(u32 tierIndex) {
     renderer_.setTier(ts.render);
     probeStage_.setTier(ts);
     p.fromFrame = renderer_.frameCount() + 1;  // GPU times of frames at this tier, the first one skipped
+    p.candidateNs = nowNs();
 }
 
 void App::stepTierProbe() {
     TierProbe& p = tierProbe_;
     ++p.frames;
+    // Let the GPU's clock climb under the load for 0.4 s before sampling.
+    if (nsToSec(nowNs() - p.candidateNs) < 0.4) p.fromFrame = renderer_.frameCount() + 1;
     const GpuPassTimes& gt = renderer_.gpuTimes();
     if (gt.valid && gt.frame >= p.fromFrame && gt.frame != gpuFrameSeen_ && p.count < countOf(p.samples)) {
         gpuFrameSeen_ = gt.frame;
         p.samples[p.count++] = gt.ms[GpuPassTimes::Total];
     }
-    if (p.count < 5 && p.frames < 40) return;
+    if (p.count < 5 && p.frames < 90) return;
     float sorted[sizeof(TierProbe::samples) / sizeof(float)];
     for (u32 i = 0; i < p.count; ++i) sorted[i] = p.samples[i];
     std::sort(sorted, sorted + p.count);

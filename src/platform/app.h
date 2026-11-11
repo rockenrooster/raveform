@@ -96,6 +96,7 @@ private:
         float ms[4] = {-1.0f, -1.0f, -1.0f, -1.0f};  // median GPU work at the top clock, Low..Ultra
         float budgetMs = 12.0f;
         u64 startNs = 0;
+        u64 candidateNs = 0;  // when the candidate tier started (warm-up)
     } tierProbe_;
     Stage probeStage_;
     const char* tierSource_ = "argument";  // argument, cache, probe, picture default
