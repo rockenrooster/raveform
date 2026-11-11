@@ -248,6 +248,25 @@ bool loadLook(Look& out) {
     cr.swarmExponent = r.num("crowd.swarmExponent");
     out.afterglowSourceSigmaRefPx = r.num("afterglow.sourceSigmaRefPx");
     out.afterglowKnee = r.num("afterglow.knee");
+    {
+        char gain[16] = {};
+        look.text("afterglow.gain", gain, sizeof gain);  // absent: no gain (v2.1)
+        if (std::strcmp(gain, "swarm") == 0) {
+            out.afterglowGain = Look::Gain::Swarm;
+        } else if (std::strcmp(gain, "crowd") == 0) {
+            out.afterglowGain = Look::Gain::Crowd;
+        } else if (gain[0]) {
+            RF_ERR("look: afterglow.gain '%s' is not crowd or swarm", gain);
+            r.ok = false;
+        }
+    }
+    out.shotStreak.frameS = r.num("shotStreak.frameS");
+    out.shotStreak.overlapWu = r.num("shotStreak.overlapWu");
+    out.shotStreak.minWu = r.num("shotStreak.minWu");
+    r.range("dropConfetti.outsideWu", out.dropConfetti.outsideWu);
+    r.range("dropConfetti.delayS", out.dropConfetti.delayS);
+    r.range("dropConfetti.speedWu", out.dropConfetti.speedWu);
+    r.range("dropConfetti.lifeS", out.dropConfetti.lifeS);
 
     Look::SoftLights& s = out.soft;
     r.soft("starDust", s.starDust);

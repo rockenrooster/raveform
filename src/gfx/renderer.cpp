@@ -1561,7 +1561,7 @@ bool Renderer::endFrame(const FrameDraw& draw, const FrameParams& params, bool c
     post.p0[0] = gather ? (levels <= 2 ? weights[2] : 1.0f) : 0.0f;
     post.p0[1] = gather ? weights[1] : 0.0f;
     post.p0[2] = 1.0f / compositeBloom;
-    post.p0[3] = afterglowOn ? lv.afterglowStrength / compositeBloom : 0.0f;
+    post.p0[3] = afterglowOn ? lv.afterglowStrength * params.afterglowGain / compositeBloom : 0.0f;
     post.p1[0] = lv.bgLevel / compositeBloom;
     post.p1[1] = post.p1[2] = post.p1[3] = 0.0f;
     pushPost();
@@ -1619,7 +1619,7 @@ bool Renderer::endFrame(const FrameDraw& draw, const FrameParams& params, bool c
     ubo.vignette[1] = look_->vignetteInner;
     ubo.vignette[2] = look_->vignetteOuter;
     ubo.vignette[3] = params.vignette ? 1.0f : 0.0f;
-    ubo.post[0] = afterglowOn ? lv.afterglowStrength : 0.0f;
+    ubo.post[0] = afterglowOn ? lv.afterglowStrength * params.afterglowGain : 0.0f;
     ubo.post[1] = params.aberration && tier_.aberration ? 1.0f : 0.0f;
     ubo.post[2] = look_->aberrationOfDistortion;
     ubo.post[3] = distortionOn ? 1.0f : 0.0f;

@@ -16,10 +16,53 @@ look.md v2.1: the afterglow is the soft tail of §7, the light rules of §3 hold
 load of scenes.md §4 in view. Step 3 (proof): **`bench_endgame` meets the contract on the Moto at Low,
 Medium and High** (10-minute soak, then 120 s: 0 missed frames on the panel in each; GPU work at the top
 clock 11.05 / 12.21 / 14.28 ms at P95 against the 12 ms budget). **Open:** the endgame
-frame still misses the light targets of scenes.md §5 (13.3% dark, luminance 0.1725 against at least 15%
-and at most 0.16); per the brief this goes back to the lead with the breakdown, no look rule was changed.
-The 12R and the tablet are not attached: every item for them is pending. The look is Signal (user
-decision 2026-11-11); Laser and Haze are developer switches and were not re-shot.
+frame 600 still misses the light targets of scenes.md §5 after look.md v2.2 (14.0% dark, luminance
+0.1645 against at least 15% and at most 0.16; a quiet bar meets both); reported to the lead with the
+breakdown, nothing else tuned. The 12R and the tablet are not attached: every item for them is pending.
+The look is Signal (user decision 2026-11-11); Laser and Haze are developer switches and were not re-shot.
+
+### Look bible v2.2 built (2026-11-11, evening; the lead's `39d63a0`)
+
+- **Afterglow on the light budget** (look.md §3, §7; `look.json` `afterglow.gain = "swarm"`, read at
+  start-up): the composite adds `0.7 × swarmGain × max(previous × e^(−dt/τ) − source, 0)`; knee, τ and the
+  source level unchanged. At frame 600 (swarm gain 0.338) it now adds 0.0076 of luminance (was 0.020).
+- **Shot streaks** (look.md §3 player shots; `look.json` `shotStreak`): every shot (player, wingman,
+  Sentinel) is a capsule from its head back over speed × 1/60 s + 8 wu, never under 16 wu; the player's
+  shots fly at GAME_DESIGN §4's 1,400 wu/s (was 1,500): 31 wu capsules, Sentinel shots 27 wu. Behind
+  every shot the afterglow is now one even streak: `captures/m1/afterglow_shot_tail_mid600.png` (top:
+  frame 600; bottom: without the afterglow), against `afterglow_shot_beads_mid600_lanes.png`, the same
+  crop before v2.2, where each lane is a row of dots. Correction: the earlier
+  `afterglow_shot_beads_mid600.png` crop (left of the ship) shows mostly a stream of **Shards** flying to
+  the ship, not shots; Shards still leave soft dots (`afterglow_shard_beads_mid600.png`, same crop as that
+  one, on this build). v2.2 does not cover them.
+- **Drop confetti as a shower** (look.md §5; `look.json` `dropConfetti`): each spark starts 0-200 wu
+  beyond the view edge (spread along the edges by their length) and is born 0-250 ms after the Drop
+  (stateless birth time in the future), 300-700 wu/s toward the ship, 1.0-1.6 s. The streak direction was
+  checked before the change and was already the spark's own velocity (the particle shader streaks along
+  `v0·e^(−drag·t)`; at the top-left edge the streaks ran at about 31° down to the right, at the top-right
+  about 37° down to the left, on the left edge level: each toward the ship); the "same slant" was the
+  sparks all born on the edge line in one frame. The new `strip_bench_endgame_879_*` shows no border in
+  any frame; the shower comes in over the following half second.
+
+| `scenes.py light` (desktop, Signal, Reef) | Required | Before v2.2 | **v2.2** |
+|---|---|---|---|
+| `bench_endgame` frame 600, High | ≥ 15%, ≤ 0.16 | 13.3% / 0.1725 | **14.0% / 0.1645** (misses both) |
+| `bench_endgame` quiet bar, frames 400-407 | ≥ 15%, ≤ 0.16 | 14.2-15.0% / 0.161-0.165 | 15.6-16.2% / 0.154-0.157 (meets) |
+| `bench_endgame` frame 600, Low | | 28.1% / 0.149 | 30.6% / 0.140 |
+| `bench_mid` frame 600 | ≥ 25%, ≤ 0.11 | 35.1% / 0.083 | 36.1% / 0.081 (meets) |
+
+Breakdown of the v2.2 frame 600 (luminance each class adds, one off at a time): hulls 0.052, pools 0.020,
+kick pump 0.014, player 0.013 (the longer shots: +0.002), afterglow 0.0076, background 0.008, lattice
+0.007, bullets 0.006, Shards 0.006, sparkles 0.004, sparks 0.003, bloom 0.071. Without the afterglow
+16.0% / 0.157; without the pump 15.8% / 0.151. Frame 600 sits on a kick (all pumps at their peak).
+
+Acceptance stills: identical (0.38 / 1.27 / 1.11 mean error, luminance 0.995 / 0.983 / 0.982, worst
+probe 4). Desktop Debug `bench_endgame` 60 s at Ultra and Low: valid, 0 validation, 0 loader messages, 0
+heap allocations (`captures/desktop_m1_endgame_*_60s_20261111-1748.log`). Moto, the lead's short check
+(Low, 20 s warm-up, 30 s, deployed right before, lock taken): 0 missed of 1,797 on the panel, max 19.1 ms,
+main thread 4.53 / 4.74 ms (P50 / P95), GPU at the governor's clock 13.36 / 13.68 ms (before v2.2 in the
+contract run: 4.59 / 4.81 and 13.35 / 13.72), 0 heap allocations, thermal 0
+(`ZY22BXMJG3-bench_endgame-20261111-174725.json`). Nothing got slower.
 
 ### This session (2026-11-11, afternoon)
 
@@ -104,12 +147,13 @@ At Low (lattice every 32 wu, so its lines survive the σ 6 blur) the afterglow a
 0.149 with it, 34.5% / 0.129 without) and the lattice shows through its haze as a faint grid, cut out
 where the static lines already hold the light (`captures/light/afterglow_adds_low_x3.png`).
 
-**Ghost dots are not fully gone.** A shot moves 37.5 px a frame and the source is blurred to σ 6 px, so
-where shots are sparse (`bench_mid`) each shot head still leaves a row of soft dots about 37 px apart:
-`captures/m1/afterglow_shot_beads_mid600.png` (top: frame 600; bottom: the same frame without the
-afterglow). In the endgame the shots are dense and the dots merge into a haze along the lanes. This is
-the v2.1 afterglow as written; anything moving faster than about 2σ a frame (shots, young sparks, Shards
-near the ship) does it.
+**Ghost dots are not fully gone** (v2.1; see "Look bible v2.2 built" for what changed). A shot moved
+37.5 px a frame and the source is blurred to σ 6 px, so where shots are sparse (`bench_mid`) each shot
+left a row of soft dots about 37 px apart (`captures/m1/afterglow_shot_beads_mid600_lanes.png`). The
+crop first offered as evidence, `afterglow_shot_beads_mid600.png`, shows mostly a stream of Shards flying
+to the ship, which beads the same way. In the endgame the shots are dense and the dots merge into a haze
+along the lanes. Anything moving faster than about 2σ a frame (shots, young sparks, Shards near the
+ship) does it.
 
 ### Stills acceptance (`design/scenes.md`, `design/tools/scenes.py compare`)
 
@@ -248,10 +292,8 @@ coverage formula stays as it is until then (the stills are matched to it).
   that box's ellipse; Drifters and Caroms are scattered in that box; the boss stand-in is 600 wu across
   and 180 wu up and down; Sentry arms have 16 wu between bullets (330 wu arms). `bench_mid` keeps its
   explicit ±900 × ±450 and ring geometry: about 290 of its 500 enemies are in view at frame 600.
-- **Enemy bullets are drawn upright** (points on the screen's axes, never turning): the brief asked for
-  bullets that "point along their travel", but `enemy_bullet` is a square diamond with `facesHeading`
-  false, every reference picture draws it upright, and a square diamond turned to a diagonal travel is
-  an upright square — the defect the lead reported. One line in `Stage::render` to change.
+- **Enemy bullets are drawn upright** (points on the screen's axes, never turning). Confirmed by the lead
+  and written into look.md v2.2 §3 (the first brief had asked for bullets turned to their travel).
 - **Boss stand-in:** no aura on its 48 parts (the target frame has none; look.md's boss aura would be
   one aura for a real boss).
 - **Background:** the engine shows fewer nebula clouds than look.md's "about six on screen" (8 clouds on
@@ -265,7 +307,8 @@ coverage formula stays as it is until then (the stills are matched to it).
   DEVICE" label, not off screen, and takes 6.3 s on the Moto (four tiers from Ultra down, 1-2 s each under
   a 20-draw saturating load) instead of two seconds; the GPU name is not used as a hint (the cache is keyed
   by GPU and driver). Budget: GPU work at the top clock ≤ 72% of the refresh period (PLAN §5's 12 ms at
-  60 Hz). Pictures (`--screenshot`, `--scene`) and tests default to High so they stay comparable.
+  60 Hz). Pictures (`--screenshot`, `--scene`) and tests default to High so they stay comparable. The
+  lead accepted the on-screen probe for M1; **from M3 it should run behind the title screen.**
 - **Reduce-flashing mode** halves the amounts of look.md §7's beat table (exposure, bloom, zoom, enemy
   swell, aberration, lattice ripple and shimmer, background bass and hue drift) and removes the Drop's
   bloom burst; the Drop's white front, confetti and zoom snap stay (scenes.md events, not in the table).
@@ -377,7 +420,8 @@ eight nebula clouds evaluated per full-resolution pixel).
 
 ### Pictures for review (`captures/m1/`, 2400×1080, desktop unless noted)
 
-Re-shot 2026-11-11 17:00 with `scripts\review-m1.ps1` (Signal only, per the user's decision); the
+Re-shot 2026-11-11 17:50 on the v2.2 build with `scripts\review-m1.ps1` (Signal only, per the user's
+decision; Moto captures from 17:25, before v2.2); the
 morning's set is in `captures/archive/m1-2026-11-11-morning/`. `*.small.png` are 1600 px review copies;
 `light.txt` holds the `scenes.py light` line of every moving-scene picture.
 
@@ -389,12 +433,17 @@ morning's set is in `captures/archive/m1-2026-11-11-morning/`. `*.small.png` are
 - Strips of eight consecutive frames: `strip_bench_endgame_879_0..7.png` across the first Drop (bar 8,
   frame 873) and `strip_bench_endgame_407_0..7.png` in a quiet bar; `_sheet.png` tiles each at half size.
 - Moto in-app captures: see "Moto contract runs".
-- Light analysis: `captures/light/` (one class off at a time; `afterglow_adds_x3.png`,
-  `afterglow_adds_low_x3.png`).
+- Light analysis: `captures/light/` (one class off at a time, now on the v2.2 build; `afterglow_adds_x3.png`
+  and `afterglow_adds_low_x3.png` are from before v2.2).
+- Afterglow behind fast things: `afterglow_shot_tail_mid600.png` (v2.2, shot lanes),
+  `afterglow_shot_beads_mid600_lanes.png` (the same lanes before v2.2), `afterglow_shard_beads_mid600.png`
+  (v2.2, a Shard stream: still beads), `afterglow_shot_beads_mid600.png` (before v2.2, mostly that Shard
+  stream).
 
-Checked by eye against scenes.md §5's list: no line-sharp ghost rows (in the endgame shots, Shards and
-the Sweeper leave soft tails; in `bench_mid` sparse shots leave rows of soft dots; the boss's fans leave
-soft red smears where seven bullets spawn on one turning arm tip); no beads on rings; the danger diamonds and the ship (priority layer) read over the brightest
+Checked by eye against scenes.md §5's list (v2.2 build): no line-sharp ghost rows (shots leave one even
+tail; Shard streams flying to the ship still leave rows of soft dots, mostly visible in `bench_mid`; the
+boss's fans leave soft red smears where seven bullets spawn on one turning arm tip); the Drop strip has
+no border of streaks; no beads on rings; the danger diamonds and the ship (priority layer) read over the brightest
 light; the boss stand-in is violet. The Drop strip jumps in brightness at frame 873 (bloom burst, zoom
 snap, white front with an RGB fringe from the aberration of its distortion ring).
 

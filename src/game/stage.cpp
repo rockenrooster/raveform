@@ -37,7 +37,7 @@ enum EnemyFlags : u8 { kElite = 1, kMarkB = 2, kMarkC = 4, kBossPart = 8, kWarpi
 constexpr float kEnemyRadiusWu = 14.0f;  // the standard enemy (look.md §4)
 constexpr float kBulletSpeed = 240.0f;   // design/species.json enemyBullet.speed
 constexpr float kShardFlightS = 0.6f;
-constexpr float kShotSpeed = 1500.0f;
+constexpr float kShotSpeed = 1400.0f;     // docs/GAME_DESIGN.md §4, primary weapon
 constexpr float kShotLife = 0.8f;
 constexpr float kRefPxPerWu = 1.5f;      // at zoom 1
 
@@ -1168,7 +1168,7 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
                     break;
                 }
                 Vec2 at = q.at, v;
-                float life, drag = boom.sparkDrag, halfW = 0.7f;
+                float life, drag = boom.sparkDrag, halfW = 0.7f, delay = 0.0f;
                 Vec3 own = mix(mix(h, p, rng_.uniform()), W1, 0.4f * rng_.uniform());
                 switch (q.kind) {
                     case 1: {  // large: a fast thin band and a slow thick band
@@ -1187,18 +1187,23 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
                         v = (q.dir + dir(rng_.range(0.0f, kTau)) * 0.5f) * rng_.range(150.0f, 300.0f);
                         life = boom.impactLifeS;
                         break;
-                    case 4: {  // Drop confetti falling in from the screen edges
-                        const float side = rng_.uniform();
-                        const Vec2 halfView{0.5f * viewW_, 0.5f * viewH_};
-                        if (side < 0.5f) {
-                            at = cam_ + Vec2{rng_.range(-halfView.x, halfView.x), side < 0.25f ? -halfView.y : halfView.y};
+                    case 4: {
+                        // Drop confetti (look.md v2.2 §5): thrown in toward the ship from 0-200 wu beyond
+                        // the view edge, 0-250 ms after the Drop, so it arrives as a shower and not as a
+                        // frame around the screen. Spread evenly along the edge (by its length).
+                        const Look::DropConfetti& dc = look_->dropConfetti;
+                        const float out = rng_.range(dc.outsideWu[0], dc.outsideWu[1]);
+                        const float hx = 0.5f * viewW_ + out, hy = 0.5f * viewH_ + out;
+                        if (rng_.uniform() < hx / (hx + hy)) {
+                            at = cam_ + Vec2{rng_.range(-hx, hx), rng_.uniform() < 0.5f ? -hy : hy};
                         } else {
-                            at = cam_ + Vec2{side < 0.75f ? -halfView.x : halfView.x, rng_.range(-halfView.y, halfView.y)};
+                            at = cam_ + Vec2{rng_.uniform() < 0.5f ? -hx : hx, rng_.range(-hy, hy)};
                         }
                         const Vec2 in = S - at;
                         const float l = length(in);
-                        v = (l > 1e-3f ? in * (1.0f / l) : Vec2{1.0f, 0.0f}) * rng_.range(300.0f, 700.0f);
-                        life = rng_.range(1.0f, 1.6f);
+                        v = (l > 1e-3f ? in * (1.0f / l) : Vec2{1.0f, 0.0f}) * rng_.range(dc.speedWu[0], dc.speedWu[1]);
+                        life = rng_.range(dc.lifeS[0], dc.lifeS[1]);
+                        delay = rng_.range(dc.delayS[0], dc.delayS[1]);
                         drag = 1.0f;
                         own = rng_.uniform() < 0.3f ? W1 : mix(palette_->hue[rng_.below(3)], accent, rng_.uniform() * 0.5f);
                         break;
@@ -1213,7 +1218,7 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
                 ParticleGpu g;
                 g.x = at.x;
                 g.y = at.y;
-                g.t0 = t;
+                g.t0 = t + delay;  // stateless: a spark born later is simply not drawn before its birth
                 g.motion[0] = floatToHalf(v.x);
                 g.motion[1] = floatToHalf(v.y);
                 g.motion[2] = floatToHalf(life);
@@ -1473,10 +1478,15 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
         const float age = t - s.born;
         if (age < 0.0f || age >= kShotLife) continue;
         const Vec2 head = s.p0 + s.dir * (s.speed * age);
-        if (!visible(head, 20.0f)) continue;
+        // look.md v2.2 §3: the capsule runs back over the distance the shot covers in a frame plus an
+        // overlap (never under the minimum), so one frame's capsule overlaps the next and the afterglow
+        // behind it is one even tail. Player, wingman and Sentinel shots alike.
+        const Look::ShotStreak& ss = look_->shotStreak;
+        const float len = std::fmax(s.speed * ss.frameS + ss.overlapWu, ss.minWu);
+        if (!visible(head, len + 4.0f)) continue;
         ++stats_.shots;
         if (!playerShown) continue;
-        const Vec2 tail = head - s.dir * 16.0f;
+        const Vec2 tail = head - s.dir * len;
         d.scene.line(toScreen(tail), toScreen(head), s.halfWidth * refPx_, player * s.intensity, W1 * s.intensity, 0);
         d.sparkles.glow(toScreen(head), look_->soft.shotHead.radius[0] * refPx_, shotHead);
     }
@@ -1666,6 +1676,10 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
     params.vignetteAmount = look_->vignetteAmount + (look_->vignetteBuild - look_->vignetteAmount) * buildAmount_;
     params.drain = 0.4f * buildAmount_;
     params.afterglow = shown(kMuteAfterglow);
+    // look.md v2.2 §3, §7: the afterglow's strength follows the light budget.
+    params.afterglowGain = look_->afterglowGain == Look::Gain::Swarm
+                               ? swarm
+                               : (look_->afterglowGain == Look::Gain::Crowd ? crowd : 1.0f);
     params.dtSeconds = lastDt_;
     params.aberration = shown(kMuteAberration);
     params.aberrationSnarePx = look_->aberrationSnareRefPx * beatAmt * refPx_ * snare_;

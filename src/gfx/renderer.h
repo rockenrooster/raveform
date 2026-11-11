@@ -201,6 +201,7 @@ struct FrameParams {
     // Afterglow (look.md §7): re-aimed by the camera. The previous frame's logical pixel p is at
     // p * cameraScale + cameraShift this frame.
     bool afterglow = false;
+    float afterglowGain = 1.0f;  // look.md v2.2: x the light budget's swarm gain (look.json afterglow.gain)
     float cameraScale = 1.0f;
     float cameraShiftX = 0.0f, cameraShiftY = 0.0f;
     // Distortion and chromatic aberration (look.md §7).

@@ -112,6 +112,18 @@ struct Look {
     // Afterglow source (look.md v2.1 §7): the bloom level of this sigma, less a knee on its brightest channel.
     float afterglowSourceSigmaRefPx = 6.0f;
     float afterglowKnee = 0.25f;
+    // v2.2 (look.md §3, §7): the light-budget gain the afterglow's strength is multiplied by.
+    enum class Gain : u8 { None, Crowd, Swarm };
+    Gain afterglowGain = Gain::None;
+    // v2.2 (look.md §3 player shots): a shot's capsule runs back from its head over speed x frameS +
+    // overlapWu, never under minWu, so one frame's capsule overlaps the next.
+    struct ShotStreak {
+        float frameS = 1.0f / 60.0f, overlapWu = 8.0f, minWu = 16.0f;
+    } shotStreak;
+    // v2.2 (look.md §5): Drop confetti thrown in from beyond the view edge as a shower.
+    struct DropConfetti {
+        float outsideWu[2] = {}, delayS[2] = {}, speedWu[2] = {}, lifeS[2] = {};
+    } dropConfetti;
     struct Enemy {
         float hullIntensityPerTier = 0.2f, ornamentIntensityOfHull = 0.8f, ornamentWidth = 1.5f;
         float coreIntensityOfHull = 1.1f, coreWidth = 1.5f;
