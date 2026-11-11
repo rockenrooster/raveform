@@ -126,6 +126,45 @@ foreach(data vector_font.txt look.json look_variants.json palettes.json glyphs.j
   list(APPEND RF_GENERATED ${RF_GEN}/${data}.inc)
 endforeach()
 
+# M2 audio begin
+# The music (design/music/*.json) and the engine's loudness calibration (src/audio/), embedded like the
+# design data above. raveform_audio is the band (engine, synthesis, effects, music data): no SDL, no
+# platform code, so the headless renderer and the tests link it too. Its DSP is optimised in every
+# configuration, so a Debug build still plays in real time.
+set(RF_AUDIO_GENERATED)
+foreach(data patches variants conductor track01 track02)
+  add_custom_command(OUTPUT ${RF_GEN}/music_${data}.json.inc
+    COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/music/${data}.json -DOUT=${RF_GEN}/music_${data}.json.inc
+            -P ${RF_ROOT}/cmake/EmbedText.cmake
+    DEPENDS ${RF_ROOT}/design/music/${data}.json ${RF_ROOT}/cmake/EmbedText.cmake
+    COMMENT "embed music/${data}.json"
+    JOB_POOL rf_jobs
+    VERBATIM)
+  list(APPEND RF_AUDIO_GENERATED ${RF_GEN}/music_${data}.json.inc)
+endforeach()
+add_custom_command(OUTPUT ${RF_GEN}/audio_loudness_calibration.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/src/audio/loudness_calibration.json
+          -DOUT=${RF_GEN}/audio_loudness_calibration.json.inc -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/src/audio/loudness_calibration.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed audio/loudness_calibration.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
+list(APPEND RF_AUDIO_GENERATED ${RF_GEN}/audio_loudness_calibration.json.inc)
+add_library(raveform_audio STATIC
+  src/audio/bake.cpp
+  src/audio/engine.cpp
+  src/audio/fft.cpp
+  src/audio/music_data.cpp
+  src/audio/reverb.cpp
+  src/audio/tempo_map.cpp
+  src/audio/wav.cpp
+  ${RF_AUDIO_GENERATED})
+target_include_directories(raveform_audio PUBLIC ${RF_ROOT}/src ${RF_GEN})
+target_compile_options(raveform_audio PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti> -fno-math-errno)
+target_compile_options(raveform_audio PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror $<$<CONFIG:Debug>:-O2>)
+set_target_properties(raveform_audio PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# M2 audio end
+
 # ---- raveform_core: everything except the entry point ----------------------------------------
 set(RF_CORE_SOURCES
   src/core/alloc_counter.cpp
@@ -181,6 +220,22 @@ target_compile_options(raveform_core PUBLIC
   -fno-math-errno)
 target_compile_options(raveform_core PRIVATE
   -Wall -Wextra -Wno-missing-field-initializers -Werror)
+
+# M2 audio begin
+target_link_libraries(raveform_core PUBLIC raveform_audio)
+if(NOT ANDROID)
+  # The band without a window: offline renders, the loudness calibration, the unit tests.
+  set(RF_HEADLESS_CORE src/core/json_doc.cpp src/core/log.cpp src/core/alloc_counter.cpp)
+  add_executable(raveform_headless src/tools/audio_render.cpp ${RF_HEADLESS_CORE})
+  target_link_libraries(raveform_headless PRIVATE raveform_audio)
+  target_compile_options(raveform_headless PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
+  target_link_options(raveform_headless PRIVATE -static)
+  add_executable(raveform_tests tests/audio_tests.cpp ${RF_HEADLESS_CORE})
+  target_link_libraries(raveform_tests PRIVATE raveform_audio)
+  target_compile_options(raveform_tests PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
+  target_link_options(raveform_tests PRIVATE -static)
+endif()
+# M2 audio end
 
 if(ANDROID)
   find_package(oboe REQUIRED CONFIG)

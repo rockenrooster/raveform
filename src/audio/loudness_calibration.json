@@ -1,0 +1,9 @@
+{
+ "note": "Written by raveform_headless --calibrate (scripts/calibrate-audio.ps1): the output gain that puts each Track's staged arrangement at target_lufs in each sound variant, measured on the engine's own render the way musicproto.py normalises its renders. 'hash' identifies the music data and DSP version it was made from; the engine warns when they differ.",
+ "hash": "a350bc580725cda6",
+ "dsp_version": 1,
+ "gain_db": {
+  "track01": {"club": -5.0784, "arcade": -5.1019, "velvet": -5.7974},
+  "track02": {"club": -5.5072, "arcade": -5.4937, "velvet": -5.6157}
+ }
+}
