@@ -70,5 +70,52 @@ which stays stable under per-sample cutoff modulation. Sidechain: every kick set
 `e^(−t/110 ms)`; depth per bus is in `DUCK`. Reverb: 1.4 s decay, 15 ms pre-delay, band-limited
 320 Hz – 7 kHz. Master: 30 Hz high-pass, per-section bed gain, `tanh(1.25x)`.
 
+## Sound effects — `design/tools/sfxproto.py`
+
+```
+python design/tools/sfxproto.py      # writes sfx_sheet, lead_timbres and gameplay_mock into previews/
+```
+
+Rules:
+
+- Effects are part of the music. Kills, pickups and warp-ins are pitched to the current chord (kills
+  take a chord tone: small one octave up, medium at pitch, large one octave down).
+- Kills are **aggregated**: per 1/32 step, at most one sound per size class, its gain following the
+  count as `1 − e^(−count/2.5)`. A thousand kills a second costs the same voices as ten.
+- Shards climb the scale: each pickup within a run plays the next note up, so a streak is a rising run.
+- Warp-ins swell for half a second and end exactly on the beat the enemy becomes solid.
+- A Nova is two sounds: an inhale from the press to the next beat, and the blast on that beat.
+- Hits and blasts duck the music (0.25–0.5 depth, 120–250 ms); nothing else does.
+- In the mock the bed sits at −14 LUFS and the effects sum to about −17.5 LUFS; together −12.9 LUFS.
+  Effect levels are the `LEVEL` table in the script.
+
+`previews/sfx_sheet.mp3`:
+
+| Time | Effect | Recipe |
+|---|---|---|
+| 0.3 | Kill, small (three pitches) | Sine gliding from 1.6× to the pitch in 12 ms, 45 ms decay, plus a 2–7 kHz click |
+| 1.5 | Kill, medium | Sine gliding from 2× to the pitch, 90 ms decay, ring-modulated at 2.76×, plus 0.7–4.5 kHz noise |
+| 2.5 | Kill, large | Sub sweep 150 → 55 Hz, a saw at the pitch through a closing low-pass, and a 0.5–6.5 kHz crash |
+| 3.9 | Shard run | Sine chirping up into the note, 30 ms decay; notes A5 C6 D6 E6 G6 A6 C7 D7 |
+| 5.2 | Boost picked up | Four FM bells A4 E5 A5 C6, 55 ms apart, with a high sparkle |
+| 7.0 | Upgrade taken | Am9 saw chord swelling through a low-pass, with a bell arpeggio E5 G5 B5 E6 |
+| 9.0 | Dash | Noise through a low-pass opening from 600 Hz to 6 kHz in 110 ms |
+| 9.9 | Perfect Dash | Dash plus a bell on E6 |
+| 11.4 | Hit taken | Saw falling 220 → 55 Hz through a closing low-pass and hard clip, noise burst, low thud |
+| 12.7 | Nova | Rising noise and tone (inhale), then the impact with a wide noise burst |
+| 16.3 | Enemy warp-in | Sine at the chord root with a cubic fade-in that stops on the beat |
+| 18.0 | Telegraph tick, enemy shot | 3 kHz tick one beat ahead; 180 Hz square blip on the shot |
+| 20.0 | Elite arrives | Low fifth (A2 + E3) of detuned saws through a dark filter, with a sub |
+| 22.0 | Interface | Tick; confirm E6 → A6; back A6 → E6 |
+| 23.7 | Shield cell restored | Soft E5 → A5 |
+| 24.6 | Game over | Falling bell arpeggio A5 E5 C5 A4 E4 A3 and a low boom |
+
+`previews/lead_timbres.mp3` — the same phrase on each player's lead: 0.3 s P1 saw pluck, 4.8 s P2 square
+pluck, 9.3 s P3 bell, 13.8 s P4 wide stab.
+
+`previews/gameplay_mock.mp3` — sixteen bars of Track 1 with a simulated run on top: 3.5 s Boost,
+5.0 s Perfect Dash, 10.8 s hit, 16.0 s the Drop, 20.6 s Dash, 24.0 s elite, 27.1 s Nova pressed,
+27.5 s Nova lands.
+
 Mixing rule that fixed the first render: decide levels from the per-stem band table the prototype
 prints, not from peak levels — a kick normalised to full scale buried everything else by 10–20 dB.
