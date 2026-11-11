@@ -10,7 +10,7 @@ namespace {
 
 // design/vector_font.txt, embedded by cmake/EmbedText.cmake.
 const char kFontSource[] =
-#include "vector_font.inc"
+#include "vector_font.txt.inc"
     ;
 
 bool isDigit(char c) { return c >= '0' && c <= '9'; }

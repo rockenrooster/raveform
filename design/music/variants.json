@@ -1,0 +1,42 @@
+{
+ "note": "Sound variants for the M2 listening checkpoint: three characters of the same music, each a set of overrides on design/music/patches.json (same shape as a Track's own 'mix' and 'patch' blocks, plus 'send' and 'duck'). They are auditioned on Track 1. The one the listener picks is folded into patches.json and the others are dropped. 'club' is the reference and overrides nothing.",
+ "reference": "club",
+ "variants": [
+  {
+   "id": "club",
+   "name": "Club",
+   "intent": "The reference. Warm four-on-the-floor, round bass, a pluck that sits inside the mix."
+  },
+  {
+   "id": "arcade",
+   "name": "Arcade",
+   "intent": "Crisp and bright. A snappier kick, a glassy lead that cuts through, shorter bass notes, brighter hats, a drier room.",
+   "mix": {"kick": 0.64, "hat": 0.16, "ohat": 0.18, "shaker": 0.09, "bass": 0.60, "lead": 0.46, "stab": 0.82, "pad": 0.40},
+   "send": {"lead": 0.16, "stab": 0.22, "pad": 0.24},
+   "patch": {
+    "kick": {"sweep_tau": 0.014, "decay": 0.095, "click": 1.0},
+    "lead": {"fc_start": 7000.0, "fc_end": 1100.0, "q": 2.6, "decay": 0.12, "detune_cents": 5.0, "sub": 0.08},
+    "bass": {"square_mix": 0.65, "fc_start": 3000.0, "fc_end": 440.0, "decay": 0.16, "drive": 1.5},
+    "stab": {"fc_start": 5200.0, "fc_end": 1200.0, "decay": 0.09},
+    "delay": {"feedback": 0.28, "mix": 0.18},
+    "reverb": {"rt60": 1.0}
+   }
+  },
+  {
+   "id": "velvet",
+   "name": "Velvet",
+   "intent": "Deep and soft. A longer, rounder kick, a mellow lead with more body, wide pads, more echo and a longer tail.",
+   "mix": {"hat": 0.075, "ohat": 0.09, "shaker": 0.055, "lead": 0.40, "pad": 0.66, "stab": 0.62},
+   "send": {"lead": 0.30, "stab": 0.36, "pad": 0.38},
+   "patch": {
+    "kick": {"sweep_tau": 0.022, "decay": 0.140, "click": 0.40},
+    "lead": {"fc_start": 2500.0, "fc_end": 600.0, "q": 1.5, "decay": 0.22, "detune_cents": 11.0, "sub": 0.30, "length": 0.42},
+    "bass": {"square_mix": 0.30, "fc_start": 1600.0, "sub": 0.45, "decay": 0.26, "drive": 1.2},
+    "stab": {"fc_start": 2300.0, "fc_end": 700.0, "decay": 0.14, "detune_cents": 12.0},
+    "pad": {"detune_cents": 9.0, "fc_base": 1050.0},
+    "delay": {"feedback": 0.42, "mix": 0.26},
+    "reverb": {"rt60": 1.9}
+   }
+  }
+ ]
+}

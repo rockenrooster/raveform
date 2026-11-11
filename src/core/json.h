@@ -23,6 +23,16 @@ public:
         raw("}");
         pop();
     }
+    // Arrays: values inside take a null key (num(nullptr, v), beginObject(), ...).
+    void beginArray(const char* key = nullptr) {
+        prefix(key);
+        raw("[");
+        push();
+    }
+    void endArray() {
+        raw("]");
+        pop();
+    }
     void str(const char* key, const char* value) {
         prefix(key);
         raw("\"");
@@ -55,6 +65,7 @@ public:
     }
 
     const char* text() const { return buf_; }
+    size_t length() const { return len_; }
     bool overflowed() const { return overflow_; }
 
 private:

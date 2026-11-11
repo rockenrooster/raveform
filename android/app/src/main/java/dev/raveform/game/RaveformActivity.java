@@ -67,6 +67,10 @@ public class RaveformActivity extends SDLActivity {
 
     private void hideSystemBars() {
         if (Build.VERSION.SDK_INT >= 30) {
+            // Without this the window keeps fitting inside the (hidden) system bars and the display
+            // cutout, and the game renders below the panel's native size (measured on the Moto:
+            // 2174x1020 instead of 2400x1080).
+            getWindow().setDecorFitsSystemWindows(false);
             WindowInsetsController controller = getWindow().getInsetsController();
             if (controller != null) {
                 controller.hide(WindowInsets.Type.systemBars());

@@ -454,7 +454,7 @@ are what corrections exist for.
 
 ## 9. Performance engineering
 
-Budgets and the definition of P99 are in PLAN §5. How to hit and prove them:
+Budgets and the definition of the frame-rate contract (P95) are in PLAN §5. How to hit and prove them:
 
 - **Measure where it counts.** CPU phase timers, GPU pass timers (timestamp queries), and
   present-to-present intervals feed a histogram (0.5 ms buckets) reporting P50, P95, P99, P99.9,

@@ -1,0 +1,83 @@
+{
+ "note": "How the game decides what the band plays. design/music/track*.json holds one staged run written out bar by bar ('arrangement'), for listening; in the game the same patterns are switched by these rules from the director's intensity, the section of the phrase cycle and each player's loadout. Layer names are the pattern and voice names of the Track files. Steps are sixteenths (16 per bar). Everything changes on a bar line unless it says otherwise. Starting values: tune by ear at the M2 and M3 checkpoints.",
+
+ "bed": {
+  "note": "Layers of the shared bed in Groove, switched on as director intensity (0..1) rises and off again 0.05 lower, so a layer does not flicker.",
+  "layers": [
+   {"layer": "kick", "from": 0.0},
+   {"layer": "hat_off", "from": 0.10},
+   {"layer": "bass", "from": 0.20, "pattern": "groove", "alternate": "groove_alt on odd bars"},
+   {"layer": "clap", "from": 0.35},
+   {"layer": "shaker", "from": 0.55, "unless": "a player's Orbitals already play it"},
+   {"layer": "pad", "from": 0.65, "level": "0.6 at 0.65 rising to 1.0 at 1.0"},
+   {"layer": "stab", "from": 0.85, "unless": "a player's Sentinel already plays it"}
+  ],
+  "hysteresis": 0.05,
+  "fill": "On the last bar of every 8-bar phrase the clap pattern gains a pick-up on step 15 and the hats double for the second half of the bar. Seeded by the run seed and the bar number, so every device in a co-op run plays the same fill."
+ },
+
+ "sections": {
+  "groove": {"gain": "section_gain.groove", "layers": "bed rules above"},
+  "build": {
+   "gain": "section_gain.build: ramps from the first value to the second across the Build",
+   "layers": "the bed as it stood when the Build began, with these changes",
+   "snareRoll": "Split the Build into four equal parts: quarter notes, eighths, sixteenths, thirty-seconds. Level rises 0.35 -> 1.0 across the Build.",
+   "bass": "fades to half level across the Build and stops for its second half",
+   "pad": "brightness 1.0 -> 1.9 across the Build",
+   "riser": "noise riser over the whole Build",
+   "lastBar": "kick, hats and stabs are silent; the snare roll and the lead stop after beat 2; a reverse swell fills the last half bar. The silence is the point.",
+   "time": "the game runs at 85% speed for the last bar; the tempo map follows it inside the bar and returns on the downbeat"
+  },
+  "drop": {
+   "gain": "section_gain.drop",
+   "layers": ["kick", "clap", "hat_16", "ohat", "bass:drop", "shaker", "pad"],
+   "impact": "sub impact on the downbeat when the Drop follows a Build",
+   "pad": "brightness 1.5",
+   "surge": "for the first half of the Drop every player's lead runs one grid step faster (see lead.grid)",
+   "intensity": "the bed ignores director intensity during a Drop: everything plays"
+  },
+  "break": {
+   "gain": "section_gain.break",
+   "layers": ["hat_off at half level through a 5 kHz low-pass", "pad at 0.9, brightness 0.55"],
+   "lead": "while a player is not firing, the bed echoes that player's arpeggio sparsely: steps 0, 6 and 12",
+   "swell": "a reverse swell over the last bar leads into the next Groove"
+  }
+ },
+
+ "lead": {
+  "note": "The player's primary weapon. A note sounds on every grid step on which that player's fire is held; the arpeggio position is the step's position in the bar whether or not earlier steps sounded, so the melody is always in place.",
+  "grid": {"steps": ["1/16", "1/16 triplet", "1/32"], "ticks": [24, 16, 12], "note": "Double-Time moves one step along per stack; Surge moves one further (capped at 1/32)."},
+  "accents": "velocity 1.0 on quarter-note beats, 0.82 on the other eighths, 0.7 on the rest",
+  "pan": "wanders gently: 0.25 x sin(0.9 x step + bar)",
+  "timbres": ["P1 saw pluck (patch.lead)", "P2 square pluck", "P3 bell", "P4 wide stab"],
+  "others": "each device plays its own player's lead at full level and the others' at 0.35, falling to 0.15 beyond 1200 wu"
+ },
+
+ "mods": {
+  "note": "What the first-slice Mods do to the lead. Scale degrees are steps of the Track's scale above the arpeggio note.",
+  "split": {"perStack": "adds one harmony note at 0.6 level", "degrees": [2, 4, 7, 6], "says": "third, fifth, octave, seventh"},
+  "double_time": {"perStack": "lead.grid moves one step faster"},
+  "pierce": {"perStack": "lead decay and length x 1.25"},
+  "ricochet": {"perStack": "none on the lead; each bounce plays a blip one scale step above the last"},
+  "overcharge": {"perStack": "lead drive +0.25 (tanh), level +0.5 dB"},
+  "on_beat_crit": {"perStack": "notes on quarter-note beats are doubled an octave up at 0.5 level"},
+  "extra_cell": {"perStack": "none"},
+  "magnet": {"perStack": "none"}
+ },
+
+ "riffs": {
+  "note": "Each Riff is one instrument on one pattern, heard only while a player owns it. Level 1 values; higher levels follow GAME_DESIGN 6.3.",
+  "orbitals": {"layer": "shaker", "pattern": "patterns.shaker", "says": "a tick as each orbital passes twelve o'clock"},
+  "pulse_ring": {"layer": "pulse", "pattern": "patterns.pulse", "says": "a thump with each ring, every second beat; every beat from level 2"},
+  "sentinel": {"layer": "stab", "pattern": "patterns.stab", "says": "an off-beat chord stab with each shot"}
+ },
+
+ "boosts": {
+  "prism": "the lead gains a fifth and an octave above at 0.4 level for its duration",
+  "hyper": "lead.grid and every Riff pattern run at double rate",
+  "halo": "none",
+  "magnet_storm": "the Shard run climbs twice as fast"
+ },
+
+ "trackChange": "On a boss kill the next Track's Break begins: tempo ramps linearly to the new tempo across the Break, the bed cross-fades to the new Track's pad chord by chord, and the key changes on the Break's fifth bar."
+}

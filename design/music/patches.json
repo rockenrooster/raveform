@@ -1,0 +1,41 @@
+{
+ "note": "The sound of RAVEFORM as data: mix levels, sends, sidechain depths, section gains and synthesis patches. One source for the prototype renderer (design/tools/musicproto.py) and for the engine's audio module, so the numbers are loaded, never retyped. A Track may override any of this with its own 'mix' and 'patch' blocks (design/music/track02.json does); a sound variant (design/music/variants.json) overrides it the same way. Times are seconds, frequencies Hz, levels linear gain. Recipes for the voices these parameters drive: design/music/README.md.",
+
+ "target_lufs": -14.0,
+
+ "mix": {
+  "kick": 0.62, "clap": 0.95, "snare": 0.40, "hat": 0.11, "ohat": 0.13, "shaker": 0.07,
+  "bass": 0.68, "lead": 0.38, "pad": 0.50, "stab": 0.75, "pulse": 0.36,
+  "riser": 0.26, "impact": 0.70, "swell": 0.22
+ },
+
+ "section_gain": {
+  "groove": 0.84,
+  "build": [0.84, 0.66],
+  "drop": 1.0,
+  "break": 0.92
+ },
+
+ "send": {"lead": 0.22, "stab": 0.30, "clap": 0.22, "snare": 0.25, "pad": 0.30, "pulse": 0.20},
+
+ "duck": {"bass": 0.80, "pad": 0.55, "stab": 0.30, "lead": 0.22, "pulse": 0.0},
+
+ "patch": {
+  "kick_hz": 55.0,
+  "kick": {"sweep_hz": 240.0, "sweep_tau": 0.018, "settle_hz": 30.0, "settle_tau": 0.10, "decay": 0.115,
+           "attack": 0.0015, "click": 0.7, "click_decay": 0.005, "drive": 1.8},
+  "hat": {"closed_decay": 0.030, "open_decay": 0.17},
+  "lead": {"detune_cents": 7.0, "sub": 0.18, "fc_start": 4200.0, "fc_end": 750.0, "fc_tau": 0.070, "q": 2.2,
+           "attack": 0.002, "decay": 0.16, "length": 0.36, "keytrack": 0.5},
+  "bass": {"square_mix": 0.5, "sub": 0.35, "fc_start": 2400.0, "fc_end": 360.0, "fc_tau": 0.090, "q": 0.8,
+           "attack": 0.003, "decay": 0.22, "release": 0.03, "drive": 1.5},
+  "stab": {"detune_cents": 9.0, "fc_start": 3600.0, "fc_end": 900.0, "fc_tau": 0.055, "q": 1.5,
+           "attack": 0.002, "decay": 0.11, "length": 0.26},
+  "pad": {"detune_cents": 6.0, "fc_base": 950.0, "fc_lfo": 650.0, "lfo_hz": 0.125, "q": 0.9,
+          "attack": 0.35, "release": 0.7, "highpass": 220.0},
+  "delay": {"steps": 3.0, "feedback": 0.36, "mix": 0.22, "repeats": 7},
+  "reverb": {"rt60": 1.4, "predelay": 0.015, "highpass": 320.0, "lowpass": 7000.0, "mix": 1.0},
+  "sidechain_tau": 0.11,
+  "master_drive": 1.25
+ }
+}

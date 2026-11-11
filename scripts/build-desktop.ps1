@@ -20,6 +20,6 @@ if (-not (Test-Path (Join-Path $dir 'build.ninja'))) {
         "-DCMAKE_C_COMPILER=$clang" "-DCMAKE_CXX_COMPILER=$clangxx"
     if ($LASTEXITCODE -ne 0) { throw "CMake configure failed ($LASTEXITCODE)" }
 }
-& $RF_CMAKE --build $dir
+& $RF_CMAKE --build $dir --parallel $RF_JOBS  # at most 4 jobs (env.ps1 also confines the process tree)
 if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
 Write-Host "[build] $dir\raveform.exe"

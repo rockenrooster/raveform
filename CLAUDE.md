@@ -15,28 +15,53 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | Desktop screenshot (+ review copy ≤ 1600 px) | `scripts\run-desktop.ps1 -Screenshot captures\x.png -Res 2400x1080 -Small` |
 | Desktop 60 s validation + timing run | `scripts\run-desktop.ps1 -AppArgs '--scenario bench_idle --seconds 60'` |
 | Desktop lifecycle test (surface release/restore + resizes) | `scripts\run-desktop.ps1 -AppArgs '--scenario lifecycle_test --cycles 20'` |
-| Build APK (`dev` = native RelWithDebInfo, debuggable, debug-signed; `debug` = native Debug) | `scripts\build-android.ps1 [-Config dev\|debug]` |
+| Build APK (`dev` = native RelWithDebInfo, debuggable, debug-signed; `debug` = native Debug; `-Offline` = no network) | `scripts\build-android.ps1 [-Config dev\|debug] [-Offline] [-Clean]` |
 | Build, install, launch on one device | `scripts\deploy-android.ps1 -Serial <serial\|moto\|op12r\|tablet> [-NoBuild] [-NoLaunch] [-AppArgs '--tone']` |
-| Benchmark on a device (saves `captures\bench\*.json`) | `scripts\bench-android.ps1 -Serial <serial> -Scenario bench_idle [-Seconds 60] [-AppArgs '--tone'] [-Deploy]` |
+| Benchmark on a device (saves `captures\bench\*.json` + `*.load.txt`; 5 s warm-up; samples the phone's CPU load) | `scripts\bench-android.ps1 -Serial <serial> -Scenario bench_idle [-Seconds 60] [-Warmup 5] [-AppArgs '--tone'] [-Deploy] [-NoLoad] [-SfLatency]` |
 | Screenshot of the panel (adb screencap; RAVEFORM must be in front) | `scripts\capture-android.ps1 -Serial <serial> [-Small]` |
 | Screenshot read back by the app (pre-rotation undone) | `scripts\capture-android.ps1 -Serial <serial> -InApp [-Small]` |
 | 20 background/foreground cycles | `scripts\lifecycle-android.ps1 -Serial <serial> [-Cycles 20]` |
 | Review copy of any PNG | `python scripts\shrink_png.py <png> [--max-width 1600]` |
+| Acceptance still (desktop) + compare | `scripts\run-desktop.ps1 -NoBuild -Res 2400x1080 -Frames 4 -Screenshot captures\m1\frame_reef.png -AppArgs '--scene design/scenes/frame_reef.rfscene --still --bloom on --no-overlay'`, then `python -I design\tools\scenes.py compare captures\m1\frame_reef.png frame_reef` (`look_card` also with `--bloom off` / `--nobloom`) |
+| Scene picture or strip (desktop, fixed 1/60 s steps) | `scripts\run-desktop.ps1 -NoBuild -Res 2400x1080 -Frames 600 -Screenshot captures\m1\x.png -AppArgs '--scenario bench_endgame --seconds 600 --warmup 0 --no-overlay [--look haze] [--palette furnace] [--strip 8]'` |
+| M1 contract run (Moto) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_endgame -Seconds 120 -Warmup 600 -AppArgs '--tier low'` (10-minute soak, then 120 s) |
+| GPU cost at the top clock | `scripts\bench-android.ps1 -Serial moto -Scenario bench_endgame -Seconds 15 -Warmup 4 -AppArgs '--tier low --gpu-burn 40'` |
 
 Desktop exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 benchmark aborted,
 5 screenshot failed. Device serials: Moto `ZY22BXMJG3`, OnePlus 12R `a0e622a5`, Galaxy Tab `R5GL362BEHX`.
 
 ## App arguments (desktop argv; Android: the `args` string intent extra)
 
-`--scenario bench_idle|lifecycle_test`, `--seconds N` (measured, after `--warmup S`, default 2),
+`--scenario bench_idle|bench_mid|bench_endgame|glyph_sheet|lifecycle_test` (`bench_mid` / `bench_endgame`:
+the scripted M1 stages of `design/scenes.md`; `glyph_sheet --page 1|2|3`: a still), `--tier
+low|medium|high|ultra` (effect tier, TECH_SPEC 5.4; default high; fixed in benchmarks), `--governor on|off`
+(governor v1; default on for interactive stages, off in benchmarks), `--look signal|laser|haze`, `--palette
+<id>` (default reef), `--scene <file.rfscene> --still --bloom on|off` (acceptance stills), `--strip N` (also
+capture the N-1 frames before the `--screenshot` frame: `<name>_<k>.png`), `--fixed-step` (1/60 s per frame;
+implied by `--screenshot`), `--gpu-burn N` (profiling only: a saturating GPU load before the timed passes,
+so they show their cost at the GPU's top clock),
+`--seconds N` (measured, after `--warmup S`, default 2),
 `--frames N`, `--screenshot <png>` (relative paths go to the app's external files dir on Android),
 `--res WxH` (desktop window), `--validation` / `--no-validation`, `--tone` (hold the test tone),
 `--no-swappy` (plain FIFO), `--fps HZ` (Android target refresh; default = panel maximum), `--no-overlay`,
-`--cycles N`. Keys: F1 overlay, F12 screenshot, T tone hold, Esc / Back quit. Three-finger tap toggles
-the overlay. Raw launch: `adb -s <serial> shell "am start -n dev.raveform.game/.RaveformActivity --es args '--scenario bench_idle --seconds 60'"`.
+`--affinity big|all` (Android: pin the main thread and the threads it starts to the non-little cores, or
+leave placement to the scheduler), `--cycles N`. Keys: F1 overlay, F12 screenshot, T tone hold, L next look, P next
+palette, K next tier, Esc / Back quit. Taps (decided when the last finger lifts): two fingers next look, three
+the overlay, four next palette. Raw launch: `adb -s <serial> shell "am start -n dev.raveform.game/.RaveformActivity --es args '--scenario bench_idle --seconds 60'"`.
 
 Log tags: `RAVEFORM` (everything), `RFBENCH` (one JSON line per benchmark or test, also on desktop
-stdout), `RFLIFE` (background / foreground / first present after resume).
+stdout), `RFLIFE` (background / foreground / first present after resume). On Android the `RFBENCH`
+line is a summary (logcat entries stop at 4068 bytes); the full result, with the worst-frame table and
+the per-second timeline, is `<scenario>.json` in the app's external files dir, which `bench-android.ps1`
+pulls. Reading a result: `interval_ms` is present call to present call on the CPU; `display` is the
+panel side (plain FIFO: VK_GOOGLE_display_timing present times; Swappy: Swappy's own statistics, where
+`missed` = frames shown one refresh period or more later than asked; GPU-bound frames that take two periods
+are not "late" to Swappy, so `bench-android.ps1` also counts present intervals above 1.5 periods);
+`phases_ms`, `sched`, `late` and `worst` attribute every interval (`src/tools/frame_probe.h`); `device_load`
+is the phone's CPU load. M1 adds `tier`, `look`, `palette`, `gpu_ms` (per pass [p50, p95, max] from
+timestamp queries; `total` is work only, `wait` is the gap before the swapchain pass) and `scene_counts`.
+GPU times follow the GPU's own frequency governor (it keeps the GPU about 85% busy, and the shell user
+cannot read its clock): compare passes at the top clock with `--gpu-burn 40`.
 
 ## Conventions
 
@@ -53,10 +78,31 @@ stdout), `RFLIFE` (background / foreground / first present after resume).
   waits for that. The next `beginFrame` rebuilds them.
 - Pre-rotation: `Swapchain::rotationDeg` drives both the clip-space matrix (`renderer.cpp`) and the
   PNG un-rotation (`png.cpp`); change them together.
+- Native resolution always: the surface must match the display mode (2400x1080 on the Moto). The log
+  says "surface ... matches the display mode"; a "differs" warning is a bug (the M0 Moto runs were at
+  2174x1020 until `RaveformActivity` called `setDecorFitsSystemWindows(false)`).
+- Design data (`design/look.json`, `look_variants.json`, `palettes.json`, `glyphs.json`, `vector_font.txt`)
+  is embedded at build time and read at start-up; numbers are never retyped into code.
 - The audio callback never allocates, locks, logs or calls JNI.
 - Only phone numbers count for performance; desktop timing is informational.
 - Git: `Invoke-RfGit` (Git for Windows + schannel). Commit only at working checkpoints, never push, never
   commit `design/` files you did not write. Build output, `captures/` and fetched `third_party/` are ignored.
+
+## PC CPU limit (user rule)
+
+Anything this project runs on the PC uses at most 4 CPU cores: builds above all, also shader compiles,
+offline tools and test runs.
+
+- `scripts\env.ps1` confines its PowerShell process to one logical CPU on each of 4 physical cores (read
+  from the processor topology, all in one L3 domain; on the 5950X: logical CPUs 24, 26, 28, 30, mask
+  `0x55000000`). Every process it starts inherits that. Run builds, tools and tests through the scripts,
+  or dot-source `env.ps1` first. Per process only: no system settings, no other process touched.
+- Job counts too: `cmake --build --parallel 4`, Gradle `--max-workers=4`, and a Ninja job pool in
+  `CMakeLists.txt` (`RF_MAX_JOBS`), which also holds for the Ninja that the Android Gradle plugin runs.
+- Gradle: `build-android.ps1` gives this project's daemon its own immutable JVM options
+  (`-XX:ActiveProcessorCount=4`, a project-local `-XX:ErrorFile`), so it never reuses a daemon that another
+  session or an older build started without the limit (`-D` options do not separate daemons). Never run
+  `gradlew --stop`: other sessions share the Gradle user home.
 
 ## Shared test devices
 

@@ -7,6 +7,9 @@
 
 namespace rf {
 
+// All threads (including library threads such as Swappy's).
 u64 heapAllocCount();
+// The calling thread only: lets the main thread prove that its own frame does not allocate.
+u64 heapAllocCountThisThread();
 
 }  // namespace rf

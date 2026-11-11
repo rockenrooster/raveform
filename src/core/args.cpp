@@ -33,6 +33,41 @@ bool parseUint(const char* s, u32& out) {
     return true;
 }
 
+struct MuteName {
+    const char* name;
+    u32 bit;
+};
+constexpr MuteName kMuteNames[] = {
+    {"background", kMuteBackground}, {"grid", kMuteGrid},           {"heat", kMuteHeat},
+    {"enemy", kMuteEnemy},           {"elite", kMuteElite},         {"boss", kMuteBoss},
+    {"aura", kMuteAura},             {"bullet", kMuteBullet},       {"priority", kMutePriority},
+    {"sparks", kMuteSparks},         {"flash", kMuteFlash},         {"pool", kMutePool},
+    {"fx", kMuteFx},                 {"warp", kMuteWarp},           {"shard", kMuteShard},
+    {"player", kMutePlayer},         {"afterglow", kMuteAfterglow}, {"distortion", kMuteDistortion},
+    {"aberration", kMuteAberration}, {"vignette", kMuteVignette},   {"pump", kMutePump},
+};
+
+// "aura,boss" -> kMuteAura | kMuteBoss; false on an unknown name.
+bool parseMute(const char* s, u32& out) {
+    u32 mask = 0;
+    while (*s) {
+        const char* end = std::strchr(s, ',');
+        const size_t n = end ? static_cast<size_t>(end - s) : std::strlen(s);
+        bool found = false;
+        for (const MuteName& m : kMuteNames) {
+            if (std::strlen(m.name) == n && std::strncmp(m.name, s, n) == 0) {
+                mask |= m.bit;
+                found = true;
+            }
+        }
+        if (!found) return false;
+        s += n;
+        if (*s == ',') ++s;
+    }
+    out = mask;
+    return true;
+}
+
 }  // namespace
 
 bool parseArgs(int argc, char** argv, AppArgs& a) {
@@ -64,6 +99,46 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
         } else if (is("--fps") && next) {
             ok = parseFloat(next, a.fps) && a.fps >= 0.0f;
             usedNext = true;
+        } else if (is("--scene") && next) {
+            ok = copyString(a.sceneFile, sizeof a.sceneFile, next);
+            usedNext = true;
+        } else if (is("--look") && next) {
+            ok = copyString(a.look, sizeof a.look, next);
+            usedNext = true;
+        } else if (is("--bloom") && next) {
+            ok = std::strcmp(next, "on") == 0 || std::strcmp(next, "off") == 0;
+            a.bloom = std::strcmp(next, "on") == 0;
+            usedNext = true;
+        } else if (is("--still")) {
+            a.still = true;
+        } else if (is("--tier") && next) {
+            ok = copyString(a.tier, sizeof a.tier, next);
+            usedNext = true;
+        } else if (is("--palette") && next) {
+            ok = copyString(a.palette, sizeof a.palette, next);
+            usedNext = true;
+        } else if (is("--strip") && next) {
+            ok = parseUint(next, a.strip) && a.strip <= 64;
+            usedNext = true;
+        } else if (is("--page") && next) {
+            ok = parseUint(next, a.page) && a.page >= 1 && a.page <= 3;
+            usedNext = true;
+        } else if (is("--governor") && next) {
+            ok = std::strcmp(next, "on") == 0 || std::strcmp(next, "off") == 0;
+            a.governor = std::strcmp(next, "on") == 0 ? 1 : 0;
+            usedNext = true;
+        } else if (is("--fixed-step")) {
+            a.fixedStep = true;
+        } else if (is("--gpu-burn") && next) {
+            ok = parseUint(next, a.gpuBurn) && a.gpuBurn <= 200;
+            usedNext = true;
+        } else if (is("--mute") && next) {
+            ok = parseMute(next, a.mute);
+            usedNext = true;
+        } else if (is("--affinity") && next) {
+            ok = std::strcmp(next, "big") == 0 || std::strcmp(next, "all") == 0;
+            a.fastCores = std::strcmp(next, "big") == 0;
+            usedNext = true;
         } else if (is("--cycles") && next) {
             ok = parseUint(next, a.cycles) && a.cycles > 0;
             usedNext = true;
@@ -92,9 +167,12 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
 
 void logArgs(const AppArgs& a) {
     RF_LOG("args: scenario='%s' seconds=%.1f warmup=%.1f frames=%u screenshot='%s' res=%dx%d "
-           "validation=%d tone=%d swappy=%d fps=%.1f overlay=%d cycles=%u",
+           "validation=%d tone=%d swappy=%d fps=%.1f affinity=%s overlay=%d cycles=%u scene='%s' still=%d bloom=%d "
+           "look=%s tier=%s palette=%s strip=%u page=%u governor=%d fixed_step=%d mute=0x%x",
            a.scenario, a.seconds, a.warmupSeconds, a.frames, a.screenshot, a.width, a.height, a.validation,
-           a.tone ? 1 : 0, a.swappy ? 1 : 0, a.fps, a.overlay ? 1 : 0, a.cycles);
+           a.tone ? 1 : 0, a.swappy ? 1 : 0, a.fps, a.fastCores ? "big" : "all", a.overlay ? 1 : 0, a.cycles,
+           a.sceneFile, a.still ? 1 : 0, a.bloom ? 1 : 0, a.look, a.tier[0] ? a.tier : "(default)", a.palette, a.strip,
+           a.page, a.governor, a.fixedStep ? 1 : 0, a.mute);
 }
 
 }  // namespace rf

@@ -35,10 +35,15 @@ licence. Update this file with every new dependency or asset (PLAN §6). The in-
 |---|---|---|---|---|---|
 | `design/vector_font.txt` | Original stroke font "RF Cut" designed for RAVEFORM | RAVEFORM lead (planning session) | Project-owned, original | 2026-11-10 | Embedded at build time by `cmake/EmbedText.cmake`; glyphs used as designed |
 | `android/app/src/main/res/drawable/ic_launcher_placeholder.xml` | PLACEHOLDER launcher icon (cyan diamond) written as a vector drawable | executor | Project-owned, original | 2026-11-10 | Replace with the real icon (M6) |
+| `design/look.json` | The numbers of the look bible (`design/look.md` v2) as data | RAVEFORM lead (look-dev, `design/tools/lookdev.py`) | Project-owned, original | 2026-11-10 | Embedded at build time (M1); every renderer and effect number is read from it |
+| `design/look_variants.json` | The three look variants (Signal, Laser, Haze) | RAVEFORM lead (`design/tools/variants.py`) | Project-owned, original | 2026-11-10 | Embedded at build time (M1); switched while running |
+| `design/palettes.json` | The six Track palettes and the constant colours, OKLCH exported to linear sRGB | RAVEFORM lead (`design/tools/palettes.py`) | Project-owned, original | 2026-11-10 | Embedded at build time (M1). The working tree's line-ending difference on this file is left as it is |
+| `design/glyphs.json` | Every enemy, player, pickup and threat shape as line segments | RAVEFORM lead (`design/tools/glyphs.py`) | Project-owned, original | 2026-11-10 | Embedded at build time (M1); built into static glyph meshes at start-up |
+| `design/scenes/*.rfscene`, `design/scenes/look_card.probes.json` | Acceptance scenes for the renderer (target frame, calibration card) | RAVEFORM lead (`design/tools/scenes.py`) | Project-owned, original | 2026-11-11 | Read from disk by `--scene` for the acceptance pictures; not packaged in the APK |
 
 All other code in `src/`, `shaders/`, `scripts/` and `android/app/src/main/java/dev/` is original to
 RAVEFORM. The PNG writer, stroke-font renderer and test tone are written from scratch (no stb).
 
-The other files under `design/` (palettes, glyphs, icons, species, music prototypes and their
-generator scripts in `design/tools/`) are the lead's procedural work and are not used by the M0 build;
-rows are added when a milestone starts shipping them.
+The other files under `design/` (icons, species, music prototypes and their generator scripts in
+`design/tools/`) are the lead's procedural work and are not used by the M1 build; rows are added when a
+milestone starts shipping them.

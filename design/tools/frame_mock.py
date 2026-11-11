@@ -28,22 +28,48 @@ DANGER_HUE, P1_HUE = 18.0, 200.0
 
 
 def partner_of(entry):
-    """The second colour of an enemy's gradient: 40 degrees along the wheel, on whichever side stays
-    farther from the danger hue and the player's hue."""
-    L, C, h = entry["oklch"]
-    if C < 0.09:
-        return ld.oklch(0.86, 85, cf=0.6)[0].astype(np.float32)
-    best = None
-    for dh in (40.0, -40.0):
-        hh = (h + dh) % 360.0
-        score = min(ld.hue_distance(hh, DANGER_HUE), ld.hue_distance(hh, P1_HUE))
-        if best is None or score > best[0]:
-            best = (score, hh)
-    return ld.oklch(min(0.9, L + 0.05), best[1], cf=0.95)[0].astype(np.float32)
+    """The second colour of an enemy's gradient in a solo run (palettes.json, partnerRule)."""
+    return np.asarray(entry["partners"][entry["soloPartner"]]["linear"], np.float32)
 
 
-def main():
-    pal_id = sys.argv[1] if len(sys.argv) > 1 else "reef"
+def draw_glyph(cv, g, x, y, radius, rot, base, part, accent, intensity=2.0, width=1.8, aura=0.0, core=False, glass=0.0):
+    """The enemy colour rule (design/look.md §2). Hull: a gradient from the hue to its partner, nose to
+    tail on shapes that face their heading, centre to rim on shapes that spin. Ornament: the palette
+    accent mixed with the partner. Core mark: white. `core` adds the elite's thin white hull copy."""
+    white = np.ones(3, np.float32)
+    layers = {0: [], 1: [], 2: []}
+    for s in g["segments"]:
+        layers[s[4]].append((s[0], -s[1], s[2], -s[3]))
+    ext = radius * g["extent"]
+    if aura > 0:
+        cv.glow(x, y, ext * 2.3, base, aura)
+    hull = ld.transform(layers[0], x, y, radius, rot)
+    if g["facesHeading"]:
+        c, s_ = math.cos(rot), math.sin(rot)
+        field = ld.f_linear(x + c * ext, y + s_ * ext, x - c * ext, y - s_ * ext, [base * 0.6 + white * 0.4, base, part])
+    else:
+        field = ld.f_radial(x, y, ext, [part, base, base * 0.75 + white * 0.25])
+    if glass > 0:                                          # fill the first closed loop of the hull
+        pts = []
+        for sg in hull:
+            pts.append((sg[0], sg[1]))
+            if len(pts) > 2 and abs(sg[2] - hull[0][0]) < 1e-3 and abs(sg[3] - hull[0][1]) < 1e-3:
+                break
+        cv.fill(pts, base, glass)
+    cv.lines(hull, field, intensity, width)
+    if layers[1]:
+        cv.lines(ld.transform(layers[1], x, y, radius, rot), accent * 0.6 + part * 0.4, intensity * 0.8, width * 0.85)
+    if layers[2]:
+        cv.lines(ld.transform(layers[2], x, y, radius, rot), white, intensity * 1.1, width * 0.85)
+    if core:
+        cv.lines(hull, white, 1.0, 0.9)
+
+
+BLOOM = 0.95        # the target frame's bloom strength
+
+
+def build(pal_id="reef"):
+    """Compose the target frame on a look-dev canvas and return the canvas."""
     pals = json.load(open(os.path.join(DESIGN, "palettes.json"), encoding="utf-8"))
     pal = next(p for p in pals["palettes"] if p["id"] == pal_id)
     glyphs = {g["id"]: g for g in json.load(open(os.path.join(DESIGN, "glyphs.json"), encoding="utf-8"))["glyphs"]}
@@ -131,37 +157,8 @@ def main():
     R = 14.0 * WU   # standard enemy radius in pixels
 
     def glyph(gid, x, y, radius, rot, k, intensity=2.0, width=1.8, aura=0.0, core=False, glass=0.0):
-        """k indexes the enemy hue. Hull: gradient from the hue to its partner (nose to tail on shapes
-        that face their heading, centre to rim on shapes that spin). Ornament: the palette accent.
-        Core mark: white."""
-        g = glyphs[gid]
-        base, part = hue[k], mate[k]
-        layers = {0: [], 1: [], 2: []}
-        for s in g["segments"]:
-            layers[s[4]].append((s[0], -s[1], s[2], -s[3]))
-        ext = radius * g["extent"]
-        if aura > 0:
-            cv.glow(x, y, ext * 2.3, base, aura)
-        hull = ld.transform(layers[0], x, y, radius, rot)
-        if g["facesHeading"]:
-            c, s_ = math.cos(rot), math.sin(rot)
-            field = ld.f_linear(x + c * ext, y + s_ * ext, x - c * ext, y - s_ * ext, [base * 0.6 + white * 0.4, base, part])
-        else:
-            field = ld.f_radial(x, y, ext, [part, base, base * 0.75 + white * 0.25])
-        if glass > 0:                                          # fill the first closed loop of the hull
-            pts = []
-            for sg in hull:
-                pts.append((sg[0], sg[1]))
-                if len(pts) > 2 and abs(sg[2] - hull[0][0]) < 1e-3 and abs(sg[3] - hull[0][1]) < 1e-3:
-                    break
-            cv.fill(pts, base, glass)
-        cv.lines(hull, field, intensity, width)
-        if layers[1]:
-            cv.lines(ld.transform(layers[1], x, y, radius, rot), accent * 0.6 + part * 0.4, intensity * 0.8, width * 0.85)
-        if layers[2]:
-            cv.lines(ld.transform(layers[2], x, y, radius, rot), white, intensity * 1.1, width * 0.85)
-        if core:
-            cv.lines(hull, white, 1.0, 0.9)
+        """k indexes the enemy hue."""
+        draw_glyph(cv, glyphs[gid], x, y, radius, rot, hue[k], mate[k], accent, intensity, width, aura, core, glass)
 
     def mark(gid, x, y, radius, rot):
         segs = [(s[0], -s[1], s[2], -s[3]) for s in glyphs[gid]["segments"]]
@@ -391,8 +388,13 @@ def main():
     cv.lines(ld.transform(ld.polygon(48), dash[0], dash[1], 66), p1, 2.0, 3.0)
     cv.text(font, "DASH", dash[0] - 4 * 6 * 2.0 / 2 + 2, dash[1] - 6, 12, white, 1.8, 1.8)
 
+    return cv
+
+
+def main():
+    pal_id = sys.argv[1] if len(sys.argv) > 1 else "reef"
     out = os.path.join(DESIGN, "previews", "frame_%s.png" % pal_id)
-    cv.render(bloom=0.95).save(out, optimize=True)
+    build(pal_id).render(bloom=BLOOM).save(out, optimize=True)
     print("wrote", out)
 
 

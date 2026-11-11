@@ -2,14 +2,17 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "core/alloc_counter.h"
 #include "core/json.h"
 #include "core/log.h"
 #include "core/time.h"
+#include "platform/cpu_affinity.h"
 
 #if defined(__ANDROID__)
 #include "platform/android/android_glue.h"
@@ -22,7 +25,6 @@ constexpr u32 kTitle = rgba(0, 240, 255);
 constexpr u32 kText = rgba(235, 240, 255);
 constexpr u32 kWarn = rgba(255, 190, 40);
 constexpr u32 kDim = rgba(120, 135, 160);
-constexpr ClearColor kClear{0.0015f, 0.0012f, 0.006f};
 constexpr u64 kOverlayRefreshNs = 500000000ull;
 
 #if defined(RF_DEBUG) && !defined(__ANDROID__)
@@ -40,8 +42,10 @@ int App::run(int argc, char** argv) {
     }
     while (!quit_) {
         const u64 loopStart = nowNs();
+        if (bench_.active()) cpuAtLoopStart_ = FrameProbe::currentCpu();
         SDL_Event e;
         while (SDL_PollEvent(&e)) handleEvent(e);  // Android: blocks here while paused
+        eventsDoneNs_ = nowNs();
         if (quit_) break;
         if (minimized_ || backgrounded_) {
             discontinuity_ = true;
@@ -99,15 +103,49 @@ bool App::init() {
            SDL_VERSIONNUM_MINOR(SDL_GetVersion()), SDL_VERSIONNUM_MICRO(SDL_GetVersion()), os_, device_);
 
     if (!font_.init()) return false;
+    if (!loadLook(look_)) return false;
+    variant_ = look_.variant(args_.look);
+    if (!variant_) {
+        RF_ERR("unknown look '%s' (see design/look_variants.json)", args_.look);
+        return false;
+    }
+    lastLook_ = static_cast<u32>(variant_ - look_.variants);
+    if (!loadPalettes(palettes_)) return false;
+    palette_ = palettes_.find(args_.palette);
+    if (!palette_) {
+        RF_ERR("unknown palette '%s' (see design/palettes.json)", args_.palette);
+        return false;
+    }
+    if (!glyphs_.load(look_.jointFlatBelowDegrees)) return false;
+    Tier tier = Tier::High;
+    if (args_.tier[0] && !parseTier(args_.tier, tier)) {
+        RF_ERR("unknown tier '%s' (low, medium, high, ultra)", args_.tier);
+        return false;
+    }
+    tier_ = tierSettings(tier);
+
+    // Before the renderer and the audio stream exist, so the threads they start (Swappy, the audio
+    // callback) inherit the placement.
+    applyAffinity();
 
     RendererDesc rd;
     rd.validation = args_.validation >= 0 ? args_.validation == 1 : kValidationDefault;
     rd.swappy = args_.swappy;
     rd.targetHz = args_.fps;
     refreshDisplay();
-    if (!renderer_.init(window_, rd)) return false;
+    if (!renderer_.init(window_, rd, look_)) return false;
+    if (!renderer_.setGlyphs(glyphs_) || !renderer_.setTier(tier_.render)) return false;
     refreshDisplay();
     updateSafeArea();
+    if (args_.sceneFile[0]) {
+        char path[300];
+        resolveOutputPath(args_.sceneFile, path, sizeof path);
+        // Canvas pixels are reference pixels on a 1080-high canvas.
+        if (!loadRfScene(path, look_.poolMinRadiusRefPx, sceneFile_) || !renderer_.setStaticScene(sceneFile_.view))
+            return false;
+        sceneLoaded_ = true;
+        content_ = Content::SceneFile;
+    }
 
     // PLAN 9 risk 13: OEM game modes may downscale; compare the surface with the display mode.
     const VkExtent2D surface = renderer_.swapchain().logical;
@@ -130,14 +168,47 @@ bool App::init() {
     tone_.setHold(args_.tone);
 
     startNs_ = nowNs();
-    if (std::strcmp(args_.scenario, "bench_idle") == 0) {
+    const bool benchMid = std::strcmp(args_.scenario, "bench_mid") == 0;
+    const bool benchEndgame = std::strcmp(args_.scenario, "bench_endgame") == 0;
+    if (benchMid || benchEndgame) {
+        if (!stage_.init(benchMid ? StageKind::Mid : StageKind::Endgame, look_, palettes_, *palette_, glyphs_, tier_))
+            return false;
+        stage_.setMute(args_.mute);
+        if (args_.mute) RF_LOG("stage: muted light 0x%x (analysis picture)", args_.mute);
+        content_ = Content::Stage;
+    } else if (std::strcmp(args_.scenario, "glyph_sheet") == 0) {
+        sheet_.init(look_, palettes_, *palette_, glyphs_, font_, args_.page);
+        content_ = Content::Sheet;
+    }
+    if (std::strcmp(args_.scenario, "bench_idle") == 0 || benchMid || benchEndgame) {
         if (!bench_.begin(args_.scenario, args_.warmupSeconds, args_.seconds, startNs_)) return false;
+        // Room for every frame of the run at up to 240 Hz (allocated now, before measuring).
+        const u32 cap = static_cast<u32>((args_.seconds + 5.0f) * 240.0f) + 1024;
+        if (!probe_.init(cap)) return false;
+        Series* all[] = {&inView_, &bulletsInView_, &glyphCount_, &sparksLive_, &capsuleCount_, &crowdGain_, &swarmGain_, &load_};
+        for (Series* s : all) {
+            s->v = static_cast<float*>(std::malloc(sizeof(float) * cap));
+            s->cap = s->v ? cap : 0;
+        }
+        for (Series& s : gpu_) {
+            s.v = static_cast<float*>(std::malloc(sizeof(float) * cap));
+            s.cap = s.v ? cap : 0;
+        }
+        renderer_.pacer().enableStats(true);  // Swappy's display-side histograms (Swappy only)
     } else if (std::strcmp(args_.scenario, "lifecycle_test") == 0) {
         RF_LOG("lifecycle_test: %u cycles of surface release/restore and swapchain rebuilds", args_.cycles);
-    } else if (args_.scenario[0]) {
-        RF_ERR("unknown scenario '%s' (known: bench_idle, lifecycle_test)", args_.scenario);
+    } else if (args_.scenario[0] && content_ != Content::Sheet) {
+        RF_ERR("unknown scenario '%s' (known: bench_idle, bench_mid, bench_endgame, glyph_sheet, lifecycle_test)",
+               args_.scenario);
         return false;
     }
+    // Governor v1: on for interactive stages; benchmarks keep the tier fixed (TECH_SPEC 5.4).
+    governorOn_ = content_ == Content::Stage && (args_.governor == 1 || (args_.governor < 0 && !bench_.active()));
+    governor_.reset(tier_.tier, static_cast<float>(renderer_.pacer().targetIntervalNs() * 1e-6));
+    RF_LOG("tier %s (bloom %u levels, afterglow %s, distortion %s, aberration %s, sparks x%.2f), governor %s", tier_.name,
+           tier_.render.bloomLevels, tier_.render.afterglowShift == 0 ? "off" : (tier_.render.afterglowShift == 1 ? "1/2" : "1/4"),
+           tier_.render.distortionShift == 0 ? "off" : (tier_.render.distortionShift == 3 ? "1/8" : "1/4"),
+           tier_.render.aberration ? "on" : "off", tier_.particleDensity, governorOn_ ? "on" : "off");
     if (args_.screenshot[0] && args_.frames == 0) args_.frames = 120;
     overlayOn_ = args_.overlay;
     refreshOverlay(startNs_);
@@ -185,6 +256,7 @@ void App::enterForeground() {
     discontinuity_ = true;
     awaitingResumePresent_ = true;
     logTagged("RFLIFE", "foreground %u", foregrounds_);
+    applyAffinity();  // Android resets thread affinities when the app changes cpuset
     if (!audio_.open(TestTone::render, &tone_)) RF_WARN("audio: reopen after foreground failed");
     refreshDisplay();  // the swapchain itself is rebuilt by the next beginFrame()
 }
@@ -201,10 +273,17 @@ void App::handleEvent(const SDL_Event& e) {
                 quit_ = true;
             } else if (e.key.key == SDLK_F1) {
                 overlayOn_ = !overlayOn_;
+                if (overlayOn_) refreshOverlay(nowNs());
             } else if (e.key.key == SDLK_F12) {
                 screenshotRequested_ = true;
             } else if (e.key.key == SDLK_T) {
                 tone_.setHold(!tone_.holding());
+            } else if (e.key.key == SDLK_L) {
+                nextLook();
+            } else if (e.key.key == SDLK_P) {
+                nextPalette();
+            } else if (e.key.key == SDLK_K && !bench_.active()) {
+                applyTier(static_cast<Tier>((static_cast<u32>(tier_.tier) + 1) % 4u));
             }
             break;
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
@@ -295,11 +374,12 @@ void App::touchDown(u64 id, Vec2 pos) {
     tone_.trigger(440.0f * std::exp2(2.0f * k));
     pulseNs_ = nowNs();
     pulseAt_ = pos;
-    // Three fingers toggle the overlay (once per gesture).
-    if (activeTouches() >= 3 && !threeFingerLatch_) {
-        threeFingerLatch_ = true;
-        overlayOn_ = !overlayOn_;
-    }
+    // Gestures, decided when the last finger lifts: two fingers = next look, three = overlay, four = next
+    // palette.
+    const u32 n = activeTouches();
+    if (n >= 2) twoFingerLatch_ = true;
+    if (n >= 3) threeFingerLatch_ = true;
+    if (n >= 4) fourFingerLatch_ = true;
 }
 
 void App::touchMove(u64 id, Vec2 pos) {
@@ -310,7 +390,32 @@ void App::touchMove(u64 id, Vec2 pos) {
 void App::touchUp(u64 id) {
     for (TouchPoint& t : touches_)
         if (t.active && t.id == id) t.active = false;
-    if (activeTouches() == 0) threeFingerLatch_ = false;
+    if (activeTouches() == 0) {
+        if (fourFingerLatch_) {
+            nextPalette();
+        } else if (threeFingerLatch_) {
+            overlayOn_ = !overlayOn_;
+            if (overlayOn_) refreshOverlay(nowNs());
+        } else if (twoFingerLatch_) {
+            nextLook();
+        }
+        twoFingerLatch_ = threeFingerLatch_ = fourFingerLatch_ = false;
+    }
+}
+
+void App::applyAffinity() {
+    if (!args_.fastCores) {
+        std::snprintf(affinity_, sizeof affinity_, "os");
+        return;
+    }
+    char cpus[sizeof affinity_];
+    if (pinToFastCores(cpus, sizeof cpus)) {
+        std::snprintf(affinity_, sizeof affinity_, "%s", cpus);
+        RF_LOG("cpu: main thread pinned to the fast cores %s", affinity_);
+    } else {
+        std::snprintf(affinity_, sizeof affinity_, "os");
+        RF_LOG("cpu: no faster cores to pin to; the scheduler places the main thread");
+    }
 }
 
 void App::refreshDisplay() {
@@ -343,8 +448,9 @@ void App::updateSafeArea() {
 
 void App::frame(u64 loopStartNs) {
     audio_.update();
-    CapsuleBatch batch;
-    if (!renderer_.beginFrame(batch)) {
+    audioDoneNs_ = nowNs();
+    FrameDraw draw;
+    if (!renderer_.beginFrame(draw)) {
         discontinuity_ = true;
         SDL_Delay(2);
         return;
@@ -355,26 +461,53 @@ void App::frame(u64 loopStartNs) {
     const float s = h / 1080.0f;  // reference pixels
     const u64 now = nowNs();
     const float t = static_cast<float>(nsToSec(now - startNs_));
+    // Scenes advance by real time, or by exactly 1/60 s per frame when pictures are taken
+    // (design/scenes.md: repeatable stills and strips).
+    float dt = lastFrameNs_ ? static_cast<float>(nsToSec(now - lastFrameNs_)) : 1.0f / 60.0f;
+    if (dt > 0.1f) dt = 0.1f;
+    if (args_.fixedStep || args_.screenshot[0]) dt = 1.0f / 60.0f;
+    lastFrameNs_ = now;
 
-    SceneInput in;
-    in.width = w;
-    in.height = h;
-    in.scale = s;
-    in.time = t;
-    in.insetMin = insetMin_;
-    in.insetMax = insetMax_;
-    in.touches = touches_;
-    in.touchCount = kMaxTouches;
-    in.intervals = &intervals_;
-    in.targetMs = static_cast<float>(renderer_.pacer().targetIntervalNs() * 1e-6);
-    in.pulseAge = pulseNs_ ? static_cast<float>(nsToSec(now - pulseNs_)) : 1e9f;
-    in.pulseAt = pulseAt_;
-    in.toneHold = tone_.holding();
-    drawM0Scene(batch, font_, in);
+    FrameParams params;
+    params.look = variant_;
+    params.bloom = args_.bloom;
+    params.vignette = !args_.still;
+    params.frameIndex = static_cast<u32>(frames_);
+    params.gpuBurn = args_.gpuBurn;
+    if (content_ == Content::Stage) {
+        stage_.advance(dt);
+        stage_.render(draw, params, background_, w, h);
+        renderer_.setBackground(background_);
+        if (args_.still) {
+            params.vignette = false;
+            params.afterglow = false;
+            params.ringCount = params.wellCount = 0;
+            params.aberration = false;
+        }
+    } else if (content_ == Content::Sheet) {
+        sheet_.render(draw, params, background_, w, h);
+        renderer_.setBackground(background_);
+    } else if (content_ == Content::M0) {
+        SceneInput in;
+        in.width = w;
+        in.height = h;
+        in.scale = s;
+        in.time = t;
+        in.insetMin = insetMin_;
+        in.insetMax = insetMax_;
+        in.touches = touches_;
+        in.touchCount = kMaxTouches;
+        in.intervals = &intervals_;
+        in.targetMs = static_cast<float>(renderer_.pacer().targetIntervalNs() * 1e-6);
+        in.pulseAge = pulseNs_ ? static_cast<float>(nsToSec(now - pulseNs_)) : 1e9f;
+        in.pulseAt = pulseAt_;
+        in.toneHold = tone_.holding();
+        drawM0Scene(draw.scene, font_, in);
+    }
 
-    if (overlayOn_) {
+    if (overlayOn_) {  // after tone mapping (the HUD batch): never bloomed
         const Vec2 origin{insetMin_.x + 36.0f * s, insetMin_.y + 30.0f * s};
-        const float y = overlay_.draw(batch, font_, origin, 24.0f * s, 38.0f * s);
+        const float y = overlay_.draw(draw.hud, font_, origin, 24.0f * s, 38.0f * s);
         char line[DevOverlay::kLineChars];
         int n = std::snprintf(line, sizeof line, "TOUCH %u", activeTouches());
         for (const TouchPoint& tp : touches_) {
@@ -385,13 +518,57 @@ void App::frame(u64 loopStartNs) {
         TextStyle style;
         style.capHeight = 24.0f * s;
         style.color = kText;
-        font_.draw(batch, {origin.x, y}, style, line);
+        font_.draw(draw.hud, {origin.x, y}, style, line);
     }
-    lastCapsules_ = batch.count();
 
-    const bool capture = screenshotRequested_ || (args_.screenshot[0] && args_.frames && frames_ + 1 >= args_.frames);
-    renderer_.endFrame(batch, kClear, t, capture);
+    const u64 firstShot = args_.frames > args_.strip ? args_.frames - (args_.strip ? args_.strip - 1 : 0) : 1;
+    const bool capture = screenshotRequested_ || (args_.screenshot[0] && args_.frames && frames_ + 1 >= firstShot);
+    renderer_.endFrame(draw, params, capture);
+    lastCapsules_ = renderer_.lastCapsuleCount();
     afterPresent(loopStartNs, nowNs(), capture);
+}
+
+void App::captureName(char* out, size_t capacity, u32 stripIndex) const {
+    // Strip frames: <name>_<k>.png (k = 0 for the first frame of the strip).
+    char base[260];
+    std::snprintf(base, sizeof base, "%s", args_.screenshot[0] ? args_.screenshot : "raveform.png");
+    if (args_.strip > 1) {
+        char* dot = std::strrchr(base, '.');
+        char ext[16] = ".png";
+        if (dot) {
+            std::snprintf(ext, sizeof ext, "%s", dot);
+            *dot = '\0';
+        }
+        char named[300];
+        std::snprintf(named, sizeof named, "%s_%u%s", base, stripIndex, ext);
+        resolveOutputPath(named, out, capacity);
+        return;
+    }
+    resolveOutputPath(base, out, capacity);
+}
+
+void App::nextLook() {
+    lastLook_ = (lastLook_ + 1) % (look_.variantCount ? look_.variantCount : 1);
+    variant_ = &look_.variants[lastLook_];
+    RF_LOG("look: %s", variant_->id);
+    if (overlayOn_) refreshOverlay(nowNs());
+}
+
+void App::nextPalette() {
+    const u32 i = (palettes_.indexOf(palette_) + 1) % palettes_.count;
+    palette_ = &palettes_.list[i];
+    stage_.setPalette(*palette_);
+    sheet_.setPalette(*palette_);
+    RF_LOG("palette: %s", palette_->id);
+    if (overlayOn_) refreshOverlay(nowNs());
+}
+
+void App::applyTier(Tier t) {
+    tier_ = tierSettings(t);
+    renderer_.setTier(tier_.render);
+    if (content_ == Content::Stage) stage_.setTier(tier_);
+    RF_LOG("tier: %s", tier_.name);
+    if (overlayOn_) refreshOverlay(nowNs());
 }
 
 void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
@@ -401,6 +578,7 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
     const u64 loopNs = presentedNs - loopStartNs;
     const u64 blockedNs = tm.fenceWaitNs + tm.acquireNs + tm.presentNs;
     const float cpuMs = static_cast<float>(nsToMs(loopNs > blockedNs ? loopNs - blockedNs : 0));
+    const u64 prevPresentNs = lastPresentNs_;
     float intervalMs = -1.0f;
     if (!discontinuity_ && lastPresentNs_) {
         intervalMs = static_cast<float>(nsToMs(presentedNs - lastPresentNs_));
@@ -425,22 +603,58 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
             std::snprintf(name, sizeof name, "raveform_%llu.png", static_cast<unsigned long long>(frames_));
             resolveOutputPath(name, path, sizeof path);
         } else {
-            resolveOutputPath(args_.screenshot[0] ? args_.screenshot : "raveform.png", path, sizeof path);
+            const u64 firstShot = args_.frames > args_.strip ? args_.frames - (args_.strip ? args_.strip - 1 : 0) : 1;
+            captureName(path, sizeof path, static_cast<u32>(frames_ >= firstShot ? frames_ - firstShot : 0));
         }
         if (!renderer_.saveCapture(path) && !screenshotRequested_) exitCode_ = 5;
         screenshotRequested_ = false;
+        if (content_ == Content::Stage) {  // what the picture holds (outside any measurement that counts)
+            const StageStats& st = stage_.stats();
+            RF_LOG("stage: song %.3f s, %u enemies in view (%u slots), %u enemy bullets in view (%u alive), %u Shards, "
+                   "%u glyph instances, load %.1f, crowd gain %.3f, swarm gain %.3f, %u kills so far",
+                   stage_.time(), st.enemiesInView, st.enemies, st.bulletsInView, st.bullets, st.shards, st.glyphInstances,
+                   st.load, st.crowdGain, st.swarmGain, st.kills);
+        }
     }
 
     if (bench_.active()) {
+        // The bench records this interval when it was already measuring before this frame.
+        const bool measuring = bench_.phase() == Bench::Phase::Measure && intervalMs >= 0.0f;
         const Bench::Event ev = bench_.onFrame(presentedNs, intervalMs, cpuMs);
+        probeFrame(loopStartNs, prevPresentNs, presentedNs, intervalMs, measuring);
+        if (measuring) {
+            const GpuPassTimes& gt = renderer_.gpuTimes();
+            if (gt.valid && gt.frame != gpuFrameSeen_) {
+                gpuFrameSeen_ = gt.frame;
+                for (u32 k = 0; k < GpuPassTimes::Count; ++k) gpu_[k].add(gt.ms[k]);
+            }
+            if (content_ == Content::Stage) {
+                const StageStats& st = stage_.stats();
+                inView_.add(static_cast<float>(st.enemiesInView));
+                bulletsInView_.add(static_cast<float>(st.bulletsInView));
+                glyphCount_.add(static_cast<float>(st.glyphInstances));
+                sparksLive_.add(static_cast<float>(renderer_.liveParticles()));
+                capsuleCount_.add(static_cast<float>(lastCapsules_));
+                crowdGain_.add(st.crowdGain);
+                swarmGain_.add(st.swarmGain);
+                load_.add(st.load);
+            }
+        }
+        FramePacer& pacer = renderer_.pacer();
         if (ev == Bench::Event::MeasureStarted) {
             audio_.resetPeaks();
             underrunsAtMeasure_ = audio_.stats().underruns;
-            allocsAtMeasure_ = heapAllocCount();
-            presentAllocsAtMeasure_ = renderer_.pacer().presentAllocations();
+            pacer.clearStats();
+            probe_.begin(presentedNs, pacer.displayTimingActive());
+            mainAllocsAtMeasure_ = heapAllocCountThisThread();
+            pacerAllocsAtMeasure_ = pacer.pacerAllocations();
+            allAllocsAtMeasure_ = heapAllocCount();
         } else if (ev == Bench::Event::Finished) {
-            allocsMeasured_ = heapAllocCount() - allocsAtMeasure_;
-            presentAllocsMeasured_ = renderer_.pacer().presentAllocations() - presentAllocsAtMeasure_;
+            mainAllocsMeasured_ = heapAllocCountThisThread() - mainAllocsAtMeasure_;
+            pacerAllocsMeasured_ = pacer.pacerAllocations() - pacerAllocsAtMeasure_;
+            allAllocsMeasured_ = heapAllocCount() - allAllocsAtMeasure_;
+            probe_.finish(static_cast<float>(pacer.targetIntervalNs() * 1e-6),
+                          static_cast<float>(pacer.refreshPeriodNs() * 1e-6));
             reportBench();
             quit_ = true;
         }
@@ -449,10 +663,60 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
         // The refresh-rate vote switches the panel mode asynchronously; look again during the warm-up.
         displayRechecked_ = true;
         refreshDisplay();
+        const FramePacer& pacer = renderer_.pacer();
+        if (pacer.votedHz() > displayHz_ + 1.0f) {
+            RF_WARN("display: voted %.2f Hz but the panel runs at %.2f Hz: a system or user refresh-rate setting "
+                    "overrules the vote",
+                    pacer.votedHz(), displayHz_);
+        }
+    }
+    if (governorOn_ && intervalMs >= 0.0f) {
+        // Governor v1 (TECH_SPEC 5.4): the share of the last 120 frames that missed a refresh, and the
+        // GPU work per frame.
+        if ((frames_ & 15u) == 0) {
+            const float limit = 1.5f * static_cast<float>(renderer_.pacer().targetIntervalNs() * 1e-6);
+            const u32 n = intervals_.size() < 120 ? intervals_.size() : 120u;
+            u32 late = 0;
+            for (u32 i = intervals_.size() - n; i < intervals_.size(); ++i) late += intervals_.at(i) > limit ? 1u : 0u;
+            governorMissed_ = n ? static_cast<float>(late) / static_cast<float>(n) : 0.0f;
+        }
+        const GpuPassTimes& gt = renderer_.gpuTimes();
+        const Tier before = governor_.tier();
+        const bool changed = governor_.update(intervalMs * 0.001f, governorMissed_, gt.valid ? gt.ms[GpuPassTimes::Total] : 0.0f, 0);
+        stage_.setDensity(governor_.density());
+        if (changed && governor_.tier() != before) applyTier(governor_.tier());
     }
     if (std::strcmp(args_.scenario, "lifecycle_test") == 0) stepLifecycleTest();
     if (args_.frames && frames_ >= args_.frames) quit_ = true;
-    if (presentedNs - lastOverlayNs_ >= kOverlayRefreshNs) refreshOverlay(presentedNs);
+    // The overlay text (and its audio stream queries) is only refreshed while the overlay is shown.
+    if (overlayOn_ && presentedNs - lastOverlayNs_ >= kOverlayRefreshNs) refreshOverlay(presentedNs);
+}
+
+void App::probeFrame(u64 loopStartNs, u64 prevPresentNs, u64 presentedNs, float intervalMs, bool measuring) {
+    // Split the interval since the previous present into the loop's phases (they add up to it).
+    const auto span = [](u64 from, u64 to) { return to > from ? to - from : u64{0}; };
+    const FrameTimings& tm = renderer_.timings();
+    u64 ph[FrameProbe::kPhases] = {};
+    const auto at = [&ph](Phase p) -> u64& { return ph[static_cast<u32>(p)]; };
+    if (intervalMs >= 0.0f) {
+        at(Phase::Post) = span(prevPresentNs, loopStartNs);
+        at(Phase::Events) = span(loopStartNs, eventsDoneNs_);
+        at(Phase::Audio) = span(eventsDoneNs_, audioDoneNs_);
+        at(Phase::Begin) = span(audioDoneNs_, tm.fenceStart) + span(tm.acquireEnd, tm.beginEnd);
+        at(Phase::Fence) = span(tm.fenceStart, tm.fenceEnd);
+        at(Phase::Acquire) = span(tm.fenceEnd, tm.acquireEnd);
+        at(Phase::Scene) = span(tm.beginEnd, tm.recordStart);
+        at(Phase::Record) = span(tm.recordStart, tm.recordEnd);
+        at(Phase::Submit) = span(tm.recordEnd, tm.submitEnd);
+        at(Phase::Present) = span(tm.submitEnd, presentedNs);
+    }
+    FramePacer& pacer = renderer_.pacer();
+    const float targetMs = static_cast<float>(pacer.targetIntervalNs() * 1e-6);
+    const float refreshMs = static_cast<float>(pacer.refreshPeriodNs() * 1e-6);
+    probe_.onFrame(presentedNs, intervalMs, ph, cpuAtLoopStart_, targetMs, pacer.lastPresentId(), measuring);
+    DisplayTiming timings[16];
+    const u32 n = pacer.pollDisplayTimings(timings, countOf(timings));
+    for (u32 i = 0; i < n; ++i) probe_.onDisplayTiming(timings[i], refreshMs);
 }
 
 void App::refreshOverlay(u64 nowNs) {
@@ -466,9 +730,38 @@ void App::refreshOverlay(u64 nowNs) {
     const float target = static_cast<float>(p.targetIntervalNs() * 1e-6);
 
     overlay_.clear();
-    overlay_.addLine(kTitle, "RAVEFORM M0  %s BUILD  FRAME %llu", RF_BUILD_NAME, static_cast<unsigned long long>(frames_));
-    overlay_.addLine(iv.p99 > target * 1.05f ? kWarn : kText, "INTERVAL P50 %.2f  P99 %.2f  MAX %.2f MS", iv.p50,
-                     iv.p99, iv.max);
+    overlay_.addLine(kTitle, "RAVEFORM M1  %s BUILD  FRAME %llu", RF_BUILD_NAME, static_cast<unsigned long long>(frames_));
+    {
+        const GpuPassTimes& gt = renderer_.gpuTimes();
+        // The stroke font has capitals only.
+        const auto upper = [](char* out, size_t cap, const char* in) {
+            size_t i = 0;
+            for (; in[i] && i + 1 < cap; ++i) out[i] = (in[i] >= 'a' && in[i] <= 'z') ? static_cast<char>(in[i] - 32) : in[i];
+            out[i] = '\0';
+        };
+        char tierU[16], lookU[16], paletteU[16];
+        upper(tierU, sizeof tierU, tier_.name);
+        upper(lookU, sizeof lookU, variant_->id);
+        upper(paletteU, sizeof paletteU, palette_->id);
+        overlay_.addLine(kText, "TIER %s%s  LOOK %s  PALETTE %s", tierU, governorOn_ ? " (GOVERNOR)" : "", lookU, paletteU);
+        if (gt.valid) {
+            overlay_.addLine(kText, "GPU %.2f MS  SCENE %.2f  POOLS %.2f  AFTERGLOW %.2f  DIST %.2f  BLOOM %.2f  COMP %.2f",
+                             gt.ms[GpuPassTimes::Total], gt.ms[GpuPassTimes::Scene], gt.ms[GpuPassTimes::Pools],
+                             gt.ms[GpuPassTimes::Afterglow], gt.ms[GpuPassTimes::Distortion], gt.ms[GpuPassTimes::Bloom],
+                             gt.ms[GpuPassTimes::Composite]);
+        }
+        if (content_ == Content::Stage) {
+            const StageStats& st = stage_.stats();
+            overlay_.addLine(kText, "ENEMIES %u IN VIEW  BULLETS %u  GLYPHS %u  SPARKS %u  SHARDS %u", st.enemiesInView,
+                             st.bulletsInView, st.glyphInstances, renderer_.liveParticles(), st.shards);
+            overlay_.addLine(kText, "LIGHT BUDGET: LOAD %.0f  CROWD %.2f  SWARM %.2f", st.load, st.crowdGain, st.swarmGain);
+        }
+    }
+    // Contract (PLAN 5, changed to P95 on 2026-11-10): warn when the P95 interval is a missed vsync,
+    // i.e. more than 5% of the recent frames missed. These are present-call timestamps, which jitter by
+    // a millisecond or two around the refresh period, so they are graded in refresh periods.
+    overlay_.addLine(iv.p95 > target * 1.5f ? kWarn : kText, "INTERVAL P50 %.2f  P95 %.2f  P99 %.2f  MAX %.2f MS",
+                     iv.p50, iv.p95, iv.p99, iv.max);
     overlay_.addLine(kText, "CPU FRAME P50 %.2f  P99 %.2f MS  CAPSULES %u", cpu.p50, cpu.p99, lastCapsules_);
     overlay_.addLine(kText, "SURFACE %uX%u  IMAGE %uX%u  ROTATION %d", sc.logical.width, sc.logical.height,
                      sc.extent.width, sc.extent.height, sc.rotationDeg);
@@ -542,92 +835,215 @@ void App::reportBench() {
     const Swapchain& sc = renderer_.swapchain();
     const FramePacer& p = renderer_.pacer();
     const double targetMs = p.targetIntervalNs() * 1e-6;
+    const double refreshMs = p.refreshPeriodNs() * 1e-6;
     const u32 frames = bench_.intervalCount();
     const u32 missed = bench_.intervalsAbove(static_cast<float>(targetMs * 1.5));
     const u32 over50 = bench_.intervalsAbove(50.0f);
     const Summary iv = bench_.finishIntervals();
     const Summary cpu = bench_.finishCpu();
     const AudioStats a = audio_.stats();
+    const PacerStats ps = p.stats();
     float displayHz = displayHz_;
 #if defined(__ANDROID__)
     const float hz = android::displayRefreshHz();  // after the run: did the panel hold the requested mode?
     if (hz > 1.0f) displayHz = hz;
 #endif
 
-    char buffer[2048];
-    JsonWriter j(buffer, sizeof buffer);
-    j.beginObject();
-    j.str("scenario", bench_.scenario());
-    // Valid only if the activity kept focus for the whole run (shared test phones).
-    j.boolean("valid", bench_.interruptions() == 0 && !bench_.overflowed());
-    j.integer("interruptions", bench_.interruptions());
-    j.str("build", RF_BUILD_NAME);
-    j.str("device", device_);
-    j.str("os", os_);
-    j.str("gpu", g.props.deviceName);
-    j.str("vk", g.apiVersionText);
-    j.str("driver", g.driverVersionText);
-    j.pair("surface", sc.logical.width, sc.logical.height);
-    j.pair("image", sc.extent.width, sc.extent.height);
-    j.integer("rotation", sc.rotationDeg);
-    j.integer("images", sc.imageCount);
-    j.str("present", p.modeName());
-    j.num("display_hz", displayHz, 2);
-    j.num("refresh_ms", p.refreshPeriodNs() * 1e-6, 3);
-    j.num("target_ms", targetMs, 3);
-    j.num("warmup_s", bench_.warmupSeconds(), 1);
-    j.num("seconds", bench_.measuredSeconds(), 2);
-    j.integer("frames", frames);
-    j.beginObject("interval_ms");
-    j.num("mean", iv.mean);
-    j.num("p50", iv.p50);
-    j.num("p95", iv.p95);
-    j.num("p99", iv.p99);
-    j.num("p999", iv.p999);
-    j.num("max", iv.max);
-    j.endObject();
-    j.integer("missed", missed);
-    j.num("missed_pct", frames ? 100.0 * missed / frames : 0.0, 2);
-    j.integer("over_50ms", over50);
-    j.beginObject("cpu_ms");
-    j.num("p50", cpu.p50);
-    j.num("p99", cpu.p99);
-    j.num("max", cpu.max);
-    j.endObject();
-    j.beginObject("audio");
-    j.str("api", a.api);
-    j.integer("rate", a.sampleRate);
-    j.integer("burst", a.framesPerBurst);
-    j.integer("buffer", a.bufferFrames);
-    j.integer("underruns", (a.underruns >= 0 && underrunsAtMeasure_ >= 0) ? a.underruns - underrunsAtMeasure_ : -1);
-    j.integer("callbacks", static_cast<i64>(a.callbacks));
-    j.num("callback_worst_ms", a.worstCallbackMs);
-    j.boolean("tone_hold", tone_.holding());
-    j.boolean("mmap", a.mmap);
-    j.boolean("exclusive", a.exclusive);
-    j.endObject();
-    // operator new calls in the measured window: ours (must be 0) and those inside the present call.
-    j.integer("heap_allocs", static_cast<i64>(allocsMeasured_ - presentAllocsMeasured_));
-    j.integer("heap_allocs_in_present", static_cast<i64>(presentAllocsMeasured_));
-    j.integer("capsules", lastCapsules_);
-    j.integer("swapchain_rebuilds", renderer_.rebuildCount());
-    j.boolean("validation", g.validationEnabled());
-    j.integer("validation_messages", g.validationMessages());
-    j.integer("loader_messages", g.loaderMessages());
-    j.boolean("samples_overflowed", bench_.overflowed());
-    j.endObject();
-    if (j.overflowed()) RF_ERR("bench: JSON buffer too small");
-    logTagged("RFBENCH", "%s", j.text());
+    // GPU pass times and stage counts over the measured window: [p50, p95, max] (sorted in place now
+    // that measuring is over).
+    struct Pct {
+        float p50 = 0, p95 = 0, max = 0, mean = 0, min = 0;
+        u32 n = 0;
+    };
+    const auto pct = [](Series& s) {
+        Pct r;
+        r.n = s.count;
+        if (!s.count) return r;
+        double sum = 0.0;
+        for (u32 i = 0; i < s.count; ++i) sum += s.v[i];
+        std::sort(s.v, s.v + s.count);
+        const auto at = [&s](float q) { return s.v[static_cast<u32>(q * static_cast<float>(s.count - 1) + 0.5f)]; };
+        r.p50 = at(0.5f);
+        r.p95 = at(0.95f);
+        r.max = s.v[s.count - 1];
+        r.min = s.v[0];
+        r.mean = static_cast<float>(sum / s.count);
+        return r;
+    };
+    Pct gpu[GpuPassTimes::Count];
+    for (u32 k = 0; k < GpuPassTimes::Count; ++k) gpu[k] = pct(gpu_[k]);
+    const Pct inView = pct(inView_), bullets = pct(bulletsInView_), glyphs = pct(glyphCount_), sparks = pct(sparksLive_),
+              capsules = pct(capsuleCount_), crowd = pct(crowdGain_), swarm = pct(swarmGain_), load = pct(load_);
+    const char* const passNames[GpuPassTimes::Count] = {"scene",      "pools",     "background", "bloom", "afterglow",
+                                                        "distortion", "composite", "wait",       "total"};
 
+    // The same result twice: a summary that fits one logcat line (4068 bytes) and the full result with
+    // the worst-frame table and the per-second timeline (Android: written to the app's files dir).
+    const auto write = [&](JsonWriter& j, bool full) {
+        j.beginObject();
+        j.str("scenario", bench_.scenario());
+        // Valid only if the activity kept focus for the whole run (shared test phones).
+        j.boolean("valid", bench_.interruptions() == 0 && !bench_.overflowed());
+        j.integer("interruptions", bench_.interruptions());
+        j.str("build", RF_BUILD_NAME);
+        j.str("device", device_);
+        j.str("os", os_);
+        j.str("gpu", g.props.deviceName);
+        j.str("vk", g.apiVersionText);
+        j.str("driver", g.driverVersionText);
+        j.pair("surface", sc.logical.width, sc.logical.height);
+        j.pair("image", sc.extent.width, sc.extent.height);
+        j.integer("rotation", sc.rotationDeg);
+        j.integer("images", sc.imageCount);
+        j.str("present", p.modeName());
+        j.num("display_hz", displayHz, 2);
+        j.num("voted_hz", p.votedHz(), 2);
+        j.integer("vote_result", p.voteResult());
+        j.str("vote_api", p.voteApi());
+        j.num("refresh_ms", refreshMs, 3);
+        j.num("requested_ms", p.requestedIntervalNs() * 1e-6, 3);
+        j.num("swap_interval_ms", p.swapIntervalNs() * 1e-6, 3);
+        j.num("target_ms", targetMs, 3);
+        j.num("warmup_s", bench_.warmupSeconds(), 1);
+        j.num("seconds", bench_.measuredSeconds(), 2);
+        j.integer("frames", frames);
+        j.beginObject("interval_ms");
+        j.num("mean", iv.mean);
+        j.num("p50", iv.p50);
+        j.num("p95", iv.p95);
+        j.num("p99", iv.p99);
+        j.num("p999", iv.p999);
+        j.num("max", iv.max);
+        j.endObject();
+        j.integer("missed", missed);
+        j.num("missed_pct", frames ? 100.0 * missed / frames : 0.0, 2);
+        j.integer("over_50ms", over50);
+        j.beginObject("cpu_ms");
+        j.num("p50", cpu.p50);
+        j.num("p95", cpu.p95);
+        j.num("p99", cpu.p99);
+        j.num("max", cpu.max);
+        j.endObject();
+        j.beginObject("audio");
+        j.str("api", a.api);
+        j.integer("rate", a.sampleRate);
+        j.integer("burst", a.framesPerBurst);
+        j.integer("buffer", a.bufferFrames);
+        j.integer("underruns", (a.underruns >= 0 && underrunsAtMeasure_ >= 0) ? a.underruns - underrunsAtMeasure_ : -1);
+        j.integer("callbacks", static_cast<i64>(a.callbacks));
+        j.num("callback_worst_ms", a.worstCallbackMs);
+        j.boolean("tone_hold", tone_.holding());
+        j.boolean("mmap", a.mmap);
+        j.boolean("exclusive", a.exclusive);
+        j.endObject();
+        // operator new calls in the measured window: our main thread outside Swappy (must be 0), inside
+        // Swappy's calls on our thread, and on all other threads (Swappy's, the audio system's, ...).
+        j.integer("heap_allocs", static_cast<i64>(mainAllocsMeasured_ - pacerAllocsMeasured_));
+        j.integer("heap_allocs_in_pacer", static_cast<i64>(pacerAllocsMeasured_));
+        j.integer("heap_allocs_other_threads", static_cast<i64>(allAllocsMeasured_ - mainAllocsMeasured_));
+        j.integer("capsules", lastCapsules_);
+        j.str("tier", tier_.name);
+        j.str("look", variant_->id);
+        j.str("palette", palette_->id);
+        j.boolean("governor", governorOn_);
+        if (gpu[GpuPassTimes::Total].n) {
+            j.beginObject("gpu_ms");  // per pass: [p50, p95, max], timestamp queries (two frames late)
+            j.integer("frames", gpu[GpuPassTimes::Total].n);
+            for (u32 k = 0; k < GpuPassTimes::Count; ++k) {
+                j.beginArray(passNames[k]);
+                j.num(nullptr, gpu[k].p50, 2);
+                j.num(nullptr, gpu[k].p95, 2);
+                j.num(nullptr, gpu[k].max, 2);
+                j.endArray();
+            }
+            j.endObject();
+        }
+        if (inView.n) {
+            j.beginObject("scene_counts");  // per frame: [mean, max]
+            const auto pair = [&j](const char* key, const Pct& p) {
+                j.beginArray(key);
+                j.num(nullptr, p.mean, 0);
+                j.num(nullptr, p.max, 0);
+                j.endArray();
+            };
+            pair("enemies_in_view", inView);
+            pair("bullets_in_view", bullets);
+            pair("glyph_instances", glyphs);
+            pair("sparks_live", sparks);
+            pair("capsules", capsules);
+            pair("load", load);
+            // Light budget (look.md v2.1 §3): [mean, min] per frame.
+            const auto gain = [&j](const char* key, const Pct& p) {
+                j.beginArray(key);
+                j.num(nullptr, p.mean, 3);
+                j.num(nullptr, p.min, 3);
+                j.endArray();
+            };
+            gain("crowd_gain", crowd);
+            gain("swarm_gain", swarm);
+            j.integer("kills", stage_.stats().kills);
+            j.integer("drops", stage_.stats().drops);
+            j.integer("boss_breaks", stage_.stats().bossBreaks);
+            j.integer("enemy_slots", stage_.stats().enemies);
+            j.endObject();
+        }
+        j.boolean("overlay", overlayOn_);
+        j.str("affinity", affinity_);
+        j.integer("swapchain_rebuilds", renderer_.rebuildCount());
+        j.boolean("validation", g.validationEnabled());
+        j.integer("validation_messages", g.validationMessages());
+        j.integer("loader_messages", g.loaderMessages());
+        j.boolean("samples_overflowed", bench_.overflowed());
+        if (ps.valid) {
+            // Swappy's own display-side statistics (it owns VK_GOOGLE_display_timing in this mode).
+            // A frame is missed when the panel showed it one or more refresh periods after the time
+            // Swappy asked for. (Swappy floors the frame-to-frame offsets, so a 33.2 ms interval lands
+            // in bucket 1 of refresh_periods: that histogram cannot count misses.)
+            u64 late = 0;
+            for (u32 i = 1; i < 6; ++i) late += ps.lateFrames[i];
+            j.beginObject("display");
+            j.str("source", "swappy_stats");
+            j.integer("frames", static_cast<i64>(ps.totalFrames));
+            j.integer("missed", static_cast<i64>(late));
+            j.num("missed_pct",
+                  ps.totalFrames ? 100.0 * static_cast<double>(late) / static_cast<double>(ps.totalFrames) : 0.0, 2);
+            const auto hist = [&j](const char* key, const u64* v) {
+                j.beginArray(key);  // index = refresh periods (5 = 5 or more)
+                for (u32 i = 0; i < 6; ++i) j.integer(nullptr, static_cast<i64>(v[i]));
+                j.endArray();
+            };
+            hist("refresh_periods", ps.offsetFromPrevious);
+            hist("late_periods", ps.lateFrames);
+            hist("idle_periods", ps.idleFrames);
+            hist("latency_periods", ps.latencyFrames);
+            j.endObject();
+        }
+        probe_.write(j, full, static_cast<float>(targetMs), static_cast<float>(refreshMs));
+        j.endObject();
+    };
+
+    static char fullText[32768];
+    JsonWriter jf(fullText, sizeof fullText);
+    write(jf, true);
+    if (jf.overflowed()) RF_ERR("bench: full JSON buffer too small");
 #if defined(__ANDROID__)
+    static char summaryText[4000];  // logcat payload limit 4068 bytes, minus priority and tag
+    JsonWriter js(summaryText, sizeof summaryText);
+    write(js, false);
+    if (js.overflowed()) RF_ERR("bench: summary JSON longer than %u bytes", static_cast<unsigned>(sizeof summaryText));
+    RF_LOG("bench: result %u bytes (summary line %u bytes)", static_cast<unsigned>(jf.length()),
+           static_cast<unsigned>(js.length()));
+    logTagged("RFBENCH", "%s", js.text());
     char path[300];
     char name[64];
     std::snprintf(name, sizeof name, "%s.json", bench_.scenario());
     resolveOutputPath(name, path, sizeof path);
     if (FILE* f = std::fopen(path, "wb")) {
-        std::fprintf(f, "%s\n", j.text());
+        std::fprintf(f, "%s\n", jf.text());
         std::fclose(f);
     }
+#else
+    logTagged("RFBENCH", "%s", jf.text());  // stdout has no line limit
 #endif
 }
 

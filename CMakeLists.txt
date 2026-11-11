@@ -25,6 +25,15 @@ foreach(dep SDL/CMakeLists.txt volk/volk.c vulkan-headers/include/vulkan/vulkan.
   endif()
 endforeach()
 
+# User rule: builds use at most 4 parallel jobs. Ninja job pools hold even when the caller does not
+# pass -j (the Android Gradle plugin runs Ninja with its default of every core). Set before SDL so its
+# targets join the pool too; scripts/env.ps1 also confines the whole process tree to 4 cores.
+set(RF_MAX_JOBS 4 CACHE STRING "Parallel compile, link and custom-command jobs (Ninja job pool)")
+set_property(GLOBAL APPEND PROPERTY JOB_POOLS rf_jobs=${RF_MAX_JOBS})
+set(CMAKE_JOB_POOL_COMPILE rf_jobs)
+set(CMAKE_JOB_POOL_LINK rf_jobs)
+set(CMAKE_JOB_POOL_PRECOMPILE_HEADER rf_jobs)
+
 # ---- SDL3 (static on Windows, shared on Android) ---------------------------------------------
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 set(SDL_TESTS OFF CACHE BOOL "" FORCE)
@@ -63,29 +72,65 @@ if(NOT RF_GLSLC)
 endif()
 
 set(RF_GENERATED)
-foreach(shader capsule.vert capsule.frag)
-  set(out ${RF_GEN}/${shader}.inc)
+# name|source|extra glslc arguments (TECH_SPEC 2: SPIR-V 1.3 for Vulkan 1.1, embedded as C arrays)
+set(RF_SHADERS
+  "capsule.vert|capsule.vert|"
+  "capsule.frag|capsule.frag|"
+  "glyph.vert|glyph.vert|"
+  "particle.vert|particle.vert|"
+  "afterglow.frag|afterglow.frag|"
+  "distort.frag|distort.frag|"
+  "background.frag|background.frag|"
+  "bloom_final.frag|bloom_final.frag|"
+  "glow.vert|glow.vert|"
+  "glow.frag|glow.frag|"
+  "tri.vert|tri.vert|"
+  "tri.frag|tri.frag|"
+  "fullscreen.vert|fullscreen.vert|"
+  "bloom_down.frag|bloom_down.frag|"
+  "bloom_up.frag|bloom_up.frag|"
+  "composite.frag|composite.frag|")
+foreach(entry ${RF_SHADERS})
+  string(REPLACE "|" ";" parts "${entry}")
+  list(GET parts 0 name)
+  list(GET parts 1 source)
+  list(LENGTH parts nparts)
+  set(extra "")
+  if(nparts GREATER 2)
+    list(GET parts 2 extra)
+  endif()
+  set(out ${RF_GEN}/${name}.inc)
+  if(source MATCHES "vert$")
+    set(stage vert)
+  else()
+    set(stage frag)
+  endif()
   add_custom_command(OUTPUT ${out}
-    COMMAND ${RF_GLSLC} --target-env=vulkan1.1 -O -Werror -mfmt=c -o ${out} ${RF_ROOT}/shaders/${shader}
-    DEPENDS ${RF_ROOT}/shaders/${shader}
-    COMMENT "glslc ${shader}"
+    COMMAND ${RF_GLSLC} --target-env=vulkan1.1 -O -Werror -fshader-stage=${stage} ${extra} -mfmt=c -o ${out} ${RF_ROOT}/shaders/${source}
+    DEPENDS ${RF_ROOT}/shaders/${source}
+    COMMENT "glslc ${name}"
+    JOB_POOL rf_jobs
     VERBATIM)
   list(APPEND RF_GENERATED ${out})
 endforeach()
 
-# The stroke font is source data from design/; embed it verbatim and parse it at start-up.
-add_custom_command(OUTPUT ${RF_GEN}/vector_font.inc
-  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/vector_font.txt -DOUT=${RF_GEN}/vector_font.inc
-          -P ${RF_ROOT}/cmake/EmbedText.cmake
-  DEPENDS ${RF_ROOT}/design/vector_font.txt ${RF_ROOT}/cmake/EmbedText.cmake
-  COMMENT "embed vector_font.txt"
-  VERBATIM)
-list(APPEND RF_GENERATED ${RF_GEN}/vector_font.inc)
+# Design data is source data from design/: embedded verbatim and parsed at start-up (never retyped).
+foreach(data vector_font.txt look.json look_variants.json palettes.json glyphs.json)
+  add_custom_command(OUTPUT ${RF_GEN}/${data}.inc
+    COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/${data} -DOUT=${RF_GEN}/${data}.inc
+            -P ${RF_ROOT}/cmake/EmbedText.cmake
+    DEPENDS ${RF_ROOT}/design/${data} ${RF_ROOT}/cmake/EmbedText.cmake
+    COMMENT "embed ${data}"
+    JOB_POOL rf_jobs
+    VERBATIM)
+  list(APPEND RF_GENERATED ${RF_GEN}/${data}.inc)
+endforeach()
 
 # ---- raveform_core: everything except the entry point ----------------------------------------
 set(RF_CORE_SOURCES
   src/core/alloc_counter.cpp
   src/core/args.cpp
+  src/core/json_doc.cpp
   src/core/log.cpp
   src/core/png.cpp
   src/core/stats.cpp
@@ -96,10 +141,20 @@ set(RF_CORE_SOURCES
   src/gfx/swapchain.cpp
   src/gfx/vector_font.cpp
   src/audio/test_tone.cpp
+  src/content/glyphs.cpp
+  src/content/look.cpp
+  src/content/palette.cpp
+  src/game/glyph_sheet.cpp
+  src/game/lattice.cpp
   src/game/m0_scene.cpp
+  src/game/rfscene.cpp
+  src/game/stage.cpp
+  src/game/tiers.cpp
   src/tools/bench.cpp
   src/tools/dev_overlay.cpp
+  src/tools/frame_probe.cpp
   src/platform/app.cpp
+  src/platform/cpu_affinity.cpp
 )
 if(ANDROID)
   list(APPEND RF_CORE_SOURCES src/audio/audio_device_oboe.cpp src/platform/android/android_glue.cpp)

@@ -42,6 +42,37 @@ A Track can carry `mix` and `patch` overrides (Track 2 does): that is how each T
 character from the same voices. `patch.kick_hz` tunes the kick's body to the key. Both previews use the
 same staged arrangement, so they can be compared bar for bar.
 
+## Sound variants — `previews/sound_variants.mp3`
+
+Three characters of the same music for the M2 listening checkpoint, each a set of overrides on
+`patches.json` (`variants.json`). The file plays the same twelve bars of Track 1 in each — four bars of
+full Groove with the lead, a four-bar Build, four bars of Drop — at the same loudness:
+
+| Time | Variant | Character | Measured against Club |
+|---|---|---|---|
+| 0:00 | **Club** | The reference. Warm four-on-the-floor, round bass, a pluck that sits inside the mix | — |
+| 0:27 | **Arcade** | Crisp and bright: snappier kick, glassy lead, shorter bass notes, brighter hats, drier room | Lead a third brighter, whole mix 15% brighter, reverb tail 2 dB lower |
+| 0:55 | **Velvet** | Deep and soft: longer rounder kick, mellow lead with more body, wide pads, more echo | Lead a third darker, whole mix 16% darker, reverb tail 2.6 dB higher |
+
+All three sit at −14.0 LUFS with peaks below −6 dBFS, and each keeps the phone-speaker band within
+1 dB of the reference. Questions for the listener: which one would you want in your ears for twenty
+minutes? Is Arcade's lead exciting or piercing? Is Velvet's kick still a kick on a phone speaker? A mix
+of two is a fine answer ("Club with Arcade's kick").
+
+```
+python design/tools/musicvariants.py     # renders the comparison and prints the guard-rail numbers
+```
+
+The variant that is chosen is folded into `patches.json` and the others are dropped.
+
+## Who plays what — `conductor.json`
+
+The Track files hold one staged run written out bar by bar, for listening. In the game the same
+patterns are switched by rules: which bed layers play at which director intensity, what each section
+of the phrase cycle does to the bed, how the lead follows the fire button and the Mods, and which
+instrument each Riff brings. Those rules are `conductor.json`. It is the creative brief for the audio
+engine's mix state; the prototype renderer does not read it.
+
 ## Measured (v1)
 
 Integrated loudness −14.0 LUFS (the bed is kept there to leave headroom for effects), peak −5.2 dBFS,
@@ -59,8 +90,9 @@ loadouts; the arrangement here is one plausible run written out.
 
 ## Recipes for the engine port
 
-The reference parameters are the `PATCH`, `MIX`, `SEND`, `DUCK` and `SECTION_GAIN` tables at the top of
-`musicproto.py`. Move them into shared data when the engine's audio module is written.
+The reference parameters — mix levels, sends, sidechain depths, section gains and every patch — are
+data in `patches.json`. The prototype loads them from there and the engine should too, so the two can
+never drift apart. The recipes below say what the parameters drive.
 
 | Voice | Recipe |
 |---|---|

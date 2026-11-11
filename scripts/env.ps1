@@ -18,6 +18,74 @@ foreach ($p in @($RF_JDK, $RF_VKSDK, $RF_CMAKE, $RF_GIT, $RF_NDK, $RF_ADB)) {
     if (-not (Test-Path $p)) { throw "Missing tool: $p (see docs/PLAN.md section 3.1)" }
 }
 
+# --- CPU limit (user rule: anything this project runs on the PC uses at most 4 CPU cores) ----------
+# This PowerShell process is confined to one logical CPU on each of 4 different physical cores (read
+# from the processor topology, all in one L3 cache domain) and every process it starts inherits that
+# affinity: cmake, ninja, clang, glslc, Gradle and its daemon, python, the desktop app. Builds also
+# limit themselves to $RF_JOBS parallel jobs (cmake --parallel, Gradle --max-workers, Ninja job pools
+# in CMakeLists.txt). Per process only: no system setting and no other process is touched.
+$RF_JOBS = 4
+if (-not ('RfCpuTopology' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+public static class RfCpuTopology {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetLogicalProcessorInformation(IntPtr buffer, ref uint length);
+    // One mask per physical core (its logical processors) and one per L3 cache domain.
+    public static void Read(List<ulong> cores, List<ulong> l3) {
+        uint len = 0;
+        GetLogicalProcessorInformation(IntPtr.Zero, ref len);
+        if (len == 0) return;
+        IntPtr buf = Marshal.AllocHGlobal((int)len);
+        try {
+            if (!GetLogicalProcessorInformation(buf, ref len)) return;
+            int size = IntPtr.Size == 8 ? 32 : 24;          // SYSTEM_LOGICAL_PROCESSOR_INFORMATION
+            int unionOffset = IntPtr.Size == 8 ? 16 : 8;
+            for (int off = 0; off + size <= (int)len; off += size) {
+                ulong mask = (ulong)Marshal.ReadIntPtr(buf, off).ToInt64();
+                int relation = Marshal.ReadInt32(buf, off + IntPtr.Size);
+                if (relation == 0) cores.Add(mask);                                               // RelationProcessorCore
+                else if (relation == 2 && Marshal.ReadByte(buf, off + unionOffset) == 3) l3.Add(mask); // RelationCache, L3
+            }
+        } finally { Marshal.FreeHGlobal(buf); }
+    }
+}
+'@
+}
+
+# Affinity mask: the first logical CPU of the last $Cores physical cores of the last L3 domain that has
+# enough of them (core 0, where much of the system's work lands, stays free).
+function Get-RfCpuMask([int]$Cores = $RF_JOBS) {
+    $coreMasks = [System.Collections.Generic.List[uint64]]::new()
+    $l3Masks = [System.Collections.Generic.List[uint64]]::new()
+    [RfCpuTopology]::Read($coreMasks, $l3Masks)
+    if ($coreMasks.Count -eq 0) { return [uint64]0 }
+    $domains = if ($l3Masks.Count) { @($l3Masks) } else { @([uint64]::MaxValue) }
+    for ($d = $domains.Count - 1; $d -ge 0; --$d) {
+        $inDomain = @($coreMasks | Where-Object { ($_ -band $domains[$d]) -eq $_ })
+        if ($inDomain.Count -lt $Cores) { continue }
+        [uint64]$mask = 0
+        foreach ($core in ($inDomain | Select-Object -Last $Cores)) {
+            for ($bit = 0; $bit -lt 64; ++$bit) {
+                if (($core -shr $bit) -band 1) { $mask = $mask -bor ([uint64]1 -shl $bit); break }
+            }
+        }
+        return $mask
+    }
+    return [uint64]0
+}
+
+$RF_CPU_MASK = Get-RfCpuMask
+$rfSelf = [System.Diagnostics.Process]::GetCurrentProcess()
+[uint64]$rfCurrent = $rfSelf.ProcessorAffinity.ToInt64()
+$rfBits = 0; for ($b = 0; $b -lt 64; ++$b) { if (($rfCurrent -shr $b) -band 1) { ++$rfBits } }
+if ($RF_CPU_MASK -ne 0 -and $rfBits -gt $RF_JOBS) {
+    $rfSelf.ProcessorAffinity = [IntPtr]::new([int64]$RF_CPU_MASK)  # never widened if already narrower
+}
+$RF_CPU_MASK = [uint64]$rfSelf.ProcessorAffinity.ToInt64()
+
 $env:JAVA_HOME    = $RF_JDK
 $env:VULKAN_SDK   = $RF_VKSDK
 $env:ANDROID_HOME = $RF_SDK

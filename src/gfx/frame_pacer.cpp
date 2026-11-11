@@ -19,29 +19,55 @@ namespace rf {
 
 #if defined(__ANDROID__)
 namespace {
-// Vote for a panel refresh rate on the surface (TECH_SPEC 3.1). API 30/31 functions, looked up at run
-// time because minSdk is 29.
-void voteFrameRate(void* window, float hz) {
-    using WithStrategy = int32_t (*)(ANativeWindow*, float, int8_t, int8_t);
-    using Plain = int32_t (*)(ANativeWindow*, float, int8_t);
-    static auto withStrategy = reinterpret_cast<WithStrategy>(dlsym(RTLD_DEFAULT, "ANativeWindow_setFrameRateWithChangeStrategy"));
-    static auto plain = reinterpret_cast<Plain>(dlsym(RTLD_DEFAULT, "ANativeWindow_setFrameRate"));
-    auto* w = static_cast<ANativeWindow*>(window);
-    constexpr int8_t kCompatDefault = 0;  // ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_DEFAULT (games)
-    constexpr int8_t kChangeAlways = 1;   // ANATIVEWINDOW_CHANGE_FRAME_RATE_ALWAYS
-    int32_t r = -1;
-    const char* api = "none";
-    if (w && withStrategy) {
-        r = withStrategy(w, hz, kCompatDefault, kChangeAlways);
-        api = "setFrameRateWithChangeStrategy";
-    } else if (w && plain) {
-        r = plain(w, hz, kCompatDefault);
-        api = "setFrameRate";
-    }
-    RF_LOG("display: voted %.2f Hz via ANativeWindow_%s -> %d", hz, api, r);
+
+// Refresh-rate vote on the surface (TECH_SPEC 3.1). API 30/31 functions of libnativewindow.so, looked
+// up at run time because minSdk is 29. libmain.so does not link libnativewindow.so, so the library is
+// opened explicitly (dlsym(RTLD_DEFAULT) does not search it and found nothing on the test phones).
+using SetFrameRateWithStrategy = int32_t (*)(ANativeWindow*, float, int8_t, int8_t);
+using SetFrameRate = int32_t (*)(ANativeWindow*, float, int8_t);
+
+struct FrameRateApi {
+    SetFrameRateWithStrategy withStrategy = nullptr;
+    SetFrameRate plain = nullptr;
+};
+
+const FrameRateApi& frameRateApi() {
+    static const FrameRateApi api = [] {
+        FrameRateApi a;
+        if (void* lib = dlopen("libnativewindow.so", RTLD_NOW | RTLD_LOCAL)) {  // never closed
+            a.withStrategy = reinterpret_cast<SetFrameRateWithStrategy>(
+                dlsym(lib, "ANativeWindow_setFrameRateWithChangeStrategy"));
+            a.plain = reinterpret_cast<SetFrameRate>(dlsym(lib, "ANativeWindow_setFrameRate"));
+        }
+        return a;
+    }();
+    return api;
 }
+
 }  // namespace
 #endif
+
+void FramePacer::vote(void* nativeWindow, float hz) {
+    votedHz_ = hz;
+    voteResult_ = -1;
+    voteApi_ = "none";
+#if defined(__ANDROID__)
+    constexpr int8_t kCompatDefault = 0;  // ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_DEFAULT (games)
+    constexpr int8_t kChangeAlways = 1;   // ANATIVEWINDOW_CHANGE_FRAME_RATE_ALWAYS
+    const FrameRateApi& api = frameRateApi();
+    auto* w = static_cast<ANativeWindow*>(nativeWindow);
+    if (w && api.withStrategy) {
+        voteResult_ = api.withStrategy(w, hz, kCompatDefault, kChangeAlways);
+        voteApi_ = "setFrameRateWithChangeStrategy";
+    } else if (w && api.plain) {
+        voteResult_ = api.plain(w, hz, kCompatDefault);
+        voteApi_ = "setFrameRate";
+    }
+    RF_LOG("display: voted %.2f Hz via ANativeWindow_%s -> %d", hz, voteApi_, voteResult_);
+#else
+    (void)nativeWindow;
+#endif
+}
 
 void FramePacer::configure(bool useSwappy, float targetHz) {
 #if defined(__ANDROID__)
@@ -56,7 +82,17 @@ void FramePacer::configure(bool useSwappy, float targetHz) {
 u32 FramePacer::deviceExtensions(VkPhysicalDevice physical, VkExtensionProperties* available, u32 availableCount,
                                  const char** out, u32 maxOut) {
 #if defined(__ANDROID__)
-    if (!wantSwappy_) return 0;
+    if (!wantSwappy_) {
+        // Plain FIFO: display timing only measures (present IDs with "as soon as possible" times).
+        for (u32 i = 0; i < availableCount && maxOut > 0; ++i) {
+            if (std::strcmp(available[i].extensionName, VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME) == 0) {
+                out[0] = VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME;
+                displayTiming_ = true;
+                return 1;
+            }
+        }
+        return 0;
+    }
     u32 required = 0;
     SwappyVk_determineDeviceExtensions(physical, availableCount, available, &required, nullptr);
     if (required > countOf(extensionNames_) || required > maxOut) {
@@ -65,7 +101,10 @@ u32 FramePacer::deviceExtensions(VkPhysicalDevice physical, VkExtensionPropertie
     }
     char* names[4] = {extensionNames_[0], extensionNames_[1], extensionNames_[2], extensionNames_[3]};
     SwappyVk_determineDeviceExtensions(physical, availableCount, available, &required, names);
-    for (u32 i = 0; i < required; ++i) out[i] = extensionNames_[i];
+    for (u32 i = 0; i < required; ++i) {
+        out[i] = extensionNames_[i];
+        if (std::strcmp(extensionNames_[i], VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME) == 0) displayTiming_ = true;
+    }
     return required;
 #else
     (void)physical;
@@ -96,11 +135,13 @@ void FramePacer::onDeviceCreated(VkPhysicalDevice physical, VkDevice device, VkQ
 
 void FramePacer::onSwapchainCreated(VkSwapchainKHR swapchain, void* nativeWindow) {
     swappyActive_ = false;
+    statsActive_ = false;
     intervalNs_ = 0;
+    swapchain_ = swapchain;
 #if defined(__ANDROID__)
     if (!wantSwappy_) {
         // Plain FIFO: only an explicit --fps is voted for (the supported list comes from Swappy).
-        if (targetHz_ > 0.0f) voteFrameRate(nativeWindow, targetHz_);
+        if (targetHz_ > 0.0f) vote(nativeWindow, targetHz_);
         return;
     }
     JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
@@ -133,9 +174,10 @@ void FramePacer::onSwapchainCreated(VkSwapchainKHR swapchain, void* nativeWindow
         }
     }
     if (best == 0) best = wanted ? wanted : refreshNs;
+    requestedNs_ = best;
     intervalNs_ = best;
     SwappyVk_setSwapIntervalNS(device_, swapchain, intervalNs_);
-    voteFrameRate(nativeWindow, static_cast<float>(1e9 / static_cast<double>(intervalNs_)));
+    vote(nativeWindow, static_cast<float>(1e9 / static_cast<double>(intervalNs_)));
     char list[128] = {};
     size_t used = 0;
     for (u32 i = 0; i < supportedCount_ && used + 16 < sizeof list; ++i)
@@ -143,8 +185,9 @@ void FramePacer::onSwapchainCreated(VkSwapchainKHR swapchain, void* nativeWindow
                                                   1e9 / static_cast<double>(supportedPeriods_[i])));
     RF_LOG("swappy: refresh %.3f ms, supported Hz [%s], swap interval %.3f ms", refreshNs * 1e-6, list,
            intervalNs_ * 1e-6);
+    if (displayHz_ > 1.0f) setDisplayRefreshHz(displayHz_);  // the panel may already be known to run slower
+    if (wantStats_) enableStats(true);
 #else
-    (void)swapchain;
     (void)nativeWindow;
 #endif
 }
@@ -156,6 +199,8 @@ void FramePacer::onSwapchainDestroying(VkSwapchainKHR swapchain) {
     (void)swapchain;
 #endif
     swappyActive_ = false;
+    statsActive_ = false;
+    swapchain_ = VK_NULL_HANDLE;
 }
 
 void FramePacer::onDeviceDestroying(VkDevice device) {
@@ -167,31 +212,130 @@ void FramePacer::onDeviceDestroying(VkDevice device) {
     device_ = VK_NULL_HANDLE;
 }
 
+void FramePacer::onFrameStart(VkQueue queue, u32 imageIndex) {
+#if defined(__ANDROID__)
+    if (statsActive_) {
+        const u64 before = heapAllocCountThisThread();
+        SwappyVk_recordFrameStart(queue, swapchain_, imageIndex);
+        pacerAllocs_ += heapAllocCountThisThread() - before;
+    }
+#else
+    (void)queue;
+    (void)imageIndex;
+#endif
+}
+
 VkResult FramePacer::present(VkQueue queue, const VkPresentInfoKHR& info) {
     // Allocations inside the present call belong to the pacing library, not to our frame code.
-    const u64 allocsBefore = heapAllocCount();
+    const u64 allocsBefore = heapAllocCountThisThread();
     VkResult r;
 #if defined(__ANDROID__)
     if (swappyActive_) {
         r = SwappyVk_queuePresent(queue, &info);
+    } else if (displayTimingActive()) {
+        VkPresentTimeGOOGLE time{++nextPresentId_, 0};  // desired time 0: as soon as possible
+        VkPresentTimesInfoGOOGLE times{};
+        times.sType = VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE;
+        times.pNext = info.pNext;
+        times.swapchainCount = 1;
+        times.pTimes = &time;
+        VkPresentInfoKHR withTimes = info;
+        withTimes.pNext = &times;
+        r = vkQueuePresentKHR(queue, &withTimes);
     } else {
         r = vkQueuePresentKHR(queue, &info);
     }
 #else
     r = vkQueuePresentKHR(queue, &info);
 #endif
-    presentAllocs_ += heapAllocCount() - allocsBefore;
+    pacerAllocs_ += heapAllocCountThisThread() - allocsBefore;
     return r;
 }
 
+u32 FramePacer::pollDisplayTimings(DisplayTiming* out, u32 max) {
+    u32 n = 0;
+#if defined(__ANDROID__)
+    if (!displayTimingActive() || !vkGetPastPresentationTimingGOOGLE) return 0;
+    VkPastPresentationTimingGOOGLE buf[16];
+    while (n < max) {
+        u32 count = max - n < countOf(buf) ? max - n : countOf(buf);
+        const VkResult r = vkGetPastPresentationTimingGOOGLE(device_, swapchain_, &count, buf);
+        if (r != VK_SUCCESS && r != VK_INCOMPLETE) break;
+        for (u32 i = 0; i < count; ++i) {
+            DisplayTiming& t = out[n++];
+            t.presentId = buf[i].presentID;
+            t.actualNs = buf[i].actualPresentTime;
+            t.earliestNs = buf[i].earliestPresentTime;
+            t.marginNs = buf[i].presentMargin;
+        }
+        if (r != VK_INCOMPLETE || count == 0) break;
+    }
+#else
+    (void)out;
+    (void)max;
+#endif
+    return n;
+}
+
+void FramePacer::enableStats(bool enabled) {
+    wantStats_ = enabled;
+#if defined(__ANDROID__)
+    if (swappyActive_ && swapchain_ && displayTiming_) {
+        SwappyVk_enableStats(swapchain_, enabled);
+        statsActive_ = enabled;
+    }
+#endif
+}
+
+void FramePacer::clearStats() {
+#if defined(__ANDROID__)
+    if (statsActive_) SwappyVk_clearStats(swapchain_);
+#endif
+}
+
+PacerStats FramePacer::stats() const {
+    PacerStats s;
+#if defined(__ANDROID__)
+    if (!statsActive_) return s;
+    SwappyStats raw{};
+    SwappyVk_getStats(swapchain_, &raw);
+    s.valid = true;
+    s.totalFrames = raw.totalFrames;
+    for (u32 i = 0; i < 6 && i < MAX_FRAME_BUCKETS; ++i) {
+        s.offsetFromPrevious[i] = raw.offsetFromPreviousFrame[i];
+        s.lateFrames[i] = raw.lateFrames[i];
+        s.idleFrames[i] = raw.idleFrames[i];
+        s.latencyFrames[i] = raw.latencyFrames[i];
+    }
+#endif
+    return s;
+}
+
+void FramePacer::setDisplayRefreshHz(float hz) {
+    displayHz_ = hz;
+#if defined(__ANDROID__)
+    if (!swappyActive_ || !swapchain_ || !requestedNs_ || hz <= 1.0f) return;
+    const u64 panelNs = static_cast<u64>(1e9 / static_cast<double>(hz));
+    // A different panel mode, not rounding (60.00 vs 59.94 Hz): only then change the interval.
+    const u64 wanted = panelNs > requestedNs_ + requestedNs_ / 5 ? panelNs : requestedNs_;
+    if (wanted == intervalNs_) return;
+    intervalNs_ = wanted;
+    SwappyVk_setSwapIntervalNS(device_, swapchain_, intervalNs_);
+    RF_LOG("swappy: panel at %.2f Hz, swap interval now %.3f ms (asked for %.3f ms)", hz, intervalNs_ * 1e-6,
+           requestedNs_ * 1e-6);
+#endif
+}
+
 u64 FramePacer::refreshPeriodNs() const {
+    if (displayHz_ > 1.0f) return static_cast<u64>(1e9 / displayHz_);
     if (swappyActive_ && swappyRefreshNs_) return swappyRefreshNs_;
-    return displayHz_ > 1.0f ? static_cast<u64>(1e9 / displayHz_) : 16666667ull;
+    return 16666667ull;
 }
 
 u64 FramePacer::targetIntervalNs() const {
-    if (swappyActive_ && intervalNs_) return intervalNs_;
-    return refreshPeriodNs();
+    const u64 refresh = refreshPeriodNs();
+    if (swappyActive_ && intervalNs_ > refresh) return intervalNs_;
+    return refresh;
 }
 
 }  // namespace rf

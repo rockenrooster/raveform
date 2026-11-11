@@ -24,6 +24,11 @@ $appPid = Start-RfApp -Serial $Serial
 if (-not $appPid) { throw "RAVEFORM did not start on $Serial" }
 Start-Sleep -Seconds 3
 
+# Evidence from our own process only (logcat is shared: read, never clear). Busy phones rotate their log
+# buffer within seconds (the 12R keeps 256 KB), so our lines are collected after every cycle.
+$seen = [System.Collections.Generic.HashSet[string]]::new()
+function Read-OurLog { foreach ($l in @(& $RF_ADB -s $Serial logcat -d --pid=$appPid)) { [void]$seen.Add($l) } }
+
 $done = 0
 $failure = $null
 for ($i = 1; $i -le $Cycles; ++$i) {
@@ -37,12 +42,12 @@ for ($i = 1; $i -le $Cycles; ++$i) {
     Start-Sleep -Milliseconds ([int]($ForegroundSeconds * 1000))
     $pidNow = Get-RfPid $Serial
     if ($pidNow -ne $appPid) { $failure = "cycle ${i}: process changed from '$appPid' to '$pidNow' (crash or restart)"; break }
+    Read-OurLog
     $done = $i
 }
 Start-Sleep -Seconds 2
-
-# Evidence from our own process only (logcat is shared: read, never clear).
-$log = & $RF_ADB -s $Serial logcat -d --pid=$appPid
+Read-OurLog
+$log = @($seen)
 $backgrounds = @($log -match 'RFLIFE.*background \d+').Count
 $resumes = @($log -match 'RFLIFE.*resumed \d+: presenting').Count
 $released = @($log -match 'render thread released the surface').Count

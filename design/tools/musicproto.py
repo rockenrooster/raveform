@@ -21,32 +21,22 @@ import numpy as np
 SR = 48000
 PI = math.pi
 
-# Mix levels and patch parameters: the creative knobs. Mirror any change in design/music/README.md.
-MIX = dict(kick=0.62, clap=0.95, snare=0.40, hat=0.11, ohat=0.13, shaker=0.07, bass=0.68, lead=0.38,
-           pad=0.50, stab=0.75, pulse=0.36, riser=0.26, impact=0.70, swell=0.22)
-# Bed level per section, applied before the master soft clip. The dip at the end of the Build is what
-# makes the Drop land.
-SECTION_GAIN = dict(groove=0.84, build=(0.84, 0.66), drop=1.0)
-SECTION_GAIN["break"] = 0.92
-TARGET_LUFS = -14.0   # integrated loudness of the music bed; leaves headroom for effects in game
-SEND = dict(lead=0.22, stab=0.30, clap=0.22, snare=0.25, pad=0.30, pulse=0.20)   # reverb sends
-DUCK = dict(bass=0.80, pad=0.55, stab=0.30, lead=0.22, pulse=0.0)                # sidechain depth
-PATCH = dict(
-    lead=dict(detune_cents=7.0, sub=0.18, fc_start=4200.0, fc_end=750.0, fc_tau=0.070, q=2.2,
-              attack=0.002, decay=0.16, length=0.36, keytrack=0.5),
-    # Low resonance on purpose: with q above ~1 the closed filter rings at fc_end for the whole note.
-    bass=dict(square_mix=0.5, sub=0.35, fc_start=2400.0, fc_end=360.0, fc_tau=0.090, q=0.8,
-              attack=0.003, decay=0.22, release=0.03, drive=1.5),
-    stab=dict(detune_cents=9.0, fc_start=3600.0, fc_end=900.0, fc_tau=0.055, q=1.5,
-              attack=0.002, decay=0.11, length=0.26),
-    pad=dict(detune_cents=6.0, fc_base=950.0, fc_lfo=650.0, lfo_hz=0.125, q=0.9,
-             attack=0.35, release=0.7, highpass=220.0),
-    delay=dict(steps=3.0, feedback=0.36, mix=0.22, repeats=7),     # dotted eighth, ping-pong
-    reverb=dict(rt60=1.4, predelay=0.015, highpass=320.0, lowpass=7000.0, mix=1.0),
-    sidechain_tau=0.11,
-    master_drive=1.25,
-    kick_hz=55.0,          # A1 for Track 1; each Track tunes the kick to its key
-)
+# Mix levels and patch parameters, the creative knobs, live in design/music/patches.json so that the
+# engine loads the same numbers. Notes on a few of them:
+#   section_gain  bed level per section, applied before the master soft clip. The dip at the end of the
+#                 Build is what makes the Drop land.
+#   target_lufs   integrated loudness of the music bed; leaves headroom for effects in game.
+#   send / duck   reverb sends and sidechain depths per bus.
+#   bass q        low on purpose: above ~1 the closed filter rings at fc_end for the whole note.
+#   delay         dotted eighth, ping-pong.   kick_hz: A1 for Track 1; each Track tunes the kick to its key.
+SOUND_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "music", "patches.json")
+_SOUND = json.load(open(SOUND_FILE, encoding="utf-8"))
+MIX = dict(_SOUND["mix"])
+SECTION_GAIN = {k: (tuple(v) if isinstance(v, list) else v) for k, v in _SOUND["section_gain"].items()}
+TARGET_LUFS = _SOUND["target_lufs"]
+SEND = dict(_SOUND["send"])
+DUCK = dict(_SOUND["duck"])
+PATCH = copy.deepcopy(_SOUND["patch"])
 
 
 def midi_hz(m):
@@ -153,13 +143,14 @@ def svf_lowpass(X, cutoff, q):
 
 def make_kick(base_hz=55.0):
     """base_hz is where the body settles: tune it to the Track's key (root or fifth)."""
+    k = PATCH["kick"]
     n = int(0.42 * SR)
     t = np.arange(n) / SR
     # The sweep starts high so the knock survives on phone speakers, which reproduce little below 250 Hz.
-    f = base_hz + 240.0 * np.exp(-t / 0.018) + 30.0 * np.exp(-t / 0.10)
-    body = np.sin(2 * PI * np.cumsum(f) / SR) * np.exp(-t / 0.115) * np.minimum(1.0, t / 0.0015)
-    click = fft_filter(white(n, 1), bp(1800.0, 6000.0)) * np.exp(-t / 0.005) * 0.7
-    return fade_out(norm(np.tanh(1.8 * (body + click))))
+    f = base_hz + k["sweep_hz"] * np.exp(-t / k["sweep_tau"]) + k["settle_hz"] * np.exp(-t / k["settle_tau"])
+    body = np.sin(2 * PI * np.cumsum(f) / SR) * np.exp(-t / k["decay"]) * np.minimum(1.0, t / k["attack"])
+    click = fft_filter(white(n, 1), bp(1800.0, 6000.0)) * np.exp(-t / k["click_decay"]) * k["click"]
+    return fade_out(norm(np.tanh(k["drive"] * (body + click))))
 
 
 def make_clap():
@@ -381,23 +372,26 @@ def reverb(x, p):
 
 # --------------------------------------------------------------------------- arrangement
 
-def render(track):
-    """Render a Track. A Track may carry "mix" and "patch" overrides, which is how each Track gets its
-    own character from the same voices."""
-    saved_mix, saved_patch = dict(MIX), copy.deepcopy(PATCH)
-    MIX.update(track.get("mix", {}))
-    for name, value in track.get("patch", {}).items():
-        if isinstance(value, dict):
-            PATCH[name].update(value)
-        else:
-            PATCH[name] = value
+def render(track, variant=None):
+    """Render a Track. A sound variant (design/music/variants.json) and then the Track itself may carry
+    "mix", "send", "duck" and "patch" overrides, which is how each look of the sound and each Track gets
+    its own character from the same voices."""
+    saved = dict(MIX), dict(SEND), dict(DUCK), copy.deepcopy(PATCH)
+    for source in (variant or {}, track):
+        MIX.update(source.get("mix", {}))
+        SEND.update(source.get("send", {}))
+        DUCK.update(source.get("duck", {}))
+        for name, value in source.get("patch", {}).items():
+            if isinstance(value, dict):
+                PATCH[name].update(value)
+            else:
+                PATCH[name] = value
     try:
         return _render(track)
     finally:
-        MIX.clear()
-        MIX.update(saved_mix)
-        PATCH.clear()
-        PATCH.update(saved_patch)
+        for table, old in zip((MIX, SEND, DUCK, PATCH), saved):
+            table.clear()
+            table.update(old)
 
 
 def _render(track):
@@ -413,7 +407,8 @@ def _render(track):
     chords = track["chords"]
 
     kick, clap, snare = make_kick(PATCH["kick_hz"]), make_clap(), make_snare()
-    hat, ohat, shaker, pulse = make_hat(0.030, 21), make_hat(0.17, 22), make_shaker(), make_pulse()
+    hat, ohat = make_hat(PATCH["hat"]["closed_decay"], 21), make_hat(PATCH["hat"]["open_decay"], 22)
+    shaker, pulse = make_shaker(), make_pulse()
     impact = make_impact()
 
     kick_times = []

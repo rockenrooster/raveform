@@ -1,0 +1,222 @@
+{
+ "note": "The numbers of design/look.md (v2) as data, so the engine loads them instead of someone retyping them. If this file and look.md disagree, this file is what the engine reads and the lead corrects the document. Units: refPx = reference pixels (1 = screen height / 1080); wu = world units (1.5 refPx at zoom 1). Intensities are HDR multipliers on linear colour. Line entries are [intensity, width in refPx]. Colours come from design/palettes.json. Composite controls that the look variants override (bloom, exposure, tone map, lineWidth, poolLevel, bgLevel, afterglow) hold the Signal values here; design/look_variants.json holds all three looks.",
+
+ "bloom": {
+  "sigmasRefPx": [1.5, 3.0, 6.0, 12.0, 24.0, 48.0],
+  "weights": [0.26, 0.22, 0.18, 0.14, 0.11, 0.09],
+  "strength": 0.95,
+  "threshold": 0.0
+ },
+
+ "toneMap": {
+  "whitePoint": 6.0,
+  "bleedStart": 1.0,
+  "bleedEnd": 8.0,
+  "bleedAmount": 0.7
+ },
+
+ "exposure": 1.0,
+
+ "joints": {
+  "flatBelowTurnDegrees": 20.0,
+  "maxWidthRatio": 1.25
+ },
+
+ "softLight": {
+  "radiusOverSigma": 2.45,
+  "cutoffRadii": 1.25,
+  "poolMinRadiusRefPx": 16.0,
+  "maxKillPools": 24,
+  "bulletAndShardSparklesFromTier": "high"
+ },
+
+ "crowd": {
+  "note": "The light budget (look.md §3). The horde's light is turned down as the horde grows, so a screen of 700 enemies and 1,500 bullets is still lines on darkness. Player, elites, bosses, the priority layer, the HUD, the lattice at rest and the background never dim.",
+  "load": "enemies in view + enemy bullets in view / 4",
+  "restLoad": 150,
+  "exponent": 0.4,
+  "minGain": 0.4,
+  "followSeconds": 0.5,
+  "swarmExponent": 1.5,
+  "gain": [
+   "enemy hulls, ornaments, core marks, variant marks, streaks and flares (not elites, not bosses)",
+   "sparks, embers, shock rings, shatter debris",
+   "kill flashes, kill pools, gravity-well pools and rings",
+   "warp-in rings",
+   "lattice heat above the rest level, and the size of lattice impulses"
+  ],
+  "swarmGain": [
+   "enemy bullets, lethal beams and trails, telegraphs: their scene light (lines and sparkles)",
+   "Shards: line and sparkle"
+  ],
+  "never": ["player ship, shots, Riffs, trail, pool", "elites and bosses with their auras", "priority layer", "HUD",
+            "lattice at rest", "background", "Boosts and other pickups that are not Shards"]
+ },
+
+ "lines": {
+  "gridRest": [0.30, 1.1],
+  "gridWarm": [0.42, 1.15],
+  "gridHot": [0.85, 1.3],
+  "gridHotPeak": [1.2, 1.3],
+  "enemyHullTier1": [1.8, 1.8],
+  "variantMark": [1.8, 1.5],
+  "eliteWhiteCopy": [1.0, 0.9],
+  "playerHull": [2.8, 2.3],
+  "playerWhiteCopy": [2.0, 0.8],
+  "playerHalo": [1.5, 1.6],
+  "playerTrail": [2.4, 2.6],
+  "playerShot": [4.6, 2.2],
+  "pulseRing": [2.2, 2.6],
+  "pulseRingEcho": [0.7, 1.4],
+  "orbital": [3.4, 1.7],
+  "orbitalArc": [2.0, 2.0],
+  "sentinel": [2.8, 1.7],
+  "sentinelShot": [3.8, 1.9],
+  "enemyBullet": [2.4, 2.2],
+  "telegraph": [1.3, 1.8],
+  "shard": [3.2, 1.3],
+  "shockRing": [1.3, 1.6],
+  "warpRing": [1.3, 1.6],
+  "shatter": [2.8, 1.7],
+  "wellRing": [1.3, 1.5],
+  "blinkFlare": [0.9, 1.1],
+  "eliteFlare": [0.9, 1.2],
+  "worldText": [1.2, 1.2]
+ },
+
+ "enemy": {
+  "hullIntensityPerTier": 0.2,
+  "ornamentIntensityOfHull": 0.8,
+  "ornamentWidth": 1.5,
+  "coreIntensityOfHull": 1.1,
+  "coreWidth": 1.5,
+  "eliteIntensityAdd": 0.6,
+  "eliteWidth": 2.3,
+  "eliteGlass": 0.07,
+  "eliteAura": 0.22,
+  "auraByTier": [0.0, 0.0, 0.0, 0.0, 0.0],
+  "auraNote": "Only elites and bosses carry an aura. Tier is told by the ornaments: late in a run every enemy is a high tier, and seven hundred auras are fog.",
+  "auraRadiusOfExtent": 2.3,
+  "kickSwell": 0.065,
+  "hullTurnsPerBar": 0.25,
+  "ornamentTurnsPerBar": -0.5
+ },
+
+ "grid": {
+  "warmFromWu": 5.0,
+  "hotFromWu": 13.0,
+  "warmTowardHot": 0.4,
+  "tintRadiusWu": 870.0,
+  "tintNearPlayerMix": 0.45,
+  "tintFarThirdHueMix": 0.3
+ },
+
+ "fields": {
+  "note": "Stops run in the order given. 'white:0.4' means mixed 40% toward white.",
+  "enemyHullHeading": {"over": "extent, nose to tail", "stops": ["hue white:0.4", "hue", "partner"]},
+  "enemyHullSpin": {"over": "extent, centre to rim", "stops": ["partner", "hue", "hue white:0.25"]},
+  "enemyOrnament": {"flat": "accent 0.6 + partner 0.4"},
+  "enemyCore": {"flat": "white"},
+  "playerHull": {"over": "1.3 radii, centre to rim", "stops": ["white", "player", "deep"]},
+  "playerRing": {"over": "angle, repeating", "stops": ["player", "white", "player", "light"]},
+  "playerTrail": {"over": "length, 100 wu, fading to nothing", "stops": ["white", "player", "deep"]},
+  "playerShot": {"over": "tail to head", "stops": ["player", "white"]},
+  "spark": {"over": "tail to head", "stops": ["own x0.5", "own white:0.4"], "own": "random mix of hue and partner, up to white:0.4"},
+  "shockRing": {"over": "angle", "stops": ["white", "hue", "white", "partner"]},
+  "flareArm": {"over": "centre to tip", "stops": ["colour", "nothing"], "fadeExponent": 1.6},
+  "threatBullet": {"flat": "danger + white 0.25", "widthRefPx": 2.1, "rimRefPx": 1.5},
+  "threatTelegraph": {"flat": "danger x0.9", "widthRefPx": 1.6, "rimRefPx": 1.0},
+  "priorityShipHull": {"flat": "light 0.55 + white 0.45", "widthRefPx": 2.3, "rimRefPx": 2.0},
+  "priorityShipHalo": {"flat": "player 0.75 + white 0.25", "widthRefPx": 1.6, "rimRefPx": 1.2}
+ },
+
+ "softLights": [
+  {"id": "starDust", "kind": "sparkle", "radiusRefPx": [1.6, 3.0], "colour": "white or palette hue", "intensity": [0.15, 0.7]},
+  {"id": "ember", "kind": "sparkle", "radiusRefPx": 4.0, "colour": "partner", "intensity": 1.2},
+  {"id": "shard", "kind": "sparkle", "radiusRefPx": 9.0, "colour": "pickup", "intensity": 0.5},
+  {"id": "shotHead", "kind": "sparkle", "radiusRefPx": 9.0, "colour": "white", "intensity": 0.7},
+  {"id": "enemyBullet", "kind": "sparkle", "radiusRefPx": 13.0, "colour": "danger", "intensity": 0.35},
+  {"id": "orbital", "kind": "sparkle", "radiusRefPx": 14.0, "colour": "player", "intensity": 0.7},
+  {"id": "wellSeed", "kind": "sparkle", "radiusRefPx": 12.0, "colour": "white", "intensity": 1.6},
+  {"id": "killFlashSmall", "kind": "sparkle", "radiusRefPx": 14.0, "colour": "white", "intensity": [1.4, 0.0], "lifeS": 0.09, "fade": "linear"},
+  {"id": "killFlash", "kind": "pool", "radiusWu": 33.0, "largeKillRadiusScale": 1.5, "colour": "white", "intensity": [0.55, 0.0], "lifeS": 0.15, "fade": "squared"},
+  {"id": "killPoolMedium", "kind": "pool", "radiusWu": [100.0, 180.0], "colour": "hue", "intensity": [0.26, 0.04]},
+  {"id": "killPoolLarge", "kind": "pool", "radiusWu": [150.0, 250.0], "colour": "hue", "intensity": [0.32, 0.05]},
+  {"id": "playerPool", "kind": "pool", "radiusWu": 100.0, "colour": "player", "intensity": 0.13},
+  {"id": "wellPool", "kind": "pool", "radiusWu": 100.0, "colour": "hue", "intensity": 0.16},
+  {"id": "edgeIndicator", "kind": "pool", "radiusRefPx": 22.0, "colour": "own", "intensity": 0.3}
+ ],
+
+ "explosions": {
+  "sparkDragPerSecond": 3.2,
+  "streakSeconds": 0.035,
+  "streakMaxWu": 26.0,
+  "small": {"sparks": [14, 20], "speedWu": [180, 520], "lifeS": [0.35, 0.7], "rings": 0, "flash": "killFlashSmall", "embers": 0, "gridImpulse": 60, "shakeRefPx": 0, "pool": "none"},
+  "medium": {"sparks": [36, 48], "speedWu": [200, 640], "lifeS": [0.4, 0.9], "rings": 2, "ringToWu": 100, "ringS": 0.2, "ringGapS": 0.06, "flash": "killFlash", "embers": 10, "emberLifeS": 1.2, "gridImpulse": 140, "shakeRefPx": 1.5, "pool": "killPoolMedium"},
+  "large": {"sparks": [90, 120], "speedWu": [150, 900], "lifeS": [0.4, 1.2], "rings": 3, "ringToWu": 150, "ringS": 0.2, "ringGapS": 0.06, "flash": "killFlash", "embers": 10, "emberLifeS": 1.2, "shatterS": 0.5, "gridImpulse": 300, "shakeRefPx": 3.0, "pool": "killPoolLarge", "distortion": "largeKill"},
+  "bossBreak": {"sparks": 300, "speedWuMax": 1200, "lifeSMax": 1.6, "shakeRefPx": 6.0, "hitStopMs": 50, "distortion": "bossBreak"},
+  "shotImpact": {"sparks": [3, 4], "lifeS": 0.15},
+  "warpIn": {"fromGlyphExtents": 2.5, "eliteAndBossFromWu": 90, "beats": 2},
+  "maxShockRings": 6
+ },
+
+ "background": {
+  "maxLuminance": 0.12,
+  "gradient": {"level": 0.5, "centre": [0.46, 0.52], "radiusScreenHeights": 0.8, "power": 1.5},
+  "nebula": {"onScreen": 6, "radiusWu": [350, 500], "intensity": [0.016, 0.030], "parallax": 0.25, "sigmaOverRadius": 0.4545, "bassSwell": 0.25},
+  "starDust": {"onScreen": 420, "parallax": 0.5, "whiteShare": 0.5, "hatTwinkle": 0.3, "snareFlare": 0.6, "snareFlareMs": 80}
+ },
+
+ "beat": {
+  "kickDecayMs": 110,
+  "snareDecayMs": 60,
+  "hatDecayMs": 60,
+  "exposureKick": 0.08,
+  "bloomKick": 0.10,
+  "dropBurst": {"bloom": 0.6, "decayMs": 400},
+  "novaPump": {"bloom": 0.6, "ms": 120, "reducedFlashing": 0.2},
+  "zoomKick": 0.005,
+  "aberrationSnareRefPx": 1.5,
+  "latticeKickRippleRefPx": 7.0,
+  "latticeKickRippleSpeedWu": 550.0,
+  "latticeHatShimmer": 0.06,
+  "backgroundBass": 0.25,
+  "backgroundHueDriftDegrees": 8.0,
+  "reduceFlashingScale": 0.5
+ },
+
+ "vignette": {"amount": 0.18, "inner": 0.55, "outer": 1.15, "buildAmount": 0.40},
+
+ "afterglow": {
+  "note": "A soft tail on hot light only. The source is the bloom level of sigma 6 refPx (one eighth resolution), less the knee on its brightest channel: source x max(m - knee, 0) / m. history = max(source, history x e^(-dt/tau)), re-aimed by the camera; the picture gains strength x max(history x e^(-dt/tau) - source, 0). Line-sharp history is never used: it prints ghost outlines.",
+  "tauMs": 110, "strength": 0.7, "sourceSigmaRefPx": 6.0, "knee": 0.25
+ },
+
+ "distortion": {
+  "largeKill": {"refPx": 10.0, "ringWidthRefPx": 28.0, "lifeS": 0.35},
+  "nova": {"refPx": 22.0, "ringWidthRefPx": 60.0, "toWu": 1400, "lifeS": 0.35},
+  "bossBreak": {"refPx": 30.0, "ringWidthRefPx": 90.0},
+  "well": {"refPx": 14.0, "peakAtWu": 60.0, "goneByWu": 200.0}
+ },
+
+ "aberration": {"ofDistortion": 0.35, "cornerRefPx": 0.6},
+
+ "shake": {"maxRefPx": 6.0},
+
+ "camera": {"zoomMin": 0.85, "zoomMax": 1.25, "viewAreaWu2": 1152000},
+
+ "cutOrder": [
+  "glass",
+  "sparkles on enemy bullets and Shards",
+  "nebula and star-dust twinkle",
+  "chromatic aberration",
+  "distortion",
+  "afterglow off",
+  "kill pools 24 -> 12",
+  "bloom scales from the coarse end, 6 -> 5 -> 4, weights renormalised",
+  "spark density",
+  "lattice spacing, then flat grid colour",
+  "ornament layers on small and distant glyphs"
+ ],
+ "neverCut": ["priority layer (threats and ships)", "crowd gain", "player two-tone hull and halo", "hot cores", "hull gradients", "dither"]
+}

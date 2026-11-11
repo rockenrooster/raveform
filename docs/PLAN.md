@@ -43,7 +43,7 @@ executor (Claude Opus 5.5). Nothing is built yet — only the three documents in
 RAVEFORM is a neon vector twin-stick shooter for Android in which **sound becomes light**. One Endless
 mode, solo or LAN co-op for 2–4 players. The music is generated live by the game and by each player's
 loadout; every shot, spawn, explosion and screen pulse lands on the beat. Runs start sparse and readable
-and escalate into a screen-filling light storm with thousands of enemies — at 60+ FPS P99 at the
+and escalate into a screen-filling light storm with thousands of enemies — at 60+ FPS P95 at the
 device's native resolution.
 
 Pillars, in priority order:
@@ -63,7 +63,7 @@ Pillars, in priority order:
 |---|---|---|
 | Engine | Custom C++20 engine: Vulkan 1.1 core renderer, SDL3 platform layer, Oboe audio on Android, ENet networking | Best frame pacing and audio control, small APK, fully code-driven so the executor can build, run, profile and screenshot it |
 | Targets | Android arm64 (minSdk 29) plus a Windows dev build that is also a full LAN peer | Fast desktop iteration; PC can host or join for multiplayer tests |
-| Performance | 60+ FPS P99 at native resolution on the floor device (Motorola One 5G Ace); stronger devices get more effects and higher refresh. Effects scale, resolution never does | User requirement |
+| Performance | 60+ FPS P95 at native resolution on the floor device (Motorola One 5G Ace); stronger devices get more effects and higher refresh. Effects scale, resolution never does | User requirement (P95 since 2026-11-10; originally P99) |
 | Music | Generative and build-driven: in-engine sequencer, synth and sampler; weapons and upgrades add layers | User choice; matches the Pulsebound-style feel they asked for |
 | Permanence | Run-only. Upgrades last until the run ends. No cross-run power and no unlock gating. Only settings, high scores and stats persist | User choice |
 | Name | RAVEFORM | User choice. A quick web search found no game or app with this name (not a trademark clearance) |
@@ -193,24 +193,29 @@ Raveform/
 
 ## 5. Performance contract
 
-**Definition.** "60+ FPS P99" means: over a 120-second `bench_endgame` run started after a 10-minute
-warm soak, the 99th percentile present-to-present interval is ≤ 16.9 ms, at most 1% of frames miss
-vsync, and no frame exceeds 50 ms. Resolution is always the panel's native resolution: the scene target,
+**Definition.** "60+ FPS P95" means: over a 120-second `bench_endgame` run started after a 10-minute
+warm soak, the 95th percentile present-to-present interval is ≤ 16.9 ms, at most 5% of frames miss
+vsync, and no frame exceeds 50 ms. (The user changed the percentile from the 99th to the 95th on
+2026-11-10 and confirmed that the missed-vsync allowance moves from 1% to 5% with it.) The interval is
+measured at the panel: when each frame actually reached the display, counted in whole refresh periods
+because the panel only changes at a vsync. The time at which the present call returns jitters by more
+than the margin even when no frame is late, so it is reported but not graded (confirmed by the user on
+2026-11-10). P99 and the maximum are still measured and reported. Resolution is always the panel's native resolution: the scene target,
 composite and UI are rendered at native size. Soft, low-frequency effects (bloom, afterglow, distortion,
 background) may use fractional-resolution buffers because that is visually equivalent.
 
 | Device | Refresh target | Required | Effects tier expected |
 |---|---|---|---|
-| Moto One 5G Ace | 60 Hz | P99 ≤ 16.9 ms | Low–Medium |
-| Galaxy Tab A11+ | 90 Hz when the governor can hold it, else the panel is switched to 60 Hz | P99 ≤ 11.3 ms at 90, or ≤ 16.9 ms at 60 | Medium |
-| OnePlus 12R | 120 Hz | P99 ≤ 8.6 ms | High–Ultra |
+| Moto One 5G Ace | 60 Hz | P95 ≤ 16.9 ms | Low–Medium |
+| Galaxy Tab A11+ | 90 Hz when the governor can hold it, else the panel is switched to 60 Hz | P95 ≤ 11.3 ms at 90, or ≤ 16.9 ms at 60 | Medium |
+| OnePlus 12R | 120 Hz | P95 ≤ 8.6 ms | High–Ultra |
 
 Budgets on the floor phone at endgame (initial; refine in M1):
 
 | Thread | Budget | Split |
 |---|---|---|
-| Main (CPU) | ≤ 8 ms P99 | input+net 0.3, sim tick 2.5, extraction 1.5, command recording 1.0, rest slack |
-| GPU | ≤ 12 ms P99 | background 0.4, distortion 0.2, scene 4.0, prefilter+afterglow 1.0, bloom 1.6, composite+UI 2.5 |
+| Main (CPU) | ≤ 8 ms P95 | input+net 0.3, sim tick 2.5, extraction 1.5, command recording 1.0, rest slack |
+| GPU | ≤ 12 ms P95 | background 0.4, distortion 0.2, scene 4.0, prefilter+afterglow 1.0, bloom 1.6, composite+UI 2.5 |
 | Audio callback | ≤ 25% of the burst period P99, zero underruns | |
 | Memory / APK | < 300 MB RSS / < 40 MB | |
 | Startup | cold start to title < 3 s; tap to playing < 1 s | |
@@ -224,7 +229,7 @@ Rules that make the contract achievable (details in TECH_SPEC §5 and §9):
 - Particles are stateless (analytic motion in the vertex shader): zero CPU per frame.
 - No heap allocation, file I/O, JNI chatter or shader compilation during gameplay.
 - Every milestone ends with the benchmark suite on both USB devices; numbers go in `PROGRESS.md`.
-  A P99 regression above 10% blocks the milestone.
+  A P95 regression above 10% blocks the milestone.
 
 ---
 
@@ -280,7 +285,7 @@ Build:
 Exit:
 - [ ] One command builds and runs the desktop app; one command builds, installs and launches on a given serial.
 - [ ] Desktop: 60 s run with zero validation messages; screenshot PNG written and inspected.
-- [ ] Moto and tablet: `bench_idle` holds the panel rate (60 / 90) with P99 inside the contract.
+- [ ] Moto and tablet: `bench_idle` holds the panel rate (60 / 90) with P95 inside the contract.
 - [ ] Background → foreground 20 times, rotate 180°, lock/unlock: no crash, no leak, swapchain recovers.
 - [ ] Test tone plays on both devices with zero underruns over 60 s (the user confirms it is audible).
 
