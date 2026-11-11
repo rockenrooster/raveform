@@ -1,0 +1,60 @@
+{
+  "id": "track03",
+  "name": "Reef",
+  "bpm": 132,
+  "key": "D dorian",
+  "scale": [0, 2, 3, 5, 7, 9, 10],
+  "note": "Same format as track01.json. Character: rolling techno, hypnotic and liquid. A two-chord vamp (Dm9 to G6: the raised sixth, B, is the dorian colour). The bass rolls on the three sixteenths between the kicks. The lead is a three-note cell repeated across the bar, so it turns against the four-on-the-floor and only lines up again at the bar line; a quarter-note echo answers each note with the one before it. 'Dm2' and 'G2' are the same harmonies with the cell one chord tone higher and a tail that leads on.",
+  "progression": ["Dm", "G", "Dm2", "G2"],
+  "chords": {
+    "Dm":  {"bass": 38, "pad": [53, 57, 60, 64], "stab": [69, 74, 77],
+            "arp": [74, 81, 77, 74, 81, 77, 74, 81, 77, 74, 81, 77, 84, 81, 77, 76]},
+    "G":   {"bass": 43, "pad": [55, 59, 62, 64], "stab": [71, 74, 79],
+            "arp": [74, 83, 79, 74, 83, 79, 74, 83, 79, 74, 83, 79, 86, 83, 79, 76]},
+    "Dm2": {"bass": 38, "pad": [53, 57, 60, 64], "stab": [72, 76, 81],
+            "arp": [77, 84, 81, 77, 84, 81, 77, 84, 81, 77, 84, 81, 74, 76, 77, 81]},
+    "G2":  {"bass": 43, "pad": [55, 59, 62, 64], "stab": [71, 76, 79],
+            "arp": [79, 86, 83, 79, 86, 83, 79, 86, 83, 79, 86, 83, 81, 79, 76, 74]}
+  },
+  "patterns": {
+    "kick":    "9...9...9...9...",
+    "clap":    "....9.......9...",
+    "hat_off": "..8...8...8...8.",
+    "hat_16":  "4284428442844284",
+    "ohat":    "..8...8...8...8.",
+    "shaker":  "3646364636463646",
+    "stab":    "...9......8..6..",
+    "pulse":   "9.......9...7..."
+  },
+  "bass": {
+    "groove":     [[1, 0, 0.7, 0.8], [2, 0, 0.9, 0.8], [3, 0, 0.75, 0.8], [5, 0, 0.7, 0.8], [6, 0, 0.9, 0.8], [7, 0, 0.75, 0.8],
+                   [9, 0, 0.7, 0.8], [10, 0, 0.9, 0.8], [11, 0, 0.75, 0.8], [13, 0, 0.7, 0.8], [14, 0, 0.9, 0.8], [15, 0, 0.75, 0.8]],
+    "groove_alt": [[1, 0, 0.7, 0.8], [2, 0, 0.9, 0.8], [3, 0, 0.75, 0.8], [5, 0, 0.7, 0.8], [6, 0, 0.9, 0.8], [7, 0, 0.75, 0.8],
+                   [9, 0, 0.7, 0.8], [10, 0, 0.9, 0.8], [11, 0, 0.75, 0.8], [13, 0, 0.7, 0.8], [14, 12, 0.85, 0.8], [15, 7, 0.75, 0.8]],
+    "drop":       [[1, 0, 0.75, 0.8], [2, 12, 0.9, 0.8], [3, 0, 0.8, 0.8], [5, 0, 0.75, 0.8], [6, 12, 0.9, 0.8], [7, 0, 0.8, 0.8],
+                   [9, 0, 0.75, 0.8], [10, 12, 0.9, 0.8], [11, 0, 0.8, 0.8], [13, 0, 0.75, 0.8], [14, 12, 0.9, 0.8], [15, 10, 0.8, 0.8]],
+    "format": "[step, semitone offset from the chord's bass note, velocity, length in steps]"
+  },
+  "mix": {"bass": 0.58, "lead": 0.33, "stab": 0.80, "shaker": 0.08},
+  "send": {"stab": 0.42, "lead": 0.26},
+  "patch": {
+    "kick_hz": 55.0,
+    "kick": {"sweep_tau": 0.016, "decay": 0.100},
+    "lead": {"fc_start": 3600.0, "fc_end": 650.0, "q": 2.8, "decay": 0.12, "detune_cents": 5.0, "sub": 0.12},
+    "bass": {"square_mix": 0.35, "sub": 0.42, "fc_start": 1500.0, "fc_end": 330.0, "fc_tau": 0.060, "decay": 0.14, "drive": 1.6},
+    "stab": {"detune_cents": 11.0, "fc_start": 2600.0, "fc_end": 700.0, "decay": 0.16, "length": 0.34},
+    "pad": {"fc_base": 1100.0, "fc_lfo": 800.0, "lfo_hz": 0.18},
+    "delay": {"steps": 4.0, "feedback": 0.34, "mix": 0.20, "repeats": 6},
+    "reverb": {"rt60": 1.7}
+  },
+  "arrangement": [
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove"}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 0.6}},
+    {"section": "build", "bars": 4, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "pad": 0.8, "stab": 1}},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": "double", "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0}},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0}},
+    {"section": "break", "bars": 4, "layers": {"hat_off": 0.5, "lead": "sparse", "pad": 0.9}}
+  ]
+}

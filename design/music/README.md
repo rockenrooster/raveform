@@ -37,10 +37,17 @@ Questions for the listener (the composer cannot hear this):
 |---|---|---|---|
 | `track01.json` | First Light | 120 BPM, A minor, i–VI–III–VII | Warm four-on-the-floor, off-beat bass, up-down chord arps |
 | `track02.json` | Solar Wind | 126 BPM, F minor, i–VII–VI–VII | Driving: bouncing octave bass, syncopated stabs, brighter and snappier lead, eighth-note delay |
+| `track03.json` | Reef | 132 BPM, D dorian, i–IV vamp (Dm9 – G6) | Rolling techno, hypnotic and liquid: the bass rolls on the three sixteenths between the kicks; the lead is a three-note cell that turns against the beat and meets it again at the bar line, with a quarter-note echo; dub chord stabs into a longer room |
 
-A Track can carry `mix` and `patch` overrides (Track 2 does): that is how each Track gets its own
-character from the same voices. `patch.kick_hz` tunes the kick's body to the key. Both previews use the
-same staged arrangement, so they can be compared bar for bar.
+A Track can carry `mix`, `send` and `patch` overrides (Tracks 2 and 3 do): that is how each Track gets
+its own character from the same voices. `patch.kick_hz` tunes the kick's body to the key (Track 3 keeps
+A1, the fifth of D: the root an octave down is too low to hear, an octave up too high to be a kick).
+All previews use the same staged arrangement, so they can be compared bar for bar.
+
+Track 3 measured: −14.0 LUFS, peak −4.9 dBFS, crest 11.5 dB; bands sub −5.2, bass −5.3, low-mid −7.4,
+mid −8.4, high-mid −12.5, high −17.2; the phone-speaker band keeps −4.2 dB, the same as Track 1. Its
+lead is more resonant (Q 2.8) and so sits 1.2 dB lower in the mix. Question for the listener: does the
+three-note lead stay hypnotic, or does it get stuck in the head the wrong way?
 
 ## Sound variants — `previews/sound_variants.mp3`
 
