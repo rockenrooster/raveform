@@ -98,6 +98,7 @@ private:
         u64 startNs = 0;
         u64 candidateNs = 0;  // when the candidate tier started (warm-up)
     } tierProbe_;
+    u64 probeLastNs_ = 0;  // the probe stage follows real time
     Stage probeStage_;
     const char* tierSource_ = "argument";  // argument, cache, probe, picture default
     char tierCachePath_[512] = {};

@@ -245,6 +245,8 @@ bool App::init() {
     if (tierProbe_.active) {
         // First launch on this GPU: measure the endgame stage tier by tier (TECH_SPEC 5.4).
         if (!probeStage_.init(StageKind::Endgame, look_, palettes_, *palette_, glyphs_, tierSettings(Tier::Ultra))) return false;
+        // Two seconds of the stage first, so bullets, Shards and pools in flight are at their steady load.
+        for (u32 k = 0; k < 120; ++k) probeStage_.advance(1.0f / 60.0f);
         if (!renderer_.gpuTimersAvailable()) {
             RF_WARN("tier: no GPU timers to measure with; using medium");
             finishTierProbe(Tier::Medium);
@@ -533,10 +535,15 @@ void App::frame(u64 loopStartNs) {
     params.gpuBurn = args_.gpuBurn;
     if (tierProbe_.active) {
         // First-launch tier probe: the endgame stage under a saturating GPU load (the GPU at its top clock).
-        probeStage_.advance(1.0f / 60.0f);
+        // Its frames are slow, so the stage takes as many 1/60 s steps as real time passed (the load builds
+        // up over its first seconds: sparks, bullets and Shards in flight).
+        const float probeDt = probeLastNs_ ? static_cast<float>(nsToSec(now - probeLastNs_)) : 1.0f / 60.0f;
+        probeLastNs_ = now;
+        const u32 steps = static_cast<u32>(clampf(probeDt * 60.0f + 0.5f, 1.0f, 30.0f));
+        for (u32 k = 0; k < steps; ++k) probeStage_.advance(1.0f / 60.0f);
         probeStage_.render(draw, params, background_, w, h);
         renderer_.setBackground(background_);
-        params.gpuBurn = 40;  // as --gpu-burn 40: a lighter load leaves desktop GPUs below their top clock
+        params.gpuBurn = 20;  // keeps the GPU saturated, so its governor holds the top clock
         TextStyle label;
         label.capHeight = 30.0f * s;
         label.color = kTitle;
@@ -657,8 +664,9 @@ void App::setProbeCandidate(u32 tierIndex) {
 void App::stepTierProbe() {
     TierProbe& p = tierProbe_;
     ++p.frames;
-    // Let the GPU's clock climb under the load for 0.4 s before sampling.
-    if (nsToSec(nowNs() - p.candidateNs) < 0.4) p.fromFrame = renderer_.frameCount() + 1;
+    // Let the GPU's clock climb under the load (and the sparks reach their steady count) for 0.6 s before
+    // sampling.
+    if (nsToSec(nowNs() - p.candidateNs) < 0.6) p.fromFrame = renderer_.frameCount() + 1;
     const GpuPassTimes& gt = renderer_.gpuTimes();
     if (gt.valid && gt.frame >= p.fromFrame && gt.frame != gpuFrameSeen_ && p.count < countOf(p.samples)) {
         gpuFrameSeen_ = gt.frame;
