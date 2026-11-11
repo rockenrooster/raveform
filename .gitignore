@@ -1,0 +1,21 @@
+# Build output
+/build/
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/app/.cxx/
+/android/local.properties
+/captures/
+/out/
+
+# Fetched by scripts/fetch-deps.ps1 (pinned there)
+/third_party/SDL/
+/third_party/volk/
+/third_party/vulkan-headers/
+
+# Local tooling
+/.vscode/
+/.idea/
+*.user
+*.log
+__pycache__/
