@@ -6,10 +6,10 @@ Sizes are reference pixels at 2400×1080 and scale with screen height; keep the 
 clear. Every control has the pressed state of `design/look.md` §6: filled disc or bar in the player
 colour at 0.45, outline at 2.0 and thicker, label at 1.8.
 
-Screens are added here as their milestone comes up. So far: sync calibration (M2); title, game over
-and pause (M3); co-op lobby (M4). Pictures of the last four: `design/previews/screens.png` (tiled) and
-`screen_title.png`, `screen_game_over.png`, `screen_pause.png`, `screen_lobby.png` at full size, drawn by
-`design/tools/screens.py`.
+Screens are added here as their milestone comes up. So far: sync calibration (M2); title, settings,
+game over and pause (M3); co-op lobby (M4). Pictures: `design/previews/screens.png` (tiled) and
+`screen_title.png`, `screen_settings.png`, `screen_sync.png`, `screen_game_over.png`, `screen_pause.png`,
+`screen_lobby.png` at full size, drawn by `design/tools/screens.py`.
 
 Rules for every screen:
 
@@ -82,6 +82,38 @@ light, in the palette of Track 1, with the music at full level.
 | The ship | Under PLAY | Idles, turning toward the last touch |
 | Best | Bottom left, cap 14, gold | `BEST 1,204,880  TRACK 05  X412` |
 | Note | Bottom right, cap 14, white at 0.5 | `HEADPHONES RECOMMENDED`; on first launch the photosensitivity notice takes this screen first |
+
+## Settings (M3)
+
+A sound check, not a form. The music keeps playing, so every change is heard as it is made. Three
+groups as tabs across the top, never more: **SOUND**, **CONTROLS**, **LOOK** (video and accessibility
+together). The open tab is glass in the player colour. SOUND is the one drawn; the other two follow
+the same pieces (cards for a choice of a few, faders for amounts, segmented pills for off / low / high).
+
+| Element | Place | Behaviour |
+|---|---|---|
+| `SETTINGS` | Top centre, cap 44, accent | — |
+| Tabs | Three pills 360 × 84 at y 168, 420 apart | — |
+| Hint | Under the tabs, cap 13, white at 0.7 | `THE SAME MUSIC, THREE WAYS. TAP ONE: IT CHANGES ON THE NEXT BAR` |
+| **Sound cards** | Three, 620 × 300, corners 40, 48 apart, top at 286 | One per sound variant (`design/music/variants.json`). Each has its own two colours, its name as a tube in them (cap 46), three words, and its **signature line**: the same four beats drawn the way that variant sounds. The lines move with the music: they are the live master bus, shaped per card |
+| Club | Amber → magenta | A fat round line with a hump and a soft pool on every kick. `WARM  ROUND  DEEP` |
+| Arcade | Cyan → lime | A thin bright stepped line with a spike and a small flare on every beat. `CRISP  BRIGHT  DRY` |
+| Velvet | Violet → azure | A slow wide line with two fainter echoes trailing it. `SOFT  WIDE  LONG` |
+| Card states | — | **Playing:** glass in its two colours at 0.085, outline 3.4 px at 2.2, two pools, `PLAYING` with a four-bar level meter. **Tapped, waiting for the bar line:** outline at 1.5, `NEXT BAR` in its colour with four dots counting the bar out. **Idle:** outline at 0.8, line at 0.6 |
+| **Faders** | Three under the cards, one per card column, at y 690 | `MASTER`, `MUSIC`, `EFFECTS`. The track is forty short bars and is also a meter: bars up to the live level of that bus are lit (player colour → accent, the top fifth amber), the rest up to the thumb are white at 0.22. Thumb: a 48 px disc in the player colour. Value in cap 22 at the right |
+| `SYNC` | Bottom left, 360 × 100 | Opens sync calibration; the current offset sits under it in gold |
+| `HAPTICS` | Bottom centre | A row of three small pills: `OFF`, `SOFT`, `STRONG`. Choosing one plays it once |
+| **DONE** | Bottom right, 460 × 124, player colour | Saves and returns. Back does the same |
+
+Rules:
+
+- A sound change is never a cut: the tapped card waits for the bar line, then the whole band changes
+  together. Tapping another card before the bar line replaces the choice.
+- Nothing on this screen opens a second screen except `SYNC`.
+- CONTROLS holds auto-aim assist, stick size and position (drawn as the real sticks, dragged into
+  place), swap sides, button layout, gamepad mapping. LOOK holds effects (Auto / Low / Medium / High /
+  Ultra), frame-rate target, reduce flashing, shake, vivid colour, colour-blind-safe palettes,
+  high-contrast threats and UI scale, with the bot's run behind it so each change is seen at once.
 
 ## Game over (M3)
 

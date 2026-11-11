@@ -481,7 +481,8 @@ Flow: logo sting (≤ 2 s, skippable) → title with the bot playing in the back
 **CO-OP** / settings → run → game over → **RETRY**. Co-op: HOST or JOIN → lobby (players, colours,
 room code) → run.
 
-Settings (few, plain, each with a visible pressed state):
+Settings (few, plain, each with a visible pressed state). On screen they are three tabs: SOUND,
+CONTROLS and LOOK (video and accessibility together); layout in `design/screens.md`:
 
 | Group | Options |
 |---|---|

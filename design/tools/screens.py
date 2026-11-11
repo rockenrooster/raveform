@@ -264,12 +264,184 @@ def lobby():
     return s.save("lobby")
 
 
+def round_rect(x0, y0, x1, y1, r, n=8):
+    pts = []
+    for cx, cy, a0 in ((x1 - r, y0 + r, -PI / 2), (x1 - r, y1 - r, 0.0), (x0 + r, y1 - r, PI / 2), (x0 + r, y0 + r, PI)):
+        for k in range(n + 1):
+            a = a0 + PI / 2 * k / n
+            pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+    return pts
+
+
+def sound_wave(kind, x0, x1, cy, amp, n=240):
+    """The signature line of a sound variant: the same four beats, drawn the way each one sounds."""
+    pts = []
+    for i in range(n + 1):
+        u = i / n
+        beat = (u * 4) % 1.0
+        if kind == "club":        # round and heavy: a fat kick hump on every beat, a warm body between
+            y = math.exp(-beat * 5.0) * math.sin(beat * 15.0) * 1.0 + 0.22 * math.sin(u * 2 * PI * 8)
+        elif kind == "arcade":    # crisp: hard steps, a short bright tick on every beat
+            y = round(math.sin(u * 2 * PI * 4 + 0.3) * 3.0) / 3.0 * 0.62 + math.exp(-beat * 28.0) * 0.55
+        else:                     # velvet: slow and wide, nothing sudden
+            y = 0.8 * math.sin(u * 2 * PI * 2) * (0.75 + 0.25 * math.sin(u * 2 * PI * 0.5 + 1.0))
+        pts.append((x0 + (x1 - x0) * u, cy - y * amp))
+    return pts
+
+
+def settings():
+    s = Screen("aurora", 11)
+    cv = s.cv
+    sw = s.sw
+    cv.nebula([(420, 260, 720, s.hue[0], 0.026), (2000, 820, 720, s.hue[1], 0.024)])
+    s.stars(220)
+    s.centred("SETTINGS", 44, 44, s.accent, 1.3, 3.2)
+    # three groups, never more: SOUND is open
+    s.pill(W / 2 - 420, 168, 360, 84, "SOUND", s.p1, 28, pressed=True)
+    s.pill(W / 2, 168, 360, 84, "CONTROLS", s.white, 28)
+    s.pill(W / 2 + 420, 168, 360, 84, "LOOK", s.white, 28)
+    s.centred("THE SAME MUSIC, THREE WAYS.  TAP ONE: IT CHANGES ON THE NEXT BAR", 244, 13, s.white, 0.7, 1.5)
+
+    # the three sounds. Each card is drawn the way it sounds; the playing one is glass and thick
+    cards = [
+        ("club", "CLUB", "WARM   ROUND   DEEP", sw["amber"], sw["magenta"], "playing"),
+        ("arcade", "ARCADE", "CRISP   BRIGHT   DRY", sw["cyan"], sw["lime"], "queued"),
+        ("velvet", "VELVET", "SOFT   WIDE   LONG", sw["violet"], sw["azure"], ""),
+    ]
+    cw, ch, gap, top = 620, 300, 48, 286
+    left = (W - (3 * cw + 2 * gap)) / 2
+    for k, (kind, name, words, a, b, state) in enumerate(cards):
+        x0, x1, y0, y1 = left + k * (cw + gap), left + k * (cw + gap) + cw, top, top + ch
+        cx = (x0 + x1) / 2
+        frame = round_rect(x0, y0, x1, y1, 40)
+        edge = ld.f_linear(x0, y0, x1, y1, [a, s.white, b])
+        playing, queued = state == "playing", state == "queued"
+        if playing:
+            cv.fill(frame, ld.f_linear(x0, y0, x1, y1, [a, b]), 0.085)
+            cv.glow(cx, (y0 + y1) / 2, 520, a, 0.10)
+            cv.glow(cx + 120, y1 - 60, 380, b, 0.07)
+        cv.lines(ld.polyline(frame, closed=True), edge, 2.2 if playing else (1.5 if queued else 0.8), 3.4 if playing else 2.0)
+        # name as a tube in the card's two colours
+        segs, end = ld.text_segments(s.font, name, x0 + 44, y0 + 36, 46)
+        cv.lines(segs, ld.f_linear(x0 + 44, 0, end, 0, [a, s.white, b]), 2.3 if playing else 1.5, 4.6)
+        cv.lines(segs, s.white, 2.0 if playing else 1.1, 1.3)
+        cv.text(s.font, words, x0 + 46, y0 + 104, 12, s.white, 0.9 if playing else 0.6, 1.4)
+        # its signature line
+        wy, amp = y0 + 212, 54
+        pts = sound_wave(kind, x0 + 44, x1 - 44, wy, amp)
+        wave = ld.polyline(pts)
+        field = ld.f_linear(x0 + 44, 0, x1 - 44, 0, [a, s.white, b, a])
+        g = 1.0 if playing else (0.8 if queued else 0.6)
+        if kind == "club":
+            cv.lines(wave, field, 1.9 * g, 5.0)
+            cv.lines(wave, s.white, 1.6 * g, 1.4)
+            for beat in range(4):
+                cv.glow(x0 + 44 + (cw - 88) * (beat + 0.06) / 4, wy, 70, a, 0.16 * g)
+        elif kind == "arcade":
+            cv.lines(wave, field, 2.4 * g, 2.2)
+            for beat in range(4):
+                bx = x0 + 44 + (cw - 88) * beat / 4
+                cv.flare(bx + 2, wy - amp * 0.76, 34, s.white, 1.6 * g, 1.2, 2, PI / 4)
+        else:
+            for off, lvl, wd in ((0, 1.5, 3.4), (16, 0.55, 2.4), (32, 0.25, 2.0)):      # the echo trails behind it
+                cv.lines([(p[0] + off, p[1] + off * 0.35, q[0] + off, q[1] + off * 0.35) for p, q in zip(pts[:-1], pts[1:]) if q[0] + off < x1 - 30],
+                         field, lvl * g, wd)
+            cv.glow(cx, wy, 300, b, 0.07 * g)
+        # state, top right of the card
+        if playing:
+            t = "PLAYING"
+            cv.text(s.font, t, x1 - 44 - len(t) * 13, y0 + 44, 13, s.white, 1.6, 1.6)
+            for bar in range(4):                                # a little level meter that moves with the music
+                hgt = (14, 26, 18, 30)[bar]
+                bx = x1 - 44 - len(t) * 13 - 64 + bar * 12
+                cv.lines([(bx, y0 + 57, bx, y0 + 57 - hgt)], ld.f_linear(0, y0 + 57, 0, y0 + 27, [a, s.white]), 2.0, 5.0)
+        elif queued:
+            t = "NEXT BAR"
+            cv.text(s.font, t, x1 - 44 - len(t) * 13, y0 + 44, 13, a, 1.6, 1.6)
+            for beat in range(4):                               # counts the bar out: three beats gone, one to go
+                cv.discs([(x1 - 44 - len(t) * 13 + 8 + beat * 30, y0 + 80, 6)], a if beat < 3 else s.white, 1.8 if beat < 3 else 0.3)
+
+    # faders that are also meters: the lit part of the track is the live level of that bus
+    fy = 690
+    for k, (name, value, level) in enumerate((("MASTER", 0.8, 0.62), ("MUSIC", 0.7, 0.55), ("EFFECTS", 0.9, 0.38))):
+        x0 = left + k * (cw + gap) + 20
+        x1 = x0 + cw - 40
+        cv.text(s.font, name, x0, fy - 62, 14, s.accent, 0.9, 1.6)
+        t = "%d" % round(value * 100)
+        cv.text(s.font, t, x1 - len(t) * 22, fy - 70, 22, s.white, 1.3, 2.2)
+        nseg = 40
+        for i in range(nseg):
+            u = (i + 0.5) / nseg
+            bx = x0 + (x1 - x0) * u
+            lit = u <= level * value / 0.8
+            hot = u > 0.82
+            colour = (sw["amber"] if hot else s.p1 * (1 - u) + s.accent * u) if lit else s.white
+            cv.lines([(bx, fy - 13, bx, fy + 13)], colour, 1.7 if lit else (0.22 if u <= value else 0.1), 4.0)
+        tx = x0 + (x1 - x0) * value
+        cv.discs([(tx, fy, 24)], s.p1, 0.45)
+        cv.lines(ld.transform(ld.polygon(36), tx, fy, 24), s.p1, 2.0, 2.6)
+        cv.glow(tx, fy, 90, s.p1, 0.10)
+
+    # bottom row: sync, haptics, done
+    by = 900
+    s.pill(left + 180, by, 360, 100, "SYNC", s.white, 28)
+    s.centred("+35 MS", by + 66, 13, s.gold, 1.0, 1.5, left + 180)
+    hx = W / 2
+    s.centred("HAPTICS", by - 84, 14, s.accent, 0.9, 1.6, hx)
+    seg_w = 190
+    for i, (label, on) in enumerate((("OFF", False), ("SOFT", True), ("STRONG", False))):
+        s.pill(hx - seg_w - 10 + i * (seg_w + 10), by, seg_w, 88, label, s.p1 if on else s.white, 20, pressed=on, dim=not on)
+    s.pill(W - left - 230, by, 460, 124, "DONE", s.p1, 44)
+    cv.glow(W - left - 230, by, 260, s.p1, 0.08)
+    return s.save("settings")
+
+
+def sync():
+    s = Screen("solar", 13)
+    cv = s.cv
+    cv.nebula([(1200, 480, 900, s.hue[0], 0.022)])
+    s.stars(160)
+    s.centred("SYNC", 60, 34, s.accent, 1.4, 3.0)
+    s.centred("MAKE THE FLASH AND THE CLICK HAPPEN TOGETHER", 128, 16, s.white, 1.2, 1.8)
+    # the ring, caught 60 ms after a beat: disc fading, outline hot, a ring on its way out
+    cx, cy, r = W / 2, 400, 150
+    cv.discs([(cx, cy, r)], s.white, 0.27)
+    cv.glow(cx, cy, 520, s.accent, 0.10)
+    cv.lines(ld.transform(ld.polygon(72), cx, cy, r), s.white, 2.6, 3.0)
+    cv.lines(ld.transform(ld.polygon(72), cx, cy, 183), ld.f_angular(cx, cy, [s.accent, s.white, s.accent, s.hue[1]]), 0.9, 2.0)
+    for k in range(4):
+        cv.discs([(cx - 54 + k * 36, 628, 7)], s.accent if k == 0 else s.white, 1.9 if k == 0 else 0.3)
+    # slider: -150 .. +350 ms, zero ticked, thumb at +35
+    sx0, sx1, sy = W / 2 - 550, W / 2 + 550, 742
+    at = lambda ms: sx0 + (sx1 - sx0) * (ms + 150) / 500.0
+    cv.lines([(sx0, sy, sx1, sy)], s.white, 0.5, 2.0)
+    cv.lines([(at(0), sy - 18, at(0), sy + 18)], s.white, 1.0, 2.0)
+    for ms in range(-150, 351, 50):
+        cv.lines([(at(ms), sy - 7, at(ms), sy + 7)], s.white, 0.35, 1.4)
+    cv.lines([(at(0), sy, at(35), sy)], s.p1, 1.8, 4.0)
+    cv.discs([(at(35), sy, 22)], s.p1, 0.5)
+    cv.lines(ld.transform(ld.polygon(36), at(35), sy, 22), s.p1, 2.2, 2.6)
+    cv.glow(at(35), sy, 90, s.p1, 0.12)
+    s.centred("+35 MS", sy + 46, 22, s.white, 1.4, 2.2, at(35) + 40)
+    for sign, x in ((-1, sx0 - 110), (1, sx1 + 110)):
+        pressed = sign > 0
+        if pressed:
+            cv.discs([(x, sy, 55)], s.p1, 0.45)
+            cv.glow(x, sy, 150, s.p1, 0.10)
+        cv.lines(ld.transform(ld.polygon(48), x, sy, 55), s.p1 if pressed else s.white, 2.0 if pressed else 0.9, 3.0 if pressed else 2.0)
+        arms = [(x - 20, sy, x + 20, sy)] + ([(x, sy - 20, x, sy + 20)] if sign > 0 else [])
+        cv.lines(arms, s.white, 1.8 if pressed else 1.1, 3.0)
+    s.pill(M + 190, 960, 330, 100, "AUTO", s.white, 28)
+    s.pill(W - M - 230, 960, 460, 124, "DONE", s.p1, 44)
+    return s.save("sync")
+
+
 def main():
     os.makedirs(os.path.join(DESIGN, "previews"), exist_ok=True)
-    shots = [title(), game_over(), pause(), lobby()]
-    sheet = Image.new("RGB", (W, H), (0, 0, 0))
+    shots = [title(), settings(), sync(), game_over(), pause(), lobby()]
+    sheet = Image.new("RGB", (W, H * 2 // 3), (0, 0, 0))
     for i, img in enumerate(shots):
-        sheet.paste(img.resize((W // 2, H // 2), Image.LANCZOS), ((i % 2) * (W // 2), (i // 2) * (H // 2)))
+        sheet.paste(img.resize((W // 3, H // 3), Image.LANCZOS), ((i % 3) * (W // 3), (i // 3) * (H // 3)))
     out = os.path.join(DESIGN, "previews", "screens.png")
     sheet.save(out, optimize=True)
     print("wrote", out)
