@@ -189,7 +189,18 @@
 
  "afterglow": {
   "note": "A soft tail on hot light only. The source is the bloom level of sigma 6 refPx (one eighth resolution), less the knee on its brightest channel: source x max(m - knee, 0) / m. history = max(source, history x e^(-dt/tau)), re-aimed by the camera; the picture gains strength x max(history x e^(-dt/tau) - source, 0). Line-sharp history is never used: it prints ghost outlines.",
-  "tauMs": 110, "strength": 0.7, "sourceSigmaRefPx": 6.0, "knee": 0.25
+  "tauMs": 110, "strength": 0.7, "sourceSigmaRefPx": 6.0, "knee": 0.25,
+  "gain": "swarm", "gainNote": "v2.2: the strength is multiplied by the light budget's swarm gain (look.md sections 3 and 7)."
+ },
+
+ "shotStreak": {
+  "note": "v2.2: a shot is a capsule from where it was to where it is, so consecutive frames overlap and its afterglow is one even tail. length = speed x frameS + overlapWu, never under minWu. Player, wingman and Sentinel shots.",
+  "frameS": 0.0166667, "overlapWu": 8.0, "minWu": 16.0
+ },
+
+ "dropConfetti": {
+  "note": "v2.2: thrown in from beyond the screen toward the ship, as a shower. Each spark starts outsideWu beyond the view edge and delayS after the Drop; its streak lies along its own velocity.",
+  "outsideWu": [0.0, 200.0], "delayS": [0.0, 0.25], "speedWu": [300.0, 700.0], "lifeS": [1.0, 1.6]
  },
 
  "distortion": {

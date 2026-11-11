@@ -112,7 +112,8 @@ Events, to keep the peaks in the measurement:
 
 - **Drop burst every 8 bars:** bloom +60% decaying over 400 ms, a white front from the ship to 1400 wu
   in 0.35 s with its distortion ring, the zoom snapping 1.1 → 0.9 and easing back over a bar, 2,000
-  confetti sparks falling in from the screen edges, the palette accent swapped with the third enemy hue.
+  confetti sparks thrown in from beyond the screen edges as a shower (look.md §5: 0–200 wu outside,
+  0–250 ms apart), the palette accent swapped with the third enemy hue.
 - **Boss phase break every 16 bars:** 300 sparks, the clamped white flash, the 30 px distortion ring,
   6 px of shake.
 - **Build bar before each Drop:** colours drain 40% toward white, the vignette tightens to 0.40, the
