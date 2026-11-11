@@ -2,6 +2,11 @@ package dev.raveform.game;
 
 import android.app.Activity;
 import android.content.Context;
+// M2 audio begin
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
+import android.view.HapticFeedbackConstants;
+// M2 audio end
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
@@ -94,6 +99,56 @@ public class RaveformActivity extends SDLActivity {
                                                       : activity.getWindowManager().getDefaultDisplay();
         return display != null ? display.getRefreshRate() : 0.0f;
     }
+
+    // M2 audio begin
+    /**
+     * Beat haptics for the band (native code, main thread): one tick per call, posted to the UI thread and
+     * played with performHapticFeedback, which honours the system's touch-feedback setting. The three
+     * runnables are made once, so a tick allocates nothing. kind: 0 light (kick), 1 medium, 2 heavy (Drop).
+     */
+    private static final Runnable[] sHaptics = new Runnable[3];
+    static {
+        final int[] constants = {HapticFeedbackConstants.CLOCK_TICK, HapticFeedbackConstants.KEYBOARD_TAP,
+                                 HapticFeedbackConstants.LONG_PRESS};
+        for (int i = 0; i < 3; ++i) {
+            final int constant = constants[i];
+            sHaptics[i] = new Runnable() {
+                @Override
+                public void run() {
+                    View view = mSurface;
+                    if (view != null) {
+                        view.performHapticFeedback(constant);
+                    }
+                }
+            };
+        }
+    }
+
+    static void haptic(int kind) {
+        View view = mSurface;
+        if (view != null && kind >= 0 && kind < sHaptics.length) {
+            view.post(sHaptics[kind]);
+        }
+    }
+
+    /** AudioDeviceInfo type of output device `deviceId` (0 when unknown). After a stream (re)opens only. */
+    static int audioDeviceType(int deviceId) {
+        Activity activity = mSingleton;
+        if (activity == null) {
+            return 0;
+        }
+        AudioManager manager = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
+        if (manager == null) {
+            return 0;
+        }
+        for (AudioDeviceInfo device : manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+            if (device.getId() == deviceId) {
+                return device.getType();
+            }
+        }
+        return 0;
+    }
+    // M2 audio end
 
     /** Blocks until the render thread has destroyed its Vulkan surface (or the timeout passes). */
     static native boolean nativeWaitSurfaceReleased(int timeoutMs);

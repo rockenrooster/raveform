@@ -223,6 +223,12 @@ target_compile_options(raveform_core PRIVATE
 
 # M2 audio begin
 target_link_libraries(raveform_core PUBLIC raveform_audio)
+# The band's main-thread side (device clock, heard events, haptics) and the audio scenes.
+target_sources(raveform_core PRIVATE
+  src/audio/audio_args.cpp
+  src/audio/band.cpp
+  src/audio/platform_audio.cpp
+  src/game/audio_scene.cpp)
 if(NOT ANDROID)
   # The band without a window: offline renders, the loudness calibration, the unit tests.
   set(RF_HEADLESS_CORE src/core/json_doc.cpp src/core/log.cpp src/core/alloc_counter.cpp)

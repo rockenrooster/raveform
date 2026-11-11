@@ -439,7 +439,7 @@ void Engine::applyCommand(const Command& c) {
                 q = Pending{};
                 q.frame = frameOf(c.tick) - (id >= 0 ? static_cast<i64>(bank_->sample(id).frames) : 0);
                 if (q.frame < frame_) q.frame = frame_;
-                q.tick = c.tick;
+                q.tick = -1.0;  // the swell ends on c.tick
                 q.sfx = Sfx::Spawn;
                 q.midi = ch.bass + 12;
                 q.gain = sfxLevel(Sfx::Spawn) * c.x;
@@ -1051,7 +1051,7 @@ void Engine::planConductorBar(i64 barTick) {
         const double endTick = static_cast<double>(barTick + kTicksPerBar);
         pend(id, endTick, gain, BeatKind::Swell);
         pending_[pendingCount_ - 1].frame = frameOf(endTick) - static_cast<i64>(bank_->sample(id).frames);
-        pending_[pendingCount_ - 1].tick = endTick - (section_ == Section::Build ? kTicksPerBar / 2 : kTicksPerBar);
+        pending_[pendingCount_ - 1].tick = -1.0;  // it ends on the grid, it does not start on it
     };
     if (section_ == Section::Build && last) endingOnDownbeat(bank_->swellHalfBar(track_), s.mix.swell);
     if (sectionStart && section_ == Section::Drop && buildFollowed_)
@@ -1469,6 +1469,11 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
     std::memset(wet_, 0, sizeof wet_);
     u32 active = 0;
 
+    // Voices. Control-rate values (filter coefficients, envelope anchors) are taken at fixed ages of each
+    // voice (every 32 samples since its start) and stepped per sample in between, so the output does
+    // not depend on how the device splits time into callbacks (tested: random bursts render identically).
+    constexpr u32 kKnot = 32;
+    constexpr float kInvKnot = 1.0f / kKnot;
     // Lead voices.
     for (u32 vi = 0; vi < kLeadVoices; ++vi) {
         LeadVoice& v = lead_[vi];
@@ -1482,57 +1487,58 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         v.delay = 0;
         u32 cnt = n - i0;
         if (v.length - v.age < cnt) cnt = v.length - v.age;
-        float* L = bus_[static_cast<u32>(Bus::Lead)][0] + i0;
-        float* R = bus_[static_cast<u32>(Bus::Lead)][1] + i0;
-        if (mode_ == Mode::Script) {
-            L = bus_[static_cast<u32>(Bus::Sfx)][0] + i0;
-            R = bus_[static_cast<u32>(Bus::Sfx)][1] + i0;
-        }
-        const float a0 = static_cast<float>(v.age);
+        const Bus target = mode_ == Mode::Script ? Bus::Sfx : Bus::Lead;
+        float* L = bus_[static_cast<u32>(target)][0] + i0;
+        float* R = bus_[static_cast<u32>(target)][1] + i0;
         const float decMul = std::exp(-1.0f / v.decayN);
-        float dec = std::exp(-a0 / v.decayN);
-        if (v.timbre == Timbre::P3Bell) {
-            // sfxproto.bell(hz, 0.36, 2.0, 2.4): FM, index decaying with 0.15 s.
-            const float modMul = std::exp(-1.0f / v.fcTauN);
-            float mod = kP3Index * std::exp(-a0 / v.fcTauN);
-            for (u32 i = 0; i < cnt; ++i) {
-                const u32 a = v.age + i;
-                const float att = v.attackN > 0.0f ? std::fmin(1.0f, static_cast<float>(a) / v.attackN) : 1.0f;
-                const float m = std::sin(2.0f * kPiF * v.saw[1].phase) * mod;
-                const float y = std::sin(2.0f * kPiF * v.saw[0].phase + m) * dec * att * v.vel * tailFade(a, v.length, v.fade);
-                v.saw[0].phase += v.saw[0].dt;
-                v.saw[0].phase -= std::floor(v.saw[0].phase);
-                v.saw[1].phase += v.saw[1].dt;
-                v.saw[1].phase -= std::floor(v.saw[1].phase);
-                dec *= decMul;
-                mod *= modMul;
-                L[i] += y * v.gl;
-                R[i] += y * v.gr;
-            }
-        } else {
-            // Cutoff glide: exact at both ends of the span, g interpolated in between.
-            const float fc0 = (v.fcEnd + (v.fcStart - v.fcEnd) * std::exp(-a0 / v.fcTauN)) * v.kt;
-            const float fc1 = (v.fcEnd + (v.fcStart - v.fcEnd) * std::exp(-(a0 + cnt) / v.fcTauN)) * v.kt;
-            const float g0 = svfG(fc0, sr), g1 = svfG(fc1, sr);
-            const float dg = cnt ? (g1 - g0) / static_cast<float>(cnt) : 0.0f;
-            for (u32 i = 0; i < cnt; ++i) {
-                const u32 a = v.age + i;
-                float x;
-                if (v.timbre == Timbre::P1Saw) {
-                    x = v.saw[0].next() + v.saw[1].next() + v.sub * v.sq[0].next();
-                } else if (v.timbre == Timbre::P2Square) {
-                    x = v.sq[0].next() + v.sq[1].next();
-                } else {
-                    x = (v.saw[0].next() + v.saw[1].next() + v.saw[2].next()) * (1.0f / 3.0f) + kP4Oct * v.saw[3].next();
+        const auto fcAt = [&v](float a) { return (v.fcEnd + (v.fcStart - v.fcEnd) * std::exp(-a / v.fcTauN)) * v.kt; };
+        for (u32 i = 0; i < cnt;) {
+            const u32 a = v.age + i, phase = a % kKnot, k0 = a - phase;
+            const u32 len = kKnot - phase < cnt - i ? kKnot - phase : cnt - i;
+            float dec = std::exp(-static_cast<float>(k0) / v.decayN);
+            for (u32 j = 0; j < phase; ++j) dec *= decMul;
+            if (v.timbre == Timbre::P3Bell) {
+                // sfxproto.bell(hz, 0.36, 2.0, 2.4): FM, the index decaying with 0.15 s.
+                const float modMul = std::exp(-1.0f / v.fcTauN);
+                float mod = kP3Index * std::exp(-static_cast<float>(k0) / v.fcTauN);
+                for (u32 j = 0; j < phase; ++j) mod *= modMul;
+                for (u32 j = 0; j < len; ++j) {
+                    const u32 aj = a + j;
+                    const float att = v.attackN > 0.0f ? std::fmin(1.0f, static_cast<float>(aj) / v.attackN) : 1.0f;
+                    const float m = std::sin(2.0f * kPiF * v.saw[1].phase) * mod;
+                    const float y = std::sin(2.0f * kPiF * v.saw[0].phase + m) * dec * att * v.vel * tailFade(aj, v.length, v.fade);
+                    v.saw[0].phase += v.saw[0].dt;
+                    v.saw[0].phase -= std::floor(v.saw[0].phase);
+                    v.saw[1].phase += v.saw[1].dt;
+                    v.saw[1].phase -= std::floor(v.saw[1].phase);
+                    dec *= decMul;
+                    mod *= modMul;
+                    L[i + j] += y * v.gl;
+                    R[i + j] += y * v.gr;
                 }
-                float y = v.svf.tick(x * v.pre, g0 + dg * static_cast<float>(i), v.k);
-                if (v.drive > 0.0f) y = std::tanh(v.drive * y);
-                const float att = v.attackN > 0.0f ? std::fmin(1.0f, static_cast<float>(a) / v.attackN) : 1.0f;
-                y *= att * dec * v.vel * tailFade(a, v.length, v.fade);
-                dec *= decMul;
-                L[i] += y * v.gl;
-                R[i] += y * v.gr;
+            } else {
+                const float g0 = svfG(fcAt(static_cast<float>(k0)), sr), g1 = svfG(fcAt(static_cast<float>(k0 + kKnot)), sr);
+                const float dg = (g1 - g0) * kInvKnot;
+                for (u32 j = 0; j < len; ++j) {
+                    const u32 aj = a + j;
+                    float x;
+                    if (v.timbre == Timbre::P1Saw) {
+                        x = v.saw[0].next() + v.saw[1].next() + v.sub * v.sq[0].next();
+                    } else if (v.timbre == Timbre::P2Square) {
+                        x = v.sq[0].next() + v.sq[1].next();
+                    } else {
+                        x = (v.saw[0].next() + v.saw[1].next() + v.saw[2].next()) * (1.0f / 3.0f) + kP4Oct * v.saw[3].next();
+                    }
+                    float y = v.svf.tick(x * v.pre, g0 + dg * static_cast<float>(phase + j), v.k);
+                    if (v.drive > 0.0f) y = std::tanh(v.drive * y);
+                    const float att = v.attackN > 0.0f ? std::fmin(1.0f, static_cast<float>(aj) / v.attackN) : 1.0f;
+                    y *= att * dec * v.vel * tailFade(aj, v.length, v.fade);
+                    dec *= decMul;
+                    L[i + j] += y * v.gl;
+                    R[i + j] += y * v.gr;
+                }
             }
+            i += len;
         }
         v.age += cnt;
         if (v.age >= v.length) v.active = false;
@@ -1553,27 +1559,34 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         if (v.length - v.age < cnt) cnt = v.length - v.age;
         float* L = bus_[static_cast<u32>(Bus::Bass)][0] + i0;
         float* R = bus_[static_cast<u32>(Bus::Bass)][1] + i0;
-        const float a0 = static_cast<float>(v.age);
-        const float g0 = svfG(v.fcEnd + (v.fcStart - v.fcEnd) * std::exp(-a0 / v.fcTauN), sr);
-        const float g1 = svfG(v.fcEnd + (v.fcStart - v.fcEnd) * std::exp(-(a0 + cnt) / v.fcTauN), sr);
-        const float dg = cnt ? (g1 - g0) / static_cast<float>(cnt) : 0.0f;
         const float decMul = std::exp(-1.0f / v.decayN), relMul = std::exp(-1.0f / v.releaseN);
-        float dec = std::exp(-a0 / v.decayN);
-        float rel = v.age > v.gate ? std::exp(-static_cast<float>(v.age - v.gate) / v.releaseN) : 1.0f;
-        for (u32 i = 0; i < cnt; ++i) {
-            const u32 a = v.age + i;
-            const float x = (1.0f - v.sqMix) * v.saw.next() + v.sqMix * v.sq.next();
-            float y = v.svf.tick(x, g0 + dg * static_cast<float>(i), v.k);
-            y += v.sub * std::sin(2.0f * kPiF * v.subPhase);
-            v.subPhase += v.subDt;
-            v.subPhase -= std::floor(v.subPhase);
-            const float att = v.attackN > 0.0f ? std::fmin(1.0f, static_cast<float>(a) / v.attackN) : 1.0f;
-            const float env = att * dec * rel;
-            const float o = std::tanh(v.drive * y * env) * v.vel * v.gain * tailFade(a, v.length, v.fade);
-            dec *= decMul;
-            if (a >= v.gate) rel *= relMul;
-            L[i] += o;  // musicproto places the bass at pan 0: unity on both channels
-            R[i] += o;
+        const auto gAt = [&](u32 a) { return svfG(v.fcEnd + (v.fcStart - v.fcEnd) * std::exp(-static_cast<float>(a) / v.fcTauN), sr); };
+        for (u32 i = 0; i < cnt;) {
+            const u32 a = v.age + i, phase = a % kKnot, k0 = a - phase;
+            const u32 len = kKnot - phase < cnt - i ? kKnot - phase : cnt - i;
+            const float g0 = gAt(k0), g1 = gAt(k0 + kKnot);
+            const float dg = (g1 - g0) * kInvKnot;
+            float dec = std::exp(-static_cast<float>(k0) / v.decayN);
+            float rel = k0 > v.gate ? std::exp(-static_cast<float>(k0 - v.gate) / v.releaseN) : 1.0f;
+            for (u32 j = 0; j < phase; ++j) {
+                dec *= decMul;
+                if (k0 + j >= v.gate) rel *= relMul;
+            }
+            for (u32 j = 0; j < len; ++j) {
+                const u32 aj = a + j;
+                const float x = (1.0f - v.sqMix) * v.saw.next() + v.sqMix * v.sq.next();
+                float y = v.svf.tick(x, g0 + dg * static_cast<float>(phase + j), v.k);
+                y += v.sub * std::sin(2.0f * kPiF * v.subPhase);
+                v.subPhase += v.subDt;
+                v.subPhase -= std::floor(v.subPhase);
+                const float att = v.attackN > 0.0f ? std::fmin(1.0f, static_cast<float>(aj) / v.attackN) : 1.0f;
+                const float o = std::tanh(v.drive * y * att * dec * rel) * v.vel * v.gain * tailFade(aj, v.length, v.fade);
+                dec *= decMul;
+                if (aj >= v.gate) rel *= relMul;
+                L[i + j] += o;  // musicproto places the bass at pan 0: unity on both channels
+                R[i + j] += o;
+            }
+            i += len;
         }
         v.age += cnt;
         if (v.age >= v.length) v.active = false;
@@ -1594,22 +1607,27 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         if (v.length - v.age < cnt) cnt = v.length - v.age;
         float* L = bus_[static_cast<u32>(Bus::Stab)][0] + i0;
         float* R = bus_[static_cast<u32>(Bus::Stab)][1] + i0;
-        const float a0 = static_cast<float>(v.age);
-        const float g0 = svfG(v.fcEnd + (v.fcStart - v.fcEnd) * std::exp(-a0 / v.fcTauN), sr);
-        const float g1 = svfG(v.fcEnd + (v.fcStart - v.fcEnd) * std::exp(-(a0 + cnt) / v.fcTauN), sr);
-        const float dg = cnt ? (g1 - g0) / static_cast<float>(cnt) : 0.0f;
         const float decMul = std::exp(-1.0f / v.decayN);
-        float dec = std::exp(-a0 / v.decayN);
-        for (u32 i = 0; i < cnt; ++i) {
-            const u32 a = v.age + i;
-            float x = 0.0f;
-            for (u32 o = 0; o < v.oscCount; ++o) x += v.saw[o].next();
-            float y = v.svf.tick(x * v.norm, g0 + dg * static_cast<float>(i), v.k);
-            const float att = v.attackN > 0.0f ? std::fmin(1.0f, static_cast<float>(a) / v.attackN) : 1.0f;
-            y *= att * dec * v.vel * tailFade(a, v.length, v.fade);
-            dec *= decMul;
-            L[i] += y * v.gl;
-            R[i] += y * v.gr;
+        const auto gAt = [&](u32 a) { return svfG(v.fcEnd + (v.fcStart - v.fcEnd) * std::exp(-static_cast<float>(a) / v.fcTauN), sr); };
+        for (u32 i = 0; i < cnt;) {
+            const u32 a = v.age + i, phase = a % kKnot, k0 = a - phase;
+            const u32 len = kKnot - phase < cnt - i ? kKnot - phase : cnt - i;
+            const float g0 = gAt(k0), g1 = gAt(k0 + kKnot);
+            const float dg = (g1 - g0) * kInvKnot;
+            float dec = std::exp(-static_cast<float>(k0) / v.decayN);
+            for (u32 j = 0; j < phase; ++j) dec *= decMul;
+            for (u32 j = 0; j < len; ++j) {
+                const u32 aj = a + j;
+                float x = 0.0f;
+                for (u32 o = 0; o < v.oscCount; ++o) x += v.saw[o].next();
+                float y = v.svf.tick(x * v.norm, g0 + dg * static_cast<float>(phase + j), v.k);
+                const float att = v.attackN > 0.0f ? std::fmin(1.0f, static_cast<float>(aj) / v.attackN) : 1.0f;
+                y *= att * dec * v.vel * tailFade(aj, v.length, v.fade);
+                dec *= decMul;
+                L[i + j] += y * v.gl;
+                R[i + j] += y * v.gr;
+            }
+            i += len;
         }
         v.age += cnt;
         if (v.age >= v.length) v.active = false;
@@ -1628,33 +1646,38 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         v.delay = 0;
         u32 cnt = n - i0;
         if (v.length - v.age < cnt) cnt = v.length - v.age;
-        const float a0 = static_cast<float>(v.age);
         const float relMul = std::exp(-1.0f / v.releaseN);
         for (u32 ch = 0; ch < 2; ++ch) {
             float* out = bus_[static_cast<u32>(Bus::Pad)][ch] + i0;
-            const auto cutoff = [&](float a) {
-                const float lfo = 0.5f + 0.5f * std::sin(v.lfoW * a + 0.9f * static_cast<float>(ch));
-                return (v.fcBase + v.fcLfo * lfo) * v.bright;
+            const auto gAt = [&](u32 a) {
+                const float lfo = 0.5f + 0.5f * std::sin(v.lfoW * static_cast<float>(a) + 0.9f * static_cast<float>(ch));
+                return svfG((v.fcBase + v.fcLfo * lfo) * v.bright, sr);
             };
-            const float g0 = svfG(cutoff(a0), sr), g1 = svfG(cutoff(a0 + cnt), sr);
-            const float dg = cnt ? (g1 - g0) / static_cast<float>(cnt) : 0.0f;
-            float rel = v.age > v.hold ? std::exp(-static_cast<float>(v.age - v.hold) / v.releaseN) : 1.0f;
             SawOsc* osc = v.saw[ch];
-            for (u32 i = 0; i < cnt; ++i) {
-                const u32 a = v.age + i;
-                float x = 0.0f;
-                for (u32 o = 0; o < v.oscCount; ++o) x += osc[o].next();
-                float y = v.svf[ch].tick(x * v.norm, g0 + dg * static_cast<float>(i), v.k);
-                const float att = v.attackN > 0.0f ? std::fmin(1.0f, static_cast<float>(a) / v.attackN) : 1.0f;
-                y *= att * rel * v.level * v.gain * tailFade(a, v.length, v.fade);
-                if (a >= v.hold) rel *= relMul;
-                out[i] += y;
+            for (u32 i = 0; i < cnt;) {
+                const u32 a = v.age + i, phase = a % kKnot, k0 = a - phase;
+                const u32 len = kKnot - phase < cnt - i ? kKnot - phase : cnt - i;
+                const float g0 = gAt(k0), g1 = gAt(k0 + kKnot);
+                const float dg = (g1 - g0) * kInvKnot;
+                float rel = k0 > v.hold ? std::exp(-static_cast<float>(k0 - v.hold) / v.releaseN) : 1.0f;
+                for (u32 j = 0; j < phase; ++j)
+                    if (k0 + j >= v.hold) rel *= relMul;
+                for (u32 j = 0; j < len; ++j) {
+                    const u32 aj = a + j;
+                    float x = 0.0f;
+                    for (u32 o = 0; o < v.oscCount; ++o) x += osc[o].next();
+                    float y = v.svf[ch].tick(x * v.norm, g0 + dg * static_cast<float>(phase + j), v.k);
+                    const float att = v.attackN > 0.0f ? std::fmin(1.0f, static_cast<float>(aj) / v.attackN) : 1.0f;
+                    y *= att * rel * v.level * v.gain * tailFade(aj, v.length, v.fade);
+                    if (aj >= v.hold) rel *= relMul;
+                    out[i + j] += y;
+                }
+                i += len;
             }
         }
         v.age += cnt;
         if (v.age >= v.length) v.active = false;
     }
-
     // Samples.
     for (u32 vi = 0; vi < kSampleVoices; ++vi) {
         SampleVoice& v = smp_[vi];

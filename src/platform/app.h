@@ -19,6 +19,10 @@
 #include "tools/bench.h"
 #include "tools/dev_overlay.h"
 #include "tools/frame_probe.h"
+// M2 audio begin
+#include "audio/band.h"
+#include "game/audio_scene.h"
+// M2 audio end
 
 struct SDL_Window;
 
@@ -73,7 +77,7 @@ private:
     Palettes palettes_;
     const Palette* palette_ = nullptr;
     GlyphSet glyphs_;
-    enum class Content : u8 { M0, SceneFile, Stage, Sheet };
+    enum class Content : u8 { M0, SceneFile, Stage, Sheet, Audio };  // Audio: the M2 audio scenes
     Content content_ = Content::M0;
     Stage stage_;
     GlyphSheet sheet_;
@@ -100,6 +104,11 @@ private:
     Renderer renderer_;
     AudioDevice audio_;
     TestTone tone_;
+    // M2 audio begin
+    Band band_;               // the band (src/audio/band.h); inactive unless a scenario or --band asks
+    AudioScene audioScene_;   // --scenario audio_test | sync
+    bool openAudio();         // the band when it plays, else the M0 test tone
+    // M2 audio end
     VectorFont font_;
     DevOverlay overlay_;
     Bench bench_;

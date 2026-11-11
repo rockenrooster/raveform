@@ -69,6 +69,14 @@ bool FdnReverb::init(double sampleRate, const ReverbPatch* sets, u32 setCount) {
     }
     setCount_ = setCount < kMaxSets ? setCount : kMaxSets;
     for (u32 i = 0; i < setCount_; ++i) {
+        // Identical parameters (most Track x variant slots) share one measurement.
+        u32 same = i;
+        for (u32 k = 0; k < i && same == i; ++k)
+            if (std::memcmp(&sets[k], &sets[i], sizeof(ReverbPatch)) == 0) same = k;
+        if (same != i) {
+            sets_[i] = sets_[same];
+            continue;
+        }
         configure(sets_[i], sets[i]);
         // Unit-energy impulse response, measured.
         const u32 n = static_cast<u32>((2.0 * sets[i].rt60 + kMaxPredelay + 0.2) * sampleRate);

@@ -164,7 +164,15 @@ bool App::init() {
     RF_LOG("surface %dx%d, display %dx%d", sMax, sMin, dMax, dMin);
 #endif
 
-    if (!audio_.open(TestTone::render, &tone_)) RF_WARN("audio: no output device; continuing silently");
+    // M2 audio begin
+    if (!band_.init(args_.audio, args_.scenario, &audio_)) return false;
+    if (std::strcmp(args_.scenario, "audio_test") == 0 || std::strcmp(args_.scenario, "sync") == 0) {
+        audioScene_.init(std::strcmp(args_.scenario, "sync") == 0 ? AudioScene::Kind::Sync : AudioScene::Kind::AudioTest, band_,
+                         font_, palettes_, *palette_, look_);
+        content_ = Content::Audio;
+    }
+    if (!openAudio()) RF_WARN("audio: no output device; continuing silently");
+    // M2 audio end
     tone_.setHold(args_.tone);
 
     startNs_ = nowNs();
@@ -197,7 +205,7 @@ bool App::init() {
         renderer_.pacer().enableStats(true);  // Swappy's display-side histograms (Swappy only)
     } else if (std::strcmp(args_.scenario, "lifecycle_test") == 0) {
         RF_LOG("lifecycle_test: %u cycles of surface release/restore and swapchain rebuilds", args_.cycles);
-    } else if (args_.scenario[0] && content_ != Content::Sheet) {
+    } else if (args_.scenario[0] && content_ != Content::Sheet && content_ != Content::Audio) {  // M2 audio: Audio
         RF_ERR("unknown scenario '%s' (known: bench_idle, bench_mid, bench_endgame, glyph_sheet, lifecycle_test)",
                args_.scenario);
         return false;
@@ -257,11 +265,16 @@ void App::enterForeground() {
     awaitingResumePresent_ = true;
     logTagged("RFLIFE", "foreground %u", foregrounds_);
     applyAffinity();  // Android resets thread affinities when the app changes cpuset
-    if (!audio_.open(TestTone::render, &tone_)) RF_WARN("audio: reopen after foreground failed");
+    if (!openAudio()) RF_WARN("audio: reopen after foreground failed");  // M2 audio: the band or the tone
     refreshDisplay();  // the swapchain itself is rebuilt by the next beginFrame()
 }
 
 void App::handleEvent(const SDL_Event& e) {
+    // M2 audio begin
+    if (content_ == Content::Audio && (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) && !e.key.repeat &&
+        audioScene_.key(static_cast<int>(e.key.key), e.type == SDL_EVENT_KEY_DOWN))
+        return;
+    // M2 audio end
     switch (e.type) {
         case SDL_EVENT_QUIT:
         case SDL_EVENT_TERMINATING:
@@ -363,6 +376,7 @@ u32 App::activeTouches() const {
 }
 
 void App::touchDown(u64 id, Vec2 pos) {
+    if (content_ == Content::Audio) audioScene_.touchDown(id, pos);  // M2 audio
     for (TouchPoint& t : touches_) {
         if (t.active) continue;
         t = {id, pos, true};
@@ -383,11 +397,13 @@ void App::touchDown(u64 id, Vec2 pos) {
 }
 
 void App::touchMove(u64 id, Vec2 pos) {
+    if (content_ == Content::Audio) audioScene_.touchMove(id, pos);  // M2 audio
     for (TouchPoint& t : touches_)
         if (t.active && t.id == id) t.pos = pos;
 }
 
 void App::touchUp(u64 id) {
+    if (content_ == Content::Audio) audioScene_.touchUp(id);  // M2 audio
     for (TouchPoint& t : touches_)
         if (t.active && t.id == id) t.active = false;
     if (activeTouches() == 0) {
@@ -474,6 +490,15 @@ void App::frame(u64 loopStartNs) {
     params.vignette = !args_.still;
     params.frameIndex = static_cast<u32>(frames_);
     params.gpuBurn = args_.gpuBurn;
+    // M2 audio begin
+    // Heard time at the moment this frame reaches the panel (about two refresh periods from now).
+    band_.update(static_cast<i64>(2 * renderer_.pacer().refreshPeriodNs()));
+    if (content_ == Content::Audio) {
+        audioScene_.render(draw, params, background_, w, h, insetMin_, insetMax_);
+        renderer_.setBackground(background_);
+        if (audioScene_.quitRequested()) quit_ = true;
+    }
+    // M2 audio end
     if (content_ == Content::Stage) {
         stage_.advance(dt);
         stage_.render(draw, params, background_, w, h);
@@ -643,6 +668,7 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
         FramePacer& pacer = renderer_.pacer();
         if (ev == Bench::Event::MeasureStarted) {
             audio_.resetPeaks();
+            band_.resetMeasurements();  // M2 audio
             underrunsAtMeasure_ = audio_.stats().underruns;
             pacer.clearStats();
             probe_.begin(presentedNs, pacer.displayTimingActive());
@@ -781,6 +807,13 @@ void App::refreshOverlay(u64 nowNs) {
         overlay_.addLine(kWarn, "AUDIO CLOSED");
     }
     overlay_.addLine(kText, "AUDIO CALLBACK WORST %.3f MS  NOTES %u", a.worstCallbackMs, tone_.notesStarted());
+    // M2 audio begin
+    if (band_.active()) {
+        char bandLine[DevOverlay::kLineChars];
+        band_.overlayLine(bandLine, sizeof bandLine);
+        overlay_.addLine(kText, "%s", bandLine);
+    }
+    // M2 audio end
     if (g.validationEnabled()) {
         overlay_.addLine(g.validationMessages() ? kWarn : kText, "VALIDATION MESSAGES %u", g.validationMessages());
     }
@@ -936,6 +969,7 @@ void App::reportBench() {
         j.boolean("mmap", a.mmap);
         j.boolean("exclusive", a.exclusive);
         j.endObject();
+        band_.writeJson(j);  // M2 audio: "audio_engine" when the band plays
         // operator new calls in the measured window: our main thread outside Swappy (must be 0), inside
         // Swappy's calls on our thread, and on all other threads (Swappy's, the audio system's, ...).
         j.integer("heap_allocs", static_cast<i64>(mainAllocsMeasured_ - pacerAllocsMeasured_));
@@ -1046,6 +1080,13 @@ void App::reportBench() {
     logTagged("RFBENCH", "%s", jf.text());  // stdout has no line limit
 #endif
 }
+
+// M2 audio begin
+bool App::openAudio() {
+    if (band_.active()) return audio_.open(Band::render, &band_);
+    return audio_.open(TestTone::render, &tone_);
+}
+// M2 audio end
 
 void App::resolveOutputPath(const char* in, char* out, size_t capacity) const {
 #if defined(__ANDROID__)

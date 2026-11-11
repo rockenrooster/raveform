@@ -1,7 +1,7 @@
 #pragma once
 // Audio output device with one callback contract for both backends: Oboe on Android (low latency,
-// float, stereo, reopened after a disconnect, closed in the background) and an SDL3 audio stream on
-// Windows. Stream control happens on the main thread only.
+// float, stereo, reopened after a disconnect or any other stream error, closed in the background) and an
+// SDL3 audio stream on Windows. Stream control happens on the main thread only.
 
 #include <atomic>
 
@@ -29,6 +29,14 @@ struct AudioStats {
     bool lowLatency = false;
     bool mmap = false;
     u32 reopens = 0;
+    i32 deviceId = 0;        // the output device the stream plays on (Oboe), 0 when unknown
+};
+
+// "Frame `position` of the stream was presented at `timeNs`" (CLOCK_MONOTONIC on Android; the same
+// steady clock as audioNowNs()).
+struct AudioTimestamp {
+    i64 position = 0;
+    i64 timeNs = 0;
 };
 
 // Callback timing, written by the audio thread only.
@@ -69,15 +77,26 @@ inline void flushDenormals() {
 #endif
 }
 
+// The clock audio timestamps are on (steady clock = CLOCK_MONOTONIC on Android), in nanoseconds.
+i64 audioNowNs();
+
 class AudioDevice {
 public:
     bool open(AudioRenderFn fn, void* user);  // opens and starts the stream
     void close();
     bool isOpen() const;
-    // Main thread, every frame: reopens after a disconnect, grows the buffer after underruns.
+    // Main thread, every frame: reopens after a disconnect or error, grows the buffer after underruns.
     void update();
     AudioStats stats() const;
     void resetPeaks();
+    // Main thread: the newest presentation timestamp (false when the backend has none yet, or none at
+    // all: SDL). Cheap enough to poll every frame.
+    bool timestamp(AudioTimestamp& out) const;
+    // Increments on every successful open: a new stream counts its frames from zero.
+    u32 generation() const;
+    // Frames queued between the callback and the speaker as the backend sees them (buffer size); the
+    // fallback latency estimate when no timestamp is available.
+    u32 bufferedFrames() const;
 
 private:
     struct Impl;
