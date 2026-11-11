@@ -9,6 +9,7 @@ ping-pong delay, a short reverb, and a soft-clip master.
 Usage:  python design/tools/musicproto.py design/music/track01.json [out.wav]
 Requires: numpy. (ffmpeg is used by the wrapper script for loudness and spectrograms.)
 """
+import copy
 import json
 import math
 import os
@@ -44,6 +45,7 @@ PATCH = dict(
     reverb=dict(rt60=1.4, predelay=0.015, highpass=320.0, lowpass=7000.0, mix=1.0),
     sidechain_tau=0.11,
     master_drive=1.25,
+    kick_hz=55.0,          # A1 for Track 1; each Track tunes the kick to its key
 )
 
 
@@ -149,11 +151,12 @@ def svf_lowpass(X, cutoff, q):
 
 # --------------------------------------------------------------------------- one-shots (drum synth)
 
-def make_kick():
+def make_kick(base_hz=55.0):
+    """base_hz is where the body settles: tune it to the Track's key (root or fifth)."""
     n = int(0.42 * SR)
     t = np.arange(n) / SR
     # The sweep starts high so the knock survives on phone speakers, which reproduce little below 250 Hz.
-    f = 55.0 + 240.0 * np.exp(-t / 0.018) + 30.0 * np.exp(-t / 0.10)
+    f = base_hz + 240.0 * np.exp(-t / 0.018) + 30.0 * np.exp(-t / 0.10)
     body = np.sin(2 * PI * np.cumsum(f) / SR) * np.exp(-t / 0.115) * np.minimum(1.0, t / 0.0015)
     click = fft_filter(white(n, 1), bp(1800.0, 6000.0)) * np.exp(-t / 0.005) * 0.7
     return fade_out(norm(np.tanh(1.8 * (body + click))))
@@ -379,6 +382,25 @@ def reverb(x, p):
 # --------------------------------------------------------------------------- arrangement
 
 def render(track):
+    """Render a Track. A Track may carry "mix" and "patch" overrides, which is how each Track gets its
+    own character from the same voices."""
+    saved_mix, saved_patch = dict(MIX), copy.deepcopy(PATCH)
+    MIX.update(track.get("mix", {}))
+    for name, value in track.get("patch", {}).items():
+        if isinstance(value, dict):
+            PATCH[name].update(value)
+        else:
+            PATCH[name] = value
+    try:
+        return _render(track)
+    finally:
+        MIX.clear()
+        MIX.update(saved_mix)
+        PATCH.clear()
+        PATCH.update(saved_patch)
+
+
+def _render(track):
     bpm = track["bpm"]
     beat = 60.0 / bpm
     step = beat / 4.0
@@ -390,7 +412,7 @@ def render(track):
     prog = track["progression"]
     chords = track["chords"]
 
-    kick, clap, snare = make_kick(), make_clap(), make_snare()
+    kick, clap, snare = make_kick(PATCH["kick_hz"]), make_clap(), make_snare()
     hat, ohat, shaker, pulse = make_hat(0.030, 21), make_hat(0.17, 22), make_shaker(), make_pulse()
     impact = make_impact()
 

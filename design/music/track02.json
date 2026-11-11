@@ -1,0 +1,52 @@
+{
+  "id": "track02",
+  "name": "Solar Wind",
+  "bpm": 126,
+  "key": "F minor",
+  "scale": [0, 2, 3, 5, 7, 8, 10],
+  "note": "Same format as track01.json. Character: driving, brighter, bouncing octave bass, syncopated stabs. 'Eb2' is the same harmony as 'Eb' with a rising arp that leads back to the tonic.",
+  "progression": ["Fm", "Eb", "Db", "Eb2"],
+  "chords": {
+    "Fm":  {"bass": 41, "pad": [56, 60, 65, 68], "stab": [68, 72, 77],
+            "arp": [77, 72, 68, 72, 77, 80, 77, 72, 75, 72, 68, 72, 77, 72, 80, 77]},
+    "Eb":  {"bass": 39, "pad": [55, 58, 63, 67], "stab": [67, 70, 75],
+            "arp": [75, 70, 67, 70, 75, 79, 75, 70, 77, 75, 70, 67, 70, 75, 79, 82]},
+    "Db":  {"bass": 37, "pad": [56, 61, 65, 68], "stab": [68, 73, 77],
+            "arp": [73, 68, 65, 68, 73, 77, 73, 68, 72, 68, 65, 68, 73, 77, 80, 77]},
+    "Eb2": {"bass": 39, "pad": [55, 58, 63, 67], "stab": [67, 70, 75],
+            "arp": [75, 79, 82, 79, 75, 70, 75, 79, 82, 79, 75, 79, 82, 84, 82, 79]}
+  },
+  "patterns": {
+    "kick":    "9...9...9...9...",
+    "clap":    "....9.......9..3",
+    "hat_off": "..7...7...7...7.",
+    "hat_16":  "5373537353735373",
+    "ohat":    "..8...8...8...8.",
+    "shaker":  "6343634363436343",
+    "stab":    "9..7..9...7..9..",
+    "pulse":   "9.......9......."
+  },
+  "bass": {
+    "groove":     [[2, 0, 0.9, 1.2], [6, 12, 0.8, 1.0], [10, 0, 0.9, 1.2], [14, 12, 0.8, 1.0]],
+    "groove_alt": [[2, 0, 0.9, 1.2], [6, 12, 0.8, 1.0], [10, 0, 0.9, 1.2], [14, 12, 0.8, 0.8], [15, 7, 0.65, 0.8]],
+    "drop":       [[2, 0, 0.9, 0.9], [3, 12, 0.75, 0.9], [6, 0, 0.9, 0.9], [7, 12, 0.75, 0.9],
+                   [10, 0, 0.9, 0.9], [11, 12, 0.75, 0.9], [14, 0, 0.9, 0.9], [15, 12, 0.8, 0.9]],
+    "format": "[step, semitone offset from the chord's bass note, velocity, length in steps]"
+  },
+  "patch": {
+    "kick_hz": 43.65,
+    "lead": {"fc_start": 5000.0, "decay": 0.13, "detune_cents": 9.0},
+    "bass": {"square_mix": 0.7, "fc_end": 400.0},
+    "delay": {"steps": 2.0, "feedback": 0.30, "mix": 0.20, "repeats": 6}
+  },
+  "arrangement": [
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove"}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 0.6}},
+    {"section": "build", "bars": 4, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "pad": 0.8, "stab": 1}},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": "double", "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0}},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0}},
+    {"section": "break", "bars": 4, "layers": {"hat_off": 0.5, "lead": "sparse", "pad": 0.9}}
+  ]
+}

@@ -31,6 +31,17 @@ Questions for the listener (the composer cannot hear this):
 4. Kick and bass on a phone speaker: present, or missing?
 5. Anything harsh, muddy or annoying?
 
+## Tracks so far
+
+| File | Track | Tempo, key | Character |
+|---|---|---|---|
+| `track01.json` | First Light | 120 BPM, A minor, i–VI–III–VII | Warm four-on-the-floor, off-beat bass, up-down chord arps |
+| `track02.json` | Solar Wind | 126 BPM, F minor, i–VII–VI–VII | Driving: bouncing octave bass, syncopated stabs, brighter and snappier lead, eighth-note delay |
+
+A Track can carry `mix` and `patch` overrides (Track 2 does): that is how each Track gets its own
+character from the same voices. `patch.kick_hz` tunes the kick's body to the key. Both previews use the
+same staged arrangement, so they can be compared bar for bar.
+
 ## Measured (v1)
 
 Integrated loudness −14.0 LUFS (the bed is kept there to leave headroom for effects), peak −5.2 dBFS,
