@@ -425,8 +425,10 @@ badly without it.
 
 ## 8. Look variants
 
-Three looks built from the same content, for the player to choose between at the M1 checkpoint and
-possibly to keep as a setting. They differ only in composite controls, so the engine switches them
+**Decided by the user on 2026-11-11: Signal is the game's look.** Laser and Haze stay in the data as
+developer switches for comparison; they are not a player setting and nothing is tuned for them.
+
+Three looks built from the same content, made for that choice. They differ only in composite controls, so the engine switches them
 while running. Values: `design/look_variants.json`. Picture: `design/previews/look_variants.png`.
 
 | Variant | Intent | Changes from Signal |

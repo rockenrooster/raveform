@@ -486,7 +486,7 @@ Settings (few, plain, each with a visible pressed state):
 | Group | Options |
 |---|---|
 | Controls | Auto-aim assist; stick size and position; swap sides; button layout; gamepad mapping |
-| Audio | Master, music, effects; **sync calibration** (flash-and-click slider); haptics on/off and strength; in co-op: "music from host only" |
+| Audio | Master, music, effects; **sound**: Club / Arcade / Velvet (three characters of the same music, `design/music/variants.json`; Club is the default); **sync calibration** (flash-and-click slider); haptics on/off and strength; in co-op: "music from host only" |
 | Video | Effects: Auto / Low / Medium / High / Ultra; frame-rate target: Auto / 60 / 90 / 120; reduce flashing; shake amount; vivid colour (where supported) |
 | Accessibility | Colour-blind-safe palettes; high-contrast threats; UI scale |
 

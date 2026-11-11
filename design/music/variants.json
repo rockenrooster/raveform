@@ -1,5 +1,5 @@
 {
- "note": "Sound variants for the M2 listening checkpoint: three characters of the same music, each a set of overrides on design/music/patches.json (same shape as a Track's own 'mix' and 'patch' blocks, plus 'send' and 'duck'). They are auditioned on Track 1. The one the listener picks is folded into patches.json and the others are dropped. 'club' is the reference and overrides nothing.",
+ "note": "Sound variants: three characters of the same music, each a set of overrides on design/music/patches.json (same shape as a Track's own 'mix' and 'patch' blocks, plus 'send' and 'duck'). The user decided on 2026-11-11 that all three ship and the player chooses between them in the audio settings; 'club' is the default and the reference and overrides nothing. A change of variant takes hold on the next bar line. Order of application: patches.json, then the variant, then the Track's own overrides.",
  "reference": "club",
  "variants": [
   {

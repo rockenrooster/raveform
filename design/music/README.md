@@ -63,7 +63,8 @@ of two is a fine answer ("Club with Arcade's kick").
 python design/tools/musicvariants.py     # renders the comparison and prints the guard-rail numbers
 ```
 
-The variant that is chosen is folded into `patches.json` and the others are dropped.
+Decided by the user on 2026-11-11: all three ship. The player picks one in the audio settings (Club is
+the default); the change takes hold on the next bar line.
 
 ## Who plays what — `conductor.json`
 
