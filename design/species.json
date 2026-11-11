@@ -1,0 +1,46 @@
+{
+  "note": "Starting balance for enemy species. A species' numbers are family base x tier multiplier x variant multiplier. Baseline to balance against: one player shot deals 1 damage; the primary weapon fires 8 shots per second at 120 BPM, so an un-upgraded player deals 8 damage per second in one lane. Speeds are world units per second (the ship moves at 520); radius is the collision and visual radius in world units before the glyph's own size factor. Tune with the bot simulation; these are first guesses, not measurements.",
+  "tierMultipliers": {
+    "health": [1, 2, 4, 8, 16],
+    "speed": [1.0, 1.1, 1.2, 1.3, 1.4],
+    "score": [1, 2.5, 6, 15, 40],
+    "threat": [1.0, 1.8, 3.2, 5.5, 9.0],
+    "shards": [1, 2, 3, 4, 5],
+    "radius": [1.0, 1.05, 1.12, 1.2, 1.3]
+  },
+  "variantMultipliers": {
+    "A": {"score": 1.0, "threat": 1.0},
+    "B": {"score": 1.5, "threat": 1.5},
+    "C": {"score": 1.8, "threat": 1.8}
+  },
+  "families": {
+    "drifter":  {"health": 1, "speed": 60,  "radius": 14, "score": 10, "threat": 1.0, "hueRole": "fodder",  "motion": {"wanderTurn": 0.6}},
+    "hound":    {"health": 1, "speed": 150, "radius": 14, "score": 15, "threat": 1.5, "hueRole": "hunter",  "motion": {"turnRate": 3.2}},
+    "shoal":    {"health": 1, "speed": 190, "radius": 8,  "score": 5,  "threat": 0.4, "hueRole": "fodder",  "motion": {"flockRadius": 70, "separation": 22, "groupSize": [12, 40]}},
+    "ram":      {"health": 4, "speed": 90,  "radius": 18, "score": 40, "threat": 3.5, "hueRole": "hunter",  "motion": {"dashSpeed": 620, "telegraphBeats": 1, "dashBeats": 1, "restBeats": 2}},
+    "flanker":  {"health": 2, "speed": 170, "radius": 15, "score": 25, "threat": 2.2, "hueRole": "hunter",  "motion": {"orbitRadius": 260, "closeRate": 40}},
+    "skitter":  {"health": 1, "speed": 200, "radius": 11, "score": 30, "threat": 2.0, "hueRole": "special", "motion": {"dodgeDistance": 90, "dodgeCooldownBeats": 2}},
+    "carom":    {"health": 2, "speed": 180, "radius": 14, "score": 20, "threat": 1.8, "hueRole": "fodder",  "motion": {"speedGainPerBounce": 0.1, "maxSpeedFactor": 2.0}},
+    "sentry":   {"health": 6, "speed": 0,   "radius": 16, "score": 60, "threat": 4.0, "hueRole": "special", "motion": {"patternArms": 3, "fireEverySteps": 2, "bulletSpeed": 220}}
+  },
+  "enemyBullet": {"speed": 240, "radius": 5, "note": "Slow on purpose: bullets are a pattern to read, not a reflex test. Ranged attacks fire on the beat after a one-beat telegraph."},
+  "firstSlice": {
+    "note": "Roster for milestone M3: twelve species from six families, with their debut. Track 1 uses Short cycles (24 bars), Track 2 Standard cycles (48 bars).",
+    "roster": [
+      {"species": "drifter_1_A", "debut": {"track": 1, "cycle": 1}},
+      {"species": "hound_1_A",   "debut": {"track": 1, "cycle": 1}},
+      {"species": "shoal_1_A",   "debut": {"track": 1, "cycle": 2}},
+      {"species": "drifter_2_A", "debut": {"track": 1, "cycle": 3}},
+      {"species": "ram_1_A",     "debut": {"track": 1, "cycle": 3}},
+      {"species": "hound_2_A",   "debut": {"track": 1, "cycle": 4}},
+      {"species": "carom_1_A",   "debut": {"track": 2, "cycle": 1}},
+      {"species": "sentry_1_B",  "debut": {"track": 2, "cycle": 1}},
+      {"species": "shoal_2_A",   "debut": {"track": 2, "cycle": 2}},
+      {"species": "ram_2_A",     "debut": {"track": 2, "cycle": 2}},
+      {"species": "hound_2_B",   "debut": {"track": 2, "cycle": 3}},
+      {"species": "carom_2_A",   "debut": {"track": 2, "cycle": 3}}
+    ],
+    "threatBudgetPerBar": {"track1": [2.0, 3.0, 4.5, 6.0], "track2": [7.0, 9.0, 12.0],
+                           "note": "Budget per bar during Groove, by cycle. Sections scale it as in GAME_DESIGN section 8."}
+  }
+}
