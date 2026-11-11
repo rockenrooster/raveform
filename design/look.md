@@ -419,6 +419,11 @@ frame, six times the blur, and a 16 wu capsule left a row of soft beads behind i
 (`captures/m1/afterglow_shot_beads_mid600.png`). Fast things are therefore drawn as long as they
 travel (§3, player shots); nothing in the afterglow itself changes for them.
 
+The same holds for anything else that is bright and fast. From M3: a Shard flying to a ship faster
+than 480 wu/s (8 wu a frame, about the blur) carries a tail capsule by the shot rule, gold at the
+Shard fading to nothing, at the Shard's own intensity and width; a hundred of them homing in are then
+a spray of comets instead of rows of dots (`captures/m1/afterglow_shard_beads_mid600.png`).
+
 The first version kept the lines themselves at half resolution with no knee. At 60 Hz a line that
 moves five pixels a frame then prints a row of ghost outlines, and seven hundred enemies each drew a
 pillar behind them (`captures/m1/bench_mid_600_signal.png` of 2026-11-11). Line-sharp history is not

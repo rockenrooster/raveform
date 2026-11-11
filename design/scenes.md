@@ -150,6 +150,16 @@ burst ("dark" = brightest channel under 48/255):
 | `bench_mid` | at least 25% | at most 0.11 |
 | `bench_endgame` | at least 15% | at most 0.16 |
 
+**Measured between kicks.** The target frames are stills with every beat envelope at zero, so the
+numbers above are for the picture between kicks: the mean of the eight frames of the quiet-bar strip
+(`strip_bench_endgame_407`) for the endgame. Frame 600 falls exactly on a kick, the brightest moment
+of the beat (the pump was measured at +0.014 of luminance there); a frame on the kick may be up to a
+tenth brighter: at least 13.5% dark and at most 0.176 for `bench_endgame`. The first version of this
+page did not say so and asked frame 600 to meet the still's numbers.
+
+M1 result (look v2.2, desktop, High, Signal, Reef, 2026-11-11): between kicks 15.6–16.2% dark and
+0.154–0.157; on the kick 14.0% and 0.1645; `bench_mid` 36.1% and 0.081. All inside.
+
 `design/previews/frame_endgame_ref.png` is what `bench_endgame` should resemble; it measures 17% and
 0.148. An earlier version of this page asked for 40% dark at every density. That number was written
 before anyone had drawn 700 enemies and 1,500 bullets: their lines and the lattice alone cover more
