@@ -1,0 +1,76 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Native code is the root CMake tree; SDL's Java glue comes straight from the pinned SDL checkout.
+android {
+    namespace 'dev.raveform.game'
+    compileSdk 36
+    ndkVersion '29.0.14206865'
+
+    defaultConfig {
+        applicationId 'dev.raveform.game'
+        minSdk 29
+        targetSdk 36
+        versionCode 1
+        versionName '0.0.1-m0'
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+        externalNativeBuild {
+            cmake {
+                // Oboe's prefab package is a shared library built against c++_shared.
+                arguments '-DANDROID_STL=c++_shared'
+                abiFilters 'arm64-v8a'
+            }
+        }
+    }
+
+    buildTypes {
+        // Native Debug build.
+        debug {
+            debuggable true
+            externalNativeBuild {
+                cmake {
+                    arguments '-DCMAKE_BUILD_TYPE=Debug'
+                }
+            }
+        }
+        // Everyday and benchmark build: optimized native code, still debuggable and debug-signed.
+        dev {
+            debuggable true
+            signingConfig signingConfigs.debug
+            externalNativeBuild {
+                cmake {
+                    arguments '-DCMAKE_BUILD_TYPE=RelWithDebInfo'
+                }
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('../../CMakeLists.txt')
+            version '3.22.1'
+        }
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs += ['../../third_party/SDL/android-project/app/src/main/java']
+        }
+    }
+
+    buildFeatures {
+        prefab true
+    }
+
+    lint {
+        abortOnError false
+    }
+}
+
+dependencies {
+    implementation 'com.google.oboe:oboe:1.11.0'
+    implementation 'androidx.games:games-frame-pacing:2.1.3'
+}

@@ -71,6 +71,7 @@ private:
     bool awaitingResumePresent_ = false;
     bool screenshotRequested_ = false;
     bool threeFingerLatch_ = false;
+    bool displayRechecked_ = false;
     u64 startNs_ = 0;
     u64 lastPresentNs_ = 0;
     u64 lastOverlayNs_ = 0;
@@ -92,6 +93,8 @@ private:
     i32 underrunsAtMeasure_ = 0;
     u64 allocsAtMeasure_ = 0;
     u64 allocsMeasured_ = 0;
+    u64 presentAllocsAtMeasure_ = 0;
+    u64 presentAllocsMeasured_ = 0;
 
     // lifecycle_test.
     u32 cyclesDone_ = 0;

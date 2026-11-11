@@ -11,6 +11,7 @@ bool Bench::begin(const char* scenario, float warmupSec, float measureSec, u64 n
     warmupSec_ = warmupSec;
     measureSec_ = measureSec;
     measuredSec_ = 0.0f;
+    interruptions_ = 0;
     // Room for the whole run at up to 240 Hz plus slack; allocated once, before measuring.
     const u32 capacity = static_cast<u32>((measureSec + 5.0f) * 240.0f) + 1024;
     if (!intervals_.init(capacity) || !cpu_.init(capacity)) {

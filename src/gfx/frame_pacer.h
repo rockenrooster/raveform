@@ -34,6 +34,8 @@ public:
     u64 targetIntervalNs() const;
     u32 supportedPeriodCount() const { return supportedCount_; }
     u64 supportedPeriodNs(u32 i) const { return supportedPeriods_[i]; }
+    // operator new calls made inside present() since start (Swappy allocates there; we do not).
+    u64 presentAllocations() const { return presentAllocs_; }
 
 private:
     bool wantSwappy_ = false;
@@ -44,6 +46,7 @@ private:
     VkDevice device_ = VK_NULL_HANDLE;
     u64 swappyRefreshNs_ = 0;
     u64 intervalNs_ = 0;
+    u64 presentAllocs_ = 0;
     u32 supportedCount_ = 0;
     u64 supportedPeriods_[8] = {};
     [[maybe_unused]] char extensionNames_[4][VK_MAX_EXTENSION_NAME_SIZE] = {};  // Swappy's (Android)

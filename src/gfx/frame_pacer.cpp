@@ -3,9 +3,12 @@
 #include <cstdio>
 #include <cstring>
 
+#include "core/alloc_counter.h"
+
 #if defined(__ANDROID__)
 #include <SDL3/SDL_system.h>
 #include <android/native_window.h>
+#include <dlfcn.h>
 #include <jni.h>
 #include <swappy/swappyVk.h>
 
@@ -13,6 +16,32 @@
 #endif
 
 namespace rf {
+
+#if defined(__ANDROID__)
+namespace {
+// Vote for a panel refresh rate on the surface (TECH_SPEC 3.1). API 30/31 functions, looked up at run
+// time because minSdk is 29.
+void voteFrameRate(void* window, float hz) {
+    using WithStrategy = int32_t (*)(ANativeWindow*, float, int8_t, int8_t);
+    using Plain = int32_t (*)(ANativeWindow*, float, int8_t);
+    static auto withStrategy = reinterpret_cast<WithStrategy>(dlsym(RTLD_DEFAULT, "ANativeWindow_setFrameRateWithChangeStrategy"));
+    static auto plain = reinterpret_cast<Plain>(dlsym(RTLD_DEFAULT, "ANativeWindow_setFrameRate"));
+    auto* w = static_cast<ANativeWindow*>(window);
+    constexpr int8_t kCompatDefault = 0;  // ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_DEFAULT (games)
+    constexpr int8_t kChangeAlways = 1;   // ANATIVEWINDOW_CHANGE_FRAME_RATE_ALWAYS
+    int32_t r = -1;
+    const char* api = "none";
+    if (w && withStrategy) {
+        r = withStrategy(w, hz, kCompatDefault, kChangeAlways);
+        api = "setFrameRateWithChangeStrategy";
+    } else if (w && plain) {
+        r = plain(w, hz, kCompatDefault);
+        api = "setFrameRate";
+    }
+    RF_LOG("display: voted %.2f Hz via ANativeWindow_%s -> %d", hz, api, r);
+}
+}  // namespace
+#endif
 
 void FramePacer::configure(bool useSwappy, float targetHz) {
 #if defined(__ANDROID__)
@@ -69,7 +98,11 @@ void FramePacer::onSwapchainCreated(VkSwapchainKHR swapchain, void* nativeWindow
     swappyActive_ = false;
     intervalNs_ = 0;
 #if defined(__ANDROID__)
-    if (!wantSwappy_) return;
+    if (!wantSwappy_) {
+        // Plain FIFO: only an explicit --fps is voted for (the supported list comes from Swappy).
+        if (targetHz_ > 0.0f) voteFrameRate(nativeWindow, targetHz_);
+        return;
+    }
     JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
     jobject activity = android::activityRef();
     u64 refreshNs = 0;
@@ -102,6 +135,7 @@ void FramePacer::onSwapchainCreated(VkSwapchainKHR swapchain, void* nativeWindow
     if (best == 0) best = wanted ? wanted : refreshNs;
     intervalNs_ = best;
     SwappyVk_setSwapIntervalNS(device_, swapchain, intervalNs_);
+    voteFrameRate(nativeWindow, static_cast<float>(1e9 / static_cast<double>(intervalNs_)));
     char list[128] = {};
     size_t used = 0;
     for (u32 i = 0; i < supportedCount_ && used + 16 < sizeof list; ++i)
@@ -134,10 +168,20 @@ void FramePacer::onDeviceDestroying(VkDevice device) {
 }
 
 VkResult FramePacer::present(VkQueue queue, const VkPresentInfoKHR& info) {
+    // Allocations inside the present call belong to the pacing library, not to our frame code.
+    const u64 allocsBefore = heapAllocCount();
+    VkResult r;
 #if defined(__ANDROID__)
-    if (swappyActive_) return SwappyVk_queuePresent(queue, &info);
+    if (swappyActive_) {
+        r = SwappyVk_queuePresent(queue, &info);
+    } else {
+        r = vkQueuePresentKHR(queue, &info);
+    }
+#else
+    r = vkQueuePresentKHR(queue, &info);
 #endif
-    return vkQueuePresentKHR(queue, &info);
+    presentAllocs_ += heapAllocCount() - allocsBefore;
+    return r;
 }
 
 u64 FramePacer::refreshPeriodNs() const {

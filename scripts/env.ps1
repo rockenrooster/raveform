@@ -73,10 +73,20 @@ function Get-RfHomePackage {
     return ($line -split '/')[0].Trim()
 }
 
-# The test phones are shared with other projects' sessions. Before taking the screen, wait until the
-# launcher or RAVEFORM has been in front for $QuietSeconds, so we do not interrupt someone else's run.
+# --- Shared test devices (see CLAUDE.md) ---------------------------------------------------------
+# Other sessions use the same phones. Never clear logcat, never touch other packages, and only take
+# the screen when the launcher or RAVEFORM is in front.
+
+# True when nothing but the launcher or RAVEFORM is in front right now.
+function Test-RfDeviceFree {
+    param([Parameter(Mandatory)][string]$Serial)
+    $fg = Get-RfForegroundPackage $Serial
+    return ($fg -eq '' -or $fg -eq (Get-RfHomePackage $Serial) -or $fg -eq $RF_APP_ID)
+}
+
+# Waits until the launcher or RAVEFORM has been in front for $QuietSeconds.
 function Wait-RfDeviceIdle {
-    param([Parameter(Mandatory)][string]$Serial, [int]$QuietSeconds = 10, [int]$TimeoutSeconds = 900)
+    param([Parameter(Mandatory)][string]$Serial, [int]$QuietSeconds = 10, [int]$TimeoutSeconds = 300)
     $homePkg = Get-RfHomePackage $Serial
     $quietSince = $null
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -87,7 +97,7 @@ function Wait-RfDeviceIdle {
             if (-not $quietSince) { $quietSince = Get-Date }
             if (((Get-Date) - $quietSince).TotalSeconds -ge $QuietSeconds) { return $true }
         } else {
-            if (-not $announced) { Write-Host "[device] $Serial is busy with $fg; waiting"; $announced = $true }
+            if (-not $announced) { Write-Host "[device] $Serial is in use ($fg in front); waiting"; $announced = $true }
             $quietSince = $null
         }
         Start-Sleep -Seconds 2
@@ -95,14 +105,30 @@ function Wait-RfDeviceIdle {
     return $false
 }
 
-# Wakes the screen, stops any running copy and starts the activity. $AppArgs becomes argv through
-# the 'args' intent extra (RaveformActivity.getArguments).
+# PID of our process ('' when not running). Logs are read with `logcat -d --pid`, never cleared.
+function Get-RfPid {
+    param([Parameter(Mandatory)][string]$Serial)
+    return "$(& $RF_ADB -s $Serial shell pidof $RF_APP_ID)".Trim()
+}
+
+# Closes RAVEFORM (only our package) so it does not sit in the foreground after a test.
+function Stop-RfApp {
+    param([Parameter(Mandatory)][string]$Serial)
+    & $RF_ADB -s $Serial shell am force-stop $RF_APP_ID | Out-Null
+}
+
+# Starts the activity fresh and returns its PID. Refuses when another app is in front. $AppArgs
+# becomes argv through the 'args' intent extra (RaveformActivity.getArguments).
 function Start-RfApp {
     param([Parameter(Mandatory)][string]$Serial, [string]$AppArgs = '')
+    if (-not (Test-RfDeviceFree $Serial)) {
+        throw "$Serial is in use by another app ($(Get-RfForegroundPackage $Serial)); not launching over it"
+    }
     & $RF_ADB -s $Serial shell input keyevent KEYCODE_WAKEUP | Out-Null
-    & $RF_ADB -s $Serial shell am force-stop $RF_APP_ID | Out-Null
+    Stop-RfApp $Serial
     $cmd = "am start -W -n $RF_ACTIVITY"
     if ($AppArgs) { $cmd += " --es args '$AppArgs'" }
-    & $RF_ADB -s $Serial shell $cmd
+    & $RF_ADB -s $Serial shell $cmd | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "am start failed on $Serial" }
+    return Get-RfPid $Serial
 }

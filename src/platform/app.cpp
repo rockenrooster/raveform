@@ -225,6 +225,13 @@ void App::handleEvent(const SDL_Event& e) {
         case SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED:
             refreshDisplay();
             break;
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            logTagged("RFLIFE", "focus lost%s", bench_.active() ? " during the benchmark: run marked invalid" : "");
+            bench_.noteInterruption();
+            break;
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+            logTagged("RFLIFE", "focus gained");
+            break;
         case SDL_EVENT_WINDOW_MINIMIZED:
             minimized_ = true;
             break;
@@ -430,11 +437,18 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
             audio_.resetPeaks();
             underrunsAtMeasure_ = audio_.stats().underruns;
             allocsAtMeasure_ = heapAllocCount();
+            presentAllocsAtMeasure_ = renderer_.pacer().presentAllocations();
         } else if (ev == Bench::Event::Finished) {
             allocsMeasured_ = heapAllocCount() - allocsAtMeasure_;
+            presentAllocsMeasured_ = renderer_.pacer().presentAllocations() - presentAllocsAtMeasure_;
             reportBench();
             quit_ = true;
         }
+    }
+    if (!displayRechecked_ && presentedNs - startNs_ > 1500000000ull) {
+        // The refresh-rate vote switches the panel mode asynchronously; look again during the warm-up.
+        displayRechecked_ = true;
+        refreshDisplay();
     }
     if (std::strcmp(args_.scenario, "lifecycle_test") == 0) stepLifecycleTest();
     if (args_.frames && frames_ >= args_.frames) quit_ = true;
@@ -544,6 +558,9 @@ void App::reportBench() {
     JsonWriter j(buffer, sizeof buffer);
     j.beginObject();
     j.str("scenario", bench_.scenario());
+    // Valid only if the activity kept focus for the whole run (shared test phones).
+    j.boolean("valid", bench_.interruptions() == 0 && !bench_.overflowed());
+    j.integer("interruptions", bench_.interruptions());
     j.str("build", RF_BUILD_NAME);
     j.str("device", device_);
     j.str("os", os_);
@@ -589,7 +606,9 @@ void App::reportBench() {
     j.boolean("mmap", a.mmap);
     j.boolean("exclusive", a.exclusive);
     j.endObject();
-    j.integer("heap_allocs", static_cast<i64>(allocsMeasured_));
+    // operator new calls in the measured window: ours (must be 0) and those inside the present call.
+    j.integer("heap_allocs", static_cast<i64>(allocsMeasured_ - presentAllocsMeasured_));
+    j.integer("heap_allocs_in_present", static_cast<i64>(presentAllocsMeasured_));
     j.integer("capsules", lastCapsules_);
     j.integer("swapchain_rebuilds", renderer_.rebuildCount());
     j.boolean("validation", g.validationEnabled());
