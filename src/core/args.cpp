@@ -41,10 +41,11 @@ constexpr MuteName kMuteNames[] = {
     {"background", kMuteBackground}, {"grid", kMuteGrid},           {"heat", kMuteHeat},
     {"enemy", kMuteEnemy},           {"elite", kMuteElite},         {"boss", kMuteBoss},
     {"aura", kMuteAura},             {"bullet", kMuteBullet},       {"priority", kMutePriority},
-    {"sparks", kMuteSparks},         {"flash", kMuteFlash},         {"pool", kMutePool},
+    {"sparks", kMuteSparks},         {"flash", kMuteFlash},         {"killpool", kMutePool},
     {"fx", kMuteFx},                 {"warp", kMuteWarp},           {"shard", kMuteShard},
     {"player", kMutePlayer},         {"afterglow", kMuteAfterglow}, {"distortion", kMuteDistortion},
     {"aberration", kMuteAberration}, {"vignette", kMuteVignette},   {"pump", kMutePump},
+    {"sparkles", kMuteSparkles},     {"pools", kMutePools},
 };
 
 // "aura,boss" -> kMuteAura | kMuteBoss; false on an unknown name.
@@ -111,8 +112,13 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             usedNext = true;
         } else if (is("--still")) {
             a.still = true;
+        } else if (is("--reduce-flashing")) {
+            a.reduceFlashing = true;
         } else if (is("--tier") && next) {
             ok = copyString(a.tier, sizeof a.tier, next);
+            usedNext = true;
+        } else if (is("--cuts") && next) {
+            ok = parseUint(next, a.cuts) && a.cuts <= 11;
             usedNext = true;
         } else if (is("--palette") && next) {
             ok = copyString(a.palette, sizeof a.palette, next);
@@ -168,11 +174,11 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
 void logArgs(const AppArgs& a) {
     RF_LOG("args: scenario='%s' seconds=%.1f warmup=%.1f frames=%u screenshot='%s' res=%dx%d "
            "validation=%d tone=%d swappy=%d fps=%.1f affinity=%s overlay=%d cycles=%u scene='%s' still=%d bloom=%d "
-           "look=%s tier=%s palette=%s strip=%u page=%u governor=%d fixed_step=%d mute=0x%x",
+           "look=%s reduce_flashing=%d tier=%s cuts=%u palette=%s strip=%u page=%u governor=%d fixed_step=%d mute=0x%x",
            a.scenario, a.seconds, a.warmupSeconds, a.frames, a.screenshot, a.width, a.height, a.validation,
            a.tone ? 1 : 0, a.swappy ? 1 : 0, a.fps, a.fastCores ? "big" : "all", a.overlay ? 1 : 0, a.cycles,
-           a.sceneFile, a.still ? 1 : 0, a.bloom ? 1 : 0, a.look, a.tier[0] ? a.tier : "(default)", a.palette, a.strip,
-           a.page, a.governor, a.fixedStep ? 1 : 0, a.mute);
+           a.sceneFile, a.still ? 1 : 0, a.bloom ? 1 : 0, a.look, a.reduceFlashing ? 1 : 0,
+           a.tier[0] ? a.tier : "(default)", a.cuts, a.palette, a.strip, a.page, a.governor, a.fixedStep ? 1 : 0, a.mute);
 }
 
 }  // namespace rf

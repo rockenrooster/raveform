@@ -122,6 +122,7 @@ public:
     u32 count() const { return count_; }
     u32 dropped() const { return dropped_; }
     u32 capacity() const { return cap_; }
+    void clear() { count_ = 0; }  // drop everything pushed this frame (analysis pictures)
 
 private:
     T* mem_ = nullptr;

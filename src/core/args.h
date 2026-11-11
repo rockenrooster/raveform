@@ -20,7 +20,7 @@ enum MuteBits : u32 {
     kMutePriority = 1u << 8,    // the priority layer: threat and ship rims and cores
     kMuteSparks = 1u << 9,      // sparks
     kMuteFlash = 1u << 10,      // kill flashes and the boss flash
-    kMutePool = 1u << 11,       // kill pools
+    kMutePool = 1u << 11,       // kill pools ("killpool")
     kMuteFx = 1u << 12,         // shock rings, embers, shatter, gravity wells, the Drop front
     kMuteWarp = 1u << 13,       // warp-in rings
     kMuteShard = 1u << 14,      // Shards
@@ -30,6 +30,8 @@ enum MuteBits : u32 {
     kMuteAberration = 1u << 18,
     kMuteVignette = 1u << 19,
     kMutePump = 1u << 20,       // the kick's exposure, bloom and enemy swell pumps
+    kMuteSparkles = 1u << 21,   // every soft light under 16 ref px (the full-resolution sparkle batch)
+    kMutePools = 1u << 22,      // every soft light of 16 ref px and up (the quarter-resolution pool batch)
 };
 
 struct AppArgs {
@@ -50,7 +52,9 @@ struct AppArgs {
     bool still = false;        // --still: every time-driven effect off (acceptance pictures)
     bool bloom = true;         // --bloom on|off
     char look[16] = "signal";  // --look signal|laser|haze (design/look_variants.json)
+    bool reduceFlashing = false;  // --reduce-flashing: beat amounts halved, no Drop burst (look.md §7)
     char tier[12] = {};        // --tier low|medium|high|ultra ("" = the device default)
+    u32 cuts = 0;              // --cuts N: the first N cuts of design/look.md §10 on top of the tier
     char palette[16] = "reef"; // --palette <id> (design/palettes.json)
     u32 strip = 0;             // --strip N: also capture the N-1 frames before the --screenshot frame
     u32 page = 1;              // --page N: glyph_sheet page (1-3)

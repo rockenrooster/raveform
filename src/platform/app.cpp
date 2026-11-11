@@ -123,6 +123,7 @@ bool App::init() {
         return false;
     }
     tier_ = tierSettings(tier);
+    applyCuts(tier_, args_.cuts);
 
     // Before the renderer and the audio stream exist, so the threads they start (Swappy, the audio
     // callback) inherit the placement.
@@ -174,6 +175,7 @@ bool App::init() {
         if (!stage_.init(benchMid ? StageKind::Mid : StageKind::Endgame, look_, palettes_, *palette_, glyphs_, tier_))
             return false;
         stage_.setMute(args_.mute);
+        stage_.setReduceFlashing(args_.reduceFlashing);
         if (args_.mute) RF_LOG("stage: muted light 0x%x (analysis picture)", args_.mute);
         content_ = Content::Stage;
     } else if (std::strcmp(args_.scenario, "glyph_sheet") == 0) {
@@ -205,10 +207,12 @@ bool App::init() {
     // Governor v1: on for interactive stages; benchmarks keep the tier fixed (TECH_SPEC 5.4).
     governorOn_ = content_ == Content::Stage && (args_.governor == 1 || (args_.governor < 0 && !bench_.active()));
     governor_.reset(tier_.tier, static_cast<float>(renderer_.pacer().targetIntervalNs() * 1e-6));
-    RF_LOG("tier %s (bloom %u levels, afterglow %s, distortion %s, aberration %s, sparks x%.2f), governor %s", tier_.name,
-           tier_.render.bloomLevels, tier_.render.afterglowShift == 0 ? "off" : (tier_.render.afterglowShift == 1 ? "1/2" : "1/4"),
+    RF_LOG("tier %s, %u cuts (bloom %u levels, afterglow %s, distortion %s, aberration %s, sparks x%.2f, glass %s, "
+           "%u kill pools), governor %s",
+           tier_.name, tier_.cuts, tier_.render.bloomLevels, tier_.render.afterglowShift == 0 ? "off" : "on",
            tier_.render.distortionShift == 0 ? "off" : (tier_.render.distortionShift == 3 ? "1/8" : "1/4"),
-           tier_.render.aberration ? "on" : "off", tier_.particleDensity, governorOn_ ? "on" : "off");
+           tier_.render.aberration ? "on" : "off", tier_.particleDensity, tier_.glass ? "on" : "off", tier_.killPools,
+           governorOn_ ? "on" : "off");
     if (args_.screenshot[0] && args_.frames == 0) args_.frames = 120;
     overlayOn_ = args_.overlay;
     refreshOverlay(startNs_);
@@ -282,6 +286,10 @@ void App::handleEvent(const SDL_Event& e) {
                 nextLook();
             } else if (e.key.key == SDLK_P) {
                 nextPalette();
+            } else if (e.key.key == SDLK_R) {
+                stage_.setReduceFlashing(!stage_.reduceFlashing());
+                RF_LOG("reduce flashing: %s", stage_.reduceFlashing() ? "on" : "off");
+                if (overlayOn_) refreshOverlay(nowNs());
             } else if (e.key.key == SDLK_K && !bench_.active()) {
                 applyTier(static_cast<Tier>((static_cast<u32>(tier_.tier) + 1) % 4u));
             }
@@ -477,6 +485,9 @@ void App::frame(u64 loopStartNs) {
     if (content_ == Content::Stage) {
         stage_.advance(dt);
         stage_.render(draw, params, background_, w, h);
+        // Analysis pictures: whole classes of soft light (core/args.h MuteBits).
+        if (args_.mute & kMuteSparkles) draw.sparkles.clear();
+        if (args_.mute & kMutePools) draw.pools.clear();
         renderer_.setBackground(background_);
         if (args_.still) {
             params.vignette = false;
@@ -565,6 +576,7 @@ void App::nextPalette() {
 
 void App::applyTier(Tier t) {
     tier_ = tierSettings(t);
+    applyCuts(tier_, args_.cuts);
     renderer_.setTier(tier_.render);
     if (content_ == Content::Stage) stage_.setTier(tier_);
     RF_LOG("tier: %s", tier_.name);
@@ -614,6 +626,7 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
                    "%u glyph instances, load %.1f, crowd gain %.3f, swarm gain %.3f, %u kills so far",
                    stage_.time(), st.enemiesInView, st.enemies, st.bulletsInView, st.bullets, st.shards, st.glyphInstances,
                    st.load, st.crowdGain, st.swarmGain, st.kills);
+            stage_.logCounts();
         }
     }
 
@@ -743,7 +756,8 @@ void App::refreshOverlay(u64 nowNs) {
         upper(tierU, sizeof tierU, tier_.name);
         upper(lookU, sizeof lookU, variant_->id);
         upper(paletteU, sizeof paletteU, palette_->id);
-        overlay_.addLine(kText, "TIER %s%s  LOOK %s  PALETTE %s", tierU, governorOn_ ? " (GOVERNOR)" : "", lookU, paletteU);
+        overlay_.addLine(kText, "TIER %s%s  LOOK %s%s  PALETTE %s", tierU, governorOn_ ? " (GOVERNOR)" : "", lookU,
+                         stage_.reduceFlashing() ? " (REDUCED FLASHING)" : "", paletteU);
         if (gt.valid) {
             overlay_.addLine(kText, "GPU %.2f MS  SCENE %.2f  POOLS %.2f  AFTERGLOW %.2f  DIST %.2f  BLOOM %.2f  COMP %.2f",
                              gt.ms[GpuPassTimes::Total], gt.ms[GpuPassTimes::Scene], gt.ms[GpuPassTimes::Pools],
@@ -943,7 +957,9 @@ void App::reportBench() {
         j.integer("heap_allocs_other_threads", static_cast<i64>(allAllocsMeasured_ - mainAllocsMeasured_));
         j.integer("capsules", lastCapsules_);
         j.str("tier", tier_.name);
+        j.integer("cuts", tier_.cuts);
         j.str("look", variant_->id);
+        j.boolean("reduce_flashing", stage_.reduceFlashing());
         j.str("palette", palette_->id);
         j.boolean("governor", governorOn_);
         if (gpu[GpuPassTimes::Total].n) {

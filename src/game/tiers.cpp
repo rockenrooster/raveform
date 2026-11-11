@@ -9,14 +9,14 @@ TierSettings tierSettings(Tier t) {
     s.tier = t;
     switch (t) {
         case Tier::Low:
+            // TECH_SPEC 5.4 Low. Glass and the 24 kill pools of look.md §3 stay: dropping them are cuts 1
+            // and 7 of look.md §10 (applyCuts), made only when a device cannot hold its rate.
             s.name = "low";
             s.render = {4, 2, 0, false};
             s.particleDensity = 0.35f;
             s.particleRing = 16384;
             s.background = false;
             s.bulletSparkles = false;
-            s.glass = false;
-            s.killPools = 12;
             s.aurasBelowElite = false;
             s.gridSpacingWu = 32.0f;
             s.lodRadiusPx = 14.0f;
@@ -46,6 +46,36 @@ TierSettings tierSettings(Tier t) {
             break;
     }
     return s;
+}
+
+void applyCuts(TierSettings& s, u32 n) {
+    s.cuts = n;
+    for (u32 k = 1; k <= n && k <= kMaxCuts; ++k) {
+        switch (k) {
+            case 1: s.glass = false; break;
+            case 2: s.bulletSparkles = false; break;
+            case 3:
+                s.nebula = false;
+                s.starTwinkle = false;
+                break;
+            case 4: s.render.aberration = false; break;
+            case 5: s.render.distortionShift = 0; break;
+            case 6: s.render.afterglowShift = 0; break;
+            case 7: s.killPools = 12; break;
+            case 8:
+                if (s.render.bloomLevels > 4) --s.render.bloomLevels;
+                break;
+            case 9: s.particleDensity *= 0.5f; break;
+            case 10:
+                s.gridSpacingWu += 8.0f;
+                s.gridTint = false;
+                break;
+            case 11:
+                if (s.lodRadiusPx < 21.0f) s.lodRadiusPx = 21.0f;  // the standard enemy at zoom 1
+                break;
+            default: break;
+        }
+    }
 }
 
 bool parseTier(const char* name, Tier& out) {

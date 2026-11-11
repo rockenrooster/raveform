@@ -37,6 +37,7 @@ struct StageStats {
     float load = 0.0f;
     float crowdGain = 1.0f;
     float swarmGain = 1.0f;
+    u32 familyInView[16] = {};  // enemies inside the camera rectangle, by family (Stage::logCounts)
 };
 
 class Stage {
@@ -54,6 +55,9 @@ public:
     void setDensity(float governorDensity) { governorDensity_ = governorDensity; }
     // Analysis pictures (--mute, core/args.h MuteBits): kinds of light that are not drawn.
     void setMute(u32 muteBits) { mute_ = muteBits; }
+    // Reduce-flashing mode (look.md §7): every beat amount x beat.reduceFlashingScale, no Drop burst.
+    void setReduceFlashing(bool on) { reduceFlashing_ = on; }
+    bool reduceFlashing() const { return reduceFlashing_; }
 
     void advance(float dt);
     // Emits one frame: primitives into `draw`, composite controls into `params` (look and bloom are
@@ -62,6 +66,8 @@ public:
 
     float time() const { return songT_; }
     const StageStats& stats() const { return stats_; }
+    // Logs what the last frame held in view, family by family (with pictures; not in the frame loop).
+    void logCounts() const;
 
 private:
     struct Enemy;
@@ -79,6 +85,7 @@ private:
     void envelopes();
     Vec2 shipAt(float t) const;
     Vec2 shipVelocity(float t) const;
+    Vec2 bossOffset(float t) const;  // endgame: the stand-in's centre, relative to the ship
 
     // Formations.
     void buildMid();
@@ -124,6 +131,8 @@ private:
     Rng rng_{1};
     float governorDensity_ = 1.0f;
     u32 mute_ = 0;
+    bool reduceFlashing_ = false;
+    float beatAmount() const;  // 1, or look.json beat.reduceFlashingScale in reduce-flashing mode
     bool shown(u32 muteBit) const { return (mute_ & muteBit) == 0; }
 
     float songT_ = 0.0f;   // the song clock (envelopes, events)

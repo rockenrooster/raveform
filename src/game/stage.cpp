@@ -1,6 +1,7 @@
 #include "game/stage.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <initializer_list>
@@ -40,6 +41,12 @@ constexpr float kShotSpeed = 1500.0f;
 constexpr float kShotLife = 0.8f;
 constexpr float kRefPxPerWu = 1.5f;      // at zoom 1
 
+// The endgame's formations fit this box around the ship (world units): the 20:9 view at zoom 1 is
+// 1600 x 720, and zoom breathing, the Build's zoom-in and the camera's look-ahead take about 15% off it.
+// design/scenes.md §4 counts what is in view, so everything is kept inside (as in the endgame target,
+// design/tools/crowd.py, which squashes its rings to the screen the same way).
+constexpr float kFitX = 680.0f, kFitY = 300.0f;
+
 Vec2 dir(float a) { return {std::cos(a), std::sin(a)}; }
 Vec2 perp(Vec2 v) { return {-v.y, v.x}; }
 Vec2 rotate(Vec2 v, float c, float s) { return {v.x * c - v.y * s, v.x * s + v.y * c}; }
@@ -66,6 +73,11 @@ float hash01(u32 a, u32 b) {
     return static_cast<float>(h >> 8) * (1.0f / 16777216.0f);
 }
 Vec3 white() { return {1.0f, 1.0f, 1.0f}; }
+// Soft fit of an offset from the ship into the endgame box: unchanged near the ship, squeezed toward the
+// edges (per axis), never outside.
+Vec2 fitView(Vec2 o) { return {kFitX * std::tanh(o.x / kFitX), kFitY * std::tanh(o.y / kFitY)}; }
+// Distance from the ship to the edge of the endgame box's inscribed ellipse along the unit direction d.
+float fitRadius(Vec2 d) { return 1.0f / std::sqrt(d.x * d.x / (kFitX * kFitX) + d.y * d.y / (kFitY * kFitY)); }
 
 // Arc-length table of the shoal's figure of eight (x = A sin u, y = B sin 2u).
 constexpr float kShoalA = 650.0f, kShoalB = 260.0f;
@@ -283,12 +295,15 @@ void Stage::randomiseSlot(Enemy& e) {
             e.a = rng_.range(-20.0f, 20.0f);
             e.b = rng_.range(-20.0f, 20.0f);
             break;
-        case kDrifter:
-            e.a = rng_.range(-900.0f, 900.0f);
-            e.b = rng_.range(-450.0f, 450.0f);
+        case kDrifter: {
+            // bench_mid: scattered over +-900 x +-450 (scenes.md §3); the endgame's are scattered over the screen.
+            const bool mid = kind_ == StageKind::Mid;
+            e.a = mid ? rng_.range(-900.0f, 900.0f) : rng_.range(-(kFitX - 30.0f), kFitX - 30.0f);
+            e.b = mid ? rng_.range(-450.0f, 450.0f) : rng_.range(-(kFitY - 30.0f), kFitY - 30.0f);
             e.c = rng_.range(15.0f, 30.0f);  // loop radius (30-60 wu across)
             e.d = rng_.range(5.0f, 9.0f);    // loop period
             break;
+        }
         case kHound:
             e.a = rng_.range(0.0f, 360.0f);
             e.b = rng_.range(0.0f, kTau);
@@ -357,9 +372,10 @@ void Stage::buildEndgame() {
         const u32 k = addEnemy(kSentry, static_cast<u8>(3 + rng_.below(2)), 2, 0, i);
         if (k < enemyCap_) enemies_[k].flags |= kMarkB;
     }
+    // The boss stand-in is built from carom_3, so it wears the Caroms' colour: hue 3 (index 2).
     for (u16 a = 0; a < 8; ++a)
         for (u16 k = 0; k < 6; ++k) {
-            const u32 i = addEnemy(kBoss, 3, 1, a, k);
+            const u32 i = addEnemy(kBoss, 3, 2, a, k);
             if (i < enemyCap_) {
                 enemies_[i].glyph = gCarom3_;
                 enemies_[i].flags |= kBossPart;
@@ -398,6 +414,13 @@ Vec2 Stage::shipVelocity(float t) const {
             700.0f * 2.0f * kTau / 41.0f * std::cos(2.0f * kTau * t / 41.0f)};
 }
 
+Vec2 Stage::bossOffset(float t) const {
+    // 600 wu from the ship across the view (scenes.md §4), circling slowly; its vertical swing is squashed
+    // to 0.3 so the 420 wu wheel stays on the 20:9 screen.
+    const Vec2 d = dir(-0.6f + 0.05f * t);
+    return {600.0f * d.x, 180.0f * d.y};
+}
+
 Vec2 Stage::shoalCurve(u32 stream, float s, float t, Vec2* tangent) const {
     const float L = gShoalLength;
     float w = std::fmod(s, L);
@@ -434,11 +457,15 @@ void Stage::place(Enemy& e, float t, Vec2 S) const {
             Vec2 pos = S + p + tu * e.a + perp(tu) * e.b;
             float heading = angleOf(tu);
             if (kind_ == StageKind::Endgame) {
+                pos = S + fitView(pos - S);  // the turning figure of eight, kept on screen
                 const float sigma = spearBlend(t);
                 if (sigma > 0.0f) {
+                    // A straight spear aimed at the ship, from a third of the way to the screen's edge out to it.
                     const float barIndex = std::floor(t / bar);
                     const Vec2 d = dir(kTau * e.group / 3.0f + barIndex * 0.7f);
-                    const Vec2 spear = S + d * (220.0f + 9.0f * static_cast<float>(e.index)) + perp(d) * (e.b * 0.3f);
+                    const float reach = fitRadius(d);
+                    const float along = reach * (0.3f + 0.7f * static_cast<float>(e.index) / 86.0f);
+                    const Vec2 spear = S + d * along + perp(d) * (e.b * 0.3f);
                     pos = pos + (spear - pos) * sigma;
                     if (sigma > 0.5f) heading = angleOf(d * -1.0f);
                 }
@@ -457,11 +484,13 @@ void Stage::place(Enemy& e, float t, Vec2 S) const {
                 const float r = 620.0f - std::fmod(60.0f * t + e.a, 360.0f);
                 e.pos = S + dir(e.b + 0.22f * t) * r;
             } else {
-                // Two packs charging through the ship's position in waves, one wave per bar.
+                // Two packs charging through the ship's position in waves, one wave per bar, from one edge of
+                // the screen to the other (the pack's seven rows trail its centre by up to 132 wu).
                 const float k = std::floor(t / bar);
                 const float u = std::fmod(t, bar) / bar;
                 const Vec2 d = dir(e.group * kPi * 0.5f + k * 0.65f);
-                const Vec2 centre = S + d * (-760.0f + 1520.0f * u);
+                const float reach = fitRadius(d);
+                const Vec2 centre = S + d * (-(reach - 140.0f) + (2.0f * reach - 140.0f) * u);
                 const float row = static_cast<float>(e.index / 8), col = static_cast<float>(e.index % 8) - 3.5f;
                 e.pos = centre - d * (row * 22.0f) + perp(d) * (col * 20.0f + e.c);
             }
@@ -489,35 +518,45 @@ void Stage::place(Enemy& e, float t, Vec2 S) const {
             break;
         }
         case kCarom: {
+            // Bouncing in a 1500 x 650 box (scenes.md §3); the endgame's box is the screen.
             const Vec2 v = dir(e.c) * 260.0f;
-            e.pos = S + Vec2{bounce(e.a + v.x * t, 750.0f), bounce(e.b + v.y * t, 325.0f)};
+            const bool mid = kind_ == StageKind::Mid;
+            e.pos = S + Vec2{bounce(e.a + v.x * t, mid ? 750.0f : kFitX - 20.0f), bounce(e.b + v.y * t, mid ? 325.0f : kFitY - 20.0f)};
             break;
         }
         case kSentry: {
             if (kind_ == StageKind::Mid) {
                 e.pos = S + dir(kTau * e.index / 3.0f + 0.1f * t) * 520.0f;
             } else {
-                e.pos = S + dir(kTau * e.index / 10.0f + 0.05f * t) * (480.0f + 80.0f * frac(e.index * 0.618f));
+                // A ring 480-560 wu out, squashed to the screen (0.55 high).
+                const Vec2 d = dir(kTau * e.index / 10.0f + 0.05f * t);
+                const float r = 480.0f + 80.0f * frac(e.index * 0.618f);
+                e.pos = S + Vec2{d.x * r, d.y * r * 0.55f};
             }
             break;
         }
         case kWyrmHead:
         case kWyrmBody: {
+            // Six chains on sine paths back and forth through the view.
             const float tau = t - static_cast<float>(e.index) * 0.11f;
-            const float X = bounce(200.0f * tau + e.group * 300.0f, 1000.0f);  // back and forth across the view
-            const float Y = 140.0f * std::sin(1.9f * tau + e.group) + (static_cast<float>(e.group) - 2.5f) * 110.0f;
-            const float turn = 0.4f * static_cast<float>(e.group) - 1.0f;
-            e.pos = S + rotate({X, Y}, std::cos(turn), std::sin(turn));
+            const float X = bounce(200.0f * tau + e.group * 300.0f, 700.0f);
+            const float Y = 100.0f * std::sin(1.9f * tau + e.group) + (static_cast<float>(e.group) - 2.5f) * 70.0f;
+            const float turn = 0.12f * (static_cast<float>(e.group) - 2.5f);
+            e.pos = S + fitView(rotate({X, Y}, std::cos(turn), std::sin(turn)));
             break;
         }
         case kMoth: {
+            // Four rings of nine spiralling around the ship between 300 and 360 wu (0.82 high on the 20:9 screen).
             const float r = 300.0f + 60.0f * (0.5f + 0.5f * std::sin(0.7f * t + e.group * 1.3f));
             const float a = kTau * e.index / 9.0f + (e.group & 1u ? -0.45f : 0.45f) * t + e.group * 0.4f;
-            e.pos = S + dir(a) * r;
+            const Vec2 d = dir(a);
+            e.pos = S + Vec2{d.x * r, d.y * r * 0.82f};
             break;
         }
         case kTether: {
-            const Vec2 centre = S + dir(kTau * e.group / 12.0f + 0.04f * t) * 560.0f;
+            // Twelve pairs 160 wu apart, slowly rotating, around the ship on a screen-shaped ring.
+            const Vec2 d = dir(kTau * e.group / 12.0f + 0.04f * t);
+            const Vec2 centre = S + Vec2{d.x * 500.0f, d.y * 200.0f};
             e.pos = centre + dir(e.group + 0.35f * t) * (e.index ? 80.0f : -80.0f);
             break;
         }
@@ -533,13 +572,15 @@ void Stage::place(Enemy& e, float t, Vec2 S) const {
             break;
         }
         case kWeaver: {
+            // Curving paths around the ship, on a screen-shaped ring.
             const float sgn = e.index & 1u ? -1.0f : 1.0f;
-            const float r = 520.0f + 120.0f * std::sin(0.9f * t + e.index);
-            e.pos = S + dir(kTau * e.index / 12.0f + sgn * 0.35f * t) * r;
+            const float r = 520.0f + 100.0f * std::sin(0.9f * t + e.index);
+            const Vec2 d = dir(kTau * e.index / 12.0f + sgn * 0.35f * t);
+            e.pos = S + Vec2{d.x * r, d.y * r * 0.45f};
             break;
         }
         case kBoss: {
-            const Vec2 B = S + dir(-0.6f + 0.05f * t) * 600.0f;
+            const Vec2 B = S + bossOffset(t);
             const float arm = e.group * kPi * 0.25f + kTau * t / (4.0f * bar);
             e.pos = B + dir(arm) * (50.0f + 30.0f * static_cast<float>(e.index));
             e.b = arm;
@@ -550,6 +591,8 @@ void Stage::place(Enemy& e, float t, Vec2 S) const {
             break;
     }
 }
+
+float Stage::beatAmount() const { return reduceFlashing_ ? look_->reduceFlashingScale : 1.0f; }
 
 void Stage::envelopes() {
     const float beat = beatLen(), t = songT_;
@@ -590,8 +633,7 @@ void Stage::advance(float dt) {
         static constexpr float kSpiralRate = 50.0f;
         const float prev = simT_ - dt;
         const int n0 = static_cast<int>(std::floor(prev * kSpiralRate)), n1 = static_cast<int>(std::floor(simT_ * kSpiralRate));
-        const Vec2 S = shipAt(simT_);
-        const Vec2 B = S + dir(-0.6f + 0.05f * simT_) * 600.0f;
+        const Vec2 B = shipAt(simT_) + bossOffset(simT_);
         for (int n = n0 + 1; n <= n1 && songT_ >= hitStopUntil_; ++n) {
             const float a = 2.4f * static_cast<float>(n) / kSpiralRate * 6.0f;
             spawnBullet(B, dir(a) * 200.0f, 3.0f);
@@ -706,7 +748,7 @@ void Stage::onSixteenth(u32 step) {
     // Enemy bullets (endgame; bench_mid's are the Sentry arms only).
     if (endgame && (step % 2u) == 0) {
         const float bar4 = 4.0f * barLen();
-        const Vec2 B = S + dir(-0.6f + 0.05f * tSim) * 600.0f;
+        const Vec2 B = S + bossOffset(tSim);
         for (u32 a = 0; a < 8; ++a) {  // boss fans of seven from each arm
             const float arm = static_cast<float>(a) * kPi * 0.25f + kTau * tSim / bar4;
             const Vec2 tip = B + dir(arm) * 200.0f;
@@ -821,8 +863,10 @@ void Stage::kill(Enemy& e, u32 size) {
         addPool(e.pos, r, r, white(), f.intensity[0], f.intensity[1], f.lifeS, false, f.squaredFade ? 1 : 0, false);
     }
     if (size >= 1) {
+        // look.md gives the pool's radius and intensity over its life, not the life: it lasts as long as the
+        // recipe's longest spark (medium 0.9 s, large 1.2 s), as in the endgame target (design/tools/crowd.py).
         const LookSoftLight& pl = size == 1 ? look_->soft.killPoolMedium : look_->soft.killPoolLarge;
-        addPool(e.pos, pl.radius[0], pl.radius[1], hue, pl.intensity[0], pl.intensity[1], 1.2f, true);
+        addPool(e.pos, pl.radius[0], pl.radius[1], hue, pl.intensity[0], pl.intensity[1], x.lifeS[1], true);
         for (u32 k = 0; k < x.embers; ++k) {
             Ember& m = embers_[emberHead_];
             emberHead_ = (emberHead_ + 1) % emberCap_;
@@ -883,7 +927,7 @@ void Stage::dropBurst() {
 void Stage::bossBreak() {
     bossT_ = songT_;
     ++stats_.bossBreaks;
-    const Vec2 B = shipAt(simT_) + dir(-0.6f + 0.05f * simT_) * 600.0f;
+    const Vec2 B = shipAt(simT_) + bossOffset(simT_);
     const u32 n = static_cast<u32>(look_->boom.bossSparks * tier_.particleDensity * governorDensity_);
     if (sparkReqCount_ < sparkReqCap_) sparkReqs_[sparkReqCount_++] = {B, static_cast<u16>(n), 1, 2, {}};
     addPool(B, 240.0f, 420.0f, white(), 0.9f, 0.0f, 0.5f, false, 0, false, false);  // the clamped white flash (a boss's: never dimmed)
@@ -892,6 +936,20 @@ void Stage::bossBreak() {
     if (look_->boom.bossShakeRefPx > shakeAmp_) shakeAmp_ = look_->boom.bossShakeRefPx;
     hitStopUntil_ = songT_ + look_->boom.bossHitStopMs * 0.001f;
     lattice_.impulse(B, 300.0f, 160.0f);
+}
+
+void Stage::logCounts() const {
+    static const char* const kNames[kFamilies] = {"shoal", "drifter", "hound",  "flanker", "ram",   "carom",  "sentry",
+                                                  "wyrm",  "wyrm body", "moth", "tether",  "blink", "weaver", "boss"};
+    char line[512];
+    int n = 0;
+    for (u32 f = 0; f < kFamilies && n < static_cast<int>(sizeof line) - 32; ++f) {
+        if (!stats_.familyInView[f]) continue;
+        n += std::snprintf(line + n, sizeof line - static_cast<size_t>(n), "%s%s %u", n ? ", " : "", kNames[f],
+                           stats_.familyInView[f]);
+    }
+    line[n < static_cast<int>(sizeof line) ? n : static_cast<int>(sizeof line) - 1] = '\0';
+    RF_LOG("stage: in view by family: %s", n ? line : "none");
 }
 
 bool Stage::visible(Vec2 w, float marginWu) const {
@@ -981,10 +1039,11 @@ void Stage::drawEnemy(FrameDraw& d, const Enemy& e) {
     }
     const float radiusPx = scale * pxPerWu_;
     const bool lod = radiusPx < tier_.lodRadiusPx;
-    // Auras: elites and bosses (look.md v2.1 §3); auraByTier is zero in look.json since v2.1.
-    const float auraPool = (elite || e.family == kBoss)
-                               ? le.eliteAura
-                               : (e.tier >= 3 && tier_.aurasBelowElite ? le.auraByTier[e.tier - 1] * gain : 0.0f);
+    // Auras: elites and bosses (look.md v2.1 §3); auraByTier is zero in look.json since v2.1. The boss
+    // stand-in is 48 ordinary glyphs, not a boss design (scenes.md §4): like the endgame target frame
+    // (design/tools/crowd.py) its parts carry no aura each - 48 auras would be the fog §3 removes.
+    const float auraPool =
+        elite ? le.eliteAura : (e.tier >= 3 && tier_.aurasBelowElite ? le.auraByTier[e.tier - 1] * gain : 0.0f);
     if (auraPool > 0.0f && shown(kMuteAura))
         d.pools.glow(toScreen(e.pos), le.auraRadiusOfExtent * g.extent * scale * pxPerWu_, hue * auraPool);
     if (!shown(e.family == kBoss ? kMuteBoss : (elite ? kMuteElite : kMuteEnemy))) return;
@@ -1067,7 +1126,9 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
         if (buildAmount_ > 0.0f) eventZoom = 1.0f + 0.1f * buildAmount_;
         if (sinceDrop >= 0.0f && sinceDrop < bar) eventZoom = 0.9f + 0.1f * smooth01(sinceDrop / bar);
     }
-    zoom_ = (1.0f + 0.1f * std::sin(kTau * t / 29.0f)) * eventZoom * (1.0f + look_->zoomKick * kick_);
+    // Beat response amounts (look.md §7 table), halved in reduce-flashing mode.
+    const float beatAmt = beatAmount();
+    zoom_ = (1.0f + 0.1f * std::sin(kTau * t / 29.0f)) * eventZoom * (1.0f + look_->zoomKick * beatAmt * kick_);
     cam_ = S + V * 0.25f;
     pxPerWu_ = kRefPxPerWu * refPx_ * zoom_;
     centre_ = {0.5f * W, 0.5f * H};
@@ -1172,8 +1233,8 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
     // ---- Background (look.md §7): gradient, nebula at a quarter of the camera's speed, bass swell.
     const Vec3 bgEdge = palette_->bg0 * look_->bgLevel;
     const Vec3 bgCentre = palette_->bg1 * look_->bgLevel;
-    const float bassLift = 1.0f + look_->backgroundBass * bass_;
-    const float drift = look_->backgroundHueDriftDegrees / 60.0f * bass_;  // toward the accent, a little
+    const float bassLift = 1.0f + look_->backgroundBass * beatAmt * bass_;
+    const float drift = look_->backgroundHueDriftDegrees * beatAmt / 60.0f * bass_;  // toward the accent, a little
     bg.edge = mix(bgEdge, accent * (bgEdge.x + bgEdge.y + bgEdge.z) * (1.0f / 3.0f), drift) * bassLift;
     bg.centre = mix(bgCentre, accent * (bgCentre.x + bgCentre.y + bgCentre.z) * (1.0f / 3.0f), drift) * bassLift;
     bg.cx = look_->bgCentre[0];
@@ -1184,7 +1245,7 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
     if (!shown(kMuteBackground)) bg.edge = bg.centre = Vec3{};
     if (tier_.background && shown(kMuteBackground)) {
         const Vec2 pc = cam_ * look_->back.nebulaParallax;
-        for (u32 i = 0; i < cloudCount_ && bg.cloudCount < 8; ++i) {
+        for (u32 i = 0; i < cloudCount_ && bg.cloudCount < 8 && tier_.nebula; ++i) {
             const Cloud& c = clouds_[i];
             Vec2 rel = c.p - pc;
             rel.x = rel.x - cloudTile_.x * std::floor(rel.x / cloudTile_.x + 0.5f);
@@ -1198,7 +1259,8 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
         }
         // Star dust at half the camera's speed: twinkle on hats, flare on snares.
         const Vec2 ps = cam_ * look_->back.starsParallax;
-        const float snareFlare = look_->back.starsSnareFlare * snare_;
+        const float snareFlare = tier_.starTwinkle ? look_->back.starsSnareFlare * snare_ : 0.0f;
+        const float hatTwinkle = tier_.starTwinkle ? look_->back.starsHatTwinkle * hat_ : 0.0f;
         for (u32 i = 0; i < starCount_; ++i) {
             const Star& s = stars_[i];
             Vec2 rel = s.p - ps;
@@ -1206,7 +1268,7 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
             rel.y = rel.y - starTile_.y * std::floor(rel.y / starTile_.y + 0.5f);
             const Vec2 p = centre_ + rel * (pxPerWu_ / zoom_);
             if (p.x < -4.0f || p.y < -4.0f || p.x > W + 4.0f || p.y > H + 4.0f) continue;
-            const float twinkle = 1.0f + look_->back.starsHatTwinkle * hat_ * ((i & 1u) ? 1.0f : -1.0f);
+            const float twinkle = 1.0f + hatTwinkle * ((i & 1u) ? 1.0f : -1.0f);
             const Vec3 col = s.colour == 0 ? W1 : (s.colour == 3 ? palette_->partner[1] : palette_->hue[s.colour == 1 ? 0 : 2]);
             d.sparkles.glow(p, s.radius * refPx_, col * (s.intensity * twinkle * (1.0f + snareFlare)));
         }
@@ -1221,11 +1283,11 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
     lv.heightPx = H;
     lv.refPx = refPx_;
     lv.player = S;
-    lv.hatShimmer = look_->latticeHatShimmer * hat_;
+    lv.hatShimmer = look_->latticeHatShimmer * beatAmt * hat_;
     for (float kt : {lastKickT_, prevKickT_}) {
         const float age = song - kt;
         if (age < 0.0f || age > 2.5f || lv.rippleCount >= 4) continue;
-        const float ampWu = look_->latticeRippleRefPx / kRefPxPerWu * std::exp(-age / 1.2f);
+        const float ampWu = look_->latticeRippleRefPx * beatAmt / kRefPxPerWu * std::exp(-age / 1.2f);
         lv.ripples[lv.rippleCount++] = {age * look_->latticeRippleSpeedWu, ampWu, 40.0f};
     }
     LatticeStyle ls;
@@ -1259,13 +1321,17 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
     // drawing keeps a margin so shapes do not pop at the edge.
     stats_.enemiesInView = 0;
     stats_.enemies = enemyCount_ + farCount_;
+    for (u32& n : stats_.familyInView) n = 0;
     for (u32 i = 0; i < farCount_; ++i)
         if (visible(farPos_[i], 0.0f)) ++stats_.enemiesInView;  // far mode: culled, counted if ever inside
     for (u32 i = 0; i < enemyCount_; ++i) {
         Enemy& e = enemies_[i];
         e.inView = visible(e.pos, 2.5f * e.radius);
         if (!e.inView) continue;
-        if (visible(e.pos, 0.0f)) ++stats_.enemiesInView;
+        if (visible(e.pos, 0.0f)) {
+            ++stats_.enemiesInView;
+            ++stats_.familyInView[e.family];
+        }
         if (e.flags & kWarping) {
             // Warp-in (look.md v2.1 §5): a ring in the enemy hue contracting to nothing over two beats,
             // from 2.5 x the glyph's drawn extent (elites and bosses: 90 wu).
@@ -1311,22 +1377,25 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
     const float bulletScale = kEnemyRadiusWu * glyphs_->def(static_cast<u32>(gBullet_)).size;
     const float rimHalf = 0.5f * look_->threat.bulletWidth + look_->threat.bulletRim;
     const float coreHalf = 0.5f * look_->threat.bulletWidth;
-    // A bullet's scene light follows the swarm gain; its priority-layer copy never dims.
-    const auto bullet = [&](Vec2 p, float angle) {
+    // A bullet's scene light follows the swarm gain; its priority-layer copy never dims. The danger shape
+    // is the hollow diamond of glyphs.json (points on the axes, facesHeading false): it is drawn upright
+    // and never turns, like every bullet in the reference pictures. Turned to its travel, the square
+    // diamond reads as a square on every diagonal path.
+    const auto bullet = [&](Vec2 p) {
         ++stats_.bullets;
         if (!visible(p, 10.0f)) return;
         if (visible(p, 0.0f)) ++stats_.bulletsInView;
         if (shown(kMuteBullet)) {
-            glyph(d.glyphs, gBullet_, false, p, angle, angle, bulletScale, look_->lines.enemyBullet.intensity * swarm,
+            glyph(d.glyphs, gBullet_, false, p, 0.0f, 0.0f, bulletScale, look_->lines.enemyBullet.intensity * swarm,
                   0.5f * look_->lines.enemyBullet.width, kGlyphFlat, danger, danger);
             if (tier_.bulletSparkles)
                 d.sparkles.glow(toScreen(p), look_->soft.enemyBullet.radius[0] * refPx_,
                                 danger * (look_->soft.enemyBullet.intensity[0] * swarm));
         }
         if (shown(kMutePriority)) {
-            glyph(d.threatGlyphRims, gBullet_, false, p, angle, angle, bulletScale, 1.0f, rimHalf, kGlyphFlat, Vec3{},
+            glyph(d.threatGlyphRims, gBullet_, false, p, 0.0f, 0.0f, bulletScale, 1.0f, rimHalf, kGlyphFlat, Vec3{},
                   Vec3{});
-            glyph(d.threatGlyphCores, gBullet_, false, p, angle, angle, bulletScale, 1.0f, coreHalf, kGlyphFlat,
+            glyph(d.threatGlyphCores, gBullet_, false, p, 0.0f, 0.0f, bulletScale, 1.0f, coreHalf, kGlyphFlat,
                   threatCore, threatCore);
         }
     };
@@ -1338,18 +1407,20 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
         for (u32 a = 0; a < 3; ++a) {
             const float ang = turn + kTau * static_cast<float>(a) / 3.0f;
             const Vec2 dd = dir(ang);
-            for (u32 k = 0; k < perArm; ++k) bullet(e.pos + dd * (30.0f + 22.0f * static_cast<float>(k)), ang);
+            // Bullets 16 wu apart: a 330 wu arm stays mostly on screen around the squashed ring.
+            for (u32 k = 0; k < perArm; ++k) bullet(e.pos + dd * (30.0f + 16.0f * static_cast<float>(k)));
         }
     }
     for (u32 i = 0; i < bulletCap_; ++i) {
         const Bullet& b = bullets_[i];
         const float age = t - b.born;
         if (age < 0.0f || age >= b.life) continue;
-        bullet(b.p0 + b.v * age, angleOf(b.v));
+        bullet(b.p0 + b.v * age);
     }
 
     // ---- The player: ship (two-tone), halo, trail, pool, shots, Riffs.
-    const float shipScale = 16.0f;
+    // The ship's size in glyphs.json is relative to the standard enemy (look.md §4): 14 wu at size 1.
+    const float shipScale = kEnemyRadiusWu * glyphs_->def(static_cast<u32>(gShip_)).size;
     const LookLine& hull = look_->lines.playerHull;
     const bool playerShown = shown(kMutePlayer);
     if (playerShown) {
@@ -1447,20 +1518,25 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
         }
     }
     if (endgame && playerShown) {
-        // Lancer beam across the whole view every second beat (6 px, intensity 4, 150 ms).
+        // Lancer beam across the whole view every second beat (scenes.md §4: 6 px wide, intensity 4, 150 ms),
+        // half player colour and half white, as in the endgame target (design/tools/crowd.py).
         const float sinceBeat = song - lastKickT_;
         if ((static_cast<int>(std::floor(song / beat)) % 2) == 1 && sinceBeat < 0.15f) {
             const Vec2 a = S, b = S + dir(aim) * 2400.0f;
-            d.scene.line(toScreen(a), toScreen(b), 3.0f * refPx_, player * 4.0f, player * 4.0f, 0);
-            d.scene.line(toScreen(a), toScreen(b), 0.8f * refPx_, W1 * 2.0f, W1 * 2.0f, 0);
+            const Vec3 beam = (player * 0.5f + W1 * 0.5f) * 4.0f;
+            d.scene.line(toScreen(a), toScreen(b), 3.0f * refPx_, beam, beam, 0);
         }
-        // The Sweeper arm: 600 wu, once round every two bars.
+        // The Sweeper arm: 600 wu, once round every two bars; drawn like the target's (Riff light 2.2, 2.6 px,
+        // white -> player -> deep along its length).
         const float sa = kTau * t / (2.0f * bar);
+        const auto sweep = [&](float f) {
+            return (f < 0.5f ? mix(W1, player, 2.0f * f) : mix(player, deep, 2.0f * f - 1.0f)) * 2.2f;
+        };
         for (u32 k = 0; k < 6; ++k) {
             const Vec2 a = S + dir(sa) * (40.0f + 93.0f * static_cast<float>(k));
             const Vec2 b = S + dir(sa) * (40.0f + 93.0f * static_cast<float>(k + 1));
-            const float f0 = static_cast<float>(k) / 6.0f, f1 = static_cast<float>(k + 1) / 6.0f;
-            d.scene.line(toScreen(a), toScreen(b), 1.1f * refPx_, mix(player, light, f0) * 2.6f, mix(player, light, f1) * 2.6f,
+            const float f0 = (40.0f + 93.0f * static_cast<float>(k)) / 600.0f, f1 = (40.0f + 93.0f * static_cast<float>(k + 1)) / 600.0f;
+            d.scene.line(toScreen(a), toScreen(b), 1.3f * refPx_, sweep(f0), sweep(f1),
                          (k ? kFlatStart : 0u) | (k < 5 ? kFlatEnd : 0u));
         }
         // The wingman: a second ship, mirrored.
@@ -1579,8 +1655,11 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
 
     // ---- Composite controls (look.md §7).
     const float dropAge = song - dropT_;
-    const float dropBloom = (endgame && dropAge >= 0.0f) ? look_->dropBurstBloom * std::exp(-dropAge * 1000.0f / look_->dropBurstDecayMs) : 0.0f;
-    const float pump = shown(kMutePump) ? kick_ : 0.0f;
+    // Reduce-flashing mode removes the Drop burst and halves every other beat amount (look.md §7).
+    const float dropBloom = (endgame && dropAge >= 0.0f && !reduceFlashing_)
+                                ? look_->dropBurstBloom * std::exp(-dropAge * 1000.0f / look_->dropBurstDecayMs)
+                                : 0.0f;
+    const float pump = shown(kMutePump) ? kick_ * beatAmt : 0.0f;
     params.bloomPump = (1.0f + look_->bloomKick * pump) * (1.0f + dropBloom);
     params.exposurePump = 1.0f + look_->exposureKick * pump;
     params.vignette = shown(kMuteVignette);
@@ -1589,7 +1668,7 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
     params.afterglow = shown(kMuteAfterglow);
     params.dtSeconds = lastDt_;
     params.aberration = shown(kMuteAberration);
-    params.aberrationSnarePx = look_->aberrationSnareRefPx * refPx_ * snare_;
+    params.aberrationSnarePx = look_->aberrationSnareRefPx * beatAmt * refPx_ * snare_;
     params.world = {pxPerWu_, centre_.x + shake_.x - cam_.x * pxPerWu_, centre_.y + shake_.y - cam_.y * pxPerWu_};
     params.worldThreat = {pxPerWu_, centre_.x - cam_.x * pxPerWu_, centre_.y - cam_.y * pxPerWu_};
     params.accent = accent;
