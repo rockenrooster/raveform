@@ -114,7 +114,7 @@ and a single RETRY button.
 | Speed | 520 wu/s, near-instant acceleration, slight glide on release |
 | Size | Visual radius 14 wu; hit radius 5 wu (forgiving) |
 | Primary weapon | One shot per 1/16 step, 1400 wu/s, lead-arp note per shot |
-| Shield cells | Start 3, cap 6. A hit removes one, fires a panic pulse (clears bullets within 220 wu, shoves enemies), grants 1.5 s invulnerability and halves the Chain |
+| Shield cells | Start 3, cap 6. A hit removes one, fires a panic pulse (clears bullets within 220 wu, shoves enemies), grants 1.5 s invulnerability and halves the Chain. Health is shown on the ship itself: its halo has one arc per cell |
 | Nova | Start with 2, capacity 3 (up to 6 with Mods). Rule R6. Clears bullets and non-boss enemies in view; heavy damage to bosses |
 | Dash | One charge, recharges in 4 beats. 220 wu in 0.12 s, invulnerable throughout. Perfect Dash refunds half the recharge and emits a small shock ring |
 
@@ -280,22 +280,22 @@ glyph parameters, unlock Track and cycle). Behaviour code is per family and per 
 
 | Family | Movement | Silhouette | Variant B | Variant C |
 |---|---|---|---|---|
-| Drifters | Wander, bounce off walls | Regular polygons | Slow aimed shot every 2 bars | Split into two smaller on death |
-| Hounds | Steer straight at the nearest player | Chevrons / arrowheads | 3-shot burst on beat 1 | Frontal shield — must be flanked |
+| Drifters | Wander, bounce off walls | Hexagon cell | Slow aimed shot every 2 bars | Split into two smaller on death |
+| Hounds | Steer straight at the nearest player | Arrowhead | 3-shot burst on beat 1 | Frontal shield — must be flanked |
 | Flankers | Approach on wide arcs, encircle | Crescents | Fire sideways while circling | Speed up as others die |
-| Skitters | Sidestep out of the aim line | Small diamonds with tails | Drop mines when dodging | Blink a short hop when shot at |
-| Rams | Telegraph one beat, then dash in a line | Wedges | Leave a damaging wake | Rebound off walls for a second dash |
+| Skitters | Sidestep out of the aim line | Kite with tails | Drop mines when dodging | Blink a short hop when shot at |
+| Rams | Telegraph one beat, then dash in a line | Horned wedge | Leave a damaging wake | Rebound off walls for a second dash |
 | Moths | Spiral inward around the player | Petal rings | Fire petals outward on 1/8 notes | Explode when the spiral closes |
-| Shoal | Boid flocking in dozens | Tiny triangles | Stream through in lines | Reform into a spear on each bar |
+| Shoal | Boid flocking in dozens | Tiny darts | Stream through in lines | Reform into a spear on each bar |
 | Wyrms | Head leads a chain of segments | Linked segments | Segments fire sideways | Severed halves grow new heads |
-| Caroms | Straight lines, reflect off walls, faster per bounce | Squares / octagons | Shed bullets at each bounce | Split on every third bounce |
-| Blinks | Teleport on beats along a pattern, then strike | Stars | Fire along the teleport path | Leave a decoy at each hop |
-| Sentries | Stationary once placed | Gears | Rotating bullet pattern with a gap | Shield neighbours with a dome |
-| Brood | Slow carriers | Nested shapes | Hatch minis every bar | Burst into a swarm on death |
-| Tethers | Linked pairs, lethal beam between | Two nodes and a line | Beam sweeps as they orbit each other | Triads forming a lethal triangle |
-| Weavers | Curving paths that leave lethal light trails for 2 bars | Spirograph curves | Close trails into loops | Trails detonate on the next bar line |
+| Caroms | Straight lines, reflect off walls, faster per bounce | Nested squares | Shed bullets at each bounce | Split on every third bounce |
+| Blinks | Teleport on beats along a pattern, then strike | Sharp four-point star | Fire along the teleport path | Leave a decoy at each hop |
+| Sentries | Stationary once placed | Gear turret | Rotating bullet pattern with a gap | Shield neighbours with a dome |
+| Brood | Slow carriers | Egg sac | Hatch minis every bar | Burst into a swarm on death |
+| Tethers | Linked pairs, lethal beam between | Triangle nodes and a beam | Beam sweeps as they orbit each other | Triads forming a lethal triangle |
+| Weavers | Curving paths that leave lethal light trails for 2 bars | Trefoil | Close trails into loops | Trails detonate on the next bar line |
 | Wells | Drift; pull players and bend shots | Concentric rings | Swallow shots, return them as a ring on beat 1 | Grow when fed, burst when overfed |
-| Mimics | Mirror the player's motion or move only on beats | Lissajous glyphs | Fire when the player fires | Copy the player's last Dash |
+| Mimics | Mirror the player's motion or move only on beats | Figure eight | Fire when the player fires | Copy the player's last Dash |
 
 ### 7.3 Elite traits (12)
 
@@ -310,7 +310,7 @@ loose Shards) · Twin (arrives as a linked pair) · Phasing (intangible on off-b
 |---|---|
 | Silhouette | Family — learn it once, recognise it at every tier |
 | Number of layers and vertices, brightness | Tier |
-| Inner glyph | Variant (what it will do to you) |
+| White equipment marks: twin barrels or spikes (B), bracket arcs (C) | Variant — what it will do to you |
 | Aura or outline effect | Trait |
 | **Reserved danger colour** (hot pink-red, constant across palettes) and hollow-diamond shape | Anything that hurts at range: bullets, lasers, lethal trails, telegraphs |
 
@@ -448,6 +448,8 @@ lightning field).
 - Palettes are defined in OKLCH with fixed roles: background (two tones), grid, enemy hues (five candidates, three used per run — §7.4),
   accent, plus the constants — danger colour, player colours, white-gold for pickups.
 - Very hot cores go white; the colour lives in the halo.
+- The numbers, the palettes and every shape live in `design/look.md`, `design/palettes.json` and
+  `design/glyphs.json`, with reference images in `design/previews/`.
 
 ### 11.3 Readability rules
 

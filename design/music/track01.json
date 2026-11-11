@@ -1,0 +1,54 @@
+{
+  "id": "track01",
+  "name": "First Light",
+  "bpm": 120,
+  "key": "A minor",
+  "scale": [0, 2, 3, 5, 7, 8, 10],
+  "note": "MIDI note numbers (A4 = 69). Patterns are 16 steps per bar: '.' is a rest, digits 1-9 are velocity/9. The lead only sounds while the player holds fire; its position in the arp advances with the bar regardless.",
+  "progression": ["Am", "F", "C", "G"],
+  "chords": {
+    "Am": {"bass": 45, "pad": [57, 60, 64, 69], "stab": [69, 72, 76],
+           "arp": [69, 72, 76, 81, 76, 72, 76, 72, 69, 72, 76, 81, 79, 76, 72, 76]},
+    "F":  {"bass": 41, "pad": [57, 60, 65, 69], "stab": [69, 72, 77],
+           "arp": [65, 69, 72, 77, 72, 69, 72, 69, 65, 69, 72, 77, 76, 72, 69, 72]},
+    "C":  {"bass": 48, "pad": [55, 60, 64, 67], "stab": [67, 72, 76],
+           "arp": [64, 67, 72, 76, 72, 67, 72, 67, 64, 67, 72, 76, 74, 72, 67, 72]},
+    "G":  {"bass": 43, "pad": [55, 59, 62, 67], "stab": [67, 71, 74],
+           "arp": [62, 67, 71, 74, 71, 67, 71, 67, 62, 67, 71, 74, 76, 74, 71, 67]}
+  },
+  "patterns": {
+    "kick":    "9...9...9...9...",
+    "clap":    "....9.......9...",
+    "hat_off": "..7...7...7...7.",
+    "hat_16":  "4363436343634363",
+    "ohat":    "..8...8...8...8.",
+    "shaker":  "6343634363436343",
+    "stab":    "...7..9....7..9.",
+    "pulse":   "9.......9......."
+  },
+  "bass": {
+    "groove":     [[2, 0, 0.9, 1.5], [6, 0, 0.9, 1.5], [10, 0, 0.9, 1.5], [14, 0, 0.9, 1.2]],
+    "groove_alt": [[2, 0, 0.9, 1.5], [6, 0, 0.9, 1.5], [10, 0, 0.9, 1.5], [14, 0, 0.9, 0.9], [15, 12, 0.7, 0.8]],
+    "drop":       [[2, 0, 0.9, 0.9], [3, 0, 0.75, 0.9], [6, 0, 0.9, 0.9], [7, 0, 0.75, 0.9],
+                   [10, 0, 0.9, 0.9], [11, 0, 0.75, 0.9], [14, 0, 0.9, 0.9], [15, 12, 0.8, 0.9]],
+    "format": "[step, semitone offset from the chord's bass note, velocity, length in steps]"
+  },
+  "arrangement": [
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove"},
+     "says": "bed only: nobody is firing yet"},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1},
+     "says": "the player holds fire: the gun is the melody"},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1},
+     "says": "intensity rises (clap); first Riff picked up: Sentinel plays off-beat stabs"},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 0.6},
+     "says": "second and third Riffs: Pulse Ring and Orbitals; pad enters"},
+    {"section": "build", "bars": 4, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "pad": 0.8, "stab": 1},
+     "says": "snare roll accelerates, riser, bass thins out, last bar empties"},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": "double", "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0},
+     "says": "Surge: the lead runs at double time"},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0},
+     "says": "Surge over, full arrangement"},
+    {"section": "break", "bars": 4, "layers": {"hat_off": 0.5, "lead": "sparse", "pad": 0.9},
+     "says": "calm: upgrade choice, new enemy spotlight"}
+  ]
+}
