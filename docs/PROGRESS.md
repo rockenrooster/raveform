@@ -79,8 +79,10 @@ lead to continue without check-ins; the decisions taken alone are listed below.
   2; Kaleidos of Track 1 falls at 5:43 (entered 2:49), 14:35 and 24:22. Seed 7: 4,775 kills, 2 deaths (both
   at Track 2's Kaleidos), Track 1's boss 1:41 the first time but over 7 minutes the third time (fodder piles
   up to 226 alive meanwhile). Seed 3: 7,598 kills, 1 death, both Kaleidos fights won (4:28, 11:56), Track 3 reached (up to 611 kills a minute, 245 enemies alive). Reckless: 15 deaths, the longest life 196 s, no boss beaten. **First reading
-  of the difficulty:** a careful bot clears Track 1 in about 5 minutes and is stopped by Track 2's Kaleidos
-  (1.5x health) every time; a careless one dies every 1.5-2 minutes. Per-minute tables:
+  of the difficulty:** over 22 seeds of 30 minutes the careful bot dies 1-4 times (longest lives 9-21 minutes,
+  most 13-19; it beats Track 1's Kaleidos in 1.5-3 minutes, Track 2's in some runs and dies to it in others,
+  and reaches the loop in about a third of them); the careless bot (10 seeds) dies 11-15 times, never living past
+  4 minutes: Track 1's Kaleidos is its wall. 60-minute soaks (seeds 11-13): 3-4 deaths, no overflow. Per-minute tables:
   `captures\m3b\bot_30min_*.txt`.
 - Desktop Debug (validation on), bench_play: 60 s of the boss fight (fast-forward 172 s): 0 validation
   messages, 0 heap allocations, 0 audio-callback allocations, 16 / 37 enemies (mean / max), 198 / 320
@@ -187,7 +189,13 @@ frame rate, the first-frame log, the run's place in the bench result), `core/arg
   hit-stop at Kaleidos's death; CO-OP (M4).
 - Not tried by a person: touch feel of the Trio and the screens, readability of the boss fight, the
   difficulty curve (the bot's reading above), SYNC from settings and back on a phone, swap sides.
-- LOOP_RESULT
+- **The full loop on the Moto** (`--autoplay --reckless-after 600`, scripted adb taps; log in
+  `captures\m3b\moto_loop_log.txt`): title, PLAY tapped, Track 1's Trios at bars 20, 44 and 68, a pause by Back
+  and RESUME with its count-in a minute in, Kaleidos on bar 84 (falls at 283 s of the run), the bonus Trio and
+  the Break's own, Track 2 (Standard cycles at 126 BPM, Trios at 190 and 238), its Kaleidos on bar 270 (falls
+  after 43 s), the Track change into Track 3 (First Light at 130 BPM), the bot turned careless at 600 s and lost
+  the ship in Track 3 at bar 332 (score 44,276,250), the game-over screen, RETRY tapped: the band went back to
+  Track 1 at 120 BPM on the next bar line and a new run began. The band followed every section on its bar line.
 - What a person must try: flying into Trio orbs with the sticks; the screens' buttons by touch; reading the
   boss (the resting pair, the plates, the beams' telegraph) at phone size; whether Build, Drop and Break land
   musically on headphones; a mid-bar pause and its count-in; SYNC from settings and back; swap sides.
