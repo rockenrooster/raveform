@@ -58,11 +58,13 @@ void World::spawnShotRaw(u32 p, Vec2 pos, Vec2 dir, float advanceS, float damage
 void World::hitEnemy(u32 i, float dmg, u8 owner, Vec2 at, Vec2 dir) {
     Enemies& e = enemies_;
     if (e.flags[i] & kFlagDead) return;
+    if (role_ == NetRole::Client) logClaim(i, dmg, kClaimHit);  // M4: the host applies it; a kill here is predicted
     e.hp[i] -= dmg;
     if (e.hp[i] <= 0.0f) {
         killEnemy(i, owner);
         return;
     }
+    if (applyingClaim_) return;  // M4 host: the claimant's shot already showed its impact here (a cosmetic copy)
     Event ev;
     ev.type = EventType::Impact;
     ev.species = e.species[i];
@@ -180,7 +182,7 @@ void World::updateTrios() {
     for (u32 p = 0; p < playerCount_; ++p) {
         TrioState& tr = trio_[p];
         PlayerState& pl = players_[p];
-        if (!tr.open) continue;
+        if (!tr.open || !isLocal(p)) continue;  // M4: another player's Trio is theirs to take (we hear of it)
         if (!pl.alive) {
             tr.open = false;
             continue;
@@ -220,6 +222,7 @@ void World::updateRiffs(float dt) {
         const Loadout& l = pl.loadout;
         const bool hyper = pl.boost(kHyper);
         const u8 owner = static_cast<u8>(p);
+        const bool local = isLocal(p);  // M4: another player's Riffs are drawn here, their hits are its own device's
 
         // Orbitals (GAME_DESIGN 6.3): level + 1 shards circle the ship once a bar (twice under Hyper); each
         // hurts what it touches once an eighth note (a sixteenth under Hyper).
@@ -232,6 +235,7 @@ void World::updateRiffs(float dt) {
                     const float a = static_cast<float>(ph) * kTau + kTau * static_cast<float>(k) / static_cast<float>(n) - 0.25f * kTau;
                     const Vec2 o = pl.pos + dirOf(a) * kOrbitalRadiusWu;
                     const float reach = kOrbitalHitWu + 40.0f;
+                    if (!local) continue;
                     grid_.query(o.x - reach, o.y - reach, o.x + reach, o.y + reach, [&](u32 i) {
                         if (e.flags[i] & kFlagDead) return;
                         const float r = e.radius[i] + kOrbitalHitWu;
@@ -287,13 +291,14 @@ void World::updateRiffs(float dt) {
             const float r0 = w.lastR;
             const Vec2 c = w.centre;
             const float reach = r + 40.0f;
-            grid_.query(c.x - reach, c.y - reach, c.x + reach, c.y + reach, [&](u32 i) {
-                if (e.flags[i] & kFlagDead) return;
-                const float d = length(Vec2{e.x[i], e.y[i]} - c);
-                if (d + e.radius[i] <= r0 || d - e.radius[i] > r) return;  // the front did not pass it this tick
-                hitEnemy(i, w.damage, owner, Vec2{e.x[i], e.y[i]}, normalizeOr(Vec2{e.x[i], e.y[i]} - c, Vec2{1.0f, 0.0f}));
-            });
-            if (boss_.active && !boss_.dying) {
+            if (local)
+                grid_.query(c.x - reach, c.y - reach, c.x + reach, c.y + reach, [&](u32 i) {
+                    if (e.flags[i] & kFlagDead) return;
+                    const float d = length(Vec2{e.x[i], e.y[i]} - c);
+                    if (d + e.radius[i] <= r0 || d - e.radius[i] > r) return;  // the front did not pass it this tick
+                    hitEnemy(i, w.damage, owner, Vec2{e.x[i], e.y[i]}, normalizeOr(Vec2{e.x[i], e.y[i]} - c, Vec2{1.0f, 0.0f}));
+                });
+            if (local && boss_.active && !boss_.dying) {
                 const Vec2 to = boss_.pos - c;
                 const float bd = length(to);
                 if (bd - species_->boss.radius <= r && bd + species_->boss.radius > r0) {
@@ -361,20 +366,37 @@ void World::updateRiffs(float dt) {
 
 void World::dropBoost(Vec2 pos, u8 type) {
     BoostPickups& b = boostPickups_;
-    if (b.count >= BoostPickups::kCap) return;
-    const u32 i = b.count++;
-    b.x[i] = clampf(pos.x, -kArenaHalfW + 40.0f, kArenaHalfW - 40.0f);
-    b.y[i] = clampf(pos.y, -kArenaHalfH + 40.0f, kArenaHalfH - 40.0f);
-    b.born[i] = m1_;
-    b.type[i] = type < kBoostCount ? type : kPrism;
-    b.dead[i] = 0;
+    const float x = clampf(pos.x, -kArenaHalfW + 40.0f, kArenaHalfW - 40.0f);
+    const float y = clampf(pos.y, -kArenaHalfH + 40.0f, kArenaHalfH - 40.0f);
+    const u8 t = type < kBoostCount ? type : kPrism;
+    // Loot is instanced (GAME_DESIGN 10): in co-op one orb per player, each only its owner can take.
+    u32 made = 0;
+    for (u32 p = 0; p < (coop() ? playerCount_ : 1u); ++p) {
+        if (coop() && !players_[p].present) continue;
+        if (b.count >= BoostPickups::kCap) break;
+        const u32 i = b.count++;
+        b.x[i] = x;
+        b.y[i] = y;
+        b.born[i] = m1_;
+        b.type[i] = t;
+        b.dead[i] = 0;
+        b.owner[i] = static_cast<u8>(p);
+        ++made;
+    }
+    if (!made) return;
     ++director_.boostsDropped;
     Event ev;
     ev.type = EventType::BoostDrop;
-    ev.b = b.type[i];
-    ev.x = b.x[i];
-    ev.y = b.y[i];
+    ev.b = t;
+    ev.x = x;
+    ev.y = y;
     emit(ev);
+    if (role_ == NetRole::Host && netLog_.boostCount < NetLog::kBoosts) {
+        NetLog::Boost& o = netLog_.boosts[netLog_.boostCount++];
+        o.x = pos.x;
+        o.y = pos.y;
+        o.type = type;
+    }
 }
 
 void World::activateBoost(u32 p, u8 type) {
@@ -471,6 +493,7 @@ void World::updateBoosts() {
         for (u32 p = 0; p < playerCount_; ++p) {
             const PlayerState& pl = players_[p];
             if (!pl.alive) continue;
+            if (b.owner[i] != p || !isLocal(p)) continue;  // M4: only its owner takes it, on the owner's device
             const float r = kBoostPickupWu + kPlayerVisualRadius;
             if (lengthSq(pl.pos - Vec2{b.x[i], b.y[i]}) > r * r) continue;
             b.dead[i] = 1;
@@ -489,6 +512,7 @@ void World::updateBoosts() {
         b.born[i] = b.born[l];
         b.type[i] = b.type[l];
         b.dead[i] = b.dead[l];
+        b.owner[i] = b.owner[l];
     }
 }
 

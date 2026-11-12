@@ -36,6 +36,96 @@ struct PlayerPose {
     Vec2 dashFrom, dashTo;
 };
 
+// ---------------------------------------------------------------------------------------------- co-op (M4)
+
+// TECH_SPEC 8.1: every device simulates the whole world; the host's director spawns and its verdicts on
+// enemy health stand; each player owns its own ship (what you see is what hits you). Solo is the M3 game
+// unchanged: every player local, no network log, no network operations.
+enum class NetRole : u8 { Solo, Host, Client };
+
+// A spawn of the host's director, sent to the clients in a batch at least two beats before it lands.
+struct NetSpawn {
+    u32 serial = 0;            // the enemy's network id (the host's spawn number)
+    u16 species = 0, group = 0;
+    float x = 0.0f, y = 0.0f, heading = 0.0f;
+    double land = 0.0;         // the beat it becomes solid (R4)
+    u8 flags = 0;              // kFlagArriving for the crowd's fodder
+};
+// The host's verdict on an enemy (reliable).
+enum NetDeathKind : u8 { kDeathKill = 0, kDeathDissolve = 1, kDeathShards = 2 };  // killed (Shards); gone (none); Break (Shards)
+struct NetDeath {
+    u32 serial = 0;
+    u8 killer = 0xFF;
+    u8 kind = kDeathKill;
+};
+// A client's hit on an enemy (TECH_SPEC 8.1: reliable, batched per tick).
+enum NetClaimKind : u8 { kClaimHit = 0, kClaimKill = 1, kClaimDissolve = 2 };  // damage; a Nova's front (solid); a Nova's front (warping)
+struct NetClaim {
+    u32 serial = 0;
+    float damage = 0.0f;
+    u8 kind = kClaimHit;
+};
+struct NetBossClaim {
+    u8 part = 0, pair = 0;
+    float damage = 0.0f;  // final (the part's multiplier applied by the claimant)
+};
+// An enemy as the host has it (a correction, TECH_SPEC 8.1).
+struct NetEnemyState {
+    u32 serial = 0;
+    float x = 0, y = 0, vx = 0, vy = 0, kx = 0, ky = 0, heading = 0, a = 0, b = 0, hp = 0;
+    double until = 0.0;
+    u32 rng = 0;
+    u8 state = 0, flags = 0, target = 0xFF, far = 0;
+};
+// What a player's own device decided, applied to that player in the other worlds (reliable).
+enum NetPlayerEventKind : u8 {
+    kPeNova, kPeDash, kPeHit, kPeDown, kPeRevive, kPeTrioOpen, kPeTrioTake, kPeBoostTake, kPeHalo, kPeLeave, kPeCount
+};
+// One operation from the network, applied inside the next tick (so its events land in the tick's buffer
+// and the view and the band see them like any other). `run`: the run it belongs to (World::runId());
+// operations of a later run wait for the world to reach it, those of an earlier one are dropped.
+struct NetOp {
+    // Schedule: a run on bar `tick`, seed u | u2 << 32, a seats, its id in `species`. Census: the host's enemy
+    // digest at this point of its stream (count u, digest serial | u2 << 32). Director: the host's director
+    // state (tick = startTick, u = trackBar, u2 = changeBar, a = track, b = boss spawned, f = assist).
+    enum Kind : u8 { Spawn, Death, Claim, BossClaim, BossEnter, BossPair, BossDeath, BoostDrop, Player, Schedule, Census, Director };
+    Kind kind = Spawn;
+    u8 player = 0;              // claimant, event owner
+    u8 a = 0, b = 0, c = 0;     // death kind / killer, boss part / pair, boost type, player event kind, ...
+    u8 opts[3] = {};            // a Trio's upgrades
+    u16 run = 0;
+    u16 species = 0, group = 0;
+    u32 serial = 0, u = 0;      // enemy id; seed (low) / changeBar / ...
+    u32 u2 = 0;                 // seed (high)
+    float x = 0, y = 0, x2 = 0, y2 = 0, f = 0;
+    double tick = 0.0;          // land, enter, bar, blast, close
+};
+// What a tick produced for the network (host: spawns and verdicts; client: claims). Drained after each
+// tick by the session (net/session.h).
+struct NetLog {
+    static constexpr u32 kSpawns = 1024, kDeaths = 1024, kClaims = 512, kBossClaims = 64, kBoss = 16, kBoosts = 8;
+    NetSpawn spawns[kSpawns];
+    u32 spawnIndex[kSpawns];  // dense index while the tick runs (its group and flags are read before compact)
+    NetDeath deaths[kDeaths];
+    NetClaim claims[kClaims];
+    NetBossClaim bossClaims[kBossClaims];
+    // The host's boss: 0 enters (x, y, tick = the entrance), 1 a pair dies (pair, killer), 2 dies (killer, changeBar).
+    struct Boss {
+        u8 kind = 0, pair = 0, killer = 0xFF;
+        float x = 0.0f, y = 0.0f;
+        double tick = 0.0;
+        u32 changeBar = 0;
+    } boss[kBoss];
+    struct Boost {
+        float x = 0.0f, y = 0.0f;
+        u8 type = 0;
+    } boosts[kBoosts];
+    u32 spawnCount = 0, deathCount = 0, claimCount = 0, bossClaimCount = 0, bossCount = 0, boostCount = 0;
+    u32 spawnFinished = 0;  // spawns whose group and flags are filled in (World::finishNetLog)
+    u32 overflow = 0;
+    void clear() { spawnCount = deathCount = claimCount = bossClaimCount = bossCount = boostCount = spawnFinished = 0; }
+};
+
 // A lead-rule step heard with fire held (audio/band.h LeadShot, TECH_SPEC 6.3).
 struct ShotRequest {
     double tick = 0.0;
@@ -89,6 +179,9 @@ enum class EventType : u8 {
     BossDeath,   // x, y
     BossBeam,    // a = pair, b = 0 telegraph, 1 fire; tick = when it fires
     BossBurst,   // the core fired a ring: b = count; x, y
+    // M4 co-op (GAME_DESIGN 10). Death with a = 0xFF: every player is down at once (the run is over).
+    Down,        // a hit at zero cells shattered the ship into a beacon: a = player; x, y = the beacon
+    Revive,      // a = player; b = 1 by a teammate, 0 at the Break; x, y
 };
 // Impact events on the boss carry this species, with c = 1 lens plate, 2 arm, 3 core.
 constexpr u16 kBossSpecies = 0xFFFF;
@@ -114,12 +207,17 @@ enum EnemyState : u8 {
     kDash,         // a Ram's dash (one beat)
     kRest,         // a Ram's rest
 };
-enum EnemyFlag : u8 { kFlagDead = 1, kFlagEngaged = 2, kFlagArriving = 4 };  // arriving: crowd fodder on its way into the frame
+enum EnemyFlag : u8 { kFlagDead = 1, kFlagEngaged = 2, kFlagArriving = 4, kFlagPredicted = 8 };  // arriving: crowd fodder on its way into the frame
+// kFlagPredicted (co-op client, with kFlagDead): its own hit killed it and the host has not answered yet; it
+// stays in the pool (gone for everything else) until the host confirms the death, or comes back after 300 ms.
 
 struct Enemies {
     static constexpr u32 kCap = kMaxEnemies;
     u32 count = 0;
     float x[kCap], y[kCap], px[kCap], py[kCap];  // current and previous tick
+    float ox[kCap], oy[kCap];                    // M4 client: the drawn offset left by a correction, decaying (TECH_SPEC 8.1)
+    float pred[kCap];                            // M4 client: seconds a predicted death has waited for the host
+    u8 target[kCap];                             // M4 co-op: the player it attends to (0xFF: the nearest, solo)
     float vx[kCap], vy[kCap];                    // the family's own motion
     float kx[kCap], ky[kCap];                    // knockback (panic pulse), decaying
     float heading[kCap], pheading[kCap];
@@ -151,7 +249,7 @@ struct Bullets {
 enum ShotKind : u8 { kShotPrimary = 0, kShotSentinel, kShotMini };
 
 struct Shots {
-    static constexpr u32 kCap = kMaxShots;  // one player in M3; co-op adds a pool per player
+    static constexpr u32 kCap = kMaxShots;  // 1,024 per player in one pool (M4)
     u32 count = 0;
     float x[kCap], y[kCap], px[kCap], py[kCap], dx[kCap], dy[kCap];
     float speed[kCap], life[kCap], damage[kCap], radius[kCap];
@@ -167,13 +265,14 @@ inline u8 shotLaneFlags(i32 lane) { return static_cast<u8>((lane + 3) << 2); }
 inline bool shotHasLane(u8 flags) { return (flags & kShotLaneMask) != 0; }
 inline i32 shotLane(u8 flags) { return static_cast<i32>((flags & kShotLaneMask) >> 2) - 3; }
 
-// Boosts lying in the arena (GAME_DESIGN 6.4), until collected or eight bars old.
+// Boosts lying in the arena (GAME_DESIGN 6.4), until collected or eight bars old. Loot is instanced
+// (GAME_DESIGN 10): in co-op each drop is one orb per player, only its owner can take it.
 struct BoostPickups {
-    static constexpr u32 kCap = 16;
+    static constexpr u32 kCap = 32;
     u32 count = 0;
     float x[kCap], y[kCap];
     double born[kCap];
-    u8 type[kCap], dead[kCap];
+    u8 type[kCap], dead[kCap], owner[kCap];
 };
 
 // A Pulse Ring Riff's expanding ring.
@@ -246,6 +345,11 @@ struct PlayerState {
     Vec2 sentinel, prevSentinel;  // the Sentinel drone
     PulseWave pulses[kPulseWaves];
     u32 boostsTaken = 0;
+    // M4 co-op (GAME_DESIGN 10): down, a beacon, revive.
+    bool down = false;         // shattered into a beacon (alive is false); the run goes on
+    Vec2 beacon;
+    double reviveTicks = 0.0;  // musical ticks a teammate has stood in the beacon's ring
+    u32 downs = 0, revives = 0;
     bool invulnerable() const { return invulS > 0.0f || novaInvulS > 0.0f || dashing; }
     bool boost(u8 b) const {
         for (const ActiveBoost& a : boosts)
@@ -264,6 +368,11 @@ struct Rules {
 struct WorldCounters {
     u32 enemiesDropped = 0, bulletsDropped = 0, shotsDropped = 0, shardsDropped = 0, eventsDropped = 0;
     u32 kills = 0, deaths = 0, spawned = 0, restarts = 0;
+    // M4 co-op.
+    u32 netOpsDropped = 0, netLogDropped = 0;  // pool overflows of the network's queues
+    u32 predicted = 0, confirmed = 0, undone = 0, lateSpawns = 0, unknownIds = 0, downs = 0, revives = 0;
+    u32 censusChecks = 0, censusMismatches = 0;
+    i32 censusLastDiff = 0;  // this world's count minus the host's at the last mismatch
 };
 
 // ---------------------------------------------------------------------------------------------- spawner
@@ -368,6 +477,53 @@ public:
         scriptKillCore_ = core;
     }
 
+    // ---- M4 co-op (TECH_SPEC 8.1, GAME_DESIGN 10; world_net.cpp) ----------------------------------------
+    // The world's role and the players this device owns: their hits, Shards, Trios, Boost orbs, revives and
+    // the damage their shots and Riffs do. Solo: every player is local (the M3 game, unchanged).
+    void setNet(NetRole role, u8 localMask);
+    NetRole netRole() const { return role_; }
+    bool isLocal(u32 p) const { return ((localMask_ >> p) & 1u) != 0; }
+    u32 viewPlayer() const { return viewPlayer_; }  // the first local player: the camera's ship, the band's intensity
+    u16 runId() const { return runId_; }
+    // A run on the bar line `bar` (musical ticks) with this seed, these seats and this id: every device resets
+    // at the same musical position (the co-op start; a RETRY when every player is down).
+    void scheduleRun(double bar, u64 seed, u32 players, u16 runId);
+    u64 restartSeed() const { return restartSeed_; }
+    u32 restartPlayers() const { return restartPlayers_; }
+    u16 restartRunId() const { return nextRunId_; }
+    // An operation from the network for the next tick (false: the queue is full, counted).
+    bool netPush(const NetOp& op);
+    u32 netPending() const { return netOpCount_; }
+    // What the ticks since the last clear produced for the network (the session drains and clears it).
+    NetLog& netLog() { return netLog_; }
+    // Host: an enemy as it is now. Client: the host's state sampled at musical tick `hostMusic`, applied (the
+    // simulation takes it, the drawn position keeps its place through a decaying offset; above 96 wu it
+    // snaps). Returns the distance between the two before the correction (-1: not here, or gone).
+    bool netSample(u32 index, NetEnemyState& out) const;
+    float netCorrect(const NetEnemyState& s, double hostMusic);
+    // The director's state as the host has it (the phrase, the Track, the boss's place in the run).
+    struct DirectorSync {
+        double startTick = 0.0;
+        u32 trackBar = 0, changeBar = kNoBar;
+        u8 track = 1;
+        bool bossSpawned = false;
+        float assist = 1.0f;
+        bool operator==(const DirectorSync& o) const {
+            return startTick == o.startTick && trackBar == o.trackBar && changeBar == o.changeBar && track == o.track &&
+                   bossSpawned == o.bossSpawned && assist == o.assist;
+        }
+    };
+    DirectorSync directorSync() const;
+    void netDirector(const DirectorSync& d);  // client
+    // Client: the boss as the host has it (health never above what this device has already taken off).
+    void netBossState(const float pairHp[3], float coreHp, Vec2 pos);
+    // A player whose device left: out of the run (enemies forget it, its frame stops counting).
+    void netSetPresent(u32 p, bool present);
+    // Every enemy alive (and every predicted death the host has not answered) as an order-free digest: equal on
+    // host and client when their enemy sets agree (the session's census).
+    u64 netCensus(u32& count) const;
+    i32 indexOfSerial(u32 serial) const;
+
     // Handles (TECH_SPEC 7.1): -1 when the handle is stale.
     i32 indexOf(u32 handle) const;
 
@@ -410,7 +566,8 @@ private:
     void directorBeat(double beatTick);
     void spendBudget(double landTick);
     void spendCrowd(double landTick, const Phrase& ph);
-    void spawnCrowd(u16 species, u32 count, double landTick, Vec2 frameCentre);
+    void spawnCrowd(u16 species, u32 count, double landTick, Vec2 frameCentre, u32 framePlayer = 0);
+    i32 spawnEnemyAs(u16 species, Vec2 pos, float heading, double landTick, u32 serial);  // serial 0: the next one
     u32 crowdCount(Vec2 frameCentre) const;  // the crowd counted for a frame centred there
     void replaceCrowd(double beatTick);
     void strayFodder();
@@ -438,9 +595,36 @@ private:
     void bossFire(double stepTick);
     bool bossHitTest(Vec2 a, Vec2 b, float r, u8& part, u8& pair, float& t) const;
     void damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir);
+    void damageBossFinal(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir, float scale);  // the multiplier applied
     void bossContact();
     void killBossPair(u8 pair, u8 owner);
     void killBoss(u8 owner);
+    // world_net.cpp (M4)
+    bool coop() const { return playerCount_ > 1; }
+    u32 presentCount() const;
+    i32 firstAlive() const;
+    u32 aliveCap() const;          // the director's cap on live bodies (grows with the seats)
+    float coopBudgetScale() const;  // GAME_DESIGN 8: x (1 + 0.6 x (players - 1))
+    i32 targetOf(u32 i);            // the player enemy i attends to (solo: the nearest)
+    Vec2 formationCentre(u32* player = nullptr);  // the player the next formation goes to (solo: player 0)
+    void applyNetOps();
+    void applyNetOp(const NetOp& op);
+    void applyPlayerOp(const NetOp& op);
+    void finishKill(u32 i, u8 killer, u8 kind);  // client: the host's verdict
+    void predictKill(u32 i, u8 killer, bool dissolve);
+    void updatePredictions();
+    void logSpawn(u32 i, double land);
+    void logDeath(u32 i, u8 killer, u8 kind);
+    void logClaim(u32 i, float damage, u8 kind);
+    void finishNetLog();  // before compact(): the spawns' group and flags
+    void updateDowned();
+    void downPlayer(u32 p);
+    void revivePlayer(u32 p, bool byTeammate);
+    void checkAllDown();
+    void spendCrowdCoop(double landTick, float target, u32 lost, u32 killed);
+    void idInsert(u32 serial, u32 slot);
+    void idErase(u32 serial);
+    i32 idSlot(u32 serial) const;
 
     const SpeciesTable* species_ = nullptr;
     Rules rules_;
@@ -454,6 +638,7 @@ private:
     Rng upgradeRng_{2};  // Trios and Boost types (their own stream, so a pick never moves a spawn)
     u64 seed_ = 1;
     u64 tick_ = 0;
+    u64 runTicks_ = 0;  // ticks since this run began (M4: the same on every device)
     double m0_ = 0.0, m1_ = 0.0;
     float bpm_ = 120.0f;
     float latencyTicks_ = 0.0f;
@@ -481,6 +666,24 @@ private:
     static constexpr u32 kMaxEvents = 8192;
     Event events_[kMaxEvents];
     u32 eventCount_ = 0;
+
+    // M4 co-op.
+    NetRole role_ = NetRole::Solo;
+    u8 localMask_ = 0xF;
+    u32 viewPlayer_ = 0;
+    u16 runId_ = 0, nextRunId_ = 0;
+    u64 restartSeed_ = 0;
+    u32 restartPlayers_ = 1;
+    u32 formationTurn_ = 0;
+    bool applyingClaim_ = false;  // host: a client's hit is applied (its own copy of the shot showed the impact)
+    NetLog netLog_;
+    static constexpr u32 kNetOps = 4096;
+    NetOp netOps_[kNetOps];
+    u32 netOpCount_ = 0;
+    // Serial -> slot (co-op): open addressing with linear probing; key 0 is empty (serials start at 1).
+    static constexpr u32 kIdSlots = 8192;
+    u32 idKey_[kIdSlots] = {};
+    u16 idSlot_[kIdSlots] = {};
 };
 
 }  // namespace rf::sim

@@ -106,7 +106,7 @@ void World::spawnBossNow(double enterTick, Vec2 pos) {
     s.phaseTick = s.fightTick;
     // Health: x (1 + 0.5 per extra player) as for every boss; Track 2's Kaleidos has 1.5x and Track 3's 2x
     // (the lead), and the loop adds 6% a Track after that.
-    float scale = 1.0f + 0.5f * static_cast<float>(playerCount_ - 1);
+    float scale = 1.0f + kCoopBossHealthPerPlayer * static_cast<float>(playerCount_ - 1);
     const u32 tr = director_.track < 1 ? 1u : director_.track;
     scale *= tr <= 3 ? kBossTrackHealth[tr - 1] : kBossTrackHealth[2] * std::pow(kBossEndlessHealth, static_cast<float>(tr - 3));
     s.pairMax = b.pairHealth * scale;
@@ -124,6 +124,14 @@ void World::spawnBossNow(double enterTick, Vec2 pos) {
     ev.y = pos.y;
     ev.tick = s.fightTick;
     emit(ev);
+    if (role_ == NetRole::Host && netLog_.bossCount < NetLog::kBoss) {
+        NetLog::Boss& o = netLog_.boss[netLog_.bossCount++];
+        o = NetLog::Boss{};
+        o.kind = 0;
+        o.x = pos.x;
+        o.y = pos.y;
+        o.tick = enterTick;
+    }
 }
 
 bool World::bossHitTest(Vec2 a, Vec2 bpt, float r, u8& part, u8& pair, float& tOut) const {
@@ -212,21 +220,60 @@ void World::damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir)
     if (part == 2) {
         // kaleidos.md rule 1: the resting pair takes triple damage, firing pairs a third.
         const float scale = bossResting(pair, m1_) ? b.dmgResting : b.dmgFiring;
-        s.pairHp[pair] -= dmg * scale;
-        ev.f = scale;
-        emit(ev);
-        if (s.pairHp[pair] <= 0.0f) killBossPair(pair, owner);
+        damageBossFinal(part, pair, dmg * scale, owner, at, dir, scale);
     } else if (part == 3) {
         // Rule 3: the iris opens for the whole first beat of every bar: triple damage through any open sector.
         const bool downbeat = m1_ - barStartOf(m1_) < kTicksPerBeat;
         const float scale = downbeat ? b.dmgCoreDownbeat : b.dmgCoreExposed;
-        s.coreHp -= dmg * scale;
-        ev.f = scale;
-        emit(ev);
-        if (s.coreHp <= 0.0f) killBoss(owner);
+        damageBossFinal(part, pair, dmg * scale, owner, at, dir, scale);
     } else {
         ev.f = b.dmgLens;
         emit(ev);
+    }
+}
+
+void World::damageBossFinal(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir, float scale) {
+    // The damage with its multiplier already applied: the claimant's (M4: a host applies a client's claim as
+    // the client weighed it). `scale` < 0: no impact shown (a Nova's blast).
+    BossState& s = boss_;
+    if (!s.active || s.dying || pair > 2) return;
+    if (scale >= 0.0f) {
+        Event ev;
+        ev.type = EventType::Impact;
+        ev.species = kBossSpecies;
+        ev.c = part;
+        ev.a = pair;
+        ev.x = at.x;
+        ev.y = at.y;
+        ev.x2 = dir.x;
+        ev.y2 = dir.y;
+        ev.f = scale;
+        emit(ev);
+    }
+    const bool client = role_ == NetRole::Client;
+    if (client && netLog_.bossClaimCount < NetLog::kBossClaims) {
+        NetBossClaim& c = netLog_.bossClaims[netLog_.bossClaimCount++];
+        c.part = part;
+        c.pair = pair;
+        c.damage = dmg;
+    } else if (client) {
+        ++netLog_.overflow;
+    }
+    if (part == 2) {
+        if (!(s.alive & (1u << pair))) return;
+        s.pairHp[pair] -= dmg;
+        if (client) {
+            if (s.pairHp[pair] < 0.0f) s.pairHp[pair] = 0.0f;  // the host decides when it breaks
+        } else if (s.pairHp[pair] <= 0.0f) {
+            killBossPair(pair, owner);
+        }
+    } else if (part == 3) {
+        s.coreHp -= dmg;
+        if (client) {
+            if (s.coreHp < 0.0f) s.coreHp = 0.0f;
+        } else if (s.coreHp <= 0.0f) {
+            killBoss(owner);
+        }
     }
 }
 
@@ -235,15 +282,22 @@ void World::killBossPair(u8 pair, u8 owner) {
     if (!(s.alive & (1u << pair))) return;
     s.alive = static_cast<u8>(s.alive & ~(1u << pair));
     s.pairHp[pair] = 0.0f;
-    if (owner < kMaxPlayers && players_[owner].present) {
+    if (owner < kMaxPlayers && players_[owner].present && isLocal(owner)) {
         PlayerState& pl = players_[owner];
         pl.score += static_cast<u64>(std::llround(static_cast<double>(kBossPairScore) * pl.chain * rules_.scoreMultiplier));
     }
-    // Its Shards burst from both tips.
+    if (role_ == NetRole::Host && netLog_.bossCount < NetLog::kBoss) {
+        NetLog::Boss& o = netLog_.boss[netLog_.bossCount++];
+        o = NetLog::Boss{};
+        o.kind = 1;
+        o.pair = pair;
+        o.killer = owner;
+    }
+    // Its Shards burst from both tips (each device its own players', M4).
     for (u32 m = 0; m < 2; ++m) {
         const Vec2 tip = s.pos + dirOf(s.angle + static_cast<float>(pair + 3 * m) * kArmStep) * species_->boss.tip.armRadius;
         for (u32 p = 0; p < playerCount_; ++p) {
-            if (!players_[p].present) continue;
+            if (!players_[p].present || !isLocal(p)) continue;
             for (u32 k = 0; k < kBossPairShards / 2; ++k)
                 spawnShard(tip, dirOf(rng_.range(0.0f, kTau)) * rng_.range(kShardBurstLo, kShardBurstHi * 1.5f), static_cast<u8>(p));
         }
@@ -269,16 +323,17 @@ void World::killBoss(u8 owner) {
     s.dying = true;
     s.deathTick = m1_;
     s.coreHp = 0.0f;
-    if (owner < kMaxPlayers && players_[owner].present) {
+    if (owner < kMaxPlayers && players_[owner].present && isLocal(owner)) {
         PlayerState& pl = players_[owner];
         ++pl.kills;
         pl.score += static_cast<u64>(std::llround(static_cast<double>(kBossCoreScore) * pl.chain * rules_.scoreMultiplier));
     }
     ++counters_.kills;
-    // Its bullets go with it; then the Shards (kaleidos.md: "then the Shards"): 200 per player.
+    // Its bullets go with it; then the Shards (kaleidos.md: "then the Shards"): 200 per player (each device
+    // its own players', M4).
     for (u32 i = 0; i < bullets_.count; ++i) bullets_.dead[i] = 1;
     for (u32 p = 0; p < playerCount_; ++p) {
-        if (!players_[p].present) continue;
+        if (!players_[p].present || !isLocal(p)) continue;
         for (u32 k = 0; k < kBossShards; ++k)
             spawnShard(s.pos + dirOf(rng_.range(0.0f, kTau)) * rng_.range(0.0f, 60.0f),
                        dirOf(rng_.range(0.0f, kTau)) * rng_.range(120.0f, 520.0f), static_cast<u8>(p));
@@ -288,6 +343,15 @@ void World::killBoss(u8 owner) {
     DirectorState& d = director_;
     const double rel = (m1_ + 0.5 * kTicksPerBar - d.startTick) / kTicksPerBar;
     d.changeBar = static_cast<u32>(std::floor(rel)) + 1;
+    if (role_ == NetRole::Host && netLog_.bossCount < NetLog::kBoss) {
+        NetLog::Boss& o = netLog_.boss[netLog_.bossCount++];
+        o = NetLog::Boss{};
+        o.kind = 2;
+        o.killer = owner;
+        o.changeBar = d.changeBar;
+        o.x = s.pos.x;
+        o.y = s.pos.y;
+    }
     Event ev;
     ev.type = EventType::BossDeath;
     ev.x = s.pos.x;
@@ -353,7 +417,7 @@ void World::bossContact() {
     if (!s.active || s.dying || m1_ < s.fightTick || rules_.godMode) return;
     for (u32 p = 0; p < playerCount_; ++p) {
         PlayerState& pl = players_[p];
-        if (!pl.alive || pl.invulnerable()) continue;
+        if (!pl.alive || pl.invulnerable() || !isLocal(p)) continue;  // M4: what you see is what hits you
         const Vec2 rel = pl.pos - s.pos;
         bool hit = lengthSq(rel) <= (b.contactCore + kPlayerHitRadius) * (b.contactCore + kPlayerHitRadius);
         for (u32 k = 0; k < 6 && !hit; ++k) {

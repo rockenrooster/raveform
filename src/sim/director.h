@@ -76,6 +76,7 @@ struct DirectorState {
     float crowdDebt = 0.0f;    // C2: the frame's running shortfall against the target (owed on top of the gap)
     u32 crowdKills = 0;        // C2: fodder killed since the last bar line (the debt never exceeds it)
     u32 lastBar = kNoBar;      // the last bar the director planned
+    float crowdDebtP[kMaxPlayers] = {};  // M4 co-op: each player's frame keeps its own debt
 };
 
 // Where bar `bar` of the run sits, given what the director knows now.

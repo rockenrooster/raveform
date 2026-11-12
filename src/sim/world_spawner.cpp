@@ -79,17 +79,43 @@ void World::spawnFormation(u16 speciesIndex, u32 count, Vec2 anchor, double land
             const float a = rng_.range(0.0f, kTau), r = spread * std::sqrt(rng_.uniform());
             p = p + dirOf(a) * r;
         }
-        // Never on top of a player, never inside the Trio's ring (screens.md).
-        const Vec2 d = p - p0.pos;
-        if (p0.alive && lengthSq(d) < kSpawnMinPlayerWu * kSpawnMinPlayerWu)
-            p = p0.pos + normalizeOr(d, Vec2{1.0f, 0.0f}) * kSpawnMinPlayerWu;
-        const TrioState& tr = trio_[0];
-        if (tr.open) {
-            const Vec2 dt = p - tr.centre;
-            const float keep = kTrioRingWu + 80.0f;
-            if (lengthSq(dt) < keep * keep) p = tr.centre + normalizeOr(dt, Vec2{1.0f, 0.0f}) * keep;
+        float heading = 0.0f;
+        if (coop()) {
+            // M4: away from every ship and out of every player's Trio ring; facing the nearest ship.
+            i32 near = -1;
+            float nearD = 0.0f;
+            for (u32 q = 0; q < playerCount_; ++q) {
+                const PlayerState& pl = players_[q];
+                if (!pl.alive) continue;
+                const Vec2 d = p - pl.pos;
+                if (lengthSq(d) < kSpawnMinPlayerWu * kSpawnMinPlayerWu) p = pl.pos + normalizeOr(d, Vec2{1.0f, 0.0f}) * kSpawnMinPlayerWu;
+                const TrioState& tr = trio_[q];
+                if (tr.open) {
+                    const Vec2 dt = p - tr.centre;
+                    const float keep = kTrioRingWu + 80.0f;
+                    if (lengthSq(dt) < keep * keep) p = tr.centre + normalizeOr(dt, Vec2{1.0f, 0.0f}) * keep;
+                }
+                const float dd = lengthSq(pl.pos - p);
+                if (near < 0 || dd < nearD) {
+                    near = static_cast<i32>(q);
+                    nearD = dd;
+                }
+            }
+            heading = angleOf((near >= 0 ? players_[near].pos : p0.pos) - p);
+        } else {
+            // Never on top of a player, never inside the Trio's ring (screens.md).
+            const Vec2 d = p - p0.pos;
+            if (p0.alive && lengthSq(d) < kSpawnMinPlayerWu * kSpawnMinPlayerWu)
+                p = p0.pos + normalizeOr(d, Vec2{1.0f, 0.0f}) * kSpawnMinPlayerWu;
+            const TrioState& tr = trio_[0];
+            if (tr.open) {
+                const Vec2 dt = p - tr.centre;
+                const float keep = kTrioRingWu + 80.0f;
+                if (lengthSq(dt) < keep * keep) p = tr.centre + normalizeOr(dt, Vec2{1.0f, 0.0f}) * keep;
+            }
+            heading = angleOf(p0.pos - p);
         }
-        const i32 i = spawnEnemy(speciesIndex, p, angleOf(p0.pos - p), landTick);
+        const i32 i = spawnEnemy(speciesIndex, p, heading, landTick);
         if (i < 0) return;  // the pool is full: stop spawning into it (TECH_SPEC 7.1)
         enemies_.group[i] = school;
     }
@@ -99,7 +125,7 @@ void World::spawnShape(u16 speciesIndex, u32 count, double landTick) {
     // GAME_DESIGN 8 names the formations; the first slice uses five: a cluster, a ring around the player,
     // a pincer from both sides, a sweep along one edge of the view and the four corners.
     const Species& s = species_->get(speciesIndex);
-    const Vec2 c = players_[0].pos;
+    const Vec2 c = formationCentre();  // solo: player 0; co-op: the players in turn
     enum { Cluster, Ring, Pincer, Sweep, Corners } shape = Cluster;
     const float r = rng_.uniform();
     switch (s.family) {
@@ -200,7 +226,7 @@ void World::spendBudget(double landTick) {
     // fodder is the crowd's (spendCrowd). Pick formations until the bank cannot buy the next one; an
     // unaffordable pick waits for a later bar (the bank saves up to kBankBars of budget).
     for (u32 formations = 0; formations < 12; ++formations) {
-        if (enemies_.count >= kDirectorAliveCap) return;
+        if (enemies_.count >= aliveCap()) return;
         if (d.pending < 0) d.pending = pickSpecies(2);
         if (d.pending < 0) return;
         const u16 species = static_cast<u16>(d.pending);
@@ -229,7 +255,7 @@ void World::spendBudget(double landTick) {
     }
 }
 
-void World::spawnCrowd(u16 speciesIndex, u32 count, double landTick, Vec2 c) {
+void World::spawnCrowd(u16 speciesIndex, u32 count, double landTick, Vec2 c, u32 framePlayer) {
     // GAME_DESIGN 8 and species.json firstSlice.crowd.arrive (M3 stage C2): floods along one edge of the
     // frame, floodOutsideWu outside it; rings on an ellipse ringFrameScale x the frame; swarms
     // cornerOutsideWu outside its corners. Formations keep 260 wu from a ship and out of the Trio's ring.
@@ -245,7 +271,7 @@ void World::spawnCrowd(u16 speciesIndex, u32 count, double landTick, Vec2 c) {
         // The edge the ship is heading for is likelier (it flies into the flood); every edge stays possible.
         u32 edge = 0;
         {
-            const Vec2 v = players_[0].vel;
+            const Vec2 v = players_[framePlayer < kMaxPlayers ? framePlayer : 0].vel;
             const float sp = length(v);
             const Vec2 d = sp > 1.0f ? v * (1.0f / sp) : Vec2{};
             const float w[4] = {kCrowdEdgeBase + std::fmax(-d.x, 0.0f), kCrowdEdgeBase + std::fmax(d.x, 0.0f), kCrowdEdgeBase + std::fmax(-d.y, 0.0f),
@@ -347,6 +373,11 @@ void World::spendCrowd(double landTick, const Phrase& ph) {
     }
     const u32 killed = director_.crowdKills;
     director_.crowdKills = 0;
+    if (coop()) {
+        // M4: the target holds for every player's frame (GAME_DESIGN 8).
+        spendCrowdCoop(landTick, target, lost, killed);
+        return;
+    }
     i32 needy = -1;
     u32 counted = 0;
     for (u32 p = 0; p < playerCount_; ++p) {
@@ -369,14 +400,14 @@ void World::spendCrowd(double landTick, const Phrase& ph) {
     if (want < c.formationMin && gap >= static_cast<float>(c.formationMin)) want = c.formationMin;
     const Vec2 centre = players_[needy].pos;
     for (u32 formations = 0; formations < 8 && want; ++formations) {
-        if (enemies_.count >= kDirectorAliveCap) return;
-        const u32 room = kDirectorAliveCap - enemies_.count;
+        if (enemies_.count >= aliveCap()) return;
+        const u32 room = aliveCap() - enemies_.count;
         const i32 sp = pickSpecies(1);
         if (sp < 0) return;
         u32 n = want < c.formationMax ? want : c.formationMax;
         if (n > room) n = room;
         const u32 before = counters_.spawned;
-        spawnCrowd(static_cast<u16>(sp), n, landTick, centre);
+        spawnCrowd(static_cast<u16>(sp), n, landTick, centre, static_cast<u32>(needy));
         const u32 made = counters_.spawned - before;
         if (made == 0) return;
         want = want > made ? want - made : 0;
@@ -412,6 +443,7 @@ void World::strayFodder() {
         ev.x = e.x[i];
         ev.y = e.y[i];
         emit(ev);
+        if (role_ == NetRole::Host) logDeath(i, 0xFF, kDeathDissolve);
     }
 }
 void World::megaWave(double landTick) {
@@ -420,9 +452,9 @@ void World::megaWave(double landTick) {
     DirectorState& d = director_;
     const Phrase next = phraseAt(d, barOf(landTick + 1.0));
     const float base = baseBudget(species_->budget, species_->budgetCycles, next.track, next.cycle);
-    float wave = kMegaWaveBars * base * kDropScaleStart * d.assist;
+    float wave = kMegaWaveBars * base * kDropScaleStart * d.assist * coopBudgetScale();
     for (u32 formations = 0; formations < 16 && wave > 0.0f; ++formations) {
-        if (enemies_.count >= kDirectorAliveCap) return;
+        if (enemies_.count >= aliveCap()) return;
         const i32 sp = pickSpecies(2);  // threats (the crowd brings the Drop's fodder)
         if (sp < 0) return;
         const Species& s = species_->get(static_cast<u16>(sp));
@@ -448,13 +480,13 @@ void World::spotlight(double landTick, const Phrase& next) {
     // GAME_DESIGN 8: each debut gets a spotlight at the end of a Break, a small group alone with its name
     // on screen, before it joins the pool. It warps in over the Break's last two beats.
     if (next.track >= 3) return;  // the loop has no debuts
-    const PlayerState& p0 = players_[0];
-    float side = p0.pos.x > 0.0f ? -1.0f : 1.0f;
+    const Vec2 p0 = formationCentre();  // solo: player 0
+    float side = p0.x > 0.0f ? -1.0f : 1.0f;
     for (u32 k = 0; k < species_->rosterCount; ++k) {
         const SpeciesTable::RosterEntry& r = species_->roster[k];
         if (r.track != next.track || r.cycle != next.cycle) continue;
         const Species& s = species_->get(r.species);
-        const Vec2 at = p0.pos + Vec2{side * kSpotlightWu, -60.0f * side};
+        const Vec2 at = p0 + Vec2{side * kSpotlightWu, -60.0f * side};
         spawnFormation(r.species, spotlightCount(s.family, species_->family(s.family).groupMin), at, landTick);
         Event ev;
         ev.type = EventType::Spotlight;
@@ -488,6 +520,7 @@ void World::dissolveFodder(float progress) {
         ev.f = e.heading[i];
         emit(ev);
         if (e.state[i] != kWarping) dropShards(i, 0xFF);
+        if (role_ == NetRole::Host) logDeath(i, 0xFF, e.state[i] == kWarping ? kDeathDissolve : kDeathShards);
     }
 }
 
@@ -532,10 +565,11 @@ void World::directorBar(double barTick, u32 bar) {
                 d.hitThisCycle = false;
                 break;
             case Section::Drop:
-                if (ph.bossDrop && !d.bossSpawned && spawner_.mode == Spawner::Mode::Slice && anyAlive) {
+                if (ph.bossDrop && !d.bossSpawned && spawner_.mode == Spawner::Mode::Slice && anyAlive && role_ != NetRole::Client) {
                     // The boss enters on the last Drop's downbeat, toward the arena's centre from the
-                    // nearest player (kaleidos.md).
-                    const Vec2 pl = players_[0].pos;
+                    // nearest player (kaleidos.md). Co-op: from the first player standing; the host's call.
+                    const i32 fp = coop() ? firstAlive() : 0;
+                    const Vec2 pl = players_[fp >= 0 ? fp : 0].pos;
                     const Vec2 toCentre = normalizeOr(Vec2{} - pl, Vec2{1.0f, 0.0f});
                     spawnBossNow(barTick, pl + toCentre * kBossEnterWu);
                 }
@@ -543,26 +577,34 @@ void World::directorBar(double barTick, u32 bar) {
             case Section::Break:
                 if (anyAlive && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios)) {
                     // The Trio (GAME_DESIGN 6.1); after a boss, its bonus Trio first, each with half the Break.
+                    // Co-op: each device opens its own players' Trios (loot is instanced; the others hear of it).
                     const double end = tickOfBar(bar + ph.sectionBars);
                     for (u32 p = 0; p < playerCount_; ++p) {
-                        if (!players_[p].alive) continue;
+                        if (!players_[p].alive || !isLocal(p)) continue;
                         trio_[p].queued = ph.trackChange ? 1 : 0;
                         openTrio(p, ph.trackChange ? tickOfBar(bar + ph.sectionBars / 2) : end);
                     }
                 }
+                // GAME_DESIGN 10: a player down revives at the next Break (this device's own players).
+                if (coop())
+                    for (u32 p = 0; p < playerCount_; ++p)
+                        if (players_[p].present && players_[p].down && isLocal(p)) revivePlayer(p, false);
                 d.bank = 0.0f;
                 d.pending = -1;
                 break;
             default: break;
         }
     }
+    // M4: a client follows the host's phrase; the host's director alone spawns.
+    if (role_ == NetRole::Client) return;
     if (spawner_.mode != Spawner::Mode::Slice || !anyAlive) return;
     const double land = barTick + kWarpBeats * kTicksPerBeat;
     strayFodder();
     spendCrowd(land, ph);
-    // The threats: the budget by Track, cycle and section (none during the boss's Drop: kaleidos.md).
+    // The threats: the budget by Track, cycle and section (none during the boss's Drop: kaleidos.md); co-op x
+    // (1 + 0.6 x (players - 1)) (GAME_DESIGN 8).
     const float base = baseBudget(species_->budget, species_->budgetCycles, ph.track, ph.cycle ? ph.cycle : 1u);
-    d.budgetPerBar = ph.bossDrop ? 0.0f : base * sectionScale(ph) * d.assist;
+    d.budgetPerBar = ph.bossDrop ? 0.0f : base * sectionScale(ph) * d.assist * coopBudgetScale();
     if (d.budgetPerBar <= 0.0f) return;
     d.bank = std::fmin(d.bank + d.budgetPerBar, d.budgetPerBar * kBankBars);
     spendBudget(land);
@@ -583,14 +625,14 @@ void World::replaceCrowd(double beatTick) {
             counted = n;
         }
     }
-    if (needy < 0 || enemies_.count >= kDirectorAliveCap) return;
+    if (needy < 0 || enemies_.count >= aliveCap()) return;
     const i32 sp = pickSpecies(1);
     if (sp < 0) return;
     u32 n = director_.crowdLost < c.formationMax ? director_.crowdLost : c.formationMax;
-    const u32 room = kDirectorAliveCap - enemies_.count;
+    const u32 room = aliveCap() - enemies_.count;
     if (n > room) n = room;
     const u32 before = counters_.spawned;
-    spawnCrowd(static_cast<u16>(sp), n, beatTick + kWarpBeats * kTicksPerBeat, players_[needy].pos);
+    spawnCrowd(static_cast<u16>(sp), n, beatTick + kWarpBeats * kTicksPerBeat, players_[needy].pos, static_cast<u32>(needy));
     const u32 made = counters_.spawned - before;
     director_.crowdLost = director_.crowdLost > made ? director_.crowdLost - made : 0u;
 }
@@ -627,11 +669,13 @@ void World::runDirector() {
     bool anyAlive = false;
     for (u32 p = 0; p < playerCount_; ++p) anyAlive = anyAlive || players_[p].alive;
     if (!anyAlive) return;
-    forCrossings(m0_, m1_, kTicksPerBeat, [&](double beatTick, i64) { directorBeat(beatTick); });
+    const bool client = role_ == NetRole::Client;  // M4: the host spawns, dissolves and drops; a client follows
+    if (!client) forCrossings(m0_, m1_, kTicksPerBeat, [&](double beatTick, i64) { directorBeat(beatTick); });
     const Phrase& ph = phrase_;
     // Surge: score x2 and magnet x2 for the first half of the Drop (GAME_DESIGN 4.1).
     rules_.scoreMultiplier = ph.surge() ? 2.0f : 1.0f;
     rules_.magnetMultiplier = ph.surge() ? 2.0f : 1.0f;
+    if (client) return;
     if (ph.section == Section::Break && ph.sectionBar == 0)
         dissolveFodder(static_cast<float>((m1_ - tickOfBar(ph.bar)) / kTicksPerBar));
     // Boosts: one is due every 20-30 s of play outside the Breaks; the next kill drops it.

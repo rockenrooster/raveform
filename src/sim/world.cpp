@@ -26,6 +26,10 @@ void World::init(const SpeciesTable* species) {
     std::memset(&shots_, 0, sizeof shots_);
     std::memset(&shards_, 0, sizeof shards_);
     std::memset(events_, 0, sizeof events_);
+    std::memset(idKey_, 0, sizeof idKey_);
+    netLog_.clear();
+    netOpCount_ = 0;
+    runId_ = nextRunId_ = 0;
     tick_ = 0;
     resetRun(1, 0.0, 1);
 }
@@ -71,12 +75,25 @@ void World::resetRun(u64 seed, double startTick, u32 players) {
     boostPickups_.count = 0;
     boss_ = BossState{};
     rules_.scoreMultiplier = rules_.magnetMultiplier = 1.0f;
+    // M4: the co-op bookkeeping (nothing in solo reads it).
+    restartSeed_ = seed;
+    restartPlayers_ = playerCount_;
+    formationTurn_ = 0;
+    runTicks_ = 0;
+    if (role_ != NetRole::Solo) std::memset(idKey_, 0, sizeof idKey_);
+    viewPlayer_ = 0;
+    for (u32 p = 0; p < kMaxPlayers; ++p)
+        if (isLocal(p)) {
+            viewPlayer_ = p;
+            break;
+        }
 }
 
 // ---------------------------------------------------------------------------------------------- tick
 
 void World::tick(const TickInput& in) {
     ++tick_;
+    ++runTicks_;
     eventCount_ = 0;
     if (in.retry && !restartPending_) requestRestart();
     const double prev = m1_;
@@ -84,10 +101,11 @@ void World::tick(const TickInput& in) {
     restarted_ = false;
     if (restartPending_ && next >= restartAt_) {
         // RETRY: the new run begins on this bar line (the poses of this tick still describe the old run, so
-        // they are not applied; the controllers restart from the world's start positions).
+        // they are not applied; the controllers restart from the world's start positions). Solo: the seed
+        // after this one; co-op: the host's seed and seats (scheduleRun).
         const double bar = restartAt_;
-        const u64 seed = seed_ + 0x9E3779B97F4A7C15ull;
-        resetRun(seed, bar, playerCount_);
+        resetRun(restartSeed_, bar, restartPlayers_);
+        runId_ = nextRunId_;
         restarted_ = true;
         ++counters_.restarts;
         Event ev;
@@ -100,7 +118,9 @@ void World::tick(const TickInput& in) {
     bpm_ = in.bpm > 1.0f ? in.bpm : 120.0f;
     latencyTicks_ = in.latencyTicks;
 
+    if (netOpCount_) applyNetOps();  // M4: what the network brought since the last tick
     applyPlayers(in);
+    if (role_ != NetRole::Solo) updateDowned();
     runSpawner();  // the director first: the phrase this tick plays in (Surge, the Build's last bar)
     const float dt = kDt * timeScale();
     if (dipS_ > 0.0f) dipS_ -= kDt;
@@ -121,6 +141,8 @@ void World::tick(const TickInput& in) {
     moveProjectiles(dt);
     collide();
     bossContact();
+    if (role_ == NetRole::Client) updatePredictions();
+    if (role_ == NetRole::Host) finishNetLog();
     compact();
 }
 
@@ -128,6 +150,9 @@ void World::requestRestart() {
     if (restartPending_) return;
     restartPending_ = true;
     restartAt_ = (std::floor((m1_ + 0.5 * kTicksPerBar) / kTicksPerBar) + 1.0) * kTicksPerBar;
+    restartSeed_ = seed_ + 0x9E3779B97F4A7C15ull;
+    restartPlayers_ = playerCount_;
+    nextRunId_ = static_cast<u16>(runId_ + 1);
 }
 
 void World::emit(const Event& e) {
@@ -204,7 +229,9 @@ void World::spawnShots(const TickInput& in) {
     for (u32 p = 0; p < playerCount_; ++p) {
         const PlayerState& pl = players_[p];
         if (!pl.alive) continue;
-        if (in.bandShots) {
+        // The band's lead rule is the local player's; another player's shots here are its fire flag on the
+        // sim's grid (cosmetic copies, M4: the owner resolves its hits).
+        if (in.bandShots && isLocal(p)) {
             // The band's lead rule: one volley for each heard grid step with fire held (TECH_SPEC 6.3).
             for (u32 k = 0; k < in.shotCount; ++k)
                 if (in.shots[k].player == p) fireShot(p, in.shots[k].advanceS < 0.0f ? 0.0f : in.shots[k].advanceS, in.shots[k].tick);
@@ -281,17 +308,24 @@ void World::updateNovas() {
             ev.age = pl.novaFrontAge;
             ev.tick = pl.novaBlastTick;
             emit(ev);
-            // GAME_DESIGN 5: heavy damage to bosses (in view): each living pair, and the core once open.
-            if (boss_.active && !boss_.dying && m1_ >= boss_.fightTick &&
+            // GAME_DESIGN 5: heavy damage to bosses (in view): each living pair, and the core once open. Co-op:
+            // the Nova's owner deals it (a client claims it from the host).
+            if (isLocal(p) && boss_.active && !boss_.dying && m1_ >= boss_.fightTick &&
                 std::fabs(boss_.pos.x - pl.pos.x) <= kNovaViewHalfW + 270.0f && std::fabs(boss_.pos.y - pl.pos.y) <= kNovaViewHalfH + 270.0f) {
-                for (u8 k = 0; k < 3; ++k) {
-                    if (!(boss_.alive & (1u << k))) continue;
-                    boss_.pairHp[k] -= kBossNovaDamage;
-                    if (boss_.pairHp[k] <= 0.0f) killBossPair(k, static_cast<u8>(p));
-                }
-                if (boss_.alive != 0x7 && !boss_.dying) {
-                    boss_.coreHp -= kBossNovaDamage;
-                    if (boss_.coreHp <= 0.0f) killBoss(static_cast<u8>(p));
+                if (role_ == NetRole::Client) {
+                    for (u8 k = 0; k < 3; ++k)
+                        if (boss_.alive & (1u << k)) damageBossFinal(2, k, kBossNovaDamage, static_cast<u8>(p), boss_.pos, Vec2{1.0f, 0.0f}, -1.0f);
+                    if (boss_.alive != 0x7) damageBossFinal(3, 0, kBossNovaDamage, static_cast<u8>(p), boss_.pos, Vec2{1.0f, 0.0f}, -1.0f);
+                } else {
+                    for (u8 k = 0; k < 3; ++k) {
+                        if (!(boss_.alive & (1u << k))) continue;
+                        boss_.pairHp[k] -= kBossNovaDamage;
+                        if (boss_.pairHp[k] <= 0.0f) killBossPair(k, static_cast<u8>(p));
+                    }
+                    if (boss_.alive != 0x7 && !boss_.dying) {
+                        boss_.coreHp -= kBossNovaDamage;
+                        if (boss_.coreHp <= 0.0f) killBoss(static_cast<u8>(p));
+                    }
                 }
             }
         } else if (!pl.novaPending && pl.novaInvulS > 0.0f) {
@@ -311,11 +345,17 @@ void World::updateNovas() {
             if (dx * dx + dy * dy <= r2 && inView(bullets_.x[b], bullets_.y[b])) bullets_.dead[b] = 1;
         }
         Enemies& e = enemies_;
-        for (u32 i = 0; i < e.count; ++i) {
+        // Co-op: only the Nova's owner clears enemies (a client claims each from the host and predicts it);
+        // every device clears the bullets.
+        for (u32 i = 0; i < e.count && isLocal(p); ++i) {
             if (e.flags[i] & kFlagDead) continue;
             const float dx = e.x[i] - c.x, dy = e.y[i] - c.y;
             if (dx * dx + dy * dy > r2 || !inView(e.x[i], e.y[i])) continue;
-            if (e.state[i] == kWarping) {
+            if (role_ == NetRole::Client) {
+                const bool warping = e.state[i] == kWarping;
+                logClaim(i, 0.0f, warping ? kClaimDissolve : kClaimKill);
+                predictKill(i, static_cast<u8>(p), warping);
+            } else if (e.state[i] == kWarping) {
                 // Not yet solid: it dissolves (no Shards, no score).
                 e.flags[i] |= kFlagDead;
                 Event ev;
@@ -326,6 +366,7 @@ void World::updateNovas() {
                 ev.x = e.x[i];
                 ev.y = e.y[i];
                 emit(ev);
+                if (role_ == NetRole::Host) logDeath(i, 0xFF, kDeathDissolve);
             } else {
                 killEnemy(i, static_cast<u8>(p));
             }
@@ -443,17 +484,45 @@ void World::collide() {
                             best = static_cast<i32>(i);
                         }
                     });
+        // M4: another player's shot is a cosmetic copy (its owner resolves its hits, TECH_SPEC 8.1): it stops at
+        // what it meets and shows the impact, nothing more.
+        const bool real = isLocal(s.owner[k]);
         // The boss, when it is nearer along the path than any enemy.
         if (boss_.active && !boss_.dying) {
             u8 part = 0, pair = 0;
             float bt = 0.0f;
             if (bossHitTest(Vec2{ax, ay}, Vec2{bx, by}, sr, part, pair, bt) && bt <= bestT) {
                 s.dead[k] = 1;
-                damageBoss(part, pair, s.damage[k], s.owner[k], Vec2{ax + dx * bt, ay + dy * bt}, Vec2{s.dx[k], s.dy[k]});
+                if (real) {
+                    damageBoss(part, pair, s.damage[k], s.owner[k], Vec2{ax + dx * bt, ay + dy * bt}, Vec2{s.dx[k], s.dy[k]});
+                } else {
+                    Event ev;
+                    ev.type = EventType::Impact;
+                    ev.species = kBossSpecies;
+                    ev.c = part;
+                    ev.a = pair;
+                    ev.x = ax + dx * bt;
+                    ev.y = ay + dy * bt;
+                    ev.x2 = s.dx[k];
+                    ev.y2 = s.dy[k];
+                    emit(ev);
+                }
                 continue;
             }
         }
         if (best < 0) continue;
+        if (!real) {
+            s.dead[k] = 1;
+            Event ev;
+            ev.type = EventType::Impact;
+            ev.species = e.species[best];
+            ev.x = ax + dx * bestT;
+            ev.y = ay + dy * bestT;
+            ev.x2 = s.dx[k];
+            ev.y2 = s.dy[k];
+            emit(ev);
+            continue;
+        }
         const u32 i = static_cast<u32>(best);
         const Vec2 at{ax + dx * bestT, ay + dy * bestT};
         const Vec2 dir{s.dx[k], s.dy[k]};
@@ -476,10 +545,11 @@ void World::collide() {
         }
     }
 
-    // Players x enemy bodies and enemy bullets (GAME_DESIGN 5: hit radius 5 wu).
+    // Players x enemy bodies and enemy bullets (GAME_DESIGN 5: hit radius 5 wu). Co-op: only this device's
+    // own players (what you see is what hits you; the others tell us their hits).
     for (u32 p = 0; p < playerCount_; ++p) {
         PlayerState& pl = players_[p];
-        if (!pl.alive) continue;
+        if (!pl.alive || !isLocal(p)) continue;
         if (pl.invulnerable() || rules_.godMode) continue;
         const Vec2 c = pl.pos;
         i32 contact = -1;
@@ -529,6 +599,11 @@ void World::collide() {
 void World::hitPlayer(u32 p, Vec2 from) {
     PlayerState& pl = players_[p];
     ++pl.hitsTaken;
+    if (pl.cells == 0 && coop()) {
+        // GAME_DESIGN 10: in co-op the ship shatters into a beacon; the run goes on while anyone stands.
+        downPlayer(p);
+        return;
+    }
     if (pl.cells == 0) {
         // GAME_DESIGN 4.3: a hit with no Shield cells left ends the run.
         pl.alive = false;
@@ -583,6 +658,11 @@ void World::hitPlayer(u32 p, Vec2 from) {
 void World::killEnemy(u32 i, u8 killer) {
     Enemies& e = enemies_;
     if (e.flags[i] & kFlagDead) return;
+    if (role_ == NetRole::Client) {
+        // M4: the host decides (TECH_SPEC 8.1); the kill is shown now, its Shards and score come with the host's word.
+        predictKill(i, killer, false);
+        return;
+    }
     e.flags[i] |= kFlagDead;
     const Species& s = species_->get(e.species[i]);
     Event ev;
@@ -600,11 +680,14 @@ void World::killEnemy(u32 i, u8 killer) {
         ++director_.crowdKills;
     }
     if (killer < kMaxPlayers && players_[killer].present) {
-        // Score = enemy value x Chain (GAME_DESIGN 5: the Chain is a multiplier from x1).
+        // Score = enemy value x Chain (GAME_DESIGN 5: the Chain is a multiplier from x1). Co-op: a player's own
+        // device keeps its score (it hears of the kill from the host).
         PlayerState& pl = players_[killer];
-        ++pl.kills;
-        const float chain = static_cast<float>(pl.chain);
-        pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * chain * rules_.scoreMultiplier));
+        if (isLocal(killer)) {
+            ++pl.kills;
+            const float chain = static_cast<float>(pl.chain);
+            pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * chain * rules_.scoreMultiplier));
+        }
         // A Boost is due (GAME_DESIGN 6.1, director controlled): this kill drops it.
         if (director_.boostDue && spawner_.mode == Spawner::Mode::Slice) {
             dropBoost(Vec2{e.x[i], e.y[i]}, static_cast<u8>(upgradeRng_.below(kBoostCount)));
@@ -613,16 +696,22 @@ void World::killEnemy(u32 i, u8 killer) {
         }
     }
     dropShards(i, killer);
+    if (role_ == NetRole::Host) logDeath(i, killer, kDeathKill);
 }
 
 void World::dropShards(u32 i, u8 killer) {
     (void)killer;
     // Every enemy death drops its Shards for each player separately (GAME_DESIGN 5, 10); Magnet Storm:
     // kills drop double (GAME_DESIGN 6.4).
+    // Co-op: each device keeps its own players' Shards only (they are local, TECH_SPEC 8.1), and a player gets
+    // them from deaths within two frames of it (four frames of the crowd dissolving at a Break would otherwise
+    // drop thousands far from anyone, gone before they could be reached).
     Enemies& e = enemies_;
     const Species& s = species_->get(e.species[i]);
     for (u32 p = 0; p < playerCount_; ++p) {
-        if (!players_[p].present) continue;
+        if (!players_[p].present || !isLocal(p)) continue;
+        if (coop() && (std::fabs(e.x[i] - players_[p].pos.x) > kCoopShardReachW || std::fabs(e.y[i] - players_[p].pos.y) > kCoopShardReachH))
+            continue;
         const u32 n = players_[p].boost(kMagnetStorm) ? 2u * s.shards : s.shards;
         for (u32 k = 0; k < n; ++k) {
             const float a = randRange(e.rng[i], 0.0f, kTau);
@@ -642,6 +731,10 @@ i32 World::indexOf(u32 handle) const {
 }
 
 i32 World::spawnEnemy(u16 speciesIndex, Vec2 pos, float heading, double landTick) {
+    return spawnEnemyAs(speciesIndex, pos, heading, landTick, 0);
+}
+
+i32 World::spawnEnemyAs(u16 speciesIndex, Vec2 pos, float heading, double landTick, u32 serial) {
     Enemies& e = enemies_;
     if (e.count >= Enemies::kCap || e.freeCount == 0) {
         ++counters_.enemiesDropped;
@@ -665,8 +758,15 @@ i32 World::spawnEnemy(u16 speciesIndex, Vec2 pos, float heading, double landTick
     e.group[i] = 0;
     e.flags[i] = 0;
     e.far[i] = 0;
-    e.serial[i] = ++serial_;
-    e.rng[i] = hash32(static_cast<u32>(seed_ ^ (seed_ >> 32)), serial_);
+    e.ox[i] = e.oy[i] = e.pred[i] = 0.0f;
+    e.target[i] = 0xFF;
+    // M4: a client's enemy carries the host's spawn number, so its own random stream is the host's.
+    const u32 sn = serial ? serial : ++serial_;
+    if (serial && serial > serial_) serial_ = serial;
+    e.serial[i] = sn;
+    e.rng[i] = hash32(static_cast<u32>(seed_ ^ (seed_ >> 32)), sn);
+    if (role_ != NetRole::Solo) idInsert(sn, slot);
+    if (role_ == NetRole::Host) logSpawn(i, landTick);
     if (landTick > m1_) {
         e.state[i] = kWarping;
         e.until[i] = landTick;
@@ -725,12 +825,17 @@ void World::removeEnemyAt(u32 i) {
     const u32 slot = e.handle[i] & 0xFFFFu;
     e.gen[slot] = static_cast<u16>(e.gen[slot] + 1);  // every handle to this slot is now stale
     e.freeSlots[e.freeCount++] = slot;
+    if (role_ != NetRole::Solo) idErase(e.serial[i]);
     const u32 last = --e.count;
     if (i != last) {
         e.x[i] = e.x[last];
         e.y[i] = e.y[last];
         e.px[i] = e.px[last];
         e.py[i] = e.py[last];
+        e.ox[i] = e.ox[last];
+        e.oy[i] = e.oy[last];
+        e.pred[i] = e.pred[last];
+        e.target[i] = e.target[last];
         e.vx[i] = e.vx[last];
         e.vy[i] = e.vy[last];
         e.kx[i] = e.kx[last];
@@ -755,9 +860,10 @@ void World::removeEnemyAt(u32 i) {
 }
 
 void World::compact() {
-    // Swap-remove in index order (TECH_SPEC 7.1): deterministic, no holes.
+    // Swap-remove in index order (TECH_SPEC 7.1): deterministic, no holes. A client's predicted deaths stay
+    // until the host answers (M4).
     for (u32 i = 0; i < enemies_.count;) {
-        if (enemies_.flags[i] & kFlagDead) {
+        if ((enemies_.flags[i] & (kFlagDead | kFlagPredicted)) == kFlagDead) {
             removeEnemyAt(i);
         } else {
             ++i;
@@ -964,6 +1070,18 @@ u64 World::hash() const {
         }
         val(pl.sentinel.x);
         val(pl.sentinel.y);
+    }
+    if (role_ != NetRole::Solo) {
+        // M4: what co-op adds (solo hashes stay what M3's were).
+        mix(e.target, n);
+        mix(e.ox, n * sizeof(float));
+        mix(e.oy, n * sizeof(float));
+        val(runId_);
+        for (u32 p = 0; p < kMaxPlayers; ++p) {
+            val(players_[p].down);
+            val(players_[p].present);
+            val(players_[p].reviveTicks);
+        }
     }
     return h;
 }

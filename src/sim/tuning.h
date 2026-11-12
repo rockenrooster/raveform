@@ -160,4 +160,23 @@ constexpr float kBossNovaDamage = 60.0f;      // a Nova's blast: to each pair, a
 constexpr float kBossArmInner = 78.0f;        // the arms' hit shape: from the first facet's inner point ...
 constexpr float kBossArmOuter = 274.0f;       // ... to past the tip star
 constexpr float kBossEnterWu = 500.0f;        // kaleidos.md (quoted): enters 500 wu from the nearest player
+
+// ======================================================================================================
+// M4 STAGE A: co-op (GAME_DESIGN 10, TECH_SPEC 8). Quoted numbers are marked; the rest are chosen where the
+// documents give no number for scaling with the player count (listed in docs/PROGRESS.md, M4 stage A).
+// ======================================================================================================
+constexpr float kCoopBudgetPerPlayer = 0.6f;      // GAME_DESIGN 8 (quoted): threat budget x (1 + 0.6 x (players - 1))
+constexpr float kCoopBossHealthPerPlayer = 0.5f;  // GAME_DESIGN 8 (quoted): boss health x (1 + 0.5 x (players - 1))
+constexpr u32 kCoopAliveCapPerPlayer = 150;       // the director's alive cap grows this much a seat (600 -> 1,050 with four):
+                                                  // each frame keeps its own crowd, the cap is the phone's CPU
+constexpr u32 kTargetRethinkSteps = 4;            // an enemy picks its player again every fourth sixteenth (staggered by
+                                                  // spawn number, so on the same musical steps on every device) ...
+constexpr float kTargetStick = 0.7f;              // ... and changes only to a player this much nearer (stickiness)
+constexpr float kCoopShardReachW = 1600.0f, kCoopShardReachH = 720.0f;  // a death drops a player's Shards within two
+                                                  // frames of it (every death drops for every player, GAME_DESIGN 10)
+constexpr float kReviveRingWu = 90.0f;            // the beacon's ring a teammate stands in (GAME_DESIGN 10: two beats)
+constexpr double kReviveBeats = 2.0;              // GAME_DESIGN 10 (quoted)
+constexpr float kPredictUndoS = 0.30f;            // TECH_SPEC 8.1 (quoted): a predicted death not confirmed in 300 ms is undone
+constexpr float kCorrectionTau = 0.150f;          // TECH_SPEC 8.1 (quoted): a correction's offset decays over about 150 ms
+constexpr float kCorrectionSnapWu = 96.0f;        // TECH_SPEC 8.1 (quoted): above this error it snaps
 }  // namespace rf::sim::tuning

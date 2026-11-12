@@ -19,7 +19,7 @@ set(RF_TP ${RF_ROOT}/third_party)
 set(RF_GEN ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${RF_GEN})
 
-foreach(dep SDL/CMakeLists.txt volk/volk.c vulkan-headers/include/vulkan/vulkan.h)
+foreach(dep SDL/CMakeLists.txt volk/volk.c vulkan-headers/include/vulkan/vulkan.h enet/host.c)
   if(NOT EXISTS ${RF_TP}/${dep})
     message(FATAL_ERROR "third_party/${dep} is missing - run scripts/fetch-deps.ps1")
   endif()
@@ -195,6 +195,7 @@ add_library(raveform_sim STATIC
   src/sim/world.cpp
   src/sim/world_boss.cpp
   src/sim/world_enemies.cpp
+  src/sim/world_net.cpp
   src/sim/world_spawner.cpp
   src/sim/world_upgrades.cpp
   ${RF_GEN}/species.json.inc
@@ -204,6 +205,46 @@ target_compile_options(raveform_sim PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-fno-except
 target_compile_options(raveform_sim PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror $<$<CONFIG:Debug>:-O2>)
 set_target_properties(raveform_sim PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # M3 sim end
+
+# M4 net begin
+# ENet 1.3.18 (scripts/fetch-deps.ps1, pinned by commit). Its protocol sources are compiled with a forced
+# include that sends their socket and clock calls to RAVEFORM's datagram layer (src/net/wire.cpp: the
+# condition simulator, the loopback network, the simulated clock); its platform file keeps the real ones.
+set(RF_ENET ${RF_TP}/enet)
+set(RF_ENET_CORE ${RF_ENET}/callbacks.c ${RF_ENET}/compress.c ${RF_ENET}/host.c ${RF_ENET}/list.c ${RF_ENET}/packet.c
+                 ${RF_ENET}/peer.c ${RF_ENET}/protocol.c)
+if(WIN32)
+  set(RF_ENET_PLATFORM ${RF_ENET}/win32.c)
+else()
+  set(RF_ENET_PLATFORM ${RF_ENET}/unix.c)
+endif()
+add_library(rf_enet STATIC ${RF_ENET_CORE} ${RF_ENET_PLATFORM})
+target_include_directories(rf_enet SYSTEM PUBLIC ${RF_ENET}/include)
+set_source_files_properties(${RF_ENET_CORE} PROPERTIES COMPILE_OPTIONS "-include;${RF_ROOT}/src/net/enet_remap.h")
+target_compile_options(rf_enet PRIVATE -w $<$<CONFIG:Debug>:-O2>)
+if(WIN32)
+  target_link_libraries(rf_enet PUBLIC ws2_32 winmm)
+else()
+  # What ENet's own configure step finds on Linux and Android (bionic has all of it).
+  target_compile_definitions(rf_enet PRIVATE HAS_FCNTL=1 HAS_POLL=1 HAS_GETADDRINFO=1 HAS_GETNAMEINFO=1 HAS_GETHOSTBYNAME_R=1
+                             HAS_GETHOSTBYADDR_R=1 HAS_INET_PTON=1 HAS_INET_NTOP=1 HAS_MSGHDR_FLAGS=1 HAS_SOCKLEN_T=1)
+endif()
+set_target_properties(rf_enet PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# The co-op network (TECH_SPEC 8): transport, protocol, time and song sync, replication, headless peers. No
+# SDL, Vulkan or audio: the game, raveform_headless and the tests link it.
+add_library(raveform_net STATIC
+  src/net/link.cpp
+  src/net/peer.cpp
+  src/net/protocol.cpp
+  src/net/session.cpp
+  src/net/sync.cpp
+  src/net/wire.cpp)
+target_include_directories(raveform_net PUBLIC ${RF_ROOT}/src ${RF_GEN})
+target_link_libraries(raveform_net PUBLIC raveform_sim rf_enet)
+target_compile_options(raveform_net PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti> -fno-math-errno)
+target_compile_options(raveform_net PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror $<$<CONFIG:Debug>:-O2>)
+set_target_properties(raveform_net PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# M4 net end
 
 # ---- raveform_core: everything except the entry point ----------------------------------------
 set(RF_CORE_SOURCES
@@ -284,8 +325,8 @@ target_sources(raveform_core PRIVATE
 if(NOT ANDROID)
   # The band without a window: offline renders, the loudness calibration, the unit tests.
   set(RF_HEADLESS_CORE src/core/json_doc.cpp src/core/log.cpp src/core/alloc_counter.cpp)
-  add_executable(raveform_headless src/tools/audio_render.cpp src/tools/sim_headless.cpp ${RF_HEADLESS_CORE})
-  target_link_libraries(raveform_headless PRIVATE raveform_sim raveform_audio)  # M3: --sim runs
+  add_executable(raveform_headless src/tools/audio_render.cpp src/tools/sim_headless.cpp src/tools/net_headless.cpp ${RF_HEADLESS_CORE})
+  target_link_libraries(raveform_headless PRIVATE raveform_sim raveform_audio raveform_net)  # M3: --sim runs; M4: --net
   target_compile_options(raveform_headless PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
   target_link_options(raveform_headless PRIVATE -static)
   add_executable(raveform_tests tests/audio_tests.cpp ${RF_HEADLESS_CORE})
@@ -297,6 +338,12 @@ if(NOT ANDROID)
   target_link_libraries(raveform_sim_tests PRIVATE raveform_sim)
   target_compile_options(raveform_sim_tests PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
   target_link_options(raveform_sim_tests PRIVATE -static)
+  # M4: the network's unit tests (packet parsing fuzz, the wire and its condition simulator, clock and song sync,
+  # a short loopback session).
+  add_executable(raveform_net_tests tests/net_tests.cpp ${RF_HEADLESS_CORE})
+  target_link_libraries(raveform_net_tests PRIVATE raveform_net)
+  target_compile_options(raveform_net_tests PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
+  target_link_options(raveform_net_tests PRIVATE -static)
 endif()
 # M2 audio end
 

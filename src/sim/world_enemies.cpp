@@ -49,6 +49,7 @@ void World::landEnemy(u32 i) {
     e.state[i] = kMoving;
     e.until[i] = m1_;
     const i32 tp = nearestPlayer(e.x[i], e.y[i]);
+    if (coop()) e.target[i] = tp >= 0 ? static_cast<u8>(tp) : 0xFF;  // M4: its first player is the nearest
     const Vec2 to = tp >= 0 ? players_[tp].pos - Vec2{e.x[i], e.y[i]} : dirOf(e.heading[i]);
     const float toward = angleOf(to);
     switch (s.family) {
@@ -85,7 +86,9 @@ void World::flock(u32 i, const Species& s, float dt) {
     // every tick.
     Enemies& e = enemies_;
     const FamilyData& fd = species_->family(Family::Shoal);
-    if (((e.serial[i] + static_cast<u32>(tick_)) & 1u) == 0u) {
+    // M4 co-op: the run's tick count (the same on every device) picks the gathering ticks, so schools flock alike.
+    const u64 phase = coop() ? runTicks_ : tick_;
+    if (((e.serial[i] + static_cast<u32>(phase)) & 1u) == 0u) {
         const float R = fd.flockRadius, R2 = R * R, sep = fd.separation;
         const float x = e.x[i], y = e.y[i];
         Vec2 centre{}, align{}, push{};
@@ -105,7 +108,9 @@ void World::flock(u32 i, const Species& s, float dt) {
             }
         });
         Vec2 want{};
-        const i32 tp = nearestPlayer(x, y);
+        // M4 co-op: the school seeks the player each fish attends to (updateEnemies chose it this tick).
+        const i32 tp = coop() ? (e.target[i] < playerCount_ && players_[e.target[i]].alive ? static_cast<i32>(e.target[i]) : -1)
+                              : nearestPlayer(x, y);
         if (tp >= 0) {
             // C2: while a boss lives the school gives the fight room: it keeps out of kCrowdBossRoomWu of a ship.
             const Vec2 to = players_[tp].pos - Vec2{x, y};
@@ -132,13 +137,19 @@ void World::updateEnemies(float dt) {
     const bool beat = crossed(m0_, m1_, kTicksPerBeat);
     const double beatTick = std::floor(m1_ / kTicksPerBeat) * kTicksPerBeat;  // the beat crossed (when beat)
     const float knock = std::exp(-kKnockbackDecay * dt);
-    const PlayerState& p0 = players_[0];
+    const PlayerState& p0 = players_[viewPlayer_];  // M4: the band's intensity is this device's player's view
     const float bulletSpeed = species_->bulletSpeed;
+    const bool client = role_ == NetRole::Client;
+    const float settle = std::exp(-kDt / kCorrectionTau);  // M4 client: a correction's drawn offset decays
 
     for (u32 i = 0; i < e.count; ++i) {
         e.px[i] = e.x[i];
         e.py[i] = e.y[i];
         e.pheading[i] = e.heading[i];
+        if (client) {
+            e.ox[i] *= settle;
+            e.oy[i] *= settle;
+        }
         if (e.flags[i] & kFlagDead) continue;
         if (e.state[i] == kWarping) {
             if (m1_ < e.until[i]) continue;
@@ -154,7 +165,7 @@ void World::updateEnemies(float dt) {
         const Species& s = species_->get(e.species[i]);
         const FamilyData& fd = species_->family(s.family);
         const float x = e.x[i], y = e.y[i];
-        const i32 tp = nearestPlayer(x, y);
+        const i32 tp = targetOf(i);  // solo: the nearest player (M4 co-op: by distance, with some stickiness)
         const Vec2 target = tp >= 0 ? players_[tp].pos : Vec2{x, y};
         const Vec2 to = target - Vec2{x, y};
         const bool engaged = engagedBy(x, y);

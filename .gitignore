@@ -12,6 +12,7 @@
 /third_party/SDL/
 /third_party/volk/
 /third_party/vulkan-headers/
+/third_party/enet/
 
 # Local tooling
 /.vscode/

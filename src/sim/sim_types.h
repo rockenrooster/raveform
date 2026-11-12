@@ -24,7 +24,7 @@ constexpr float kArenaHalfH = 2700.0f;
 constexpr u32 kMaxPlayers = 4;
 constexpr u32 kMaxEnemies = 3072;
 constexpr u32 kMaxEnemyBullets = 2048;
-constexpr u32 kMaxShots = 1024;  // per player
+constexpr u32 kMaxShots = 1024 * kMaxPlayers;  // 1024 per player (TECH_SPEC 7.1), one pool
 constexpr u32 kMaxShards = 2048;
 
 // ---- Spatial grid (TECH_SPEC 7.2): uniform 64 wu cells over the arena (150 x 85).

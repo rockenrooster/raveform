@@ -16,6 +16,16 @@ const char kSpeciesJson[] =
 const char* const kFamilyNames[kFamilyCount] = {"drifter", "hound", "shoal", "ram", "carom", "sentry"};
 }  // namespace
 
+u64 speciesDataDigest() {
+    // FNV-1a of the embedded species.json (M4: co-op peers must run the same content).
+    u64 h = 1469598103934665603ull;
+    for (const char* c = kSpeciesJson; *c; ++c) {
+        h ^= static_cast<u8>(*c);
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+
 const char* familyName(Family f) {
     const u32 i = static_cast<u32>(f);
     return i < kFamilyCount ? kFamilyNames[i] : "?";

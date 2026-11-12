@@ -1,0 +1,257 @@
+#pragma once
+// A co-op session (M4; TECH_SPEC 8.1-8.3): one device's side of the game over a Link, bound to its World.
+//
+// Host: listens, seats the clients (seat 0 is its own), starts the run on a bar line when every seat is in,
+// and runs the world's director. After each tick it sends what the tick decided: spawn batches (at least two
+// beats before they land), verdicts on enemies, the boss, Boost drops, the director's state, its own player's
+// events, and a census of its enemies every two seconds; every frame the players' poses (30 Hz), enemy
+// corrections chosen by a priority accumulator (at most 1,200 bytes a packet, 15 Hz per client) and the song
+// clock (4 Hz). Clients' hit claims and events reach its world as operations of the next tick.
+//
+// Client: joins, keeps its clock on the host's (net/sync.h), runs its world without a director (the host's
+// spawns and verdicts arrive as operations), claims its own player's hits and predicts the kills, applies
+// corrections, and sends its pose (30 Hz, the last two states) and its player's events.
+//
+// The driver (the game, a headless bot peer) calls, each frame: receive(), then per tick fillRemote() and
+// world.tick() and afterTick(), then send(). Nothing here allocates after start().
+
+#include "net/link.h"
+#include "net/protocol.h"
+#include "net/sync.h"
+#include "sim/world.h"
+
+namespace rf::net {
+
+enum class SessionState : u8 { Idle, Connecting, Lobby, Running, Ended };
+
+struct SessionConfig {
+    sim::NetRole role = sim::NetRole::Host;
+    u32 seats = 2;              // host: players in the run, itself included; it starts when all are in
+    char bindIp[48] = {};       // host: the address to listen on ("" every address); client: to send from
+    char joinIp[48] = {};       // client: the host's address
+    u16 port = kGamePort;
+    WireKind wire = WireKind::Udp;
+    NetSim sim;
+    char name[16] = "PLAYER";
+    u64 seed = 1;
+    float startLeadS = 3.0f;    // host: the run's first bar line at least this far after the last seat joined
+};
+
+// What the net overlay and the soak report show (per second where it says so).
+struct SessionStats {
+    float rttMs = 0.0f, rttVarMs = 0.0f, loss = 0.0f;  // client: to the host; host: the worst client
+    float upKbps = 0.0f, downKbps = 0.0f;               // this device, last second, with IP/UDP headers
+    float correctionsPerS = 0.0f;                       // client: applied; host: sent
+    float errRmsWu = 0.0f, errMaxWu = 0.0f;             // client: position error the corrections found, last second
+    float songOffsetMs = 0.0f;                          // client: its song against the host's, by its clock estimate
+    float clockOffsetMs = 0.0f, clockRttMs = 0.0f;      // client: host - local (ms), the sample's round trip
+    float dilation = 0.0f;                              // client: the clock's steering (rate - 1)
+    u32 snaps = 0, corrections = 0;                     // totals
+    u32 corrUnknown = 0, corrOtherRun = 0;              // client: corrections for no enemy here / another run
+    // Client: enemies on this player's screen, drawn position against the host's sample as each correction lands.
+    double screenErrSum2 = 0.0;
+    u64 screenErrN = 0;
+    float screenErrMax = 0.0f;
+    u32 peers = 0;                                      // connected
+    u32 disconnects = 0, refused = 0, badPackets = 0;
+    u32 censusChecks = 0, censusMismatches = 0;
+    u32 attention = 0;                                  // client: enemies asked for; host: asks received (totals)
+    u32 maxDatagram = 0;                                // the largest UDP payload this device sent
+    u32 droppedOutgoing = 0;                            // reliable data that could not be queued (must stay 0)
+    double totalUpBytes = 0.0, totalDownBytes = 0.0;    // since start, with headers
+};
+
+class Session : public PacketSink {
+public:
+    Session() = default;
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
+    ~Session() override { stop(); }
+
+    bool start(const SessionConfig& cfg, sim::World* world, u64 contentHash);
+    void stop();
+    SessionState state() const { return state_; }
+    sim::NetRole role() const { return cfg_.role; }
+    bool host() const { return cfg_.role == sim::NetRole::Host; }
+    u32 seat() const { return seat_; }
+    u32 seats() const { return seats_; }
+    u8 seatMask() const { return seatMask_; }
+    const char* endReason() const { return endReason_; }
+
+    // ---- the frame ----
+    void receive(i64 localUs);
+    i64 hostNow() const { return hostNow_; }
+    // Host: its song as heard now (the band's, or a SongClock's) and the tempo after the next bar line.
+    void setHostSong(const SongAnchor& a) { song_.set(a); }
+    double songAt(i64 hostUs) const { return song_.songAt(hostUs); }
+    double tpsAt(i64 hostUs) const { return song_.tpsAt(hostUs); }
+    bool songValid() const { return song_.valid(); }
+    double runOffset() const { return runOffset_; }
+    // The run: scheduled (the world resets on its bar line) and not paused. While paused the run stops on
+    // pauseTick() (run ticks); it goes on when the song reaches resumeSong().
+    bool running() const { return state_ == SessionState::Running; }
+    bool paused() const { return pauseAt_ >= 0.0; }
+    double pauseTick() const { return pauseAt_; }
+    bool resuming() const { return resumeAt_ >= 0.0; }
+    double resumeSong() const { return resumeAt_; }
+    void resumed();  // the driver passed resumeSong(): the run goes on with the new offset
+    void requestPause(bool on);
+    // The remote players for a tick ending at host time `hostUs` (drawn ~66 ms behind, TECH_SPEC 8.1).
+    void fillRemote(sim::TickInput& in, i64 hostUs) const;
+    void afterTick();
+    void send(i64 localUs, const sim::PlayerPose& pose);
+    // The device's clock at this moment (microseconds), for the time-sync stamps; without it the frame's time.
+    using ClockFn = i64 (*)(void* user);
+    void setClock(ClockFn fn, void* user) {
+        clockFn_ = fn;
+        clockUser_ = user;
+    }
+
+    const SessionStats& stats() const { return stats_; }
+    void resetScreenError() {
+        stats_.screenErrSum2 = 0.0;
+        stats_.screenErrN = 0;
+        stats_.screenErrMax = 0.0f;
+    }
+    const Link& link() const { return link_; }
+    // Ground truth for tests: the clock and song as this client steers them.
+    const ClockSync& clock() const { return clock_; }
+
+private:
+    // PacketSink (the sender's seat is in `from_` while a packet is parsed).
+    void onHello(const MsgHello& m) override;
+    void onWelcome(const MsgWelcome& m) override;
+    void onRefuse(u8 reason) override;
+    void onBye(u8 reason) override;
+    void onPing(i64 t0) override;
+    void onPong(i64 t0, i64 t1, i64 t2) override;
+    void onRunStart(const MsgRunStart& m) override;
+    void onSpawn(u16 run, const sim::NetSpawn& s) override;
+    void onDeath(u16 run, const sim::NetDeath& d) override;
+    void onClaim(u16 run, const sim::NetClaim& c) override;
+    void onBossClaim(u16 run, const sim::NetBossClaim& c) override;
+    void onBoss(const MsgBoss& m) override;
+    void onBoostDrop(const MsgBoostDrop& m) override;
+    void onDirector(const MsgDirector& m) override;
+    void onPlayerEvent(const MsgPlayerEvent& m) override;
+    void onCensus(const MsgCensus& m) override;
+    void onPause(const MsgPause& m) override;
+    void onSeats(u8 mask) override;
+    void onPose(const MsgPose& m) override;
+    void onCorrections(u16 run, double hostMusic) override;
+    void onCorrection(const sim::NetEnemyState& s) override;
+    void onHeartbeat(const MsgHeartbeat& m) override;
+    void onStats(const MsgStats& m) override;
+    void onAttention(u16 run, const u32* serials, u32 n) override;
+
+    void handleConnect(u32 peer, u32 info);
+    void service();
+    i64 nowLocal() const;
+    void handleDisconnect(u32 peer);
+    void maybeStart();
+    void startRun(double bar, u64 seed, u16 run);
+    void hostPause(bool on);
+    void sendPause(const MsgPause& m);
+    // Outgoing: reliable messages to every client (host) or to the host (client), streamed out a packet at a time.
+    template <typename F>
+    void reliable(F&& put);
+    void flushReliable();
+    void writeClaims();
+    void sendTo(u32 peer, u8 channel, const PacketWriter& w, bool rel);
+    void relayEvent(const MsgPlayerEvent& m, u32 exceptSeat);
+    void sendCorrections(u32 seat, double hostMusic);
+    void refillBudgets(i64 localUs);
+    u32 attention();
+    void updatePriorities(float dt);
+    void measure(i64 localUs);
+    void collectLocalEvents();
+    bool pushOp(const sim::NetOp& op);
+
+    SessionConfig cfg_;
+    sim::World* world_ = nullptr;
+    Link link_;
+    u64 content_ = 0;
+    SessionState state_ = SessionState::Idle;
+    const char* endReason_ = "";
+    u32 seat_ = 0, seats_ = 1;
+    u8 seatMask_ = 1;
+    i32 peerSeat_[kMaxLinkPeers] = {-1, -1, -1, -1};  // host: ENet peer -> seat
+    i32 seatPeer_[sim::kMaxPlayers] = {-1, -1, -1, -1};  // host: seat -> ENet peer
+    bool welcomed_[sim::kMaxPlayers] = {};
+    i32 from_ = -1;  // seat of the packet being parsed (host)
+    u32 fromPeer_ = 0;  // ENet peer of the packet being parsed
+    i64 localNow_ = 0, hostNow_ = 0, lastJoinUs_ = 0, startUs_ = 0;
+    ClockFn clockFn_ = nullptr;
+    void* clockUser_ = nullptr;
+
+    // Time and song.
+    ClockSync clock_;
+    SongModel song_;
+    double runOffset_ = 0.0;
+    double pauseAt_ = -1.0, resumeAt_ = -1.0, nextOffset_ = 0.0;
+    i64 nextPingUs_ = 0;
+    u16 announcedRun_ = 0;
+
+    // Remote players' poses (by seat): the newest few, for interpolation.
+    static constexpr u32 kPoseRing = 8;
+    struct PoseRing {
+        MsgPose s[kPoseRing];
+        u32 head = 0, count = 0;
+    } poses_[sim::kMaxPlayers];
+    MsgPose ownPrev_;
+    bool havePrev_ = false;
+
+    // Outgoing.
+    PacketWriter rel_;      // reliable, being filled
+    PacketWriter scratch_;  // one-off packets
+    i64 nextPoseUs_ = 0, nextBeatUs_ = 0, nextCensusUs_ = 0, nextCorrUs_[sim::kMaxPlayers] = {};
+    sim::World::DirectorSync sentDirector_;
+    bool directorSent_ = false;
+    u32 directorRun_ = 0xFFFFFFFFu;
+    // Host: correction priorities per seat and enemy slot.
+    float prio_[sim::kMaxPlayers][sim::kMaxEnemies] = {};
+    u32 prioSerial_[sim::kMaxPlayers][sim::kMaxEnemies] = {};
+    struct Pick {
+        float p;
+        u32 i;
+    };
+    Pick picks_[sim::kMaxEnemies];
+    sim::NetEnemyState states_[64];
+    i64 lastPrioUs_ = 0;
+    // Host: each client's downlink budget (bytes, with headers): corrections take what the rest leaves.
+    float downBudget_[sim::kMaxPlayers] = {};
+    float pending_[kMaxLinkPeers] = {};  // estimates of what was queued to each peer since the last refill
+    u64 sentTo_[kMaxLinkPeers] = {};     // the wire's count of bytes to each peer at the last refill
+    i64 budgetUs_ = 0;
+
+    // Client: corrections being applied, and the newest applied to each enemy slot (they arrive in any order).
+    u16 corrRun_ = 0;
+    double corrMusic_ = 0.0;
+    u32 corrSerial_[sim::kMaxEnemies] = {};
+    double corrStamp_[sim::kMaxEnemies] = {};
+    // Client: when each enemy slot last heard from the host (a correction applied) or was first seen on this
+    // screen (music ticks), and the attention list being sent.
+    u32 seenSerial_[sim::kMaxEnemies] = {};
+    double seenStamp_[sim::kMaxEnemies] = {};
+    u32 attention_[kMaxAttention] = {};
+    i64 nextAttentionUs_ = 0;
+    // Client: this player's claims since the last send (they leave with the pose, merged and sorted).
+    static constexpr u32 kPendingClaims = 1024;
+    sim::NetClaim pendClaims_[kPendingClaims];
+    u32 pendClaimCount_ = 0;
+    u16 pendRun_ = 0;
+
+    // Measurement.
+    SessionStats stats_;
+    i64 measureFrom_ = 0;
+    WireStats lastWire_;
+    u32 corrCount_ = 0;
+    double errSum_ = 0.0;
+    float errMax_ = 0.0f;
+    u32 errN_ = 0;
+};
+
+// The content the peers must share (the protocol and the embedded design data): a mismatch is refused.
+u64 contentHash();
+
+}  // namespace rf::net

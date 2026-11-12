@@ -14,6 +14,8 @@ namespace rf::sim {
 enum class Family : u8 { Drifter, Hound, Shoal, Ram, Carom, Sentry, Count };
 constexpr u32 kFamilyCount = static_cast<u32>(Family::Count);
 const char* familyName(Family f);  // "drifter", ... (also the glyph family in design/glyphs.json)
+u64 speciesDataDigest();  // a digest of the embedded species.json (M4: peers must match)
+u64 bossDataDigest();     // ... and of kaleidos.json
 
 enum Variant : u8 { kVariantA = 0, kVariantB = 1, kVariantC = 2 };
 

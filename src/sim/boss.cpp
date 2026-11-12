@@ -21,6 +21,15 @@ double stepTicks(const char* s) {
 }
 }  // namespace
 
+u64 bossDataDigest() {
+    u64 h = 1469598103934665603ull;
+    for (const char* c = kKaleidosJson; *c; ++c) {
+        h ^= static_cast<u8>(*c);
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+
 bool BossData::load() {
     JsonDoc doc;
     if (!doc.parse(kKaleidosJson, sizeof kKaleidosJson - 1, "design/bosses/kaleidos.json")) return false;
