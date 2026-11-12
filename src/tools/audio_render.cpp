@@ -16,6 +16,7 @@
 
 #include "audio/bake.h"
 #include "audio/engine.h"
+#include "audio/fft.h"
 #include "audio/music_data.h"
 #include "audio/wav.h"
 #include "core/alloc_counter.h"
@@ -38,6 +39,7 @@ struct Options {
     const char* meta = nullptr;
     const char* write = nullptr;
     const char* dumpSamples = nullptr;
+    const char* seedTarget = nullptr;  // --seed-search kick --target "sub,bass,lowmid,mid,himid,high"
     bool calibrate = false;
     bool check = false;
     bool pcm16 = false;
@@ -520,6 +522,10 @@ int main(int argc, char** argv) {
         else if (eq(a, "--meta")) ok = take(opt.meta);
         else if (eq(a, "--write")) ok = take(opt.write);
         else if (eq(a, "--dump-samples")) ok = take(opt.dumpSamples);
+        else if (eq(a, "--seed-search")) {
+            const char* what = nullptr;
+            ok = take(what) && eq(what, "kick");
+        } else if (eq(a, "--target")) ok = take(opt.seedTarget);
         else if (eq(a, "--calibrate")) opt.calibrate = true;
         else if (eq(a, "--check")) opt.check = true;
         else if (eq(a, "--pcm16")) opt.pcm16 = true;
@@ -547,6 +553,52 @@ int main(int argc, char** argv) {
     SampleBank* bank = new SampleBank;
     if (!bank->bake(*music, kRate)) return 1;
     int code = 0;
+    if (opt.seedTarget) {
+        // The kick's click is a short burst of filtered noise: its spectrum depends on the draw. Find the
+        // draws whose kick spectrum (six bands, dB of the 30 Hz-16 kHz total) is nearest the prototype's.
+        float target[6];
+        if (std::sscanf(opt.seedTarget, "%f,%f,%f,%f,%f,%f", &target[0], &target[1], &target[2], &target[3], &target[4], &target[5]) != 6)
+            return 2;
+        const double edges[7] = {30, 80, 250, 800, 2500, 6000, 16000};
+        double best[5] = {1e9, 1e9, 1e9, 1e9, 1e9};
+        u64 bestSeed[5] = {};
+        for (u64 seed = 1; seed <= 3000; ++seed) {
+            u32 n = 0;
+            float* k = bakeKickWithSeed(music->sound[0][music->defaultVariant], kRate, seed, n);
+            u32 m = 1;
+            while (m < n) m <<= 1;
+            Complex* spec = static_cast<Complex*>(std::calloc(m, sizeof(Complex)));
+            for (u32 i = 0; i < n; ++i) spec[i].re = k[i];
+            fftPow2(spec, m, false);
+            double band[6] = {}, total = 0.0;
+            for (u32 b = 1; b < m / 2; ++b) {
+                const double f = static_cast<double>(b) * kRate / m, e = spec[b].re * spec[b].re + spec[b].im * spec[b].im;
+                if (f >= 30.0 && f < 16000.0) total += e;
+                for (u32 i = 0; i < 6; ++i)
+                    if (f >= edges[i] && f < edges[i + 1]) band[i] += e;
+            }
+            double dist = 0.0;
+            for (u32 i = 3; i < 6; ++i) {  // the click's bands: mid, high-mid, high
+                const double d = 10.0 * std::log10(band[i] / total + 1e-30) - target[i];
+                dist += d * d;
+            }
+            for (u32 r = 0; r < 5; ++r) {
+                if (dist < best[r]) {
+                    for (u32 q = 4; q > r; --q) {
+                        best[q] = best[q - 1];
+                        bestSeed[q] = bestSeed[q - 1];
+                    }
+                    best[r] = dist;
+                    bestSeed[r] = seed;
+                    break;
+                }
+            }
+            std::free(spec);
+            std::free(k);
+        }
+        for (u32 r = 0; r < 5; ++r) std::printf("seed %llu: rms band error %.2f dB\n", static_cast<unsigned long long>(bestSeed[r]), std::sqrt(best[r] / 3.0));
+        return 0;
+    }
     if (opt.dumpSamples) {
         // Every baked one-shot as raw float32 (interleaved when stereo): <dir>/<name>.f32
         for (u32 i = 0; i < bank->count(); ++i) {

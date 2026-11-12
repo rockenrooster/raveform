@@ -87,6 +87,15 @@ private:
     u8 shardScale_[MusicData::kMaxTracks][10] = {};
 };
 
+// Development: the kick of `params` with its click noise drawn from `seed` (raveform_headless
+// --seed-search kick). malloc'd; `frames` receives the length.
+float* bakeKickWithSeed(const SoundParams& params, double sampleRate, u64 seed, u32& frames);
+// The click noise seed the bank uses. The prototype's own click draw is quiet for its kind (its 2.5-6 kHz
+// band is three standard deviations below the average draw), and the user approved that kick: this seed
+// was chosen by raveform_headless --seed-search kick to give the same click spectrum (0.17 dB RMS over the
+// mid, high-mid and high bands).
+constexpr u64 kKickClickSeed = 1061;
+
 // Frames in `seconds` the way the prototype counts them (int(seconds * SR)), robust to the float
 // rounding of values that are whole numbers of frames.
 inline u32 framesFor(double seconds, double sampleRate) {

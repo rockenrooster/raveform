@@ -110,11 +110,14 @@ void AudioScene::layout(float w, float h, Vec2 insetMin, Vec2 insetMax) {
         buttons_[kDone].colour = player;
         return;
     }
-    // audio_test: the ring on the left, the controls in two rows at the bottom.
+    // audio_test: the ring on the left, the controls in two rows at the bottom, FIRE at the right.
     ringCentre_ = {w * 0.30f, h * 0.42f};
     const float rowY0 = h - 250.0f * s - insetMax.y, rowY1 = h - 110.0f * s - insetMax.y;
     const float left = 132.0f * s + insetMin.x;
-    const float pw = 250.0f * s, ph = 96.0f * s, gap = 24.0f * s;
+    const float fireLeft = w - 132.0f * s - insetMax.x - 400.0f * s;
+    const float gap = 24.0f * s, ph = 96.0f * s;
+    float pw = (fireLeft - 40.0f * s - left - 5.0f * gap) / 6.0f;
+    if (pw > 250.0f * s) pw = 250.0f * s;
     const u32 row0[] = {kSound, kSection, kHold, kTrack, kMode, kSync};
     for (u32 i = 0; i < countOf(row0); ++i) {
         buttons_[row0[i]].centre = {left + pw * 0.5f + i * (pw + gap), rowY0};

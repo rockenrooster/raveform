@@ -76,12 +76,12 @@ void addSaw(float* out, u32 n, double hz, double sr, float gain) {
 
 // ---------------------------------------------------------------- musicproto one-shots
 
-float* makeKick(const SoundParams& p, double sr, u32& n) {
+float* makeKick(const SoundParams& p, double sr, u32& n, u64 clickSeed = kKickClickSeed) {
     const KickPatch& k = p.kick;
     n = framesFor(0.42, sr);
     float* x = alloc(n);
     float* click = alloc(n);
-    if (!x || !click || !noise(click, n, 1, SpectralShape::bandpass(1800.0, 6000.0), sr)) {
+    if (!x || !click || !noise(click, n, clickSeed, SpectralShape::bandpass(1800.0, 6000.0), sr)) {
         std::free(x);
         std::free(click);
         return nullptr;
@@ -651,6 +651,10 @@ float* sfxGameOver(double sr, u32& n) {
 }
 
 }  // namespace
+
+float* bakeKickWithSeed(const SoundParams& params, double sampleRate, u64 seed, u32& frames) {
+    return makeKick(params, sampleRate, frames, seed);
+}
 
 const char* sfxName(Sfx s) {
     static const char* const kNames[] = {"kill_small", "kill_medium", "kill_large", "shard",   "boost",      "upgrade",
