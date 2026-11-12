@@ -1,5 +1,29 @@
 # RAVEFORM — Progress
 
+## M3 closed — the lead's ruling, 2026-11-12
+
+M3 (stages A, B, C and C2) is accepted on the Moto and the desktop. PLAN §7 exit: the solo loop is
+playable; the real game at minute 10 and in Track 3 meets the contract on the Moto (0 of 7,188 frames
+missed twice, checked by the lead in the result files); cold start is inside 5 s; determinism passes; the
+bot runs 30 simulated minutes with no crash, overflow or allocation. The OnePlus 12R and the tablet were
+never attached, so "both devices" is open and stays on the user's list. M4 is next.
+
+Rulings on what stage C2 left open:
+
+- **In view at about 0.6 of the target is correct, not a miss.** The target counts the frame grown by a
+  quarter each way, which is 1.56 times the view's area, and the director holds that count at 0.91-1.05
+  of the target in Tracks 1 and 2. The lead's 0.6 floor sat on the geometric limit. `count.frameScale`
+  stays 1.25: counting the plain frame would put 1.6 times as many enemies in view, and the careful bot
+  is already at the 6-minute floor.
+- **Track 3 and the loop level off at 130-150 in view** because `kDirectorAliveCap` (600) binds while
+  more than half of the live bodies are outside the counted frame (alive 470-540 for 210-245 counted).
+  Deferred to M5 batch 1, where Track 3 gets its own roster: first cut the share outside the frame
+  (arrivals nearer, strays dissolving sooner), and raise the cap only with a Moto run behind it.
+- **The careless bot's 1.41 minutes is accepted for M3.** The floor of 1.5 was a first guess for a bot
+  that does not dodge. The user's play of the first two minutes decides. If it is too hard, the lever is
+  the Drop in Track 1's first two cycles: its peak in view is 2.8-2.9 times the Groove target where the
+  design's section scale says 1.6, because kills are replaced and the debt is paid on top.
+
 ## M3 stage C2 "the crowd in the frame" — 2026-11-12
 
 Built on `main` (never pushed): `fc01068` (the crowd counted in the frame, Prism's rainbow, Chain
