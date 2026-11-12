@@ -381,6 +381,8 @@ private:
     char spotlightName_[32] = {};
     float spotlightT_ = -100.0f;
     float takenT_ = -100.0f;
+    float levelUpT_ = -100.0f;  // play test 2: the local player's last Shard level (the HUD's flash)
+    bool ffRunning_ = false;    // the --fast-forward loop is running (picture scripts wait for it)
     Vec2 takenFrom_;
     // Play test 1: the Trio hold's notes (the orb being held, the notes played for it).
     i8 holdOrbSeen_ = -1;

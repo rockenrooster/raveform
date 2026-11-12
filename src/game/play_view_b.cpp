@@ -81,8 +81,8 @@ void PlayView::sectionLook(const ViewInput& in) {
         sectionZoom_ += (zoom - sectionZoom_) * k;
     }
     // The Trio: the fight steps back (screens.md): the lattice rests, enemies at a fifth of their light. M4 (look.md 6):
-    // all down drains the lattice to the same rest.
-    const bool trio = w.trio(w.viewPlayer()).open;
+    // all down drains the lattice to the same rest. Play test 2: a level-up Trio does not dim the fight.
+    const bool trio = w.trio(w.viewPlayer()).open && w.trio(w.viewPlayer()).kind == kTrioBreak;
     const bool allDown = allDownT_ > -50.0f;
     trioRest_ += (((trio || allDown) ? 1.0f : 0.0f) - trioRest_) * (1.0f - std::exp(-in.dt / 0.2f));
     enemyLight_ = 1.0f - 0.8f * (allDown ? 0.0f : trioRest_);
@@ -154,12 +154,31 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
             }
             break;
         case EventType::CritBurst: {
-            // Play test 1, On-Beat Crit: the beat shot's hit bursts over 80 wu, in the shooter's colours.
+            // On-Beat Crit (play test 2, look.md 5): the beat shot's hit bursts in a gold ring of 80 wu.
             const u32 q = e.a < kMaxPlayers ? e.a : w.viewPlayer();
             const float lvl = q == w.viewPlayer() ? 1.0f : 0.6f;
-            addShockRings(at, 1, e.f, palettes_->playerLight[q] * lvl, whiteV() * lvl, t, 0.16f);
+            addShockRings(at, 1, e.f, buildGold_ * (1.4f * lvl), whiteV() * lvl, t, 0.16f);
             break;
         }
+        case EventType::CellTake:
+            // Play test 2 (look.md 6): a Cell taken: the halo's missing arc draws itself in over a quarter beat (drawn with
+            // the ship) and eight gold sparks. Regen's arc becomes a cell quietly.
+            if (e.a == w.viewPlayer() && e.c == 0) {
+                cellBackT_ = t;
+                cellBackTo_ = e.b;
+                SparkReq r{};
+                r.at = w.player(e.a).pos;
+                r.count = 8;
+                r.kind = 0;
+                r.a = palettes_->player[3];
+                r.b = whiteV();
+                r.t0 = t;
+                sparkRequest(r);
+            }
+            break;
+        case EventType::CellDrop:
+            if (e.a == w.viewPlayer()) addPool(at, 10.0f, 60.0f, palettes_->player[3], 1.2f, 0.0f, 0.3f, false, 1, false, false, t);
+            break;
         case EventType::BossPair: {
             // kaleidos.md: both arms shatter outward along their axis in mirror image; the lens plates
             // crack and fall inward; the wheel flinches.
@@ -279,6 +298,32 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
         }
     }
 
+    // ---- Play test 2 (look.md 6): Cells, this player's own. A gold ring of 16 wu with a white plus inside (the only plus
+    // in the game), swelling 15% on the beat, with a thin vertical flare 120 px tall so it can be found in a crowd. Off
+    // screen while its player is on the last cell: a gold chevron with a plus at its tip.
+    {
+        const CellPickups& cp = w.cellPickups();
+        for (u32 i = 0; i < cp.count; ++i) {
+            if (cp.dead[i] || cp.owner[i] != w.viewPlayer()) continue;
+            const Vec2 p = lerpv(Vec2{cp.px[i], cp.py[i]}, Vec2{cp.x[i], cp.y[i]}, a);
+            const float left = static_cast<float>((cp.born[i] + tuning::kCellLifeBars * kTicksPerBar - in.music) / kTicksPerBar);
+            const float fade = clamp01(left);
+            if (!visible(p, 70.0f)) {
+                if (me.alive && me.cells <= 1) edgeChevron(d, p, gold, false, 1.0f + 0.2f * kick_, 2);
+                continue;
+            }
+            const float r = tuning::kCellRadiusWu * (1.0f + 0.15f * kick_);
+            const Vec2 sp = toScene(p);
+            glyph(d.glyphs, gRing32_, false, p, 0.0f, 0.0f, r, 1.7f * fade, 0.75f, kGlyphFlat, gold, gold);
+            const float arm = 0.55f * r;
+            const Vec3 plus = W1 * (2.0f * fade);
+            d.scene.line(toScene(p + Vec2{-arm, 0.0f}), toScene(p + Vec2{arm, 0.0f}), 1.1f * refPx_, plus, plus, 0);
+            d.scene.line(toScene(p + Vec2{0.0f, -arm}), toScene(p + Vec2{0.0f, arm}), 1.1f * refPx_, plus, plus, 0);
+            flare(d.scene, p, 0.5f * kPi, 60.0f * refPx_ / pxPerWu_, 1, gold * (2.2f * fade), 0.5f);
+            d.pools.glow(sp, r * 2.4f * pxPerWu_, gold * (0.22f * fade));
+        }
+    }
+
     // ---- Every player's Riffs, in that player's colours (look.md §6; M4: the teammates' too).
     for (u32 q = 0; q < kMaxPlayers; ++q) {
         const PlayerState& pq = w.player(q);
@@ -288,16 +333,21 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
         const Vec2 ship = local ? in.shipPos : lerpv(pq.prevPos, pq.pos, a);
         const Loadout& l = pq.loadout;
         const bool hyper = pq.boost(kHyper);
+        // Play test 2 (look.md 5): what a Riff throws is its owner's base colour at levels 1 and 2, the light colour at 3
+        // and 4, and a white core with the player's rim at 5.
+        const auto riffColour = [&](u32 lv) { return lv >= 5 ? W1 : (lv >= 3 ? light : player); };
         if (const u8 lv = l.riffs[riffIndex(kOrbitals)]) {
             const u32 n = orbitalCount(lv);
             const double turn = hyper ? kTicksPerBar * 0.5 : kTicksPerBar;
             const double ph = std::fmod(in.music - w.director().startTick, turn) / turn;
             const float shardScale = 9.0f;
+            const Vec3 c = riffColour(lv);
             for (u32 k = 0; k < n; ++k) {
                 const float ang = static_cast<float>(ph) * kTau + kTau * static_cast<float>(k) / static_cast<float>(n) - 0.25f * kTau;
                 const Vec2 o = ship + dirv(ang) * tuning::kOrbitalRadiusWu;
-                glyph(d.glyphs, gShard_, false, o, ang * 2.0f, 0.0f, shardScale, 2.2f, 0.6f, kGlyphFlat, light, player);
-                d.sparkles.glow(toScene(o), 7.0f * refPx_, player * 0.6f);
+                if (lv >= 5) glyph(d.glyphs, gShard_, false, o, ang * 2.0f, 0.0f, shardScale, 2.0f, 1.1f, kGlyphFlat, player, player);
+                glyph(d.glyphs, gShard_, false, o, ang * 2.0f, 0.0f, shardScale, 2.2f, 0.6f, kGlyphFlat, c, lv >= 3 ? c : player);
+                d.sparkles.glow(toScene(o), 7.0f * refPx_, c * 0.6f);
             }
         }
         for (const PulseWave& pw : pq.pulses) {
@@ -306,7 +356,10 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             const float u = clamp01(age / tuning::kPulseGrowS);
             const float r = pw.reach * u;
             if (r < 4.0f) continue;
-            glyph(d.glyphs, gRing128_, false, pw.centre, 0.0f, 0.0f, r, 2.0f * (1.0f - u * u), 0.6f + 0.6f * (1.0f - u), kGlyphRingW, player, light);
+            const Vec3 c = riffColour(pw.level);
+            const float wid = 0.6f + 0.6f * (1.0f - u);
+            if (pw.level >= 5) glyph(d.glyphs, gRing128_, false, pw.centre, 0.0f, 0.0f, r, 1.6f * (1.0f - u * u), wid * 1.9f, kGlyphRingW, player, player);
+            glyph(d.glyphs, gRing128_, false, pw.centre, 0.0f, 0.0f, r, 2.0f * (1.0f - u * u), wid, kGlyphRingW, c, pw.level >= 3 ? c : light);
         }
         if (const u8 lv = l.riffs[riffIndex(kSentinel)]) {
             for (u32 k = 0; k < sentinelDrones(lv) && k < kMaxDrones; ++k) {
@@ -349,13 +402,27 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
         const Vec2 c = tr.centre;
         const float R = tuning::kTrioRingWu;
         const u32 segs = 96;
+        // Play test 2 (screens.md, a level-up Trio): the ring is gold instead of the accent, LEVEL n sits at its centre for
+        // the first bar, each orb's thin ring is drawn double (a ship inside it cannot be hurt).
+        const bool levelTrio = tr.kind == kTrioLevel;
+        const Vec3 ringHue = levelTrio ? gold : accent;
         for (u32 s = 0; s < segs; ++s) {
             const float u0 = static_cast<float>(s) / segs, u1 = static_cast<float>(s + 1) / segs;
             if (u0 >= drawn) break;
             const float a0 = -0.5f * kPi + u0 * kTau, a1 = -0.5f * kPi + u1 * kTau;
             const bool lit = u0 < left;
-            const Vec3 col = lit ? mix(accent, W1, 0.5f + 0.5f * std::sin(u0 * kTau * 2.0f)) * 1.3f : W1 * 0.16f;
+            const Vec3 col = lit ? mix(ringHue, W1, 0.5f + 0.5f * std::sin(u0 * kTau * 2.0f)) * 1.3f : W1 * 0.16f;
             d.scene.line(toScene(c + dirv(a0) * R), toScene(c + dirv(a1) * R), (lit ? 1.0f : 0.7f) * refPx_, col, col, 0);
+        }
+        if (levelTrio && tr.levelShown && in.music - tr.openTick < kTicksPerBar) {
+            char text[24];
+            std::snprintf(text, sizeof text, "LEVEL %u", static_cast<u32>(tr.levelShown));
+            const float cap = 16.0f * pxPerWu_;
+            const float wText = font_->measure(TextStyle{cap}, text);
+            const Vec2 sc = toScene(c);
+            const float fadeOut = clamp01(static_cast<float>((tr.openTick + kTicksPerBar - in.music) / kTicksPerBeat));
+            const Vec3 g = gold * (1.8f * fadeOut);
+            font_->drawField(d.scene, Vec2{sc.x - 0.5f * wText, sc.y - 0.5f * cap}, cap, 0.9f * refPx_, g, g, g, text);
         }
         if (left > 0.0f && drawn >= 1.0f) {
             const Vec2 bead = c + dirv(-0.5f * kPi + left * kTau) * R;
@@ -394,20 +461,28 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             if (fadeIn <= 0.0f) continue;
             const float orbWu = tuning::kTrioOrbWu * (riff ? tuning::kTrioRiffScale : 1.0f) * (ans ? 1.12f : 1.0f) * swell;
             const Vec2 sp = toScene(p);
-            // Locked: outlines at 0.5, fading in; lit: the icon at its level (the third beat flashes it).
+            // Locked: outlines at 0.5, fading in; lit: the icon at its level (the third beat flashes it). Play test 2: a Boost
+            // orb (every Mod and Riff at its cap) shows its Boost.
+            const bool boostOrb = isBoostOrb(u);
+            const i32 icon = boostOrb ? boostIcon_[boostOfOrb(u)] : upgradeIcon_[u];
             const float iconLevel = locked ? 0.5f * fadeIn : (ans ? 1.35f : 1.0f) + 0.8f * lightUp;
-            icons_->draw(d, upgradeIcon_[u], sp, orbWu * pxPerWu_ / icons_->size(upgradeIcon_[u]) * (riff ? tuning::kTrioRiffScale : 1.0f),
-                         iconLevel);
+            icons_->draw(d, icon, sp, orbWu * pxPerWu_ / icons_->size(icon) * (riff ? tuning::kTrioRiffScale : 1.0f), iconLevel);
             if (lightUp > 0.0f) d.pools.glow(sp, orbWu * 2.6f * pxPerWu_, W1 * (0.25f * lightUp));
-            // The thin ring at 1.42x; answering: in the player colour at 2.0 with a dashed outer ring and a pool.
+            // The thin ring at 1.42x; answering: in the player colour at 2.0 with a dashed outer ring and a pool. A level-up
+            // Trio's thin ring is drawn double (the shelter), the second just outside it in gold.
             const float ringWu = tuning::kTrioHoldRing * orbWu;
             const u32 n = 64;
             for (u32 s = 0; s < n; ++s) {
                 const float a0 = kTau * static_cast<float>(s) / n, a1 = kTau * static_cast<float>(s + 1) / n;
                 const Vec3 col = locked ? W1 * (0.35f * fadeIn) : (ans ? player * 2.0f : W1 * 0.7f);
                 d.scene.line(toScene(p + dirv(a0) * ringWu), toScene(p + dirv(a1) * ringWu), (ans ? 1.2f : 0.6f) * refPx_, col, col, 0);
+                if (levelTrio) {
+                    const float r3 = ringWu + 5.0f;
+                    const Vec3 gc = gold * (locked ? 0.5f * fadeIn : 1.2f);
+                    d.scene.line(toScene(p + dirv(a0) * r3), toScene(p + dirv(a1) * r3), 0.6f * refPx_, gc, gc, 0);
+                }
                 if (ans && s % 2 == 0) {
-                    const float r2 = ringWu * 1.18f;
+                    const float r2 = ringWu * (levelTrio ? 1.3f : 1.18f);
                     d.scene.line(toScene(p + dirv(a0) * r2), toScene(p + dirv(a1) * r2), 0.8f * refPx_, player * 1.4f, player * 1.4f, 0);
                 }
             }
@@ -431,9 +506,10 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             }
             // Words, always outside the ring: above the top orb, left of the left one, right of the right one.
             const UpgradeInfo& info = upgradeInfo(u);
-            const char* words = upgradeWords(u, tr.level[k]);
+            const char* name = boostOrb ? boostInfo(boostOfOrb(u)).name : info.name;
+            const char* words = boostOrb ? boostInfo(boostOfOrb(u)).words : upgradeWords(u, tr.level[k]);
             const float capName = 20.0f * pxPerWu_, capWords = 11.0f * pxPerWu_;
-            const float wName = font_->measure(TextStyle{capName}, info.name), wWords = font_->measure(TextStyle{capWords}, words);
+            const float wName = font_->measure(TextStyle{capName}, name), wWords = font_->measure(TextStyle{capWords}, words);
             const float gap = (ringWu + 14.0f) * pxPerWu_;
             Vec2 org;  // the name's baseline, left end
             const float lift = (ans ? 1.9f : 1.3f) * (locked ? fadeIn : 1.0f);
@@ -450,11 +526,12 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             }
             const Vec3 nameCol = W1 * lift, wordCol = accent * ((ans ? 1.9f : 1.3f) * (locked ? fadeIn : 1.0f));
             // (The font's origin is the top of its caps; org and wy are baselines.)
-            font_->drawField(d.scene, Vec2{org.x - align * wName, org.y - capName}, capName, 0.9f * refPx_, nameCol, nameCol, nameCol, info.name);
+            font_->drawField(d.scene, Vec2{org.x - align * wName, org.y - capName}, capName, 0.9f * refPx_, nameCol, nameCol, nameCol, name);
             const float wy = org.y + capWords + 12.0f * refPx_;
             font_->drawField(d.scene, Vec2{org.x - align * wWords, wy - capWords}, capWords, 0.7f * refPx_, wordCol, wordCol, wordCol, words);
-            // Pips: one per stack or level the upgrade can have; owned white, this pick gold with a ring.
-            const u32 cap = info.cap;
+            // Pips: one per stack or level the upgrade can have; owned white, this pick gold with a ring (a Boost has none).
+            const u32 cap = boostOrb ? 0u : info.cap;
+            if (!cap) continue;
             const float pip = 5.0f * refPx_, step = 15.0f * refPx_;
             const float rowW = static_cast<float>(cap - 1) * step;
             const float px0 = org.x - align * rowW, py = wy + 16.0f * refPx_;
@@ -501,12 +578,12 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             }
             for (u32 k = 0; k < ot.orbs; ++k) {
                 const u8 u = ot.upgrade[k];
-                if (u >= kUpgradeCount) continue;
+                if (!validOrb(u)) continue;
                 const bool riff = isRiff(u);
                 const float orbWu = tuning::kTrioOrbWu * (riff ? tuning::kTrioRiffScale : 1.0f) * swell;
                 const Vec2 p = ot.orbPos[k];
-                icons_->draw(d, upgradeIcon_[u], toScene(p), orbWu * pxPerWu_ / icons_->size(upgradeIcon_[u]) * (riff ? tuning::kTrioRiffScale : 1.0f),
-                             third);
+                const i32 icon = isBoostOrb(u) ? boostIcon_[boostOfOrb(u)] : upgradeIcon_[u];
+                icons_->draw(d, icon, toScene(p), orbWu * pxPerWu_ / icons_->size(icon) * (riff ? tuning::kTrioRiffScale : 1.0f), third);
                 const float ringWu = 1.42f * orbWu;
                 for (u32 s = 0; s < 48; ++s) {
                     const float a0 = kTau * static_cast<float>(s) / 48.0f, a1 = kTau * static_cast<float>(s + 1) / 48.0f;

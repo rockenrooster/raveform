@@ -456,8 +456,9 @@ void testNoAllocations() {
 void testDirectorCycle() {
     g_test = "director";
     DirectorState d;
-    // Track 1: four Short cycles of 8/4/8/4 bars at 120 BPM.
+    // Track 1: three Short cycles of 8/4/8/4 bars at 120 BPM (72 bars; play test 2: it had four).
     Phrase p = phraseAt(d, 0);
+    CHECK(p.cycles == 3);
     CHECK(p.track == 1 && p.song == 0 && p.cycle == 1 && p.section == Section::Groove && p.sectionBars == 8);
     p = phraseAt(d, 8);
     CHECK(p.section == Section::Build && p.sectionBar == 0 && p.sectionBars == 4 && p.bpm == 120.0f);
@@ -469,28 +470,35 @@ void testDirectorCycle() {
     CHECK(!phraseAt(d, 12).bossDrop);
     CHECK(phraseAt(d, 20).section == Section::Break && phraseAt(d, 23).section == Section::Break);
     CHECK(phraseAt(d, 24).section == Section::Groove && phraseAt(d, 24).cycle == 2);
-    // The fourth Drop is the boss's: held past its eight bars while the boss lives.
-    p = phraseAt(d, 84);
-    CHECK(p.cycle == 4 && p.section == Section::Drop && p.bossDrop);
-    p = phraseAt(d, 97);
+    // The second cycle's Drop is the mini-boss slot (the middle cycle); the third Drop is the boss's: held
+    // past its eight bars while the boss lives.
+    CHECK(phraseAt(d, 36).cycle == 2 && phraseAt(d, 36).section == Section::Drop && !phraseAt(d, 36).bossDrop);
+    p = phraseAt(d, 60);
+    CHECK(p.cycle == 3 && p.section == Section::Drop && p.bossDrop);
+    p = phraseAt(d, 73);
     CHECK(p.section == Section::Drop && p.bossDrop && p.sectionBar == 13);
     // The boss died: the Track-change Break (8 bars, 120 -> 126 BPM, bar by bar), then Track 2.
-    d.changeBar = 98;
-    p = phraseAt(d, 98);
+    d.changeBar = 74;
+    p = phraseAt(d, 74);
     CHECK(p.trackChange && p.section == Section::Break && p.track == 2 && p.sectionBars == 8 && p.bpm == 120.0f);
-    CHECK(std::fabs(phraseAt(d, 105).bpm - 126.0f) < 1e-3f);
-    p = phraseAt(d, 106);
-    CHECK(!p.trackChange && p.track == 2 && p.song == 1 && p.cycle == 1 && p.section == Section::Groove && p.sectionBars == 16);
-    CHECK(phraseAt(d, 106 + 16).section == Section::Build && phraseAt(d, 106 + 24).section == Section::Drop &&
-          phraseAt(d, 106 + 24).sectionBars == 16 && phraseAt(d, 106 + 40).section == Section::Break);
-    CHECK(phraseAt(d, 106 + 96 + 24).bossDrop && phraseAt(d, 106 + 96 + 24).cycle == 3);
+    CHECK(std::fabs(phraseAt(d, 81).bpm - 126.0f) < 1e-3f);
+    // The Standard form since play test 2: 12 / 4 / 16 / 4 bars, 36 bars a cycle, three cycles (108 bars).
+    p = phraseAt(d, 82);
+    CHECK(!p.trackChange && p.track == 2 && p.song == 1 && p.cycle == 1 && p.section == Section::Groove && p.sectionBars == 12);
+    CHECK(phraseAt(d, 82 + 12).section == Section::Build && phraseAt(d, 82 + 12).sectionBars == 4 &&
+          phraseAt(d, 82 + 16).section == Section::Drop && phraseAt(d, 82 + 16).sectionBars == 16 &&
+          phraseAt(d, 82 + 32).section == Section::Break && phraseAt(d, 82 + 32).sectionBars == 4);
+    CHECK(phraseAt(d, 82 + 36).section == Section::Groove && phraseAt(d, 82 + 36).cycle == 2);
+    CHECK(phraseAt(d, 82 + 72 + 16).bossDrop && phraseAt(d, 82 + 72 + 16).cycle == 3);
+    CHECK(phraseAt(d, 82 + 36 + 16).section == Section::Drop && !phraseAt(d, 82 + 36 + 16).bossDrop);
     // Track 3 is Reef (three Standard cycles at 132 BPM); then the loop over all three, 4 BPM a Track faster.
     CHECK(bpmOfTrack(3) == 132.0f && bpmOfTrack(4) == 136.0f && bpmOfTrack(5) == 140.0f && bpmOfTrack(40) == 174.0f);
     CHECK(songOfTrack(3) == 2 && cyclesOfTrack(3) == 3 && formOfTrack(3) == 1);
-    CHECK(songOfTrack(4) == 0 && cyclesOfTrack(4) == 4 && formOfTrack(4) == 0 && songOfTrack(5) == 1 && songOfTrack(6) == 2);
+    CHECK(songOfTrack(4) == 0 && cyclesOfTrack(4) == 3 && formOfTrack(4) == 0 && songOfTrack(5) == 1 && songOfTrack(6) == 2);
     // Budgets (species.json firstSlice, threats only), rising past the data; section scales (GAME_DESIGN 8).
     const float(*b)[8] = g_species->budget;
-    CHECK(baseBudget(b, g_species->budgetCycles, 1, 1) == 2.0f && baseBudget(b, g_species->budgetCycles, 1, 4) == 6.0f);
+    CHECK(baseBudget(b, g_species->budgetCycles, 1, 1) == 2.0f && baseBudget(b, g_species->budgetCycles, 1, 2) == 3.5f &&
+          baseBudget(b, g_species->budgetCycles, 1, 3) == 6.0f);
     CHECK(baseBudget(b, g_species->budgetCycles, 2, 3) == 12.0f);
     CHECK(baseBudget(b, g_species->budgetCycles, 3, 1) == 14.0f && baseBudget(b, g_species->budgetCycles, 3, 3) == 18.0f);
     CHECK(baseBudget(b, g_species->budgetCycles, 4, 1) == 20.0f);
@@ -512,8 +520,8 @@ void testDirectorCycle() {
     s.section = Section::Break;
     CHECK(sectionScale(s) == 0.0f);
 
-    // In the world: the sections arrive in order on their bar lines, the first Trio opens with the first
-    // Break (bar 20, 40 s in), the Drop doubles score and magnet.
+    // In the world: the sections arrive in order on their bar lines, the first Break's Trio opens with the first
+    // Break (bar 20, 40 s in), the Drop doubles score and magnet. (Play test 2: level-up Trios open in the fight too.)
     auto* w = new (std::nothrow) World;
     w->init(g_species);
     SimRunner r;
@@ -526,7 +534,7 @@ void testDirectorCycle() {
         for (u32 k = 0; k < w->eventCount(); ++k) {
             const Event& ev = w->events()[k];
             if (ev.type == EventType::Section && n < 16) order[n++] = ev.a;
-            if (ev.type == EventType::TrioOpen && !trioTick) trioTick = t;
+            if (ev.type == EventType::TrioOpen && ev.c == kTrioBreak && !trioTick) trioTick = t;
         }
         if (w->phrase().surge() && w->rules().scoreMultiplier == 2.0f && w->rules().magnetMultiplier == 2.0f) surgeRules = true;
     }
@@ -540,7 +548,7 @@ void testCrowd() {
     g_test = "crowd";
     // Targets (species.json firstSlice.crowd): by Track and cycle, then rising a step a Track up to the max.
     const SpeciesTable::Crowd& c = g_species->crowd;
-    CHECK(crowdTarget(c, 1, 1) == 20.0f && crowdTarget(c, 1, 4) == 120.0f);
+    CHECK(crowdTarget(c, 1, 1) == 20.0f && crowdTarget(c, 1, 2) == 60.0f && crowdTarget(c, 1, 3) == 120.0f);
     CHECK(crowdTarget(c, 2, 1) == 150.0f && crowdTarget(c, 3, 3) == 300.0f);
     CHECK(crowdTarget(c, 4, 1) == 320.0f && crowdTarget(c, 30, 1) == 400.0f);
     Phrase p;
@@ -633,18 +641,22 @@ void testTrioRules() {
         }
         CHECK(riffSeen);
     }
-    // Only non-weapon Mods left: they are offered (fewer than three), nothing else.
+    // Only non-weapon Mods left: they are offered, and (play test 2) the third orb offers a Boost.
     Loadout full;
     for (u32 u = 0; u < kModCount; ++u) full.mods[u] = upgradeInfo(static_cast<u8>(u)).cap;
     for (u8& r : full.riffs) r = kRiffMaxLevel;
     full.mods[kExtraCell] = 0;
     full.mods[kMagnet] = 0;
     u8 since = 0, o[3];
-    CHECK(drawTrio(full, since, rng, o) == 2);
-    CHECK((o[0] == kExtraCell || o[0] == kMagnet) && (o[1] == kExtraCell || o[1] == kMagnet));
+    CHECK(drawTrio(full, since, rng, o) == 3);
+    CHECK((o[0] == kExtraCell || o[0] == kMagnet) && (o[1] == kExtraCell || o[1] == kMagnet) && isBoostOrb(o[2]));
+    // Every Mod and Riff at its cap: three different Boosts.
     full.mods[kExtraCell] = upgradeInfo(kExtraCell).cap;
     full.mods[kMagnet] = upgradeInfo(kMagnet).cap;
-    CHECK(drawTrio(full, since, rng, o) == 0);
+    for (u32 k = 0; k < 50; ++k) {
+        CHECK(drawTrio(full, since, rng, o) == 3);
+        CHECK(isBoostOrb(o[0]) && isBoostOrb(o[1]) && isBoostOrb(o[2]) && o[0] != o[1] && o[1] != o[2] && o[0] != o[2]);
+    }
     // A capped Mod and a maxed Riff are never offered.
     Loadout some;
     some.mods[kSplit] = upgradeInfo(kSplit).cap;
@@ -664,14 +676,16 @@ void testUpgradeStacking() {
     // Play test 1 (GAME_DESIGN 5, 6.2): 4 cells and 3 Novas at the start (capacity 4), the Dash in two beats.
     CHECK(w->player(0).cells == 4 && w->player(0).cellCap == 4 && w->player(0).novas == 3 && w->player(0).novaCap == 4);
     CHECK(kDashRechargeBeats == 2.0);
-    // Caps: Split stacks to 3 (7 lanes); Extra Cell raises the capacity and refills every cell, twice (6 cells).
+    // Caps: Split stacks to 3 (7 lanes); Extra Cell raises the capacity and refills every cell, four times (play test 2:
+    // eight cells).
     for (u32 k = 0; k < 6; ++k) w->grantUpgrade(0, kSplit);
     CHECK(w->player(0).loadout.mods[kSplit] == 3 && splitLanes(3) == 7);
     w->playerMut(0).cells = 1;
     w->grantUpgrade(0, kExtraCell);
     CHECK_MSG(w->player(0).cellCap == 5 && w->player(0).cells == 5, "cells %u of %u", w->player(0).cells, w->player(0).cellCap);
-    for (u32 k = 0; k < 4; ++k) w->grantUpgrade(0, kExtraCell);
-    CHECK(w->player(0).cellCap == 6 && w->player(0).cells == 6 && w->player(0).loadout.mods[kExtraCell] == 2);
+    for (u32 k = 0; k < 6; ++k) w->grantUpgrade(0, kExtraCell);
+    CHECK(w->player(0).cellCap == 8 && w->player(0).cells == 8 && w->player(0).loadout.mods[kExtraCell] == 4 && kMaxCells == 8);
+    CHECK(std::strcmp(upgradeWords(kExtraCell, 4), "+1 CELL, ALL REFILLED") == 0);
     // The numbers per stack and level.
     CHECK(pierceCount(1) == 2 && ricochetBounces(3) == 6 && onBeatCritMultiplier(1) == 3.0f && onBeatCritMultiplier(3) == 8.0f);
     CHECK(orbitalCount(1) == 3 && orbitalCount(5) == 11 && sentinelBurst(1) == 3 && sentinelBurst(4) == 5);
@@ -1103,8 +1117,235 @@ void testBoss() {
         CHECK(w->shootBoss(s.pos + dA * 75.0f, s.pos + dA * 30.0f, 5000.0f) == 3);
         CHECK(s.dying && w->director().changeBar != kNoBar);
         CHECK(w->shards().count >= tuning::kBossShards);
+        // Play test 2: and two Cells, whatever the health.
+        CHECK(w->cellPickups().count == tuning::kBossCells && w->cellPickups().owner[0] == 0);
     }
     delete w;
+}
+
+void testPlayTest2() {
+    // Play test 2 (2026-11-12, GAME_DESIGN 6.1): Shard levels (thresholds, banking, the level-up Trio and the Break's,
+    // the shelter), Cells (the drop clock, at most two loose, taken, eight bars), Regen.
+    g_test = "playtest2";
+    using namespace tuning;
+    // Level n takes base x ratio^(n - 1) Shards, rounded; the design's 25, 31, 37, 45, 55 with 25 and 1.22.
+    CHECK(levelShards(1) == static_cast<u32>(kLevelShardsBase + 0.5f));
+    for (u32 n = 1; n < 40; ++n) CHECK(levelShards(n + 1) >= levelShards(n));
+    CHECK(std::fabs(static_cast<double>(levelShards(10)) - kLevelShardsBase * std::pow(static_cast<double>(kLevelShardsRatio), 9.0)) <= 0.51);
+    if (kLevelShardsBase == 25.0f && kLevelShardsRatio == 1.22f)
+        CHECK(levelShards(2) == 31 && levelShards(3) == 37 && levelShards(4) == 45 && levelShards(5) == 55);
+    const auto heldDrop = [](World& w) {
+        // The boss's held Drop from the first bar line on (no Break gives a cell back), without the boss.
+        w.directorMut().startTick = -60.0 * kTicksPerBar;
+        w.directorMut().bossSpawned = true;
+    };
+    {
+        // A full meter is a level; its Trio opens round the ship on the next bar line, for four bars; levels filled while
+        // it is open are banked and open one at a time, each on the bar line after the last one closed.
+        World* w = quietWorld();
+        w->spawner().trios = true;
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const u32 need1 = levelShards(1);
+        w->collectShardsNow(0, need1 - 1);
+        CHECK(w->player(0).level == 0 && w->player(0).levelShards == need1 - 1 && countEvents(*w, EventType::LevelUp) == 0);
+        w->collectShardsNow(0, 1);
+        CHECK(w->player(0).level == 1 && w->player(0).levelsBanked == 1 && w->player(0).levelShards == 0);
+        CHECK(countEvents(*w, EventType::LevelUp) == 1);
+        const TrioState& tr = w->trio(0);
+        CHECK(!tr.open);
+        while (!tr.open && music < 2.0 * kTicksPerBar) stepWorld(*w, music, Vec2{});
+        const double line = std::floor(tr.openTick / kTicksPerBar) * kTicksPerBar;
+        CHECK(tr.open && tr.kind == kTrioLevel && tr.levelShown == 1 && w->player(0).levelsBanked == 0 && tr.orbs == 3);
+        CHECK(tr.openTick - line < kTicksPerSimTick + 1e-6 && std::fabs(tr.closeTick - (line + kLevelTrioBars * kTicksPerBar)) < 1e-6);
+        CHECK(length(tr.centre - w->player(0).pos) < 1.0f);
+        w->collectShardsNow(0, levelShards(2) + levelShards(3));
+        CHECK(w->player(0).level == 3 && w->player(0).levelsBanked == 2 && tr.open && tr.levelShown == 1);
+        // Taken like the Break's: the lock, then two beats on an orb.
+        const Vec2 orb = tr.orbPos[0];
+        bool took = false;
+        for (u32 t = 0; t < 600 && !took; ++t) {
+            stepWorld(*w, music, orb);
+            took = countEvents(*w, EventType::TrioTake) > 0;
+        }
+        CHECK(took && !tr.open);
+        const double takenAt = music;
+        while (!tr.open && music < takenAt + 2.0 * kTicksPerBar) stepWorld(*w, music, Vec2{});
+        CHECK(tr.open && tr.kind == kTrioLevel && tr.levelShown == 2 && w->player(0).levelsBanked == 1);
+        CHECK(tr.openTick > takenAt && tr.openTick - std::floor(tr.openTick / kTicksPerBar) * kTicksPerBar < kTicksPerSimTick + 1e-6);
+        CHECK(w->player(0).levelTrios == 2);
+        delete w;
+    }
+    {
+        // Not into a Break: a level filled within four bars of one waits, banked, until the Break's own Trio has gone.
+        World* w = quietWorld();
+        w->spawner().trios = true;
+        double music = 0.0;
+        while (music < 17.0 * kTicksPerBar + 1.0) stepWorld(*w, music, Vec2{});
+        w->collectShardsNow(0, levelShards(1));
+        while (music < 20.0 * kTicksPerBar - 1.0) stepWorld(*w, music, Vec2{});
+        CHECK(!w->trio(0).open && w->player(0).levelsBanked == 1);
+        while (music < 20.0 * kTicksPerBar + 4.0) stepWorld(*w, music, Vec2{});
+        CHECK(w->trio(0).open && w->trio(0).kind == kTrioBreak && w->player(0).levelsBanked == 1);
+        delete w;
+    }
+    {
+        // A level-up Trio still open when a Break begins: the Break's Trio waits for it and opens as it closes, with the
+        // rest of the Break as its clock.
+        World* w = quietWorld();
+        w->spawner().trios = true;
+        double music = 0.0;
+        while (music < 18.0 * kTicksPerBar + 1.0) stepWorld(*w, music, Vec2{});
+        w->openTrioNow(0, 22.0 * kTicksPerBar, nullptr, kTrioLevel);
+        const TrioState& tr = w->trio(0);
+        while (music < 20.0 * kTicksPerBar + 2.0) stepWorld(*w, music, Vec2{});
+        CHECK(tr.open && tr.kind == kTrioLevel && tr.breakWaiting == 1);
+        const Vec2 orb = tr.orbPos[1];
+        bool breakTrio = false;
+        for (u32 t = 0; t < 900 && !breakTrio; ++t) {
+            stepWorld(*w, music, orb);
+            for (u32 k = 0; k < w->eventCount(); ++k)
+                if (w->events()[k].type == EventType::TrioOpen && w->events()[k].c == kTrioBreak) breakTrio = true;
+        }
+        CHECK(breakTrio && tr.open && tr.kind == kTrioBreak && tr.breakWaiting == 0 && std::fabs(tr.closeTick - 24.0 * kTicksPerBar) < 1e-6);
+        delete w;
+    }
+    {
+        // The shelter: inside a level-up orb's thin ring the ship cannot be hurt; a body touching that ring is set off it;
+        // outside the rings a bullet hits again.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->openTrioNow(0, music + 4.0 * kTicksPerBar, nullptr, kTrioLevel);
+        const TrioState& tr = w->trio(0);
+        const Vec2 orb = tr.orbPos[0];
+        stepWorld(*w, music, orb);
+        CHECK(w->sheltered(0));
+        w->spawnBullet(orb, Vec2{}, 0.0f);
+        stepWorld(*w, music, orb);
+        CHECK(w->player(0).cells == 4 && w->player(0).hitsTaken == 0);
+        const float ring = kTrioHoldRing * kTrioOrbWu;
+        w->spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), orb + Vec2{20.0f, 30.0f}, 0.0f, 0.0);
+        stepWorld(*w, music, orb);
+        const Enemies& e = w->enemies();
+        CHECK(e.count == 1);
+        if (e.count == 1) CHECK_MSG(length(Vec2{e.x[0], e.y[0]} - orb) >= ring + e.radius[0] - 1.0f, "a body %.1f wu from the orb",
+                                    length(Vec2{e.x[0], e.y[0]} - orb));
+        CHECK(w->player(0).hitsTaken == 0);
+        stepWorld(*w, music, tr.centre);
+        CHECK(!w->sheltered(0));
+        w->spawnBullet(tr.centre, Vec2{}, 0.0f);
+        stepWorld(*w, music, tr.centre);
+        CHECK(w->player(0).hitsTaken == 1);
+        delete w;
+    }
+    {
+        // Nothing spawns inside a level-up Trio's ring: the director's crowd, four bars with the ring round the ship.
+        auto* w = new (std::nothrow) World;
+        w->init(g_species);
+        w->spawner().mode = Spawner::Mode::Slice;
+        w->resetRun(13, 0.0, 1);
+        w->rules().godMode = true;
+        double music = 0.0;
+        while (music < 24.0 * kTicksPerBar + 1.0) stepWorld(*w, music, Vec2{});
+        w->openTrioNow(0, music + 4.0 * kTicksPerBar, nullptr, kTrioLevel);
+        const Vec2 c = w->trio(0).centre;
+        u32 spawns = 0, inside = 0;
+        while (w->trio(0).open && w->trio(0).homing < 0) {
+            stepWorld(*w, music, Vec2{});
+            for (u32 k = 0; k < w->eventCount(); ++k) {
+                const Event& ev = w->events()[k];
+                if (ev.type != EventType::WarpStart) continue;
+                ++spawns;
+                if (length(Vec2{ev.x, ev.y} - c) < kTrioRingWu + 79.0f) ++inside;
+            }
+        }
+        CHECK_MSG(spawns > 0 && inside == 0, "%u of %u spawns inside the ring", inside, spawns);
+        delete w;
+    }
+    {
+        // Cells: the drop clock rests at full health; with one cell missing a Cell is due after about 40 s, on the last cell
+        // after 15 s; the next kill near the player drops it; at most two lie loose; taken on touch; gone after eight bars.
+        auto* w = new (std::nothrow) World;
+        w->init(g_species);
+        w->spawner().mode = Spawner::Mode::Slice;
+        w->resetRun(21, 0.0, 1);
+        w->rules().godMode = true;
+        heldDrop(*w);
+        double music = 0.0;
+        for (u32 t = 0; t < 60 * 30; ++t) stepWorld(*w, music, Vec2{});
+        CHECK(w->player(0).cellDue == 0.0f && w->cellPickups().count == 0 && w->phrase().bossDrop);
+        w->playerMut(0).cells = 3;
+        for (u32 t = 0; t < 60 * 39; ++t) stepWorld(*w, music, Vec2{});
+        CHECK_MSG(w->player(0).cellDue > 0.9f && w->player(0).cellDue < 1.0f, "due %.3f after 39 s", w->player(0).cellDue);
+        for (u32 t = 0; t < 60 * 2; ++t) stepWorld(*w, music, Vec2{});
+        CHECK(w->player(0).cellDue == 1.0f && w->cellPickups().count == 0);
+        const u16 drifter = SpeciesTable::index(Family::Drifter, 1, kVariantA);
+        i32 i = w->spawnEnemy(drifter, Vec2{400.0f, 0.0f}, 0.0f, 0.0);
+        CHECK(i >= 0);
+        if (i >= 0) w->killEnemy(static_cast<u32>(i), 0);
+        CHECK(countEvents(*w, EventType::CellDrop) == 1 && w->cellPickups().count == 1 && w->cellPickups().owner[0] == 0 &&
+              w->player(0).cellDue == 0.0f);
+        w->playerMut(0).cells = 1;
+        for (u32 t = 0; t < 60 * 14; ++t) stepWorld(*w, music, Vec2{-600.0f, 0.0f});
+        CHECK_MSG(w->player(0).cellDue > 0.9f && w->player(0).cellDue < 1.0f, "due %.3f after 14 s on the last cell", w->player(0).cellDue);
+        for (u32 t = 0; t < 60 * 3; ++t) stepWorld(*w, music, Vec2{-600.0f, 0.0f});
+        CHECK(w->player(0).cellDue == 1.0f);
+        CHECK(w->cellPickups().count == 0);  // the first Cell's eight bars (16 s) are over
+        // Two loose already: the due Cell waits.
+        w->dropCellNow(Vec2{900.0f, 300.0f}, 0);
+        w->dropCellNow(Vec2{900.0f, -300.0f}, 0);
+        i = w->spawnEnemy(drifter, Vec2{-200.0f, 0.0f}, 0.0f, 0.0);
+        if (i >= 0) w->killEnemy(static_cast<u32>(i), 0);
+        CHECK(countEvents(*w, EventType::CellDrop) == 2 && w->cellPickups().count == 2 && w->player(0).cellDue == 1.0f);
+        // Taken on touch: a cell back.
+        u32 takes = 0;
+        for (u32 t = 0; t < 120 && !takes; ++t) {
+            stepWorld(*w, music, Vec2{900.0f, 300.0f});
+            for (u32 k = 0; k < w->eventCount(); ++k)
+                if (w->events()[k].type == EventType::CellTake && w->events()[k].c == 0) ++takes;
+        }
+        CHECK(takes == 1 && w->player(0).cells == 2 && w->cellPickups().count == 1 && w->player(0).cellsTaken == 1);
+        // At full health a Cell waits where it is (neither pulled nor taken).
+        w->playerMut(0).cells = w->player(0).cellCap;
+        for (u32 t = 0; t < 30; ++t) stepWorld(*w, music, Vec2{900.0f, -300.0f});
+        CHECK(w->cellPickups().count == 1 && w->player(0).cells == w->player(0).cellCap);
+        delete w;
+    }
+    {
+        // Regen (Mod 18): a missing cell grows back every 16 bars, then 8, then 4; nothing while full.
+        CHECK(regenEveryBars(1) == 16 && regenEveryBars(2) == 8 && regenEveryBars(3) == 4 && upgradeInfo(kRegen).cap == 3);
+        CHECK(std::strcmp(upgradeWords(kRegen, 1), "CELL REGROWS: 16 BARS") == 0 && std::strcmp(upgradeWords(kRegen, 2), "CELL REGROWS: 8 BARS") == 0 &&
+              std::strcmp(upgradeWords(kRegen, 3), "CELL REGROWS: 4 BARS") == 0);
+        World* w = quietWorld();
+        heldDrop(*w);
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        for (u32 stacks = 1; stacks <= 3; ++stacks) {
+            w->grantUpgrade(0, kRegen);
+            w->playerMut(0).cells = w->player(0).cellCap;
+            const double full0 = music;
+            u32 regrown = 0;
+            while (music < full0 + 20.0 * kTicksPerBar) {
+                stepWorld(*w, music, Vec2{});
+                regrown += countEvents(*w, EventType::CellTake);
+            }
+            CHECK(regrown == 0);
+            w->playerMut(0).cells = w->player(0).cellCap - 2;
+            const double from = music;
+            double at = -1.0;
+            while (at < 0.0 && music < from + 40.0 * kTicksPerBar) {
+                stepWorld(*w, music, Vec2{});
+                for (u32 k = 0; k < w->eventCount(); ++k)
+                    if (w->events()[k].type == EventType::CellTake && w->events()[k].c == 1) at = music;
+            }
+            const double bars = (at - from) / kTicksPerBar;
+            const double every = static_cast<double>(regenEveryBars(stacks));
+            CHECK_MSG(at > 0.0 && bars > every - 1.0 && bars <= every + 0.01, "Regen %u: a cell back after %.2f bars", stacks, bars);
+            CHECK(w->player(0).cells == w->player(0).cellCap - 1);
+        }
+        delete w;
+    }
 }
 
 }  // namespace
@@ -1130,6 +1371,7 @@ int main() {
     testPlayTest1();
     testAutoNova();
     testBoss();
+    testPlayTest2();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;
     return g_failures;

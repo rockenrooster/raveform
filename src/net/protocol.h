@@ -10,7 +10,7 @@
 
 namespace rf::net {
 
-constexpr u32 kProtocolVersion = 0x52460403u;  // 'R' 'F', M4 stage B (the lobby)
+constexpr u32 kProtocolVersion = 0x52460404u;  // 'R' 'F', M4 stage B (play test 2: Regen renumbers the Riffs, Boost orbs)
 constexpr u32 kMaxPacketBytes = 1200;
 
 enum class Msg : u8 {
@@ -219,7 +219,8 @@ private:
     u32 size_ = 0;
 };
 
-// Item sizes on the wire (bytes).
+// Item sizes on the wire (bytes). Play test 2: a spawn is 7 to 17 bytes (kSpawnBytes the most: only what differs from
+// the item before is sent), a death 1 to 6 (a varint).
 constexpr u32 kSpawnBytes = 17, kDeathBytes = 6, kBossClaimBytes = 6, kCorrectionBytes = 30, kPoseBytes = 39, kStatsBytes = 19;
 // Claims are variable (1-7 bytes an item, see putClaims); one claim's damage is at most this.
 constexpr float kMaxClaimDamage = 16383.0f / 64.0f;

@@ -63,7 +63,11 @@ struct Count : PacketSink {
         ++spawns;
         lastSpawn = s;
     }
-    void onDeath(u16, const NetDeath&) override { ++deaths; }
+    void onDeath(u16, const NetDeath& d) override {
+        if (deaths < 512) deathList[deaths] = d;
+        ++deaths;
+    }
+    NetDeath deathList[512];
     void onClaim(u16, const NetClaim& c) override {
         if (claims < 512) claimList[claims] = c;
         ++claims;
@@ -158,6 +162,41 @@ void testRoundTrip() {
     CHECK(c.claimList[0].serial == 77 && c.claimList[0].damage == 1.25f && c.claimList[0].kind == kClaimHit);
     CHECK(c.claimList[1].serial == 79 && c.claimList[1].damage == 0.0f && c.claimList[1].kind == kClaimKill);
 
+    // Play test 2: a formation of the crowd costs 7 bytes an enemy (the first says everything), deaths in serial order a
+    // byte or two; both round-trip exactly as before.
+    {
+        NetSpawn crowd[120];
+        for (u32 k = 0; k < 120; ++k) {
+            crowd[k] = NetSpawn{};
+            crowd[k].serial = 5000 + k;
+            crowd[k].species = 3;
+            crowd[k].x = -800.0f + 13.0f * static_cast<float>(k);
+            crowd[k].y = 200.0f - 3.0f * static_cast<float>(k);
+            crowd[k].heading = 0.01f * static_cast<float>(k);
+            crowd[k].land = 9000.0;
+            crowd[k].flags = kFlagArriving;
+        }
+        crowd[60].species = 7;  // another species and a school in the middle: those items say so
+        crowd[60].group = 12;
+        PacketWriter sw;
+        CHECK(sw.putSpawns(4, 8800.0, crowd, 120) == 120);
+        CHECK(sw.size() <= 3 + 11 + 17 + 119 * 7 + 2 * 3);
+        Count sc;
+        CHECK(parsePacket(sw.data(), sw.size(), sc));
+        CHECK(sc.spawns == 120 && sc.lastSpawn.serial == 5119 && sc.lastSpawn.species == 3 && sc.lastSpawn.group == 0);
+        CHECK(std::fabs(sc.lastSpawn.x - crowd[119].x) < 0.08f && std::fabs(sc.lastSpawn.land - 9000.0) < 0.2 && sc.lastSpawn.flags == kFlagArriving);
+        NetDeath dd[300];
+        for (u32 k = 0; k < 300; ++k) dd[k] = NetDeath{7000 + 3 * k, static_cast<u8>(k % 5 == 4 ? 0xFF : k % 4), static_cast<u8>(k % 3)};
+        PacketWriter dw;
+        CHECK(dw.putDeaths(4, dd, 300) == 300);
+        CHECK(dw.size() < 3 + 4 + 300 * 2);
+        Count dc;
+        CHECK(parsePacket(dw.data(), dw.size(), dc));
+        bool same = dc.deaths == 300;
+        for (u32 k = 0; k < 300 && same; ++k)
+            same = dc.deathList[k].serial == dd[k].serial && dc.deathList[k].killer == dd[k].killer && dc.deathList[k].kind == dd[k].kind;
+        CHECK(same);
+    }
     // Claims: a crowd hit by one ring costs a byte or two an enemy in serial order; any order still round-trips.
     {
         NetClaim many[400];

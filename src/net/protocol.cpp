@@ -195,40 +195,64 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             return true;
         }
         case Msg::Spawns: {
+            // Play test 2 (the faster game doubled the crowd's churn): each item is a byte of flags (bit 0 the serial is
+            // the last one's + 1, bit 1 the same species, bit 2 the same group, bit 3 the same landing; bits 4-7 the
+            // enemy's flags), then only what differs (serial u32, species u8, group u16), always x, y and heading, and
+            // the landing when it differs. The first item says everything.
             const u16 run = r.u16v();
             const double base = r.f64v();
             const u32 n = r.u8v();
-            if (r.bad() || !finite(base) || n * kSpawnBytes != r.left()) return false;
+            if (r.bad() || !finite(base) || n == 0) return false;
+            NetSpawn prev;
+            i16 landQ = 0;
             for (u32 k = 0; k < n; ++k) {
+                const u8 h = r.u8v();
+                if (k == 0 && (h & 0x0Fu)) return false;
                 NetSpawn s;
-                s.serial = r.u32v();
-                s.species = r.u16v();
-                s.group = r.u16v();
+                s.serial = (h & 1u) ? prev.serial + 1u : r.u32v();
+                s.species = (h & 2u) ? prev.species : static_cast<u16>(r.u8v());
+                s.group = (h & 4u) ? prev.group : r.u16v();
                 s.x = static_cast<float>(r.i16v()) * kPosQ;
                 s.y = static_cast<float>(r.i16v()) * kPosQ;
                 s.heading = angleF(r.u16v());
-                const float land = static_cast<float>(r.i16v()) * kUntilQ;
-                s.flags = r.u8v();
-                s.land = base + static_cast<double>(land);
-                if (r.bad() || s.serial == 0 || s.species >= SpeciesTable::kCount || !inWorld(s.x, s.y) || !finite(land) || s.flags > 0xF)
-                    return false;
+                if (!(h & 8u)) landQ = r.i16v();
+                s.flags = static_cast<u8>(h >> 4);
+                s.land = base + static_cast<double>(static_cast<float>(landQ) * kUntilQ);
+                if (r.bad() || s.serial == 0 || s.species >= SpeciesTable::kCount || !inWorld(s.x, s.y)) return false;
                 if (sink) sink->onSpawn(run, s);
+                prev = s;
             }
-            return true;
+            return r.left() == 0;
         }
         case Msg::Deaths: {
+            // Play test 2: each item a varint (serial delta << 5 | kind << 3 | killer: 0-3 a player, 4 none), in serial
+            // order a byte or two (any order still round-trips).
             const u16 run = r.u16v();
-            const u32 n = r.u8v();
-            if (r.bad() || n * kDeathBytes != r.left()) return false;
+            const u32 n = r.u16v();
+            if (r.bad() || n == 0) return false;
+            u32 prev = 0;
             for (u32 k = 0; k < n; ++k) {
+                u64 v = 0;
+                u32 bytes = 0;
+                u8 b = 0;
+                do {
+                    b = r.u8v();
+                    if (r.bad() || bytes == 6) return false;  // at most 6 bytes (42 bits)
+                    v |= static_cast<u64>(b & 0x7Fu) << (7 * bytes);
+                    ++bytes;
+                } while (b & 0x80u);
+                if ((v >> 5) > 0xFFFFFFFFull) return false;
                 NetDeath d;
-                d.serial = r.u32v();
-                d.killer = r.u8v();
-                d.kind = r.u8v();
-                if (r.bad() || d.serial == 0 || !killerOk(d.killer) || d.kind > kDeathShards) return false;
+                d.serial = prev + static_cast<u32>(v >> 5);
+                d.kind = static_cast<u8>((v >> 3) & 3u);
+                const u32 killer = static_cast<u32>(v & 7u);
+                if (killer > 4) return false;
+                d.killer = killer == 4 ? 0xFF : static_cast<u8>(killer);
+                if (d.serial == 0 || !killerOk(d.killer) || d.kind > kDeathShards) return false;
+                prev = d.serial;
                 if (sink) sink->onDeath(run, d);
             }
-            return true;
+            return r.left() == 0;
         }
         case Msg::Claims: {
             // Each item: a varint (serial delta << 3 | kind << 1 | damage follows), then the damage (u16, 1/64ths)
@@ -337,7 +361,7 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             switch (m.kind) {
                 case kPeHit: bMax = kMaxCells; break;
                 case kPeTrioOpen: bMax = 3; break;
-                case kPeTrioTake: bMax = kUpgradeCount - 1; break;
+                case kPeTrioTake: bMax = 255; break;  // an upgrade or a Boost orb (play test 2), checked below
                 case kPeBoostTake: bMax = kBoostCount - 1; break;
                 case kPeHalo: bMax = 3; break;
                 case kPeDash:
@@ -345,9 +369,10 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 default: bMax = 0; break;
             }
             if (m.b > bMax) return false;
+            if (m.kind == kPeTrioTake && !sim::validOrb(m.b)) return false;
             if (m.kind == kPeTrioOpen)
                 for (u32 k = 0; k < m.b; ++k)
-                    if (m.opts[k] >= kUpgradeCount) return false;
+                    if (!sim::validOrb(m.opts[k])) return false;
             if (sink) sink->onPlayerEvent(m);
             return true;
         }
@@ -639,41 +664,83 @@ bool PacketWriter::putRunStart(const MsgRunStart& m) {
     return true;
 }
 u32 PacketWriter::putSpawns(u16 run, double base, const NetSpawn* items, u32 n) {
+    // Play test 2: only what differs from the item before (see the parser); a formation of the crowd costs 7 bytes an
+    // enemy (it was 17).
+    const auto landQ = [&](const NetSpawn& s) { return q16(static_cast<float>(s.land - base), kUntilQ); };
+    const auto head = [&](u32 k) -> u8 {
+        u8 h = static_cast<u8>((items[k].flags & 0xFu) << 4);
+        if (k == 0) return h;
+        const NetSpawn &s = items[k], &p = items[k - 1];
+        if (s.serial == p.serial + 1u) h |= 1u;
+        if (s.species == p.species) h |= 2u;
+        if (s.group == p.group) h |= 4u;
+        if (landQ(s) == landQ(p)) h |= 8u;
+        return h;
+    };
+    const auto itemSize = [](u8 h) { return 1u + ((h & 1u) ? 0u : 4u) + ((h & 2u) ? 0u : 1u) + ((h & 4u) ? 0u : 2u) + 6u + ((h & 8u) ? 0u : 2u); };
     if (room() < kHeader + 11 + kSpawnBytes) return 0;
-    u32 fit = (room() - kHeader - 11) / kSpawnBytes;
-    if (fit > 255) fit = 255;
-    if (n > fit) n = fit;
-    if (!n || !begin(Msg::Spawns, 11 + n * kSpawnBytes)) return 0;
+    const u32 budget = room() - kHeader - 11;
+    u32 size = 0, fit = 0;
+    for (; fit < n && fit < 255u; ++fit) {
+        const u32 sz = itemSize(head(fit));
+        if (size + sz > budget) break;
+        size += sz;
+    }
+    if (!fit || !begin(Msg::Spawns, 11 + size)) return 0;
     u16v(run);
     f64v(base);
-    u8v(static_cast<u8>(n));
-    for (u32 k = 0; k < n; ++k) {
+    u8v(static_cast<u8>(fit));
+    for (u32 k = 0; k < fit; ++k) {
         const NetSpawn& s = items[k];
-        u32v(s.serial);
-        u16v(s.species);
-        u16v(s.group);
+        const u8 h = head(k);
+        u8v(h);
+        if (!(h & 1u)) u32v(s.serial);
+        if (!(h & 2u)) u8v(static_cast<u8>(s.species < 255u ? s.species : 255u));
+        if (!(h & 4u)) u16v(s.group);
         u16v(static_cast<u16>(q16(s.x, kPosQ)));
         u16v(static_cast<u16>(q16(s.y, kPosQ)));
         u16v(angleQ(s.heading));
-        u16v(static_cast<u16>(q16(static_cast<float>(s.land - base), kUntilQ)));
-        u8v(s.flags);
+        if (!(h & 8u)) u16v(static_cast<u16>(landQ(s)));
     }
-    return n;
+    return fit;
 }
 u32 PacketWriter::putDeaths(u16 run, const NetDeath* items, u32 n) {
-    if (room() < kHeader + 3 + kDeathBytes) return 0;
-    u32 fit = (room() - kHeader - 3) / kDeathBytes;
-    if (fit > 255) fit = 255;
-    if (n > fit) n = fit;
-    if (!n || !begin(Msg::Deaths, 3 + n * kDeathBytes)) return 0;
-    u16v(run);
-    u8v(static_cast<u8>(n));
-    for (u32 k = 0; k < n; ++k) {
-        u32v(items[k].serial);
-        u8v(items[k].killer);
-        u8v(items[k].kind);
+    // Play test 2: a varint an item (serial delta << 5 | kind << 3 | killer), a byte or two in serial order.
+    const auto code = [](const NetDeath& d, u32 prev) {
+        const u64 killer = d.killer < kMaxPlayers ? d.killer : (d.killer == 0xFF ? 4u : 7u);
+        return (static_cast<u64>(d.serial - prev) << 5) | (static_cast<u64>(d.kind & 3u) << 3) | killer;
+    };
+    const auto varSize = [](u64 v) {
+        u32 b = 1;
+        while (v >= 0x80u) {
+            v >>= 7;
+            ++b;
+        }
+        return b;
+    };
+    if (room() < kHeader + 4 + 1) return 0;
+    const u32 budget = room() - kHeader - 4;
+    u32 size = 0, fit = 0, prev = 0;
+    for (; fit < n && fit < 65535u; ++fit) {
+        const u32 sz = varSize(code(items[fit], prev));
+        if (size + sz > budget) break;
+        size += sz;
+        prev = items[fit].serial;
     }
-    return n;
+    if (!fit || !begin(Msg::Deaths, 4 + size)) return 0;
+    u16v(run);
+    u16v(static_cast<u16>(fit));
+    prev = 0;
+    for (u32 k = 0; k < fit; ++k) {
+        u64 v = code(items[k], prev);
+        while (v >= 0x80u) {
+            u8v(static_cast<u8>(v | 0x80u));
+            v >>= 7;
+        }
+        u8v(static_cast<u8>(v));
+        prev = items[k].serial;
+    }
+    return fit;
 }
 u32 PacketWriter::putClaims(u16 run, const NetClaim* items, u32 n) {
     // The most frequent message (a Pulse ring claims a crowd at once): in serial order each item costs a byte or two

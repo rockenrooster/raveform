@@ -14,6 +14,11 @@
 # The stage C set: -Out captures\m3c -Only bot_3,bot_6,bot_10,bot_15,hud_drop,edge,boost_prism,track_change,boss_death
 # The stage C2 set: -Out captures\m3c2 -Config dev -Only bot_3,bot_6,bot_10,bot_15,bot_3_nohits,bot_6_nohits,bot_10_nohits,
 #   bot_15_nohits,hud_drop,boost_prism
+# Play test 2's set: -Out captures\playtest2 -Only pt2_level_trio,pt2_cell_crowd,pt2_halo8,pt2_overcharge_0,pt2_overcharge_1,
+#   pt2_overcharge_2,pt2_overcharge_3,pt2_overcharge_4,pt2_overcharge_5,boost_prism and -Config dev -Only pt2_hud_level (a
+#   level-up Trio in a fight with the ship sheltered in an orb, a Cell in a crowd, the halo at eight cells with one
+#   growing back, Overcharge 0-5, the HUD's Shard level); it also writes overcharge_sheet.png (the six side by side) and
+#   pt2_halo8_zoom.png (the halo three times larger).
 # Debug (the default) runs with validation; the script stops on the first run that is not clean.
 param(
     [string]$Out = 'captures\m3b',
@@ -42,7 +47,9 @@ $sheet = 'import sys; from PIL import Image; fs=[Image.open(p).convert("RGB") fo
 $singles = @('screen_notice', 'screen_title', 'screen_settings_sound', 'screen_settings_controls', 'screen_settings_look', 'screen_pause',
              'screen_game_over', 'trio', 'trio_answer', 'trio_locked', 'trio_hold', 'split7', 'hud_groove', 'hud_build', 'hud_drop', 'hud_break', 'riff_orbitals', 'riff_pulse',
              'riff_sentinel', 'boost_prism', 'boost_hyper', 'boost_halo', 'boost_magnet_storm', 'edge', 'boss_bloom', 'boss_refraction',
-             'boss_spiral', 'boss_naked', 'boss_beam_tell', 'boss_beam', 'boss_iris', 'track_change', 'bot_3', 'bot_6', 'bot_10', 'bot_15', 'bot_3_nohits', 'bot_6_nohits', 'bot_10_nohits', 'bot_15_nohits')
+             'boss_spiral', 'boss_naked', 'boss_beam_tell', 'boss_beam', 'boss_iris', 'track_change', 'bot_3', 'bot_6', 'bot_10', 'bot_15', 'bot_3_nohits', 'bot_6_nohits', 'bot_10_nohits', 'bot_15_nohits',
+             'pt2_level_trio', 'pt2_cell_crowd', 'pt2_halo8', 'pt2_hud_level', 'pt2_overcharge_0', 'pt2_overcharge_1', 'pt2_overcharge_2',
+             'pt2_overcharge_3', 'pt2_overcharge_4', 'pt2_overcharge_5')
 $strips = @('trio_take', 'boss_pair_death', 'boss_death')
 if ($Only.Count) {
     $singles = @($singles | Where-Object { $Only -contains $_ })
@@ -55,6 +62,22 @@ foreach ($s in $singles) {
     if (-not (Test-Path $png)) { throw "missing $png (the script's moment never came?)" }
     python "$PSScriptRoot\shrink_png.py" $png | Out-Null
     Write-Host "[review] $s"
+}
+# Play test 2: Overcharge 0-5 in one sheet (the stretch in front of the ship), the halo three times larger.
+$oc = 0..5 | ForEach-Object { Join-Path $Out "pt2_overcharge_$_.png" }
+if (($oc | Where-Object { Test-Path $_ }).Count -eq 6) {
+    $ocSheet = 'import sys; from PIL import Image, ImageDraw; cs=[]; ' +
+               '[cs.append(Image.open(p).convert("RGB").crop((1120,240,1960,640))) for p in sys.argv[2:]]; ' +
+               '[ImageDraw.Draw(c).rectangle((0,0,230,34),fill=(0,0,0)) or ImageDraw.Draw(c).text((8,8),"OVERCHARGE %d" % i,fill=(255,255,255)) for i,c in enumerate(cs)]; ' +
+               'w,h=cs[0].size; s=Image.new("RGB",(2*w,3*h)); [s.paste(c,((i%2)*w,(i//2)*h)) for i,c in enumerate(cs)]; s.save(sys.argv[1])'
+    python -I -c $ocSheet (Join-Path $Out 'overcharge_sheet.png') @oc
+    python "$PSScriptRoot\shrink_png.py" (Join-Path $Out 'overcharge_sheet.png') | Out-Null
+    Write-Host "[review] overcharge_sheet"
+}
+$halo = Join-Path $Out 'pt2_halo8.png'
+if (Test-Path $halo) {
+    python -I -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).convert("RGB").crop((1090,430,1310,650)).resize((660,660),Image.LANCZOS).save(sys.argv[2])' $halo (Join-Path $Out 'pt2_halo8_zoom.png')
+    Write-Host "[review] pt2_halo8_zoom"
 }
 foreach ($s in $strips) {
     $png = Join-Path $Out "strip_$s.png"

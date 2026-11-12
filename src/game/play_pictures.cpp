@@ -48,9 +48,9 @@ bool Play::scriptSetupB() {
         w.spawner().mode = Spawner::Mode::Slice;
         if (is(p, "hud_groove")) scriptFastForwardS_ = 8.0f;
         if (is(p, "hud_build")) scriptFastForwardS_ = 19.0f;
-        // M3 stage C: the Drop with the real crowd: Track 1's third cycle (bar 60, 80 near the ship x 1.6), at
-        // 121.06 s (each Build's last bar runs at 85%).
-        if (is(p, "hud_drop")) scriptFastForwardS_ = 121.1f;
+        // M3 stage C: the Drop with the real crowd. Play test 2: Track 1's third Drop is the boss's now, so
+        // the second cycle's (bar 36, 60 near the ship x 1.6), at 72.71 s (each Build's last bar runs at 85%).
+        if (is(p, "hud_drop")) scriptFastForwardS_ = 72.75f;
         if (is(p, "hud_break")) scriptFastForwardS_ = 40.25f;
         // bot_<minutes>: the careful bot's real run at that minute (hits count, so it may have died and
         // started again); bot_<minutes>_nohits: one run with hits costing nothing, so the Tracks come on time
@@ -63,6 +63,36 @@ bool Play::scriptSetupB() {
         return true;
     }
     if (starts(p, "trio")) return true;
+    if (starts(p, "pt2_")) {
+        // Play test 2's pictures (captures\playtest2): a level-up Trio in a fight with the ship sheltered in an orb, a Cell
+        // in a crowd, the halo at eight cells with one growing back, Overcharge 0-5 (one picture each), the HUD's level.
+        if (is(p, "pt2_level_trio") || is(p, "pt2_cell_crowd")) {
+            w.spawner().mode = Spawner::Mode::Slice;
+            scriptFastForwardS_ = 26.0f;  // Track 1's first Drop (bar 12, 24.4 s): its Surge with the crowd
+            w.rules().godMode = true;
+            w.playerMut(0).novas = 0;  // (no Nova's inhale across the picture)
+        } else if (is(p, "pt2_hud_level")) {
+            w.spawner().mode = Spawner::Mode::Slice;
+            scriptFastForwardS_ = 50.0f;
+            w.rules().godMode = true;
+        } else if (starts(p, "pt2_overcharge_")) {
+            const u32 n = static_cast<u32>(std::atoi(p + 15));
+            for (u32 k = 0; k < n && k < 5; ++k) w.grantUpgrade(0, kOvercharge);
+            for (u32 k = 0; k < 5; ++k) {
+                const Vec2 at{900.0f + 60.0f * static_cast<float>(k), -240.0f + 120.0f * static_cast<float>(k)};
+                const i32 i = w.spawnEnemy(SpeciesTable::index(Family::Drifter, 2, kVariantA), at, kPi, 0.0);
+                if (i >= 0) w.setEnemyHp(static_cast<u32>(i), 4000.0f);
+            }
+            w.rules().godMode = true;
+        } else if (is(p, "pt2_halo8")) {
+            for (u32 k = 0; k < 4; ++k) w.grantUpgrade(0, kExtraCell);
+            w.grantUpgrade(0, kRegen);
+            PlayerState& pl = w.playerMut(0);
+            pl.cells = 7;
+            pl.regenBars = 9;
+        }
+        return true;
+    }
     if (is(p, "boost_prism") || is(p, "split7")) {
         // M3 stage C: the fan in open air, toward a few targets far to the right (play test 1: Split's seven lanes too).
         if (is(p, "split7")) for (u32 k = 0; k < 3; ++k) w.grantUpgrade(0, kSplit);
@@ -163,6 +193,73 @@ bool Play::scriptInputB(StickInput& in) {
             if (is(p, "trio_hold") && tr.holdOrb >= 0 && tr.holdTicks >= 0.5 * tuning::kTrioHoldBeats * kTicksPerBeat && captureFrom_ < 0)
                 captureFrom_ = now;
         }
+        return true;
+    }
+    if (starts(p, "pt2_")) {
+        // Play test 2. The fights: the bot plays through the fast-forward and a moment after it, then the script.
+        const Enemies& e = w.enemies();
+        const auto aimNearest = [&] {
+            i32 best = -1;
+            float bestD = 900.0f * 900.0f;
+            for (u32 i = 0; i < e.count; ++i) {
+                if ((e.flags[i] & kFlagDead) || e.state[i] == kWarping) continue;
+                const float dd = lengthSq(Vec2{e.x[i], e.y[i]} - ship);
+                if (dd < bestD) {
+                    bestD = dd;
+                    best = static_cast<i32>(i);
+                }
+            }
+            if (best >= 0) {
+                in.aim = Vec2{e.x[best], e.y[best]} - ship;
+                in.aimActive = true;
+            }
+        };
+        if (is(p, "pt2_hud_level")) {
+            in = bot_.think(w, 0, controller_, clock_.heardNow());
+            if (!ffRunning_ && captureFrom_ < 0 && t == 24) captureFrom_ = now;
+            return true;
+        }
+        if (is(p, "pt2_level_trio") || is(p, "pt2_cell_crowd")) {
+            if (ffRunning_ || t < 20) {
+                in = bot_.think(w, 0, controller_, clock_.heardNow());
+                return true;
+            }
+            in = StickInput{};
+            aimNearest();
+            if (is(p, "pt2_level_trio")) {
+                if (t == 20) {
+                    PlayerState& pl = w.playerMut(0);
+                    pl.level = 7;
+                    pl.levelsBanked = 0;
+                    pl.levelShards = levelShards(8) / 3;
+                    w.openTrioNow(0, music + 4.0 * kTicksPerBar, nullptr, kTrioLevel);
+                }
+                const TrioState& tr = w.trio(0);
+                if (tr.open) {
+                    const Vec2 d = tr.orbPos[0] - ship;
+                    const float dist = length(d);
+                    if (dist > 3.0f) in.move = d * (std::fmin(dist / 60.0f, 1.0f) / std::fmax(dist, 1.0f));
+                }
+                if (captureFrom_ < 0 && tr.open && tr.holdOrb == 0 && tr.holdTicks >= 0.35 * tuning::kTrioHoldBeats * kTicksPerBeat) captureFrom_ = now;
+            } else {
+                if (t == 20) {
+                    w.playerMut(0).cells = 1;  // on the last cell: its Cells off screen get the chevron with the plus
+                    w.dropCellNow(ship + Vec2{230.0f, -110.0f}, 0);
+                    w.dropCellNow(ship + Vec2{-1500.0f, 320.0f}, 0);
+                }
+                if (captureFrom_ < 0 && t == 56) captureFrom_ = now;
+            }
+            return true;
+        }
+        if (starts(p, "pt2_overcharge_")) {
+            if (t >= 40 && e.count) {
+                in.aim = Vec2{e.x[0], e.y[0]} - ship;
+                in.aimActive = true;
+            }
+            if (captureFrom_ < 0 && t >= 290 && (w.shots().count >= 14 || t >= 360)) captureFrom_ = now;
+            return true;
+        }
+        if (is(p, "pt2_halo8") && captureFrom_ < 0 && t == 300) captureFrom_ = now;  // after the run's Track card
         return true;
     }
     if (starts(p, "riff_") || starts(p, "boost_") || is(p, "split7")) {
@@ -274,7 +371,7 @@ bool Play::scriptEventsB() {
     const i64 now = static_cast<i64>(frameNo_);
     if (captureFrom_ >= 0) return starts(p, "screen_") || starts(p, "hud_") || starts(p, "bot_") || starts(p, "trio") ||
                                    starts(p, "riff_") || starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") ||
-                                   is(p, "split7");
+                                   is(p, "split7") || starts(p, "pt2_");
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         if (is(p, "trio_take") && e.type == EventType::TrioTake) captureFrom_ = now;
@@ -286,7 +383,7 @@ bool Play::scriptEventsB() {
         }
     }
     return starts(p, "screen_") || starts(p, "hud_") || starts(p, "bot_") || starts(p, "trio") || starts(p, "riff_") ||
-           starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") || is(p, "split7");
+           starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") || is(p, "split7") || starts(p, "pt2_");
 }
 
 }  // namespace rf

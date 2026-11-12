@@ -114,7 +114,13 @@ private:
     void drawBoss(FrameDraw& d, const ViewInput& in);
     // Edge indicator (look.md §6, M3 stage C): a chevron inside the screen edge pointing at world, on a dark
     // disc, in the threat layer; oss: the larger double chevron, scaled by swell.
-    void edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, float swell, bool ringTip = false);
+    // tip: 1 a small ring at its tip (a downed teammate, M4), 2 a plus (a Cell while its player is on the last cell, play
+    // test 2).
+    void edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, float swell, u8 tip = 0);
+    // Play test 2 (look.md 5, "The build on the shots"): the shots, their heads by the build (play_view_shots.cpp); the
+    // colours it needs (Prism's lanes from the local player's colour, Overcharge's heads), computed once.
+    void drawShots(FrameDraw& d, const ViewInput& in, float a);
+    void buildColours(Vec3 player);
     float beatAmount() const;
 
     const Look* look_ = nullptr;
@@ -129,7 +135,8 @@ private:
     ViewStats stats_;
 
     // Glyphs.
-    int gShip_ = -1, gHalo_[7] = {-1, -1, -1, -1, -1, -1, -1}, gShard_ = -1, gBullet_ = -1;
+    int gShip_ = -1, gHalo_[9] = {-1, -1, -1, -1, -1, -1, -1, -1, -1}, gShard_ = -1, gBullet_ = -1;
+    int gHaloPart_[9][9] = {};  // [k][n]: the first k arcs of an n-arc halo (play test 2)
     int gMarkBHeading_ = -1, gMarkBSpin_ = -1, gMarkC_ = -1, gRing32_ = -1, gRing64_ = -1, gRing128_ = -1;
     int speciesGlyph_[sim::SpeciesTable::kCount];
     bool speciesGlyphsReady_ = false;
@@ -138,6 +145,12 @@ private:
     Vec2 cam_, lookAhead_, bossLean_, centre_, shake_;
     Vec3 laneColour_[5];       // Prism's rainbow, lanes -2..2 (computed once from the player's colour)
     bool laneReady_ = false;
+    Vec3 overHead_[6];         // play test 2: the shot head by Overcharge stacks 0..5 (look.md 5)
+    Vec3 buildGold_;           // ... the gold of stack 2 (stack 3's rim, the crit star's gold)
+    bool buildReady_ = false;
+    u32 shotSparkTurn_[sim::kMaxPlayers] = {};  // Overcharge 3: a spark off every second shot
+    float cellBackT_ = -100.0f;  // play test 2: the local player's cell came back (view clock) ...
+    u8 cellBackTo_ = 0;          // ... to this many
     float zoom_ = 1.0f, zoomBase_ = 1.0f, pxPerWu_ = 1.5f, refPx_ = 1.0f, viewW_ = 1600.0f, viewH_ = 720.0f;
     float shakeAmp_ = 0.0f;
     bool hasPrevView_ = false;

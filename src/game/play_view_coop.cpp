@@ -69,7 +69,7 @@ void PlayView::drawCoop(FrameDraw& d, const ViewInput& in) {
             const Vec2 B = pl.beacon;
             if (!visible(B, ringR + 40.0f)) {
                 // Off screen: its chevron carries a small ring at the tip and pulses on every beat.
-                edgeChevron(d, B, c, false, 1.0f + 0.2f * kick_, true);
+                edgeChevron(d, B, c, false, 1.0f + 0.2f * kick_, 1);
                 continue;
             }
             // The dashed ring.
@@ -135,7 +135,7 @@ void PlayView::drawCoop(FrameDraw& d, const ViewInput& in) {
         glyph(d.glyphs, gShip_, false, P, h, h, shipScale, hull.intensity * kMateLevel, 0.5f * hull.width, kGlyphPlayer, c, cd);
         glyph(d.glyphs, gShip_, true, P, h, h, shipScale, look_->lines.playerWhiteCopy.intensity * kMateLevel,
               0.5f * look_->lines.playerWhiteCopy.width, kGlyphWhite, W1, W1);
-        const u32 cells = pl.cells > 6 ? 6u : pl.cells;
+        const u32 cells = pl.cells > 8 ? 8u : pl.cells;  // play test 2: up to eight arcs
         if (cells > 0) {
             const float rot = 0.3f * t;
             const Vec3 hc = cells == 1 ? palettes_->danger : c;

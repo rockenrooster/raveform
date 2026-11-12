@@ -268,9 +268,33 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
                        col(gold, 2.0f * pulse), col(amber, 2.0f * pulse), text);
         d.pools.glow({m + 44.0f * s, top + 107.0f * s}, 60.0f * s, gold * (0.10f * pulse));
     }
+    // Play test 2 (look.md 6): the Shard level under the Chain: LV n at cap 12 and a bar 220 px wide and 5 px tall, a gold
+    // fill on a white outline at 0.3. When it fills it flashes white (the number steps, with the band's two-note rise) and
+    // it stays full until the level's Trio opens, when it empties.
+    if (st.runHud) {
+        const float cap = 12.0f * s, y = top + 132.0f * s;
+        char lv[16];
+        std::snprintf(lv, sizeof lv, "LV %u", st.level);
+        const Vec3 lc = col(mix(gold, white, 0.6f + 0.4f * st.levelFlash), 1.3f + 0.9f * st.levelFlash);
+        font.drawField(d.hud, {m, y}, cap, 0.75f * s, lc, lc, lc, lv);
+        const float x0 = m + 70.0f * s, x1 = x0 + 220.0f * s, yc = y + 0.5f * cap, hh = 2.5f * s;
+        const Vec3 oc = col(white, 0.3f);
+        const float ow = 0.45f * s;
+        d.hud.line({x0, yc - hh}, {x1, yc - hh}, ow, oc, oc, 0);
+        d.hud.line({x0, yc + hh}, {x1, yc + hh}, ow, oc, oc, 0);
+        d.hud.line({x0, yc - hh}, {x0, yc + hh}, ow, oc, oc, 0);
+        d.hud.line({x1, yc - hh}, {x1, yc + hh}, ow, oc, oc, 0);
+        const float fill = st.levelFull ? 1.0f : clampf(st.levelFill, 0.0f, 1.0f);
+        if (fill > 0.0f) {
+            const float flash = st.levelFull ? 0.55f + 0.45f * st.kick : st.levelFlash;
+            const Vec3 fc = col(mix(gold, white, flash), 1.7f + 0.8f * flash);
+            d.hud.line({x0 + ow, yc}, {x0 + ow + (x1 - x0 - 2.0f * ow) * fill, yc}, hh - ow, fc, fc, kFlatStart | kFlatEnd);
+            d.pools.glow({x0 + 0.5f * (x1 - x0) * fill, yc}, 40.0f * s, gold * (0.06f + 0.10f * flash));
+        }
+    }
     // M4 stage B: co-op, each player's own score under the team's, in their colour, ranked (yours brighter).
     if (st.coopPlayers > 1) {
-        const float y0 = top + (st.chain >= 2 ? 140.0f : 92.0f) * s;
+        const float y0 = top + 160.0f * s;  // under the Shard level (play test 2)
         for (u32 k = 0; k < st.rankCount && k < 4; ++k) {
             const u32 q = st.rank[k];
             char num[32];

@@ -1,5 +1,147 @@
 # RAVEFORM — Progress
 
+## Play test 2 — 2026-11-12 (the user's second session; design in `8b654f1`)
+
+Five notes, done between M4 stage B's third checkpoint (`8dbcd3b`) and the rest of stage B.
+
+### What changed
+
+- **Tracks three quarters as long** (GAME_DESIGN 4.1, 4.2): Track 1 plays three Short cycles (72 bars), later Tracks
+  three Standard cycles of 12 / 4 / 16 / 4 (108 bars). Everything that assumed four cycles or 16 / 8 / 16 / 8 was
+  checked: the director (`kSectionBars`, `cyclesOfTrack`), the band's form table and its first Groove
+  (`engine.cpp`), the risers it bakes (four-bar Builds in both forms now), the phrase bar and the set list (they read
+  the form and the clock), `SpeciesTable::kCycleBars`, the tests (the 36-bar form, three cycles in Track 1, the
+  mini-boss slot the middle cycle's Drop, the boss the last), the `hud_drop` picture (Track 1's third Drop is the
+  boss's now: the second cycle's, at 72.75 s) and the densest part's fast-forward (below). The loudness calibration
+  is untouched: it hashes the music data and renders the staged arrangement, neither of which changed
+  (`--calibrate --check` passes).
+- **Shard levels** (GAME_DESIGN 6.1): collected Shards fill a meter under the Chain (`LV n`, a 220 x 5 px bar, gold
+  on a white outline at 0.3; it flashes white when full with a two-note rise of the player's lead, the fifth then
+  the octave, and empties as the Trio opens). Level n takes 170 x 1.17^(n-1) Shards (below). A full meter opens a
+  level-up Trio round the ship on the next bar line, in the fight: gold ring, four bars, `LEVEL n` at its centre for
+  the first bar, the same lock, hold and nearest-orb rule, each orb's thin ring drawn double. Its orbs are shelters:
+  nothing spawns inside the ring, a ship inside one of its orbs' rings cannot be hurt, bodies touching a ring are
+  set outside it and shoved off (420 wu/s). Levels filled while a Trio is open are banked and open one at a time.
+  When fewer than three upgrades can be taken the remaining orbs offer different Boosts (three once everything is
+  capped). Each player's meter and Trios are their own (co-op: the others hear of the Trio, its level and kind).
+- **Cells** (health pickups): a director clock per hurt player, due about every 40 s with one cell missing and 15 s
+  on the last cell (linear between); the next kill near the player then drops it; at most two loose; a boss drops
+  two for each player. Eight bars of life, pulled by the magnet, only for their player (each device holds its own
+  player's). Drawn as look.md says (a gold ring of 16 wu with a white plus, 15% swell on the beat, a 120 px
+  vertical flare; off screen on the last cell a gold chevron with a plus); taken, the halo's arc draws itself in
+  over a quarter beat with a rising lead note and eight gold sparks.
+- **Extra Cell to cap 4** (eight cells: `kMaxCells` 8, `halo_7` and `halo_8`); **Regen** (Mod 18, now Mod 9 of the
+  slice: Riffs are numbered one later, protocol version `0x52460404`): a missing cell grows back every 16, 8, then 4
+  bars, drawn as a dashed arc filling clockwise in the place of the next arc (the halo shows its whole cells in an
+  n + 1 layout: `halo_k_of_n` glyphs made at load from the halo's arcs).
+- **Prism** (look.md 5): lanes at 0, ±60 and ±120 degrees round the owner's OKLCH hue at lightness 0.70 and full
+  chroma, out of the 30-degree band round the danger hue; the lane's colour end to end with white only in the front
+  15%, at 0.6 of the shot level and 1.3 of its width; glow, sparks and mini-refractions in the lane's colour.
+  **The tone map no longer washes it out** (`captures\playtest2\prism_compare.png`): orange, green, the player's
+  cyan, blue and magenta read as such; only the front 15% is white.
+- **The build on the shots** (look.md 5): the tail in the owner's colour, the head (front 45%) by Overcharge (white,
+  amber, gold, white with a gold rim, ice blue, violet with a white core), width x1 to x1.8 and +8% length a stack;
+  sparks off every second shot at 3 and every shot at 4-5; an afterglow streak at 5; the muzzle flash and impact
+  sparks in the head's colour, the impact flash doubled at 5. On-Beat Crit's four-point star (10, 14, 18 wu, white to
+  gold) and a gold 80 wu burst ring; Pierce's chevrons; what a Riff throws by its level (base, light, white core with
+  the player's rim).
+- **The network** (found by the soaks): the faster game doubled the crowd's churn and both four-player soaks
+  failed (270 and 326 kbit/s worst second; 22 wu error with loss). A spawn now costs 7 bytes in a formation (17
+  before: only what differs from the item before) and a death a byte or two (a varint in serial order). Both soaks
+  pass with more room than before play test 2: 213 and 211 kbit/s worst second (limit 250), error 4.8 and 7.0 wu
+  (limit 12), predicted kills undone 1.0% with 5% loss and 80 ms jitter.
+
+### The level pace (bots, 20 seeds x 30 minutes)
+
+| seconds a level | Track 1 | Track 2 | Track 3 | the loop |
+|---|---|---|---|---|
+| careful bot | 27.5 | **16.2** | **31.2** | 99 |
+| careless bot | 20.0 | **17.2** | **33.6** | 102 |
+| Shards collected a second (careful) | 10 | 78 | 152 | 236 |
+
+The design's 25 x 1.22 gave a level every 9 s in Track 1. **No base and ratio put all three Tracks inside 20-30
+s**: the Shard income rises about 7x from Track 1 to Track 2 but only 2x from Track 2 to Track 3, while a geometric
+need rises by the same factor every level. Tried (careful bot, 8 seeds x 12 min): 160 / 1.22 (29.6, 20.3, 40.7 s),
+150 / 1.20 (27.7, 17.7, 36.9), 190 / 1.16 (30.7, 15.8, 30.6), 130 / 1.18 (20.7, 16.5, 31.7), **170 / 1.17** (28.3,
+16.5, 30.1): the smallest miss. Track 2 runs about 3 s fast and Track 3 1-4 s slow.
+
+Levels and upgrades held in the first run (both bots, every run still in it):
+
+| | careful: level, upgrades taken (Mod stacks, Riff levels) | careless |
+|---|---|---|
+| minute 3 | 6.3, 9.8 (5.2, 4.6) | 8.7, 12.2 (6.8, 5.5) |
+| minute 6 | 17.9, 24.9 (15.3, 9.6) | 19.0, 26.4 (15.8, 10.6) |
+| minute 10 | 24.9, 37.2 (23.1, 14.2), 5.8 cells | 25.8, 38.2 (23.8, 14.5), 6.0 cells |
+
+### The bots against play test 1's targets (`--sim crowd --seeds 20 --minutes 30`)
+
+| | play test 1, second pass | play test 2 | target |
+|---|---|---|---|
+| careful: first death | none in 18 of 20 runs | **none in 20 of 20** | minute 15 or later |
+| careful: boss fights lost | 1.4% | **0 of 220** | at most 1 in 10 |
+| careless: median first death | 6.37 min | **none in 20 of 20** | minute 4 or later |
+| careless: Track 2 reached | 20 of 20 | 20 of 20 (Track 3 in 20) | 10 of 20 |
+| careless: boss fights lost | 45.2% | **0 of 220** | |
+| kills a minute (careful / careless) | 6,010 / 1,539 | 9,773 / 9,928 | |
+| pools | no overflow | no overflow; at most 835 shots a player (cap 1,000) | none |
+
+**The game is now far easier than the targets**: neither bot dies in 30 minutes and no boss fight is lost; Cells
+(56 taken by the careful bot, 151 by the careless one) and Regen (107 cells grown back for the careless bot) keep
+even the careless bot alive. Not retuned (the brief: ask first).
+
+Pools with the faster pace: no overflow in any crowd run or soak; Shards up to 1,561 (the crowded rule holds them);
+the four-player shot pool's worst case (Split 7, Prism, Hyper, 174 BPM) peaks at 3,478 of 4,096 (871 a player); a
+device holds its own player's Shards and Cells only, so four players add none to its Shard pool.
+
+### The Moto (`bench_play`, our own APK, the lock, `--silent` only on the PC)
+
+| run (120 s measured) | frames missed (panel) | panel P95 | max | main P95 | GPU P95 | sim tick P95 / max | alive mean / max | in view mean / max |
+|---|---|---|---|---|---|---|---|---|
+| minute 10, the real game (`-Warmup 600`) | 0 of 7,188 | 1 period | 21.0 ms | 5.34 ms | 13.17 ms | 0.54 / 1.37 ms | 575 / 900 | 103 / 389 |
+| the densest part (`--fast-forward 640 --nohits`, the loop's Track 5) | 0 of 7,188 | 1 period | 19.7 ms | 5.33 ms | 13.42 ms | 0.51 / 1.46 ms | 605 / 900 | 121 / 426 |
+| Track 3, cycle 2 (`--fast-forward 450 --nohits`) | 0 of 7,188 | 1 period | 20.1 ms | 5.17 ms | 14.02 ms | 0.44 / 1.60 ms | 520 / 900 | 96 / 353 |
+
+**All three PASS the contract** (graded on the panel: P95 at most 16.9 ms, missed at most 5%, max at most 50 ms);
+no audio underruns, no heap allocations of ours, no pool overflow, Shards up to 1,561. The ungraded CPU-side line
+(the present call's return) reads P95 17.8 ms in all three, as before. At minute 10 the bot is in the loop's Track 5
+with 41 upgrades (`captures\bench\ZY22BXMJG3-bench_play-20261112-161201.json`, `-160921`, `-160642`).
+
+### Tests
+
+`raveform_sim_tests` 5,460 checks, 0 failures: level thresholds (base x ratio^(n-1), rising), banking (one Trio at
+a time, each on the bar line after the last closed), a level that would run into a Break waits, the Break's Trio
+waits for an open level-up Trio and opens with the rest of the Break, the shelter (no hit inside an orb's ring, a
+body set outside it, a hit outside), nothing spawning inside the ring, the Cells' clock (40 s with one missing, 15 s
+on the last, resting at full health), a kill dropping the due Cell, at most two loose, taken on touch, waiting at
+full health, gone after eight bars, a boss's two, Regen at 16 / 8 / 4 bars and nothing while full, eight cells, the
+36-bar form, three cycles in Track 1, Boost orbs. `raveform_net_tests` 131,340 checks (compact spawns and deaths
+round-trip at 7 and 1-2 bytes); `scripts\test.ps1` passes (determinism, both soaks).
+
+### Pictures (`captures\playtest2\`, each with `.small.png`; Debug, 0 validation messages)
+
+`prism_compare` (before | after), `pt2_level_trio` (a level-up Trio in a fight, the ship sheltered in an orb, LEVEL
+7), `overcharge_sheet` (stacks 0-5), `pt2_cell_crowd` (a Cell in a crowd on the last cell, and a Cell's off-screen
+chevron), `pt2_halo8` and `pt2_halo8_zoom` (eight cells, one growing back), `pt2_hud_level` (the Shard level).
+
+### Choices made (play test 2)
+
+- Levels start at 0; the first full meter is `LEVEL 1`. A level-up Trio does not open when a Break begins within its
+  four bars (it waits, banked); if the boss dies while one is open, the Break's Trios wait for it to close.
+- The shelter is the Trio owner's; it ends when the clock runs out (the nearest orb flying in). A body touching a
+  ring is set outside it and pushed at 420 wu/s; the boss is not moved, bullets pass.
+- Boost orbs fill any orb no upgrade can (not only when everything is capped), in the Break's Trio too.
+- Cells: at zero cells the clock runs as on the last cell; the clock rests and restarts at full health; a Break's
+  dissolve is not a kill; with two loose a due Cell waits; a Cell is neither pulled nor taken at full health (it
+  lies until it fades); Magnet Storm pulls Cells while the player is hurt; taken within 30 wu. No elites or
+  mini-bosses exist in the slice, so only the boss drops Cells unconditionally.
+- Regen counts bar lines while a cell is missing (a hit does not reset it); it is silent; the growing arc is drawn
+  on your own ship only (a teammate's Regen is not on the wire).
+- Overcharge's coloured heads are drawn at Prism's 0.6 of the shot level, or the tone map bleaches them to white as it
+  did the first Prism; Overcharge 3's spark flies off sideways from the muzzle; Overcharge 1-4 hits get a small
+  impact flash so that 5's can double.
+- The densest part is now the loop's Track 5 (`--fast-forward 640`, 121 enemies in view on average against 96 for
+  Track 3 cycle 2 at 450 s); both were measured.
+
 ## Play test 1, second pass — 2026-11-12 (the lead's ruling in `39afc70`)
 
 - **Auto Nova** (on by default; `AUTO NOVA  FIRES ONE BEFORE YOUR LAST CELL GOES` under CONTROLS, saved as

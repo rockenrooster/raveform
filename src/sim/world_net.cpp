@@ -332,10 +332,13 @@ void World::applyPlayerOp(const NetOp& op) {
             tr.centre = Vec2{op.x, op.y};
             tr.openTick = m1_;
             tr.closeTick = op.tick;
+            // Play test 2: x2 = the level a level-up Trio shows, y2 = its kind (its orbs are shelters here too).
+            tr.kind = op.y2 > 0.5f ? kTrioLevel : kTrioBreak;
+            tr.levelShown = tr.kind == kTrioLevel && op.x2 > 0.0f && op.x2 < 65535.0f ? static_cast<u16>(op.x2) : 0;
             for (u32 k = 0; k < 4; ++k) tr.upgrade[k] = kNoUpgrade;
             for (u32 k = 0; k < tr.orbs; ++k) {
-                tr.upgrade[k] = op.opts[k] < kUpgradeCount ? op.opts[k] : kSplit;
-                tr.level[k] = static_cast<u8>(pl.loadout.level(tr.upgrade[k]) + 1);
+                tr.upgrade[k] = validOrb(op.opts[k]) ? op.opts[k] : kSplit;
+                tr.level[k] = isBoostOrb(tr.upgrade[k]) ? 0 : static_cast<u8>(pl.loadout.level(tr.upgrade[k]) + 1);
                 tr.orbPos[k] = tr.centre + kTrioOrbAt[k] * kTrioRingWu;
             }
             ++tr.opened;
@@ -343,15 +346,19 @@ void World::applyPlayerOp(const NetOp& op) {
             ev.type = EventType::TrioOpen;
             ev.a = static_cast<u8>(p);
             ev.b = tr.orbs;
+            ev.c = tr.kind;
             ev.x = op.x;
             ev.y = op.y;
+            ev.x2 = static_cast<float>(tr.levelShown);
+            ev.y2 = static_cast<float>(tr.kind);
             ev.tick = op.tick;
             emit(ev);
             break;
         }
         case kPeTrioTake: {
-            if (op.b >= kUpgradeCount) break;
-            applyUpgrade(p, op.b);
+            if (!validOrb(op.b)) break;
+            // Play test 2: a Boost orb's Boost arrives as its own kPeBoostTake (sent just before this).
+            if (!isBoostOrb(op.b)) applyUpgrade(p, op.b);
             TrioState& tr = trio_[p];
             tr.open = false;
             tr.lastTaken = op.b;
@@ -361,7 +368,7 @@ void World::applyPlayerOp(const NetOp& op) {
             ev.type = EventType::TrioTake;
             ev.a = static_cast<u8>(p);
             ev.b = op.b;
-            ev.c = static_cast<u8>(pl.loadout.level(op.b));
+            ev.c = isBoostOrb(op.b) ? 0 : static_cast<u8>(pl.loadout.level(op.b));
             ev.x = op.x;
             ev.y = op.y;
             emit(ev);

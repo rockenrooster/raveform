@@ -593,10 +593,16 @@ void World::directorBar(double barTick, u32 bar) {
                 if (anyAlive && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios)) {
                     // The Trio (GAME_DESIGN 6.1); after a boss, its bonus Trio first, each with half the Break.
                     // Co-op: each device opens its own players' Trios (loot is instanced; the others hear of it).
+                    // Play test 2: a level-up Trio still open finishes first; the Break's then open (takeOrb).
                     const double end = tickOfBar(bar + ph.sectionBars);
                     for (u32 p = 0; p < playerCount_; ++p) {
                         if (!players_[p].alive || !isLocal(p)) continue;
-                        trio_[p].queued = ph.trackChange ? 1 : 0;
+                        TrioState& tr = trio_[p];
+                        if (tr.open && tr.kind == kTrioLevel) {
+                            tr.breakWaiting = ph.trackChange ? 2 : 1;
+                            continue;
+                        }
+                        tr.queued = ph.trackChange ? 1 : 0;
                         openTrio(p, ph.trackChange ? tickOfBar(bar + ph.sectionBars / 2) : end);
                     }
                 }
@@ -610,6 +616,10 @@ void World::directorBar(double barTick, u32 bar) {
             default: break;
         }
     }
+    // Play test 2 (GAME_DESIGN 6.1): Regen counts the bar; a banked Shard level opens its Trio on this bar line. Each device
+    // its own players'.
+    regenBar();
+    if (anyAlive && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios)) openLevelTrios(bar);
     // M4: a client follows the host's phrase; the host's director alone spawns.
     if (role_ == NetRole::Client) return;
     if (spawner_.mode != Spawner::Mode::Slice || !anyAlive) return;
@@ -691,6 +701,7 @@ void World::runDirector() {
     // Surge: score x2 and magnet x2 for the first half of the Drop (GAME_DESIGN 4.1).
     rules_.scoreMultiplier = ph.surge() ? 2.0f : 1.0f;
     rules_.magnetMultiplier = ph.surge() ? 2.0f : 1.0f;
+    if (spawner_.mode == Spawner::Mode::Slice) cellClock();  // play test 2: each device its own players' Cells
     if (client) return;
     if (ph.section == Section::Break && ph.sectionBar == 0)
         dissolveFodder(static_cast<float>((m1_ - tickOfBar(ph.bar)) / kTicksPerBar));

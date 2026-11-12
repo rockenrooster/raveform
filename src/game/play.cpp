@@ -114,7 +114,9 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
         bandDrives_ = false;
         const PlayOptions saved = opt_;
         opt_.fixedStep = true;
+        ffRunning_ = true;
         for (u32 k = 0; k < ticks; ++k) frame(kDt);
+        ffRunning_ = false;
         opt_ = saved;
         bandDrives_ = drives;
         view_.resetEffects();
@@ -447,7 +449,8 @@ void Play::afterTick() {
                 break;
             case EventType::TrioTake:
                 if (e.a != seat_) break;  // M4: a teammate's pick is theirs (their device sounds it)
-                RF_LOG("play: Trio: took %s (now %u) at bar %u", upgradeInfo(e.b).name, e.c, w.phrase().bar);
+                RF_LOG("play: Trio: took %s (now %u) at bar %u", isBoostOrb(e.b) ? boostInfo(boostOfOrb(e.b)).name : upgradeInfo(e.b).name, e.c,
+                       w.phrase().bar);
                 if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 2, e.b};
                 takenT_ = static_cast<float>(tickEnd_);
                 takenFrom_ = view_.toScreen(Vec2{e.x, e.y});
@@ -456,6 +459,22 @@ void Play::afterTick() {
                 break;
             case EventType::BoostTake:
                 if (bandDrives_ && e.a == seat_) band_->playSfx(audio::Sfx::Boost);
+                break;
+            case EventType::LevelUp:
+                // Play test 2 (look.md 6): the meter flashes white and the number steps with a bright two-note rise of the
+                // player's lead (the fifth, then the octave, on the next two sixteenths).
+                if (e.a != seat_) break;
+                levelUpT_ = static_cast<float>(tickEnd_);
+                RF_LOG("play: Shard level %.0f at %.1f s (bar %u)", static_cast<double>(e.f), static_cast<double>(runSeconds_), w.phrase().bar);
+                if (bandDrives_) {
+                    const double step = (std::floor(band_->view().heardTick / kTicksPerStep) + 1.0) * kTicksPerStep;
+                    band_->leadNote(0, 1, 0.9f, 0.0f, step);
+                    band_->leadNote(0, 2, 0.9f, 0.0f, step + kTicksPerStep);
+                }
+                break;
+            case EventType::CellTake:
+                // Play test 2 (look.md 6): a Cell taken plays a rising note of the player's lead (Regen's arc grows quietly).
+                if (bandDrives_ && e.a == seat_ && e.c == 0) band_->leadNote(0, 2, 0.85f, 0.0f);
                 break;
             case EventType::HaloBlock:
                 if (bandDrives_ && e.a == seat_) band_->playSfx(audio::Sfx::Shield);
@@ -686,6 +705,15 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     }
     hs.chain = p.chain;
     hs.chainPulse = view_.chainPulse(vi.time);
+    // Play test 2: the Shard level (this device's own player).
+    hs.level = p.level;
+    hs.levelFull = p.levelsBanked > 0;
+    {
+        const u32 need = levelShards(static_cast<u32>(p.level) + 1u);
+        hs.levelFill = need ? static_cast<float>(p.levelShards) / static_cast<float>(need) : 0.0f;
+        const float since = static_cast<float>(vi.time) - levelUpT_;
+        hs.levelFlash = since >= 0.0f && since < 0.6f ? 1.0f - since / 0.6f : 0.0f;
+    }
     hs.novas = p.novas;
     hs.novaCap = p.novaCap;
     hs.dashCharge = controller_.dashCharge(coop() ? netHeard_ : clock_.heardNow());

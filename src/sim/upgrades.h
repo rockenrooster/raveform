@@ -8,14 +8,14 @@
 
 namespace rf::sim {
 
-// Mods (GAME_DESIGN 6.2) then Riffs (6.3), in one list so a Trio orb is one number.
+// Mods (GAME_DESIGN 6.2) then Riffs (6.3), in one list so a Trio orb is one number. Play test 2 adds Regen (Mod 18).
 enum Upgrade : u8 {
-    kSplit, kDoubleTime, kPierce, kRicochet, kOvercharge, kExtraCell, kMagnet, kOnBeatCrit,  // Mods
-    kOrbitals, kPulseRing, kSentinel,                                                         // Riffs
+    kSplit, kDoubleTime, kPierce, kRicochet, kOvercharge, kExtraCell, kMagnet, kOnBeatCrit, kRegen,  // Mods
+    kOrbitals, kPulseRing, kSentinel,                                                                  // Riffs
     kUpgradeCount,
     kNoUpgrade = 0xFF
 };
-constexpr u32 kModCount = 8;
+constexpr u32 kModCount = 9;
 constexpr u32 kRiffCount = 3;
 constexpr u8 kRiffMaxLevel = 5;  // GAME_DESIGN 6.1
 constexpr u32 kRiffSlots = 4;
@@ -24,6 +24,13 @@ inline u32 riffIndex(u8 u) { return static_cast<u32>(u - kOrbitals); }
 
 enum Boost : u8 { kPrism, kHyper, kHalo, kMagnetStorm, kBoostCount, kNoBoost = 0xFF };
 constexpr u32 kBoostSlots = 2;  // GAME_DESIGN 6.1: two at once; a third refreshes the oldest
+// Play test 2 (GAME_DESIGN 6.1): with every Mod and Riff at its cap a Trio's orbs offer Boosts. Such an orb's number is
+// kBoostOrb + the Boost (it never collides with an upgrade).
+constexpr u8 kBoostOrb = 0x40;
+inline bool isBoostOrb(u8 u) { return u >= kBoostOrb && u < kBoostOrb + kBoostCount; }
+inline u8 boostOfOrb(u8 u) { return static_cast<u8>(u - kBoostOrb); }
+// A Trio orb: an upgrade or a Boost.
+inline bool validOrb(u8 u) { return u < kUpgradeCount || isBoostOrb(u); }
 
 struct UpgradeInfo {
     const char* name;  // as on the orb ("SPLIT")
@@ -54,6 +61,10 @@ inline u32 sentinelDrones(u32 level) {                               // a second
     return k[level < 5 ? level : 5];
 }
 constexpr u32 kMaxDrones = 3;
+inline u32 regenEveryBars(u32 stacks) {                              // Regen (play test 2): a cell grows back every
+    constexpr u32 k[4] = {0, 16, 8, 4};                              // 16, 8, then 4 bars
+    return k[stacks < 3 ? stacks : 3];
+}
 
 struct BoostInfo {
     const char* name;
@@ -81,8 +92,13 @@ struct Loadout {
 // GAME_DESIGN 6.1: three options from the Mods that are not capped, the Riffs not yet owned (while a slot
 // is free) and level-ups of owned Riffs, by weight (tuning::kTrioWeight*). Guarantees: at least one
 // option affects weapons; with fewer than four Riffs and no new Riff offered in the last two Trios, one
-// is. Returns how many options there are (fewer than three only when almost everything is maxed).
+// is. Play test 2: when fewer than three upgrades can still be taken, the orbs left offer different Boosts
+// (three Boosts once every Mod and Riff is at its cap), so a Trio always has three orbs. Returns 3.
 // `sinceRiff`: Trios in a row that offered no new Riff (updated).
 u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[3]);
+
+// Shard levels (GAME_DESIGN 6.1, play test 2): the Shards level n takes from level n - 1, base x ratio^(n - 1) rounded
+// (tuning::kLevelShardsBase and kLevelShardsRatio; n >= 1).
+u32 levelShards(u32 n);
 
 }  // namespace rf::sim

@@ -36,7 +36,7 @@ struct GlyphSegment {
 
 class GlyphSet {
 public:
-    static constexpr u32 kMaxGlyphs = 128;
+    static constexpr u32 kMaxGlyphs = 160;  // play test 2: the halo's partial arcs (halo_k_of_n) join the file's 99
 
     GlyphSet() = default;
     GlyphSet(const GlyphSet&) = delete;

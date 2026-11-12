@@ -216,6 +216,7 @@ void World::damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir)
     ev.species = kBossSpecies;
     ev.c = part;
     ev.a = pair;
+    ev.b = owner;  // play test 2: the shooter
     ev.x = at.x;
     ev.y = at.y;
     ev.x2 = dir.x;
@@ -252,6 +253,7 @@ void World::damageBossFinal(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2
         ev.species = kBossSpecies;
         ev.c = part;
         ev.a = pair;
+        ev.b = owner;
         ev.x = at.x;
         ev.y = at.y;
         ev.x2 = dir.x;
@@ -346,6 +348,9 @@ void World::killBoss(u8 owner) {
         for (u32 k = 0; k < kBossShards; ++k)
             spawnShard(s.pos + dirOf(rng_.range(0.0f, kTau)) * rng_.range(0.0f, 60.0f),
                        dirOf(rng_.range(0.0f, kTau)) * rng_.range(120.0f, 520.0f), static_cast<u8>(p));
+        // Play test 2 (GAME_DESIGN 6.1): a boss drops two Cells for each player, whatever its health.
+        for (u32 k = 0; k < kBossCells; ++k)
+            spawnCell(s.pos, dirOf(kTau * (static_cast<float>(k) + 0.25f) / static_cast<float>(kBossCells)) * 160.0f, static_cast<u8>(p));
     }
     // The Track ends: its Track-change Break begins on the first bar line at least half a bar away, so
     // the band, which hears of it now, can still start it on that line.
@@ -427,7 +432,8 @@ void World::bossContact() {
     if (!s.active || s.dying || m1_ < s.fightTick || rules_.godMode) return;
     for (u32 p = 0; p < playerCount_; ++p) {
         PlayerState& pl = players_[p];
-        if (!pl.alive || pl.invulnerable() || !isLocal(p)) continue;  // M4: what you see is what hits you
+        if (!pl.alive || pl.invulnerable() || !isLocal(p) || sheltered(p)) continue;  // M4: what you see is what hits you
+                                                                                      // (play test 2: a level-up orb shelters)
         const Vec2 rel = pl.pos - s.pos;
         bool hit = lengthSq(rel) <= (b.contactCore + kPlayerHitRadius) * (b.contactCore + kPlayerHitRadius);
         for (u32 k = 0; k < 6 && !hit; ++k) {

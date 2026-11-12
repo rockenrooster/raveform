@@ -249,6 +249,23 @@ bool GlyphSet::load(float flatBelowDegrees) {
         }
         if (n == 0 || !addGlyph(d, segs, n, flatBelowDegrees)) ok = false;
     }
+    // Play test 2 (look.md 6, Regen and Cells): the first k arcs of an n-arc halo ("halo_k_of_n"), so the halo can show k
+    // whole cells in the places of n while the next arc grows back or draws itself in (a halo's arcs are stored in order).
+    for (u32 n = 2; n <= 8; ++n) {
+        char src[20];
+        std::snprintf(src, sizeof src, "halo_%u", n);
+        const int g = find(src);
+        if (g < 0) continue;
+        const GlyphDef base = defs_[g];
+        const u32 per = base.segmentCount / n;
+        if (per == 0 || per * n != base.segmentCount) continue;
+        for (u32 k = 1; k < n; ++k) {
+            GlyphDef d = base;
+            std::snprintf(d.id, sizeof d.id, "halo_%u_of_%u", k, n);
+            for (u32 i = 0; i < k * per; ++i) segs[i] = segments_[base.firstSegment + i];
+            if (!addGlyph(d, segs, k * per, flatBelowDegrees)) ok = false;
+        }
+    }
     // Unit circles for rings (warp-in, shock, Riff and Drop fronts): flat joints all round.
     const u32 ringSides[3] = {32, 64, 128};
     const char* ringIds[3] = {"ring32", "ring64", "ring128"};

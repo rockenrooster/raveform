@@ -169,6 +169,23 @@ constexpr float kSentinel2X = 34.0f, kSentinel2Y = -30.0f, kSentinel3X = 0.0f, k
 constexpr float kSentinelFollowTau = 0.12f;   // s
 constexpr float kSentinelSpreadDeg = 4.0f;    // a burst fans this far apart
 
+// ---- Play test 2 (GAME_DESIGN 6.1, 2026-11-12): Shard levels, Cells, Regen ----
+// Shard levels: level n takes kLevelShardsBase x kLevelShardsRatio^(n - 1) Shards (the design's 25 and 1.22 to start;
+// tuned with the bot for a level every 20-30 s through the first three Tracks, docs/PROGRESS.md "Play test 2").
+constexpr float kLevelShardsBase = 170.0f, kLevelShardsRatio = 1.17f;
+constexpr u32 kLevelTrioBars = 4;           // GAME_DESIGN 6.1 (quoted): a level-up Trio's ring runs for four bars
+constexpr u32 kLevelTrioClearBars = 4;      // chosen: one opens only when no Break begins in the next four bars, its ring's
+                                            // span (the Break's own Trio keeps its place; the level waits, banked)
+constexpr float kShelterShoveWu = 420.0f;   // chosen: wu/s of push on a body touching a level-up orb's thin ring
+// Cells (health pickups): due about every 40 s with one cell missing and every 15 s on the last cell (quoted; linear in
+// between), at most two loose a player (quoted), eight bars of life (quoted), two from a boss (quoted).
+constexpr float kCellEveryOneMissingS = 40.0f, kCellEveryLastS = 15.0f;
+constexpr u32 kCellsLooseMax = 2;
+constexpr double kCellLifeBars = 8.0;
+constexpr u32 kBossCells = 2;
+constexpr float kCellRadiusWu = 16.0f;      // look.md 6 (quoted): the gold ring
+constexpr float kCellPickupWu = 30.0f;      // chosen: taken when its ring touches the ship (16 + 14 wu)
+
 // ---- Difficulty levers (play test 1, GAME_DESIGN 8 "How hard": the threat budget and the bosses' bullet density,
 // neither below 0.7 of the first slice's). 1.0 = the first slice's numbers.
 constexpr float kThreatBudgetScale = 0.7f;

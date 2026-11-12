@@ -9,16 +9,18 @@ namespace rf::sim {
 using namespace tuning;
 
 namespace {
-// GAME_DESIGN 6.2 / 6.3 (names, caps; play test 1: Split 3, Extra Cell 2); icons from design/icons.json.
+// GAME_DESIGN 6.2 / 6.3 (names, caps; play test 1: Split 3; play test 2: Extra Cell 4, Regen 3); icons from
+// design/icons.json.
 const UpgradeInfo kInfo[kUpgradeCount] = {
     {"SPLIT", "split", 3, true},
     {"DOUBLE-TIME", "double_time", 2, true},
     {"PIERCE", "pierce", 3, true},
     {"RICOCHET", "ricochet", 3, true},
     {"OVERCHARGE", "overcharge", 5, true},
-    {"EXTRA CELL", "extra_cell", 2, false},
+    {"EXTRA CELL", "extra_cell", 4, false},
     {"MAGNET", "magnet", 4, false},
     {"ON-BEAT CRIT", "on_beat_crit", 3, true},
+    {"REGEN", "regen", 3, false},
     {"ORBITALS", "orbitals", kRiffMaxLevel, true},
     {"PULSE RING", "pulse_ring", kRiffMaxLevel, true},
     {"SENTINEL", "sentinel", kRiffMaxLevel, true},
@@ -55,6 +57,9 @@ const char* upgradeWords(u8 u, u32 level) {
             return buf;
         case kOnBeatCrit:
             std::snprintf(buf, sizeof buf, "BEAT SHOTS X%u", static_cast<u32>(onBeatCritMultiplier(level < 1 ? 1u : level)));
+            return buf;
+        case kRegen:  // play test 2 (screens.md): CELL REGROWS: 16 BARS, then 8 BARS, 4 BARS
+            std::snprintf(buf, sizeof buf, "CELL REGROWS: %u BARS", regenEveryBars(level < 1 ? 1u : level));
             return buf;
         case kOrbitals: {
             const u32 n = orbitalCount(level < 1 ? 1u : level);
@@ -160,7 +165,23 @@ u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[3]) {
     // At least one option affects weapons (keep a new Riff placed above).
     if (!offered(weapon)) force(weapon, newRiff);
     sinceRiff = offered(newRiff) ? 0 : static_cast<u8>(sinceRiff < 250 ? sinceRiff + 1 : 250);
+    // Play test 2 (GAME_DESIGN 6.1): the orbs no upgrade can fill offer Boosts, each a different one.
+    u8 boosts[kBoostCount];
+    u32 nb = 0;
+    for (u8 b = 0; b < kBoostCount; ++b) boosts[nb++] = b;
+    while (count < 3 && nb > 0) {
+        const u32 k = rng.below(nb);
+        out[count++] = static_cast<u8>(kBoostOrb + boosts[k]);
+        boosts[k] = boosts[--nb];
+    }
     return count;
+}
+
+u32 levelShards(u32 n) {
+    double v = static_cast<double>(kLevelShardsBase);
+    for (u32 k = 1; k < n && k < 400; ++k) v *= static_cast<double>(kLevelShardsRatio);
+    const double r = v + 0.5;
+    return r < 1.0 ? 1u : (r > 4.0e9 ? 4000000000u : static_cast<u32>(r));
 }
 
 }  // namespace rf::sim

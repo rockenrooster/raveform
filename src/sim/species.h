@@ -89,8 +89,9 @@ public:
         float strayFrameScale = 2.0f;  // stray: outside every frame grown this much ...
         u32 strayBars = 2;             // ... for this many bars
     } crowd;
-    // Track 1 runs Short cycles (24 bars), Track 2 Standard ones (48 bars) (species.json note, GAME_DESIGN 4).
-    static constexpr u32 kCycleBars[2] = {24, 48};
+    // Track 1 runs three Short cycles (24 bars), later Tracks three Standard ones (36 bars since play test 2)
+    // (species.json note, GAME_DESIGN 4).
+    static constexpr u32 kCycleBars[2] = {24, 36};
 
     // The first slice's boss (design/bosses/kaleidos.json), loaded with the species.
     BossData boss;

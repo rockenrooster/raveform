@@ -325,6 +325,7 @@ target_sources(raveform_core PRIVATE
   src/game/play_pictures.cpp
   src/game/play_view.cpp
   src/game/play_view_b.cpp
+  src/game/play_view_shots.cpp
   src/game/screens.cpp
   src/game/settings.cpp)
 # M4: co-op in the game (the network library; the game hosts or joins from the command line).

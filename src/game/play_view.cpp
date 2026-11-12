@@ -43,7 +43,9 @@ constexpr float kDashGhostS = 0.25f;
 // Edge chevrons (look.md §6 gives the height, the inset and the disc): their shape, chosen. A chevron is 0.4 of
 // its height deep; the boss's two sit 0.32 of the height apart; the disc's radius is 0.68 of the height; the
 // stroke's half width 0.055 of it, with the threat layer's dark rim.
-constexpr float kPrismLaneL = 0.80f, kPrismLaneStepDeg = 50.0f;  // GAME_DESIGN 7 (quoted): the rainbow's lanes
+// GAME_DESIGN 7, look.md 5 (quoted; play test 2: 0.80 and 50 degrees looked pale): the rainbow's lanes, and the band
+// round the danger hue no lane may fall in.
+constexpr float kPrismLaneL = 0.70f, kPrismLaneStepDeg = 60.0f, kPrismDangerBandDeg = 30.0f;
 constexpr float kChevronDepth = 0.4f, kChevronPairGap = 0.32f, kChevronDisc = 0.68f, kChevronStroke = 0.055f;
 
 Vec2 dir(float a) { return {std::cos(a), std::sin(a)}; }
@@ -128,10 +130,15 @@ bool PlayView::init(const Look& look, const Palettes& palettes, const Palette& p
     glyphs_ = &glyphs;
     tier_ = tier;
     gShip_ = glyphs.find("ship");
-    for (u32 k = 1; k <= 6; ++k) {
-        char id[16];
+    // Play test 2: up to eight arcs (halo_7, halo_8), and the first k arcs of each (content/glyphs.cpp).
+    for (u32 k = 1; k <= 8; ++k) {
+        char id[20];
         std::snprintf(id, sizeof id, "halo_%u", k);
         gHalo_[k] = glyphs.find(id);
+        for (u32 n = k + 1; n <= 8; ++n) {
+            std::snprintf(id, sizeof id, "halo_%u_of_%u", k, n);
+            gHaloPart_[k][n] = glyphs.find(id);
+        }
     }
     gShard_ = glyphs.find("shard");
     gBullet_ = glyphs.find("enemy_bullet");
@@ -141,7 +148,7 @@ bool PlayView::init(const Look& look, const Palettes& palettes, const Palette& p
     gRing32_ = glyphs.find("ring32");
     gRing64_ = glyphs.find("ring64");
     gRing128_ = glyphs.find("ring128");
-    if (gShip_ < 0 || gHalo_[1] < 0 || gHalo_[6] < 0 || gShard_ < 0 || gBullet_ < 0 || gRing32_ < 0 || gRing64_ < 0 ||
+    if (gShip_ < 0 || gHalo_[1] < 0 || gHalo_[8] < 0 || gHaloPart_[7][8] < 0 || gShard_ < 0 || gBullet_ < 0 || gRing32_ < 0 || gRing64_ < 0 ||
         gRing128_ < 0 || gMarkBHeading_ < 0 || gMarkBSpin_ < 0 || gMarkC_ < 0) {
         RF_ERR("play: a glyph the game needs is missing from design/glyphs.json");
         return false;
@@ -378,6 +385,7 @@ void PlayView::onEvents(const World& w, double tickEnd) {
         speciesGlyphsReady_ = true;
     }
     const u32 me = w.viewPlayer();
+    if (!buildReady_) buildColours(palettes_->player[me]);
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         const float t = static_cast<float>(tickEnd - e.age);
@@ -415,14 +423,51 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 r.a = palette_->hue[s.hue];
                 r.b = palette_->partner[s.hue];
                 r.t0 = t;
+                // Play test 2 (look.md 5): the sparks follow the build: a Prism lane's colour, else Overcharge's head; at
+                // Overcharge 5 the impact flash doubles.
+                u32 over = 0;
+                if (e.b < kMaxPlayers) {
+                    over = w.player(e.b).loadout.mods[kOvercharge] > 5 ? 5u : w.player(e.b).loadout.mods[kOvercharge];
+                    if (e.c >= 1 && e.c <= 5 && e.b == me) {
+                        r.a = laneColour_[e.c - 1];
+                        r.b = white();
+                    } else if (over >= 1) {
+                        r.a = overHead_[over];
+                        r.b = over == 3 ? buildGold_ : palette_->hue[s.hue];
+                    }
+                }
                 sparkRequest(r);
+                if (over >= 1) {
+                    const LookSoftLight& f = look_->soft.killFlashSmall;
+                    const float k = over >= 5 ? 2.0f : 1.0f;
+                    addPool(at, f.radius[0] * 0.6f * k, f.radius[0] * 0.6f * k, mix(overHead_[over], white(), 0.5f), f.intensity[0] * 0.5f * k,
+                            f.intensity[1], f.lifeS, false, f.squaredFade ? 1 : 0, true, true, t);
+                }
                 break;
             }
-            case EventType::Shot:
-                // Muzzle flash (GAME_DESIGN 11.1, lead notes).
-                addPool(at, kMuzzleFlashRefPx, kMuzzleFlashRefPx, mix(player, white(), 0.5f), kMuzzleFlash, 0.0f, kMuzzleFlashS,
-                        false, 1, true, false, t);
+            case EventType::Shot: {
+                // Muzzle flash (GAME_DESIGN 11.1, lead notes). Play test 2 (look.md 5): in the head's colour by Overcharge; a
+                // spark flies off every second shot at 3 stacks, every shot at 4 and 5.
+                const u32 over = w.player(owner).loadout.mods[kOvercharge] > 5 ? 5u : w.player(owner).loadout.mods[kOvercharge];
+                const Vec3 flash = over == 0 ? mix(player, white(), 0.5f) : mix(overHead_[over], white(), 0.35f);
+                addPool(at, kMuzzleFlashRefPx, kMuzzleFlashRefPx, flash, kMuzzleFlash * (mine ? 1.0f : 0.6f), 0.0f, kMuzzleFlashS, false, 1,
+                        true, false, t);
+                if (over >= 3 && (over >= 4 || (shotSparkTurn_[owner] & 1u) == 0)) {
+                    // Off to the side of the shot, alternately left and right.
+                    const float side = (shotSparkTurn_[owner] & 2u) ? 1.0f : -1.0f;
+                    SparkReq r{};
+                    r.at = at;
+                    r.dir = normalizeOr(Vec2{e.x2, e.y2} * 0.5f + perp(Vec2{e.x2, e.y2}) * side, Vec2{e.x2, e.y2});
+                    r.count = 1;
+                    r.kind = 3;
+                    r.a = over == 3 ? buildGold_ : overHead_[over];
+                    r.b = white();
+                    r.t0 = t;
+                    sparkRequest(r);
+                }
+                ++shotSparkTurn_[owner];
                 break;
+            }
             case EventType::WarpLand: {
                 // Solid on the beat, with the small white flash (look.md §5 warp-in).
                 const LookSoftLight& f = look_->soft.killFlashSmall;
@@ -436,7 +481,7 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 // Shield cell lost (look.md §5): the arc shatters outward, a panic ring pushes out.
                 if (mine) hitT_ = t;
                 const u8 left = e.b;
-                const int arcs = gHalo_[left + 1 <= 6 ? left + 1 : 6];
+                const int arcs = gHalo_[left + 1 <= 8 ? left + 1 : 8];
                 shatterGlyph(arcs, at, rng_.range(0.0f, kTau), kStandardEnemyWu, mix(player, white(), 0.3f) * 2.0f, 160.0f, 320.0f,
                              t);
                 addShockRings(at, 1, kPanicRadiusWu, player, light, t, kPanicRingS);
@@ -1056,20 +1101,71 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     if (me.alive) {
         const float heading = in.shipHeading;
         const LookLine& hull = look_->lines.playerHull;
-        const u32 cells = me.cells > 6 ? 6u : me.cells;
+        const u32 cells = me.cells > 8 ? 8u : me.cells;
         const float haloRot = 0.3f * t;
         const float haloPulse = 1.0f + 0.25f * kick_;
+        // Play test 2 (look.md 6): up to eight arcs. Regen's arc growing back is a dashed outline that fills clockwise in
+        // the place of the next arc; a Cell taken draws its arc in over a quarter of a beat. `whole` arcs are drawn in the
+        // places of `slots`, and the arc in place `whole` grows (grow: its fill, < 0 none).
+        u32 whole = cells, slots = cells;
+        float grow = -1.0f;
+        bool growDashed = false;
+        {
+            const float quarterS = 15.0f / std::fmax(in.bpm, 30.0f);
+            const float backAge = t - cellBackT_;
+            const u32 cap = me.cellCap > 8 ? 8u : me.cellCap;
+            const u32 every = regenEveryBars(me.loadout.mods[kRegen]);
+            if (backAge >= 0.0f && backAge < quarterS && cellBackTo_ == cells && cells >= 1) {
+                whole = cells - 1;
+                grow = backAge / quarterS;
+            } else if (every && cells < cap) {
+                const float inBar = clampf(static_cast<float>((in.music - w.tickOfBar(w.phrase().bar)) / kTicksPerBar), 0.0f, 1.0f);
+                slots = cells + 1;
+                grow = clampf((static_cast<float>(me.regenBars) + inBar) / static_cast<float>(every), 0.0f, 1.0f);
+                growDashed = true;
+            }
+        }
+        const int haloG = whole == 0 ? -1 : (whole == slots ? gHalo_[whole] : gHaloPart_[whole][slots]);
         if (playerShown && !blinkOff(w.viewPlayer())) {
             glyph(d.glyphs, gShip_, false, S, heading, heading, shipScale, hull.intensity, 0.5f * hull.width, kGlyphPlayer, player, deep);
             glyph(d.glyphs, gShip_, true, S, heading, heading, shipScale, look_->lines.playerWhiteCopy.intensity,
                   0.5f * look_->lines.playerWhiteCopy.width, kGlyphWhite, W1, W1);
-            if (cells == 1) {
+            if (cells == 1 && haloG >= 0) {
                 // The last arc pulses in the danger colour (look.md §4).
-                glyph(d.glyphs, gHalo_[1], false, S, haloRot, haloRot, shipScale, look_->lines.playerHalo.intensity * (0.8f + 1.2f * kick_),
+                glyph(d.glyphs, haloG, false, S, haloRot, haloRot, shipScale, look_->lines.playerHalo.intensity * (0.8f + 1.2f * kick_),
                       0.5f * look_->lines.playerHalo.width, kGlyphFlat, danger, danger);
-            } else if (cells > 0) {
-                glyph(d.glyphs, gHalo_[cells], false, S, haloRot, haloRot, shipScale, look_->lines.playerHalo.intensity * haloPulse,
+            } else if (haloG >= 0) {
+                glyph(d.glyphs, haloG, false, S, haloRot, haloRot, shipScale, look_->lines.playerHalo.intensity * haloPulse,
                       0.5f * look_->lines.playerHalo.width, kGlyphRingA, player, light);
+            }
+            if (grow >= 0.0f) {
+                // The growing arc, as content/glyphs.cpp lays the halo out (design/tools/glyphs.py: arc j of n centred at
+                // 90 + j x 360 / n degrees, y up, spanning 360 / n - 26), clockwise on screen from its start.
+                const float deg = kTau / 360.0f;
+                const float n = static_cast<float>(slots);
+                const float span = (slots > 1 ? 360.0f / n - 26.0f : 320.0f) * deg;
+                const float mid = (90.0f + static_cast<float>(whole) * 360.0f / n) * deg;
+                const float phi0 = -(mid + 0.5f * span) + haloRot;
+                const float R = 1.55f * shipScale;
+                const float hw = 0.5f * look_->lines.playerHalo.width * refPx_;
+                const Vec3 lit = (cells == 1 && growDashed ? danger : mix(player, light, 0.5f)) * (look_->lines.playerHalo.intensity * haloPulse);
+                // Dashes about 8 degrees long (two at least: at eight cells an arc spans 19 degrees).
+                const u32 dashes = static_cast<u32>(clampf(span / (8.0f * deg), 2.0f, 8.0f));
+                const u32 segs = growDashed ? 2 * dashes - 1 : 14;
+                for (u32 s = 0; s < segs; ++s) {
+                    const float u0 = static_cast<float>(s) / segs, u1 = static_cast<float>(s + 1) / segs;
+                    const Vec2 p0 = S + dir(phi0 + u0 * span) * R, p1 = S + dir(phi0 + u1 * span) * R;
+                    if (growDashed) {
+                        if (s % 2) continue;  // the gaps
+                        const bool on = u0 < grow;
+                        const Vec2 q1 = on && u1 > grow ? S + dir(phi0 + grow * span) * R : p1;
+                        d.scene.line(toScene(p0), toScene(p1), 0.8f * hw, W1 * 0.6f, W1 * 0.6f, 0);  // the outline
+                        if (on) d.scene.line(toScene(p0), toScene(q1), hw, lit * 1.3f, lit * 1.3f, 0);
+                    } else if (u0 < grow) {
+                        const Vec2 q1 = u1 <= grow ? p1 : S + dir(phi0 + grow * span) * R;
+                        d.scene.line(toScene(p0), toScene(q1), hw, lit * 1.4f, lit * 1.4f, 0);
+                    }
+                }
             }
             d.pools.glow(toScene(S), look_->soft.playerPool.radius[0] * pxPerWu_, player * look_->soft.playerPool.intensity[0]);
             // Trail: 13 dashes over the last 100 wu of path, white -> player -> deep, fading to nothing.
@@ -1110,10 +1206,10 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             const Vec3 haloCore = cells == 1 ? mix(danger, W1, 0.25f) : player * 0.75f + W1 * 0.25f;
             glyph(d.threatGlyphRims, gShip_, true, S, heading, heading, shipScale, 1.0f, 0.5f * ph.width + ph.rim, kGlyphFlat, Vec3{}, Vec3{});
             glyph(d.priorityShipCores, gShip_, true, S, heading, heading, shipScale, 1.0f, 0.5f * ph.width, kGlyphFlat, hullCore, hullCore);
-            if (cells > 0) {
-                glyph(d.threatGlyphRims, gHalo_[cells], false, S, haloRot, haloRot, shipScale, 1.0f, 0.5f * pa.width + pa.rim, kGlyphFlat,
+            if (haloG >= 0) {
+                glyph(d.threatGlyphRims, haloG, false, S, haloRot, haloRot, shipScale, 1.0f, 0.5f * pa.width + pa.rim, kGlyphFlat,
                       Vec3{}, Vec3{});
-                glyph(d.priorityShipCores, gHalo_[cells], false, S, haloRot, haloRot, shipScale, 1.0f, 0.5f * pa.width, kGlyphFlat,
+                glyph(d.priorityShipCores, haloG, false, S, haloRot, haloRot, shipScale, 1.0f, 0.5f * pa.width, kGlyphFlat,
                       haloCore, haloCore);
             }
             // GAME_DESIGN 11.3: the local player's hit point is always marked by a small bright dot.
@@ -1173,38 +1269,10 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             novaPump_ = reduceFlashing_ ? look_->novaPumpReduced : look_->novaPumpBloom;
     }
 
-    // ---- Shots: a capsule as long as the shot travels in a frame (look.md v2.2 §3), a sparkle at the head.
-    const Shots& sh = w.shots();
-    {
-        const Vec3 shotHead = W1 * look_->soft.shotHead.intensity[0];
-        const Look::ShotStreak& ss = look_->shotStreak;
-        const LookLine& pl = look_->lines.playerShot;
-        // Prism's fan is a rainbow (GAME_DESIGN 7, M3 stage C2): the centre lane in the player's colour, the
-        // others 50 and 100 degrees round the OKLCH hue wheel to either side at lightness 0.80 and full chroma,
-        // white cores (the capsule's head end and its sparkle); mini-refractions in their lane's hue.
-        if (!laneReady_) {
-            const Vec3 lab = toOklab(player);
-            const float h0 = std::atan2(lab.z, lab.y), deg = kTau / 360.0f;
-            for (i32 k = -2; k <= 2; ++k)
-                laneColour_[k + 2] = k == 0 ? player : fullChroma(kPrismLaneL, h0 + static_cast<float>(k) * kPrismLaneStepDeg * deg);
-            laneReady_ = true;
-        }
-        for (u32 i = 0; i < sh.count; ++i) {
-            if (sh.dead[i]) continue;
-            const Vec2 head = lerp2(Vec2{sh.px[i], sh.py[i]}, Vec2{sh.x[i], sh.y[i]}, a);
-            const float len = std::fmax(sh.speed[i] * ss.frameS + ss.overlapWu, ss.minWu);
-            if (!visible(head, len + 4.0f) || !playerShown) continue;
-            const Vec2 tail = head - Vec2{sh.dx[i], sh.dy[i]} * len;
-            // M4: a teammate's shots in its colour (Prism's lanes are the local player's).
-            const bool mine = sh.owner[i] == w.viewPlayer();
-            const Vec3 body = !mine && sh.owner[i] < kMaxPlayers ? palettes_->player[sh.owner[i]]
-                                                                 : (shotHasLane(sh.flags[i]) ? laneColour_[shotLane(sh.flags[i]) + 2] : player);
-            // M4 (look.md 6): a teammate's shots at 0.6 of the level and 0.8 of the width.
-            const float lvl = mine ? 1.0f : 0.6f, wid = mine ? 1.0f : 0.8f;
-            d.scene.line(toScene(tail), toScene(head), 0.5f * pl.width * wid * refPx_, body * (pl.intensity * lvl), W1 * (pl.intensity * lvl), 0);
-            d.sparkles.glow(toScene(head), look_->soft.shotHead.radius[0] * refPx_ * wid, shotHead * lvl);
-        }
-    }
+    // ---- Shots: a capsule as long as the shot travels in a frame (look.md v2.2 §3), a sparkle at the head; play test 2:
+    // the build on the shots and the saturated Prism (play_view_shots.cpp).
+    if (!buildReady_) buildColours(player);
+    drawShots(d, in, a);
 
     // ---- Shards: the pickup diamond; homing ones faster than 480 wu/s carry a tail (look.md §7).
     {
@@ -1336,7 +1404,33 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     (void)lastWarpLandT_;
 }
 
-void PlayView::edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, float swell, bool ringTip) {
+void PlayView::buildColours(Vec3 player) {
+    // Prism's fan (GAME_DESIGN 7, look.md 5; play test 2: saturated): the centre lane in the player's colour, the others
+    // 60 and 120 degrees round the OKLCH hue wheel to either side at lightness 0.70 and full chroma; a lane within 30
+    // degrees of the danger hue moves to the nearest edge of that band.
+    const float deg = kTau / 360.0f;
+    const Vec3 lab = toOklab(player), dl = toOklab(palettes_->danger);
+    const float h0 = std::atan2(lab.z, lab.y), hd = std::atan2(dl.z, dl.y);
+    for (i32 k = -2; k <= 2; ++k) {
+        float h = h0 + static_cast<float>(k) * kPrismLaneStepDeg * deg;
+        const float off = wrapAngle(h - hd);
+        if (k != 0 && std::fabs(off) < kPrismDangerBandDeg * deg) h = hd + (off < 0.0f ? -1.0f : 1.0f) * kPrismDangerBandDeg * deg;
+        laneColour_[k + 2] = k == 0 ? player : fullChroma(kPrismLaneL, h);
+    }
+    laneReady_ = true;
+    // The build on the shots (look.md 5): Overcharge's heads, full chroma: white, amber (OKLCH 0.82 at 70), gold (0.88 at
+    // 95), white (with a gold rim), ice blue (0.85 at 230), electric violet (0.72 at 295, with a white core).
+    overHead_[0] = white();
+    overHead_[1] = fullChroma(0.82f, 70.0f * deg);
+    overHead_[2] = fullChroma(0.88f, 95.0f * deg);
+    overHead_[3] = white();
+    overHead_[4] = fullChroma(0.85f, 230.0f * deg);
+    overHead_[5] = fullChroma(0.72f, 295.0f * deg);
+    buildGold_ = overHead_[2];
+    buildReady_ = true;
+}
+
+void PlayView::edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, float swell, u8 tipMark) {
     const Look::EdgeIndicator& ei = look_->edge;
     const float h = (boss ? ei.bossChevron : ei.chevron) * refPx_;
     const float disc = kChevronDisc * h;
@@ -1369,7 +1463,7 @@ void PlayView::edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, flo
     } else {
         chevron(0.0f);
     }
-    if (ringTip) {
+    if (tipMark == 1) {
         // M4 (look.md 6): a downed teammate's chevron carries a small ring at its tip.
         const Vec2 tip = c + rotate(Vec2{0.5f * depth + 0.3f * s, 0.0f}, cs, sn);
         const float rr = 0.22f * s;
@@ -1378,6 +1472,15 @@ void PlayView::edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, flo
             const Vec2 p0 = tip + Vec2{std::cos(a0), std::sin(a0)} * rr, p1 = tip + Vec2{std::cos(a1), std::sin(a1)} * rr;
             d.threatRims.line(p0, p1, hw + rim, Vec3{}, Vec3{}, 0);
             d.threatCores.line(p0, p1, hw, core, core, 0);
+        }
+    } else if (tipMark == 2) {
+        // Play test 2 (look.md 6): a Cell's chevron carries a plus at its tip (the only plus sign in the game).
+        const Vec2 tip = c + rotate(Vec2{0.5f * depth + 0.32f * s, 0.0f}, cs, sn);
+        const float arm = 0.2f * s;
+        const Vec2 ends[4] = {tip + Vec2{-arm, 0.0f}, tip + Vec2{arm, 0.0f}, tip + Vec2{0.0f, -arm}, tip + Vec2{0.0f, arm}};
+        for (u32 k = 0; k < 4; k += 2) {
+            d.threatRims.line(ends[k], ends[k + 1], hw + rim, Vec3{}, Vec3{}, 0);
+            d.threatCores.line(ends[k], ends[k + 1], hw, core, core, 0);
         }
     }
     const LookSoftLight& glow = look_->soft.edgeIndicator;

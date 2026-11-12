@@ -313,6 +313,14 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     u64 hitsBy[kFamilyCount + 1] = {}, hitsInBossFight = 0, hitsBySection[4] = {};
     u64 bossWon = 0, bossLost = 0;
     double bossWonTicks = 0.0;
+    // Play test 2: the Shard level pace by Track (alive time and levels in each), and the levels and upgrades held at
+    // minutes 3, 6 and 10 in the first run (the runs still in it then).
+    double paceTicks[4] = {}, paceLevels[4] = {}, paceShards[4] = {};
+    constexpr u32 kMarks = 3;
+    const u32 markMinute[kMarks] = {3, 6, 10};
+    double levelAt[kMarks] = {}, takenAt[kMarks] = {}, modsAt[kMarks] = {}, riffsAt[kMarks] = {}, cellsAt[kMarks] = {};
+    u32 runsAt[kMarks] = {};
+    u64 levelTrios = 0, levelUps = 0, cellsTaken = 0, cellsRegrown = 0;
     const SpeciesTable::Crowd& cr = species.crowd;
     const float hw = tuning::kFrameHalfWWu, hh = tuning::kFrameHalfHWu;
     const float cw = hw * cr.countFrameScale, ch = hh * cr.countFrameScale;
@@ -344,6 +352,23 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
             const Phrase& ph = w.phrase();
             if (ph.track > maxTrack[s]) maxTrack[s] = ph.track;
             const PlayerState& p = w.player(0);
+            if (p.alive) paceTicks[(ph.track < 4 ? ph.track : 4u) - 1] += 1.0;
+            for (u32 k = 0; k < w.eventCount(); ++k) {
+                if (w.events()[k].type == EventType::LevelUp) {
+                    paceLevels[(ph.track < 4 ? ph.track : 4u) - 1] += 1.0;
+                    ++levelUps;
+                }
+                if (w.events()[k].type == EventType::Pickup && w.events()[k].a == 0) paceShards[(ph.track < 4 ? ph.track : 4u) - 1] += 1.0;
+            }
+            for (u32 m = 0; m < kMarks; ++m)
+                if (t + 1 == markMinute[m] * 3600u && runner.deaths() == 0 && p.alive) {
+                    ++runsAt[m];
+                    levelAt[m] += p.level;
+                    takenAt[m] += p.loadout.taken;
+                    cellsAt[m] += p.cellCap;
+                    for (u32 u = 0; u < kModCount; ++u) modsAt[m] += p.loadout.mods[u];
+                    for (u32 r = 0; r < kRiffCount; ++r) riffsAt[m] += p.loadout.riffs[r];
+                }
             {
                 // Boss fights: from its entrance to its death (won) or to the run's end (lost).
                 const bool on = w.boss().active && !w.boss().dying;
@@ -471,6 +496,9 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 }
         const WorldCounters& c = world->counters();
         const u32 seedKills = c.kills - c0.kills, seedShards = c.shardsDropped - c0.shardsDropped;
+        levelTrios += world->player(0).levelTrios;
+        cellsTaken += world->player(0).cellsTaken;
+        cellsRegrown += world->player(0).cellsRegrown;
         kills += seedKills;
         deaths += runner.deaths();
         overflow += (c.enemiesDropped - c0.enemiesDropped) + (c.bulletsDropped - c0.bulletsDropped) + (c.shotsDropped - c0.shotsDropped) +
@@ -527,6 +555,25 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     std::printf("[sim]   boss fights lost %.1f%%; shots alive at most %u (pool %u), held back by a player's cap %llu\n",
                 bossWon + bossLost ? 100.0 * static_cast<double>(bossLost) / static_cast<double>(bossWon + bossLost) : 0.0, shotsPeak,
                 Shots::kCap, static_cast<unsigned long long>(capped));
+    {
+        // Play test 2: the level pace by Track and what the first run holds at minutes 3, 6 and 10.
+        std::printf("[sim]   Shard levels (%s): seconds a level by Track:", god ? "god mode" : "as played");
+        for (u32 tr = 0; tr < 4; ++tr)
+            if (paceTicks[tr] > 0.0)
+                std::printf(" T%u%s %.1f s (%.0f levels in %.1f min, %.0f Shards a second)", tr + 1, tr == 3 ? "+" : "",
+                            paceLevels[tr] > 0.0 ? paceTicks[tr] / 60.0 / paceLevels[tr] : 0.0, paceLevels[tr], paceTicks[tr] / 3600.0,
+                            paceShards[tr] / (paceTicks[tr] / 60.0));
+        std::printf("\n");
+        for (u32 m = 0; m < kMarks; ++m) {
+            const double n = runsAt[m] ? static_cast<double>(runsAt[m]) : 1.0;
+            std::printf("[sim]   minute %2u (first run, %u of %u runs): level %.1f, upgrades taken %.1f (Mod stacks %.1f, Riff levels %.1f), cells %.1f\n",
+                        markMinute[m], runsAt[m], n > 0 ? seeds : 0u, levelAt[m] / n, takenAt[m] / n, modsAt[m] / n, riffsAt[m] / n, cellsAt[m] / n);
+            logTagged("RFSIM", "{\"test\":\"crowd_levels\",\"minute\":%u,\"runs\":%u,\"level\":%.2f,\"taken\":%.2f,\"mods\":%.2f,\"riffs\":%.2f}", markMinute[m], runsAt[m],
+                      levelAt[m] / n, takenAt[m] / n, modsAt[m] / n, riffsAt[m] / n);
+        }
+        std::printf("[sim]   level-ups %llu, level-up Trios opened %llu; Cells taken %llu, cells grown back by Regen %llu\n", static_cast<unsigned long long>(levelUps),
+                    static_cast<unsigned long long>(levelTrios), static_cast<unsigned long long>(cellsTaken), static_cast<unsigned long long>(cellsRegrown));
+    }
     logTagged("RFSIM", "{\"test\":\"crowd\",\"seeds\":%u,\"minutes\":%.0f,\"policy\":\"%s\",\"first_death_median\":%.2f,\"track2\":%u,\"track3\":%u,"
                        "\"kills_per_min\":%.1f,\"overflow\":%llu,\"nan\":%u,\"allocs\":%llu}",
               n, minutes, policy == Bot::Policy::Reckless ? "careless" : "careful", median, t2, t3,

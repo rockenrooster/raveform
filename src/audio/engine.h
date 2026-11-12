@@ -32,7 +32,7 @@ enum class Mode : u8 {
 
 enum class Timbre : u8 { P1Saw, P2Square, P3Bell, P4Stab, Count };
 enum class Riff : u8 { Orbitals, PulseRing, Sentinel, Count };
-enum class Form : u8 { Short, Standard };  // 8/4/8/4 or 16/8/16/8 bars (GAME_DESIGN 4.1)
+enum class Form : u8 { Short, Standard };  // 8/4/8/4 or 12/4/16/4 bars (GAME_DESIGN 4.1, play test 2)
 
 // What the band played, stamped in song time: `frame` is the write frame the sound starts on. The main
 // thread applies each one when heard time reaches it (TECH_SPEC 6.6).

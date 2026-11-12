@@ -189,8 +189,13 @@ enum class EventType : u8 {
     Refill,      // a Break gave back a cell and a Nova: a = player; b = cells now, c = Novas now
     // M4 stage B.
     Leave,       // a player's device left the run (its seat opened): a = player; x, y = where its ship was; f = heading
+    // Play test 2 (GAME_DESIGN 6.1).
+    LevelUp,     // a player's Shard meter filled: a = player; f = the level reached (its Trio opens on a coming bar line)
+    CellDrop,    // a Cell (health pickup) fell: a = its owner; x, y
+    CellTake,    // a cell came back: a = player, b = cells now, c = 1 grown back by Regen (0: a Cell taken); x, y
 };
-// Impact events on the boss carry this species, with c = 1 lens plate, 2 arm, 3 core.
+// Impact events on the boss carry this species, with c = 1 lens plate, 2 arm, 3 core. Play test 2: every Impact carries
+// b = the shooter (0xFF: none); an enemy's Impact c = a Prism lane + 3 (1..5; 0: none).
 constexpr u16 kBossSpecies = 0xFFFF;
 
 struct Event {
@@ -302,9 +307,15 @@ struct ActiveBoost {
 };
 
 // The Trio (GAME_DESIGN 6.1, screens.md): three orbs on a ring around where the ship was when the Break
-// began; the ring is the clock. Index 3 is kept for the Fusion's gold fourth orb (M5).
+// began; the ring is the clock. Index 3 is kept for the Fusion's gold fourth orb (M5). Play test 2: a level-up Trio
+// opens round the ship on a bar line in the fight, for four bars; its orbs are shelters (a ship inside an orb's thin
+// ring cannot be hurt, bodies touching it are shoved off), and the Break's Trio waits for it to close.
+enum TrioKind : u8 { kTrioBreak = 0, kTrioLevel = 1 };
 struct TrioState {
     bool open = false;
+    u8 kind = kTrioBreak;
+    u16 levelShown = 0;    // a level-up Trio's level (LEVEL n at its centre for the first bar)
+    u8 breakWaiting = 0;   // Break Trios (1, or 2 after a boss) waiting for the open level-up Trio to close
     u8 orbs = 0;
     u8 upgrade[4] = {kNoUpgrade, kNoUpgrade, kNoUpgrade, kNoUpgrade};
     u8 level[4] = {};      // the stacks or Riff level the pick gives
@@ -331,6 +342,16 @@ struct Shards {
     double born[kCap];  // musical tick
     u8 owner[kCap];     // loot is instanced per player (GAME_DESIGN 10)
     u8 homing[kCap], dead[kCap];
+};
+
+// Cells lying in the arena (play test 2, GAME_DESIGN 6.1): health pickups, instanced like Shards (each device holds its
+// own players' only), pulled by the magnet while their player is hurt, gone after eight bars.
+struct CellPickups {
+    static constexpr u32 kCap = 32;
+    u32 count = 0;
+    float x[kCap], y[kCap], px[kCap], py[kCap], vx[kCap], vy[kCap];
+    double born[kCap];  // musical tick
+    u8 owner[kCap], homing[kCap], dead[kCap];
 };
 
 struct PlayerState {
@@ -362,6 +383,14 @@ struct PlayerState {
     Vec2 beacon;
     double reviveTicks = 0.0;  // musical ticks a teammate has stood in the beacon's ring
     u32 downs = 0, revives = 0;
+    // Play test 2 (GAME_DESIGN 6.1): Shard levels; Cells and Regen. Kept on the player's own device (Shards and Cells
+    // are its own; the others hear of its Trios and cells).
+    u32 levelShards = 0;      // Shards toward the next level
+    u16 level = 0;            // levels reached this run
+    u8 levelsBanked = 0;      // levels whose Trio has not opened yet
+    float cellDue = 0.0f;     // toward the next Cell (1: the next kill near the player drops one)
+    u8 regenBars = 0;         // bars the missing cell has been growing back (Regen)
+    u32 cellsTaken = 0, cellsRegrown = 0, levelTrios = 0;
     bool invulnerable() const { return invulS > 0.0f || novaInvulS > 0.0f || dashing; }
     bool boost(u8 b) const {
         for (const ActiveBoost& a : boosts)
@@ -470,6 +499,14 @@ public:
     float tempoAt(double tick) const { return sim::tempoAt(director_, tick); }
     const TrioState& trio(u32 p) const { return trio_[p]; }
     const BoostPickups& boostPickups() const { return boostPickups_; }
+    const CellPickups& cellPickups() const { return cellPickups_; }
+    // Play test 2: a ship inside one of its own level-up Trio's orb rings (the shelter: it cannot be hurt).
+    bool sheltered(u32 p) const;
+    // Pictures and tests: a Cell for a player; Shards collected as if picked up (the level meter).
+    void dropCellNow(Vec2 pos, u8 owner) { spawnCell(pos, Vec2{}, owner); }
+    void collectShardsNow(u32 p, u32 n) {
+        for (u32 k = 0; k < n; ++k) collectShard(p);
+    }
     const BossState& boss() const { return boss_; }
     const BossData& bossData() const { return species_->boss; }
     // The lead grid (musical ticks per shot) a player fires on now: 1/16, moved along by Double-Time and
@@ -478,7 +515,7 @@ public:
     // Pictures and tests: give a player an upgrade or a Boost, open a Trio, bring the boss in now.
     void grantUpgrade(u32 p, u8 upgrade) { applyUpgrade(p, upgrade); }
     void grantBoost(u32 p, u8 boost) { activateBoost(p, boost); }
-    void openTrioNow(u32 p, double closeTick, const u8* forced = nullptr);
+    void openTrioNow(u32 p, double closeTick, const u8* forced = nullptr, u8 kind = kTrioBreak);
     void spawnBossNow(double enterTick, Vec2 pos);
     void dropBoost(Vec2 pos, u8 type);
     // Boss geometry for the view, the band and tests.
@@ -601,8 +638,18 @@ private:
     void spawnShape(u16 species, u32 count, double landTick);
     Vec2 spawnAnchor(Vec2 player);
     // world_upgrades.cpp
-    void openTrio(u32 p, double closeTick);
+    void openTrio(u32 p, double closeTick, u8 kind = kTrioBreak, u16 level = 0);
     void updateTrios();
+    // Play test 2 (world_upgrades.cpp): Shard levels and their Trios, the orbs' shelter, Cells, Regen.
+    void collectShard(u32 p);
+    void openLevelTrios(u32 bar);
+    void shelterTrios();
+    void cellClock();               // every tick: the Cells' drop clock per player
+    void regenBar();                // every bar line: Regen
+    bool dropCellFor(u32 p, Vec2 at, u32& rngState);  // a death near p: its Cell, when one is due
+    void spawnCell(Vec2 at, Vec2 vel, u8 owner);
+    void updateCells(float dt);
+    u32 cellsLoose(u32 p) const;
     void takeOrb(u32 p, u32 k);
     void applyUpgrade(u32 p, u8 upgrade);
     void updateRiffs(float dt);
@@ -659,7 +706,9 @@ private:
     Phrase phrase_;
     TrioState trio_[kMaxPlayers];
     BoostPickups boostPickups_;
+    CellPickups cellPickups_;
     BossState boss_;
+    u8 hitShotFlags_ = 0;  // play test 2: the flags of the shot whose hit hitEnemy() is applying (its Impact's Prism lane)
     Rng rng_{1};         // the director's stream
     Rng upgradeRng_{2};  // Trios and Boost types (their own stream, so a pick never moves a spawn)
     u64 seed_ = 1;

@@ -5,11 +5,12 @@
 // formations from it (sim/world_spawner.cpp) and the band is told where it is (game/play.cpp), so the
 // sim is the one source of the form and the music follows it on bar lines.
 //
-// Track 1 "First Light" plays four Short cycles (8/4/8/4 bars); its fourth Drop brings Kaleidos and is
-// held while Kaleidos lives. Its death schedules the Track-change Break (eight bars: tempo, key and
-// palette cross-fade, conductor.json trackChange) into Track 2 "Solar Wind", three Standard cycles
-// (16/8/16/8) ending in Kaleidos again. After that the run loops First Light and Solar Wind by the
-// endless rule (GAME_DESIGN 4.2, last row: +4 BPM per Track, capped at 174) with the budget still rising.
+// Track 1 "First Light" plays three Short cycles (8/4/8/4 bars; play test 2: it had four); its third Drop
+// brings Kaleidos and is held while Kaleidos lives. Its death schedules the Track-change Break (eight bars:
+// tempo, key and palette cross-fade, conductor.json trackChange) into Track 2 "Solar Wind", three Standard
+// cycles (12/4/16/4 since play test 2; it was 16/8/16/8) ending in Kaleidos again, then Track 3 "Reef" the same.
+// After that the run loops by the endless rule (GAME_DESIGN 4.2, last row: +4 BPM per Track, capped at 174) with
+// the budget still rising.
 
 #include "sim/sim_types.h"
 #include "sim/species.h"
@@ -19,7 +20,7 @@ namespace rf::sim {
 enum class Section : u8 { Groove, Build, Drop, Break };  // the order of audio::Section
 const char* sectionLabel(Section s);                      // "GROOVE", ...
 
-constexpr u32 kSectionBars[2][4] = {{8, 4, 8, 4}, {16, 8, 16, 8}};  // GAME_DESIGN 4.1: Short, Standard
+constexpr u32 kSectionBars[2][4] = {{8, 4, 8, 4}, {12, 4, 16, 4}};  // GAME_DESIGN 4.1 (play test 2): Short, Standard
 constexpr u32 kTrackChangeBars = 8;  // the band's Track-change Break (conductor.json trackChange)
 constexpr u32 kNoBar = 0xFFFFFFFFu;
 
@@ -28,7 +29,7 @@ constexpr u32 kNoBar = 0xFFFFFFFFu;
 constexpr u32 kSongs = 3;
 inline u8 songOfTrack(u32 track) { return static_cast<u8>((track + kSongs - 1) % kSongs); }
 inline u32 formOfTrack(u32 track) { return songOfTrack(track) == 0 ? 0u : 1u; }  // First Light Short, the others Standard
-inline u32 cyclesOfTrack(u32 track) { return songOfTrack(track) == 0 ? 4u : 3u; }  // GAME_DESIGN 4.2
+inline u32 cyclesOfTrack(u32 /*track*/) { return 3u; }  // GAME_DESIGN 4.2 (play test 2: Track 1 too)
 float bpmOfTrack(u32 track);  // 120, 126, 132, then +4 per Track up to 174 (GAME_DESIGN 4.2)
 const char* songName(u32 song);  // "FIRST LIGHT", "SOLAR WIND", "REEF"
 
@@ -36,7 +37,7 @@ struct Phrase {
     u32 bar = 0;               // bars since the run began
     u8 track = 1;              // the run's Track (1, 2, 3, then 4 = First Light again, ...)
     u8 song = 0;               // its music: 0 First Light, 1 Solar Wind, 2 Reef
-    u8 cycle = 1, cycles = 4;  // 1-based; 0 in the Track-change Break
+    u8 cycle = 1, cycles = 3;  // 1-based; 0 in the Track-change Break
     Section section = Section::Groove;
     u16 sectionBar = 0, sectionBars = 8;  // a held boss Drop keeps counting past sectionBars
     bool trackChange = false;  // the Break after a boss: into `track`

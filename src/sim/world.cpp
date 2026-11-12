@@ -76,6 +76,7 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask) {
     phrase_ = phraseAt(director_, 0);
     for (TrioState& t : trio_) t = TrioState{};
     boostPickups_.count = 0;
+    cellPickups_.count = 0;
     boss_ = BossState{};
     rules_.scoreMultiplier = rules_.magnetMultiplier = 1.0f;
     // M4: the co-op bookkeeping (nothing in solo reads it).
@@ -140,7 +141,9 @@ void World::tick(const TickInput& in) {
     updateBoss(dt);
     updateRiffs(dt);
     updateTrios();
+    shelterTrios();  // play test 2: bodies touching a level-up orb's ring are shoved off before the contacts
     updateBoosts();
+    updateCells(dt);
     moveProjectiles(dt);
     collide();
     bossContact();
@@ -525,6 +528,7 @@ void World::collide() {
                     ev.species = kBossSpecies;
                     ev.c = part;
                     ev.a = pair;
+                    ev.b = s.owner[k];
                     ev.x = ax + dx * bt;
                     ev.y = ay + dy * bt;
                     ev.x2 = s.dx[k];
@@ -540,6 +544,8 @@ void World::collide() {
             Event ev;
             ev.type = EventType::Impact;
             ev.species = e.species[best];
+            ev.b = s.owner[k];
+            ev.c = shotHasLane(s.flags[k]) ? static_cast<u8>(shotLane(s.flags[k]) + 3) : 0;
             ev.x = ax + dx * bestT;
             ev.y = ay + dy * bestT;
             ev.x2 = s.dx[k];
@@ -579,7 +585,9 @@ void World::collide() {
         }
         const bool crit = (s.flags[k] & kShotCrit) != 0 && s.kind[k] == kShotPrimary;
         const float dmg = s.damage[k];
+        hitShotFlags_ = s.flags[k];  // play test 2: its Impact shows the shot's Prism lane
         hitEnemy(i, dmg, owner, at, dir);
+        hitShotFlags_ = 0;
         if (crit) critBurst(i, owner, at, dmg * kCritBurstShare);
         if (refract) {
             s.flags[k] = static_cast<u8>(s.flags[k] | kShotRefracted);
@@ -596,6 +604,7 @@ void World::collide() {
         PlayerState& pl = players_[p];
         if (!pl.alive || !isLocal(p)) continue;
         if (pl.invulnerable() || rules_.godMode) continue;
+        if (sheltered(p)) continue;  // play test 2: inside a level-up orb's ring nothing hurts it
         const Vec2 c = pl.pos;
         i32 contact = -1;
         const float reach = kMaxEnemyRadius + kGridSlack + kPlayerHitRadius;
@@ -638,6 +647,7 @@ void World::collide() {
         ev.x = h.x[i];
         ev.y = h.y[i];
         emit(ev);
+        collectShard(h.owner[i]);  // play test 2: the Shard level meter
     }
 }
 
@@ -749,7 +759,6 @@ void World::killEnemy(u32 i, u8 killer) {
 }
 
 void World::dropShards(u32 i, u8 killer) {
-    (void)killer;
     // Every enemy death drops its Shards for each player separately (GAME_DESIGN 5, 10); Magnet Storm:
     // kills drop double (GAME_DESIGN 6.4).
     // Co-op: each device keeps its own players' Shards only (they are local, TECH_SPEC 8.1), and a player gets
@@ -761,6 +770,8 @@ void World::dropShards(u32 i, u8 killer) {
         if (!players_[p].present || !isLocal(p)) continue;
         if (coop() && (std::fabs(e.x[i] - players_[p].pos.x) > kCoopShardReachW || std::fabs(e.y[i] - players_[p].pos.y) > kCoopShardReachH))
             continue;
+        // Play test 2 (GAME_DESIGN 6.1): a kill (not a Break's dissolve) near a hurt player drops its Cell when one is due.
+        if (killer != 0xFF) dropCellFor(p, Vec2{e.x[i], e.y[i]}, e.rng[i]);
         u32 n = players_[p].boost(kMagnetStorm) ? 2u * s.shards : s.shards;
         // Play test 1: while the Shard pool is crowded a death drops one, and none in its last 64 places (the
         // stronger build's bursts: a Drop's mega-wave, a boss's 200), so the pool never overflows.
@@ -1132,6 +1143,25 @@ u64 World::hash() const {
     for (const TrioState& t : trio_) {
         val(t.holdOrb);
         val(t.holdTicks);
+        val(t.kind);
+        val(t.breakWaiting);
+    }
+    // Play test 2: Shard levels, Cells, Regen.
+    for (u32 p = 0; p < kMaxPlayers; ++p) {
+        const PlayerState& pl = players_[p];
+        val(pl.levelShards);
+        val(pl.level);
+        val(pl.levelsBanked);
+        val(pl.cellDue);
+        val(pl.regenBars);
+    }
+    {
+        const CellPickups& c = cellPickups_;
+        val(c.count);
+        mix(c.x, c.count * sizeof(float));
+        mix(c.y, c.count * sizeof(float));
+        mix(c.born, c.count * sizeof(double));
+        mix(c.owner, c.count);
     }
     if (role_ != NetRole::Solo) {
         // M4: what co-op adds (solo hashes stay what M3's were).
@@ -1161,6 +1191,7 @@ bool World::finite() const {
     if (!ok(bullets_.x, bullets_.count) || !ok(bullets_.y, bullets_.count)) return false;
     if (!ok(shots_.x, shots_.count) || !ok(shots_.y, shots_.count)) return false;
     if (!ok(shards_.x, shards_.count) || !ok(shards_.y, shards_.count)) return false;
+    if (!ok(cellPickups_.x, cellPickups_.count) || !ok(cellPickups_.y, cellPickups_.count)) return false;
     for (u32 p = 0; p < playerCount_; ++p)
         if (!std::isfinite(players_[p].pos.x) || !std::isfinite(players_[p].pos.y)) return false;
     return true;

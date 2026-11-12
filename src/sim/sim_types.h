@@ -37,9 +37,9 @@ constexpr float kPlayerSpeed = 520.0f;
 constexpr float kPlayerVisualRadius = 14.0f;
 constexpr float kPlayerHitRadius = 5.0f;
 constexpr float kShotSpeed = 1400.0f;
-// Play test 1 (2026-11-12, "easy, almost a power fantasy"): 4 cells (cap 6) and 3 Novas (capacity 4) at the start,
-// one of each back at every Break, the Dash in two beats.
-constexpr u8 kStartCells = 4, kMaxCells = 6;
+// Play test 1 (2026-11-12, "easy, almost a power fantasy"): 4 cells and 3 Novas (capacity 4) at the start, one of each
+// back at every Break, the Dash in two beats. Play test 2: Extra Cell takes the cells up to 8 (the halo's eight arcs).
+constexpr u8 kStartCells = 4, kMaxCells = 8;
 constexpr u8 kStartNovas = 3, kNovaCapacity = 4;
 constexpr float kInvulnerableS = 2.5f;  // play test 1, second pass (GAME_DESIGN 5): 1.5 -> 2.5 s
 constexpr float kPanicRadiusWu = 220.0f;

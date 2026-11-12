@@ -780,7 +780,7 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate) {
         swellHalf_[t] = put(makeSwell(bar * 0.5, sr, n));
         std::snprintf(label, sizeof label, "swellbar_%u", t);
         swellBar_[t] = put(makeSwell(bar, sr, n));
-        // Risers for every Build length the staged arrangement and the phrase cycle use (4 or 8 bars).
+        // Risers for every Build length the staged arrangement and the phrase cycle use.
         u32 lengths[4];
         u32 nl = 0;
         const auto want = [&](u32 bars) {
@@ -788,10 +788,10 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate) {
                 if (lengths[i] == bars) return;
             if (nl < 4) lengths[nl++] = bars;
         };
-        // The staged arrangement's Builds and the phrase cycle's (Short form for Track 1, Standard after).
+        // The staged arrangement's Builds and the phrase cycle's (four bars in both forms since play test 2).
         for (u32 i = 0; i < tr.partCount; ++i)
             if (tr.parts[i].section == Section::Build) want(tr.parts[i].bars);
-        want(t == 0 ? 4 : 8);
+        want(4);
         for (u32 i = 0; i < nl && riserCount_ < countOf(risers_); ++i) {
             std::snprintf(label, sizeof label, "riser_%u_%u", t, lengths[i]);
             float* r = makeRiser(lengths[i] * bar, sr, n);

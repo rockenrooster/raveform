@@ -856,6 +856,8 @@ void Session::afterTick() {
             }
             k += n;
         }
+        // Play test 2: in serial order a death costs a byte or two (putDeaths); the order within a tick does not matter.
+        std::sort(log.deaths, log.deaths + log.deathCount, [](const NetDeath& a, const NetDeath& b) { return a.serial < b.serial; });
         for (u32 k = 0; k < log.deathCount;) {
             u32 n = rel_.putDeaths(run, log.deaths + k, log.deathCount - k);
             if (!n) {

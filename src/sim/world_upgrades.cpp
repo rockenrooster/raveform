@@ -79,6 +79,8 @@ void World::hitEnemy(u32 i, float dmg, u8 owner, Vec2 at, Vec2 dir) {
     Event ev;
     ev.type = EventType::Impact;
     ev.species = e.species[i];
+    ev.b = owner;  // play test 2: the shooter's build colours the sparks; a Prism shot's lane
+    ev.c = shotHasLane(hitShotFlags_) ? static_cast<u8>(shotLane(hitShotFlags_) + 3) : 0;
     ev.x = at.x;
     ev.y = at.y;
     ev.x2 = dir.x;
@@ -88,7 +90,7 @@ void World::hitEnemy(u32 i, float dmg, u8 owner, Vec2 at, Vec2 dir) {
 
 // ---------------------------------------------------------------------------------------------- Trio
 
-void World::openTrio(u32 p, double closeTick) {
+void World::openTrio(u32 p, double closeTick, u8 kind, u16 level) {
     TrioState& tr = trio_[p];
     PlayerState& pl = players_[p];
     u8 opts[3];
@@ -96,6 +98,8 @@ void World::openTrio(u32 p, double closeTick) {
     tr.open = n > 0;
     tr.homing = -1;
     if (!n) return;
+    tr.kind = kind;
+    tr.levelShown = kind == kTrioLevel ? level : 0;
     tr.orbs = static_cast<u8>(n);
     tr.centre = pl.pos;
     // Keep the whole ring inside the arena.
@@ -109,7 +113,7 @@ void World::openTrio(u32 p, double closeTick) {
     for (u32 k = 0; k < 4; ++k) tr.upgrade[k] = kNoUpgrade;
     for (u32 k = 0; k < n; ++k) {
         tr.upgrade[k] = opts[k];
-        tr.level[k] = static_cast<u8>(pl.loadout.level(opts[k]) + 1);
+        tr.level[k] = isBoostOrb(opts[k]) ? 0 : static_cast<u8>(pl.loadout.level(opts[k]) + 1);
         tr.orbPos[k] = tr.centre + kOrbAt[k] * kTrioRingWu;
     }
     ++tr.opened;
@@ -117,20 +121,23 @@ void World::openTrio(u32 p, double closeTick) {
     ev.type = EventType::TrioOpen;
     ev.a = static_cast<u8>(p);
     ev.b = static_cast<u8>(n);
+    ev.c = tr.kind;
     ev.x = tr.centre.x;
     ev.y = tr.centre.y;
+    ev.x2 = static_cast<float>(tr.levelShown);  // M4: the others hear the kind and the level (net/session.cpp)
+    ev.y2 = static_cast<float>(tr.kind);
     ev.tick = closeTick;
     emit(ev);
 }
 
-void World::openTrioNow(u32 p, double closeTick, const u8* forced) {
-    openTrio(p, closeTick);
+void World::openTrioNow(u32 p, double closeTick, const u8* forced, u8 kind) {
+    openTrio(p, closeTick, kind, players_[p].level);
     TrioState& tr = trio_[p];
     if (!forced || !tr.open) return;
     for (u32 k = 0; k < 3; ++k) {
-        if (forced[k] >= kUpgradeCount) continue;
+        if (!validOrb(forced[k])) continue;
         tr.upgrade[k] = forced[k];
-        tr.level[k] = static_cast<u8>(players_[p].loadout.level(forced[k]) + 1);
+        tr.level[k] = isBoostOrb(forced[k]) ? 0 : static_cast<u8>(players_[p].loadout.level(forced[k]) + 1);
     }
     tr.orbs = 3;
 }
@@ -138,12 +145,16 @@ void World::openTrioNow(u32 p, double closeTick, const u8* forced) {
 void World::takeOrb(u32 p, u32 k) {
     TrioState& tr = trio_[p];
     const u8 u = tr.upgrade[k];
-    applyUpgrade(p, u);
+    // Play test 2: a Boost orb (every Mod and Riff at its cap) gives its Boost.
+    if (isBoostOrb(u))
+        activateBoost(p, boostOfOrb(u));
+    else
+        applyUpgrade(p, u);
     Event ev;
     ev.type = EventType::TrioTake;
     ev.a = static_cast<u8>(p);
     ev.b = u;
-    ev.c = static_cast<u8>(players_[p].loadout.level(u));
+    ev.c = isBoostOrb(u) ? 0 : static_cast<u8>(players_[p].loadout.level(u));
     ev.x = tr.orbPos[k].x;
     ev.y = tr.orbPos[k].y;
     emit(ev);
@@ -164,12 +175,22 @@ void World::takeOrb(u32 p, u32 k) {
     tr.homing = -1;
     tr.holdOrb = -1;
     tr.holdTicks = 0.0;
-    if (tr.queued > 0 && phrase_.section == Section::Break) {
+    const bool level = tr.kind == kTrioLevel;
+    const double breakEnd = tickOfBar(phrase_.bar - phrase_.sectionBar + phrase_.sectionBars);
+    if (level && tr.breakWaiting > 0 && phrase_.section == Section::Break) {
+        // Play test 2: the Break began while this level-up Trio was open; its own Trio opens now with the rest of the Break
+        // as its clock (after a boss, the bonus Trio first with half of what is left, then the Break's).
+        const u8 n = tr.breakWaiting;
+        tr.breakWaiting = 0;
+        tr.queued = static_cast<u8>(n - 1);
+        openTrio(p, n > 1 ? m1_ + 0.5 * (breakEnd - m1_) : breakEnd);
+    } else if (!level && tr.queued > 0 && phrase_.section == Section::Break) {
         // The boss's bonus Trio was this one: the Break's own follows, with the rest of the Break as its clock.
         --tr.queued;
-        openTrio(p, tickOfBar(phrase_.bar - phrase_.sectionBar + phrase_.sectionBars));
+        openTrio(p, breakEnd);
     } else {
         tr.queued = 0;
+        tr.breakWaiting = 0;
     }
 }
 
@@ -561,9 +582,11 @@ void World::activateBoost(u32 p, u8 type) {
     slot->hits = type == kHalo ? static_cast<u8>(kHaloHits) : 0;
     ++pl.boostsTaken;
     if (type == kMagnetStorm) {
-        // Every Shard of this player on the map flies in.
+        // Every Shard of this player on the map flies in (play test 2: its Cells too, while it is hurt).
         for (u32 i = 0; i < shards_.count; ++i)
             if (shards_.owner[i] == p) shards_.homing[i] = 1;
+        for (u32 i = 0; i < cellPickups_.count; ++i)
+            if (cellPickups_.owner[i] == p && pl.cells < pl.cellCap) cellPickups_.homing[i] = 1;
     }
     Event ev;
     ev.type = EventType::BoostTake;
@@ -646,6 +669,238 @@ void World::updateBoosts() {
         b.type[i] = b.type[l];
         b.dead[i] = b.dead[l];
         b.owner[i] = b.owner[l];
+    }
+}
+
+// ---------------------------------------------------------------------------------------------- play test 2
+
+void World::collectShard(u32 p) {
+    // GAME_DESIGN 6.1 (Shard levels): collected Shards fill the level meter; each fill is a level, whose Trio opens round
+    // the ship on a coming bar line (openLevelTrios; banked while a Trio is open).
+    if (p >= kMaxPlayers) return;
+    PlayerState& pl = players_[p];
+    const u32 need = levelShards(static_cast<u32>(pl.level) + 1u);
+    if (++pl.levelShards < need) return;
+    pl.levelShards -= need;
+    if (pl.level < 0xFFFF) ++pl.level;
+    if (pl.levelsBanked < 255) ++pl.levelsBanked;
+    Event ev;
+    ev.type = EventType::LevelUp;
+    ev.a = static_cast<u8>(p);
+    ev.f = static_cast<float>(pl.level);
+    ev.x = pl.pos.x;
+    ev.y = pl.pos.y;
+    emit(ev);
+}
+
+void World::openLevelTrios(u32 bar) {
+    // A banked level opens its Trio round the ship on this bar line, for four bars, in the fight (the oldest level
+    // first). Not while a Trio is open (the next waits for the bar line after it closes), and not when a Break begins
+    // within its four bars: the Break's own Trio keeps its place and the level waits for it.
+    for (u32 p = 0; p < playerCount_; ++p) {
+        PlayerState& pl = players_[p];
+        TrioState& tr = trio_[p];
+        if (!pl.levelsBanked || !pl.present || !pl.alive || !isLocal(p) || tr.open) continue;
+        bool breakSoon = false;
+        for (u32 k = 1; k <= kLevelTrioClearBars && !breakSoon; ++k) {
+            const Phrase ph = phraseAt(director_, bar + k);
+            breakSoon = ph.section == Section::Break && ph.sectionBar == 0;
+        }
+        if (breakSoon) continue;
+        const u16 level = static_cast<u16>(pl.level - pl.levelsBanked + 1u);
+        --pl.levelsBanked;
+        ++pl.levelTrios;
+        openTrio(p, tickOfBar(bar + kLevelTrioBars), kTrioLevel, level);
+    }
+}
+
+bool World::sheltered(u32 p) const {
+    // A ship inside one of its own level-up Trio's thin orb rings cannot be hurt (until the clock ends).
+    if (p >= kMaxPlayers) return false;
+    const TrioState& tr = trio_[p];
+    if (!tr.open || tr.kind != kTrioLevel || tr.homing >= 0) return false;
+    const Vec2 s = players_[p].pos;
+    for (u32 k = 0; k < tr.orbs; ++k) {
+        const float r = kTrioHoldRing * kTrioOrbWu * (isRiff(tr.upgrade[k]) ? kTrioRiffScale : 1.0f);
+        if (lengthSq(tr.orbPos[k] - s) <= r * r) return true;
+    }
+    return false;
+}
+
+void World::shelterTrios() {
+    // The orbs of a level-up Trio are shelters: a body touching an orb's thin ring is set outside it and shoved off (on
+    // every device: the Trio is known everywhere). The boss is not moved.
+    Enemies& e = enemies_;
+    for (u32 p = 0; p < playerCount_; ++p) {
+        const TrioState& tr = trio_[p];
+        if (!tr.open || tr.kind != kTrioLevel || tr.homing >= 0) continue;
+        for (u32 k = 0; k < tr.orbs; ++k) {
+            const Vec2 o = tr.orbPos[k];
+            const float ring = kTrioHoldRing * kTrioOrbWu * (isRiff(tr.upgrade[k]) ? kTrioRiffScale : 1.0f);
+            const float reach = ring + kQuerySlackWu;
+            grid_.query(o.x - reach, o.y - reach, o.x + reach, o.y + reach, [&](u32 i) {
+                if (e.flags[i] & kFlagDead) return;
+                const Vec2 d = Vec2{e.x[i], e.y[i]} - o;
+                const float rr = ring + e.radius[i];
+                const float d2 = lengthSq(d);
+                if (d2 >= rr * rr) return;
+                const float l = std::sqrt(d2);
+                const Vec2 n = l > 1e-3f ? d * (1.0f / l) : dirOf(static_cast<float>(e.serial[i] % 360u) * kDeg);
+                e.x[i] = o.x + n.x * rr;
+                e.y[i] = o.y + n.y * rr;
+                e.kx[i] += n.x * kShelterShoveWu;
+                e.ky[i] += n.y * kShelterShoveWu;
+            });
+        }
+    }
+}
+
+void World::cellClock() {
+    // Cells (GAME_DESIGN 6.1): a hurt player's Cell comes due about every 40 s with one cell missing and every 15 s on the
+    // last cell (linear in between); the next kill near it drops the Cell (dropCellFor). At full health the clock rests.
+    for (u32 p = 0; p < playerCount_; ++p) {
+        PlayerState& pl = players_[p];
+        if (!pl.present || !pl.alive || !isLocal(p) || pl.cells >= pl.cellCap) {
+            pl.cellDue = 0.0f;
+            continue;
+        }
+        float every = kCellEveryLastS;
+        if (pl.cells > 1 && pl.cellCap > 2) {
+            const float u = static_cast<float>(pl.cells - 1u) / static_cast<float>(pl.cellCap - 2u);  // 0 the last cell, 1 one missing
+            every = kCellEveryLastS + (kCellEveryOneMissingS - kCellEveryLastS) * clampf(u, 0.0f, 1.0f);
+        }
+        pl.cellDue = std::fmin(pl.cellDue + kDt / every, 1.0f);
+    }
+}
+
+u32 World::cellsLoose(u32 p) const {
+    u32 n = 0;
+    for (u32 i = 0; i < cellPickups_.count; ++i) n += (!cellPickups_.dead[i] && cellPickups_.owner[i] == p) ? 1u : 0u;
+    return n;
+}
+
+bool World::dropCellFor(u32 p, Vec2 at, u32& rngState) {
+    PlayerState& pl = players_[p];
+    if (spawner_.mode != Spawner::Mode::Slice || pl.cellDue < 1.0f || pl.cells >= pl.cellCap || !pl.alive) return false;
+    if (cellsLoose(p) >= kCellsLooseMax) return false;  // at most two loose (it stays due)
+    pl.cellDue = 0.0f;
+    spawnCell(at, dirOf(randRange(rngState, 0.0f, kTau)) * randRange(rngState, kShardBurstLo, kShardBurstHi), static_cast<u8>(p));
+    return true;
+}
+
+void World::spawnCell(Vec2 at, Vec2 vel, u8 owner) {
+    CellPickups& c = cellPickups_;
+    if (c.count >= CellPickups::kCap || owner >= kMaxPlayers) return;
+    const u32 i = c.count++;
+    c.x[i] = c.px[i] = clampf(at.x, -kArenaHalfW + 40.0f, kArenaHalfW - 40.0f);
+    c.y[i] = c.py[i] = clampf(at.y, -kArenaHalfH + 40.0f, kArenaHalfH - 40.0f);
+    c.vx[i] = vel.x;
+    c.vy[i] = vel.y;
+    c.born[i] = m1_;
+    c.owner[i] = owner;
+    c.homing[i] = 0;
+    c.dead[i] = 0;
+    Event ev;
+    ev.type = EventType::CellDrop;
+    ev.a = owner;
+    ev.x = c.x[i];
+    ev.y = c.y[i];
+    emit(ev);
+}
+
+void World::updateCells(float dt) {
+    // A Cell drifts to a stop, homes in on its player inside the magnet while that player is hurt (Magnet as for Shards),
+    // is taken when its ring touches the ship (a Shield cell back) and fades after eight bars. At full health it waits.
+    CellPickups& c = cellPickups_;
+    const double life = kCellLifeBars * kTicksPerBar;
+    const float drag = std::exp(-kShardDrag * dt);
+    for (u32 i = 0; i < c.count; ++i) {
+        c.px[i] = c.x[i];
+        c.py[i] = c.y[i];
+        if (c.dead[i]) continue;
+        if (m1_ - c.born[i] > life) {
+            c.dead[i] = 1;
+            continue;
+        }
+        PlayerState& pl = players_[c.owner[i]];
+        const bool hurt = pl.present && pl.alive && pl.cells < pl.cellCap;
+        Vec2 to{};
+        float dist = 0.0f;
+        if (hurt) {
+            to = pl.pos - Vec2{c.x[i], c.y[i]};
+            dist = length(to);
+            if (dist <= kCellPickupWu) {
+                c.dead[i] = 1;
+                ++pl.cells;
+                ++pl.cellsTaken;
+                Event ev;
+                ev.type = EventType::CellTake;
+                ev.a = c.owner[i];
+                ev.b = pl.cells;
+                ev.c = 0;
+                ev.x = c.x[i];
+                ev.y = c.y[i];
+                emit(ev);
+                continue;
+            }
+            const float magnet = kShardMagnetWu * rules_.magnetMultiplier * (1.0f + kMagnetPerStack * static_cast<float>(pl.loadout.mods[kMagnet]));
+            if (dist < magnet) c.homing[i] = 1;
+        } else {
+            c.homing[i] = 0;
+        }
+        if (c.homing[i] && dist > 1e-3f) {
+            const float speed = std::fmin(length(Vec2{c.vx[i], c.vy[i]}) + kShardHomeAccel * dt, kShardHomeMax);
+            const Vec2 d = to * (1.0f / dist);
+            c.vx[i] = d.x * speed;
+            c.vy[i] = d.y * speed;
+        } else {
+            c.vx[i] *= drag;
+            c.vy[i] *= drag;
+        }
+        c.x[i] = clampf(c.x[i] + c.vx[i] * dt, -kArenaHalfW, kArenaHalfW);
+        c.y[i] = clampf(c.y[i] + c.vy[i] * dt, -kArenaHalfH, kArenaHalfH);
+    }
+    for (u32 i = 0; i < c.count;) {
+        if (!c.dead[i]) {
+            ++i;
+            continue;
+        }
+        const u32 l = --c.count;
+        c.x[i] = c.x[l];
+        c.y[i] = c.y[l];
+        c.px[i] = c.px[l];
+        c.py[i] = c.py[l];
+        c.vx[i] = c.vx[l];
+        c.vy[i] = c.vy[l];
+        c.born[i] = c.born[l];
+        c.owner[i] = c.owner[l];
+        c.homing[i] = c.homing[l];
+        c.dead[i] = c.dead[l];
+    }
+}
+
+void World::regenBar() {
+    // Regen (Mod 18, play test 2): while a cell is missing it grows back by itself every 16, 8, then 4 bars (counted on bar
+    // lines; the view draws the growing arc). Each device its own players'.
+    for (u32 p = 0; p < playerCount_; ++p) {
+        PlayerState& pl = players_[p];
+        const u32 every = regenEveryBars(pl.loadout.mods[kRegen]);
+        if (!every || !pl.present || !pl.alive || !isLocal(p) || pl.cells >= pl.cellCap) {
+            pl.regenBars = 0;
+            continue;
+        }
+        if (++pl.regenBars < every) continue;
+        pl.regenBars = 0;
+        ++pl.cells;
+        ++pl.cellsRegrown;
+        Event ev;
+        ev.type = EventType::CellTake;
+        ev.a = static_cast<u8>(p);
+        ev.b = pl.cells;
+        ev.c = 1;
+        ev.x = pl.pos.x;
+        ev.y = pl.pos.y;
+        emit(ev);
     }
 }
 

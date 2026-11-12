@@ -280,6 +280,16 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
         const float dist = length(d);
         if (dist < 650.0f && dist > 1e-3f) force = force + d * (1.2f / dist);
     }
+    // Play test 2: its own Cells while it is hurt (harder on the last cell).
+    if (me.cells < me.cellCap) {
+        const CellPickups& cp = w.cellPickups();
+        for (u32 k = 0; k < cp.count; ++k) {
+            if (cp.dead[k] || cp.owner[k] != player) continue;
+            const Vec2 d = Vec2{cp.x[k], cp.y[k]} - pos;
+            const float dist = length(d);
+            if (dist < 650.0f && dist > 1e-3f) force = force + d * ((me.cells <= 1 ? 2.0f : 1.2f) / dist);
+        }
+    }
     // Walls.
     const auto wall = [&](float distToWall, Vec2 inward) {
         if (distToWall < kWallReachWu) force = force + inward * (2.0f * (kWallReachWu - distToWall) / kWallReachWu);

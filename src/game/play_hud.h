@@ -57,6 +57,11 @@ struct HudState {
     u64 score = 0;
     u32 chain = 0;
     float chainPulse = 0.0f;  // 1 on a pickup, decaying
+    // Play test 2 (look.md 6): the Shard level under the Chain.
+    u32 level = 0;            // LV n
+    float levelFill = 0.0f;   // the meter toward the next level (0..1)
+    bool levelFull = false;   // a level waits for its Trio (the bar stays full, flashing white)
+    float levelFlash = 0.0f;  // 1 as a level fills, decaying
     u32 novas = 0, novaCap = 3;
     float dashCharge = 1.0f;
     bool alive = true;
