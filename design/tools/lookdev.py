@@ -633,14 +633,21 @@ def _capsule_mask(w, h, x0, y0, x1, y1, radius):
 
 
 def _add_glow(hdr, x, y, radius, colour):
-    """Gaussian with sigma = radius / 2.45 (about 5% at `radius`), cut off at 1.25 radius."""
-    box = _clip_box(hdr.shape[1], hdr.shape[0], (x,), (y,), radius * 1.25)
+    """Gaussian with sigma = radius / 2.45 (about 5% at `radius`), cut off at 1.25 radius.
+
+    It fades to zero over the last fifth of the cut-off along a circle (1 - smoothstep(0.8 cut, cut, r)),
+    as shaders/glow.frag does since M3 stage C: a very bright light used to show its square box.
+    """
+    cut = radius * 1.25
+    box = _clip_box(hdr.shape[1], hdr.shape[0], (x,), (y,), cut)
     if box is None:
         return
     x0, y0, x1, y1 = box
     yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
     sigma = radius / 2.45
-    g = np.exp(-((xx + 0.5 - x) ** 2 + (yy + 0.5 - y) ** 2) / (2 * sigma * sigma))   # sampled at pixel centres
+    d2 = (xx + 0.5 - x) ** 2 + (yy + 0.5 - y) ** 2                                    # sampled at pixel centres
+    u = np.clip((np.sqrt(d2) - 0.8 * cut) / (0.2 * cut), 0.0, 1.0)
+    g = np.exp(-d2 / (2 * sigma * sigma)) * (1.0 - u * u * (3.0 - 2.0 * u))
     hdr[y0:y1, x0:x1] += g[..., None] * np.asarray(colour, np.float32)
 
 

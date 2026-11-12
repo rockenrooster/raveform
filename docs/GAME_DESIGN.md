@@ -122,7 +122,10 @@ and a single RETRY button.
 below it. Every enemy death drops **Shards** for each player separately
 (1–5 by tier, 20 for elites, 200 for bosses); each Shard collected adds +1 to that player's Chain.
 Shards drift toward a player within 90 wu and fade after four bars. Losing a Shield cell halves the
-Chain. Nothing else decays it.
+Chain. Nothing else decays it. The Chain has no cap: with the crowd it climbs by hundreds a minute
+and a long run scores in the billions. That is intended (big numbers are part of the show, and one
+hit costs half of it), so the score is a 64-bit number and both score and Chain are shown with
+thousands separators (`X12,369`).
 
 **Permanence.** Everything gained in a run lasts until the run ends. Nothing carries into the next run
 except settings, local high scores and lifetime stats.
@@ -225,7 +228,7 @@ Rhythm
 
 | # | Boost | Effect |
 |---|---|---|
-| 1 | Prism | Every shot refracts into a 5-way rainbow fan; hits spawn mini-refractions |
+| 1 | Prism | Every shot refracts into a 5-way rainbow fan; hits spawn mini-refractions. The fan is a real rainbow: the centre lane keeps the player's colour, the lanes beside it sit 50° and 100° round the hue wheel to either side (lightness 0.80, full chroma), all with white cores; the mini-refractions take their lane's hue |
 | 2 | Hyper | Primary and all Riffs run at double grid |
 | 3 | Supernova Rounds | Every shot explodes on impact |
 | 4 | Colossus | Ship ×3 size, invulnerable, rams through enemies (2 bars) |
@@ -364,11 +367,14 @@ phases; it fits inside the entity caps.
   and specials, the species that can hurt a careless player. The *crowd* is fodder (Drifters,
   Shoals, Caroms and their later kin) and follows a **population target** instead: the number of
   enemies the director keeps near the ships, by Track and cycle (`design/species.json`,
-  `firstSlice.crowd`). Each bar the director counts the enemies near the players and warps in
-  fodder formations (floods of 16–80 bodies from one side, rings, corner swarms) to close the gap
-  over the next two bars. A strong build therefore gets more to kill, more Shards and a louder
-  song, and the danger still rises only with the threat budget. Fodder left far behind every ship
-  dissolves without Shards and is replaced near the players.
+  `firstSlice.crowd`). Each bar the director counts the enemies **in and just around each player's
+  frame** (the camera's view grown by a quarter each way) and warps in fodder formations (floods
+  of 16–80 bodies along a frame edge, rings just outside the frame, swarms at its corners) to
+  close the gap over the next two bars. The target is what the player sees: the first build
+  counted a 1,500 wu circle, five times the frame, and the screen stayed a fifth as full as the
+  numbers said. A strong build therefore gets more to kill, more Shards and a louder song, and the
+  danger still rises only with the threat budget. Fodder left two frames behind every ship for
+  two bars dissolves without Shards and is replaced at the frame.
 - **Sections** scale the budget and the population target: Groove 1.0, Build ramps 1.0 → 1.6 (crowd
   1.0 → 1.3), Drop 2.0 then decays to 1.2 (crowd 1.6 → 1.2), Break 0.
 - **Debuts.** New species unlock on a schedule by Track and cycle. Each debut gets a spotlight at the
