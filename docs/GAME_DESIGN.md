@@ -114,8 +114,8 @@ and a single RETRY button.
 | Speed | 520 wu/s, near-instant acceleration, slight glide on release |
 | Size | Visual radius 14 wu; hit radius 5 wu (forgiving) |
 | Primary weapon | One shot per 1/16 step, 1400 wu/s, lead-arp note per shot |
-| Shield cells | Start 4, cap 6; one cell comes back at every Break. A hit removes one, fires a panic pulse (clears bullets within 220 wu, shoves enemies), grants 1.5 s invulnerability and halves the Chain. Health is shown on the ship itself: its halo has one arc per cell |
-| Nova | Start with 3, capacity 4 (up to 6 with Mods); one comes back at every Break. Rule R6. Clears bullets and non-boss enemies in view; heavy damage to bosses |
+| Shield cells | Start 4, cap 6; one cell comes back at every Break. A hit removes one, fires a panic pulse (clears bullets within 220 wu, shoves enemies), grants 2.5 s invulnerability and halves the Chain. Health is shown on the ship itself: its halo has one arc per cell |
+| Nova | Start with 3, capacity 4 (up to 6 with Mods); one comes back at every Break. Rule R6. Clears bullets and non-boss enemies in view; heavy damage to bosses. **Auto Nova** (on by default, a switch under CONTROLS): a hit that would take the last Shield cell fires a Nova from the stock instead and costs no cell |
 | Dash | One charge, recharges in 2 beats. 220 wu in 0.12 s, invulnerable throughout. Perfect Dash refunds half the recharge and emits a small shock ring |
 
 **Scoring.** Score = enemy value × Chain. The Chain is a multiplier: it starts at ×1 and never goes
@@ -395,7 +395,10 @@ phases; it fits inside the entity caps.
   lost; the careless bot's median first death at minute 4 or later and Track 2 reached in at least
   half of its runs. Levers, in this order: the upgrades' strength (section 6), the cells and Novas
   that come back at each Break (section 5), then the threat budget and the bosses' bullet density,
-  neither below 0.7 of the first slice's numbers. Enemy counts are not a lever.
+  neither below 0.7 of the first slice's numbers (both are at 0.7 since play test 1). Enemy counts are not a lever.
+  The first boss of a run has 0.7 of its health: it is the teacher. The careless bot never dodges and
+  uses neither Nova nor Dash, so it is a floor, not a player: Auto Nova and the longer invulnerability
+  after a hit (section 5) are for the people it stands for.
 - **Fairness.** No spawn within 260 wu of any player or inside the central third of any player's view;
   every spawn warps in for two beats; no off-screen ranged attack without an edge indicator.
 - **Caps.** The director never exceeds the entity caps. When the budget exceeds what the caps allow, it

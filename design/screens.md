@@ -110,7 +110,7 @@ Rules:
 - A sound change is never a cut: the tapped card waits for the bar line, then the whole band changes
   together. Tapping another card before the bar line replaces the choice.
 - Nothing on this screen opens a second screen except `SYNC`.
-- CONTROLS holds auto-aim assist, stick size and position (drawn as the real sticks, dragged into
+- CONTROLS holds auto-aim assist, Auto Nova (on by default: `AUTO NOVA  FIRES ONE BEFORE YOUR LAST CELL GOES`), stick size and position (drawn as the real sticks, dragged into
   place), swap sides, button layout, gamepad mapping. LOOK holds effects (Auto / Low / Medium / High /
   Ultra), frame-rate target, reduce flashing, shake, vivid colour, colour-blind-safe palettes,
   high-contrast threats and UI scale, with the bot's run behind it so each change is seen at once.
