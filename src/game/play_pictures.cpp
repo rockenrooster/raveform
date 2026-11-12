@@ -179,15 +179,14 @@ bool Play::scriptInputB(StickInput& in) {
         if (is(p, "boss_naked") || is(p, "boss_death")) pairsToKill = 3;
         if (music > fight + 8.0) {
             for (u32 k = 0; k < pairsToKill; ++k) killPair(k);
-            if (is(p, "boss_pair_death") && music > fight + 1.5 * kTicksPerBar && (b.alive & 2u)) {
-                killPair(1);  // (its event is gone before scriptEvents() runs: the strip starts here)
-                if (captureFrom_ < 0) captureFrom_ = now + 1;
+            if (is(p, "boss_pair_death") && music > fight + 1.5 * kTicksPerBar && (b.alive & 2u) && captureFrom_ < 0) {
+                w.killBossNextTick(2u, false);  // inside the tick, so the view sees it as in play
+                captureFrom_ = now + 1;
             }
         }
-        if (is(p, "boss_death") && b.alive == 0 && music > fight + 2.2 * kTicksPerBar && !b.dying) {
-            const Vec2 dv = dirOf(w.bossArmAngle(0));
-            w.shootBoss(b.pos + dv * 90.0f, b.pos + dv * 20.0f, 1e6f);
-            if (captureFrom_ < 0) captureFrom_ = now + 1;
+        if (is(p, "boss_death") && b.alive == 0 && music > fight + 2.2 * kTicksPerBar && !b.dying && captureFrom_ < 0) {
+            w.killBossNextTick(0, true);
+            captureFrom_ = now + 1;
         }
         if (captureFrom_ >= 0) return true;
         const double barIn = std::fmod(music, kTicksPerBar);

@@ -351,6 +351,12 @@ public:
     // Tests: a shot's path from a to b against the boss, with its damage; returns the part it hit (0 none,
     // 1 lens plate, 2 arm, 3 core).
     u8 shootBoss(Vec2 a, Vec2 b, float damage);
+    // Pictures: kill these pairs (bits 0-2) and, with core, the core, inside the next tick (so its events are
+    // seen like a kill in play).
+    void killBossNextTick(u8 pairs, bool core) {
+        scriptKillPairs_ = pairs;
+        scriptKillCore_ = core;
+    }
 
     // Handles (TECH_SPEC 7.1): -1 when the handle is stale.
     i32 indexOf(u32 handle) const;
@@ -440,6 +446,8 @@ private:
     float threatInView_ = 0.0f;
     bool restartPending_ = false;
     double restartAt_ = 0.0;
+    u8 scriptKillPairs_ = 0;
+    bool scriptKillCore_ = false;
     bool restarted_ = false;  // this tick began a new run
     u32 serial_ = 0;
     u32 playerCount_ = 1;

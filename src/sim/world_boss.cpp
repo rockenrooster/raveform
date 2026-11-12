@@ -394,6 +394,14 @@ void World::updateBoss(float dt) {
         return;
     }
     s.angle = wheelAt(s, b, m1_);
+    if (scriptKillPairs_ || scriptKillCore_) {
+        for (u8 k = 0; k < 3; ++k)
+            if (scriptKillPairs_ & (1u << k)) killBossPair(k, 0);
+        if (scriptKillCore_) killBoss(0);
+        scriptKillPairs_ = 0;
+        scriptKillCore_ = false;
+        if (s.dying) return;
+    }
     // Drift at 30 wu/s to stay 450-650 wu from the nearest player.
     i32 near = nearestPlayer(s.pos.x, s.pos.y);
     if (near >= 0) {
