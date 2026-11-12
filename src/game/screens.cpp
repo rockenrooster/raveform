@@ -268,10 +268,14 @@ void Play::screenTitle(Ui& ui) {
             const float u = static_cast<float>(k) / pts;
             float v = 0.0f;
             if (n) {
-                const float idx = u * static_cast<float>(n - 1);
-                const u32 i0 = static_cast<u32>(idx);
-                const u32 i1 = i0 + 1 < n ? i0 + 1 : i0;
-                v = scope_[i0] + (scope_[i1] - scope_[i0]) * (idx - static_cast<float>(i0));
+                // A bar of the master bus, smoothed over five scope points (each a 128-frame peak).
+                const i32 c = static_cast<i32>(u * static_cast<float>(n - 1));
+                float sum = 0.0f;
+                for (i32 k = -2; k <= 2; ++k) {
+                    const i32 j = c + k < 0 ? 0 : (c + k >= static_cast<i32>(n) ? static_cast<i32>(n) - 1 : c + k);
+                    sum += scope_[j];
+                }
+                v = sum * 0.2f;
             } else {
                 v = 0.25f * std::sin(u * 40.0f + static_cast<float>(music1_ / 24.0));
             }

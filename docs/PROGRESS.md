@@ -72,13 +72,13 @@ lead to continue without check-ins; the decisions taken alone are listed below.
 ### Numbers (M3 stage B; the phones are shared with other sessions)
 
 - Tests: audio 2122 checks, sim 5219 checks (new: director cycle, Trio rules, upgrade stacking, Kaleidos
-  damage and phases), 0 failures; determinism PASS for both bots over 2 min (`test.ps1`) and 12 min.
-- Bot, 30 simulated minutes headless (careful bot, seed 1 / seed 7; reckless bot, seed 1): no crash, no
+  damage and phases), 0 failures; determinism PASS for both bots over 2 min (`test.ps1`), 12 and 30 min.
+- Bot, 30 simulated minutes headless (careful bot, seeds 1, 7 and 3; reckless bot, seed 1): no crash, no
   overflow, no NaN, 0 heap allocations in the loop; tick P95 0.010 / 0.063 / 0.006 ms, max 0.059 / 0.185 /
   0.141 ms. Seed 1: 5,452 kills, 2 deaths (both at Track 2's Kaleidos, 10:19 and 19:26), Tracks reached
   2; Kaleidos of Track 1 falls at 5:43 (entered 2:49), 14:35 and 24:22. Seed 7: 4,775 kills, 2 deaths (both
   at Track 2's Kaleidos), Track 1's boss 1:41 the first time but over 7 minutes the third time (fodder piles
-  up to 226 alive meanwhile). Reckless: 15 deaths, the longest life 196 s, no boss beaten. **First reading
+  up to 226 alive meanwhile). Seed 3: 7,598 kills, 1 death, both Kaleidos fights won (4:28, 11:56), Track 3 reached (up to 611 kills a minute, 245 enemies alive). Reckless: 15 deaths, the longest life 196 s, no boss beaten. **First reading
   of the difficulty:** a careful bot clears Track 1 in about 5 minutes and is stopped by Track 2's Kaleidos
   (1.5x health) every time; a careless one dies every 1.5-2 minutes. Per-minute tables:
   `captures\m3b\bot_30min_*.txt`.
@@ -168,7 +168,8 @@ hud_break; riff_orbitals, riff_pulse, riff_sentinel; boost_prism, boost_hyper, b
 boost_magnet_storm; edge (danger chevron for a shooter off screen, gold for a Boost); boss_bloom,
 boss_refraction, boss_spiral, boss_naked, boss_beam_tell, boss_beam, boss_iris, strip_boss_pair_death,
 strip_boss_death; track_change (Track 1 to 2, bar 5 of the Break); bot_3, bot_6, bot_10. From the Moto:
-MOTO_PICTURES.
+moto_title (the live title, adb screencap), moto_trio, moto_boss_bloom, moto_screen_game_over (the app's own
+capture), moto_pause, moto_countin and moto_game_over_loop (screencaps during the loop run).
 
 ### Stage B changes in shared files
 
@@ -186,7 +187,10 @@ frame rate, the first-frame log, the run's place in the bench result), `core/arg
   hit-stop at Kaleidos's death; CO-OP (M4).
 - Not tried by a person: touch feel of the Trio and the screens, readability of the boss fight, the
   difficulty curve (the bot's reading above), SYNC from settings and back on a phone, swap sides.
-- MOTO_GAPS
+- LOOP_RESULT
+- What a person must try: flying into Trio orbs with the sticks; the screens' buttons by touch; reading the
+  boss (the resting pair, the plates, the beams' telegraph) at phone size; whether Build, Drop and Break land
+  musically on headphones; a mid-bar pause and its count-in; SYNC from settings and back; swap sides.
 
 ## M3 Vertical slice, stage A "the fight" — status 2026-11-11 (late night)
 
