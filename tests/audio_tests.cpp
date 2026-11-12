@@ -519,6 +519,63 @@ struct Test {
     void (*fn)();
 };
 
+// M3 stage C: the pause's low-pass on the music bus (screens.md: about 600 Hz, 150 ms ramp) takes the
+// brightness out of the music and gives it back when the pause ends; no allocation.
+void testPauseMuffle() {
+    Engine e;
+    CHECK(e.init(*g_music, *g_bank, kRate));
+    e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Staged), 0, 0));
+    const auto muffle = [&](float hz) {
+        Command k = cmd(CmdType::SetMuffle, 0, 0, 0, hz);
+        k.y = 0.15f;
+        e.post(k);
+    };
+    // Brightness: the energy of the first difference over the energy (high for hats, low under a low-pass).
+    const auto brightness = [&](u32 seconds) {
+        Capture c;
+        runEngine(e, c, static_cast<u64>(kRate) * seconds, 480);
+        double d = 0.0, s = 0.0;
+        for (u64 i = 2; i < c.frames * 2; ++i) {
+            const double x = c.out[i], dx = c.out[i] - c.out[i - 2];
+            d += dx * dx;
+            s += x * x;
+        }
+        CHECK(c.allocs == 0);
+        freeCapture(c);
+        return s > 0.0 ? d / s : 0.0;
+    };
+    brightness(4);  // past the song's first bars
+    const double open = brightness(4);
+    muffle(600.0f);
+    brightness(1);  // the ramp
+    const double shut = brightness(4);
+    muffle(0.0f);
+    brightness(1);
+    const double back = brightness(4);
+    CHECK_MSG(open > 0.0 && shut < 0.25 * open, "brightness open %.4f, under the low-pass %.4f", open, shut);
+    CHECK_MSG(back > 0.6 * open, "brightness after the pause %.4f (open %.4f)", back, open);
+}
+// M3 stage C: an effect's playback rate (the boss pair's growl an octave down): at half rate the same
+// one-shot rings twice as long.
+void testSfxRate() {
+    const auto ringFrames = [&](float rate) {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), 0, 0));
+        Command k = cmd(CmdType::Sfx, static_cast<u8>(Sfx::Elite), 0, 0, 1.0f);
+        k.level = rate;
+        e.post(k);
+        Capture c;
+        runEngine(e, c, static_cast<u64>(kRate) * 6, 480);
+        u64 last = 0;
+        for (u64 i = 0; i < c.frames; ++i)
+            if (std::fabs(c.out[i * 2]) > 1e-3f || std::fabs(c.out[i * 2 + 1]) > 1e-3f) last = i;
+        freeCapture(c);
+        return static_cast<double>(last);
+    };
+    const double one = ringFrames(1.0f), half = ringFrames(0.5f);
+    CHECK_MSG(one > 0.0 && half > 1.6 * one && half < 2.4 * one, "the growl rings %.0f frames at rate 1, %.0f at 0.5", one, half);
+}
 }  // namespace
 
 int main() {
@@ -542,6 +599,8 @@ int main() {
         {"variant on the bar line", testVariantOnBarLine},
         {"track change through the Break", testTrackChange},
         {"no allocations in any mode", testNoAllocations},
+        {"pause low-pass on the music (M3 stage C)", testPauseMuffle},
+        {"effect playback rate (M3 stage C)", testSfxRate},
     };
     for (const Test& t : tests) {
         g_test = t.name;

@@ -144,7 +144,7 @@ constexpr float kHaloInvulS = 0.6f;           // after a hit the Halo absorbed
 
 // ---- Kaleidos (kaleidos.md / kaleidos.json give the fight; the rest is chosen) ----
 constexpr float kBossTrackHealth[3] = {1.0f, 1.5f, 2.0f};  // the lead: 1.5x in Track 2, 2x in Track 3 (stage B, C briefs)
-constexpr float kBossEndlessHealth = 1.06f;   // GAME_DESIGN 8 (quoted, from Track 7): +6% per Track after 2
+constexpr float kBossEndlessHealth = 1.06f;   // GAME_DESIGN 8 (quoted, from Track 7): +6% per Track after Track 3 (stage C)
 constexpr float kBossPairScore = 500.0f;      // score per pair (x Chain)
 constexpr float kBossCoreScore = 2000.0f;     // score for the core (x Chain)
 constexpr u32 kBossPairShards = 20;           // Shards a pair drops (an elite's, GAME_DESIGN 5)

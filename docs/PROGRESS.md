@@ -1,21 +1,162 @@
 # RAVEFORM — Progress
 
-## Stage C, paused — 2026-11-12 (the account's usage limit; nothing of stage C is committed)
+## M3 stage C "the crowd and the threats" — 2026-11-12
 
-- **Done, uncommitted** (builds; `test.ps1` fails 3 old director checks, so it was not committed):
-  `firstSlice.crowd` and Track 3's budget parsed (`species.*`); Reef is Track 3 (songs 0-2, 132 BPM, Standard,
-  loop +4 BPM; Kaleidos 1x / 1.5x / 2x, then +6% a Track; `director.*`, `tuning.h`, `world_boss.cpp`); the
-  threat budget buys hunters and specials only and the crowd closes the gap to the population target with
-  fodder floods, rings and corner swarms, fodder stranded beyond `strayWu` for `strayBars` dissolves without
-  Shards (`world_spawner.cpp`, `Enemies::far`); `--sim crowd --seeds N --minutes M [--policy]` prints the
-  target-against-measured table and the difficulty numbers (`sim_headless.cpp`).
-- **Half done:** nothing of the crowd has been run or tuned yet.
-- **Next:** update `testDirectorCycle` for Reef (bpm 132/136, song 2 with 3 cycles, `baseBudget(4,1) == 20`)
-  and add crowd tests; run `--sim crowd` (20+ seeds, both bots) and tune; then items 3-9 of the brief
-  (soft lights reaching zero inside their quad, the death flash and 50 ms hit-stop, 44/64 px chevrons on
-  discs, the boss camera, the Boost name under its orb, the effect-word table, the Track name card, haptic
-  strength, the pause low-pass, the growl an octave down); then the Moto minute-10 run, pictures to
-  `captures\m3c\`, docs, commit.
+Built on `main` (never pushed): `acc7b93` (the crowd, Reef, director and crowd tests), `416fdf7` (the
+refill replaces killed fodder; the Groove's pre-spawn), `255ab44` (the bot fights the boss within reach),
+`e7d3227` (items 3-9 of the brief) and the docs commit. Design input: `a5caacd` (GAME_DESIGN 8 and 9,
+species.json `firstSlice.crowd` and `track3`, look.md 6, screens.md).
+
+### What changed
+
+- **The crowd** (GAME_DESIGN 8; `world_spawner.cpp`, `director.*`): the threat budget (and the Drop's
+  mega-wave) buys threats only, hunters and specials. Fodder follows a population target near the ships
+  (alive within `nearWu` 1,500 wu of any ship): `aliveTarget` by Track and cycle (20/45/80/120,
+  150/190/230, 240/270/300; then +20 a Track up to 400) x the section's scale (Groove 1, Build 1 -> 1.3,
+  Drop 1.6 -> 1.2, the boss's Drop 0.5, Break 0). Each bar the director closes the gap over `refillBars`
+  (2) **plus every fodder body killed since the last bar** (without that the kill rate held the crowd at
+  0.67-0.81 of its target), at least 16 and at most 80 a formation: floods (half; clusters of up to 8 along
+  a line 900 wu out, 220 wu apart), rings (a quarter; up to six groups 700 wu round) and corner swarms (the
+  rest; +-760 / +-330 wu); on the last beat of a Break it lands the coming Groove's target. Fodder further
+  than `strayWu` (2,400 wu) from every ship for `strayBars` (4) bars dissolves without Shards. The 600 cap,
+  the warp-in tells and the Trio ring's no-spawn rule stand.
+- **Reef is Track 3** (decision 1 of stage B overruled by the lead): `track03`, 132 BPM, Standard form, three
+  cycles, Track 2's roster, budget `track3`, palette reef, Kaleidos at 2x; then the loop over the three
+  Tracks, each 4 BPM above the one before (up to 174), Kaleidos +6% a Track after Track 3. Names, palettes,
+  the set list and the band follow (`songName`, `songOfTrack`).
+- **Soft lights** (`glow.frag`): the Gaussian fades to zero over the last fifth of the cut-off radius, on a
+  circle inside the quad, so no square edge shows at any intensity (the boss's death flash, warped-in
+  Hounds).
+- **Kaleidos's death** (kaleidos.md): the white flash clamped at 0.9 (the M1 boss break's) and gone in
+  0.12 s, an accent glow after it (0.6, 0.45 s; reduce flashing 0.45 / 0.3); **50 ms hit-stop**
+  (`look.json` `bossBreak.hitStopMs`): Play holds the ticks and the view's clock while the song runs on,
+  then runs the held ticks three a frame on the same musical positions (the sim does not notice).
+- **Edge chevrons** (look.md 6, `look.json` `edgeIndicator`; `PlayView::edgeChevron`): 44 px chevrons
+  (danger for engaged shooters, gold for Boosts), Kaleidos a 64 px double chevron in its accent that swells
+  15% on every beat; each on a dark disc at 0.5, 28 px inside the edge, with its 44 px soft light at 0.3;
+  drawn on the threat layer (a capsule opacity above the flags, `capsuleOpacity`).
+- **Boss camera** (GAME_DESIGN 9): while Kaleidos lives within 1,800 wu the zoom target is 0.85x and the
+  camera leans toward it by 30% of the offset, at most 320 wu.
+- **Boosts**: on the field the name sits under the orb (gold, cap 11 wu, 6 wu under its ring); the HUD row
+  puts the name under the icon (cap 16.5 px = 11 wu at the reference, 9 px gap), pips to the right, and the
+  effect words under the name for the two bars after the pickup.
+- **Effect words**: screens.md's table word for word (changed: Double-Time `FIRE RATE X1.5` / `FIRE RATE
+  X2`, Pierce `SHOTS PIERCE +1`, Hyper `FIRE RATE X2`, Magnet Storm `PULLS EVERY SHARD`); the stage B words
+  below are superseded.
+- **Track name card** (screens.md; `play_hud.cpp`): on every Track's first downbeat, the run's first too:
+  `TRACK n` cap 28 white over the name at cap 110 in the palette's three hues, 8 px tubes, written left to
+  right in a beat with a two-arm flare riding the writing, held to the end of the second bar, then the
+  letters streak out to both sides on the third bar's downbeat; drawn at 0.8.
+- **Leftovers**: SOFT and STRONG haptics differ (`RaveformActivity.haptic`, kinds 3-5 for STRONG; the
+  vibrator's amplitude where it has amplitude control, else the length; a medium tick previews the setting);
+  the pause puts the music bus behind a 600 Hz low-pass ramped over 150 ms (two one-poles, `SetMuffle`;
+  the 0.45 dip stays); the boss pair's growl plays an octave down (an Sfx playback rate). Also fixed: RESTART
+  from pause now lifts the pause's dip, and the boss card's subtitle (`BOSS OF <Track>`) sits under the name
+  instead of across it.
+- **The bot** (`bot.cpp`): with the crowd's pull it wandered thousands of wu from Kaleidos while aiming at
+  it, so some boss fights never ended (4 of 20 god-mode runs stalled 10+ minutes); it now aims at the boss
+  only within 1,000 wu (a shot flies 1,050) and comes back within 750 wu of it during the fight.
+- `--sim crowd [--seeds N] [--minutes M] [--policy reckless] [--god] [--trace]`: the acceptance table.
+
+### Numbers (M3 stage C)
+
+The crowd, mean alive within 1,500 wu of the ship during Groove (20 seeds x 30 min a bot; the god-mode run,
+20 seeds x 24 min with hits costing nothing, fills the cells the careful bot does not reach):
+
+| Track, cycle | Target | Careful | Ratio | Careless | God mode | Drop peak / target (careful; god) |
+|---|---|---|---|---|---|---|
+| 1, 1 | 20 | 17.5 | 0.88 | 17.4 | 17.4 | 1.83; 1.76 |
+| 1, 2 | 45 | 40.3 | 0.89 | 39.7 | 40.5 | 1.71; 1.69 |
+| 1, 3 | 80 | 71.2 | 0.89 | 69.9 | 71.2 | 1.75; 1.65 |
+| 1, 4 (boss) | 120 | 106.0 | 0.88 | 103.3 | 106.8 | boss Drop |
+| 2, 1 | 150 | 135.3 | 0.90 | - | 136.3 | 1.65; 1.62 |
+| 2, 2 | 190 | 171.9 | 0.90 | - | 171.7 | 1.63; 1.60 |
+| 2, 3 (boss) | 230 | 206.2 | 0.90 | - | 208.1 | boss Drop |
+| 3, 1 | 240 | 214.9 | 0.90 | - | 218.2 | 1.61 (1 run); 1.61 |
+| 3, 2 | 270 | 241.4 | 0.89 | - | 244.1 | -; 1.59 |
+| 3, 3 (boss) | 300 | - | - | - | 272.4 (0.91) | boss Drop |
+| 4 (loop), 1-4 | 320 | - | - | - | 295.7 / 292.2 / 285.0 / 277.9 | 1.56 / 1.58 / 1.53 |
+
+Every cell within -14% of its target (acceptance: +-25%); every Drop peak 1.5-1.9x (acceptance: 1.4x).
+Difficulty: careful bot, median first death **7.09 min** (4.34-9.97), Track 2 reached in **20 of 20** runs,
+Track 3 in 3, 3.8 deaths a run; careless bot, median first death **2.09 min** (1.23-3.38), 12.6 deaths a
+run, never past Track 1's Kaleidos. Kills a minute: careful 425, careless 341, god mode 965 (higher Tracks).
+No pool overflow, no NaN, 0 heap allocations in the loops, no Shard dropped (the Shard pool never filled).
+No fodder number needed tuning: speeds, flood places and Shoal behaviour are unchanged; the targets are the
+data's. Before the bot fix: careful 8.91 min median, 20 of 20 (the stalled boss fights hid deaths).
+Files: `captures\m3c\crowd_careful.txt`, `crowd_careless.txt`, `crowd_god.txt`.
+
+- Tests: audio 2134 checks (new: the pause's low-pass takes the brightness out and gives it back; at half
+  rate the growl rings twice as long), sim 5235 (Reef in the director checks; the crowd: targets, scales, a
+  world that fills the crowd near an idle ship, threats still bought, stray fodder dissolving without
+  Shards), 0 failures; determinism PASS for both bots.
+- Desktop Debug (validation on), bench_play 60 s at minute 10 (fast-forward 600 s; Track 2, cycle 3): 0
+  validation messages, 0 heap allocations (frame, pacer, other threads, audio callback); alive 209 / 400,
+  enemies in view 60 / 197, enemy bullets in view 13 / 45 (mean / max); main CPU 5.9 / 6.1 ms (P50 / P95).
+  `captures\m3c\desktop_debug_bench_play_min10_60s.log`.
+- Light at minute 10 of the real game (desktop, 2400x1080, 32 frames at 10:50, Track 2's Build, 378 alive,
+  39 in view): between kicks (frame 26) dark<48 83.5%, dark<96 97.2%, >=200 0.5%, luminance 0.0213; the
+  frame after the kick 0.0242 (reference: dark<48 at least 15%, luminance at most 0.16).
+  `captures\m3c\light_min10b\`.
+- The M1 stills against the reference after the soft-light change (the reference, `design/tools/lookdev.py`
+  `_add_glow`, still cuts at the square, so the fade shows as a difference): `look_card` without bloom mean
+  abs error 0.70 (was 0.34), soft light p10 / p50 / p90 0.82 / 0.99 / 1.00 (0.99 / 1.00 / 1.01); with bloom
+  1.61 (1.22), 0.85 / 0.97 / 1.00 (0.93 / 0.98 / 1.00); `frame_reef` 1.33 (1.16), luminance ratio 0.978
+  (0.982), 0.94 / 0.98 / 0.99. `captures\m3c\m1_stills\`.
+- **Moto, the real game at minute 10** (bench_play, the bot from the start, 600 s of warm-up then 120 s
+  measured; tier medium from the probe's cache, governor off, no cuts; shared phone, foreign load 0.82 cores;
+  `captures\bench\ZY22BXMJG3-bench_play-20261112-073514.json`): panel P95 1 period (16.667 ms), 0 of 7,188
+  frames missed, none over 50 ms (max 19.8 ms CPU side): **PASS** (the present call's own P95 17.7 ms is
+  reported, not graded). Main thread CPU 4.40 / 4.61 / 5.31 ms (P50 / P95 / max); GPU 13.07 / 13.48 / 13.88
+  ms; sim tick 0.145 / 0.230 / 0.592 ms; audio underruns 0, worst callback 1.19 ms; heap allocations ours 0.
+  On screen: enemies in view **58 / 157** (mean / max), enemy bullets in view **12 / 113**; alive 221 / 381,
+  enemy bullets 27 / 202, Shards 95 / 361; 6,389 kills, one death (the run restarted; it ended in Track 2,
+  cycle 2, a Drop). Stage B's run at minute 10 had 23 / 158 in view and 49 / 175 alive.
+- Moto in-app capture at 10:10 (`captures\m3c\moto_inapp_min10.png`, Track 1's Drop after the restart):
+  dark<48 63.6%, luminance 0.0164. The Moto's vibrator has no amplitude control (logged), so there SOFT and
+  STRONG differ by length.
+
+### Numbers chosen in stage C (`tuning.h` crowd block, `bot.cpp`, `play_view*.cpp`, `play_hud.cpp`, `band.cpp`, `RaveformActivity.java`)
+
+Crowd formations: flood share 0.5, ring share 0.25, flood 900 wu out with clusters 220 wu apart, ring 700
+wu, corners +-760 / +-330 wu. Bot: boss aim within 1,000 wu, back within 750 wu. Soft light fade: from 0.8
+of the cut-off radius. Death flash: 0.9 white, 60 -> 420 wu, 0.12 s; accent 0.6, 120 -> 520 wu, 0.45 s.
+Chevrons: 0.4 of the height deep (the boss's pair 0.3, 0.32 apart), disc 0.68 of the height, stroke half
+width 0.055 of it with the threat layer's 1.5 px rim. Boss camera lean eases over 0.5 s (the zoom keeps its
+2 s). HUD Boost row 220 px apart, words cap 11 px for two bars. Track card: a beat to write, out on the
+third bar's downbeat, a beat to streak; the name's top at 0.62 of the height. Haptics with amplitude
+control: 12 / 18 / 40 ms at SOFT 60 / 90 / 130 and STRONG 170 / 220 / 255; without it SOFT 8 / 12 / 30 ms,
+STRONG 20 / 30 / 70 ms. Low-pass from 18 kHz. Pictures: `hud_drop` at Track 1's third Drop (121.1 s).
+
+### Decisions taken alone (stage C)
+
+1. The crowd's refill adds the fodder killed since the last bar (feed-forward), and the Break's last beat
+   lands the next Groove's target, so the Groove does not start empty.
+2. The hit-stop holds the simulation, not the song: the held ticks run afterwards, three a frame.
+3. Haptics use the vibrator (amplitude or length), so the in-game OFF / SOFT / STRONG governs them rather
+   than the system's touch-feedback switch; without a vibrator they fall back to performHapticFeedback.
+4. The bot frames (`bot_*`) and `hud_drop` run with hits costing nothing, so minute 15 is Track 3.
+5. Boost effect words show in the HUD row for two bars after the pickup (screens.md's table says "HUD").
+
+### Pictures (`captures\m3c\`, 2400x1080, fixed 1/60 s steps, `*.small.png`)
+
+bot_3, bot_6 (Track 2's first Break, three bars before its end: the crowd's Break target is 0, so the
+field is empty), bot_10, bot_15 (Track 3, Reef, Kaleidos at 2x), hud_drop
+(Track 1's third Drop, 88 in view), strip_boss_death (eight frames: the hold, the flash, the tumble),
+edge (Kaleidos's double chevron, a Boost's and a shooter's), boost_prism (the fan in flight), track_change
+(Track 2's name card), moto_inapp_min10 (the Moto, in-app, minute 10). The bot frames and hud_drop from the
+dev build, the rest Debug with 0 validation messages.
+
+### Not done
+
+- Kaleidos is still every Track's boss (Reef's own boss is M5); the game-over medley waits for M6.
+- No elites in the slice, so no white chevrons yet.
+- Prism's mini shots are the player's colour, not a rainbow (unchanged; not in this brief).
+- The design's reference renderer still cuts soft lights at the square (above); the compare numbers moved.
+- In view the crowd is a fraction of its near count: the view at 1x covers about a fifth of the 1,500 wu
+  circle and the careful bot keeps its distance (minute 10: 378 alive, 9-39 in view).
+- With the crowd the Chain (+1 a Shard, halved only by hits) reaches about 3,000 by minute 10 and 12,000
+  by minute 15 in a run without hits, scores in the hundreds of millions to billions: a design question.
 
 ## Contract change
 
@@ -124,7 +265,7 @@ lead to continue without check-ins; the decisions taken alone are listed below.
   4.63 / 4.87), GPU 13.45 / 13.79 ms (13.50 / 13.81): unchanged. `test.ps1` passes; the M1 stills compare as at
   the v2.3 re-shoot (soft light mean abs 0.00020 / 0.00169 / 0.00138).
 
-### Effect words (two to four words, mine)
+### Effect words (two to four words, mine; superseded in stage C by screens.md's table)
 
 Split `+1 SHOT LANE` (screens.md), Double-Time `TRIPLET FIRE GRID` then `THIRTY-SECOND FIRE GRID`, Pierce
 `+1 ENEMY PIERCED`, Ricochet `+1 WALL BOUNCE`, Overcharge `+25% SHOT DAMAGE`, Extra Cell `+1 SHIELD CELL`,
