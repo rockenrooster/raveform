@@ -13,7 +13,7 @@
 
 ## M3 Vertical slice, stage B "the rest of the slice" — status 2026-11-12 (night)
 
-Stage B is built on `main` (commits `7e9b97b`, `9ac3547`, `be3c086` and the docs commit): the director,
+Stage B is built on `main` (commits `7e9b97b`, `9ac3547`, `be3c086`, `7fe32f5`, `cea10b3`, `d7bcbc0` and the docs commits): the director,
 the Surge's two gears, upgrades with the Trio, Kaleidos, the full HUD, the screens with saved settings and
 high scores, the start-up cache, the bot for all of it, tests and the review pictures. The user asked the
 lead to continue without check-ins; the decisions taken alone are listed below.

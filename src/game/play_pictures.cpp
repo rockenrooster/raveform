@@ -57,7 +57,7 @@ bool Play::scriptSetupB() {
     if (starts(p, "trio")) return true;
     if (starts(p, "riff_") || starts(p, "boost_")) {
         ring(14, 330.0f, Family::Drifter, 2, 400.0f);
-        ring(8, 210.0f, Family::Hound, 1, 400.0f);
+        if (!is(p, "riff_sentinel")) ring(8, 210.0f, Family::Hound, 1, 400.0f);  // (the drone's shots need room to show)
         w.rules().godMode = true;
         Loadout& l = w.playerMut(0).loadout;
         (void)l;
@@ -147,7 +147,13 @@ bool Play::scriptInputB(StickInput& in) {
             in.aimActive = true;
         }
         const u32 at = is(p, "boost_magnet_storm") ? 72u : (is(p, "riff_pulse") ? 96u : 110u);
-        if (t == at && captureFrom_ < 0) captureFrom_ = now;
+        if (is(p, "riff_sentinel")) {
+            // Just after an off-beat, while the burst is in the air.
+            const double inBeat = std::fmod(music, kTicksPerBeat);
+            if (t >= at && inBeat > 48.0 && inBeat < 51.5 && captureFrom_ < 0) captureFrom_ = now;
+        } else if (t == at && captureFrom_ < 0) {
+            captureFrom_ = now;
+        }
         return true;
     }
     if (is(p, "edge")) {
