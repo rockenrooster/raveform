@@ -11,6 +11,175 @@
 - 2026-11-11 (M2): benchmarks play the band's fullest arrangement by default, so the contract is measured
   with sound on; `--no-audio` gives the silent comparison (M0's silent stream, as M1 measured).
 
+## M3 Vertical slice, stage A "the fight" — status 2026-11-11 (late night)
+
+Stage A is built on `main`: the simulation, the fight on the band's heard clock with sticks, gamepad,
+keyboard and mouse, the bot, the simple spawner, a minimal HUD and the stress scenario. Stage B (the
+director with the phrase cycle, the Trio, the HUD beyond the essentials, title / game over / pause, the
+boss, attract mode, the Surge's two gears) is not started. Device numbers come from the **shared** Moto One
+5G Ace (`ZY22BXMJG3`), taken under the phone lock, deployed right before each run.
+
+| Done criterion (stage A brief) | Status | Evidence |
+|---|---|---|
+| 1. A run can be played from spawn to death and retried, with sound, on touch (Moto) and keyboard + mouse or gamepad (desktop) | **Built**; played by the bot on both (real time, the band's clock), touch driven with `adb input swipe` on the Moto. Feel, sound and the gamepad need the user | Moto log: the sim's musical clock within 1-2.3 ticks of the band's heard tick, every lead-rule shot from the band (62 / 62, 142 / 142); `captures/m3/moto_inapp_touch.png` |
+| 2. Determinism test (headless, `scripts\test.ps1`); unit tests for the grid, the pools and the Chain rules | **Met** | `raveform_headless --sim determinism`: two live runs and a replay of the recorded inputs agree at every 10 s checkpoint, with the careful bot (no deaths) and the reckless one (deaths and retries); another seed differs. `raveform_sim_tests`: 247 checks, 0 failures |
+| 3. Bot: 10 simulated minutes headless, no crash, assertion, pool overflow or NaN | **Met** | Below |
+| 4. Stress through the real simulation on the Moto at Low (60 s after 60 s), plus `bench_endgame` 30 s | **Met**: panel 0 of 3,594 missed, sim tick P95 1.96 ms, main thread P95 5.63 ms, 0 allocations, 0 underruns; `bench_endgame` unchanged | `captures/bench/ZY22BXMJG3-bench_stress-20261111-220734.json`, `…-bench_endgame-20261111-221012.json` |
+| 5. Desktop Debug, 60 s of bot play and 60 s of stress: 0 validation messages, 0 allocations in the frame, the tick and the callback | **Met** | `captures/desktop_m3_bench_play_debug_60s_20261111-2204.log`, `…_bench_stress_…` |
+| 6. Acceptance stills unchanged | **Met**: `frame_reef`, `look_card`, `look_card_nobloom` compare output identical to `captures/m1/*.compare.txt`; the whole M1 review set re-shot, every `scenes.py light` line identical to `captures/m1/light.txt` | `captures/m3/regress/`, `captures/m3/review_m1/` |
+| 7. Pictures for the lead | **Done** | List below |
+| 8. PROGRESS.md and CLAUDE.md | **Done** | This section; CLAUDE.md commands and arguments |
+
+### How it is built (M3 stage A)
+
+| Piece | Where | What |
+|---|---|---|
+| Species | `src/sim/species.*` | `design/species.json` embedded and parsed (CMake, like the other design data): family base x tier x variant for all 6 x 5 x 3 = 90 species of the six first-slice families (health, speed, radius, score, threat, Shards, hue role, motion keys), `enemyBullet`, the first-slice roster with debuts and the Groove budgets |
+| World | `src/sim/world.*`, `world_enemies.cpp` | The fixed 60 Hz tick (TECH_SPEC 7.2: players, shots, Nova, spawner, grid, enemies, projectiles, collisions, deaths, swap-remove compaction) over struct-of-arrays pools at TECH_SPEC 7.1's caps (enemies 3,072 with generation-checked handles, enemy bullets 2,048, shots 1,024, Shards 2,048), the 64 wu counting-sort grid (150 x 85 cells), an event buffer (kills, impacts, shots, warp-ins, telegraphs, pickups, hits, deaths, Nova, Dash, restart). Musical time is an input of each tick (its heard start and end in 96 PPQ ticks): every beat crossed resolves on the beat, advanced by the remainder. No wall clock, own random streams, no allocation after init, `hash()` and `finite()` |
+| Enemies | `world_enemies.cpp` | Drifter (wander, a new turn rate each beat, bounces off walls), Hound (steers at the nearest player; B: a glint on beat 4, a three-bullet fan on beat 1), Shoal (boids in schools seeking the player), Ram (telegraph one beat with chevrons, dash one beat, rest two), Carom (straight lines, faster per bounce off the walls), Sentry (stationary; B: a glint of one beat, then three rotating arms every two sixteenths). Ranged enemies only attack inside a rectangle around a player and get an edge indicator when that is off screen. Warp-in for exactly two beats (R4) |
+| Player | `src/sim/player_controller.*` | The local player is an input (TECH_SPEC 4): integrated every frame with the real frame time; 520 wu/s with the glide, walls, Dash (220 wu in 0.12 s, invulnerable, four beats to recharge, Perfect within 60 ms of a beat refunds half), Nova press, fire modes: aim stick on the full grid, 400 ms of fire after the thumb leaves it, auto-aim assist on the half-rate grid at the nearest enemy (with a lead and a sticky target). The world applies hits (cell lost, panic pulse 220 wu, 1.5 s invulnerability, Chain halved, time dip 85% for 200 ms), death, the Nova (invulnerable from the press, blast on the beat chosen from heard time plus the latency so it lands with the band's blast, the front clearing bullets and enemies in view as it passes) |
+| Shards, Chain, score | `world.cpp` | Drops per tier for each player, a burst then rest, the 90 wu magnet (homing), +1 Chain per pickup, halved by a hit and by nothing else, score = value x max(1, Chain), four-bar life |
+| Spawner | `world_spawner.cpp` | Stage A's stand-in for the director: on bar lines spends `threatBudgetPerBar` (Groove x 1.0) on packs from the roster with debuts by elapsed bars (Track 1: 4 x 24 bars, Track 2: 3 x 48, then the last budget holds); an unaffordable pick waits for the bank. `Stress` mode holds 700 enemies (32 of them firing Sentries) around the ship |
+| Bot | `src/sim/bot.*`, `sim_runner.*` | Potential field (bodies, bullets by time to closest approach, Ram paths, Shards, walls, a working distance), aim at the nearest enemy with a lead, Dash out of an imminent hit, Nova when surrounded; policies Play, Stress (a slow circle) and Reckless (no dodging, for tests). `SimRunner` steps it on the simulated clock |
+| The game | `src/game/play.*`, `music_clock.*` | Scenarios `play` (default), `bench_play`, `bench_stress`; the accumulator (at most three ticks a frame, drawn interpolated); the musical clock: sim time advances by the band's heard time, each tick's musical position follows the heard tick (one tick ahead for the interpolation; it never runs back; jumps forward beyond a bar); without the band the simulated clock. The band bridge: fire mode, lead-rule shots, kills aggregated by the engine, one Shard note per 1/32 (a rising run), warp-in swells once per landing beat, telegraph tick and the shot's blip on its beat, Hit, Dash / Perfect Dash, Nova, Game Over; Groove held, intensity 0.15 + threat on screen / 16. Picture scripts (`--picture`) |
+| View | `src/game/play_view.*` | The look v2.2 on the sim: camera with look-ahead and an aim lean, zoom 1.0 -> 0.85 with the load, the lattice inside the arena with kick ripples and impulses, walls in the accent, light budget, enemies with fields, marks, spin and hat steps, warp-in rings, kill recipes small / medium / large (sparks, flash, pool, rings, embers, shatter, distortion, shake), telegraphs (Ram chevrons, shooters' glint) and enemy bullets on the threat layer, the ship (two-tone, halo of one arc per cell, the last arc in the danger colour, priority layer, hit-point dot, trail, pool), shots by the streak rule, Shards with tails above 480 wu/s, Nova inhale (sparks in from 600 wu, the screen dims) and front (bloom pump from `look.json` `beat.novaPump`), Dash ghosts and the Perfect Dash ring and sparkle, cell shatter and panic ring, edge indicators |
+| HUD, touch | `src/game/play_hud.*` | Score (white to the accent), Chain (white, gold, amber; pulses), Nova stars, Dash bar, TAP TO RETRY; floating sticks (10 mm, dead zone 8%, the origin follows past the radius), NOVA and DASH (9 mm at least, pressed: filled, brighter, larger; cooldown ring), all in physical sizes on Android, tone-mapped into the HUD batch with a few soft pools for glow |
+| Band | `src/audio/band.*`, `engine.cpp` | Fire mode 2 (the assist's half-rate grid) in the engine's lead and in `computeShots`; the Nova blast on the game's beat (`Timing::AtTick`); the effect interface `kill`, `shard`, `nova`, `warp`, `sfxAt`, `holdSection`; the game mode (`BandDefaults::game`). No DSP change (calibration unchanged) |
+| Headless, tests | `src/tools/sim_headless.cpp`, `tests/sim_tests.cpp` | `raveform_headless --sim determinism|soak|stress`; `raveform_sim_tests`; both in `scripts\test.ps1` (also an audio test for the half-rate lead and the Nova tick) |
+
+### How to run
+
+- Desktop: `scripts\run-desktop.ps1 -Config dev` starts the game (WASD, mouse aim with the left button,
+  E / right button Nova, Space Dash; a gamepad works through SDL3's gamepad API). `-AppArgs '--bot'` lets
+  the bot play. `--scenario touch_test` is M0's old default scene.
+- Moto: `scripts\deploy-android.ps1 -Serial moto` installs and launches the game (no arguments needed).
+- Measured: `scripts\bench-android.ps1 -Serial moto -Scenario bench_stress -Seconds 60 -Warmup 60 -AppArgs
+  '--tier low' -Deploy`; `bench_play` likewise; `raveform_headless --sim soak --minutes 10`.
+
+### Numbers
+
+Headless (desktop, dev build, one core; Track 1's 120 BPM on the simulated clock; seed 1):
+
+| Run | Kills | Deaths | Peak enemies / bullets / shots / Shards | Tick P50 / P95 / max (ms) | Overflow, NaN, allocations |
+|---|---|---|---|---|---|
+| `--sim soak --minutes 10` (the bot) | 1,950 | 0 (longest life 600 s) | 186 / 75 / 6 / 123 | 0.005 / 0.022 / 0.053 | 0, none, 0 |
+| `--sim soak --minutes 10 --policy reckless` | 1,000 | 6 (6 retries) | 16 / 0 / 6 / 23 | 0.004 / 0.006 / 0.049 | 0, none, 0 |
+| `--sim stress --seconds 120` | 590 | 0 (invulnerable) | 700 / 1,530 / 1 / 13 (mean 694 / 1,420) | 0.396 / 0.523 / 0.624 | 0, none, 0 |
+
+The careful bot never died in ten minutes of the stage A spawner: Groove budgets alone (2.0-12.0 threat
+per bar, no Build or Drop) are gentle; the director's ramps are stage B.
+
+Moto One 5G Ace (shared phone), Swappy 60 Hz, Low, 2400x1080, overlay on, the game's band (Groove held,
+Track 1):
+
+| Run | Panel missed / P95 / max (CPU side) | Main thread P50 / P95 | Sim tick P50 / P95 / max | GPU (governor's clock) P50 / P95 | Alive (mean / max): enemies, bullets; in view | Allocations, underruns, callback load P95 | File |
+|---|---|---|---|---|---|---|---|
+| `bench_stress`, 60 s after 60 s | **0 of 3,594** / 1 period / 19.7 ms: PASS | 5.18 / 5.63 ms | **1.57 / 1.96 / 2.18 ms** | 12.06 / 12.30 ms | 699 / 700, 1,472 / 1,530; 649 enemies, 877 bullets in view | 0 ours, 0 underruns, 9.5% | `ZY22BXMJG3-bench_stress-20261111-220734.json` |
+| `bench_endgame` (M1, unchanged), 30 s after 20 s | 0 of 1,797 / 1 period / 19.9 ms: PASS | 4.63 / 4.87 ms | – | 13.50 / 13.81 ms | 705 enemies, 997 bullets in view | 0, 0 | `ZY22BXMJG3-bench_endgame-20261111-221012.json` |
+
+The `bench_endgame` check matches the M2 numbers (main thread 4.67 / 4.90, GPU 13.41 / 13.76 ms): nothing
+regressed. Battery 25.7 -> 26.4 °C, thermal status 0. The stress run plays the game's own band (18
+voices at peak), not M2's `--band full` load test. Swappy's own allocations inside its calls (4 a frame)
+and on its threads (1 a frame) as in every run since M0; ours 0.
+
+Desktop Debug with validation, 60 s each after 5 s: `bench_play` and `bench_stress` 0 validation messages,
+0 heap allocations in the frame and the tick, 0 in the callback, no pool overflow, finite state (desktop
+timing informational; the window lost focus once, so `valid` is false). Moto: 6 background / foreground
+cycles of the game (`lifecycle-android.ps1 -Cycles 6`): PASS.
+
+### Numbers chosen (no document gives them; `src/sim/tuning.h`, the constants block of `play_view.cpp`)
+
+- Player: acceleration time constant 30 ms, glide 90 ms; shots live 0.75 s (1,050 wu), collide with a
+  4 wu radius, leave 10 wu along the aim; auto-aim within 900 wu, a held target kept while within 1.25 x
+  the nearest one's distance; the hull turns at most 18 rad/s; Nova invulnerability from the press to
+  0.3 s after the blast; the panic pulse pushes enemies at 600 wu/s, decaying 6/s; contact uses 85% of an
+  enemy's radius.
+- Fairness: ranged enemies attack only inside +-900 x +-430 wu of a player; the Nova clears inside the
+  widest view (+-941 x +-424 wu).
+- Enemies: bullets live 4 s; drifters lean toward the player at 0.15 rad/s; hounds keep 26 wu apart; the
+  Hound B fan is +-0.12 rad; Shoal weights cohesion 0.9, alignment 1.1, separation 2.6, seek 1.0, turn
+  5 rad/s; a Ram engages within 650 wu; caroms leave toward the player +-0.35 rad; the Sentry's arms turn
+  once in four bars.
+- Shards: burst 60-160 wu/s, drag 4/s, homing 3,000 wu/s² up to 900 wu/s, collected within 20 wu.
+- Spawner: the bank keeps at most three bars of budget; packs land 450-780 wu out horizontally and 0.45
+  of that vertically; packs of up to 3 drifters, 3 hounds, 2 caroms, 1 Ram or Sentry, Shoals 12-40; the
+  newest debut is picked twice as often; after Track 2's third cycle the budget holds.
+- Stress: 700 enemies, 32 Sentries, a box of +-780 x +-340 wu, recycled beyond 1,300 wu, at most 160 new
+  per beat, the ship invulnerable.
+- Band: intensity 0.15 + threat in view / 16, followed over 2 s, posted on a change of 0.02; one Shard note
+  per 1/32 (at most 8 waiting).
+- View: look-ahead 0.25 s of velocity (capped at cruising speed) plus 60 wu along the aim while firing,
+  eased over 0.25 s; zoom 1.0 -> 0.85 between a load of 60 and 300 (2 s); walls in the accent at 1.6, 2.6
+  px, +60% on the snare, +30% width with the bass; shake 4 px on a hit, 3 on the Nova, 6 on death; muzzle
+  flash 10 px at 0.9 for 60 ms; the inhale dims the exposure by up to 30% with 140 sparks; the front is
+  6 px at 3.0; panic ring 0.25 s; Dash ghosts 0.25 s; indicators 46 px from the edge, 16 px chevrons.
+- Controls: gamepad dead zone 0.2, the right stick fires beyond 0.3; the Chain's colours are P4's gold and
+  P4's deep (amber); the touch layout scales out from the corners when physical sizes exceed 1080 ones.
+
+### Contradictions and gaps found in the design documents
+
+1. `species.json` says radius is "before the glyph's own size factor", but its values already are 14 wu x
+   the glyph's size (shoal 8 ~ 7.7, ram 18 ~ 17.5, sentry 16 ~ 16.1); applying the size again would make a
+   Shoal 4.4 wu. The radius is used as the drawn and collision radius, the size factor not applied twice.
+2. GAME_DESIGN 5: "Score = enemy value x Chain" with a Chain that starts at 0: the multiplier is
+   max(1, Chain).
+3. look.md §5 warp-in examples ("a Shoal's is 30 px across, a Ram's 130") fit neither reading of the
+   formula; the formula (2.5 x the glyph's extent) is what is drawn.
+4. GAME_DESIGN 2 wants buttons of at least 9 mm; the target frame's Dash (60 ref px) is 7.6 mm on the Moto.
+   9 mm wins on the phone (Dash 71 px, Nova scaled with it, the layout pushed out to keep the spacing).
+5. "Hound B: 3-shot burst on beat 1": built as a three-bullet fan on the beat (as M1's stage drew it), so
+   the attack resolves on the beat; a burst over sixteenths would not.
+6. "Sentry B: rotating bullet pattern with a gap" with `patternArms: 3`: three rotating arms (the gaps are
+   between them); a ring with one gap would be another pattern.
+7. look.md §7 draws the HUD after tone mapping, never bloomed; the target frame's HUD is bloomed scene
+   light. The HUD follows §7 (colours tone-mapped by hand) with soft pools behind the lit parts.
+8. Hit-stop (GAME_DESIGN 11.3) or the time dip (look.md §5) for a lost cell: the dip (85% for 200 ms on
+   the world, never on the player's controls).
+9. Fast bright rings and the afterglow: at low load (swarm gain 1) the Nova front (about 100 px a frame)
+   and the inhale ring leave soft copies in the afterglow, the effect v2.2 fixed for shots and Shards
+   (`strip_nova_front_*`). Drawing them swept like shots filled the disc with light; they stay single
+   rings as M1's Drop front. The lead's call.
+10. No wall style in the look bible: the walls are the palette accent.
+11. The game plays Track 1, so its palette is Ultraviolet (GAME_DESIGN 4.2), where M1 and M2 used Reef.
+
+### Pictures for the lead (`captures/m3/`, 2400x1080, desktop Debug with validation, fixed 1/60 s steps)
+
+Strips of eight consecutive frames `strip_<name>_0..7.png` with a contact sheet `strip_<name>_sheet.png`
+and its 1600 px copy `.small.png` (scripted scenes, `--picture`): `fire` (a stream into a drifter),
+`kill_small` (tier I), `kill_medium` (tier III), `kill_large` (Ram V: shatter, distortion), `shards`
+(a pickup run with tails), `hit` (a cell lost: arc shatter, panic ring, Chain 24 -> 12), `nova` (press
+to the blast) and `nova_front` (the front clearing), `dash`, `perfect_dash`, `warp` (the first frames of a
+warp-in) and `warp_land` (the landing), `sentry` (the end of the glint and the first volley). Single
+frames: `bot_0030s.png`, `bot_0120s.png`, `bot_0300s.png` (the bot at 30 s, 2 and 5 minutes),
+`stress_0020s.png`; `moto_inapp_touch.png` (Moto in-app capture, the aim stick held by `adb input swipe`,
+the touch controls drawn). Regenerate with `scripts\review-m3.ps1`.
+
+### Not done, not verified
+
+- Needs the user: feel, sound, the touch controls under real thumbs, a physical gamepad (none here), and
+  whether the stage A difficulty is right (the bot survives ten minutes).
+- Stage B, not started: the director and the phrase cycle (Build, Drop, Break; Surge in two gears), the
+  Trio and upgrades, the phrase bar and the rest of the HUD, title / game over / pause, the boss,
+  attract mode, the tier probe behind the title. `Spawner` and `Rules` (score and magnet multipliers) are
+  the hooks the director replaces or sets.
+- Not verified: edge indicators in a picture (none falls in the review scenes); the musical clock after a
+  stream reopen (the lifecycle cycles pass, the clock's behaviour was not measured); the tablet and the
+  12R (not attached).
+- The game's band was measured, not M2's `--band full` load with the stress scene.
+
+### M3 changes in shared files
+
+| File | Change |
+|---|---|
+| `CMakeLists.txt` | `species.json` embedded; `raveform_sim` library; the game sources in `raveform_core`; `sim_headless.cpp` in `raveform_headless`; `raveform_sim_tests` |
+| `src/platform/app.*` | `Content::Play` (the default), input routing (keys, mouse, gamepads, touch without gestures), picture capture by the script's moment, bench series and the `sim` object, overlay lines, palette by Track |
+| `src/core/args.*` | `--bot`, `--seed`, `--fast-forward`, `--picture`; `--palette` recorded as given |
+| `src/audio/band.*`, `engine.cpp` | Above (fire mode 2, Nova on a tick, effect interface, game mode) |
+| `src/game/lattice.*` | Optional world bounds (the arena) |
+| `src/content/look.*` | `beat.novaPump` read |
+| `src/gfx/vector_font.*` | `drawField` (a colour field across the cap height) |
+| `src/tools/audio_render.cpp` | `--sim` goes to `sim_headless.cpp` |
+
 ## M2 Audio engine and beat clock — status 2026-11-11 (night)
 
 Built on branch `m2-audio` (worktree `Raveform-m2`, cut from `4ef7086`), accepted by the lead (the renders
