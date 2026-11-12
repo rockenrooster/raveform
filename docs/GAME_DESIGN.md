@@ -438,8 +438,17 @@ phases; it fits inside the entity caps.
   by 1.5 for each Track of the loop; enemy speed rises 6% a Track (at most × 1.6) and enemy
   bullet speed 6% a Track (at most × 1.5, so a pattern can still be read); every shooter's bullet
   count rises 15% a Track (at most × 3, inside the pools). The loop's first Track card says so:
-  `ENCORE` above the Track's name, and under it `NO MORE REFILLS`. Tune every factor within a
-  third of its value to land on the targets. Enemy counts still are not a lever.
+  `ENCORE` above the Track's name, and under it `NO MORE REFILLS`.
+  Even all of that at the top of its range did not end a run (the bot runs of 2026-11-12: a
+  careful player is hit about once a Track, in the boss fight, whatever the ramp, and on the
+  last cell the Cells came faster than the hits). So the loop ends a run with a clock the
+  player can see. **The halo burns down:** on the first downbeat of every Track of the loop
+  the ship loses two cells of capacity (never below one), the arcs shattering outward on the
+  beat, and the Track card's last line reads `HALO 6`, then `HALO 4`, `HALO 2`, `HALO 1`. And
+  **no more refills** means all of them: in the loop no kill drops a Cell, Regen stops, and the
+  Breaks give nothing back. What is left is the Cell from a mini-boss, the two from a boss, a
+  Halo Boost, and the Novas in stock. The power fantasy is the first pass; the encore is how
+  long the player can hold on to it. Enemy counts still are not a lever.
 - **Co-op.** Budget × (1 + 0.6 × (players − 1)); elite, mini-boss and boss health × (1 + 0.5 × (players − 1)).
 
 Tune with the offline simulation: bot players run 30 minutes headless and the tool charts budget,
