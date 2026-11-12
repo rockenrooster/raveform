@@ -123,13 +123,15 @@ Not a screen: the upgrade choice happens in the world, at the Break, with the ru
 
 | Element | Place | Behaviour |
 |---|---|---|
-| **Choice ring** | A circle of 170 wu around where the ship was when the Break began; it does not follow the ship | It is also the clock: the lit arc (accent ↔ white, 2 px at 1.3, a bright bead at its end) is the Break that is left; the spent part is white at 0.16. When it runs out, a random orb flies to the ship |
+| **Choice ring** | A circle of 170 wu around where the ship was when the Break began; it does not follow the ship | It is also the clock: the lit arc (accent ↔ white, 2 px at 1.3, a bright bead at its end) is the Break that is left; the spent part is white at 0.16. When it runs out, the orb nearest the ship is taken |
 | **Orbs** | Three on the ring: top, lower left, lower right | The upgrade's own icon in its frame (`design/icons.json`): Mods 38 wu, Riffs ×1.14. A thin white ring at 1.42 × that around it. They swell 6% on the beat |
 | Words | Always outside the ring: above the top orb, left of the left one, right of the right one | Name, cap 20 wu (30 px), white at 1.3. Effect under it, cap 11 wu, palette accent: two to four words, a number where there is one (`+1 SHOT LANE`, `LEVEL 3: SECOND RING`) |
 | Stack pips | Under the words | One dot per stack or level the upgrade can have: owned ones white, the one this pick adds gold with a ring, the rest empty outlines |
 | **Closing on one** | Within 110 wu of an orb, or flying at it | That orb answers: icon ×1.12, its ring in the player colour at 2.0 with a dashed outer ring, a pool of the player colour, a line of light from the ship to it, its words at 1.9. The other two do not change |
-| **Taking it** | Touching the orb | The orb folds into the ship in two beats' worth of sparks in its two colours, the icon flies to the band row of the HUD, the other two pop into sparks of their own colours, the ring closes. The pickup sound is the "upgrade taken" chord, on the next sixteenth |
-| Hint | Bottom centre, cap 14 px, white at 0.7 | `FLY INTO ONE`, on the first Trio of a run only |
+| **Locked** | The Break's first two beats | The ring draws itself in one beat and the orbs fade in over the next, as outlines at 0.5 with their words already readable. Nothing can be taken yet. On the third beat they light with a chime |
+| **Holding** | The ship inside the orb's thin ring (1.42 × the icon) | The thin ring fills as a solid arc in the player colour, clockwise from twelve o'clock, over two beats, with two rising notes. Flying through does nothing. Leaving empties it at once and silences it |
+| **Taking it** | The arc closes | The orb folds into the ship in two beats' worth of sparks in its two colours, the icon flies to the band row of the HUD, the other two pop into sparks of their own colours, the ring closes. The pickup sound is the "upgrade taken" chord, on the next sixteenth |
+| Hint | Bottom centre, cap 14 px, white at 0.7 | `STAY ON ONE TO TAKE IT`, on the first three Trios of a run |
 
 With a **Fusion** on offer the triangle turns point down (orbs at lower centre, upper left, upper
 right) and the Fusion sits above the ring at 230 wu: its icon at ×1.45 in the eight-point frame, a
@@ -148,17 +150,17 @@ Effect words (final, 2026-11-12; plain words, no music terms, so a first-time pl
 
 | Upgrade | Words by stack or level |
 |---|---|
-| Split | `+1 SHOT LANE` |
+| Split | `+2 SHOT LANES` |
 | Double-Time | `FIRE RATE X1.5`, then `FIRE RATE X2` |
-| Pierce | `SHOTS PIERCE +1` |
-| Ricochet | `+1 WALL BOUNCE` |
-| Overcharge | `+25% SHOT DAMAGE` |
-| Extra Cell | `+1 SHIELD CELL` |
-| Magnet | `WIDER SHARD PULL` |
-| On-Beat Crit | `BEAT SHOTS X2`, `X3`, `X4` |
-| Orbitals | `NEW RIFF: TWO ORBITERS`, then `LEVEL n: THREE ORBITERS` and so on |
-| Pulse Ring | `NEW RIFF: BEAT RINGS`, `LEVEL 2: EVERY BEAT`, `LEVEL 3: SECOND RING`, `LEVEL 4: WIDER RINGS`, `LEVEL 5: HEAVIER RINGS` |
-| Sentinel | `NEW RIFF: OFF-BEAT DRONE`, then `LEVEL n: BURST OF n` |
+| Pierce | `SHOTS PIERCE +2` |
+| Ricochet | `SHOTS BOUNCE +2` |
+| Overcharge | `+50% SHOT DAMAGE` |
+| Extra Cell | `+1 CELL, ALL REFILLED` |
+| Magnet | `SHARD PULL X2`, then `X3`, `X4`, `X5` |
+| On-Beat Crit | `BEAT SHOTS X3`, `X5`, `X8` |
+| Orbitals | `NEW RIFF: THREE ORBITERS`, then `LEVEL 2: FIVE ORBITERS` and so on by twos |
+| Pulse Ring | `NEW RIFF: BEAT RINGS`, `LEVEL 2: SECOND RING`, `LEVEL 3: WIDER RINGS`, `LEVEL 4: HEAVIER RINGS`, `LEVEL 5: TWICE AS OFTEN` |
+| Sentinel | `NEW RIFF: OFF-BEAT DRONE`, `LEVEL 2: BURST OF 4`, `LEVEL 3: SECOND DRONE`, `LEVEL 4: BURST OF 5`, `LEVEL 5: THIRD DRONE` |
 | Boosts (HUD) | Prism `FIVE-WAY RAINBOW FAN`, Hyper `FIRE RATE X2`, Halo `BLOCKS THREE HITS`, Magnet Storm `PULLS EVERY SHARD` |
 
 ## Track name card (M3)

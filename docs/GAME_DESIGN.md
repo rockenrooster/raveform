@@ -114,9 +114,9 @@ and a single RETRY button.
 | Speed | 520 wu/s, near-instant acceleration, slight glide on release |
 | Size | Visual radius 14 wu; hit radius 5 wu (forgiving) |
 | Primary weapon | One shot per 1/16 step, 1400 wu/s, lead-arp note per shot |
-| Shield cells | Start 3, cap 6. A hit removes one, fires a panic pulse (clears bullets within 220 wu, shoves enemies), grants 1.5 s invulnerability and halves the Chain. Health is shown on the ship itself: its halo has one arc per cell |
-| Nova | Start with 2, capacity 3 (up to 6 with Mods). Rule R6. Clears bullets and non-boss enemies in view; heavy damage to bosses |
-| Dash | One charge, recharges in 4 beats. 220 wu in 0.12 s, invulnerable throughout. Perfect Dash refunds half the recharge and emits a small shock ring |
+| Shield cells | Start 4, cap 6; one cell comes back at every Break. A hit removes one, fires a panic pulse (clears bullets within 220 wu, shoves enemies), grants 1.5 s invulnerability and halves the Chain. Health is shown on the ship itself: its halo has one arc per cell |
+| Nova | Start with 3, capacity 4 (up to 6 with Mods); one comes back at every Break. Rule R6. Clears bullets and non-boss enemies in view; heavy damage to bosses |
+| Dash | One charge, recharges in 2 beats. 220 wu in 0.12 s, invulnerable throughout. Perfect Dash refunds half the recharge and emits a small shock ring |
 
 **Scoring.** Score = enemy value × Chain. The Chain is a multiplier: it starts at ×1 and never goes
 below it. Every enemy death drops **Shards** for each player separately
@@ -137,9 +137,12 @@ except settings, local high scores and lifetime stats.
 ### 6.1 How upgrades arrive
 
 - **Trio.** At every Break, three orbs appear on a ring of 170 wu around each player, each showing an
-  icon, its name, a two-to-four-word effect and its stack pips. Fly into one to take it; the others pop.
-  The ring is the clock; if none is taken, a random one homes in at the end of the Break. There is no
-  pause and no menu. Layout: `design/screens.md`, "The Trio".
+  icon, its name, a two-to-four-word effect and its stack pips. **A choice is never an accident**
+  (user play test, 2026-11-12: orbs were taken by flying through them): the orbs cannot be taken for
+  the Break's first two beats, and after that one is taken by **staying inside it for two beats**
+  while its ring fills. Flying through does nothing; leaving empties the ring. The others pop. The
+  ring is the clock; if none is taken, the one nearest the ship is taken at the end of the Break.
+  There is no pause and no menu. Layout: `design/screens.md`, "The Trio".
 - Trio options are drawn from Mods, new Riffs and Riff level-ups with weights. Guarantees: at least one
   option affects weapons; if the player has fewer than four Riffs and none was offered in the last two
   Trios, one is.
@@ -155,17 +158,17 @@ Weapon
 
 | # | Mod | Effect per stack | Cap | Sound / look |
 |---|---|---|---|---|
-| 1 | Split | +1 projectile in a tight fan | 4 | Adds a harmony note to each shot (3rd, 5th, octave, 7th) |
+| 1 | Split | +2 projectiles in a tight fan: 3, 5, then 7 lanes | 3 | Adds a harmony note to each shot (3rd, 5th, octave, 7th) |
 | 2 | Double-Time | Fire grid 1/16 → 1/16 triplet → 1/32 | 2 | Lead doubles in speed |
-| 3 | Pierce | Shots pass through +1 enemy | 3 | Longer shots, longer note release |
-| 4 | Ricochet | +1 bounce off walls and structures | 3 | Pitch-up blip per bounce |
+| 3 | Pierce | Shots pass through +2 enemies | 3 | Longer shots, longer note release |
+| 4 | Ricochet | +2 bounces: off walls and structures, and from each enemy hit to the nearest other enemy within 300 wu | 3 | Pitch-up blip per bounce |
 | 5 | Fork | On first hit, split into 2 half-damage shots | 2 | Y-shaped flash |
 | 6 | Seeker | Shots curve toward targets | 3 | Slight portamento on the lead |
 | 7 | Heavy Step | Every 4th shot is a slow orb that explodes | 3 | Low octave thump |
 | 8 | Accent | The shot on beat 1 is a full-length piercing lance; then beats 1+3; then every beat | 3 | Accented note, white flash line |
 | 9 | Echo | Each shot repeats as a ghost one beat later at half damage; then two echoes | 2 | Delay line on the lead |
 | 10 | Wave | Shots travel in sine paths with a wider hit radius | 2 | Vibrato |
-| 11 | Overcharge | +25% damage, larger hotter shots | 5 | More drive on the lead |
+| 11 | Overcharge | +50% damage, larger hotter shots | 5 | More drive on the lead |
 | 12 | Rear Guard | Also fire backward on off-beats; then sideways too | 2 | Off-beat counter-melody |
 | 13 | Arc | Kills chain lightning to 2 more enemies | 3 | Zap arpeggio |
 | 14 | Burn | Hits ignite for 2 beats; burning enemies ignite neighbours on death | 3 | Crackle layer |
@@ -176,7 +179,7 @@ Defence and movement
 
 | # | Mod | Effect per stack | Cap |
 |---|---|---|---|
-| 17 | Extra Cell | +1 Shield cell capacity and refill one | 3 |
+| 17 | Extra Cell | +1 Shield cell capacity and refill every cell | 2 |
 | 18 | Regen | Restore a cell every third Break; then every second; then every Break | 3 |
 | 19 | Afterimage | Dash leaves a decoy enemies chase for 2 beats | 2 |
 | 20 | Reserve | +1 Dash charge | 2 |
@@ -189,7 +192,7 @@ Economy
 
 | # | Mod | Effect per stack | Cap |
 |---|---|---|---|
-| 25 | Magnet | +40% Shard pull radius | 4 |
+| 25 | Magnet | +100% Shard pull radius (90 wu, then 180, 270, 360, 450) | 4 |
 | 26 | Prospector | 25% chance of an extra Shard per kill | 4 |
 | 27 | Nova Stock | +1 Nova capacity and gain one | 3 |
 | 28 | Encore | Boosts last one bar longer | 3 |
@@ -200,7 +203,7 @@ Rhythm
 
 | # | Mod | Effect per stack | Cap |
 |---|---|---|---|
-| 31 | On-Beat Crit | Shots on quarter-note beats deal ×2, ×3, ×4 and flash | 3 |
+| 31 | On-Beat Crit | Shots on quarter-note beats deal ×3, ×5, ×8, flash, and burst over 80 wu | 3 |
 | 32 | Syncopation | Off-beat shots pierce and deal +50% | 2 |
 | 33 | Bar Line | At each bar start a laser cross flashes through your position; then diagonals; then longer | 3 |
 | 34 | Crescendo | +5% damage per bar without being hit, up to +50%; then +100% | 2 |
@@ -211,9 +214,9 @@ Rhythm
 
 | # | Riff | Pattern and effect | Levels add | Instrument layer |
 |---|---|---|---|---|
-| 1 | Orbitals | 2 shards orbit you, one turn per bar | +1 shard each | Shaker ticks as they pass 12 o'clock |
-| 2 | Pulse Ring | Expanding damaging ring every 2 beats | Every beat; double ring | Tom / sub thump |
-| 3 | Sentinel | Drone fires at the nearest enemy on off-beats | Burst size | Off-beat stab |
+| 1 | Orbitals | 3 shards orbit you, one turn per bar; they also destroy enemy bullets they touch | +2 shards each (3, 5, 7, 9, 11) | Shaker ticks as they pass 12 o'clock |
+| 2 | Pulse Ring | Expanding damaging ring every beat, twice the first build's damage | Double ring; wider; heavier; a ring on every eighth | Tom / sub thump |
+| 3 | Sentinel | Drone fires a burst of 3 at the nearest enemy on off-beats | Burst size; a second drone at level 3, a third at level 5 | Off-beat stab |
 | 4 | Lancer | Charges 3 beats, fires a full-length beam along your aim on beat 4 | Width; every 2 beats | Chord hit |
 | 5 | Minelayer | Drops a mine each bar; all detonate on the next bar's beat 1 | Clusters | Clap + sub |
 | 6 | Storm Coil | Zaps nearby enemies on 1/8 triplets | Targets, radius | Pentatonic zaps |
@@ -262,6 +265,10 @@ Rhythm
 
 - Every upgrade must be visible **and** audible within one bar of picking it up.
 - Prefer new behaviour over bigger numbers. Flat stat Mods exist but are the minority.
+- **Every pick is felt at once** (user play test, 2026-11-12: "permanent upgrades should be much better").
+  The first stack of any Mod or Riff at least doubles what it touches or adds a behaviour the ship
+  did not have; no stack is a small percentage. The numbers of the first slice (Mods 1-4, 11, 17,
+  25, 31; Riffs 1-3) were raised to this rule on that day; M5 writes the rest to the same scale.
 - No upgrade may break the entity caps (TECH_SPEC §7): effects that multiply projectiles carry their own caps.
 - First slice (M3): Mods 1–4, 11, 17, 25, 31; Riffs 1–3; Boosts 1, 2, 7, 8.
 
@@ -381,6 +388,14 @@ phases; it fits inside the entity caps.
   end of a Break: a small group alone, with its name on screen, before it joins the pool.
 - **Assist.** After a lost Shield cell the budget eases 10% for one cycle; after two clean cycles it
   rises 10%. Bounds 0.8–1.3.
+- **How hard: easy, a power fantasy** (the user's call after playing, 2026-11-12). The screen is
+  full and the player wins. The crowd targets stay as they are or rise; what gives is the danger.
+  Targets for the bots over 20 seeds of 30 minutes: the careful bot's median first death at minute
+  15 or later, Track 3 reached in at least 70% of its runs and no more than one boss fight in ten
+  lost; the careless bot's median first death at minute 4 or later and Track 2 reached in at least
+  half of its runs. Levers, in this order: the upgrades' strength (section 6), the cells and Novas
+  that come back at each Break (section 5), then the threat budget and the bosses' bullet density,
+  neither below 0.7 of the first slice's numbers. Enemy counts are not a lever.
 - **Fairness.** No spawn within 260 wu of any player or inside the central third of any player's view;
   every spawn warps in for two beats; no off-screen ranged attack without an edge indicator.
 - **Caps.** The director never exceeds the entity caps. When the budget exceeds what the caps allow, it
@@ -397,8 +412,9 @@ entity counts, kills per second and damage taken per cycle.
 ## 9. Arena
 
 - **Size:** 9600 × 5400 wu, bounded by glowing walls — about 45 screens. The warping grid covers it.
-- **Camera:** follows the player with look-ahead along velocity and a small bias toward the aim
-  direction; zoom breathes between 0.85× and 1.25× with enemy density and boss fights. Each device has
+- **Camera:** follows the player with look-ahead along velocity (0.125 s of travel: 65 wu at full
+  speed) and a small bias toward the aim direction (30 wu). Both are half the first build's, which
+  swung the view too far on every change of direction (user play test, 2026-11-12); zoom breathes between 0.85× and 1.25× with enemy density and boss fights. Each device has
   its own camera. **Boss fights:** while a boss lives within 1,800 wu of the ship the camera holds
   0.85× and leans toward the boss by 30% of the offset to it (at most 320 wu), so the boss is in the
   frame whenever its bullets are.
