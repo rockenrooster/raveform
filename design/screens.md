@@ -7,7 +7,7 @@ clear. Every control has the pressed state of `design/look.md` §6: filled disc 
 colour at 0.45, outline at 2.0 and thicker, label at 1.8.
 
 Screens are added here as their milestone comes up. So far: sync calibration (M2); title, settings,
-the Trio, game over and pause (M3); co-op lobby (M4). Pictures: `design/previews/screens.png` (tiled) and
+the Trio, game over and pause (M3); the co-op screens (M4). Pictures: `design/previews/screens.png` (tiled) and
 `screen_title.png`, `screen_settings.png`, `screen_sync.png`, `screen_game_over.png`, `screen_pause.png`,
 `screen_lobby.png` at full size, drawn by `design/tools/screens.py`.
 
@@ -23,6 +23,10 @@ Rules for every screen:
 - Headline words are thick tubes: the stroke font at 6% of its cap height wide in a colour field, with
   a white copy a quarter as wide on top.
 - No screen has more than three choices in its main row.
+- Controls never touch: at least 24 px between any two, and between a control and a line of text.
+- A control that cannot be used yet is drawn disabled (outline at 0.3, label at 0.4) and takes no tap:
+  JOIN before four characters are typed, START before every seated player is ready.
+- Numbers of four digits and more carry their thousands separators everywhere (`27,175`, never `27175`).
 
 ---
 
@@ -195,7 +199,16 @@ The palette is the one the run ended in. The score is the headline; everything e
 | HOME | Under it, 330 × 90 | — |
 
 In co-op the score is the team's, each player's own score sits in their colour under it, ranked, and
-the set list carries each player's crosses in their colour.
+the set list carries each player's crosses in their colour. In detail:
+
+- Under the score one line, cap 14: `TEAM`, then `TIME` and `TRACK` with their values (labels in the
+  accent, values white). It stands in for the row of four numbers, which a team does not have.
+- The players are a table, not centred lines: rank, name (`P1 (YOU)`), score, Chain, kills, each a
+  column; names left-aligned, numbers right-aligned, cap 22, every row in its player's colour. The
+  table is centred as a whole.
+- The run behind the screen is dimmed to a fifth, as in the pause, and no beacon or beacon flare is
+  drawn: every ship is down, and their rings would stand in the middle of the scores.
+- RETRY is the host's. The others see it disabled with `WAITING FOR HOST` under it; HOME is everyone's.
 
 ## Pause (M3)
 
@@ -210,19 +223,57 @@ The run freezes and dims to a fifth; the music carries on under a low-pass.
 | QUIT RUN | Bottom centre, 320 × 90, outline at 0.3 | Asks once |
 
 Back toggles pause. In co-op any player can pause; it takes hold on the next beat for everyone and the
-count-in is shared.
+count-in is shared. Under `PAUSED` a line in cap 16 says so: `FOR EVERYONE IN THE ROOM`. The run line
+reads the team's score, the Track and the time; RESTART is not offered and QUIT RUN reads `LEAVE RUN`.
 
-## Co-op lobby (M4)
+## Co-op (M4)
+
+Three screens lead into a co-op run: the local network notice (once), the join screen, the lobby.
+**Nothing of a run is drawn behind them** — no attract ship, enemies, shots, rings or Shards; the
+lattice at rest and the background only. The title has the attract run because it has four words on
+it; these screens are read, typed on and tapped.
+
+### Local network notice
+
+Shown once, before the first join or host, and again if the permission was refused.
+
+| Element | Place | Behaviour |
+|---|---|---|
+| `LOCAL NETWORK` | Top centre, cap 60, accent | — |
+| The reason | Centred, three lines, cap 18, white at 1.2 | `TO PLAY TOGETHER, RAVEFORM TALKS TO THE OTHER PHONES ON YOUR WI-FI OR HOTSPOT: IT LISTENS FOR THEIR ROOMS AND SENDS THE GAME TO THEM. NOTHING LEAVES YOUR NETWORK. ANDROID WILL ASK YOU NEXT.` |
+| **CONTINUE** | Centre, 600 × 130, player colour | Opens the system's question. Refused: the reason's last line becomes `RAVEFORM CANNOT SEE OTHER PHONES WITHOUT IT. YOU CAN ALLOW IT IN ANDROID'S SETTINGS.` and CONTINUE asks again |
+| BACK | Bottom left, 300 × 90 | — |
+
+### Join
+
+| Element | Place | Behaviour |
+|---|---|---|
+| `CO-OP` | Top centre, cap 60, accent | With the network hint under it (below) |
+| **Rooms on this network** | Left column, 132 to 1140 px; up to four rows of 1008 × 90, 22 px apart | **One row for each room, however many times it was heard.** Code (gold), the host's name, seats taken (`2/4`), left-aligned with 40 px of padding. A row's outline is the host's colour. A full room or one that has started is drawn disabled with `FULL` or `PLAYING`. No room heard: one dashed row, `LOOKING FOR ROOMS` with three dots filling on the beat. A room not heard for 3 s leaves the list |
+| Message line | Under the list, cap 16 | Refusals and errors, in amber (the danger colour is for what can kill you): `THAT ROOM'S GAME DATA DIFFERS FROM THIS ONE'S: UPDATE BOTH PHONES`, `THAT ROOM IS FULL`, `NO ROOM WITH THAT CODE`, `THE HOST LEFT: THE RUN IS OVER. YOUR SCORE IS KEPT` |
+| **HOST A ROOM** | Under the message line, centred on the list column, 600 × 130, player colour | The obvious control |
+| BACK | Bottom left, 300 × 90, at least 24 px under HOST A ROOM | — |
+| **Room code** | Right column, cap 80, gold; four dashes while empty | Typed on the pad |
+| Pad | Under it: sixteen keys in four rows, 112 px discs, cap 40 | The sixteen characters a code is made of: `3 4 6 7 9 A C D F H J K M P Q R` (none that reads as another). `DEL` and **JOIN** under the pad; JOIN is disabled until four characters are in |
+| TYPE AN ADDRESS | Under them, 380 × 70, outline | For networks that carry no discovery: opens the system keyboard for an address |
+
+### Lobby
 
 | Element | Place | Behaviour |
 |---|---|---|
 | `CO-OP` | Top centre, cap 60, accent | — |
-| **Room code** | Centred, cap 120, gold | Four characters. Hosts show it; joiners type it on a twelve-key pad (or pick the host from the list of those found on the network) |
+| **Room code** | Centred, cap 120, gold | Four characters, with `ROOM CODE` in cap 14 above it. Every seat sees it, so a fourth player can be told it across the room |
 | Network hint | Under the code, cap 13 | `SAME WI-FI, OR JOIN ONE PHONE'S HOTSPOT` |
 | **Seats** | Four rings of 130 px in a row | A taken seat: ring in that player's colour field, glass, a pool, the ship with its halo, name and state under it. Joining: ring at 0.8, no glass, ship at a third. Open: dashed white ring |
 | Band line | Under the seats, cap 12, accent | `EACH PHONE IS AN INSTRUMENT: SET THEM DOWN TOGETHER AND THE ROOM IS THE BAND` |
-| **START** | Bottom centre, 600 × 130, host only | Starts when every seated player is ready; the others see `WAITING FOR HOST` |
+| **START** | Bottom centre, 600 × 130, host only | Starts when every seated player is ready (disabled until then); the others see `WAITING FOR HOST` in its place |
 | LEAVE | Bottom left, 300 × 90 | — |
 
 Each player hears their own lead when they tap their seat, so a group can tell whose phone is whose
-before the run starts.
+before the run starts. Your own seat says so under its state: `TAP TO HEAR YOUR LEAD`.
+
+### In the run
+
+- The HUD's edge chevrons (teammates, beacons, Cells, events) keep clear of the HUD: where a chevron
+  would land on the score block, the phrase bar, the Nova stock or the pause ring, it slides along the
+  edge to the nearest free place, 20 px clear.

@@ -449,6 +449,16 @@ phases; it fits inside the entity caps.
   Breaks give nothing back. What is left is the Cell from a mini-boss, the two from a boss, a
   Halo Boost, and the Novas in stock. The power fantasy is the first pass; the encore is how
   long the player can hold on to it. Enemy counts still are not a lever.
+  **Measured and accepted** (the lead's ruling, 2026-11-12; 20 seeds of 40 minutes): the careful
+  bot's median first death is at minute 32, in Track 12, and the careless bot's at minute 22, in
+  Track 8 (the halo is down to one cell from Track 7, about minute 19); neither dies in the first
+  pass. That is later than the targets above, which were set before the burn existed, and every
+  lever has been tried at the top of its bounds. The targets are now what was measured: the
+  careful bot between minutes 26 and 36, the careless bot between 17 and 25, nobody in the first
+  pass; a change that moves either median out of its band needs a reason. Whether an encore of
+  ten to twenty minutes is too long is the user's to say at the next play test. If it is, the
+  lever is the clock itself (the loop's Tracks play two cycles instead of three, so the halo
+  burns down a third sooner), not more damage.
 - **Co-op.** Budget × (1 + 0.6 × (players − 1)); elite, mini-boss and boss health × (1 + 0.5 × (players − 1)).
 
 Tune with the offline simulation: bot players run 30 minutes headless and the tool charts budget,
