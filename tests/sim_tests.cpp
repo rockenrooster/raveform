@@ -1313,6 +1313,37 @@ void testPlayTest2() {
         delete w;
     }
     {
+        // The loop ramps (GAME_DESIGN 8, the lead's review of play test 2): nothing through Track 3, then a factor a Track,
+        // compounding. An enemy spawned in Track 5 has kLoopHealthRamp^2 of its health; a Cell clock runs kLoopCellRamp^2
+        // slower; the threat budget and the boss's health and bullets ramp the same way (their code reads loopRamp).
+        CHECK(loopRamp(1.3f, 1) == 1.0f && loopRamp(1.3f, 3) == 1.0f && std::fabs(loopRamp(1.3f, 4) - 1.3f) < 1e-6f &&
+              std::fabs(loopRamp(1.3f, 6) - 1.3f * 1.3f * 1.3f) < 1e-5f);
+        CHECK(kLoopThreatRamp >= 1.15f && kLoopThreatRamp <= 1.5f && kLoopHealthRamp >= 1.15f && kLoopHealthRamp <= 1.5f &&
+              kLoopCellRamp >= 1.15f && kLoopCellRamp <= 1.5f);
+        auto* w = new (std::nothrow) World;
+        w->init(g_species);
+        w->spawner().mode = Spawner::Mode::Slice;
+        w->resetRun(31, 0.0, 1);
+        w->rules().godMode = true;
+        w->directorMut().track = 5;
+        w->directorMut().bossSpawned = true;
+        double music = 0.0;
+        while (music < 2.0 * kTicksPerBar) stepWorld(*w, music, Vec2{});
+        CHECK(w->phrase().track == 5);
+        const u16 drifter = SpeciesTable::index(Family::Drifter, 1, kVariantA);
+        const i32 i = w->spawnEnemy(drifter, Vec2{600.0f, 0.0f}, 0.0f, 0.0);
+        CHECK(i >= 0);
+        if (i >= 0)
+            CHECK_MSG(std::fabs(w->enemies().hp[i] - g_species->get(drifter).health * kLoopHealthRamp * kLoopHealthRamp) < 1e-4f, "Track 5 health %.4f",
+                      w->enemies().hp[i]);
+        // One cell missing: due after 40 s x kLoopCellRamp^2 (not after 40 s).
+        w->playerMut(0).cells = w->player(0).cellCap - 1;
+        for (u32 t = 0; t < 60 * 41; ++t) stepWorld(*w, music, Vec2{});
+        CHECK_MSG(w->player(0).cellDue < 1.0f && w->player(0).cellDue > 0.9f / (kLoopCellRamp * kLoopCellRamp), "Track 5 Cell clock %.3f after 41 s",
+                  w->player(0).cellDue);
+        delete w;
+    }
+    {
         // Regen (Mod 18): a missing cell grows back every 16 bars, then 8, then 4; nothing while full.
         CHECK(regenEveryBars(1) == 16 && regenEveryBars(2) == 8 && regenEveryBars(3) == 4 && upgradeInfo(kRegen).cap == 3);
         CHECK(std::strcmp(upgradeWords(kRegen, 1), "CELL REGROWS: 16 BARS") == 0 && std::strcmp(upgradeWords(kRegen, 2), "CELL REGROWS: 8 BARS") == 0 &&

@@ -1,6 +1,6 @@
 // The shots on screen (look.md v2.2 §3 streaks; play test 2, look.md §5 "The build on the shots"): a stronger build
 // looks stronger. The tail of a shot is always its owner's colour, so it can be told from a teammate's; the head (the
-// front 45% of the streak) shows the build: Overcharge changes its colour, width and length with every stack, On-Beat
+// front 65% of the streak) shows the build: Overcharge changes its colour, width and length with every stack, On-Beat
 // Crit puts a four-point star on a beat shot's head, Pierce a small chevron behind the head for each stack, and what a
 // Riff throws takes its owner's base colour at levels 1-2, the light colour at 3-4 and a white core with the player's rim
 // at 5. Prism's lanes are saturated end to end. Cosmetic only.
@@ -20,7 +20,7 @@ Vec3 whiteC() { return {1.0f, 1.0f, 1.0f}; }
 Vec2 lerpP(Vec2 a, Vec2 b, float t) { return a + (b - a) * t; }
 Vec2 perpP(Vec2 v) { return {-v.y, v.x}; }
 
-constexpr float kHeadShare = 0.45f;                                          // look.md 5 (quoted): the front 45%
+constexpr float kHeadShare = 0.65f;  // look.md 5 (quoted; the lead's review of play test 2: 45% read as a coloured tip)
 constexpr float kOverWidth[6] = {1.0f, 1.15f, 1.3f, 1.45f, 1.6f, 1.8f};      // look.md 5 (quoted): width by stack
 constexpr float kOverLength = 0.08f;                                         // look.md 5 (quoted): +8% length a stack
 constexpr float kPrismWhite = 0.15f, kPrismLevel = 0.6f, kPrismWidth = 1.3f;  // look.md 5 (quoted)

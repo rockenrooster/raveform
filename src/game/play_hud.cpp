@@ -624,8 +624,11 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
     if (tr.open && tr.opened >= 1 && tr.opened <= 3) {
         const float cap = 14.0f * s;
         const char* hint = "STAY ON ONE TO TAKE IT";
-        font.drawField(d.hud, {cx - 0.5f * textW(font, cap, hint), H - bottom - 150.0f * s}, cap, 0.7f * s, col(white, 0.7f), col(white, 0.7f),
-                       col(white, 0.7f), hint);
+        // Play test 2 (the lead's review): while an active Boost's label shows above the Riff slots, the hint sits above it.
+        bool boostShown = false;
+        for (const ActiveBoost& b : me.boosts) boostShown = boostShown || b.type != kNoBoost;
+        const float y = boostShown ? rowY - (116.0f + 15.0f + 20.0f) * s - cap : H - bottom - 150.0f * s;
+        font.drawField(d.hud, {cx - 0.5f * textW(font, cap, hint), y}, cap, 0.7f * s, col(white, 0.7f), col(white, 0.7f), col(white, 0.7f), hint);
     }
 }
 

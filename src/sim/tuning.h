@@ -186,6 +186,16 @@ constexpr u32 kBossCells = 2;
 constexpr float kCellRadiusWu = 16.0f;      // look.md 6 (quoted): the gold ring
 constexpr float kCellPickupWu = 30.0f;      // chosen: taken when its ring touches the ship (16 + 14 wu)
 
+// ---- The loop ramps (GAME_DESIGN 8, "The loop is where a run ends", the lead's review of play test 2): every Track after
+// the first pass (Track 4 on) multiplies the threat budget and the bosses' bullet density by kLoopThreatRamp, enemy
+// health (the boss's too) by kLoopHealthRamp and stretches the Cell clocks by kLoopCellRamp, compounding (sim/director.h
+// loopRamp). Tuned with the bots within 1.15-1.5 (docs/PROGRESS.md, play test 2). The first pass is untouched.
+constexpr float kLoopThreatRamp = 1.3f, kLoopHealthRamp = 1.25f, kLoopCellRamp = 1.25f;
+// The ramp holds a boss's bullet density at most this many times kaleidos.json's counts: the enemy bullet pool (2,048)
+// then holds the naked core's bursts at 174 BPM (about 465 alive at 1x) with room for the other shooters (chosen; TECH_SPEC 7:
+// what multiplies projectiles carries its own cap).
+constexpr float kBossBulletDensityMax = 3.5f;
+
 // ---- Difficulty levers (play test 1, GAME_DESIGN 8 "How hard": the threat budget and the bosses' bullet density,
 // neither below 0.7 of the first slice's). 1.0 = the first slice's numbers.
 constexpr float kThreatBudgetScale = 0.7f;

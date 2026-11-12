@@ -769,6 +769,7 @@ void World::cellClock() {
             const float u = static_cast<float>(pl.cells - 1u) / static_cast<float>(pl.cellCap - 2u);  // 0 the last cell, 1 one missing
             every = kCellEveryLastS + (kCellEveryOneMissingS - kCellEveryLastS) * clampf(u, 0.0f, 1.0f);
         }
+        every *= loopRamp(kLoopCellRamp, phrase_.track);  // the loop stretches the clock (GAME_DESIGN 8)
         pl.cellDue = std::fmin(pl.cellDue + kDt / every, 1.0f);
     }
 }

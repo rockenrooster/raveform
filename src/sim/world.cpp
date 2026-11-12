@@ -815,7 +815,7 @@ i32 World::spawnEnemyAs(u16 speciesIndex, Vec2 pos, float heading, double landTi
     e.y[i] = e.py[i] = pos.y;
     e.vx[i] = e.vy[i] = e.kx[i] = e.ky[i] = 0.0f;
     e.heading[i] = e.pheading[i] = heading;
-    e.hp[i] = s.health;
+    e.hp[i] = s.health * loopRamp(kLoopHealthRamp, phrase_.track);  // the loop ramps health (GAME_DESIGN 8, play test 2)
     e.radius[i] = s.radius;
     e.a[i] = e.b[i] = 0.0f;
     e.species[i] = speciesIndex;

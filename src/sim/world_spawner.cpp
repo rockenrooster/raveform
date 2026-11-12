@@ -452,7 +452,7 @@ void World::megaWave(double landTick) {
     DirectorState& d = director_;
     const Phrase next = phraseAt(d, barOf(landTick + 1.0));
     const float base = baseBudget(species_->budget, species_->budgetCycles, next.track, next.cycle);
-    float wave = kMegaWaveBars * base * kDropScaleStart * d.assist * coopBudgetScale();
+    float wave = kMegaWaveBars * base * kDropScaleStart * d.assist * coopBudgetScale() * loopRamp(kLoopThreatRamp, next.track);
     for (u32 formations = 0; formations < 16 && wave > 0.0f; ++formations) {
         if (enemies_.count >= aliveCap()) return;
         const i32 sp = pickSpecies(2);  // threats (the crowd brings the Drop's fodder)
@@ -629,8 +629,10 @@ void World::directorBar(double barTick, u32 bar) {
     // The threats: the budget by Track, cycle and section (none during the boss's Drop: kaleidos.md); co-op x
     // (1 + 0.6 x (players - 1)) (GAME_DESIGN 8).
     const float base = baseBudget(species_->budget, species_->budgetCycles, ph.track, ph.cycle ? ph.cycle : 1u);
-    // Play test 1: the threat budget's lever (tuning::kThreatBudgetScale, 1 = the first slice's numbers).
-    d.budgetPerBar = ph.bossDrop ? 0.0f : base * sectionScale(ph) * d.assist * coopBudgetScale() * kThreatBudgetScale;
+    // Play test 1: the threat budget's lever (tuning::kThreatBudgetScale, 1 = the first slice's numbers); play test 2's review:
+    // the loop ramps it a Track at a time (GAME_DESIGN 8).
+    d.budgetPerBar = ph.bossDrop ? 0.0f
+                                 : base * sectionScale(ph) * d.assist * coopBudgetScale() * kThreatBudgetScale * loopRamp(kLoopThreatRamp, ph.track);
     if (d.budgetPerBar <= 0.0f) return;
     d.bank = std::fmin(d.bank + d.budgetPerBar, d.budgetPerBar * kBankBars);
     spendBudget(land);

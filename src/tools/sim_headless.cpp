@@ -306,6 +306,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     for (auto& row : cells)
         for (Cell& c : row) c = Cell{};
     static float firstDeath[256];
+    static u32 firstDeathTrack[256];  // play test 2's review: the Track of the first death (the first pass is Tracks 1-3)
     static u32 maxTrack[256];
     u64 kills = 0, deaths = 0, overflow = 0, allocs = 0, capped = 0;
     u32 nan = 0, shotsPeak = 0;
@@ -333,6 +334,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         float peak[4][5] = {};
         bool sawDrop[4][5] = {};
         firstDeath[s] = minutes + 1.0f;
+        firstDeathTrack[s] = 0;
         maxTrack[s] = 1;
         u32 lastHits = 0, lastBar = 0xFFFFFFFFu, killsAtBar = 0;
         bool bossOn = false;
@@ -348,7 +350,10 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
             runner.step();
             const World& w = *world;
             if (w.shots().count > shotsPeak) shotsPeak = w.shots().count;
-            if (runner.deaths() > d0 && firstDeath[s] > minutes) firstDeath[s] = static_cast<float>(t) / 3600.0f;
+            if (runner.deaths() > d0 && firstDeath[s] > minutes) {
+                firstDeath[s] = static_cast<float>(t) / 3600.0f;
+                firstDeathTrack[s] = world->phrase().track;
+            }
             const Phrase& ph = w.phrase();
             if (ph.track > maxTrack[s]) maxTrack[s] = ph.track;
             const PlayerState& p = w.player(0);
@@ -505,9 +510,11 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     seedShards + (c.eventsDropped - c0.eventsDropped);
         capped += c.shotsCapped - c0.shotsCapped;
         if (!world->finite()) ++nan;
-        std::printf("[sim]   seed %llu: first death %.2f min, Track %u reached, %u kills, %u deaths, Shards dropped %u\n",
+        std::printf("[sim]   seed %llu: first death %.2f min, Track %u reached, %u kills, %u deaths, Shards dropped %u; dropped enemies %u, "
+                    "bullets %u, shots %u, events %u\n",
                     static_cast<unsigned long long>(seed0 + s), firstDeath[s] > minutes ? -1.0 : firstDeath[s], maxTrack[s], seedKills,
-                    runner.deaths(), seedShards);
+                    runner.deaths(), seedShards, c.enemiesDropped - c0.enemiesDropped, c.bulletsDropped - c0.bulletsDropped,
+                    c.shotsDropped - c0.shotsDropped, c.eventsDropped - c0.eventsDropped);
     }
     std::printf("[sim] crowd (%s bot%s): %u seeds x %.0f min\n", policy == Bot::Policy::Reckless ? "careless" : "careful", god ? ", god mode" : "", seeds, minutes);
     std::printf("[sim]   Track cycle  target  in view (Groove)  ratio  counted  alive  Drop peak in view (runs)  peak/target\n");
@@ -549,6 +556,17 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     }
     std::printf("[sim]   first death: median %.2f min (%s); Track 2 reached in %u of %u runs, Track 3 in %u\n", median,
                 median > minutes ? "no death in most runs" : "minutes", t2, n, t3);
+    {
+        // Play test 2's review (GAME_DESIGN 8): deaths in the first pass (Tracks 1-3) and the first deaths' Tracks.
+        u32 firstPass = 0;
+        for (u32 k = 0; k < n; ++k) firstPass += (firstDeath[k] <= minutes && firstDeathTrack[k] <= 3) ? 1u : 0u;
+        std::printf("[sim]   first deaths in the first pass (Tracks 1-3): %u of %u runs; first deaths by run (min/Track):", firstPass, n);
+        for (u32 k = 0; k < n; ++k) {
+            if (firstDeath[k] <= minutes) std::printf(" %.1f/T%u", firstDeath[k], firstDeathTrack[k]);
+            else std::printf(" -");
+        }
+        std::printf("\n");
+    }
     std::printf("[sim]   kills a minute %.0f, deaths a run %.1f; overflow %llu, NaN runs %u, heap allocations in the loops %llu\n",
                 static_cast<double>(kills) / (static_cast<double>(n) * minutes), static_cast<double>(deaths) / n,
                 static_cast<unsigned long long>(overflow), nan, static_cast<unsigned long long>(allocs));

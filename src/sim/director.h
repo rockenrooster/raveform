@@ -32,6 +32,13 @@ inline u32 formOfTrack(u32 track) { return songOfTrack(track) == 0 ? 0u : 1u; } 
 inline u32 cyclesOfTrack(u32 /*track*/) { return 3u; }  // GAME_DESIGN 4.2 (play test 2: Track 1 too)
 float bpmOfTrack(u32 track);  // 120, 126, 132, then +4 per Track up to 174 (GAME_DESIGN 4.2)
 const char* songName(u32 song);  // "FIRST LIGHT", "SOLAR WIND", "REEF"
+// The loop ramps (GAME_DESIGN 8, "The loop is where a run ends", play test 2): a factor once for every Track after the
+// first pass (Track 4 on), compounding: factor^(track - 3), 1 through Track 3.
+inline float loopRamp(float factor, u32 track) {
+    float r = 1.0f;
+    for (u32 t = kSongs + 1; t <= track && t < 256; ++t) r *= factor;
+    return r;
+}
 
 struct Phrase {
     u32 bar = 0;               // bars since the run began

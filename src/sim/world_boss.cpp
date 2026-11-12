@@ -118,6 +118,8 @@ void World::spawnBossNow(double enterTick, Vec2 pos) {
     scale *= tr <= 3 ? kBossTrackHealth[tr - 1] : kBossTrackHealth[2] * std::pow(kBossEndlessHealth, static_cast<float>(tr - 3));
     // GAME_DESIGN 8 (play test 1, second pass): the first boss of a run, Track 1's, is the teacher: 0.7 of its health.
     if (tr == 1) scale *= kFirstBossHealth;
+    // The loop ramps enemy health, the boss's too (GAME_DESIGN 8, the lead's review of play test 2).
+    scale *= loopRamp(kLoopHealthRamp, tr);
     s.pairMax = b.pairHealth * scale;
     s.coreMax = b.coreHealth * scale;
     for (float& h : s.pairHp) h = s.pairMax;
@@ -381,14 +383,15 @@ void World::bossFire(double t) {
     const float adv = tickAgeOf(t);
     const float wheel = wheelAt(s, b, t);
     const u8 mask = bossFiringMask(t);
+    // Play test 1's lever on the bullet density (1 = kaleidos.json's numbers); the loop ramps it (GAME_DESIGN 8).
+    const float density = std::fmin(kBossBulletScale * loopRamp(kLoopThreatRamp, director_.track), kBossBulletDensityMax);
     if (mask) {
         const float spread = ph.spreadDeg * kDeg;
         for (u32 k = 0; k < 6; ++k) {
             if (!(mask & (1u << (k % 3)))) continue;
             const float a = wheel + static_cast<float>(k) * kArmStep;
             const Vec2 tip = s.pos + dirOf(a) * b.tip.armRadius;
-            // Play test 1: the bullet density's lever (tuning::kBossBulletScale, 1 = kaleidos.json's numbers).
-            const u32 fan = scaledCount(ph.fan ? ph.fan : 1u, kBossBulletScale, 1u);
+            const u32 fan = scaledCount(ph.fan ? ph.fan : 1u, density, 1u);
             for (u32 j = 0; j < fan; ++j) {
                 const float da = (static_cast<float>(j) - 0.5f * static_cast<float>(fan - 1)) * spread;
                 spawnBullet(tip, dirOf(a + da) * b.bulletSpeed, adv, b.bulletLife);
@@ -409,7 +412,7 @@ void World::bossFire(double t) {
             fire = t >= s.phaseTick && (in < 0.5 || every - in < 0.5);
         }
         if (fire) {
-            const u32 n = scaledCount(ph.coreBurst, kBossBulletScale, 4u);
+            const u32 n = scaledCount(ph.coreBurst, density, 4u);
             const u32 index = static_cast<u32>(std::floor(t / (2.0 * kTicksPerStep) + 0.5));
             const float turn = (index & 1u) ? 0.5f * kTau / static_cast<float>(n) : 0.0f;
             for (u32 j = 0; j < n; ++j) {

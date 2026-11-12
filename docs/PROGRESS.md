@@ -142,6 +142,37 @@ chevron), `pt2_halo8` and `pt2_halo8_zoom` (eight cells, one growing back), `pt2
 - The densest part is now the loop's Track 5 (`--fast-forward 640`, 121 enemies in view on average against 96 for
   Track 3 cycle 2 at 450 s); both were measured.
 
+### The lead's review of play test 2 (`f48a193`)
+
+- **The coloured head is 65% of the streak** (the rear 35% stays the owner's colour):
+  `captures\playtest2\overcharge_2_5_head65.png` (Overcharge 2 and 5).
+- **The Trio's hint sits above an active Boost's label** (it was drawn over `HYPER / FIRE RATE X2`):
+  `captures\playtest2\review\pt2_level_trio.png`.
+- **The loop ramps** (GAME_DESIGN 8, "The loop is where a run ends"): from Track 4 on, every Track multiplies the
+  threat budget (the Drop's mega-wave too) and the bosses' bullet density by `kLoopThreatRamp`, enemy health (the
+  boss's too) by `kLoopHealthRamp` and the Cell clocks by `kLoopCellRamp`, compounding (`tuning.h`,
+  `sim/director.h loopRamp`); the first pass is untouched. A boss's bullet density stops at 3.5x kaleidos.json's
+  counts (`kBossBulletDensityMax`): without that cap 40-minute runs overflowed the 2,048 enemy bullets hundreds of
+  thousands of times by Track 15 (the naked core's ring at 12x); with it, no pool overflows.
+- **The targets cannot be reached with the three factors inside 1.15-1.5.** Neither bot dies in 40 minutes even at
+  the top of the range:
+
+  | factors (threat, health, Cells) | runs | careful: deaths, hits a run, Track reached | careless: deaths, hits a run, Track reached |
+  |---|---|---|---|
+  | 1.3, 1.25, 1.25 (the design's) | 6 seeds x 40 min | none, 8, Track 15 | none, 58, Track 15 |
+  | 1.5, 1.5, 1.5 (the most allowed) | 4 seeds x 40 min | none, 17, Track 13 | none, 99, Track 12-13 |
+
+  The ramps never reach the ship: at Track 13 enemies have 57x their health and the threat budget is 57x, yet the
+  careful bot is hit about 0.4 times a minute (nearly all in boss fights) and still kills 6,800 enemies a minute; the
+  alive cap (900) holds the counts. The careless bot is hit about 2.5 times a minute and is kept alive by Regen (78
+  cells grown back a run), Cells, the Breaks' refills, Auto Nova and Halo (from Boost orbs once everything is
+  capped). The factors stay at the design's 1.3 / 1.25 / 1.25 until the lead picks another lever (asked).
+- The Moto's densest part with the ramp (`--fast-forward 640 --nohits`, Track 5): 0 of 7,188 frames missed, panel
+  P95 1 period, max 19.7 ms, **PASS**; alive 601 / 901, enemy bullets 9 / 134, in view 120 / 447
+  (`captures\bench\ZY22BXMJG3-bench_play-20261112-163516.json`).
+- Tests: `raveform_sim_tests` 5,466 checks (the ramp: 1 through Track 3, then compounding; a Track 5 enemy's health
+  and Cell clock), `scripts\test.ps1` passes.
+
 ## Play test 1, second pass — 2026-11-12 (the lead's ruling in `39afc70`)
 
 - **Auto Nova** (on by default; `AUTO NOVA  FIRES ONE BEFORE YOUR LAST CELL GOES` under CONTROLS, saved as
