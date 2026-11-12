@@ -3,6 +3,9 @@
 // RaveformActivity.getArguments(), so both platforms share this parser.
 
 #include "core/types.h"
+// M2 audio begin
+#include "audio/audio_args.h"
+// M2 audio end
 
 namespace rf {
 
@@ -63,6 +66,9 @@ struct AppArgs {
     u32 gpuBurn = 0;           // --gpu-burn N: profiling load that keeps the GPU at its highest clock
     u32 mute = 0;              // --mute <names>: MuteBits (analysis pictures)
     u32 cycles = 20;           // lifecycle_test cycles
+    // M2 audio begin
+    AudioArgs audio;           // --band, --track, --sound, ... (audio/audio_args.h)
+    // M2 audio end
 };
 
 // Returns false on a malformed or unknown argument (after logging it).

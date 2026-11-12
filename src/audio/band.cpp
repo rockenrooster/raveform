@@ -1,0 +1,675 @@
+#include "audio/band.h"
+
+#include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_stdinc.h>
+
+#if defined(__ANDROID__) || defined(__linux__)
+#include <sched.h>
+#include <time.h>
+#define RF_THREAD_CPU_TIME 1
+#endif
+
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <new>
+
+#include "audio/platform_audio.h"
+#include "core/alloc_counter.h"
+#include "core/log.h"
+
+namespace rf {
+
+using namespace audio;
+
+namespace {
+
+constexpr double kFallbackExtraMs = 10.0;     // device latency beyond the buffer when there is no timestamp
+constexpr double kSnapMs = 25.0;              // a heard-clock error larger than this snaps instead of slewing
+constexpr double kSlew = 0.1;                 // share of the error corrected per frame
+constexpr double kLeadRuleCapMs = 80.0;       // TECH_SPEC 6.3: min(outputLatency, 80 ms)
+constexpr i64 kHapticGapNs = 120000000;       // at most one light tick per 120 ms
+
+bool eq(const char* a, const char* b) { return std::strcmp(a, b) == 0; }
+
+void prefPath(char* out, size_t cap, const char* file) {
+    char* pref = SDL_GetPrefPath("raveform", "raveform");  // load / save only (allocates)
+    std::snprintf(out, cap, "%s%s", pref ? pref : "", file);
+    SDL_free(pref);
+}
+
+}  // namespace
+
+float BeatView::envelope(BeatKind k, float decaySeconds) const {
+    const float s = since(k);
+    return decaySeconds > 0.0f ? std::exp(-s / decaySeconds) : 0.0f;
+}
+
+Band::~Band() {
+    delete engine_;
+    delete bank_;
+    delete music_;
+    delete[] usHist_;
+    delete[] cpuUsHist_;
+    delete[] loadHist_;
+    delete[] pending_;
+    delete[] heard_;
+}
+
+bool Band::init(const AudioArgs& args, const char* scenario, AudioDevice* device) {
+    device_ = device;
+    logAudioArgs(args);
+    const bool audioTest = eq(scenario, "audio_test"), sync = eq(scenario, "sync");
+    Mode mode = Mode::Silent;
+    bool full = false, stress = false;
+    if (args.band[0]) {
+        if (eq(args.band, "off")) return true;
+        if (eq(args.band, "play")) mode = Mode::Conductor;
+        if (eq(args.band, "staged")) mode = Mode::Staged;
+        if (eq(args.band, "full") || eq(args.band, "stress")) {
+            mode = Mode::Conductor;
+            full = true;
+            stress = eq(args.band, "stress");
+        }
+        if (eq(args.band, "metronome")) mode = Mode::Metronome;
+    } else if (audioTest) {
+        mode = Mode::Conductor;
+    } else if (sync) {
+        mode = Mode::Metronome;
+    } else {
+        return true;  // no band: the M0 test tone keeps the device
+    }
+
+    music_ = new (std::nothrow) MusicData;
+    bank_ = new (std::nothrow) SampleBank;
+    engine_ = new (std::nothrow) Engine;
+    usHist_ = new (std::nothrow) std::atomic<u32>[kUsBuckets];
+    cpuUsHist_ = new (std::nothrow) std::atomic<u32>[kUsBuckets];
+    loadHist_ = new (std::nothrow) std::atomic<u32>[kLoadBuckets];
+    pending_ = new (std::nothrow) BeatEvent[kPending];
+    heard_ = new (std::nothrow) BeatEvent[kHeardMax];
+    if (!music_ || !bank_ || !engine_ || !usHist_ || !cpuUsHist_ || !loadHist_ || !pending_ || !heard_) return false;
+    for (u32 i = 0; i < kUsBuckets; ++i) usHist_[i].store(0);
+    for (u32 i = 0; i < kUsBuckets; ++i) cpuUsHist_[i].store(0);
+    for (u32 i = 0; i < kLoadBuckets; ++i) loadHist_[i].store(0);
+    if (!music_->load()) return false;
+    rate_ = 48000;  // the stream asks for 48 kHz (TECH_SPEC 6.2); a device at another rate gets silence and a warning
+    if (!bank_->bake(*music_, rate_)) return false;
+    if (!engine_->init(*music_, *bank_, rate_, 1)) {
+        RF_ERR("audio: engine init failed");
+        return false;
+    }
+    view_.rate = rate_;
+    for (double& f : view_.lastFrame) f = -1e18;
+    tempo_.reset(120.0, rate_);
+
+    loadSync();
+    if (args.syncOffsetSet) {
+        syncOffsetMs_ = args.syncOffsetMs;
+        syncTouched_ = syncOffsetMs_ != 0.0f;
+    }
+    haptics_ = args.haptics >= 0 ? args.haptics == 1 : (audioTest || sync);
+    if (!platformAudioInit()) haptics_ = haptics_ && false;
+    mode_ = mode;
+    active_ = true;
+    sendInitialState(args);
+    if (full) {
+        // The load test, every layer playing: the Drop held (the whole bed), every Riff at level 2, four
+        // players firing on the 1/16-triplet grid (Double-Time) with one Split harmony each, and the
+        // effects fed every frame. --band stress doubles the harmony (Split x2): the extreme case.
+        post({.type = CmdType::SetPlayers, .a = 4, .b = 0});
+        post({.type = CmdType::SetSection, .a = static_cast<u8>(Section::Drop)});
+        post({.type = CmdType::HoldSection, .a = 1});
+        for (u8 p = 0; p < 4; ++p) {
+            post({.type = CmdType::SetFire, .a = p, .b = 1});
+            post({.type = CmdType::SetTimbre, .a = p, .b = p});
+            for (u8 k = 0; k < 3; ++k) post({.type = CmdType::SetRiff, .a = p, .b = k, .c = 2});
+            Command m{.type = CmdType::SetMods, .a = p};
+            m.mods[0] = stress ? 2 : 1;  // Split
+            m.mods[1] = 1;               // Double-Time
+            post(m);
+        }
+        fire_ = true;
+        intensity_ = 1.0f;
+        post({.type = CmdType::SetIntensity, .x = 1.0f});
+        fullLoad_ = true;
+        stressLoad_ = stress;
+    }
+    RF_LOG("audio: band %s, track %s, sound %s, sync offset %.0f ms%s, haptics %s", full ? (stress ? "stress (load test)" : "full (load test)") : (mode == Mode::Conductor ? "play" : (mode == Mode::Staged ? "staged" : "metronome")),
+           trackName(), variantName(), syncOffsetMs_, syncTouched_ ? "" : " (automatic)", haptics_ ? "on" : "off");
+    return true;
+}
+
+void Band::sendInitialState(const AudioArgs& args) {
+    if (args.track[0]) {
+        const i32 t = music_->trackIndex(args.track);
+        if (t < 0) {
+            RF_WARN("audio: unknown track '%s'; playing track01", args.track);
+        } else {
+            track_ = static_cast<u32>(t);
+        }
+    }
+    variant_ = music_->defaultVariant;
+    if (args.sound[0]) {
+        const i32 v = music_->variantIndex(args.sound);
+        if (v < 0) {
+            RF_WARN("audio: unknown sound '%s'; playing %s", args.sound, music_->variants[variant_].id);
+        } else {
+            variant_ = static_cast<u32>(v);
+        }
+    }
+    if (args.intensity >= 0.0f) intensity_ = args.intensity;
+    post({.type = CmdType::SetVariant, .a = static_cast<u8>(variant_)});
+    post({.type = CmdType::SetIntensity, .x = intensity_});
+    post({.type = CmdType::SetMode, .a = static_cast<u8>(mode_), .b = static_cast<u8>(track_), .c = static_cast<u8>(mode_ == Mode::Staged ? 1 : 0)});
+    if (args.section[0]) {
+        static const char* const kNames[] = {"groove", "build", "drop", "break"};
+        for (u8 s = 0; s < 4; ++s)
+            if (eq(args.section, kNames[s])) post({.type = CmdType::SetSection, .a = s});
+    }
+    if (args.hold) setHold(true);
+    if (args.fire) setFire(true);
+}
+
+void Band::post(const Command& c) {
+    if (engine_) engine_->post(c);
+}
+
+// ---------------------------------------------------------------- audio thread
+
+void Band::render(void* self, float* out, u32 frames, u32 channels, u32 sampleRate) {
+    auto* b = static_cast<Band*>(self);
+    const u64 allocs0 = heapAllocCountThisThread();
+    const i64 t0 = audioNowNs();
+#if defined(RF_THREAD_CPU_TIME)
+    // The callback's own CPU time (wall time also counts preemption) and the core it ran on.
+    timespec c0{};
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &c0);
+    const int cpu = sched_getcpu();
+    if (cpu >= 0 && cpu < 16) b->cpuHist_[cpu].fetch_add(1, std::memory_order_relaxed);
+#endif
+    const u32 gen = b->device_ ? b->device_->generation() : 0;
+    if (gen != b->cbGeneration_) {
+        b->cbGeneration_ = gen;
+        b->cbStreamFrames_ = 0;
+    }
+    ClockSnapshot cs;
+    cs.engineFrame = b->engine_->writeFrame();
+    cs.streamFrame = b->cbStreamFrames_;
+    cs.wallNs = t0;
+    cs.frames = frames;
+    cs.generation = gen;
+    b->clock_.publish(cs);
+    if (sampleRate == b->rate_ && channels > 0) {
+        b->engine_->render(out, frames, channels);
+    } else {
+        std::memset(out, 0, sizeof(float) * frames * channels);
+        b->rateMismatch_.store(sampleRate, std::memory_order_relaxed);
+    }
+    b->cbStreamFrames_ += frames;
+    const i64 t1 = audioNowNs();
+#if defined(RF_THREAD_CPU_TIME)
+    timespec c1{};
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &c1);
+    const i64 cpuNs = (static_cast<i64>(c1.tv_sec) - c0.tv_sec) * 1000000000ll + (c1.tv_nsec - c0.tv_nsec);
+    u32 cb = static_cast<u32>(cpuNs / 10000);
+    if (cb >= kUsBuckets) cb = kUsBuckets - 1;
+    b->cpuUsHist_[cb].fetch_add(1, std::memory_order_relaxed);
+#endif
+    const double us = static_cast<double>(t1 - t0) * 1e-3;
+    const double load = frames ? (static_cast<double>(t1 - t0) * 1e-9) / (static_cast<double>(frames) / sampleRate) : 0.0;
+    u32 ub = static_cast<u32>(us / 10.0);
+    u32 lb = static_cast<u32>(load * 1000.0);
+    if (ub >= kUsBuckets) ub = kUsBuckets - 1;
+    if (lb >= kLoadBuckets) lb = kLoadBuckets - 1;
+    b->usHist_[ub].fetch_add(1, std::memory_order_relaxed);
+    b->loadHist_[lb].fetch_add(1, std::memory_order_relaxed);
+    b->histCallbacks_.fetch_add(1, std::memory_order_relaxed);
+    const u64 allocs = heapAllocCountThisThread() - allocs0;
+    if (allocs) b->callbackAllocs_.fetch_add(allocs, std::memory_order_relaxed);
+}
+
+// ---------------------------------------------------------------- main thread
+
+void Band::drainEvents() {
+    BeatEvent e;
+    while (engine_->popEvent(e)) {
+        if (e.kind == BeatKind::Tempo) {
+            // The tempo map mirror: a segment at tick 0 starts a new song (it takes over once heard).
+            TempoSegment s;
+            s.tick = e.tick;
+            s.ticksPerFrame = e.x;
+            s.frame = static_cast<double>(e.frame);
+            if (e.tick == 0.0) {
+                nextTempo_ = TempoMap{};
+                nextTempo_.appendSegment(s);
+                nextSongStartFrame_ = s.frame;
+                haveNextTempo_ = true;
+            } else if (haveNextTempo_) {
+                nextTempo_.changeAt(s.tick, s.ticksPerFrame);  // exact start frame, as the engine computes it
+            } else {
+                tempo_.changeAt(s.tick, s.ticksPerFrame);
+            }
+            continue;
+        }
+        if (pendingCount_ < kPending) pending_[pendingCount_++] = e;
+    }
+}
+
+void Band::releaseHeard() {
+    view_.eventCount = 0;
+    u32 keep = 0;
+    for (u32 i = 0; i < pendingCount_; ++i) {
+        const BeatEvent& e = pending_[i];
+        if (static_cast<double>(e.frame) > view_.heardFrame) {
+            pending_[keep++] = e;
+            continue;
+        }
+        if (view_.eventCount < kHeardMax) heard_[view_.eventCount++] = e;
+        const u32 k = static_cast<u32>(e.kind);
+        view_.lastFrame[k] = static_cast<double>(e.frame);
+        view_.lastValue[k] = e.value;
+        view_.lastNote[k] = e.a;
+        switch (e.kind) {
+            case BeatKind::Bar:
+                view_.section = static_cast<Section>(e.a);
+                view_.sectionBars = e.b;
+                view_.sectionBar = e.c;
+                break;
+            case BeatKind::Variant: view_.variant = e.a; break;
+            case BeatKind::Track: view_.track = e.a; break;
+            case BeatKind::Kick:
+            case BeatKind::Click:
+                if (haptics_ && view_.running) {
+                    const i64 now = audioNowNs();
+                    if (now - lastHapticNs_ >= kHapticGapNs) {
+                        platformHaptic(HapticKind::Light);
+                        lastHapticNs_ = now;
+                        ++hapticCalls_;
+                    }
+                }
+                break;
+            case BeatKind::Impact:
+                if (haptics_ && view_.running) {
+                    platformHaptic(HapticKind::Heavy);
+                    lastHapticNs_ = audioNowNs();
+                    ++hapticCalls_;
+                }
+                break;
+            default: break;
+        }
+    }
+    pendingCount_ = keep;
+    view_.events = heard_;
+}
+
+bool Band::fireAt(i64 wallNs) const {
+    bool held = false;
+    for (u32 i = 0; i < fireCount_; ++i) {
+        const FireEdge& e = fireEdges_[(fireHead_ + i) % countOf(fireEdges_)];
+        if (e.ns > wallNs) break;
+        held = e.held;
+    }
+    return held;
+}
+
+void Band::computeShots(i64 nowNs, i64 displayLeadNs) {
+    view_.shotCount = 0;
+    view_.shots = shots_;
+    const double tick = view_.heardTick;
+    if (mode_ != Mode::Conductor || lastShotTick_ < 0.0 || tick < lastShotTick_ || tick - lastShotTick_ > kTicksPerBar) {
+        lastShotTick_ = tick;
+        return;
+    }
+    // The local player's grid in the heard bar: Surge (first half of the Drop) moves it one step along.
+    const ConductorRules& r = music_->conductor;
+    const bool surge = view_.section == Section::Drop && view_.sectionBar < view_.sectionBars / 2;
+    const i64 grid = static_cast<i64>(r.gridTicks[surge ? 1 : 0]);
+    const double capNs = (view_.latencyMs < kLeadRuleCapMs ? view_.latencyMs : kLeadRuleCapMs) * 1e6;
+    for (i64 s = static_cast<i64>(std::floor(lastShotTick_ / grid)) + 1; static_cast<double>(s * grid) <= tick; ++s) {
+        const double stepTick = static_cast<double>(s * grid);
+        if (stepTick <= lastShotTick_) continue;
+        const double age = (view_.heardFrame - tempo_.frameAt(stepTick)) / rate_;
+        const i64 heardAt = nowNs + displayLeadNs - static_cast<i64>(age * 1e9);
+        if (!fireAt(heardAt - static_cast<i64>(capNs))) continue;
+        if (view_.shotCount >= countOf(shots_)) break;
+        LeadShot& shot = shots_[view_.shotCount++];
+        shot.player = 0;
+        shot.tick = stepTick;
+        shot.stepInBar = static_cast<u32>((s * grid % kTicksPerBar) / grid);
+        shot.ageSeconds = static_cast<float>(age);
+    }
+    lastShotTick_ = tick;
+}
+
+void Band::update(i64 displayLeadNs) {
+    if (!active_) return;
+    const i64 t0 = audioNowNs();
+    // The route: after every (re)open, ask what the stream plays on (Bluetooth adds unreported delay).
+    const u32 gen = device_ ? device_->generation() : 0;
+    if (gen != routeGeneration_ && device_ && device_->isOpen()) {
+        routeGeneration_ = gen;
+        const AudioStats st = device_->stats();  // once per stream (Oboe's queries may allocate)
+        burst_ = st.framesPerBurst;
+        deviceRate_ = st.sampleRate;
+        const int type = platformAudioDeviceType(st.deviceId);
+        bluetooth_ = isBluetoothDeviceType(type);
+        RF_LOG("audio: output device %d (type %d)%s", st.deviceId, type, bluetooth_ ? ", Bluetooth" : "");
+        if (const u32 bad = rateMismatch_.load()) RF_WARN("audio: the device runs at %u Hz, the band at %u Hz: silent", bad, rate_);
+    }
+    drainEvents();
+
+    // Heard clock: which engine frame reaches the ear when this frame reaches the panel.
+    const i64 tDisplay = t0 + displayLeadNs;
+    const double r = static_cast<double>(rate_);
+    ClockSnapshot cs;
+    AudioTimestamp ts;
+    double raw = 0.0;
+    bool rawOk = false;
+    if (clock_.read(cs) && device_ && cs.generation == device_->generation()) {
+        if (device_->timestamp(ts)) {
+            const double base = static_cast<double>(cs.engineFrame - cs.streamFrame);  // engine frame of stream frame 0
+            raw = base + static_cast<double>(ts.position) + static_cast<double>(tDisplay - ts.timeNs) * r * 1e-9;
+            timestamped_ = true;
+        } else {
+            raw = static_cast<double>(cs.engineFrame) - static_cast<double>(device_->bufferedFrames()) +
+                  static_cast<double>(tDisplay - cs.wallNs) * r * 1e-9 - kFallbackExtraMs * r * 1e-3;
+            timestamped_ = false;
+        }
+        raw -= static_cast<double>(syncOffsetMs_) * r * 1e-3;
+        rawOk = true;
+    }
+    if (rawOk) {
+        const double predicted = model_ + static_cast<double>(tDisplay - modelNs_) * r * 1e-9;
+        const double err = raw - predicted;
+        if (!modelValid_ || gen != modelGeneration_ || std::fabs(err) > kSnapMs * r * 1e-3) {
+            model_ = raw;
+        } else {
+            model_ = predicted + kSlew * err;
+        }
+        modelNs_ = tDisplay;
+        modelValid_ = true;
+        modelGeneration_ = gen;
+    }
+    view_.running = modelValid_;
+    view_.timestamped = timestamped_;
+    view_.heardFrame = model_;
+    const double heardNow = model_ - static_cast<double>(displayLeadNs) * r * 1e-9;
+    view_.latencyMs = (static_cast<double>(engine_->writeFrame()) - heardNow - static_cast<double>(syncOffsetMs_) * r * 1e-3) / r * 1e3;
+    if (haveNextTempo_ && view_.heardFrame >= nextSongStartFrame_) {
+        tempo_ = nextTempo_;
+        songStartFrame_ = nextSongStartFrame_;
+        haveNextTempo_ = false;
+        lastShotTick_ = -1.0;
+    }
+    const double tick = tempo_.count() ? tempo_.tickAt(view_.heardFrame) : 0.0;
+    view_.heardTick = tick;
+    view_.songSeconds = (view_.heardFrame - songStartFrame_) / r;
+    view_.bpm = tempo_.count() ? tempo_.bpmAt(view_.heardFrame, r) : 120.0;
+    const double beats = tick / static_cast<double>(kPpq);
+    const double fb = std::floor(beats);
+    view_.beatPhase = static_cast<float>(beats - fb);
+    const i64 beatIndex = static_cast<i64>(fb);
+    view_.beatInBar = static_cast<u32>(((beatIndex % 4) + 4) % 4);
+    view_.bar = tick >= 0.0 ? static_cast<u32>(tick / static_cast<double>(kTicksPerBar)) : 0u;
+    releaseHeard();
+    computeShots(t0, displayLeadNs);
+    if (fullLoad_) {
+        // The load test also keeps the effects busy: kills on most frames, Shard runs, large kills.
+        ++fullFrame_;
+        post({.type = CmdType::Kill, .a = 0, .b = 3});
+        if (fullFrame_ % 4 == 0) {
+            post({.type = CmdType::Kill, .a = 1, .b = 1});
+            post({.type = CmdType::Shard, .x = 1.0f});
+        }
+        if (fullFrame_ % 30 == 0) post({.type = CmdType::Kill, .a = 2, .b = 1});
+    }
+    const float us = static_cast<float>(audioNowNs() - t0) * 1e-3f;
+    updateUs_[updateCount_ % countOf(updateUs_)] = us;
+    ++updateCount_;
+}
+
+// ---------------------------------------------------------------- mix state
+
+void Band::setFire(bool held) {
+    if (!active_ || held == fire_) return;
+    fire_ = held;
+    const u32 cap = countOf(fireEdges_);
+    if (fireCount_ == cap) {
+        fireHead_ = (fireHead_ + 1) % cap;
+        --fireCount_;
+    }
+    fireEdges_[(fireHead_ + fireCount_) % cap] = {audioNowNs(), held};
+    ++fireCount_;
+    post({.type = CmdType::SetFire, .a = 0, .b = static_cast<u8>(held ? 1 : 0)});
+}
+
+void Band::setIntensity(float v) {
+    intensity_ = v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
+    post({.type = CmdType::SetIntensity, .x = intensity_});
+}
+
+void Band::nextSection() { post({.type = CmdType::NextSection}); }
+
+void Band::setHold(bool hold) {
+    hold_ = hold;
+    post({.type = CmdType::HoldSection, .a = static_cast<u8>(hold ? 1 : 0)});
+}
+
+void Band::nextVariant() { setVariant((variant_ + 1) % (music_ ? music_->variantCount : 1)); }
+
+void Band::setVariant(u32 v) {
+    if (!music_ || v >= music_->variantCount) return;
+    variant_ = v;
+    post({.type = CmdType::SetVariant, .a = static_cast<u8>(v)});
+    RF_LOG("audio: sound %s from the next bar line", music_->variants[v].id);
+}
+
+void Band::nextTrack() {
+    if (!music_) return;
+    track_ = (track_ + 1) % music_->trackCount;
+    post({.type = CmdType::SetTrack, .a = static_cast<u8>(track_)});
+    RF_LOG("audio: Track %s next (%s)", music_->tracks[track_].id, mode_ == Mode::Conductor ? "through a Break" : "next bar");
+}
+
+void Band::setMode(Mode m) {
+    mode_ = m;
+    post({.type = CmdType::SetMode, .a = static_cast<u8>(m), .b = static_cast<u8>(track_), .c = static_cast<u8>(m == Mode::Staged ? 1 : 0)});
+    if (m == Mode::Conductor) {
+        post({.type = CmdType::SetIntensity, .x = intensity_});
+        if (fire_) post({.type = CmdType::SetFire, .a = 0, .b = 1});
+    }
+}
+
+void Band::toggleRiff(Riff r) {
+    u8& level = riffs_[static_cast<u32>(r)];
+    level = level ? 0 : 1;
+    post({.type = CmdType::SetRiff, .a = 0, .b = static_cast<u8>(r), .c = level});
+}
+
+void Band::playSfx(Sfx s, float gain) { post({.type = CmdType::Sfx, .a = static_cast<u8>(s), .x = gain}); }
+
+const char* Band::variantName() const { return music_ ? music_->variants[variant_].name : "-"; }
+const char* Band::trackName() const { return music_ ? music_->tracks[track_].name : "-"; }
+
+// ---------------------------------------------------------------- sync calibration
+
+void Band::setSyncOffsetMs(float ms) {
+    syncOffsetMs_ = ms;
+    syncTouched_ = true;
+}
+
+void Band::clearSyncOffset() {
+    syncOffsetMs_ = 0.0f;
+    syncTouched_ = false;
+}
+
+void Band::loadSync() {
+    char path[512];
+    prefPath(path, sizeof path, "audio_sync.txt");
+    FILE* f = std::fopen(path, "r");
+    if (!f) return;
+    char line[64];
+    while (std::fgets(line, sizeof line, f)) {
+        float v = 0.0f;
+        if (std::sscanf(line, "offset_ms=%f", &v) == 1) {
+            syncOffsetMs_ = v;
+            syncTouched_ = true;
+        }
+    }
+    std::fclose(f);
+    RF_LOG("audio: sync calibration %+.0f ms (%s)", syncOffsetMs_, path);
+}
+
+bool Band::saveSync() {
+    char path[512], tmp[520];
+    prefPath(path, sizeof path, "audio_sync.txt");
+    std::snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    if (!syncTouched_) {
+        std::remove(path);  // AUTO: nothing to add to the device's own timing
+        RF_LOG("audio: sync calibration cleared (automatic)");
+        return true;
+    }
+    FILE* f = std::fopen(tmp, "w");
+    if (!f) return false;
+    std::fprintf(f, "offset_ms=%.1f\n", syncOffsetMs_);
+    const bool ok = std::fclose(f) == 0;
+    std::remove(path);
+    const bool renamed = ok && std::rename(tmp, path) == 0;
+    RF_LOG("audio: sync calibration %+.0f ms saved to %s%s", syncOffsetMs_, path, renamed ? "" : " (failed)");
+    return renamed;
+}
+
+// ---------------------------------------------------------------- measurements
+
+void Band::resetMeasurements() {
+    if (!active_) return;
+    for (u32 i = 0; i < kUsBuckets; ++i) usHist_[i].store(0, std::memory_order_relaxed);
+    for (u32 i = 0; i < kUsBuckets; ++i) cpuUsHist_[i].store(0, std::memory_order_relaxed);
+    for (u32 i = 0; i < kLoadBuckets; ++i) loadHist_[i].store(0, std::memory_order_relaxed);
+    for (auto& h : cpuHist_) h.store(0, std::memory_order_relaxed);
+    histCallbacks_.store(0, std::memory_order_relaxed);
+    callbackAllocs_.store(0, std::memory_order_relaxed);
+    updateCount_ = 0;
+}
+
+Band::Report Band::report() const {
+    Report rep;
+    if (!active_) return rep;
+    const auto pct = [](const std::atomic<u32>* hist, u32 buckets, float unit, float* p50, float* p95, float* p99, float* mx) {
+        u64 total = 0;
+        for (u32 i = 0; i < buckets; ++i) total += hist[i].load(std::memory_order_relaxed);
+        if (!total) return 0u;
+        const u64 q50 = (total * 50 + 99) / 100, q95 = (total * 95 + 99) / 100, q99 = (total * 99 + 99) / 100;
+        u64 acc = 0;
+        bool d50 = false, d95 = false, d99 = false;
+        for (u32 i = 0; i < buckets; ++i) {
+            const u32 c = hist[i].load(std::memory_order_relaxed);
+            if (!c) continue;
+            acc += c;
+            const float v = (static_cast<float>(i) + 1.0f) * unit;  // upper edge of the bucket
+            if (!d50 && acc >= q50) { *p50 = v; d50 = true; }
+            if (!d95 && acc >= q95) { *p95 = v; d95 = true; }
+            if (!d99 && acc >= q99) { *p99 = v; d99 = true; }
+            *mx = v;
+        }
+        return static_cast<u32>(total);
+    };
+    rep.callbacks = pct(usHist_, kUsBuckets, 10.0f, &rep.callbackUsP50, &rep.callbackUsP95, &rep.callbackUsP99, &rep.callbackUsMax);
+    pct(cpuUsHist_, kUsBuckets, 10.0f, &rep.cpuUsP50, &rep.cpuUsP95, &rep.cpuUsP99, &rep.cpuUsMax);
+    for (u32 i = 0; i < 16; ++i) rep.cpus[i] = cpuHist_[i].load(std::memory_order_relaxed);
+    pct(loadHist_, kLoadBuckets, 0.001f, &rep.loadP50, &rep.loadP95, &rep.loadP99, &rep.loadMax);
+    rep.burst = burst_;
+    rep.burstMs = deviceRate_ ? 1000.0f * burst_ / deviceRate_ : 0.0f;
+    // Main thread per-frame cost over the recent frames.
+    const u32 n = updateCount_ < countOf(updateUs_) ? updateCount_ : countOf(updateUs_);
+    if (n) {
+        float tmp[512];
+        for (u32 i = 0; i < n; ++i) tmp[i] = updateUs_[i];
+        for (u32 i = 1; i < n; ++i) {  // insertion sort (512 at most, report time only)
+            const float v = tmp[i];
+            u32 j = i;
+            for (; j > 0 && tmp[j - 1] > v; --j) tmp[j] = tmp[j - 1];
+            tmp[j] = v;
+        }
+        rep.updateUsP50 = tmp[n / 2];
+        rep.updateUsP95 = tmp[(n * 95) / 100 < n ? (n * 95) / 100 : n - 1];
+        rep.updateUsMax = tmp[n - 1];
+    }
+    rep.callbackAllocs = callbackAllocs_.load(std::memory_order_relaxed);
+    const EngineStats& es = engine_->stats();
+    rep.voicesPeak = es.voicesPeak.load(std::memory_order_relaxed);
+    rep.steals = es.steals.load(std::memory_order_relaxed);
+    rep.eventsDropped = engine_->eventsDropped();
+    rep.commandsDropped = engine_->commandsDropped();
+    rep.rateMismatch = rateMismatch_.load(std::memory_order_relaxed);
+    rep.latencyMs = view_.latencyMs;
+    rep.timestamped = timestamped_;
+    rep.hapticCalls = hapticCalls_;
+    return rep;
+}
+
+void Band::writeJson(JsonWriter& j) const {
+    if (!active_) return;
+    const Report r = report();
+    j.beginObject("audio_engine");
+    j.str("mode", mode_ == Mode::Conductor ? (fullLoad_ ? (stressLoad_ ? "stress" : "full") : "play") : (mode_ == Mode::Staged ? "staged" : "metronome"));
+    j.str("track", music_->tracks[track_].id);
+    j.str("sound", music_->variants[variant_].id);
+    j.integer("callbacks", r.callbacks);
+    j.integer("burst", r.burst);
+    j.num("burst_ms", r.burstMs, 3);
+    // The engine's own time per callback (microseconds, 10 us buckets) and as a share of the time the
+    // callback's frames last (the contract: within 25% of the burst period).
+    j.beginArray("callback_us");
+    j.num(nullptr, r.callbackUsP50, 0);
+    j.num(nullptr, r.callbackUsP95, 0);
+    j.num(nullptr, r.callbackUsP99, 0);
+    j.num(nullptr, r.callbackUsMax, 0);
+    j.endArray();
+    j.beginArray("callback_cpu_us");  // the callback thread's own CPU time (Android), same buckets
+    j.num(nullptr, r.cpuUsP50, 0);
+    j.num(nullptr, r.cpuUsP95, 0);
+    j.num(nullptr, r.cpuUsP99, 0);
+    j.num(nullptr, r.cpuUsMax, 0);
+    j.endArray();
+    j.beginArray("callback_cores");  // callbacks per CPU number
+    for (u32 i = 0; i < 8; ++i) j.integer(nullptr, r.cpus[i]);
+    j.endArray();
+    j.beginArray("callback_load");
+    j.num(nullptr, r.loadP50, 3);
+    j.num(nullptr, r.loadP95, 3);
+    j.num(nullptr, r.loadP99, 3);
+    j.num(nullptr, r.loadMax, 3);
+    j.endArray();
+    j.beginArray("main_thread_us");  // Band::update per frame: [p50, p95, max] over the last 512 frames
+    j.num(nullptr, r.updateUsP50, 1);
+    j.num(nullptr, r.updateUsP95, 1);
+    j.num(nullptr, r.updateUsMax, 1);
+    j.endArray();
+    j.integer("callback_heap_allocs", static_cast<i64>(r.callbackAllocs));
+    j.integer("voices_peak", r.voicesPeak);
+    j.integer("voice_steals", r.steals);
+    j.integer("events_dropped", r.eventsDropped);
+    j.integer("commands_dropped", r.commandsDropped);
+    j.num("latency_ms", r.latencyMs, 1);
+    j.boolean("timestamped", r.timestamped);
+    j.num("sync_offset_ms", syncOffsetMs_, 1);
+    j.integer("haptic_calls", r.hapticCalls);
+    if (r.rateMismatch) j.integer("device_rate_mismatch", r.rateMismatch);
+    j.endObject();
+}
+
+void Band::overlayLine(char* out, size_t capacity) const {
+    if (!active_) {
+        if (capacity) out[0] = '\0';
+        return;
+    }
+    const Report r = report();
+    std::snprintf(out, capacity, "BAND %s  P95 %.0f US (%.1f%%)  MAIN %.0f US  LAT %.0f MS%s  VOICES %u", music_->variants[variant_].id,
+                  r.callbackUsP95, r.loadP95 * 100.0f, r.updateUsP95, r.latencyMs, r.timestamped ? "" : "*", engine_->stats().voices.load());
+    for (char* p = out; *p; ++p) *p = (*p >= 'a' && *p <= 'z') ? static_cast<char>(*p - 32) : *p;
+}
+
+}  // namespace rf

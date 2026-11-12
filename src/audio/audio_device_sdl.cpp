@@ -8,6 +8,10 @@
 
 namespace rf {
 
+i64 audioNowNs() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
 struct AudioDevice::Impl {
     static constexpr u32 kChunkFrames = 1024;
     SDL_AudioStream* stream = nullptr;
@@ -16,6 +20,8 @@ struct AudioDevice::Impl {
     CallbackMeter meter;
     SDL_AudioSpec spec{};
     int deviceFrames = 0;
+    std::atomic<u32> generation{0};
+    std::atomic<u32> queuedFrames{0};  // what the stream still held when the device asked for more
     float scratch[kChunkFrames * 2] = {};
 
     static void SDLCALL callback(void* userdata, SDL_AudioStream* s, int additional, int) {
@@ -23,6 +29,9 @@ struct AudioDevice::Impl {
         flushDenormals();
         const auto t0 = std::chrono::steady_clock::now();
         const u32 channels = static_cast<u32>(self->spec.channels);
+        const int queued = SDL_GetAudioStreamQueued(s);
+        self->queuedFrames.store(queued > 0 ? static_cast<u32>(queued) / (sizeof(float) * channels) : 0u,
+                                 std::memory_order_relaxed);
         u32 framesLeft = static_cast<u32>(additional) / (sizeof(float) * channels);
         const u32 total = framesLeft;
         while (framesLeft > 0) {
@@ -45,6 +54,7 @@ bool AudioDevice::open(AudioRenderFn fn, void* user) {
     impl_->spec.format = SDL_AUDIO_F32;
     impl_->spec.channels = 2;
     impl_->spec.freq = 48000;
+    impl_->generation.fetch_add(1, std::memory_order_release);
     impl_->stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &impl_->spec, Impl::callback, impl_);
     if (!impl_->stream) {
         RF_ERR("audio: SDL_OpenAudioDeviceStream failed: %s", SDL_GetError());
@@ -88,6 +98,16 @@ AudioStats AudioDevice::stats() const {
 
 void AudioDevice::resetPeaks() {
     if (impl_) impl_->meter.resetRequests.fetch_add(1, std::memory_order_relaxed);
+}
+
+bool AudioDevice::timestamp(AudioTimestamp&) const { return false; }  // SDL has no presentation timestamps
+
+u32 AudioDevice::generation() const { return impl_ ? impl_->generation.load(std::memory_order_acquire) : 0; }
+
+u32 AudioDevice::bufferedFrames() const {
+    if (!impl_ || !impl_->stream) return 0;
+    // The stream's backlog plus the device's own buffer (WASAPI shared mode holds about two periods).
+    return impl_->queuedFrames.load(std::memory_order_relaxed) + 2u * static_cast<u32>(impl_->deviceFrames);
 }
 
 }  // namespace rf

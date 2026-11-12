@@ -158,6 +158,10 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             a.swappy = false;
         } else if (is("--no-overlay")) {
             a.overlay = false;
+        // M2 audio begin
+        } else if (isAudioArg(arg)) {
+            ok = parseAudioArg(arg, next, a.audio, usedNext);
+        // M2 audio end
         } else {
             RF_ERR("unknown or incomplete argument: %s", arg);
             return false;

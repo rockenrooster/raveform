@@ -2,6 +2,7 @@
 #include <oboe/Oboe.h>
 
 #include <chrono>
+#include <ctime>
 #include <memory>
 
 #include "audio/audio_device.h"
@@ -9,6 +10,10 @@
 #include "core/time.h"
 
 namespace rf {
+
+i64 audioNowNs() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 namespace {
 
@@ -18,6 +23,7 @@ public:
     void* user = nullptr;
     CallbackMeter meter;
     std::atomic<bool> disconnected{false};
+    std::atomic<bool> failed{false};
 
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* stream, void* data, int32_t frames) override {
         flushDenormals();
@@ -30,9 +36,14 @@ public:
         return oboe::DataCallbackResult::Continue;
     }
 
-    // Oboe has already stopped and closed the stream; the main thread reopens it in update().
+    // Oboe has already stopped and closed the stream; the main thread reopens it in update(). A route
+    // change (headphones, Bluetooth) arrives as ErrorDisconnected; any other error is reopened too.
     void onErrorAfterClose(oboe::AudioStream*, oboe::Result error) override {
-        if (error == oboe::Result::ErrorDisconnected) disconnected.store(true);
+        if (error == oboe::Result::ErrorDisconnected) {
+            disconnected.store(true);
+        } else {
+            failed.store(true);
+        }
     }
 };
 
@@ -44,7 +55,10 @@ struct AudioDevice::Impl {
     i32 underrunsClosed = 0;  // from streams already closed
     i32 lastUnderruns = 0;
     u32 reopens = 0;
+    std::atomic<u32> generation{0};  // read by the audio thread (Band) at each callback
     u64 lastTuneNs = 0;
+    u64 retryAtNs = 0;   // a failed reopen is retried after a pause
+    bool wantOpen = false;
 
     bool openStream() {
         oboe::AudioStreamBuilder builder;
@@ -65,6 +79,7 @@ struct AudioDevice::Impl {
         const int32_t burst = stream->getFramesPerBurst();
         stream->setBufferSizeInFrames(burst * 2);  // start at two bursts, grow on underruns
         lastUnderruns = 0;
+        generation.fetch_add(1, std::memory_order_release);  // before the first callback of this stream
         r = stream->requestStart();
         if (r != oboe::Result::OK) {
             RF_ERR("audio: requestStart failed: %s", oboe::convertToText(r));
@@ -72,10 +87,11 @@ struct AudioDevice::Impl {
             stream.reset();
             return false;
         }
-        RF_LOG("audio: %s %s %s%s, %d Hz, %d ch, burst %d, buffer %d of %d", oboe::convertToText(stream->getAudioApi()),
+        RF_LOG("audio: %s %s %s%s, %d Hz, %d ch, burst %d, buffer %d of %d, device %d", oboe::convertToText(stream->getAudioApi()),
                oboe::convertToText(stream->getSharingMode()), oboe::convertToText(stream->getPerformanceMode()),
                oboe::OboeExtensions::isMMapUsed(stream.get()) ? " mmap" : "", stream->getSampleRate(),
-               stream->getChannelCount(), burst, stream->getBufferSizeInFrames(), stream->getBufferCapacityInFrames());
+               stream->getChannelCount(), burst, stream->getBufferSizeInFrames(), stream->getBufferCapacityInFrames(),
+               stream->getDeviceId());
         return true;
     }
 
@@ -91,33 +107,47 @@ struct AudioDevice::Impl {
 
 bool AudioDevice::open(AudioRenderFn fn, void* user) {
     if (!impl_) impl_ = new Impl();
+    impl_->wantOpen = true;
     if (impl_->stream) return true;
     impl_->callbacks->fn = fn;
     impl_->callbacks->user = user;
     impl_->callbacks->disconnected.store(false);
+    impl_->callbacks->failed.store(false);
     return impl_->openStream();
 }
 
 void AudioDevice::close() {
-    if (impl_) impl_->closeStream();
+    if (!impl_) return;
+    impl_->wantOpen = false;
+    impl_->closeStream();
 }
 
 bool AudioDevice::isOpen() const { return impl_ && impl_->stream; }
 
 void AudioDevice::update() {
     if (!impl_) return;
-    if (impl_->callbacks->disconnected.exchange(false)) {
-        RF_WARN("audio: stream disconnected (route change), reopening");
+    const u64 now = nowNs();
+    const bool disconnected = impl_->callbacks->disconnected.exchange(false);
+    const bool failed = impl_->callbacks->failed.exchange(false);
+    if (disconnected || failed) {
+        RF_WARN("audio: stream %s, reopening", disconnected ? "disconnected (route change)" : "failed");
         if (impl_->stream) {
             auto xr = impl_->stream->getXRunCount();  // the stream is already closed by Oboe
             if (xr) impl_->underrunsClosed += xr.value();
             impl_->stream.reset();
         }
-        if (impl_->openStream()) ++impl_->reopens;
+        impl_->retryAtNs = now;
+    }
+    if (!impl_->stream && impl_->wantOpen && impl_->retryAtNs && now >= impl_->retryAtNs) {
+        if (impl_->openStream()) {
+            ++impl_->reopens;
+            impl_->retryAtNs = 0;
+        } else {
+            impl_->retryAtNs = now + 500000000ull;  // try again in half a second
+        }
         return;
     }
     // Twice a second: one more burst of buffering after each new underrun.
-    const u64 now = nowNs();
     if (!impl_->stream || now - impl_->lastTuneNs < 500000000ull) return;
     impl_->lastTuneNs = now;
     auto xr = impl_->stream->getXRunCount();
@@ -155,11 +185,28 @@ AudioStats AudioDevice::stats() const {
     s.exclusive = st.getSharingMode() == oboe::SharingMode::Exclusive;
     s.lowLatency = st.getPerformanceMode() == oboe::PerformanceMode::LowLatency;
     s.mmap = oboe::OboeExtensions::isMMapUsed(&st);
+    s.deviceId = st.getDeviceId();
     return s;
 }
 
 void AudioDevice::resetPeaks() {
     if (impl_) impl_->callbacks->meter.resetRequests.fetch_add(1, std::memory_order_relaxed);
+}
+
+bool AudioDevice::timestamp(AudioTimestamp& out) const {
+    if (!impl_ || !impl_->stream) return false;
+    auto ts = impl_->stream->getTimestamp(CLOCK_MONOTONIC);
+    if (!ts) return false;
+    out.position = ts.value().position;
+    out.timeNs = ts.value().timestamp;
+    return out.timeNs > 0;
+}
+
+u32 AudioDevice::generation() const { return impl_ ? impl_->generation.load(std::memory_order_acquire) : 0; }
+
+u32 AudioDevice::bufferedFrames() const {
+    if (!impl_ || !impl_->stream) return 0;
+    return static_cast<u32>(impl_->stream->getBufferSizeInFrames());
 }
 
 }  // namespace rf
