@@ -179,6 +179,7 @@ bool SpeciesTable::load() {
         RF_LOG("species: %u species from %u families, roster of %u, budgets %u + %u cycles", kCount, kFamilyCount,
                rosterCount, budgetCycles[0], budgetCycles[1]);
     }
+    if (!boss.load()) ok = false;
     return ok;
 }
 

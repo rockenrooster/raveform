@@ -19,14 +19,17 @@ void SimRunner::start(World* world, u64 seed, Spawner::Mode mode, Bot::Policy po
 
 const TickInput& SimRunner::step() {
     World& w = *world_;
-    const double ticksPerTick = static_cast<double>(bpm_) * kTicksPerBeat / 60.0 * static_cast<double>(kDt);
+    // The simulated clock follows the director's tempo (the Build's last bar at 85%, the Track change's
+    // ramp, the loop's faster Tracks), as the band's would. `bpm_` scales it (1 at the start's tempo).
+    const float bpm = w.tempoAt(music_) * (bpm_ / 120.0f);
+    const double ticksPerTick = static_cast<double>(bpm) * kTicksPerBeat / 60.0 * static_cast<double>(kDt);
     const double m0 = music_, m1 = music_ + ticksPerTick;
     const StickInput stick = bot_.think(w, 0, controller_, m0);
-    controller_.update(stick, kDt, m1, bpm_, w, 0);
+    controller_.update(stick, kDt, m1, bpm, w, 0);
     in_ = TickInput{};
     in_.music0 = m0;
     in_.music1 = m1;
-    in_.bpm = bpm_;
+    in_.bpm = bpm;
     in_.players[0] = controller_.pose();
     in_.retry = retryNext_;
     retryNext_ = false;

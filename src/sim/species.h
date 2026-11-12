@@ -7,6 +7,7 @@
 // the slice's roster does not reach (a medium or large kill needs tier III or V).
 
 #include "core/types.h"
+#include "sim/boss.h"
 
 namespace rf::sim {
 
@@ -74,6 +75,9 @@ public:
     u32 budgetCycles[2] = {};
     // Track 1 runs Short cycles (24 bars), Track 2 Standard ones (48 bars) (species.json note, GAME_DESIGN 4).
     static constexpr u32 kCycleBars[2] = {24, 48};
+
+    // The first slice's boss (design/bosses/kaleidos.json), loaded with the species.
+    BossData boss;
 
 private:
     FamilyData families_[kFamilyCount];

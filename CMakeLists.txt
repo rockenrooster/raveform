@@ -176,16 +176,29 @@ add_custom_command(OUTPUT ${RF_GEN}/species.json.inc
   COMMENT "embed species.json"
   JOB_POOL rf_jobs
   VERBATIM)
+add_custom_command(OUTPUT ${RF_GEN}/kaleidos.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/kaleidos.json -DOUT=${RF_GEN}/kaleidos.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/bosses/kaleidos.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed kaleidos.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
 add_library(raveform_sim STATIC
+  src/sim/boss.cpp
   src/sim/bot.cpp
+  src/sim/director.cpp
   src/sim/grid.cpp
   src/sim/player_controller.cpp
   src/sim/sim_runner.cpp
   src/sim/species.cpp
+  src/sim/upgrades.cpp
   src/sim/world.cpp
+  src/sim/world_boss.cpp
   src/sim/world_enemies.cpp
   src/sim/world_spawner.cpp
-  ${RF_GEN}/species.json.inc)
+  src/sim/world_upgrades.cpp
+  ${RF_GEN}/species.json.inc
+  ${RF_GEN}/kaleidos.json.inc)
 target_include_directories(raveform_sim PUBLIC ${RF_ROOT}/src ${RF_GEN})
 target_compile_options(raveform_sim PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti> -fno-math-errno)
 target_compile_options(raveform_sim PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror $<$<CONFIG:Debug>:-O2>)

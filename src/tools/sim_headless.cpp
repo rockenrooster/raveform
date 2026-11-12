@@ -172,6 +172,22 @@ int runSoak(const SpeciesTable& species, float seconds, u64 seed, float bpm, boo
     u64 bestScore = 0;
     u32 bestChain = 0;
     float longestLifeS = 0.0f, lifeS = 0.0f;
+    // Minute by minute (M3 stage B: the bot's 30-minute table).
+    struct Minute {
+        u32 kills = 0, deaths = 0, enemiesMax = 0, upgrades = 0, boosts = 0, bossKills = 0, track = 1, trackMax = 1;
+        double enemiesSum = 0.0;
+        u32 ticks = 0;
+    };
+    static Minute minutesRow[128];
+    struct Moment {
+        u32 tick;
+        EventType type;
+        u8 a, b;
+    };
+    static Moment moments[256];
+    u32 momentCount = 0;
+    for (Minute& m : minutesRow) m = Minute{};
+    u32 trackMax = 1, killsBefore = 0, deathsBefore = 0;
     const u64 allocs0 = heapAllocCountThisThread();
     const double wall0 = nowMs();
     for (u32 t = 0; t < ticks; ++t) {
@@ -179,6 +195,29 @@ int runSoak(const SpeciesTable& species, float seconds, u64 seed, float bpm, boo
         runner.step();
         tickMs[t] = static_cast<float>(nowMs() - t0);
         const World& w = *world;
+        {
+            Minute& m = minutesRow[(t / 3600u) < 127u ? t / 3600u : 127u];
+            ++m.ticks;
+            m.enemiesSum += w.enemies().count;
+            if (w.enemies().count > m.enemiesMax) m.enemiesMax = w.enemies().count;
+            for (u32 k = 0; k < w.eventCount(); ++k) {
+                const EventType ty = w.events()[k].type;
+                if (ty == EventType::TrioTake) ++m.upgrades;
+                if (ty == EventType::BoostTake) ++m.boosts;
+                if (ty == EventType::BossDeath) ++m.bossKills;
+                if ((ty == EventType::BossEnter || ty == EventType::BossPair || ty == EventType::BossDeath || ty == EventType::Death ||
+                     (ty == EventType::Section && w.events()[k].f > 0.5f)) && momentCount < 256)
+                    moments[momentCount++] = Moment{t, ty, w.events()[k].a, w.events()[k].c};
+            }
+            m.track = w.phrase().track;
+            if (m.track > trackMax) trackMax = m.track;
+            m.trackMax = trackMax;
+            const u32 kills = w.counters().kills, deaths = runner.deaths();
+            m.kills += kills - killsBefore;
+            m.deaths += deaths - deathsBefore;
+            killsBefore = kills;
+            deathsBefore = deaths;
+        }
         peak.take(w);
         sumEnemies += w.enemies().count;
         sumBullets += w.bullets().count;
@@ -209,6 +248,25 @@ int runSoak(const SpeciesTable& species, float seconds, u64 seed, float bpm, boo
                 "loop %llu\n",
                 c.enemiesDropped, c.bulletsDropped, c.shotsDropped, c.shardsDropped, c.eventsDropped,
                 nanTick ? "YES" : "none", static_cast<unsigned long long>(allocs));
+    for (u32 k = 0; k < momentCount && k < 40; ++k) {
+        const Moment& mo = moments[k];
+        const char* what = mo.type == EventType::BossEnter ? "boss enters" : mo.type == EventType::BossPair ? "boss pair down"
+                         : mo.type == EventType::BossDeath ? "boss dies" : mo.type == EventType::Death ? "player dies" : "Track change";
+        std::printf("[sim]   %3u:%04.1f %s (%u)\n", mo.tick / 3600u, static_cast<double>(mo.tick % 3600u) / 60.0, what,
+                    mo.type == EventType::Section ? mo.b : mo.a);
+    }
+    if (!stress) {
+        std::printf("[sim]   minute  kills deaths enemies(mean/max) upgrades boosts bosses track(max)  tick ms P95/max\n");
+        for (u32 mi = 0; mi < 128 && minutesRow[mi].ticks; ++mi) {
+            const Minute& m = minutesRow[mi];
+            const Pct mp = percentiles(tickMs + mi * 3600u, m.ticks);
+            std::printf("[sim]   %6u %6u %6u %8.0f/%-5u %8u %6u %6u %5u(%u)  %.3f/%.3f\n", mi + 1, m.kills, m.deaths, m.enemiesSum / m.ticks,
+                        m.enemiesMax, m.upgrades, m.boosts, m.bossKills, m.track, m.trackMax, mp.p95, mp.max);
+            logTagged("RFSIM", "{\"test\":\"soak_minute\",\"minute\":%u,\"kills\":%u,\"deaths\":%u,\"enemies_mean\":%.1f,\"enemies_max\":%u,\"upgrades\":%u,\"boosts\":%u,\"boss_kills\":%u,\"track\":%u,\"track_max\":%u,\"tick_p95\":%.4f,\"tick_max\":%.4f}",
+                      mi + 1, m.kills, m.deaths, m.enemiesSum / m.ticks, m.enemiesMax, m.upgrades, m.boosts, m.bossKills, m.track,
+                      m.trackMax, mp.p95, mp.max);
+        }
+    }
     std::printf("[sim] %s %s\n", name, ok ? "PASS" : "FAIL");
     logTagged("RFSIM",
               "{\"test\":\"%s\",\"ticks\":%u,\"seed\":%llu,\"kills\":%u,\"deaths\":%u,\"restarts\":%u,\"spawned\":%u,"

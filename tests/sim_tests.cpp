@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <utility>
 
 #include "core/alloc_counter.h"
 #include "game/rng.h"
@@ -219,40 +220,45 @@ void testChainRules() {
     World* w = quietWorld();
     double music = 0.0;
     stepWorld(*w, music, Vec2{});
-    // Shards on the ship: +1 Chain each.
+    // The Chain is a multiplier from x1 (GAME_DESIGN 5, v2.3). Shards on the ship: +1 each.
+    CHECK(w->player(0).chain == 1);
     for (u32 i = 0; i < 5; ++i) w->spawnShard(Vec2{2.0f, 1.0f}, Vec2{}, 0);
     stepWorld(*w, music, Vec2{});
-    CHECK(w->player(0).chain == 5);
-    CHECK(w->player(0).bestChain == 5);
+    CHECK(w->player(0).chain == 6);
+    CHECK(w->player(0).bestChain == 6);
     CHECK(countEvents(*w, EventType::Pickup) == 5);
     // Score = value x Chain.
     const u16 hound = SpeciesTable::index(Family::Hound, 2, kVariantB);
     const float value = g_species->get(hound).score;
     i32 k = w->spawnEnemy(hound, Vec2{600.0f, 0.0f}, 0.0f, 0.0);
     w->killEnemy(static_cast<u32>(k), 0);
-    CHECK(w->player(0).score == static_cast<u64>(std::llround(value * 5.0f)));
-    // A Chain of 0 still scores x1.
+    CHECK(w->player(0).score == static_cast<u64>(std::llround(value * 6.0f)));
+    // A fresh Chain scores x1, and a hit at x1 leaves it at x1.
     World* z = quietWorld();
     double mz = 0.0;
     stepWorld(*z, mz, Vec2{});
     k = z->spawnEnemy(hound, Vec2{600.0f, 0.0f}, 0.0f, 0.0);
     z->killEnemy(static_cast<u32>(k), 0);
     CHECK(z->player(0).score == static_cast<u64>(std::llround(value)));
+    z->spawnBullet(Vec2{0.0f, 0.0f}, Vec2{}, 0.0f);
+    stepWorld(*z, mz, Vec2{});
+    CHECK(z->player(0).cells == kStartCells - 1);
+    CHECK(z->player(0).chain == 1);
     delete z;
     // The kill dropped its Shards (2 for tier II), loose until the ship comes within the magnet.
     stepWorld(*w, music, Vec2{});
     CHECK(w->shards().count == g_species->get(hound).shards);
     // Nothing decays the Chain with time.
     for (u32 t = 0; t < 600; ++t) stepWorld(*w, music, Vec2{});
-    CHECK(w->player(0).chain == 5);
-    // Nine more: 14. A hit halves it (rounded down), costs a cell, grants invulnerability.
+    CHECK(w->player(0).chain == 6);
+    // Nine more: 15. A hit halves it (rounded down), costs a cell, grants invulnerability.
     for (u32 i = 0; i < 9; ++i) w->spawnShard(Vec2{0.0f, 0.0f}, Vec2{}, 0);
     stepWorld(*w, music, Vec2{});
-    CHECK(w->player(0).chain == 14);
+    CHECK(w->player(0).chain == 15);
     w->spawnBullet(Vec2{0.0f, 0.0f}, Vec2{}, 0.0f);
     stepWorld(*w, music, Vec2{});
     CHECK(w->player(0).chain == 7);
-    CHECK(w->player(0).bestChain == 14);
+    CHECK(w->player(0).bestChain == 15);
     CHECK(w->player(0).cells == kStartCells - 1);
     CHECK(w->player(0).invulnerable());
     CHECK(countEvents(*w, EventType::Hit) == 1);
@@ -444,6 +450,291 @@ void testNoAllocations() {
     delete w;
 }
 
+// ---------------------------------------------------------------------------------------------- M3 stage B
+
+void testDirectorCycle() {
+    g_test = "director";
+    DirectorState d;
+    // Track 1: four Short cycles of 8/4/8/4 bars at 120 BPM.
+    Phrase p = phraseAt(d, 0);
+    CHECK(p.track == 1 && p.song == 0 && p.cycle == 1 && p.section == Section::Groove && p.sectionBars == 8);
+    p = phraseAt(d, 8);
+    CHECK(p.section == Section::Build && p.sectionBar == 0 && p.sectionBars == 4 && p.bpm == 120.0f);
+    p = phraseAt(d, 11);  // the Build's last bar runs at 85%
+    CHECK(p.section == Section::Build && p.buildLastBar() && std::fabs(p.bpm - 102.0f) < 1e-3f);
+    // Surge: the Drop's first half, gear 1 then gear 2.
+    CHECK(phraseAt(d, 12).section == Section::Drop && phraseAt(d, 12).surgeGear() == 1 && phraseAt(d, 13).surgeGear() == 1);
+    CHECK(phraseAt(d, 14).surgeGear() == 2 && phraseAt(d, 15).surgeGear() == 2 && phraseAt(d, 16).surgeGear() == 0);
+    CHECK(!phraseAt(d, 12).bossDrop);
+    CHECK(phraseAt(d, 20).section == Section::Break && phraseAt(d, 23).section == Section::Break);
+    CHECK(phraseAt(d, 24).section == Section::Groove && phraseAt(d, 24).cycle == 2);
+    // The fourth Drop is the boss's: held past its eight bars while the boss lives.
+    p = phraseAt(d, 84);
+    CHECK(p.cycle == 4 && p.section == Section::Drop && p.bossDrop);
+    p = phraseAt(d, 97);
+    CHECK(p.section == Section::Drop && p.bossDrop && p.sectionBar == 13);
+    // The boss died: the Track-change Break (8 bars, 120 -> 126 BPM, bar by bar), then Track 2.
+    d.changeBar = 98;
+    p = phraseAt(d, 98);
+    CHECK(p.trackChange && p.section == Section::Break && p.track == 2 && p.sectionBars == 8 && p.bpm == 120.0f);
+    CHECK(std::fabs(phraseAt(d, 105).bpm - 126.0f) < 1e-3f);
+    p = phraseAt(d, 106);
+    CHECK(!p.trackChange && p.track == 2 && p.song == 1 && p.cycle == 1 && p.section == Section::Groove && p.sectionBars == 16);
+    CHECK(phraseAt(d, 106 + 16).section == Section::Build && phraseAt(d, 106 + 24).section == Section::Drop &&
+          phraseAt(d, 106 + 24).sectionBars == 16 && phraseAt(d, 106 + 40).section == Section::Break);
+    CHECK(phraseAt(d, 106 + 96 + 24).bossDrop && phraseAt(d, 106 + 96 + 24).cycle == 3);
+    // The loop: First Light again, 4 BPM faster than Solar Wind.
+    CHECK(bpmOfTrack(3) == 130.0f && bpmOfTrack(4) == 134.0f && bpmOfTrack(40) == 174.0f);
+    CHECK(songOfTrack(3) == 0 && cyclesOfTrack(3) == 4 && songOfTrack(4) == 1);
+    // Budgets (species.json firstSlice), rising past the data; section scales (GAME_DESIGN 8).
+    const float(*b)[8] = g_species->budget;
+    CHECK(baseBudget(b, g_species->budgetCycles, 1, 1) == 2.0f && baseBudget(b, g_species->budgetCycles, 1, 4) == 6.0f);
+    CHECK(baseBudget(b, g_species->budgetCycles, 2, 3) == 12.0f);
+    CHECK(baseBudget(b, g_species->budgetCycles, 3, 1) == 14.0f && baseBudget(b, g_species->budgetCycles, 4, 1) == 22.0f);
+    Phrase s;
+    s.section = Section::Build;
+    s.sectionBars = 4;
+    s.sectionBar = 0;
+    CHECK(sectionScale(s) == 1.0f);
+    s.sectionBar = 3;
+    CHECK(std::fabs(sectionScale(s) - 1.6f) < 1e-5f);
+    s.section = Section::Drop;
+    s.sectionBars = 8;
+    s.sectionBar = 0;
+    CHECK(sectionScale(s) == 2.0f);
+    s.sectionBar = 7;
+    CHECK(std::fabs(sectionScale(s) - 1.2f) < 1e-5f);
+    s.bossDrop = true;
+    CHECK(std::fabs(sectionScale(s) - 0.3f) < 1e-5f);
+    s.section = Section::Break;
+    CHECK(sectionScale(s) == 0.0f);
+
+    // In the world: the sections arrive in order on their bar lines, the first Trio opens with the first
+    // Break (bar 20, 40 s in), the Drop doubles score and magnet.
+    auto* w = new (std::nothrow) World;
+    w->init(g_species);
+    SimRunner r;
+    r.start(w, 5, Spawner::Mode::Slice, Bot::Policy::Play, kBpm, true);
+    u8 order[16];
+    u32 n = 0, trioTick = 0;
+    bool surgeRules = false;
+    for (u32 t = 0; t < 60 * 50; ++t) {
+        r.step();
+        for (u32 k = 0; k < w->eventCount(); ++k) {
+            const Event& ev = w->events()[k];
+            if (ev.type == EventType::Section && n < 16) order[n++] = ev.a;
+            if (ev.type == EventType::TrioOpen && !trioTick) trioTick = t;
+        }
+        if (w->phrase().surge() && w->rules().scoreMultiplier == 2.0f && w->rules().magnetMultiplier == 2.0f) surgeRules = true;
+    }
+    CHECK(n >= 5 && order[0] == 0 && order[1] == 1 && order[2] == 2 && order[3] == 3 && order[4] == 0);
+    CHECK_MSG(trioTick > 39 * 60 && trioTick < 41 * 60, "first Trio at tick %u", trioTick);
+    CHECK(surgeRules);
+    delete w;
+}
+
+void testTrioRules() {
+    g_test = "trio";
+    Rng rng;
+    rng.reseed(11);
+    // A fresh loadout: three different options, at least one weapon, a new Riff within three Trios.
+    for (u32 run = 0; run < 400; ++run) {
+        Loadout l;
+        u8 since = 0;
+        bool riffSeen = false;
+        for (u32 trio = 0; trio < 3; ++trio) {
+            u8 o[3];
+            const u32 n = drawTrio(l, since, rng, o);
+            CHECK(n == 3);
+            CHECK(o[0] != o[1] && o[1] != o[2] && o[0] != o[2]);
+            CHECK(upgradeInfo(o[0]).weapon || upgradeInfo(o[1]).weapon || upgradeInfo(o[2]).weapon);
+            for (u32 k = 0; k < 3; ++k) riffSeen = riffSeen || (isRiff(o[k]) && l.level(o[k]) == 0);
+            // Take a Mod that is not a Riff when there is one (so the guarantee is what brings the Riff).
+            for (u32 k = 0; k < 3; ++k)
+                if (!isRiff(o[k])) {
+                    ++l.mods[o[k]];
+                    break;
+                }
+        }
+        CHECK(riffSeen);
+    }
+    // Only non-weapon Mods left: they are offered (fewer than three), nothing else.
+    Loadout full;
+    for (u32 u = 0; u < kModCount; ++u) full.mods[u] = upgradeInfo(static_cast<u8>(u)).cap;
+    for (u8& r : full.riffs) r = kRiffMaxLevel;
+    full.mods[kExtraCell] = 0;
+    full.mods[kMagnet] = 0;
+    u8 since = 0, o[3];
+    CHECK(drawTrio(full, since, rng, o) == 2);
+    CHECK((o[0] == kExtraCell || o[0] == kMagnet) && (o[1] == kExtraCell || o[1] == kMagnet));
+    full.mods[kExtraCell] = upgradeInfo(kExtraCell).cap;
+    full.mods[kMagnet] = upgradeInfo(kMagnet).cap;
+    CHECK(drawTrio(full, since, rng, o) == 0);
+    // A capped Mod and a maxed Riff are never offered.
+    Loadout some;
+    some.mods[kSplit] = 4;
+    some.riffs[riffIndex(kOrbitals)] = kRiffMaxLevel;
+    for (u32 k = 0; k < 300; ++k) {
+        u8 s2 = 0;
+        const u32 n = drawTrio(some, s2, rng, o);
+        for (u32 j = 0; j < n; ++j) CHECK(o[j] != kSplit && o[j] != kOrbitals);
+    }
+}
+
+void testUpgradeStacking() {
+    g_test = "upgrades";
+    World* w = quietWorld();
+    double music = 0.0;
+    stepWorld(*w, music, Vec2{});
+    // Caps (GAME_DESIGN 6.2): Split stacks to 4; Extra Cell raises the capacity and refills, up to 6 cells.
+    for (u32 k = 0; k < 6; ++k) w->grantUpgrade(0, kSplit);
+    CHECK(w->player(0).loadout.mods[kSplit] == 4);
+    w->playerMut(0).cells = 1;
+    w->grantUpgrade(0, kExtraCell);
+    CHECK(w->player(0).cellCap == 4 && w->player(0).cells == 2);
+    for (u32 k = 0; k < 4; ++k) w->grantUpgrade(0, kExtraCell);
+    CHECK(w->player(0).cellCap == 6 && w->player(0).loadout.mods[kExtraCell] == 3);
+    // Riffs level 1..5.
+    for (u32 k = 0; k < 7; ++k) w->grantUpgrade(0, kPulseRing);
+    CHECK(w->player(0).loadout.riffs[riffIndex(kPulseRing)] == kRiffMaxLevel);
+    // Split 4: five lanes per step; with Prism, five each, capped at kMaxShotsPerStep.
+    const u32 before = w->shots().count;
+    stepWorld(*w, music, Vec2{}, 1);
+    u32 made = 0;
+    for (u32 k = 0; k < w->eventCount(); ++k)
+        if (w->events()[k].type == EventType::Shot) made += w->events()[k].b;
+    CHECK(made == 0 || made % 5 == 0);
+    (void)before;
+    World* p = quietWorld();
+    double mp = 0.0;
+    stepWorld(*p, mp, Vec2{});
+    p->grantUpgrade(0, kSplit);
+    p->grantUpgrade(0, kSplit);
+    p->grantBoost(0, kPrism);
+    u32 volley = 0;
+    for (u32 t = 0; t < 30 && !volley; ++t) {
+        stepWorld(*p, mp, Vec2{}, 1);
+        for (u32 k = 0; k < p->eventCount(); ++k)
+            if (p->events()[k].type == EventType::Shot) volley = p->events()[k].b;
+    }
+    CHECK_MSG(volley == 15, "Split 2 x Prism: %u shots", volley);
+    // The lead grid: Double-Time moves it 1/16 -> triplets -> 1/32; Hyper halves it.
+    CHECK(p->leadGrid(0) == 24.0);
+    p->grantUpgrade(0, kDoubleTime);
+    CHECK(p->leadGrid(0) == 16.0);
+    p->grantUpgrade(0, kDoubleTime);
+    CHECK(p->leadGrid(0) == 12.0);
+    p->grantBoost(0, kHyper);
+    CHECK(p->leadGrid(0) == 6.0);
+    // Two Boosts at once: a third replaces the oldest (Prism, taken first).
+    p->grantBoost(0, kHalo);
+    CHECK(!p->player(0).boost(kPrism) && p->player(0).boost(kHyper) && p->player(0).boost(kHalo));
+    // Halo absorbs three hits, then it is gone and the next costs a cell.
+    const u8 cells = p->player(0).cells;
+    for (u32 hit = 0; hit < 4; ++hit) {
+        for (u32 t = 0; t < 60; ++t) stepWorld(*p, mp, Vec2{});
+        p->spawnBullet(Vec2{0.0f, 0.0f}, Vec2{}, 0.0f);
+        stepWorld(*p, mp, Vec2{});
+    }
+    CHECK_MSG(p->player(0).cells == cells - 1, "cells %u -> %u", cells, p->player(0).cells);
+    CHECK(!p->player(0).boost(kHalo));
+    // Pierce 1: one shot goes through the first of two Drifters in its lane and kills both.
+    World* q = quietWorld();
+    double mq = 0.0;
+    stepWorld(*q, mq, Vec2{});
+    q->grantUpgrade(0, kPierce);
+    const u16 drifter = SpeciesTable::index(Family::Drifter, 1, kVariantA);
+    q->spawnEnemy(drifter, Vec2{200.0f, 0.0f}, 0.0f, 0.0);
+    q->spawnEnemy(drifter, Vec2{260.0f, 0.0f}, 0.0f, 0.0);
+    u32 kills = 0, shots = 0;
+    for (u32 t = 0; t < 40 && shots == 0; ++t) {
+        stepWorld(*q, mq, Vec2{}, 1);
+        for (u32 k = 0; k < q->eventCount(); ++k) shots += q->events()[k].type == EventType::Shot ? 1u : 0u;
+    }
+    for (u32 t = 0; t < 30; ++t) {
+        stepWorld(*q, mq, Vec2{});
+        kills += countEvents(*q, EventType::Kill);
+    }
+    CHECK_MSG(kills == 2, "pierce kills %u", kills);
+    // Overcharge: +25% damage a stack; On-Beat Crit doubles shots on the beat.
+    World* o = quietWorld();
+    double mo = 0.0;
+    stepWorld(*o, mo, Vec2{});
+    o->grantUpgrade(0, kOvercharge);
+    o->grantUpgrade(0, kOnBeatCrit);
+    bool sawCrit = false, sawPlain = false;
+    for (u32 t = 0; t < 60; ++t) {
+        stepWorld(*o, mo, Vec2{}, 1);
+        for (u32 k = 0; k < o->shots().count; ++k) {
+            const float dmg = o->shots().damage[k];
+            if (std::fabs(dmg - 2.5f) < 1e-4f) sawCrit = true;
+            if (std::fabs(dmg - 1.25f) < 1e-4f) sawPlain = true;
+        }
+    }
+    CHECK(sawCrit && sawPlain);
+    delete w;
+    delete p;
+    delete q;
+    delete o;
+}
+
+void testBoss() {
+    g_test = "boss";
+    World* w = quietWorld();
+    double music = 0.0;
+    stepWorld(*w, music, Vec2{});
+    const BossData& b = g_species->boss;
+    CHECK(b.pairHealth == 400.0f && b.coreHealth == 600.0f && b.phases[0].fan == 3 && b.phases[1].fan == 5);
+    CHECK(b.phases[0].fireStepTicks == 48.0 && b.phases[2].fireStepTicks == 24.0 && b.phases[3].coreBurst == 16);
+    // Enters on a downbeat; a bar later it fights. One pair rests each bar, A, B, C in turn.
+    w->spawnBossNow(kTicksPerBar, Vec2{550.0f, 0.0f});
+    const BossState& s = w->boss();
+    CHECK(s.active && s.alive == 0x7 && s.fightTick == 2.0 * kTicksPerBar);
+    CHECK(w->bossResting(0, 2.0 * kTicksPerBar + 10.0) && !w->bossResting(1, 2.0 * kTicksPerBar + 10.0));
+    CHECK(w->bossResting(1, 3.0 * kTicksPerBar + 10.0) && w->bossResting(2, 4.0 * kTicksPerBar + 10.0));
+    CHECK(w->bossFiringMask(2.0 * kTicksPerBar + 48.0) == 0x6);  // B and C fire while A rests
+    CHECK(w->bossFiringMask(2.0 * kTicksPerBar + 24.0) == 0);     // only on eighths
+    // It fires: 2 pairs x 2 tips x 3 bullets on every eighth.
+    while (music < 2.0 * kTicksPerBar + 49.0) stepWorld(*w, music, Vec2{});
+    CHECK_MSG(w->bullets().count >= 12, "bullets %u", w->bullets().count);
+    // Damage: the resting pair x3, a firing pair x1/3; a lens plate stops shots; killing a pair turns the phase.
+    {
+        const double fight = 2.0 * kTicksPerBar;
+        (void)fight;
+        const auto along = [&](u32 arm, float from, float to) {
+            const Vec2 d = dirOf(w->bossArmAngle(arm));
+            return std::pair<Vec2, Vec2>{s.pos + d * from, s.pos + d * to};
+        };
+        // Arm 0 (pair A) rests in fight bar 0: x3.
+        const float a0 = s.pairHp[0];
+        auto seg = along(0, 400.0f, 180.0f);
+        CHECK(w->shootBoss(seg.first, seg.second, 1.0f) == 2);
+        CHECK_MSG(std::fabs((a0 - s.pairHp[0]) - 3.0f) < 1e-3f, "resting damage %.3f", a0 - s.pairHp[0]);
+        // Arm 1 (pair B) fires: x1/3.
+        const float b0 = s.pairHp[1];
+        seg = along(1, 400.0f, 180.0f);
+        CHECK(w->shootBoss(seg.first, seg.second, 1.0f) == 2);
+        CHECK(std::fabs((b0 - s.pairHp[1]) - 1.0f / 3.0f) < 1e-3f);
+        // Between the arms, at the lens ring, on a live pair's plate: stopped, no damage.
+        const Vec2 d0 = dirOf(w->bossArmAngle(0) + 0.2f);
+        const float core0 = s.coreHp;
+        CHECK(w->shootBoss(s.pos + d0 * 75.0f, s.pos + d0 * 60.0f, 1.0f) == 1);
+        CHECK(s.coreHp == core0);
+        // Kill pair A: the phase turns to Refraction, its plates are gone, the core opens from its side.
+        CHECK(w->shootBoss(along(0, 400.0f, 180.0f).first, along(0, 400.0f, 180.0f).second, 1000.0f) == 2);
+        CHECK(s.alive == 0x6 && s.phase == 1);
+        CHECK(countEvents(*w, EventType::BossPair) == 1);
+        const Vec2 dA = dirOf(w->bossArmAngle(0));
+        CHECK(w->shootBoss(s.pos + dA * 75.0f, s.pos + dA * 30.0f, 1.0f) == 3);
+        CHECK(s.coreHp < core0);
+        // The core dies: the boss is over whatever arms remain, and the Track-change Break is scheduled.
+        CHECK(w->shootBoss(s.pos + dA * 75.0f, s.pos + dA * 30.0f, 5000.0f) == 3);
+        CHECK(s.dying && w->director().changeBar != kNoBar);
+        CHECK(w->shards().count >= tuning::kBossShards);
+    }
+    delete w;
+}
+
 }  // namespace
 
 int main() {
@@ -460,6 +751,10 @@ int main() {
     testSpecies();
     testDeterminismShort();
     testNoAllocations();
+    testDirectorCycle();
+    testTrioRules();
+    testUpgradeStacking();
+    testBoss();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;
     return g_failures;

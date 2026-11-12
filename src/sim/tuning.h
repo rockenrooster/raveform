@@ -55,10 +55,8 @@ constexpr float kShardDrag = 4.0f;                              // 1/s while loo
 constexpr float kShardHomeAccel = 3000.0f;                      // wu/s^2 once inside the magnet
 constexpr float kShardHomeMax = 900.0f;                         // wu/s
 constexpr float kShardPickupWu = 20.0f;                         // collected within this of the ship
-// Score = enemy value x Chain (GAME_DESIGN 5). The Chain starts at 0, so the multiplier is max(1, Chain).
-constexpr u32 kChainFloor = 1;
 
-// ---- The simple spawner (stage A; the director replaces it) ----
+// ---- Formations (the director's spending; stage A's spawner numbers) ----
 constexpr float kBankBars = 3.0f;            // unspent budget carries over, at most this many bars' worth
 constexpr float kSpawnNearWu = 450.0f;       // formations land 450-780 wu out horizontally ...
 constexpr float kSpawnFarWu = 780.0f;
@@ -77,4 +75,76 @@ constexpr float kIntensityFloor = 0.15f;
 constexpr float kIntensityPerThreat = 1.0f / 16.0f;
 constexpr float kIntensityTau = 2.0f;        // s
 
+// ======================================================================================================
+// M3 STAGE B: the director, upgrades and Kaleidos. Chosen where GAME_DESIGN 4, 6, 8 and kaleidos.md give
+// no number (each listed in docs/PROGRESS.md, M3 stage B, "numbers chosen").
+// ======================================================================================================
+
+// ---- Director (GAME_DESIGN 4.1, 8) ----
+constexpr float kBuildLastBarSpeed = 0.85f;  // GAME_DESIGN 4.1 (quoted): the Build's last bar at 85%
+constexpr float kBuildScaleEnd = 1.6f;       // GAME_DESIGN 8 (quoted): Build ramps 1.0 -> 1.6
+constexpr float kDropScaleStart = 2.0f;      // GAME_DESIGN 8 (quoted): Drop 2.0, decaying to 1.2
+constexpr float kDropScaleEnd = 1.2f;
+constexpr float kBossBudgetScale = 0.3f;     // kaleidos.md (quoted): 30%, fodder families only
+constexpr float kMegaWaveBars = 3.0f;        // the Drop's mega-wave spends 3 bars of Drop budget at once
+constexpr float kEndlessBudgetStep = 2.0f;   // per cycle past species.json's last budget (12/bar)
+constexpr u32 kDirectorAliveCap = 600;       // no new bodies while this many enemies live (perf contract)
+constexpr float kAssistStep = 0.1f, kAssistMin = 0.8f, kAssistMax = 1.3f;  // GAME_DESIGN 8 (quoted)
+constexpr float kBoostEveryLoS = 20.0f, kBoostEveryHiS = 30.0f;            // GAME_DESIGN 6.1 (quoted)
+constexpr float kSpotlightWu = 560.0f;       // a debut's group lands this far from the ship
+constexpr float kEndlessBpmStep = 4.0f, kEndlessBpmCap = 174.0f;           // GAME_DESIGN 4.2 (quoted)
+constexpr float kTrackBpm[2] = {120.0f, 126.0f};                           // GAME_DESIGN 4.2 (quoted)
+
+// ---- Trio (GAME_DESIGN 6.1, screens.md "The Trio": ring 170 wu, orbs 38 wu, Riffs x1.14 quoted) ----
+constexpr float kTrioRingWu = 170.0f;
+constexpr float kTrioOrbWu = 38.0f;
+constexpr float kTrioRiffScale = 1.14f;
+constexpr float kTrioTouchWu = 6.0f;          // taken when the ship's hit circle is this far inside the orb
+constexpr float kTrioHomeSpeed = 900.0f;      // wu/s: the orb that flies to the ship when the clock ends
+constexpr float kTrioWeightMod = 1.0f;        // draw weights: an uncapped Mod,
+constexpr float kTrioWeightNewRiff = 1.2f;    // a Riff not yet owned,
+constexpr float kTrioWeightRiffLevel = 1.0f;  // a level for an owned Riff
+
+// ---- Mods (GAME_DESIGN 6.2 gives each effect per stack; how wide, how far is chosen) ----
+constexpr float kSplitFanDeg = 5.0f;          // Split: lanes 5 degrees apart, centred on the aim
+constexpr float kOverchargePerStack = 0.25f;  // GAME_DESIGN 6.2 (quoted): +25% damage
+constexpr float kOverchargeRadius = 0.15f;    // and +15% shot radius per stack (look only)
+constexpr float kMagnetPerStack = 0.40f;      // GAME_DESIGN 6.2 (quoted): +40% Shard pull radius
+constexpr u32 kMaxShotsPerStep = 15;          // Split x Prism never spawns more than this per step
+
+// ---- Riffs (GAME_DESIGN 6.3) ----
+constexpr float kOrbitalRadiusWu = 64.0f;     // Orbitals: circle around the ship, one turn per bar (quoted)
+constexpr float kOrbitalHitWu = 10.0f;
+constexpr float kOrbitalDamage = 1.0f;        // per eighth note an enemy stays in contact
+constexpr float kPulseRadiusWu = 230.0f;      // Pulse Ring: expands to this ...
+constexpr float kPulseRadiusL4 = 290.0f;      // ... (level 4 and up)
+constexpr float kPulseGrowS = 0.25f;          // ... in this long
+constexpr float kPulseDamage = 2.0f;          // per enemy the front passes (level 5: x1.5)
+constexpr float kPulseSecondRingS = 0.10f;    // level 3: a second ring this much later (screens.md example)
+constexpr float kSentinelRangeWu = 700.0f;    // Sentinel: shoots the nearest enemy within this
+constexpr float kSentinelOffsetX = -34.0f, kSentinelOffsetY = -30.0f;  // its station beside the ship
+constexpr float kSentinelFollowTau = 0.12f;   // s
+constexpr float kSentinelSpreadDeg = 4.0f;    // a burst fans this far apart
+
+// ---- Boosts (GAME_DESIGN 6.4) ----
+constexpr float kBoostPickupWu = 26.0f;
+constexpr double kBoostLifeBars = 8.0;        // an uncollected Boost fades after eight bars
+constexpr float kPrismFanDeg = 9.0f;          // Prism: five lanes 9 degrees apart
+constexpr float kPrismMiniDeg = 35.0f;        // a hit splits into two mini shots +-35 degrees ...
+constexpr float kPrismMiniLifeS = 0.22f;      // ... that fly this long ...
+constexpr float kPrismMiniDamage = 0.5f;      // ... for half damage
+constexpr u32 kHaloHits = 3;                  // GAME_DESIGN 6.4 (quoted)
+constexpr float kHaloInvulS = 0.6f;           // after a hit the Halo absorbed
+
+// ---- Kaleidos (kaleidos.md / kaleidos.json give the fight; the rest is chosen) ----
+constexpr float kBossTrackHealth = 1.5f;      // lead (stage B brief): Track 2's Kaleidos has 1.5x health
+constexpr float kBossEndlessHealth = 1.06f;   // GAME_DESIGN 8 (quoted, from Track 7): +6% per Track after 2
+constexpr float kBossPairScore = 500.0f;      // score per pair (x Chain)
+constexpr float kBossCoreScore = 2000.0f;     // score for the core (x Chain)
+constexpr u32 kBossPairShards = 20;           // Shards a pair drops (an elite's, GAME_DESIGN 5)
+constexpr u32 kBossShards = 200;              // GAME_DESIGN 5 (quoted): 200 for bosses
+constexpr float kBossNovaDamage = 60.0f;      // a Nova's blast: to each pair, and the core when open
+constexpr float kBossArmInner = 78.0f;        // the arms' hit shape: from the first facet's inner point ...
+constexpr float kBossArmOuter = 274.0f;       // ... to past the tip star
+constexpr float kBossEnterWu = 500.0f;        // kaleidos.md (quoted): enters 500 wu from the nearest player
 }  // namespace rf::sim::tuning

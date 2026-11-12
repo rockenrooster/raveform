@@ -247,12 +247,15 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
     char text[48];
     groupDigits(text, sizeof text, st.score);
     font.drawField(d.hud, {m, top + 44.0f * s}, 34.0f * s, 1.55f * s, col(white, 1.6f), col(white, 1.6f), col(accent, 1.6f), text);
-    // Chain: under it, cap height 22, white -> gold -> amber, pulsing on pickup.
-    std::snprintf(text, sizeof text, "X%u", st.chain);
-    const float pulse = 1.0f + 0.6f * st.chainPulse;
-    font.drawField(d.hud, {m, top + 96.0f * s}, 22.0f * s, 1.0f * s * (1.0f + 0.15f * st.chainPulse), col(white, 2.0f * pulse),
-                   col(gold, 2.0f * pulse), col(amber, 2.0f * pulse), text);
-    d.pools.glow({m + 44.0f * s, top + 107.0f * s}, 60.0f * s, gold * (0.10f * pulse));
+    // Chain: under it, cap height 22, white -> gold -> amber, pulsing on pickup. A multiplier from x1;
+    // shown from x2 up and hidden at x1 (lead, M3 stage B).
+    if (st.chain >= 2) {
+        std::snprintf(text, sizeof text, "X%u", st.chain);
+        const float pulse = 1.0f + 0.6f * st.chainPulse;
+        font.drawField(d.hud, {m, top + 96.0f * s}, 22.0f * s, 1.0f * s * (1.0f + 0.15f * st.chainPulse), col(white, 2.0f * pulse),
+                       col(gold, 2.0f * pulse), col(amber, 2.0f * pulse), text);
+        d.pools.glow({m + 44.0f * s, top + 107.0f * s}, 60.0f * s, gold * (0.10f * pulse));
+    }
     // Nova stock: top right, one four-point star per Nova, lit in the player colour.
     for (u32 k = 0; k < st.novaCap; ++k) {
         const Vec2 c{W - mr - 150.0f * s - static_cast<float>(k) * 50.0f * s, top + 62.0f * s};

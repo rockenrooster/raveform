@@ -56,6 +56,42 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
         in.aim = (at + Vec2{e.vx[target], e.vy[target]} * t) - pos;
         in.aimActive = lengthSq(in.aim) > 1e-6f;
     }
+    // The boss (M3 stage B): unless something is close, shoot where damage counts. Through an open sector
+    // (a dead pair's direction) at the core; else at the resting pair's nearer arm; else at any arm.
+    const BossState& boss = w.boss();
+    const bool bossFight = boss.active && !boss.dying && musicTick >= boss.fightTick;
+    Vec2 bossAimPoint{};
+    bool openSector = false;
+    if (bossFight && (target < 0 || targetD > 250.0f * 250.0f)) {
+        const Vec2 rel = pos - boss.pos;
+        const float myAngle = angleOf(rel);
+        for (u32 k = 0; k < 6; ++k) {
+            if (boss.alive & (1u << (k % 3))) continue;
+            if (std::fabs(wrapAngle(myAngle - w.bossArmAngle(k))) < 0.35f) openSector = true;
+        }
+        if (openSector || boss.alive == 0) {
+            bossAimPoint = boss.pos;
+        } else {
+            float best = 1e30f;
+            const float spin = wrapAngle(boss.angle - boss.prevAngle) / kDt;  // the wheel's turn, rad/s
+            for (u32 k = 0; k < 6; ++k) {
+                const u32 pr = k % 3;
+                if (!(boss.alive & (1u << pr))) continue;
+                // Lead the turning arm by the shot's flight time.
+                const Vec2 now = boss.pos + dirOf(w.bossArmAngle(k)) * 170.0f;
+                const float flight = length(now - pos) / kShotSpeed;
+                const Vec2 mid = boss.pos + dirOf(w.bossArmAngle(k) + spin * flight) * 170.0f;
+                float d = lengthSq(mid - pos);
+                if (!w.bossResting(pr, musicTick)) d *= 4.0f;  // armoured: a last resort
+                if (d < best) {
+                    best = d;
+                    bossAimPoint = mid;
+                }
+            }
+        }
+        in.aim = bossAimPoint - pos;
+        in.aimActive = lengthSq(in.aim) > 1e-6f;
+    }
 
     if (policy_ == Policy::Stress) {
         // A slow circle (radius 250 wu, once every 12 s) around where it started: the load stays in view.
@@ -145,6 +181,63 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
         const float dist = length(d);
         if (dist > kKeepFarWu) force = force + d * (0.6f / dist);
         if (dist < kKeepNearWu && dist > 1e-3f) force = force - d * (0.8f / dist);
+    }
+    // The boss: keep off its arms and core, step out of a telegraphed beam's line, and circle with the
+    // wheel toward an open sector.
+    if (boss.active && !boss.dying && careful) {
+        const Vec2 rel = pos - boss.pos;
+        const float dist = length(rel);
+        if (dist > 1e-3f) {
+            if (dist < 330.0f) force = force + rel * (2.5f * (330.0f - dist) / 330.0f / dist);
+            for (u32 k = 0; k < 6; ++k) {
+                const u32 pr = k % 3;
+                if (!(boss.alive & (1u << pr))) continue;
+                const Vec2 d = dirOf(w.bossArmAngle(k));
+                const float along = dot(rel, d);
+                const Vec2 side = rel - d * along;
+                const float off = length(side);
+                if (w.bossBeamState(pr, musicTick + 96.0) != 0 && along > 0.0f && off < 120.0f)
+                    force = force + normalizeOr(side, perpOf(d)) * (4.0f * (120.0f - off) / 120.0f);
+            }
+            Vec2 tangent = perpOf(rel * (1.0f / dist));
+            if (bossFight && !openSector && boss.alive != 0x7 && boss.alive != 0) {
+                // Toward the nearest dead pair's direction.
+                float best = 10.0f;
+                for (u32 k = 0; k < 6; ++k) {
+                    if (boss.alive & (1u << (k % 3))) continue;
+                    const float da = wrapAngle(w.bossArmAngle(k) - angleOf(rel));
+                    if (std::fabs(da) < std::fabs(best)) best = da;
+                }
+                if (best < 0.0f) tangent = tangent * -1.0f;
+                force = force + tangent * 0.9f;
+            } else {
+                force = force + tangent * 0.3f;
+            }
+        }
+    }
+    // A Trio: fly into the orb the bot likes best (a new Riff, then a weapon, then the rest); a Boost
+    // lying near: fetch it.
+    const TrioState& tr = w.trio(player);
+    if (tr.open && tr.homing < 0 && tr.orbs) {
+        u32 pick = 0;
+        i32 bestScore = -1;
+        for (u32 k = 0; k < tr.orbs; ++k) {
+            const u8 u = tr.upgrade[k];
+            const i32 score = (isRiff(u) && me.loadout.level(u) == 0) ? 3 : (upgradeInfo(u).weapon ? 2 : 1);
+            if (score > bestScore) {
+                bestScore = score;
+                pick = k;
+            }
+        }
+        const Vec2 d = tr.orbPos[pick] - pos;
+        const float dist = length(d);
+        if (dist > 1e-3f) force = force + d * (2.2f / dist);
+    }
+    const BoostPickups& bp = w.boostPickups();
+    for (u32 k = 0; k < bp.count; ++k) {
+        const Vec2 d = Vec2{bp.x[k], bp.y[k]} - pos;
+        const float dist = length(d);
+        if (dist < 650.0f && dist > 1e-3f) force = force + d * (1.2f / dist);
     }
     // Walls.
     const auto wall = [&](float distToWall, Vec2 inward) {

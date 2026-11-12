@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <initializer_list>
 
 #include "sim/tuning.h"
 
@@ -52,9 +53,22 @@ void World::resetRun(u64 seed, double startTick, u32 players) {
         pl.pos = pl.prevPos = Vec2{static_cast<float>(p) * 60.0f, 0.0f};
     }
     const Spawner::Mode mode = spawner_.mode;
+    const bool trios = spawner_.trios;
     spawner_ = Spawner{};
     spawner_.mode = mode;
+    spawner_.trios = trios;
     spawner_.startTick = startTick;
+    // M3 stage B: the director starts the run on Track 1's first Groove; no Trio, Boost or boss yet.
+    upgradeRng_.reseed(seed * 0xD1B54A32D192ED03ull + 0x8CB92BA72F3D8DD7ull);
+    director_ = DirectorState{};
+    director_.startTick = startTick;
+    director_.lastBar = kNoBar;
+    director_.boostTicks = static_cast<i32>(rng_.range(kBoostEveryLoS, kBoostEveryHiS) / kDt);
+    phrase_ = phraseAt(director_, 0);
+    for (TrioState& t : trio_) t = TrioState{};
+    boostPickups_.count = 0;
+    boss_ = BossState{};
+    rules_.scoreMultiplier = rules_.magnetMultiplier = 1.0f;
 }
 
 // ---------------------------------------------------------------------------------------------- tick
@@ -83,15 +97,13 @@ void World::tick(const TickInput& in) {
     m1_ = next;
     bpm_ = in.bpm > 1.0f ? in.bpm : 120.0f;
     latencyTicks_ = in.latencyTicks;
-    const float dt = kDt * timeScale();
-    if (dipS_ > 0.0f) dipS_ -= kDt;
 
     applyPlayers(in);
+    runSpawner();  // the director first: the phrase this tick plays in (Surge, the Build's last bar)
+    const float dt = kDt * timeScale();
+    if (dipS_ > 0.0f) dipS_ -= kDt;
     spawnShots(in);
     updateNovas();
-    bool anyAlive = false;
-    for (u32 p = 0; p < playerCount_; ++p) anyAlive = anyAlive || players_[p].alive;
-    if (anyAlive) runSpawner();
 
     // The grid holds the solid enemies as the tick begins (indices stay valid until compact()); flocking
     // and the collisions below query it with slack for the movement since.
@@ -100,8 +112,13 @@ void World::tick(const TickInput& in) {
     grid_.build(enemies_.x, enemies_.y, enemies_.count, solid_);
 
     updateEnemies(dt);
+    updateBoss(dt);
+    updateRiffs(dt);
+    updateTrios();
+    updateBoosts();
     moveProjectiles(dt);
     collide();
+    bossContact();
     compact();
 }
 
@@ -180,41 +197,50 @@ void World::spawnShots(const TickInput& in) {
         const PlayerState& pl = players_[p];
         if (!pl.alive) continue;
         if (in.bandShots) {
-            // The band's lead rule: one shot for each heard grid step with fire held (TECH_SPEC 6.3).
+            // The band's lead rule: one volley for each heard grid step with fire held (TECH_SPEC 6.3).
             for (u32 k = 0; k < in.shotCount; ++k)
-                if (in.shots[k].player == p) fireShot(p, in.shots[k].advanceS < 0.0f ? 0.0f : in.shots[k].advanceS);
+                if (in.shots[k].player == p) fireShot(p, in.shots[k].advanceS < 0.0f ? 0.0f : in.shots[k].advanceS, in.shots[k].tick);
         } else if (pl.fire) {
-            // The same rule on the sim's own clock: a shot on every 1/16 step crossed while fire is held,
-            // every other step on the assist's half-rate grid; each advanced by the time since its step.
-            forCrossings(m0_, m1_, kTicksPerStep, [&](double t, i64 k) {
+            // The same rule on the sim's own clock: a volley on every grid step crossed while fire is held
+            // (1/16, moved along by Double-Time, the Surge's gear and Hyper), every other step on the
+            // assist's half-rate grid; each advanced by the time since its step.
+            forCrossings(m0_, m1_, leadGrid(p), [&](double t, i64 k) {
                 if (pl.fire == 2 && (k & 1) != 0) return;
-                fireShot(p, tickAgeOf(t));
+                fireShot(p, tickAgeOf(t), t);
             });
         }
     }
 }
 
-void World::fireShot(u32 p, float advanceS) {
+void World::fireShot(u32 p, float advanceS, double stepTick) {
     PlayerState& pl = players_[p];
-    Shots& s = shots_;
-    if (s.count >= Shots::kCap) {
-        ++counters_.shotsDropped;
-        return;
-    }
+    const Loadout& l = pl.loadout;
     const Vec2 d = normalizeOr(pl.aim, dirOf(pl.heading));
     const Vec2 muzzle = pl.pos + d * kMuzzleWu;
-    const u32 i = s.count++;
-    s.px[i] = muzzle.x;
-    s.py[i] = muzzle.y;
-    s.x[i] = muzzle.x + d.x * kShotSpeed * advanceS;
-    s.y[i] = muzzle.y + d.y * kShotSpeed * advanceS;
-    s.dx[i] = d.x;
-    s.dy[i] = d.y;
-    s.speed[i] = kShotSpeed;
-    s.life[i] = kShotLifeS - advanceS;
-    s.damage[i] = 1.0f;  // species.json note: one player shot deals 1 damage
-    s.owner[i] = static_cast<u8>(p);
-    s.dead[i] = 0;
+    // species.json note: one player shot deals 1 damage. Overcharge +25% a stack; On-Beat Crit: shots on
+    // quarter-note beats x2, x3, x4 (GAME_DESIGN 6.2).
+    float damage = 1.0f + kOverchargePerStack * static_cast<float>(l.mods[kOvercharge]);
+    u8 flags = 0;
+    const double inBeat = std::fmod(stepTick, kTicksPerBeat);
+    if (l.mods[kOnBeatCrit] && (inBeat < 0.5 || kTicksPerBeat - inBeat < 0.5)) {
+        damage *= 1.0f + static_cast<float>(l.mods[kOnBeatCrit]);
+        flags |= kShotCrit;
+    }
+    const bool prism = pl.boost(kPrism);
+    if (prism) flags |= kShotPrism;
+    // Split: +1 lane a stack in a tight fan; Prism: every lane refracts into five (capped per step).
+    const u32 lanes = 1u + l.mods[kSplit];
+    const u32 fan = prism ? 5u : 1u;
+    const float base = angleOf(d);
+    const float deg = kTau / 360.0f;
+    u32 made = 0;
+    for (u32 lane = 0; lane < lanes; ++lane) {
+        const float la = base + (static_cast<float>(lane) - 0.5f * static_cast<float>(lanes - 1)) * kSplitFanDeg * deg;
+        for (u32 f = 0; f < fan && made < kMaxShotsPerStep; ++f, ++made) {
+            const float a = la + (static_cast<float>(f) - 0.5f * static_cast<float>(fan - 1)) * kPrismFanDeg * deg;
+            spawnShotRaw(p, muzzle, dirOf(a), advanceS, damage, kShotPrimary, flags, kShotLifeS, l.mods[kPierce], l.mods[kRicochet]);
+        }
+    }
     ++pl.shotsFired;
     Event ev;
     ev.type = EventType::Shot;
@@ -223,6 +249,8 @@ void World::fireShot(u32 p, float advanceS) {
     ev.y = muzzle.y;
     ev.x2 = d.x;
     ev.y2 = d.y;
+    ev.b = static_cast<u8>(made);
+    ev.c = flags;
     ev.age = advanceS;
     emit(ev);
 }
@@ -243,6 +271,19 @@ void World::updateNovas() {
             ev.age = pl.novaFrontAge;
             ev.tick = pl.novaBlastTick;
             emit(ev);
+            // GAME_DESIGN 5: heavy damage to bosses (in view): each living pair, and the core once open.
+            if (boss_.active && !boss_.dying && m1_ >= boss_.fightTick &&
+                std::fabs(boss_.pos.x - pl.pos.x) <= kNovaViewHalfW + 270.0f && std::fabs(boss_.pos.y - pl.pos.y) <= kNovaViewHalfH + 270.0f) {
+                for (u8 k = 0; k < 3; ++k) {
+                    if (!(boss_.alive & (1u << k))) continue;
+                    boss_.pairHp[k] -= kBossNovaDamage;
+                    if (boss_.pairHp[k] <= 0.0f) killBossPair(k, static_cast<u8>(p));
+                }
+                if (boss_.alive != 0x7 && !boss_.dying) {
+                    boss_.coreHp -= kBossNovaDamage;
+                    if (boss_.coreHp <= 0.0f) killBoss(static_cast<u8>(p));
+                }
+            }
         } else if (!pl.novaPending && pl.novaInvulS > 0.0f) {
             pl.novaInvulS -= kDt;
         }
@@ -306,6 +347,21 @@ void World::moveProjectiles(float dt) {
         s.x[i] += s.dx[i] * s.speed[i] * dt;
         s.y[i] += s.dy[i] * s.speed[i] * dt;
         s.life[i] -= dt;
+        if (!insideArena(s.x[i], s.y[i]) && s.bounces[i] > 0) {
+            // Ricochet (GAME_DESIGN 6.2): off the arena wall, mirrored.
+            --s.bounces[i];
+            if (std::fabs(s.x[i]) > kArenaHalfW) {
+                s.dx[i] = -s.dx[i];
+                s.x[i] = std::copysign(2.0f * kArenaHalfW - std::fabs(s.x[i]), s.x[i]);
+            }
+            if (std::fabs(s.y[i]) > kArenaHalfH) {
+                s.dy[i] = -s.dy[i];
+                s.y[i] = std::copysign(2.0f * kArenaHalfH - std::fabs(s.y[i]), s.y[i]);
+            }
+            s.px[i] = s.x[i] - s.dx[i] * s.speed[i] * dt;
+            s.py[i] = s.y[i] - s.dy[i] * s.speed[i] * dt;
+            s.lastHit[i] = 0xFFFFFFFFu;
+        }
         if (s.life[i] <= 0.0f || !insideArena(s.x[i], s.y[i])) s.dead[i] = 1;
     }
     // Shards: loose ones slow down and wait; inside a player's magnet they home in; after four bars they
@@ -328,7 +384,8 @@ void World::moveProjectiles(float dt) {
         if (pl.alive) {
             to = pl.pos - Vec2{h.x[i], h.y[i]};
             dist = length(to);
-            const float magnet = kShardMagnetWu * rules_.magnetMultiplier;
+            const float magnet = kShardMagnetWu * rules_.magnetMultiplier *
+                                 (1.0f + kMagnetPerStack * static_cast<float>(pl.loadout.mods[kMagnet]));
             home = h.homing[i] || dist < magnet;
         }
         if (home && dist > 1e-3f) {
@@ -358,37 +415,53 @@ void World::collide() {
         const float ax = s.px[k], ay = s.py[k], bx = s.x[k], by = s.y[k];
         const float dx = bx - ax, dy = by - ay;
         const float len2 = dx * dx + dy * dy;
-        const float reach = kShotRadius + kMaxEnemyRadius + kGridSlack;
+        const float sr = s.radius[k];
+        const float reach = sr + kMaxEnemyRadius + kGridSlack;
         i32 best = -1;
         float bestT = 2.0f;
+        const u32 skip = s.lastHit[k];
         grid_.query(std::fmin(ax, bx) - reach, std::fmin(ay, by) - reach, std::fmax(ax, bx) + reach, std::fmax(ay, by) + reach,
                     [&](u32 i) {
-                        if (e.flags[i] & kFlagDead) return;
+                        if ((e.flags[i] & kFlagDead) || e.handle[i] == skip) return;
                         const float cx = e.x[i] - ax, cy = e.y[i] - ay;
                         const float t = len2 > 1e-6f ? clampf((cx * dx + cy * dy) / len2, 0.0f, 1.0f) : 0.0f;
                         const float qx = dx * t - cx, qy = dy * t - cy;
-                        const float rr = e.radius[i] + kShotRadius;
+                        const float rr = e.radius[i] + sr;
                         if (qx * qx + qy * qy > rr * rr) return;
                         if (t < bestT || (t == bestT && static_cast<i32>(i) < best)) {
                             bestT = t;
                             best = static_cast<i32>(i);
                         }
                     });
+        // The boss, when it is nearer along the path than any enemy.
+        if (boss_.active && !boss_.dying) {
+            u8 part = 0, pair = 0;
+            float bt = 0.0f;
+            if (bossHitTest(Vec2{ax, ay}, Vec2{bx, by}, sr, part, pair, bt) && bt <= bestT) {
+                s.dead[k] = 1;
+                damageBoss(part, pair, s.damage[k], s.owner[k], Vec2{ax + dx * bt, ay + dy * bt}, Vec2{s.dx[k], s.dy[k]});
+                continue;
+            }
+        }
         if (best < 0) continue;
-        s.dead[k] = 1;
         const u32 i = static_cast<u32>(best);
-        e.hp[i] -= s.damage[k];
-        if (e.hp[i] <= 0.0f) {
-            killEnemy(i, s.owner[k]);
+        const Vec2 at{ax + dx * bestT, ay + dy * bestT};
+        const Vec2 dir{s.dx[k], s.dy[k]};
+        const u8 owner = s.owner[k];
+        const bool refract = (s.flags[k] & kShotPrism) && s.kind[k] == kShotPrimary;
+        if (s.pierce[k] > 0) {
+            // Pierce (GAME_DESIGN 6.2): through this one, on to the next.
+            --s.pierce[k];
+            s.lastHit[k] = e.handle[i];
         } else {
-            Event ev;
-            ev.type = EventType::Impact;
-            ev.species = e.species[i];
-            ev.x = ax + dx * bestT;
-            ev.y = ay + dy * bestT;
-            ev.x2 = s.dx[k];
-            ev.y2 = s.dy[k];
-            emit(ev);
+            s.dead[k] = 1;
+        }
+        hitEnemy(i, s.damage[k], owner, at, dir);
+        if (refract) {
+            // Prism (GAME_DESIGN 6.4): hits spawn mini-refractions.
+            const float a = angleOf(dir), deg = kTau / 360.0f;
+            for (float side : {-1.0f, 1.0f})
+                spawnShotRaw(owner, at, dirOf(a + side * kPrismMiniDeg * deg), 0.0f, kPrismMiniDamage, kShotMini, 0, kPrismMiniLifeS, 0, 0);
         }
     }
 
@@ -407,7 +480,7 @@ void World::collide() {
             if (dx * dx + dy * dy <= r * r) contact = static_cast<i32>(i);
         });
         if (contact >= 0) {
-            hitPlayer(p, Vec2{e.x[contact], e.y[contact]});
+            if (!haloBlocks(p, Vec2{e.x[contact], e.y[contact]})) hitPlayer(p, Vec2{e.x[contact], e.y[contact]});
             continue;
         }
         const float rb = species_->bulletRadius + kPlayerHitRadius;
@@ -416,7 +489,7 @@ void World::collide() {
             const float dx = bullets_.x[b] - c.x, dy = bullets_.y[b] - c.y;
             if (dx * dx + dy * dy > rb * rb) continue;
             bullets_.dead[b] = 1;
-            hitPlayer(p, Vec2{bullets_.x[b], bullets_.y[b]});
+            if (!haloBlocks(p, Vec2{bullets_.x[b], bullets_.y[b]})) hitPlayer(p, Vec2{bullets_.x[b], bullets_.y[b]});
             break;
         }
     }
@@ -463,8 +536,13 @@ void World::hitPlayer(u32 p, Vec2 from) {
     // enemies), grants 1.5 s of invulnerability and halves the Chain.
     --pl.cells;
     pl.invulS = kInvulnerableS;
-    pl.chain /= 2;
+    pl.chain = pl.chain / 2 > 1 ? pl.chain / 2 : 1u;  // halved, never below x1
     dipS_ = kHitDipS;
+    // GAME_DESIGN 8, assist: a lost Shield cell eases the budget 10% (once a cycle).
+    if (!director_.hitThisCycle) {
+        director_.hitThisCycle = true;
+        director_.assist = std::fmax(director_.assist - kAssistStep, kAssistMin);
+    }
     const Vec2 c = pl.pos;
     const float r2 = kPanicRadiusWu * kPanicRadiusWu;
     for (u32 b = 0; b < bullets_.count; ++b) {
@@ -507,23 +585,31 @@ void World::killEnemy(u32 i, u8 killer) {
     emit(ev);
     ++counters_.kills;
     if (killer < kMaxPlayers && players_[killer].present) {
-        // Score = enemy value x Chain (GAME_DESIGN 5); the Chain starts at 0, so at least x1.
+        // Score = enemy value x Chain (GAME_DESIGN 5: the Chain is a multiplier from x1).
         PlayerState& pl = players_[killer];
         ++pl.kills;
-        const float chain = static_cast<float>(pl.chain > kChainFloor ? pl.chain : kChainFloor);
+        const float chain = static_cast<float>(pl.chain);
         pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * chain * rules_.scoreMultiplier));
+        // A Boost is due (GAME_DESIGN 6.1, director controlled): this kill drops it.
+        if (director_.boostDue && spawner_.mode == Spawner::Mode::Slice) {
+            dropBoost(Vec2{e.x[i], e.y[i]}, static_cast<u8>(upgradeRng_.below(kBoostCount)));
+            director_.boostDue = false;
+            director_.boostTicks = static_cast<i32>(rng_.range(kBoostEveryLoS, kBoostEveryHiS) / kDt);
+        }
     }
     dropShards(i, killer);
 }
 
 void World::dropShards(u32 i, u8 killer) {
     (void)killer;
-    // Every enemy death drops its Shards for each player separately (GAME_DESIGN 5, 10).
+    // Every enemy death drops its Shards for each player separately (GAME_DESIGN 5, 10); Magnet Storm:
+    // kills drop double (GAME_DESIGN 6.4).
     Enemies& e = enemies_;
     const Species& s = species_->get(e.species[i]);
     for (u32 p = 0; p < playerCount_; ++p) {
         if (!players_[p].present) continue;
-        for (u32 k = 0; k < s.shards; ++k) {
+        const u32 n = players_[p].boost(kMagnetStorm) ? 2u * s.shards : s.shards;
+        for (u32 k = 0; k < n; ++k) {
             const float a = randRange(e.rng[i], 0.0f, kTau);
             const float v = randRange(e.rng[i], kShardBurstLo, kShardBurstHi);
             spawnShard(Vec2{e.x[i], e.y[i]}, dirOf(a) * v, static_cast<u8>(p));
@@ -582,7 +668,7 @@ i32 World::spawnEnemy(u16 speciesIndex, Vec2 pos, float heading, double landTick
     return static_cast<i32>(i);
 }
 
-bool World::spawnBullet(Vec2 pos, Vec2 vel, float advanceS) {
+bool World::spawnBullet(Vec2 pos, Vec2 vel, float advanceS, float lifeS) {
     Bullets& b = bullets_;
     if (b.count >= Bullets::kCap) {
         ++counters_.bulletsDropped;
@@ -595,7 +681,7 @@ bool World::spawnBullet(Vec2 pos, Vec2 vel, float advanceS) {
     b.y[i] = pos.y + vel.y * advanceS;
     b.vx[i] = vel.x;
     b.vy[i] = vel.y;
-    b.life[i] = kBulletLifeS - advanceS;
+    b.life[i] = (lifeS > 0.0f ? lifeS : kBulletLifeS) - advanceS;
     b.dead[i] = 0;
     return true;
 }
@@ -692,8 +778,14 @@ void World::compact() {
         s.speed[i] = s.speed[l];
         s.life[i] = s.life[l];
         s.damage[i] = s.damage[l];
+        s.radius[i] = s.radius[l];
+        s.lastHit[i] = s.lastHit[l];
         s.owner[i] = s.owner[l];
         s.dead[i] = s.dead[l];
+        s.pierce[i] = s.pierce[l];
+        s.bounces[i] = s.bounces[l];
+        s.kind[i] = s.kind[l];
+        s.flags[i] = s.flags[l];
     }
     Shards& h = shards_;
     for (u32 i = 0; i < h.count;) {
@@ -734,11 +826,49 @@ u64 World::hash() const {
     val(serial_);
     val(seed_);
     val(rng_);
-    val(spawner_.bank);
-    val(spawner_.pending);
     val(spawner_.nextSchool);
     val(spawner_.lastBar);
     val(spawner_.startTick);
+    val(upgradeRng_);
+    val(director_.track);
+    val(director_.trackBar);
+    val(director_.changeBar);
+    val(director_.bossSpawned);
+    val(director_.bank);
+    val(director_.pending);
+    val(director_.assist);
+    val(director_.boostTicks);
+    val(director_.boostDue);
+    val(director_.lastBar);
+    val(phrase_.bar);
+    val(phrase_.section);
+    val(phrase_.sectionBar);
+    val(phrase_.track);
+    for (const TrioState& tr : trio_) {
+        val(tr.open);
+        val(tr.orbs);
+        mix(tr.upgrade, sizeof tr.upgrade);
+        mix(tr.orbPos, sizeof tr.orbPos);
+        val(tr.closeTick);
+        val(tr.homing);
+        val(tr.queued);
+        val(tr.sinceRiff);
+    }
+    val(boostPickups_.count);
+    mix(boostPickups_.x, boostPickups_.count * sizeof(float));
+    mix(boostPickups_.y, boostPickups_.count * sizeof(float));
+    mix(boostPickups_.type, boostPickups_.count);
+    val(boss_.active);
+    val(boss_.dying);
+    val(boss_.alive);
+    val(boss_.phase);
+    val(boss_.phaseTick);
+    val(boss_.angle0);
+    val(boss_.angle);
+    mix(boss_.pairHp, sizeof boss_.pairHp);
+    val(boss_.coreHp);
+    val(boss_.pos.x);
+    val(boss_.pos.y);
     const Enemies& e = enemies_;
     const u32 n = e.count;
     val(n);
@@ -774,6 +904,9 @@ u64 World::hash() const {
     mix(s.dx, s.count * sizeof(float));
     mix(s.dy, s.count * sizeof(float));
     mix(s.life, s.count * sizeof(float));
+    mix(s.damage, s.count * sizeof(float));
+    mix(s.pierce, s.count);
+    mix(s.bounces, s.count);
     const Shards& sh = shards_;
     val(sh.count);
     mix(sh.x, sh.count * sizeof(float));
@@ -800,6 +933,16 @@ u64 World::hash() const {
         val(pl.kills);
         val(pl.pickups);
         val(pl.shotsFired);
+        mix(pl.loadout.mods, sizeof pl.loadout.mods);
+        mix(pl.loadout.riffs, sizeof pl.loadout.riffs);
+        val(pl.cellCap);
+        for (const ActiveBoost& a : pl.boosts) {
+            val(a.type);
+            val(a.until);
+            val(a.hits);
+        }
+        val(pl.sentinel.x);
+        val(pl.sentinel.y);
     }
     return h;
 }
