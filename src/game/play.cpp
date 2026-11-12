@@ -728,6 +728,7 @@ void Play::applySettings() {
     // Settings apply at once (screens.md: every change is heard as it is made).
     view_.setReduceFlashing(settings_.reduceFlashing || forcedReduceFlashing_);
     touch_.setSwap(settings_.swapSides);
+    world_->rules().autoNova = settings_.autoNova;  // play test 1, second pass: this device's ship
     if (band_ && band_->active()) {
         if (band_->variant() != settings_.variant) band_->setVariant(settings_.variant);
         // The music under pause (and its settings): dipped and behind the low-pass, until the count-in ends.

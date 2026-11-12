@@ -196,25 +196,7 @@ void World::applyPlayers(const TickInput& in) {
         pl.heading = ps.heading;
         pl.fire = ps.fire;
         pl.dashing = ps.dashing;
-        if (ps.novaPressed && rules_.novas && pl.novas > 0 && !pl.novaPending) {
-            // R6: invulnerable at once; the blast lands on the next beat. The band plays the inhale from
-            // the press and the blast on a beat of its write time, which is ahead of the heard time by
-            // the output latency, and moves to the following beat when the next one is closer than six
-            // ticks (engine.cpp, CmdType::Nova): the same rule here, so picture and sound land together.
-            --pl.novas;
-            ++pl.novasUsed;
-            pl.novaPending = true;
-            const double earliest = m1_ + static_cast<double>(latencyTicks_) + 6.0;
-            pl.novaBlastTick = std::ceil(earliest / kTicksPerBeat) * kTicksPerBeat;
-            pl.novaInvulS = 1e9f;
-            Event ev;
-            ev.type = EventType::NovaPress;
-            ev.a = static_cast<u8>(p);
-            ev.x = pl.pos.x;
-            ev.y = pl.pos.y;
-            ev.tick = pl.novaBlastTick;
-            emit(ev);
-        }
+        if (ps.novaPressed) pressNova(p);
         if (ps.dashStarted) {
             ++pl.dashes;
             if (ps.perfectDash) ++pl.perfectDashes;
@@ -229,6 +211,29 @@ void World::applyPlayers(const TickInput& in) {
             emit(ev);
         }
     }
+}
+
+bool World::pressNova(u32 p) {
+    PlayerState& pl = players_[p];
+    if (!rules_.novas || pl.novas == 0 || pl.novaPending) return false;
+    // R6: invulnerable at once; the blast lands on the next beat. The band plays the inhale from the press and the
+    // blast on a beat of its write time, which is ahead of the heard time by the output latency, and moves to the
+    // following beat when the next one is closer than six ticks (engine.cpp, CmdType::Nova): the same rule here, so
+    // picture and sound land together.
+    --pl.novas;
+    ++pl.novasUsed;
+    pl.novaPending = true;
+    const double earliest = m1_ + static_cast<double>(latencyTicks_) + 6.0;
+    pl.novaBlastTick = std::ceil(earliest / kTicksPerBeat) * kTicksPerBeat;
+    pl.novaInvulS = 1e9f;
+    Event ev;
+    ev.type = EventType::NovaPress;
+    ev.a = static_cast<u8>(p);
+    ev.x = pl.pos.x;
+    ev.y = pl.pos.y;
+    ev.tick = pl.novaBlastTick;
+    emit(ev);
+    return true;
 }
 
 void World::spawnShots(const TickInput& in) {
@@ -638,6 +643,10 @@ void World::collide() {
 
 void World::hitPlayer(u32 p, Vec2 from) {
     PlayerState& pl = players_[p];
+    // Auto Nova (GAME_DESIGN 5, play test 1 second pass; on unless switched off): a hit that would take the last Shield
+    // cell (or end the run, with none left) fires a Nova from the stock instead and costs nothing; the Nova keeps R6
+    // (invulnerable at once, the blast on the next beat). With no Nova in stock the hit lands as before.
+    if (rules_.autoNova && pl.cells <= 1 && pressNova(p)) return;
     ++pl.hitsTaken;
     if (pl.cells == 0 && coop()) {
         // GAME_DESIGN 10: in co-op the ship shatters into a beacon; the run goes on while anyone stands.
@@ -752,7 +761,11 @@ void World::dropShards(u32 i, u8 killer) {
         if (!players_[p].present || !isLocal(p)) continue;
         if (coop() && (std::fabs(e.x[i] - players_[p].pos.x) > kCoopShardReachW || std::fabs(e.y[i] - players_[p].pos.y) > kCoopShardReachH))
             continue;
-        const u32 n = players_[p].boost(kMagnetStorm) ? 2u * s.shards : s.shards;
+        u32 n = players_[p].boost(kMagnetStorm) ? 2u * s.shards : s.shards;
+        // Play test 1: while the Shard pool is crowded a death drops one, and none in its last 64 places (the
+        // stronger build's bursts: a Drop's mega-wave, a boss's 200), so the pool never overflows.
+        if (shards_.count > kShardsCrowded && n > 1) n = 1;
+        if (shards_.count + kShardsReserve >= Shards::kCap) n = 0;
         for (u32 k = 0; k < n; ++k) {
             const float a = randRange(e.rng[i], 0.0f, kTau);
             const float v = randRange(e.rng[i], kShardBurstLo, kShardBurstHi);

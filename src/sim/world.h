@@ -103,7 +103,8 @@ struct NetOp {
 // What a tick produced for the network (host: spawns and verdicts; client: claims). Drained after each
 // tick by the session (net/session.h).
 struct NetLog {
-    static constexpr u32 kSpawns = 1024, kDeaths = 1024, kClaims = 512, kBossClaims = 64, kBoss = 16, kBoosts = 8;
+    // (Play test 1, second pass: a tick's deaths can be the whole crowd dissolving at a Break, 1,350 with four players.)
+    static constexpr u32 kSpawns = 2048, kDeaths = kMaxEnemies, kClaims = 512, kBossClaims = 64, kBoss = 16, kBoosts = 8;
     NetSpawn spawns[kSpawns];
     u32 spawnIndex[kSpawns];  // dense index while the tick runs (its group and flags are read before compact)
     NetDeath deaths[kDeaths];
@@ -370,6 +371,8 @@ struct PlayerState {
 struct Rules {
     bool godMode = false;           // hits are detected but cost nothing (bench_stress)
     bool novas = true;
+    bool autoNova = true;           // GAME_DESIGN 5 (play test 1, second pass): a hit that would take the last cell fires a
+                                    // Nova from the stock instead (this device's players; the CONTROLS switch)
     float scoreMultiplier = 1.0f;   // Surge x2 (GAME_DESIGN 4.1, stage B)
     float magnetMultiplier = 1.0f;  // Surge x2
 };
@@ -557,6 +560,7 @@ public:
 private:
     // world.cpp
     void applyPlayers(const TickInput& in);
+    bool pressNova(u32 p);  // R6: invulnerable at once, the blast on the next beat (false: none to spend)
     void spawnShots(const TickInput& in);
     void fireShot(u32 p, float advanceS, double stepTick);
     void updateNovas();

@@ -23,9 +23,11 @@ constexpr i64 kExtrapMaxUs = 100000;
 constexpr u32 kCorrPerPacket = 32;      // 32 x 30 bytes + headers: under 1,000 bytes a packet (the limit is 1,200)
 constexpr double kBar = 384.0, kBeat = 96.0;
 // TECH_SPEC 8.4: at most 250 kbit/s down per client. Everything sent to a client is counted on the wire against
-// 184 kbit/s with 1.5 KB saved at most; corrections fill what the rest leaves. The margin to 250 is for a reliable
-// burst (a wave's spawns) on top of a full second, and for jitter bunching arrivals.
-constexpr float kDownBytesPerS = 23000.0f, kDownBurstBytes = 1500.0f, kDatagramOverhead = 40.0f;
+// 160 kbit/s with 1.5 KB saved at most; corrections fill what the rest leaves. The margin to 250 is for a reliable
+// burst (a wave's spawns, a Break's dissolve) on top of a full second, and for jitter bunching arrivals. (Play test 1,
+// second pass: 184 -> 160 kbit/s; the stronger build's runs reach the denser Tracks and kill faster, and its bursts
+// reached 264 kbit/s.)
+constexpr float kDownBytesPerS = 20000.0f, kDownBurstBytes = 1500.0f, kDatagramOverhead = 40.0f;
 // The accumulator knows only the host's copies: a client asks (5 Hz, with its pose) for the enemies on its screen
 // that no correction has reached for this long, and the host sends those (and their schools) next.
 constexpr i64 kAttentionEveryUs = 200000;

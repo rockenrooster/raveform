@@ -92,7 +92,8 @@ constexpr float kDropScaleEnd = 1.2f;
 constexpr float kBossBudgetScale = 0.3f;     // kaleidos.md (quoted): 30%, fodder families only
 constexpr float kMegaWaveBars = 3.0f;        // the Drop's mega-wave spends 3 bars of Drop budget at once
 constexpr float kEndlessBudgetStep = 2.0f;   // per cycle past species.json's last budget (12/bar)
-constexpr u32 kDirectorAliveCap = 600;       // no new bodies while this many enemies live (perf contract)
+constexpr u32 kDirectorAliveCap = 900;       // no new bodies while this many enemies live (perf contract; play test 1,
+                                             // second pass: 600 -> 900, measured on the Moto's densest part)
 // A player's camera frame in the simulation (M3 stage C2: the crowd is counted in it, species.json
 // firstSlice.crowd): the reference view, 2400 x 1080 px at 1.5 px a wu and zoom 1 (look.md), centred on the ship.
 constexpr float kFrameHalfWWu = 800.0f, kFrameHalfHWu = 360.0f;
@@ -143,9 +144,11 @@ constexpr u32 kShotsSoftCap = 576;
 constexpr u32 kShotsMiddleOnly = 800;
 constexpr u32 kShotsHardCap = 1000;
 constexpr u32 kMaxShotsPerStep = 35;          // Split 7 x Prism 5
-// The Shard pool (2,048): above this many out at once a loose Shard lasts one bar instead of GAME_DESIGN 5's four.
+// The Shard pool (2,048): above this many out at once a loose Shard lasts one bar instead of GAME_DESIGN 5's four and a
+// death drops one Shard; within kShardsReserve of the cap a death drops none.
 constexpr u32 kShardsCrowded = 1536;
 constexpr double kShardCrowdedBars = 1.0;
+constexpr u32 kShardsReserve = 64;
 
 // ---- Riffs (GAME_DESIGN 6.3) ----
 // Play test 1: Orbitals 3, 5, 7, 9, 11 shards that also destroy the enemy bullets they touch; Pulse Ring on every
@@ -183,6 +186,7 @@ constexpr float kHaloInvulS = 0.6f;           // after a hit the Halo absorbed
 
 // ---- Kaleidos (kaleidos.md / kaleidos.json give the fight; the rest is chosen) ----
 constexpr float kBossTrackHealth[3] = {1.0f, 1.5f, 2.0f};  // the lead: 1.5x in Track 2, 2x in Track 3 (stage B, C briefs)
+constexpr float kFirstBossHealth = 0.7f;     // GAME_DESIGN 8 (quoted, play test 1 second pass): Track 1's Kaleidos at 0.7
 constexpr float kBossEndlessHealth = 1.06f;   // GAME_DESIGN 8 (quoted, from Track 7): +6% per Track after Track 3 (stage C)
 constexpr float kBossPairScore = 500.0f;      // score per pair (x Chain)
 constexpr float kBossCoreScore = 2000.0f;     // score for the core (x Chain)
@@ -199,7 +203,7 @@ constexpr float kBossEnterWu = 500.0f;        // kaleidos.md (quoted): enters 50
 // ======================================================================================================
 constexpr float kCoopBudgetPerPlayer = 0.6f;      // GAME_DESIGN 8 (quoted): threat budget x (1 + 0.6 x (players - 1))
 constexpr float kCoopBossHealthPerPlayer = 0.5f;  // GAME_DESIGN 8 (quoted): boss health x (1 + 0.5 x (players - 1))
-constexpr u32 kCoopAliveCapPerPlayer = 150;       // the director's alive cap grows this much a seat (600 -> 1,050 with four):
+constexpr u32 kCoopAliveCapPerPlayer = 150;       // the director's alive cap grows this much a seat (900 -> 1,350 with four):
                                                   // each frame keeps its own crowd, the cap is the phone's CPU
 constexpr u32 kTargetRethinkSteps = 4;            // an enemy picks its player again every fourth sixteenth (staggered by
                                                   // spawn number, so on the same musical steps on every device) ...

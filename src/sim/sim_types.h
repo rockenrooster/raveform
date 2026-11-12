@@ -41,7 +41,7 @@ constexpr float kShotSpeed = 1400.0f;
 // one of each back at every Break, the Dash in two beats.
 constexpr u8 kStartCells = 4, kMaxCells = 6;
 constexpr u8 kStartNovas = 3, kNovaCapacity = 4;
-constexpr float kInvulnerableS = 1.5f;
+constexpr float kInvulnerableS = 2.5f;  // play test 1, second pass (GAME_DESIGN 5): 1.5 -> 2.5 s
 constexpr float kPanicRadiusWu = 220.0f;
 constexpr float kDashWu = 220.0f, kDashS = 0.12f;
 constexpr double kDashRechargeBeats = 2.0;

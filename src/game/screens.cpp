@@ -644,13 +644,17 @@ void Play::screenSettings(Ui& ui) {
         }
     } else if (settingsTab_ == 1) {
         static const char* const kOnOff[2] = {"OFF", "ON"};
-        ui.text({cx, 340.0f * s}, 18.0f * s, white, 1.1f, "SWAP SIDES: AIM WITH THE LEFT THUMB");
-        const u32 sw = ui.segmented(5, {cx, 420.0f * s}, 420.0f * s, 80.0f * s, kOnOff, 2, settings_.swapSides ? 1u : 0u, 26.0f * s);
-        ui.text({cx, 560.0f * s}, 18.0f * s, white, 1.1f, "AUTO-AIM ASSIST: FIRES AT THE NEAREST THREAT, HALF RATE");
-        const u32 aa = ui.segmented(6, {cx, 640.0f * s}, 420.0f * s, 80.0f * s, kOnOff, 2, settings_.autoAim ? 1u : 0u, 26.0f * s);
-        if ((sw != 0) != settings_.swapSides || (aa != 0) != settings_.autoAim) {
+        ui.text({cx, 320.0f * s}, 18.0f * s, white, 1.1f, "SWAP SIDES: AIM WITH THE LEFT THUMB");
+        const u32 sw = ui.segmented(5, {cx, 390.0f * s}, 420.0f * s, 80.0f * s, kOnOff, 2, settings_.swapSides ? 1u : 0u, 26.0f * s);
+        ui.text({cx, 500.0f * s}, 18.0f * s, white, 1.1f, "AUTO-AIM ASSIST: FIRES AT THE NEAREST THREAT, HALF RATE");
+        const u32 aa = ui.segmented(6, {cx, 570.0f * s}, 420.0f * s, 80.0f * s, kOnOff, 2, settings_.autoAim ? 1u : 0u, 26.0f * s);
+        // Play test 1, second pass (screens.md CONTROLS): Auto Nova, on by default.
+        ui.text({cx, 680.0f * s}, 18.0f * s, white, 1.1f, "AUTO NOVA  FIRES ONE BEFORE YOUR LAST CELL GOES");
+        const u32 an = ui.segmented(9, {cx, 750.0f * s}, 420.0f * s, 80.0f * s, kOnOff, 2, settings_.autoNova ? 1u : 0u, 26.0f * s);
+        if ((sw != 0) != settings_.swapSides || (aa != 0) != settings_.autoAim || (an != 0) != settings_.autoNova) {
             settings_.swapSides = sw != 0;
             settings_.autoAim = aa != 0;
+            settings_.autoNova = an != 0;
             changed = true;
         }
     } else {

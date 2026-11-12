@@ -889,6 +889,7 @@ void testDownRevive(const SpeciesTable& species) {
     const auto down = [&](u32 p) {
         PlayerState& pl = w->playerMut(p);
         pl.cells = 0;
+        pl.novas = 0;  // (Auto Nova would fire one instead)
         pl.invulS = pl.novaInvulS = 0.0f;
         w->spawnBullet(pos[p], Vec2{}, 0.0f);
         step();

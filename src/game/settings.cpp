@@ -69,6 +69,7 @@ bool loadSettings(Settings& s) {
         if (is("music_host_only")) s.musicHostOnly = n != 0;
         if (is("swap_sides")) s.swapSides = n != 0;
         if (is("auto_aim")) s.autoAim = n != 0;
+        if (is("auto_nova")) s.autoNova = n != 0;
         if (is("effects_tier")) s.effectsTier = static_cast<u8>(n >= 0 && n < 5 ? n : 0);
         if (is("frame_rate")) s.frameRate = static_cast<u8>(n >= 0 && n < 4 ? n : 0);
         if (is("reduce_flashing")) s.reduceFlashing = n != 0;
@@ -83,9 +84,11 @@ bool saveSettings(const Settings& s) {
     char text[640];
     const int n = std::snprintf(text, sizeof text,
                                 "variant=%u\nmaster=%.3f\nmusic=%.3f\neffects=%.3f\nhaptics=%u\nswap_sides=%d\nauto_aim=%d\n"
-                                "effects_tier=%u\nframe_rate=%u\nreduce_flashing=%d\nnotice_seen=%d\nprobed_tier=%u\nmusic_host_only=%d\n",
+                                "effects_tier=%u\nframe_rate=%u\nreduce_flashing=%d\nnotice_seen=%d\nprobed_tier=%u\nmusic_host_only=%d\n"
+                                "auto_nova=%d\n",
                                 s.variant, s.master, s.music, s.effects, s.haptics, s.swapSides ? 1 : 0, s.autoAim ? 1 : 0, s.effectsTier,
-                                s.frameRate, s.reduceFlashing ? 1 : 0, s.noticeSeen ? 1 : 0, s.probedTier, s.musicHostOnly ? 1 : 0);
+                                s.frameRate, s.reduceFlashing ? 1 : 0, s.noticeSeen ? 1 : 0, s.probedTier, s.musicHostOnly ? 1 : 0,
+                                s.autoNova ? 1 : 0);
     const bool ok = n > 0 && writeAppFile("settings.txt", text, static_cast<size_t>(n));
     if (!ok) RF_WARN("settings: could not be saved");
     return ok;

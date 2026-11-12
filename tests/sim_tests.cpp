@@ -262,7 +262,7 @@ void testChainRules() {
     CHECK(w->player(0).cells == kStartCells - 1);
     CHECK(w->player(0).invulnerable());
     CHECK(countEvents(*w, EventType::Hit) == 1);
-    // Invulnerable for 1.5 s: a second bullet (passing through) does nothing.
+    // Invulnerable for 2.5 s: a second bullet (passing through) does nothing.
     w->spawnBullet(Vec2{0.0f, 0.0f}, Vec2{0.0f, 400.0f}, 0.0f);
     stepWorld(*w, music, Vec2{});
     CHECK(w->player(0).chain == 7);
@@ -281,9 +281,10 @@ void testChainRules() {
     // Loose Shards fade after four bars (8 s at 120 BPM).
     for (u32 t = 0; t < 8 * 60 + 10; ++t) stepWorld(*w, music, Vec2{});
     CHECK(w->shards().count == 0);
-    // Death: a hit with no cell left.
+    // Death: a hit with no cell left (and no Nova in stock: Auto Nova would fire one instead).
     PlayerState& p = w->playerMut(0);
     p.cells = 0;
+    p.novas = 0;
     p.invulS = 0.0f;
     w->spawnBullet(Vec2{0.0f, 0.0f}, Vec2{}, 0.0f);
     stepWorld(*w, music, Vec2{});
@@ -762,6 +763,78 @@ void testUpgradeStacking() {
     delete o;
 }
 
+void testAutoNova() {
+    // Play test 1, second pass (GAME_DESIGN 5): a hit that would take the last Shield cell fires a Nova from the stock
+    // instead and costs no cell (R6: invulnerable at once, the blast on the next beat); with no Nova in stock, or with
+    // the switch off, the hit lands as before. Invulnerability after a hit is 2.5 s.
+    g_test = "auto nova";
+    CHECK(kInvulnerableS == 2.5f);
+    const auto hitOnce = [&](World& w, double& music) {
+        PlayerState& pl = w.playerMut(0);
+        pl.invulS = pl.novaInvulS = 0.0f;
+        w.spawnBullet(Vec2{}, Vec2{}, 0.0f);
+        stepWorld(w, music, Vec2{});
+    };
+    {
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->playerMut(0).cells = 1;
+        const u8 novas = w->player(0).novas;
+        hitOnce(*w, music);
+        CHECK_MSG(w->player(0).cells == 1 && w->player(0).novas == novas - 1 && w->player(0).novaPending, "cells %u, novas %u",
+                  w->player(0).cells, w->player(0).novas);
+        CHECK(countEvents(*w, EventType::NovaPress) == 1 && countEvents(*w, EventType::Hit) == 0);
+        CHECK(w->player(0).invulnerable());
+        delete w;
+    }
+    {
+        // A hit that does not take the last cell is a hit.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->playerMut(0).cells = 3;
+        hitOnce(*w, music);
+        CHECK(w->player(0).cells == 2 && !w->player(0).novaPending && countEvents(*w, EventType::Hit) == 1);
+        CHECK(std::fabs(w->player(0).invulS - kInvulnerableS) < 0.05f);
+        delete w;
+    }
+    {
+        // No Nova in stock: the last cell goes.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->playerMut(0).cells = 1;
+        w->playerMut(0).novas = 0;
+        hitOnce(*w, music);
+        CHECK(w->player(0).cells == 0 && countEvents(*w, EventType::Hit) == 1);
+        delete w;
+    }
+    {
+        // Switched off: the last cell goes, the Novas stay.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->rules().autoNova = false;
+        w->playerMut(0).cells = 1;
+        const u8 novas = w->player(0).novas;
+        hitOnce(*w, music);
+        CHECK(w->player(0).cells == 0 && w->player(0).novas == novas && countEvents(*w, EventType::NovaPress) == 0);
+        delete w;
+    }
+    // The first boss of a run has 0.7 of its health (Track 1's); the cap of the living crowd is 900 solo.
+    {
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->spawnBossNow(kTicksPerBar, Vec2{600.0f, 0.0f});
+        CHECK(std::fabs(w->boss().pairMax - 0.7f * g_species->boss.pairHealth) < 1e-3f);
+        CHECK(std::fabs(w->boss().coreMax - 0.7f * g_species->boss.coreHealth) < 1e-3f);
+        delete w;
+    }
+    CHECK(tuning::kDirectorAliveCap == 900);
+}
+
 void testPlayTest1() {
     // Play test 1 (2026-11-12): the Trio is held to be taken, a Break gives back a cell and a Nova, Ricochet goes on
     // to the nearest enemy, a beat shot bursts, Orbitals eat bullets, and the shot pool keeps its caps.
@@ -1055,6 +1128,7 @@ int main() {
     testTrioRules();
     testUpgradeStacking();
     testPlayTest1();
+    testAutoNova();
     testBoss();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;

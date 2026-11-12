@@ -116,6 +116,8 @@ void World::spawnBossNow(double enterTick, Vec2 pos) {
     float scale = 1.0f + kCoopBossHealthPerPlayer * static_cast<float>(playerCount_ - 1);
     const u32 tr = director_.track < 1 ? 1u : director_.track;
     scale *= tr <= 3 ? kBossTrackHealth[tr - 1] : kBossTrackHealth[2] * std::pow(kBossEndlessHealth, static_cast<float>(tr - 3));
+    // GAME_DESIGN 8 (play test 1, second pass): the first boss of a run, Track 1's, is the teacher: 0.7 of its health.
+    if (tr == 1) scale *= kFirstBossHealth;
     s.pairMax = b.pairHealth * scale;
     s.coreMax = b.coreHealth * scale;
     for (float& h : s.pairHp) h = s.pairMax;

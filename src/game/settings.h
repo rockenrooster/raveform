@@ -16,6 +16,7 @@ struct Settings {
     // CONTROLS
     bool swapSides = false;
     bool autoAim = true;
+    bool autoNova = true;        // play test 1, second pass (GAME_DESIGN 5): a Nova fires instead of losing the last cell
     // LOOK
     u8 effectsTier = 0;          // 0 Auto, 1 Low, 2 Medium, 3 High, 4 Ultra
     u8 frameRate = 0;            // 0 Auto, 1 60, 2 90, 3 120

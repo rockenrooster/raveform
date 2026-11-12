@@ -1,5 +1,50 @@
 # RAVEFORM — Progress
 
+## Play test 1, second pass — 2026-11-12 (the lead's ruling in `39afc70`)
+
+- **Auto Nova** (on by default; `AUTO NOVA  FIRES ONE BEFORE YOUR LAST CELL GOES` under CONTROLS, saved as
+  `auto_nova`): a hit that would take the last Shield cell fires a Nova from the stock instead and costs no cell;
+  the Nova keeps R6 (invulnerable at once, the blast on the next beat). It is a rule of the ship (`Rules::autoNova`,
+  this device's players; the bots have it as anyone does). Chosen: it also catches the hit that would end the run
+  at zero cells, which can only happen when the stock was empty at the last cell's hit. With no Nova in stock the
+  hit lands as before.
+- **Invulnerability after a hit 2.5 s** (was 1.5). **The first boss of a run (Track 1's Kaleidos) has 0.7 of its
+  health**; later bosses and the loop are unchanged.
+- **The director's alive cap 900 solo** (was 600; +150 a seat stays: 1,350 with four). The Moto's densest part
+  (`bench_play --fast-forward 640 --nohits`, the stronger build, now the loop's Track 4 at that point;
+  `captures\bench\ZY22BXMJG3-bench_play-20261112-133722.json`): 0 of 7,188 frames missed, panel P95 1 period,
+  max 23.1 ms: **PASS**, so 900 stays. Main 4.89 / 5.23 / 7.85 ms, GPU 11.89 / 13.56 / 14.92 ms, sim tick
+  0.30 / 0.48 / 0.71 ms, alive 528 / 900, enemies in view 184 / 583 (stage C2: 126 / 396), Shards up to 1,540, no
+  pool overflow, heap 0.
+- The Shard pool needed one more rule with the higher cap (656 Shards dropped over 20 careful runs): while it is
+  crowded (more than 1,536 out) a death drops one Shard, and none within 64 of the 2,048. None dropped since.
+
+Bots, 20 seeds of 30 minutes (`--sim crowd`, the final build), against play test 1's first pass:
+
+| | first pass (levers 0.7, cap 600) | second pass | target |
+|---|---|---|---|
+| careful: first death | no death in 15 of 20 runs | **no death in 18 of 20** (the two at 15.6 and 23.3 min) | 15 min or later |
+| careful: Track 3 / boss fights lost | 20 of 20 / 3.5% | 20 of 20 / **1.4%** | 70% / at most 10% |
+| careless: median first death | 3.01 min | **6.37 min** | 4 min or later |
+| careless: Track 2 reached | 6 of 20 | **20 of 20** (Track 3 in 4) | 10 of 20 |
+| careless: boss fights lost | 93.6% | 45.2% | |
+| kills a minute (careful / careless) | 4,069 / 697 | 6,010 / 1,539 | |
+| pools | no overflow | no overflow | none |
+
+Both bots meet their targets; tuning stops here. Enemies in view during Groove (careful bot), Track 3 cycles 1-3:
+117 / 124 / 124 before, **127 / 145 / 147** after; the loop's Track 4: 94 / 92 / 93 / 101 before, **129 / 128 / 128 /
+130** after (alive 730 there, the cap 900 no longer binding in Groove).
+
+The network: with more to kill and the bots living longer, the loopback soak's worst second rose to 264-278 kbit/s
+per client (the limit is 250), and the host's tick log overflowed once at 1,350 alive (a Break dissolving the whole
+crowd). The tick log now holds every enemy's death, and the corrections' share of the downlink is 160 kbit/s instead
+of 184: both soaks pass at 239 kbit/s worst second (clean: error 7.5 wu RMS, limit 12, was 3.8; with 5% loss and
+80 ms jitter: 7.5 wu, predicted kills undone 0.8%), with the +150 a seat kept (1,350 alive with four).
+
+Tests: Auto Nova fires on the last cell, not without a Nova, not when switched off; a hit that leaves cells is a
+hit with 2.5 s of invulnerability; Track 1's boss at 0.7; the cap at 900 (`raveform_sim_tests` 5,268 checks, 0
+failures; `scripts\test.ps1` passes). The APK and the desktop build are rebuilt.
+
 ## Play test 1 — 2026-11-12 (the user's first play test; design in `004c594`)
 
 Three changes to solo play, done before the rest of M4 stage B (whose first checkpoint, `988f718`, came just before).

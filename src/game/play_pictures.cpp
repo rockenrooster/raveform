@@ -123,6 +123,7 @@ bool Play::scriptInputB(StickInput& in) {
             if (t == 300) {
                 PlayerState& pl = w.playerMut(0);
                 pl.cells = 0;
+                pl.novas = 0;  // (play test 1, second pass: Auto Nova would fire one instead)
                 pl.invulS = pl.novaInvulS = 0.0f;
                 w.rules().godMode = false;
                 w.spawnBullet(pl.pos, Vec2{}, 0.0f);
