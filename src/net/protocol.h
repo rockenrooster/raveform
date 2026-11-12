@@ -10,14 +10,14 @@
 
 namespace rf::net {
 
-constexpr u32 kProtocolVersion = 0x52460402u;  // 'R' 'F', M4 stage A
+constexpr u32 kProtocolVersion = 0x52460403u;  // 'R' 'F', M4 stage B (the lobby)
 constexpr u32 kMaxPacketBytes = 1200;
 
 enum class Msg : u8 {
     // control (channel 2)
     Hello = 1, Welcome, Refuse, Ping, Pong, Bye,
     // the game, reliable (channel 0)
-    RunStart = 16, Spawns, Deaths, Claims, BossClaims, Boss, BoostDrop, Director, PlayerEvent, Census, Pause, Seats,
+    RunStart = 16, Spawns, Deaths, Claims, BossClaims, Boss, BoostDrop, Director, PlayerEvent, Census, Pause, Seats, Ready, Lobby,
     // the game, unreliable (channel 1)
     Pose = 48, Players, Corrections, Heartbeat, Stats, Attention,
 };
@@ -41,6 +41,15 @@ struct MsgRunStart {
     u64 seed = 0;
     u8 players = 1;
     double runOffset = 0.0;  // song ticks minus run ticks (whole bars)
+    u8 mask = 0xF;           // the seats in the run (a seat left open in the lobby is not)
+};
+// The host's lobby, to every client on each change (M4 stage B; design/screens.md "Co-op lobby").
+struct MsgLobby {
+    u8 seats = 0;     // taken seats (bit per seat)
+    u8 ready = 0;     // of them, ready (joined and its clock settled)
+    u16 code = 0;     // the room code's 16 bits
+    u8 state = 0;     // 0 lobby, 1 a run is going
+    char names[4][16] = {};
 };
 struct MsgBoss {
     u16 run = 0;
@@ -130,6 +139,8 @@ public:
     virtual void onCensus(const MsgCensus&) {}
     virtual void onPause(const MsgPause&) {}
     virtual void onSeats(u8) {}
+    virtual void onReady(u8) {}
+    virtual void onLobby(const MsgLobby&) {}
     virtual void onPose(const MsgPose&) {}
     virtual void onCorrections(u16, double) {}  // then onCorrection per enemy
     virtual void onCorrection(const sim::NetEnemyState&) {}
@@ -171,6 +182,8 @@ public:
     bool putCensus(const MsgCensus& m);
     bool putPause(const MsgPause& m);
     bool putSeats(u8 mask);
+    bool putReady(u8 ready);
+    bool putLobby(const MsgLobby& m);
     bool putPose(const MsgPose& m);  // as Msg::Pose (client -> host) ...
     // ... or the host's relay of every player's pose in one message.
     bool putPlayers(const MsgPose* poses, u32 n);

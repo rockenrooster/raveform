@@ -203,8 +203,14 @@ void PlayView::resetEffects() {
     for (ShockRing& s : shock_) s.start = -100.0f;
     sparkReqCount_ = 0;
     trailCount_ = 0;
-    dash_.t = -100.0f;
-    novaPressT_ = novaBlastT_ = novaFrontT_ = -100.0f;
+    for (u32 p = 0; p < kMaxPlayers; ++p) {
+        dash_[p].t = -100.0f;
+        novaPressT_[p] = novaBlastT_[p] = novaFrontT_[p] = -100.0f;
+        mateTrailCount_[p] = 0;
+        reviveT_[p] = -100.0f;
+    }
+    allDownT_ = -100.0f;
+    allDownRest_ = 0.0f;
     hitT_ = pickupT_ = -100.0f;
 }
 
@@ -311,7 +317,7 @@ void PlayView::shatterGlyph(int g, Vec2 at, float heading, float scale, Vec3 col
     }
 }
 
-void PlayView::killRecipe(Vec2 at, u8 size, u8 hue, float heading, int g, float radius, float t) {
+void PlayView::killRecipe(Vec2 at, u8 size, u8 hue, float heading, int g, float radius, float t, i32 owner) {
     // look.md §5: small (tier I-II), medium (III-IV), large (V, elites).
     const Look::Explosions& boom = look_->boom;
     const LookExplosion& x = size == 0 ? boom.small : (size == 1 ? boom.medium : boom.large);
@@ -335,8 +341,8 @@ void PlayView::killRecipe(Vec2 at, u8 size, u8 hue, float heading, int g, float 
         addPool(at, rr, rr, white(), f.intensity[0], f.intensity[1], f.lifeS, false, f.squaredFade ? 1 : 0, false, true, t);
         // The kill pool lives as long as the recipe's longest spark (as in the M1 stage and crowd.py).
         const LookSoftLight& pl = size == 1 ? look_->soft.killPoolMedium : look_->soft.killPoolLarge;
-        addPool(at, pl.radius[0], pl.radius[1], palette_->hue[hue], pl.intensity[0], pl.intensity[1], x.lifeS[1], true, 0, false,
-                true, t);
+        addPool(at, pl.radius[0], pl.radius[1], owner >= 0 ? palettes_->player[owner] : palette_->hue[hue], pl.intensity[0],
+                pl.intensity[1], x.lifeS[1], true, 0, false, true, t);
         for (u32 k = 0; k < x.embers; ++k) {
             Ember& m = embers_[emberHead_];
             emberHead_ = (emberHead_ + 1) % emberCap_;
@@ -368,11 +374,15 @@ void PlayView::onEvents(const World& w, double tickEnd) {
         }
         speciesGlyphsReady_ = true;
     }
-    const Vec3 player = palettes_->player[w.viewPlayer()], light = palettes_->playerLight[w.viewPlayer()], deep = palettes_->playerDeep[w.viewPlayer()];
+    const u32 me = w.viewPlayer();
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         const float t = static_cast<float>(tickEnd - e.age);
         const Vec2 at{e.x, e.y};
+        // M4 (look.md 6): a player's effects are in that player's colours (solo: player 0, the local one).
+        const u32 owner = e.a < kMaxPlayers ? e.a : me;
+        const Vec3 player = palettes_->player[owner], light = palettes_->playerLight[owner], deep = palettes_->playerDeep[owner];
+        const bool mine = owner == me;
         switch (e.type) {
             case EventType::Kill: {
                 const Species& s = table.get(e.species);
@@ -382,7 +392,9 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                             0, true, true, t);
                     break;
                 }
-                killRecipe(at, e.a, s.hue, e.f, speciesGlyph_[e.species], s.radius, t);
+                // Co-op: the kill pool in the killer's colour (look.md 6); solo keeps the enemy's hue.
+                killRecipe(at, e.a, s.hue, e.f, speciesGlyph_[e.species], s.radius, t,
+                           w.playerCount() > 1 && e.b < kMaxPlayers ? static_cast<i32>(e.b) : -1);
                 break;
             }
             case EventType::Impact: {
@@ -419,17 +431,61 @@ void PlayView::onEvents(const World& w, double tickEnd) {
             case EventType::Pickup: pickupT_ = t; break;
             case EventType::Hit: {
                 // Shield cell lost (look.md §5): the arc shatters outward, a panic ring pushes out.
-                hitT_ = t;
+                if (mine) hitT_ = t;
                 const u8 left = e.b;
                 const int arcs = gHalo_[left + 1 <= 6 ? left + 1 : 6];
                 shatterGlyph(arcs, at, rng_.range(0.0f, kTau), kStandardEnemyWu, mix(player, white(), 0.3f) * 2.0f, 160.0f, 320.0f,
                              t);
                 addShockRings(at, 1, kPanicRadiusWu, player, light, t, kPanicRingS);
                 lattice_.impulse(at, 260.0f, 120.0f);
-                if (kHitShakeRefPx > shakeAmp_) shakeAmp_ = kHitShakeRefPx;
+                if (mine && kHitShakeRefPx > shakeAmp_) shakeAmp_ = kHitShakeRefPx;
+                break;
+            }
+            case EventType::Down: {
+                // M4 (look.md 6): the ship shatters with the large kill recipe in its own colour; the beacon stays.
+                const LookExplosion& x = look_->boom.large;
+                SparkReq r{};
+                r.at = at;
+                r.count = static_cast<u16>(x.sparks[1] * tier_.particleDensity * density_);
+                r.kind = 1;
+                r.a = player;
+                r.b = light;
+                r.t0 = t;
+                sparkRequest(r);
+                shatterGlyph(gShip_, at, rng_.range(0.0f, kTau), kStandardEnemyWu * 1.4f, mix(player, white(), 0.4f) * 2.0f, 60.0f,
+                             260.0f, t);
+                const LookSoftLight& f = look_->soft.killFlash;
+                addPool(at, f.radius[0] * f.largeScale, f.radius[0] * f.largeScale, white(), f.intensity[0], f.intensity[1], f.lifeS,
+                        false, f.squaredFade ? 1 : 0, false, true, t);
+                const LookSoftLight& kp = look_->soft.killPoolLarge;
+                addPool(at, kp.radius[0], kp.radius[1], player, kp.intensity[0], kp.intensity[1], x.lifeS[1], true, 0, false, true, t);
+                if (x.rings) addShockRings(at, x.rings, x.ringToWu, player, light, t);
+                lattice_.impulse(at, x.gridImpulse, 130.0f);
+                if (mine && x.shakeRefPx > shakeAmp_) shakeAmp_ = x.shakeRefPx;
+                break;
+            }
+            case EventType::Revive: {
+                // M4 (look.md 6): the ring closes: a white flash, a shock ring 90 -> 260 wu in 0.2 s, eight sparks.
+                const u32 p = e.a < kMaxPlayers ? e.a : 0u;
+                reviveT_[p] = t;
+                reviveFill_[p] = e.b != 0;
+                addShockRings(at, 1, 260.0f, player, light, t, 0.2f);
+                SparkReq r{};
+                r.at = at;
+                r.count = 8;
+                r.kind = 0;
+                r.a = player;
+                r.b = white();
+                r.t0 = t;
+                sparkRequest(r);
                 break;
             }
             case EventType::Death: {
+                if (w.playerCount() > 1) {
+                    // M4 (look.md 6): all down. The simulation's time dips, the lattice drains, then game over.
+                    allDownT_ = t;
+                    break;
+                }
                 SparkReq r{};
                 r.at = at;
                 r.count = static_cast<u16>(look_->boom.large.sparks[1] * tier_.particleDensity * density_);
@@ -447,10 +503,10 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 break;
             }
             case EventType::NovaPress: {
-                novaPressT_ = t;
-                novaAt_ = at;
+                novaPressT_[owner] = t;
+                novaAt_[owner] = at;
                 const float tpS = w.ticksPerSecond();
-                novaBlastT_ = t + static_cast<float>((e.tick - (w.music() - static_cast<double>(e.age) * tpS)) / tpS);
+                novaBlastT_[owner] = t + static_cast<float>((e.tick - (w.music() - static_cast<double>(e.age) * tpS)) / tpS);
                 // Sparks appear on a 600 wu ring and fall inward until the beat (look.md §5).
                 SparkReq r{};
                 r.at = at;
@@ -459,14 +515,14 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 r.a = player;
                 r.b = light;
                 r.t0 = t;
-                r.extra = novaBlastT_ - t;
+                r.extra = novaBlastT_[owner] - t;
                 sparkRequest(r);
                 break;
             }
             case EventType::NovaBlast: {
                 // The thick white front to 1400 wu in 0.35 s with 400 radial sparks and the bloom pump.
-                novaFrontT_ = t;
-                novaAt_ = at;
+                novaFrontT_[owner] = t;
+                novaAt_[owner] = at;
                 SparkReq r{};
                 r.at = at;
                 r.count = static_cast<u16>(kNovaFrontSparks * tier_.particleDensity * density_);
@@ -478,18 +534,20 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 const LookDistortionSource& n = look_->distortion.nova;
                 addDistortion(at, n.toWu > 0.0f ? n.toWu : tuning::kNovaFrontWu, n.lifeS, n.refPx, n.widthRefPx, t);
                 for (int i = 0; i < 2; ++i) lattice_.impulse(at, 420.0f, 260.0f);
-                if (kNovaShakeRefPx > shakeAmp_) shakeAmp_ = kNovaShakeRefPx;
+                if (mine && kNovaShakeRefPx > shakeAmp_) shakeAmp_ = kNovaShakeRefPx;
                 break;
             }
-            case EventType::Dash:
-                dash_.from = at;
-                dash_.to = Vec2{e.x2, e.y2};
-                dash_.t = t;
-                dash_.heading = angleOf(dash_.to - dash_.from);
-                dash_.perfect = e.b != 0;
-                if (dash_.perfect) addShockRings(dash_.to, 1, 90.0f, player, light, t);
-                lattice_.impulse(dash_.to, 120.0f, 70.0f);
+            case EventType::Dash: {
+                Dash& ds = dash_[owner];
+                ds.from = at;
+                ds.to = Vec2{e.x2, e.y2};
+                ds.t = t;
+                ds.heading = angleOf(ds.to - ds.from);
+                ds.perfect = e.b != 0;
+                if (ds.perfect) addShockRings(ds.to, 1, 90.0f, player, light, t);
+                lattice_.impulse(ds.to, 120.0f, 70.0f);
                 break;
+            }
             case EventType::Restart: resetEffects(); break;
             default: eventB(w, e, t); break;
         }
@@ -986,13 +1044,19 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     } else {
         trailCount_ = 0;
     }
+    // M4 (look.md 6): a revived ship blinks on the eighths for a bar (it cannot be hurt meanwhile).
+    const float eighthS = 30.0f / std::fmax(in.bpm, 30.0f);
+    const auto blinkOff = [&](u32 q) {
+        const float age = t - reviveT_[q];
+        return age >= 0.0f && age < 8.0f * eighthS && std::fmod(age, 2.0f * eighthS) >= eighthS;
+    };
     if (me.alive) {
         const float heading = in.shipHeading;
         const LookLine& hull = look_->lines.playerHull;
         const u32 cells = me.cells > 6 ? 6u : me.cells;
         const float haloRot = 0.3f * t;
         const float haloPulse = 1.0f + 0.25f * kick_;
-        if (playerShown) {
+        if (playerShown && !blinkOff(w.viewPlayer())) {
             glyph(d.glyphs, gShip_, false, S, heading, heading, shipScale, hull.intensity, 0.5f * hull.width, kGlyphPlayer, player, deep);
             glyph(d.glyphs, gShip_, true, S, heading, heading, shipScale, look_->lines.playerWhiteCopy.intensity,
                   0.5f * look_->lines.playerWhiteCopy.width, kGlyphWhite, W1, W1);
@@ -1054,81 +1118,56 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             d.threatCores.line(toScreen(S), toScreen(S), 1.3f * refPx_, W1, W1, kDisc);
         }
     }
-    // M4 co-op (GAME_DESIGN 10): the teammates' ships in their colours, and a downed player's beacon (a ring a
-    // teammate stands in for two beats to revive it; it fills as they do).
-    for (u32 q = 0; q < kMaxPlayers && playerShown; ++q) {
-        const PlayerState& pl = w.player(q);
-        if (!pl.present) continue;
-        const Vec3 c = palettes_->player[q], cd = palettes_->playerDeep[q], cl = palettes_->playerLight[q];
-        if (pl.down) {
-            const float pulse = 0.75f + 0.25f * kick_;
-            glyph(d.glyphs, gRing64_, false, pl.beacon, 0.0f, 0.0f, tuning::kReviveRingWu, look_->lines.playerHalo.intensity * 1.6f * pulse,
-                  0.5f * look_->lines.playerHalo.width, kGlyphRingA, c, cl);
-            const float fill = clampf(static_cast<float>(pl.reviveTicks / (tuning::kReviveBeats * kTicksPerBeat)), 0.0f, 1.0f);
-            if (fill > 0.0f)
-                glyph(d.glyphs, gRing64_, false, pl.beacon, 0.0f, 0.0f, tuning::kReviveRingWu * fill, look_->lines.playerHalo.intensity * 2.0f,
-                      0.5f * look_->lines.playerHalo.width, kGlyphFlat, W1, W1);
-            d.pools.glow(toScene(pl.beacon), look_->soft.playerPool.radius[0] * pxPerWu_, c * (look_->soft.playerPool.intensity[0] * pulse));
-            continue;
+    // M4 co-op (look.md 6): the teammates' ships, the beacons and the revives (play_view_coop.cpp).
+    if (w.playerCount() > 1 && playerShown) drawCoop(d, in);
+    // Dash: five fading ghost copies along the path; a Perfect Dash adds a four-point sparkle (look.md §5). M4: each
+    // player's own, in its colours.
+    for (u32 q = 0; q < kMaxPlayers; ++q) {
+        const Dash& ds = dash_[q];
+        const float age = t - ds.t;
+        if (age < 0.0f || age >= kDashGhostS || !playerShown) continue;
+        const Vec3 pc = palettes_->player[q], pd = palettes_->playerDeep[q];
+        const float fade = 1.0f - age / kDashGhostS;
+        for (u32 k = 0; k < kDashGhosts; ++k) {
+            const float u = static_cast<float>(k) / static_cast<float>(kDashGhosts);
+            const Vec2 p = lerp2(ds.from, ds.to, u);
+            const float i = look_->lines.playerHull.intensity * 0.6f * fade * (0.35f + 0.65f * u);
+            glyph(d.glyphs, gShip_, true, p, ds.heading, ds.heading, shipScale, i, 0.5f * look_->lines.playerHull.width, kGlyphPlayer, pc,
+                  pd);
         }
-        if (q == w.viewPlayer() || !pl.alive) continue;
-        const Vec2 P = lerp2(pl.prevPos, pl.pos, a);
-        if (!visible(P, 2.0f * shipScale)) {
-            edgeChevron(d, P, c, false, 1.0f);
-            continue;
-        }
-        const float h = lerpAngle(pl.prevHeading, pl.heading, a);
-        const LookLine& hull = look_->lines.playerHull;
-        glyph(d.glyphs, gShip_, false, P, h, h, shipScale, hull.intensity, 0.5f * hull.width, kGlyphPlayer, c, cd);
-        if (pl.cells > 0) {
-            const u32 cells = pl.cells > 6 ? 6u : pl.cells;
-            glyph(d.glyphs, gHalo_[cells], false, P, 0.3f * t, 0.3f * t, shipScale, look_->lines.playerHalo.intensity * 0.8f,
-                  0.5f * look_->lines.playerHalo.width, kGlyphRingA, c, cl);
-        }
-        d.pools.glow(toScene(P), look_->soft.playerPool.radius[0] * pxPerWu_, c * (look_->soft.playerPool.intensity[0] * 0.7f));
-    }
-    // Dash: five fading ghost copies along the path; a Perfect Dash adds a four-point sparkle (look.md §5).
-    {
-        const float age = t - dash_.t;
-        if (age >= 0.0f && age < kDashGhostS && playerShown) {
-            const float fade = 1.0f - age / kDashGhostS;
-            for (u32 k = 0; k < kDashGhosts; ++k) {
-                const float u = static_cast<float>(k) / static_cast<float>(kDashGhosts);
-                const Vec2 p = lerp2(dash_.from, dash_.to, u);
-                const float i = look_->lines.playerHull.intensity * 0.6f * fade * (0.35f + 0.65f * u);
-                glyph(d.glyphs, gShip_, true, p, dash_.heading, dash_.heading, shipScale, i, 0.5f * look_->lines.playerHull.width,
-                      kGlyphPlayer, player, deep);
-            }
-            if (dash_.perfect) {
-                flare(d.scene, dash_.to, 0.0f, 46.0f * (0.6f + 0.4f * fade), 2, W1 * (2.4f * fade), 0.7f);
-                d.sparkles.glow(toScene(dash_.to), 14.0f * refPx_, mix(player, W1, 0.6f) * (1.6f * fade));
-            }
+        if (ds.perfect) {
+            flare(d.scene, ds.to, 0.0f, 46.0f * (0.6f + 0.4f * fade), 2, W1 * (2.4f * fade), 0.7f);
+            d.sparkles.glow(toScene(ds.to), 14.0f * refPx_, mix(pc, W1, 0.6f) * (1.6f * fade));
         }
     }
     // The Nova: the inhale (sparks falling in, the screen dimming) and the front.
     float novaDim = 0.0f;
-    {
+    novaPump_ = 0.0f;
+    for (u32 q = 0; q < kMaxPlayers; ++q) {
         // One ring each, as M1's Drop front: both move far more than the afterglow's blur in a frame (the
         // front about 100 px), so at low load (swarm gain 1) the afterglow leaves soft copies behind them
         // (docs/PROGRESS.md M3: a question for the lead; drawing them swept like shots filled the disc).
-        if (t >= novaPressT_ && t < novaBlastT_ && novaBlastT_ > novaPressT_) {
-            const float span = novaBlastT_ - novaPressT_;
-            novaDim = kNovaDim * smooth01((t - novaPressT_) / span);
+        const Vec3 pc = palettes_->player[q], pl = palettes_->playerLight[q];
+        const bool mine = q == w.viewPlayer();
+        if (t >= novaPressT_[q] && t < novaBlastT_[q] && novaBlastT_[q] > novaPressT_[q]) {
+            const float span = novaBlastT_[q] - novaPressT_[q];
+            if (mine) novaDim = kNovaDim * smooth01((t - novaPressT_[q]) / span);
             if (playerShown) {
-                const float u = (t - novaPressT_) / span;
-                glyph(d.glyphs, gRing128_, false, S, 0.0f, 0.0f, kNovaInhaleRingWu * (1.0f - u), 1.2f * u, 1.0f, kGlyphRingA, player, light);
+                const float u = (t - novaPressT_[q]) / span;
+                const PlayerState& o = w.player(q);
+                const Vec2 at = mine ? S : lerp2(o.prevPos, o.pos, a);
+                glyph(d.glyphs, gRing128_, false, at, 0.0f, 0.0f, kNovaInhaleRingWu * (1.0f - u), 1.2f * u, 1.0f, kGlyphRingA, pc, pl);
             }
         }
-        const float age = t - novaFrontT_;
+        const float age = t - novaFrontT_[q];
         if (age >= 0.0f && age < tuning::kNovaFrontS && shown(kMuteFx)) {
             const float u = age / tuning::kNovaFrontS;
-            glyph(d.glyphs, gRing128_, false, novaAt_, 0.0f, 0.0f, tuning::kNovaFrontWu * u, kNovaFront * (1.0f - u),
+            glyph(d.glyphs, gRing128_, false, novaAt_[q], 0.0f, 0.0f, tuning::kNovaFrontWu * u, kNovaFront * (1.0f - u),
                   0.5f * kNovaFrontWidthRefPx, kGlyphFlat, W1, W1);
         }
-        const float pumpAge = t - novaFrontT_;
-        novaPump_ = (pumpAge >= 0.0f && pumpAge < look_->novaPumpMs * 1e-3f)
-                        ? (reduceFlashing_ ? look_->novaPumpReduced : look_->novaPumpBloom)
-                        : 0.0f;
+        const float pumpAge = t - novaFrontT_[q];
+        if (pumpAge >= 0.0f && pumpAge < look_->novaPumpMs * 1e-3f)
+            novaPump_ = reduceFlashing_ ? look_->novaPumpReduced : look_->novaPumpBloom;
     }
 
     // ---- Shots: a capsule as long as the shot travels in a frame (look.md v2.2 §3), a sparkle at the head.
@@ -1157,8 +1196,10 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             const bool mine = sh.owner[i] == w.viewPlayer();
             const Vec3 body = !mine && sh.owner[i] < kMaxPlayers ? palettes_->player[sh.owner[i]]
                                                                  : (shotHasLane(sh.flags[i]) ? laneColour_[shotLane(sh.flags[i]) + 2] : player);
-            d.scene.line(toScene(tail), toScene(head), 0.5f * pl.width * refPx_, body * pl.intensity, W1 * pl.intensity, 0);
-            d.sparkles.glow(toScene(head), look_->soft.shotHead.radius[0] * refPx_, shotHead);
+            // M4 (look.md 6): a teammate's shots at 0.6 of the level and 0.8 of the width.
+            const float lvl = mine ? 1.0f : 0.6f, wid = mine ? 1.0f : 0.8f;
+            d.scene.line(toScene(tail), toScene(head), 0.5f * pl.width * wid * refPx_, body * (pl.intensity * lvl), W1 * (pl.intensity * lvl), 0);
+            d.sparkles.glow(toScene(head), look_->soft.shotHead.radius[0] * refPx_ * wid, shotHead * lvl);
         }
     }
 
@@ -1292,7 +1333,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     (void)lastWarpLandT_;
 }
 
-void PlayView::edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, float swell) {
+void PlayView::edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, float swell, bool ringTip) {
     const Look::EdgeIndicator& ei = look_->edge;
     const float h = (boss ? ei.bossChevron : ei.chevron) * refPx_;
     const float disc = kChevronDisc * h;
@@ -1324,6 +1365,17 @@ void PlayView::edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, flo
         chevron(-0.5f * kChevronPairGap * s);
     } else {
         chevron(0.0f);
+    }
+    if (ringTip) {
+        // M4 (look.md 6): a downed teammate's chevron carries a small ring at its tip.
+        const Vec2 tip = c + rotate(Vec2{0.5f * depth + 0.3f * s, 0.0f}, cs, sn);
+        const float rr = 0.22f * s;
+        for (u32 k = 0; k < 12; ++k) {
+            const float a0 = kTau * static_cast<float>(k) / 12.0f, a1 = kTau * static_cast<float>(k + 1) / 12.0f;
+            const Vec2 p0 = tip + Vec2{std::cos(a0), std::sin(a0)} * rr, p1 = tip + Vec2{std::cos(a1), std::sin(a1)} * rr;
+            d.threatRims.line(p0, p1, hw + rim, Vec3{}, Vec3{}, 0);
+            d.threatCores.line(p0, p1, hw, core, core, 0);
+        }
     }
     const LookSoftLight& glow = look_->soft.edgeIndicator;
     d.pools.glow(c, glow.radius[0] * refPx_, colour * glow.intensity[0]);

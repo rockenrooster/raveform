@@ -30,11 +30,12 @@ void World::init(const SpeciesTable* species) {
     netLog_.clear();
     netOpCount_ = 0;
     runId_ = nextRunId_ = 0;
+    predictUndoS_ = kPredictUndoS;
     tick_ = 0;
     resetRun(1, 0.0, 1);
 }
 
-void World::resetRun(u64 seed, double startTick, u32 players) {
+void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask) {
     seed_ = seed;
     rng_.reseed(seed * 0x9E3779B97F4A7C15ull + 0x632BE59BD9B4E019ull);
     Enemies& e = enemies_;
@@ -45,6 +46,7 @@ void World::resetRun(u64 seed, double startTick, u32 players) {
     bullets_.count = shots_.count = shards_.count = 0;
     serial_ = 0;
     dipS_ = 0.0f;
+    allDownDipS_ = 0.0f;
     threatInView_ = 0.0f;
     crowdInFrame_ = 0;
     crowdGoal_ = 0.0f;
@@ -54,7 +56,7 @@ void World::resetRun(u64 seed, double startTick, u32 players) {
     for (u32 p = 0; p < kMaxPlayers; ++p) {
         PlayerState& pl = players_[p];
         pl = PlayerState{};
-        pl.present = p < playerCount_;
+        pl.present = p < playerCount_ && ((presentMask >> p) & 1u) != 0;
         pl.alive = pl.present;
         pl.pos = pl.prevPos = Vec2{static_cast<float>(p) * 60.0f, 0.0f};
     }
@@ -104,7 +106,7 @@ void World::tick(const TickInput& in) {
         // they are not applied; the controllers restart from the world's start positions). Solo: the seed
         // after this one; co-op: the host's seed and seats (scheduleRun).
         const double bar = restartAt_;
-        resetRun(restartSeed_, bar, restartPlayers_);
+        resetRun(restartSeed_, bar, restartPlayers_, restartMask_);
         runId_ = nextRunId_;
         restarted_ = true;
         ++counters_.restarts;
@@ -152,6 +154,9 @@ void World::requestRestart() {
     restartAt_ = (std::floor((m1_ + 0.5 * kTicksPerBar) / kTicksPerBar) + 1.0) * kTicksPerBar;
     restartSeed_ = seed_ + 0x9E3779B97F4A7C15ull;
     restartPlayers_ = playerCount_;
+    restartMask_ = 0;
+    for (u32 p = 0; p < playerCount_; ++p)
+        if (players_[p].present || playerCount_ == 1) restartMask_ = static_cast<u8>(restartMask_ | (1u << p));
     nextRunId_ = static_cast<u16>(runId_ + 1);
 }
 

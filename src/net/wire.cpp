@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -513,3 +514,74 @@ int rf_enet_socket_wait(ENetSocket h, enet_uint32* condition, enet_uint32 timeou
 enet_uint32 rf_enet_time_get(void) { return static_cast<enet_uint32>(wireNowUs() / 1000); }
 
 }  // extern "C"
+
+// ---------------------------------------------------------------------------------------------- plain datagrams
+
+namespace rf::net {
+
+namespace {
+int g_lastError = 0;
+int socketError() {
+#if defined(_WIN32)
+    return WSAGetLastError();
+#else
+    return errno;
+#endif
+}
+}  // namespace
+
+u64 wireDatagramOpen(WireKind kind, const NetSim& sim, u16 port, bool broadcast) {
+    wireSelect(kind, sim);
+    const ENetSocket h = rf_enet_socket_create(ENET_SOCKET_TYPE_DATAGRAM);
+    if (h == ENET_SOCKET_NULL) {
+        g_lastError = socketError();
+        return 0;
+    }
+    rf_enet_socket_set_option(h, ENET_SOCKOPT_NONBLOCK, 1);
+    if (broadcast) rf_enet_socket_set_option(h, ENET_SOCKOPT_BROADCAST, 1);
+    if (port) rf_enet_socket_set_option(h, ENET_SOCKOPT_REUSEADDR, 1);  // every process on this device may listen
+    ENetAddress a;
+    a.host = ENET_HOST_ANY;
+    a.port = port;
+    if (rf_enet_socket_bind(h, &a) < 0) {
+        g_lastError = socketError();
+        rf_enet_socket_destroy(h);
+        return 0;
+    }
+    return static_cast<u64>(h);
+}
+
+bool wireDatagramSend(u64 socket, u32 host, u16 port, const void* data, u32 size) {
+    ENetAddress a;
+    a.host = ENET_HOST_TO_NET_32(host);
+    a.port = port;
+    ENetBuffer b;
+    b.data = const_cast<void*>(data);
+    b.dataLength = size;
+    const int r = rf_enet_socket_send(static_cast<ENetSocket>(socket), &a, &b, 1);
+    if (r < 0) g_lastError = socketError();
+    return r >= 0;
+}
+
+int wireDatagramReceive(u64 socket, u32& host, u16& port, void* data, u32 capacity) {
+    ENetAddress a;
+    a.host = 0;
+    a.port = 0;
+    ENetBuffer b;
+    b.data = data;
+    b.dataLength = capacity;
+    const int r = rf_enet_socket_receive(static_cast<ENetSocket>(socket), &a, &b, 1);
+    if (r < 0) {
+        g_lastError = socketError();
+        return r;
+    }
+    host = ENET_NET_TO_HOST_32(a.host);
+    port = a.port;
+    return r;
+}
+
+void wireDatagramClose(u64 socket) { rf_enet_socket_destroy(static_cast<ENetSocket>(socket)); }
+
+int wireLastError() { return g_lastError; }
+
+}  // namespace rf::net

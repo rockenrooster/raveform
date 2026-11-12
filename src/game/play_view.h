@@ -91,7 +91,7 @@ private:
     };
 
     // Effects.
-    void killRecipe(Vec2 at, u8 size, u8 hue, float heading, int glyph, float radius, float t);
+    void killRecipe(Vec2 at, u8 size, u8 hue, float heading, int glyph, float radius, float t, i32 owner = -1);
     void addPool(Vec2 at, float r0, float r1, Vec3 colour, float i0, float i1, float life, bool kill, u8 fade, bool sparkle,
                  bool dimmed, float t);
     void addShockRings(Vec2 at, u32 count, float toWu, Vec3 a, Vec3 b, float t, float lifeS = 0.0f);
@@ -114,7 +114,7 @@ private:
     void drawBoss(FrameDraw& d, const ViewInput& in);
     // Edge indicator (look.md §6, M3 stage C): a chevron inside the screen edge pointing at world, on a dark
     // disc, in the threat layer; oss: the larger double chevron, scaled by swell.
-    void edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, float swell);
+    void edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, float swell, bool ringTip = false);
     float beatAmount() const;
 
     const Look* look_ = nullptr;
@@ -172,16 +172,26 @@ private:
     Vec2 trailPos_[kTrail];
     float trailT_[kTrail] = {};
     u32 trailHead_ = 0, trailCount_ = 0;
-    // Dash ghosts and the Perfect Dash ring.
+    // Dash ghosts and the Perfect Dash ring (M4: each player's own, in its colours).
     struct Dash {
         Vec2 from, to;
         float t = -100.0f;
         float heading = 0.0f;
         bool perfect = false;
-    } dash_;
-    // The Nova: inhale from press to blast, then the front.
-    float novaPressT_ = -100.0f, novaBlastT_ = -100.0f, novaFrontT_ = -100.0f;
-    Vec2 novaAt_;
+    } dash_[sim::kMaxPlayers];
+    // The Nova: inhale from press to blast, then the front (each player's own).
+    float novaPressT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};
+    float novaBlastT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};
+    float novaFrontT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};
+    Vec2 novaAt_[sim::kMaxPlayers];
+    // M4 co-op (look.md 6): teammates' trails, the revive's close, all down.
+    Vec2 mateTrailPos_[sim::kMaxPlayers][kTrail];
+    float mateTrailT_[sim::kMaxPlayers][kTrail] = {};
+    u32 mateTrailHead_[sim::kMaxPlayers] = {}, mateTrailCount_[sim::kMaxPlayers] = {};
+    float reviveT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};  // the ring's close (view clock)
+    bool reviveFill_[sim::kMaxPlayers] = {};  // closed by a teammate (else at a Break: no fill)
+    float allDownT_ = -100.0f, allDownRest_ = 0.0f;
+    void drawCoop(FrameDraw& d, const ViewInput& in);
     float novaPump_ = 0.0f;  // bloom +60% for 120 ms (look.md §7)
     float hitT_ = -100.0f;   // the last hit taken (panic ring, cell shatter)
     float pickupT_ = -100.0f;

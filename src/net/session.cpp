@@ -32,6 +32,9 @@ constexpr i64 kAttentionEveryUs = 200000;
 constexpr double kAttentionAgeS = 0.75;
 constexpr float kAttentionBoost = 1000.0f;
 constexpr float kAttentionReach = 1.5f;  // the screen and half again around it (an enemy is asked for before it shows)
+// A predicted kill's wait: the frames a claim and its verdict spend queued (a pose each way, a tick each way), and the
+// longest it waits however bad the link.
+constexpr float kVerdictSlackS = 0.12f, kVerdictMaxS = 1.2f;
 
 float lerpAngle(float a, float b, float t) {
     float d = b - a;
@@ -91,11 +94,20 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     for (u64& b : sentTo_) b = 0;
     budgetUs_ = lastPrioUs_ = 0;
     endReason_ = "";
+    for (auto& n : names_) std::memset(n, 0, sizeof n);
+    lobbySeats_ = lobbyReady_ = 0;
+    roomCode_ = 0;
+    lobbyDirty_ = readySent_ = false;
     if (host()) {
         if (!link_.listen(cfg_.bindIp, cfg_.port, kMaxLinkPeers, cfg_.wire, cfg_.sim)) {
             netShutdown();
             return false;
         }
+        std::snprintf(names_[0], sizeof names_[0], "%s", cfg_.name);
+        lobbySeats_ = lobbyReady_ = 1;
+        // The room code: the low 16 bits of this device's address on the network (TECH_SPEC 8.3).
+        roomCode_ = cfg_.wire == WireKind::Udp ? static_cast<u16>(preferredLocalIPv4() & 0xFFFFu) : static_cast<u16>(cfg_.port);
+        if (cfg_.beacon) beacon_.start(cfg_.wire, cfg_.sim);
         seat_ = 0;
         seats_ = cfg_.seats < 1 ? 1 : (cfg_.seats > kMaxPlayers ? kMaxPlayers : cfg_.seats);
         seatMask_ = 1;
@@ -113,6 +125,7 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
 }
 
 void Session::stop() {
+    beacon_.stop();
     if (state_ == SessionState::Idle) return;
     if (link_.open()) {
         // Say goodbye (the host's leaving ends the run for everyone, PLAN 10).
@@ -195,6 +208,10 @@ void Session::handleDisconnect(u32 peer) {
     seatPeer_[s] = -1;
     welcomed_[s] = false;
     seatMask_ = static_cast<u8>(seatMask_ & ~(1u << s));
+    lobbySeats_ = static_cast<u8>(lobbySeats_ & ~(1u << s));
+    lobbyReady_ = static_cast<u8>(lobbyReady_ & ~(1u << s));
+    std::memset(names_[s], 0, sizeof names_[s]);
+    lobbyDirty_ = true;
     poses_[s] = PoseRing{};
     // Its player leaves the run, here and for the others.
     NetOp op;
@@ -232,6 +249,15 @@ void Session::onHello(const MsgHello& m) {
     seatPeer_[seat] = static_cast<i32>(peer);
     welcomed_[seat] = true;
     seatMask_ = static_cast<u8>(seatMask_ | (1u << seat));
+    lobbySeats_ = static_cast<u8>(lobbySeats_ | (1u << seat));
+    lobbyReady_ = static_cast<u8>(lobbyReady_ & ~(1u << seat));
+    for (u32 k = 0; k < 15; ++k) {
+        const char c = m.name[k];
+        if (!c) break;
+        names_[seat][k] = c >= 0x20 && c <= 0x7E ? c : '?';
+    }
+    names_[seat][15] = '\0';
+    lobbyDirty_ = true;
     MsgWelcome w;
     w.content = content_;
     w.seat = static_cast<u8>(seat);
@@ -287,7 +313,7 @@ void Session::onPong(i64 t0, i64 t1, i64 t2) {
 void Session::onRunStart(const MsgRunStart& m) {
     if (host()) return;
     // Applied now: the run's bar line is at least half a bar away, after everything sent before this.
-    world_->scheduleRun(m.bar, m.seed, m.players, m.run);
+    world_->scheduleRun(m.bar, m.seed, m.players, m.run, m.mask);
     runOffset_ = m.runOffset;
     if (state_ == SessionState::Lobby) clock_.snap();  // the run starts on the best estimate; from now on it slews
     state_ = SessionState::Running;
@@ -623,7 +649,7 @@ void Session::onHeartbeat(const MsgHeartbeat& m) {
 // ---------------------------------------------------------------------------------------------- the run
 
 void Session::maybeStart() {
-    if (state_ != SessionState::Lobby || !song_.valid()) return;
+    if (!cfg_.autoStart || state_ != SessionState::Lobby || !song_.valid()) return;
     for (u32 s = 0; s < seats_; ++s)
         if (!welcomed_[s]) return;
     // Time for the clients' clocks to settle (16 samples at 20 Hz) before the run's bar line is chosen.
@@ -634,17 +660,59 @@ void Session::maybeStart() {
 }
 
 void Session::startRun(double bar, u64 seed, u16 run) {
+    // The seats taken now are the run's players (a seat left open is not present).
+    u32 players = 1;
+    for (u32 s = 0; s < kMaxPlayers; ++s)
+        if (welcomed_[s]) players = s + 1;
     MsgRunStart m;
     m.within = world_->runId();
     m.run = run;
     m.bar = bar;
     m.seed = seed;
-    m.players = static_cast<u8>(seats_);
+    m.players = static_cast<u8>(players);
     m.runOffset = runOffset_;
+    m.mask = seatMask_ ? seatMask_ : 1;
     reliable([&](PacketWriter& w) { return w.putRunStart(m); });
-    world_->scheduleRun(bar, seed, seats_, run);
+    world_->scheduleRun(bar, seed, players, run, m.mask);
     announcedRun_ = run;
     state_ = SessionState::Running;
+    lobbyDirty_ = true;
+}
+
+bool Session::canStart() const {
+    if (!host() || state_ != SessionState::Lobby || !song_.valid()) return false;
+    u32 seated = 0;
+    for (u32 s = 0; s < kMaxPlayers; ++s) seated += (lobbySeats_ >> s) & 1u;
+    return seated >= 2 && (lobbyReady_ & lobbySeats_) == lobbySeats_;
+}
+
+bool Session::requestStart() {
+    if (!canStart()) return false;
+    const double runNow = song_.songAt(hostNow_) - runOffset_;
+    const double bar = (std::floor((runNow + kBar) / kBar) + 1.0) * kBar;  // a bar or more away
+    startRun(bar, cfg_.seed, static_cast<u16>(world_->runId() + 1));
+    return true;
+}
+
+void Session::requestRetry() {
+    // The run is over for everyone (every player down): a new one on the next bar line, the seats still taken.
+    if (!host() || state_ != SessionState::Running || world_->restartPending()) return;
+    world_->requestRestart();
+}
+
+void Session::onReady(u8 ready) {
+    if (!host() || from_ < 1) return;
+    const u8 bit = static_cast<u8>(1u << from_);
+    lobbyReady_ = static_cast<u8>(ready ? (lobbyReady_ | bit) : (lobbyReady_ & ~bit));
+    lobbyDirty_ = true;
+}
+
+void Session::onLobby(const MsgLobby& m) {
+    if (host()) return;
+    lobbySeats_ = m.seats;
+    lobbyReady_ = m.ready;
+    roomCode_ = m.code;
+    for (u32 s = 0; s < kMaxPlayers; ++s) std::memcpy(names_[s], m.names[s], sizeof names_[s]);
 }
 
 void Session::requestPause(bool on) {
@@ -849,7 +917,9 @@ void Session::collectLocalEvents() {
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         if (host() && e.type == EventType::Death && e.a == 0xFF && !w.restartPending()) {
-            w.requestRestart();  // GAME_DESIGN 10: the run ends when all are down at once (RETRY, stage A)
+            // GAME_DESIGN 10: the run ends when all are down at once. Headless peers go again at once; in the game
+            // the host's RETRY does (requestRetry).
+            if (cfg_.autoRestart) w.requestRestart();
             continue;
         }
         if (e.a >= kMaxPlayers || !w.isLocal(e.a)) continue;
@@ -1096,6 +1166,35 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
     localNow_ = localUs;
     if (host()) refillBudgets(localUs);
     const World& w = *world_;
+    if (host() && (state_ == SessionState::Lobby || state_ == SessionState::Running)) {
+        // M4 stage B: the lobby to every client on each change, and the beacon (twice a second) for the joiners.
+        if (lobbyDirty_) {
+            MsgLobby m;
+            m.seats = lobbySeats_;
+            m.ready = lobbyReady_;
+            m.code = roomCode_;
+            m.state = state_ == SessionState::Running ? 1 : 0;
+            for (u32 s = 0; s < kMaxPlayers; ++s) std::memcpy(m.names[s], names_[s], sizeof m.names[s]);
+            reliable([&](PacketWriter& pw) { return pw.putLobby(m); });
+            lobbyDirty_ = false;
+        }
+        if (cfg_.beacon) {
+            BeaconInfo b;
+            b.version = kProtocolVersion;
+            b.port = cfg_.port;
+            b.code = roomCode_;
+            for (u32 s = 0; s < kMaxPlayers; ++s) b.players = static_cast<u8>(b.players + ((lobbySeats_ >> s) & 1u));
+            b.seats = static_cast<u8>(seats_);
+            b.state = state_ == SessionState::Running ? kBeaconRunning : kBeaconLobby;
+            std::snprintf(b.name, sizeof b.name, "%s", cfg_.name);
+            beacon_.update(localUs, b);
+        }
+    }
+    if (!host() && state_ == SessionState::Lobby && !readySent_ && synced()) {
+        // Ready once this device's clock has settled on the host's (the seat stops "joining").
+        reliable([&](PacketWriter& pw) { return pw.putReady(1); });
+        readySent_ = true;
+    }
     const bool live = state_ == SessionState::Running || state_ == SessionState::Lobby;
     // Everything this device sends leaves with its pose (30 Hz): a frame sends one datagram to a peer, or none
     // (each datagram costs 32 bytes of headers). Acknowledgements are ENet's own.
@@ -1270,6 +1369,11 @@ void Session::measure(i64 localUs) {
         if (ps.loss > stats_.loss) stats_.loss = ps.loss;
     }
     if (!host()) {
+        // A predicted kill waits for its verdict as long as a claim and its answer take with one resend each way
+        // (the round trip and its variance, twice) plus the frames between them; never less than TECH_SPEC 8.1's 300 ms.
+        const float rto = (stats_.rttMs + 4.0f * stats_.rttVarMs) * 1e-3f;
+        world_->setPredictUndoS(std::fmin(std::fmax(kVerdictSlackS + 2.0f * rto, tuning::kPredictUndoS), kVerdictMaxS));
+        stats_.predictUndoMs = world_->predictUndoS() * 1e3f;
         stats_.clockOffsetMs = static_cast<float>(static_cast<double>(clock_.estimateUs()) * 1e-3);
         stats_.clockRttMs = static_cast<float>(static_cast<double>(clock_.rttUs()) * 1e-3);
         stats_.dilation = clock_.dilation();

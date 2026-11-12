@@ -400,7 +400,7 @@ public:
     // `species` must outlive the world. No allocation afterwards.
     void init(const SpeciesTable* species);
     // A fresh run on the bar line `startTick`: empty pools, players at the start, the spawner reset.
-    void resetRun(u64 seed, double startTick, u32 players = 1);
+    void resetRun(u64 seed, double startTick, u32 players = 1, u8 presentMask = 0xF);
     void tick(const TickInput& in);
     // RETRY (GAME_DESIGN 4.3): the run starts again on the first bar line at least half a bar away (so the
     // band, told now, can start its Groove on the same line).
@@ -420,6 +420,9 @@ public:
     const PlayerState& player(u32 i) const { return players_[i]; }
     PlayerState& playerMut(u32 i) { return players_[i]; }
     u32 playerCount() const { return playerCount_; }
+    // M4 client: how long a predicted kill waits for the host's verdict (the session follows the round trip).
+    void setPredictUndoS(float s) { predictUndoS_ = s; }
+    float predictUndoS() const { return predictUndoS_; }
     const SpatialGrid& grid() const { return grid_; }
     const Event* events() const { return events_; }
     u32 eventCount() const { return eventCount_; }
@@ -431,7 +434,7 @@ public:
     float ticksPerSecond() const { return bpm_ * static_cast<float>(kTicksPerBeat) / 60.0f; }
     u64 seed() const { return seed_; }
     // The hit's dip and the Build's last bar (GAME_DESIGN 4.1: the game runs at 85% speed) slow the world.
-    float timeScale() const { return dipS_ > 0.0f || phrase_.buildLastBar() ? 0.85f : 1.0f; }
+    float timeScale() const { return allDownDipS_ > 0.0f ? 0.5f : (dipS_ > 0.0f || phrase_.buildLastBar() ? 0.85f : 1.0f); }
     // Threat of the solid enemies inside the nominal view around player 0 (band intensity).
     float threatInView() const { return threatInView_; }
     // The crowd (GAME_DESIGN 8, M3 stage C2): the enemies counted in the neediest player's frame (grown by
@@ -487,7 +490,8 @@ public:
     u16 runId() const { return runId_; }
     // A run on the bar line `bar` (musical ticks) with this seed, these seats and this id: every device resets
     // at the same musical position (the co-op start; a RETRY when every player is down).
-    void scheduleRun(double bar, u64 seed, u32 players, u16 runId);
+    void scheduleRun(double bar, u64 seed, u32 players, u16 runId, u8 presentMask = 0xF);
+    u8 restartMask() const { return restartMask_; }
     u64 restartSeed() const { return restartSeed_; }
     u32 restartPlayers() const { return restartPlayers_; }
     u16 restartRunId() const { return nextRunId_; }
@@ -643,6 +647,8 @@ private:
     float bpm_ = 120.0f;
     float latencyTicks_ = 0.0f;
     float dipS_ = 0.0f;
+    float allDownDipS_ = 0.0f;  // M4: all down, time at 50% for one beat (look.md 6)
+    float predictUndoS_ = 0.30f;  // M4 client: a predicted death unconfirmed this long is undone (tuning::kPredictUndoS at least)
     float threatInView_ = 0.0f;
     u32 crowdInFrame_ = 0;
     float crowdGoal_ = 0.0f;
@@ -672,6 +678,7 @@ private:
     u8 localMask_ = 0xF;
     u32 viewPlayer_ = 0;
     u16 runId_ = 0, nextRunId_ = 0;
+    u8 restartMask_ = 0xF;  // M4: the seats present in the next run
     u64 restartSeed_ = 0;
     u32 restartPlayers_ = 1;
     u32 formationTurn_ = 0;

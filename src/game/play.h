@@ -55,6 +55,13 @@ struct PlayOptions {
     net::NetSim netsim;         // --netsim (testing)
     u32 loopbackBots = 0;       // --loopback-bots N: N bot clients in this process (host; the phone's co-op benchmark)
     i32 netViewSeat = -1;       // --net-view-seat N (pictures): the camera on seat N's ship
+    // M4 stage B: the co-op screens driven from the command line (tests, pictures).
+    u8 coopAuto = 0;            // --coop host|join[:code|:ip]: 1 open the lobby as host, 2 the join screen
+    char coopTarget[48] = {};   //   the room code or address to join at once
+    bool coopAutoStart = false; // --coop-start: the host starts as soon as it can, and goes again after all are down
+    char coopName[16] = {};     // --coop-name: the name shown on the seat
+    bool coopPermissionScreen = false;  // --coop-permission-screen: show the local-network rationale (pictures)
+    u32 contentSalt = 0;        // --net-content-salt N: another content hash (the mismatch message's test)
 };
 
 class Play {
@@ -135,7 +142,7 @@ public:
 
     // M3 stage B: the game's screens (design/screens.md) around the run. Interactive play only; benchmarks,
     // pictures and --bot runs are the run alone.
-    enum class Screen : u8 { Notice, Title, Run, Paused, GameOver, Settings };
+    enum class Screen : u8 { Notice, Title, Run, Paused, GameOver, Settings, CoopJoin, CoopLobby, NetPermission };
     Screen screen() const { return screen_; }
     bool flows() const { return flow_; }
     bool runStarted() const { return !flow_ || (screen_ != Screen::Notice && screen_ != Screen::Title && !(screen_ == Screen::Settings && settingsBack_ == Screen::Title)); }
@@ -187,6 +194,28 @@ private:
     void pictureFrame();
     // play_net.cpp (M4): co-op.
     bool netInit();
+    // M4 stage B: the co-op flow from the title (play_net.cpp) and its screens (screens_coop.cpp).
+    void openCoop();
+    bool hostRoom();
+    bool joinRoom(u32 ip, u16 port);
+    void leaveCoop(const char* message);
+    void coopFlow();
+    void screenCoopJoin(Ui& ui);
+    void screenCoopLobby(Ui& ui);
+    void screenNetPermission(Ui& ui);
+    void coopRecordScore();
+    net::BeaconBrowser* browser_ = nullptr;
+    char codeTyped_[5] = {};
+    u32 codeLen_ = 0;
+    char ipTyped_[16] = {};
+    bool typingIp_ = false;
+    char coopMessage_[96] = {};
+    float coopMessageT_ = -100.0f;  // seconds the message has shown (on the screen it was left on)
+    bool coopFlowActive_ = false;   // the session came from the title's CO-OP (not the command line's --host)
+    bool coopRunShown_ = false;     // the run started (the lobby gave way to it)
+    bool coopOver_ = false;         // all down: the game over is up
+    bool permissionAsked_ = false;
+    float seatTapT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};
     void netFrame(float realDt);
     void netTick(double m1, float bpm, bool firstOfFrame);
     void netBandServo();

@@ -80,23 +80,33 @@ void PlayView::sectionLook(const ViewInput& in) {
     } else {
         sectionZoom_ += (zoom - sectionZoom_) * k;
     }
-    // The Trio: the fight steps back (screens.md): the lattice rests, enemies at a fifth of their light.
+    // The Trio: the fight steps back (screens.md): the lattice rests, enemies at a fifth of their light. M4 (look.md 6):
+    // all down drains the lattice to the same rest.
     const bool trio = w.trio(w.viewPlayer()).open;
-    trioRest_ += ((trio ? 1.0f : 0.0f) - trioRest_) * (1.0f - std::exp(-in.dt / 0.2f));
-    enemyLight_ = 1.0f - 0.8f * trioRest_;
+    const bool allDown = allDownT_ > -50.0f;
+    trioRest_ += (((trio || allDown) ? 1.0f : 0.0f) - trioRest_) * (1.0f - std::exp(-in.dt / 0.2f));
+    enemyLight_ = 1.0f - 0.8f * (allDown ? 0.0f : trioRest_);
 }
 
 void PlayView::eventB(const World& w, const Event& e, float t) {
-    const Vec3 player = palettes_->player[w.viewPlayer()], light = palettes_->playerLight[w.viewPlayer()];
+    // M4 (look.md 6): a player's effects in that player's colours; another player's Trio at a third.
+    const bool byPlayer = e.type == EventType::TrioTake || e.type == EventType::TrioOpen || e.type == EventType::TrioPop;
+    const u32 owner = byPlayer && e.a < kMaxPlayers ? e.a : w.viewPlayer();
+    const float own = owner == w.viewPlayer() ? 1.0f : (1.0f / 3.0f);
+    const Vec3 player = palettes_->player[owner] * own, light = palettes_->playerLight[owner] * own;
     const Vec2 at{e.x, e.y};
     switch (e.type) {
         case EventType::Section:
             if (e.a == static_cast<u8>(Section::Drop)) {
-                // GAME_DESIGN 4.1: bloom burst, a shockwave from every player, the zoom snaps out.
-                const Vec2 p = w.player(w.viewPlayer()).pos;
-                addShockRings(p, 2, 900.0f, player, light, t, 0.45f);
+                // GAME_DESIGN 4.1: bloom burst, a shockwave from every player (in its colours), the zoom snaps out.
+                for (u32 q = 0; q < kMaxPlayers; ++q) {
+                    const PlayerState& pq = w.player(q);
+                    if (!pq.present || !pq.alive || (q != w.viewPlayer() && w.playerCount() < 2)) continue;
+                    if (w.playerCount() < 2 && q != w.viewPlayer()) continue;
+                    addShockRings(pq.pos, 2, 900.0f, palettes_->player[q], palettes_->playerLight[q], t, 0.45f);
+                    lattice_.impulse(pq.pos, 600.0f, 400.0f);
+                }
                 if (!reduceFlashing_) novaPump_ = std::fmax(novaPump_, 0.5f);
-                lattice_.impulse(p, 600.0f, 400.0f);
             }
             break;
         case EventType::TrioTake: {
@@ -117,11 +127,11 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
         case EventType::TrioPop: {
             SparkReq r{};
             r.at = at;
-            r.count = 40;
+            r.count = static_cast<u16>(40.0f * own);
             r.kind = 1;
             const u8 u = e.b;
-            r.a = isRiff(u) ? palette_->hue[1] : palette_->accent;
-            r.b = whiteV();
+            r.a = (isRiff(u) ? palette_->hue[1] : palette_->accent) * own;
+            r.b = whiteV() * own;
             r.t0 = t;
             sparkRequest(r);
             break;
@@ -232,6 +242,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
     {
         const BoostPickups& bp = w.boostPickups();
         for (u32 i = 0; i < bp.count; ++i) {
+            if (bp.dead[i] || (w.playerCount() > 1 && bp.owner[i] != w.viewPlayer())) continue;  // M4: only your own
             const Vec2 p{bp.x[i], bp.y[i]};
             const float left = static_cast<float>((bp.born[i] + tuning::kBoostLifeBars * kTicksPerBar - in.music) / kTicksPerBar);
             const float fade = clamp01(left);
@@ -252,11 +263,15 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
         }
     }
 
-    // ---- The local player's Riffs (rings made by a player's Riffs use that player's colours, look.md §6).
-    if (me.alive) {
-        const Vec2 ship = in.shipPos;
-        const Loadout& l = me.loadout;
-        const bool hyper = me.boost(kHyper);
+    // ---- Every player's Riffs, in that player's colours (look.md §6; M4: the teammates' too).
+    for (u32 q = 0; q < kMaxPlayers; ++q) {
+        const PlayerState& pq = w.player(q);
+        if (!pq.present || !pq.alive || (q != w.viewPlayer() && w.playerCount() < 2)) continue;
+        const bool local = q == w.viewPlayer();
+        const Vec3 player = palettes_->player[q], light = palettes_->playerLight[q];
+        const Vec2 ship = local ? in.shipPos : lerpv(pq.prevPos, pq.pos, a);
+        const Loadout& l = pq.loadout;
+        const bool hyper = pq.boost(kHyper);
         if (const u8 lv = l.riffs[riffIndex(kOrbitals)]) {
             const u32 n = lv + 1u;
             const double turn = hyper ? kTicksPerBar * 0.5 : kTicksPerBar;
@@ -269,7 +284,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
                 d.sparkles.glow(toScene(o), 7.0f * refPx_, player * 0.6f);
             }
         }
-        for (const PulseWave& pw : me.pulses) {
+        for (const PulseWave& pw : pq.pulses) {
             if (!pw.active || pw.age < 0.0f) continue;
             const float age = pw.age + a * in.dt;
             const float u = clamp01(age / tuning::kPulseGrowS);
@@ -278,13 +293,13 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             glyph(d.glyphs, gRing128_, false, pw.centre, 0.0f, 0.0f, r, 2.0f * (1.0f - u * u), 0.6f + 0.6f * (1.0f - u), kGlyphRingW, player, light);
         }
         if (l.riffs[riffIndex(kSentinel)]) {
-            const Vec2 s = lerpv(me.prevSentinel, me.sentinel, a);
+            const Vec2 s = lerpv(pq.prevSentinel, pq.sentinel, a);
             glyph(d.glyphs, gMarkC_ >= 0 ? gMarkC_ : gRing32_, false, s, t * 2.0f, t * 2.0f, 8.0f, 2.4f, 0.6f, kGlyphFlat, light, player);
             glyph(d.glyphs, gRing32_, false, s, 0.0f, 0.0f, 11.0f, 1.2f, 0.5f, kGlyphFlat, player, player);
             d.sparkles.glow(toScene(s), 9.0f * refPx_, player * 0.7f);
         }
         // Halo: a gold ring around the ship, one arc per hit it can still take.
-        for (const ActiveBoost& b : me.boosts) {
+        for (const ActiveBoost& b : pq.boosts) {
             if (b.type != kHalo || !b.hits) continue;
             const float r = 30.0f;
             for (u32 k = 0; k < b.hits; ++k) {
@@ -415,6 +430,42 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
                         const float a0 = kTau * static_cast<float>(s) / 8.0f, a1 = kTau * static_cast<float>(s + 1) / 8.0f;
                         d.scene.line(q + dirv(a0) * pip, q + dirv(a1) * pip, 0.45f * refPx_, W1 * 0.5f, W1 * 0.5f, 0);
                     }
+                }
+            }
+        }
+    }
+
+    // ---- M4 (screens.md, the Trio): another player's ring and orbs at a third, in its colour; they cannot be taken.
+    if (icons_ && w.playerCount() > 1) {
+        for (u32 q = 0; q < kMaxPlayers; ++q) {
+            if (q == w.viewPlayer()) continue;
+            const TrioState& ot = w.trio(q);
+            const PlayerState& oq = w.player(q);
+            if (!ot.open || !oq.present || !oq.alive) continue;
+            const float third = 1.0f / 3.0f;
+            const Vec3 pc = palettes_->player[q];
+            const float span = static_cast<float>(ot.closeTick - ot.openTick);
+            const float left = span > 1.0f ? clamp01(static_cast<float>((ot.closeTick - in.music) / span)) : 0.0f;
+            const u32 segs = 72;
+            for (u32 s = 0; s < segs; ++s) {
+                const float u0 = static_cast<float>(s) / segs, u1 = static_cast<float>(s + 1) / segs;
+                const float a0 = -0.5f * kPi + u0 * kTau, a1 = -0.5f * kPi + u1 * kTau;
+                const Vec3 col = (u0 < left ? pc * 1.3f : W1 * 0.16f) * third;
+                d.scene.line(toScene(ot.centre + dirv(a0) * tuning::kTrioRingWu), toScene(ot.centre + dirv(a1) * tuning::kTrioRingWu),
+                             0.8f * refPx_, col, col, 0);
+            }
+            for (u32 k = 0; k < ot.orbs; ++k) {
+                const u8 u = ot.upgrade[k];
+                if (u >= kUpgradeCount) continue;
+                const bool riff = isRiff(u);
+                const float orbWu = tuning::kTrioOrbWu * (riff ? tuning::kTrioRiffScale : 1.0f) * swell;
+                const Vec2 p = ot.orbPos[k];
+                icons_->draw(d, upgradeIcon_[u], toScene(p), orbWu * pxPerWu_ / icons_->size(upgradeIcon_[u]) * (riff ? tuning::kTrioRiffScale : 1.0f),
+                             third);
+                const float ringWu = 1.42f * orbWu;
+                for (u32 s = 0; s < 48; ++s) {
+                    const float a0 = kTau * static_cast<float>(s) / 48.0f, a1 = kTau * static_cast<float>(s + 1) / 48.0f;
+                    d.scene.line(toScene(p + dirv(a0) * ringWu), toScene(p + dirv(a1) * ringWu), 0.6f * refPx_, pc * third, pc * third, 0);
                 }
             }
         }

@@ -235,6 +235,7 @@ set_target_properties(rf_enet PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(raveform_net STATIC
   src/net/bots.cpp
   src/net/link.cpp
+  src/net/lobby.cpp
   src/net/peer.cpp
   src/net/protocol.cpp
   src/net/session.cpp
@@ -242,6 +243,9 @@ add_library(raveform_net STATIC
   src/net/wire.cpp)
 target_include_directories(raveform_net PUBLIC ${RF_ROOT}/src ${RF_GEN})
 target_link_libraries(raveform_net PUBLIC raveform_sim rf_enet)
+if(WIN32)
+  target_link_libraries(raveform_net PUBLIC iphlpapi)  # GetAdaptersAddresses (the lobby's room code and broadcasts)
+endif()
 target_compile_options(raveform_net PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti> -fno-math-errno)
 target_compile_options(raveform_net PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror $<$<CONFIG:Debug>:-O2>)
 set_target_properties(raveform_net PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -325,7 +329,7 @@ target_sources(raveform_core PRIVATE
   src/game/settings.cpp)
 # M4: co-op in the game (the network library; the game hosts or joins from the command line).
 target_link_libraries(raveform_core PUBLIC raveform_net)
-target_sources(raveform_core PRIVATE src/game/play_net.cpp)
+target_sources(raveform_core PRIVATE src/game/play_net.cpp src/game/play_view_coop.cpp)
 if(NOT ANDROID)
   # The band without a window: offline renders, the loudness calibration, the unit tests.
   set(RF_HEADLESS_CORE src/core/json_doc.cpp src/core/log.cpp src/core/alloc_counter.cpp)

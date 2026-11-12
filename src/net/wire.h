@@ -54,6 +54,16 @@ WireStats wireStats(u64 socket);
 void wireResetStats(u64 socket);
 // Bytes the socket sent to one address since it was created (UDP payloads with IP/UDP headers).
 u64 wireSentTo(u64 socket, u32 host, u16 port);
+
+// Plain datagram sockets on the same layer (M4 stage B: the lobby's beacon), so the loopback network and the
+// condition simulator work for them too. Addresses in host byte order; port 0 binds any. Non-blocking: receive
+// returns the bytes read, 0 when nothing waits, < 0 on an error (wireLastError(): errno or WSAGetLastError; EPERM
+// on Android 17 when the local network is not allowed).
+u64 wireDatagramOpen(WireKind kind, const NetSim& sim, u16 port, bool broadcast);
+bool wireDatagramSend(u64 socket, u32 host, u16 port, const void* data, u32 size);
+int wireDatagramReceive(u64 socket, u32& host, u16& port, void* data, u32 capacity);
+void wireDatagramClose(u64 socket);
+int wireLastError();
 // The loopback network's address of 127.0.0.1 (network order, as ENetAddress.host).
 u32 loopbackHost();
 

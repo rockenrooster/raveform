@@ -861,7 +861,9 @@ void App::frame(u64 loopStartNs) {
     }
 
     if (overlayOn_) {  // after tone mapping (the HUD batch): never bloomed
-        const Vec2 origin{insetMin_.x + 36.0f * s, insetMin_.y + 30.0f * s};
+        // M4 stage B: in the game the overlay starts under the HUD's top band (the score, the phrase bar).
+        const float top = content_ == Content::Play ? 0.22f * h : 30.0f * s;
+        const Vec2 origin{insetMin_.x + 36.0f * s, insetMin_.y + top};
         const float y = overlay_.draw(draw.hud, font_, origin, 24.0f * s, 38.0f * s);
         char line[DevOverlay::kLineChars];
         int n = std::snprintf(line, sizeof line, "TOUCH %u", activeTouches());

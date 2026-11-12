@@ -110,11 +110,12 @@ Vec2 World::formationCentre(u32* player) {
     return players_[0].pos;
 }
 
-void World::scheduleRun(double bar, u64 seed, u32 players, u16 runId) {
+void World::scheduleRun(double bar, u64 seed, u32 players, u16 runId, u8 presentMask) {
     restartPending_ = true;
     restartAt_ = bar;
     restartSeed_ = seed;
     restartPlayers_ = players < 1 ? 1 : (players > kMaxPlayers ? kMaxPlayers : players);
+    restartMask_ = presentMask ? presentMask : 0xF;
     nextRunId_ = runId;
 }
 
@@ -215,7 +216,7 @@ void World::applyNetOp(const NetOp& op) {
             break;
         case NetOp::Player: applyPlayerOp(op); break;
         case NetOp::Schedule:
-            scheduleRun(op.tick, static_cast<u64>(op.u) | (static_cast<u64>(op.u2) << 32), op.a, op.species);
+            scheduleRun(op.tick, static_cast<u64>(op.u) | (static_cast<u64>(op.u2) << 32), op.a, op.species, op.b ? op.b : 0xF);
             break;
         case NetOp::Director:
             if (role_ == NetRole::Client) {
@@ -440,11 +441,18 @@ void World::updatePredictions() {
     for (u32 i = 0; i < e.count; ++i) {
         if (!(e.flags[i] & kFlagPredicted)) continue;
         e.pred[i] += kDt;
-        if (e.pred[i] <= kPredictUndoS) continue;
-        // No word from the host: it lives on (its health as the host last had it, at least a sliver).
+        if (e.pred[i] <= predictUndoS_) continue;
+        // No word from the host: it lives on (its health as the host last had it, at least a sliver), coming back with
+        // a warp-in's small flash rather than popping in.
         e.flags[i] = static_cast<u8>(e.flags[i] & ~(kFlagDead | kFlagPredicted));
         if (e.hp[i] <= 0.0f) e.hp[i] = 0.01f;
         ++counters_.undone;
+        Event ev;
+        ev.type = EventType::WarpLand;
+        ev.species = e.species[i];
+        ev.x = e.x[i];
+        ev.y = e.y[i];
+        emit(ev);
     }
 }
 
@@ -742,19 +750,22 @@ i32 World::indexOfSerial(u32 serial) const {
 void World::updateDowned() {
     // GAME_DESIGN 10: a teammate standing in the beacon's ring for two beats revives it (decided by the downed
     // player's own device, which then tells the others).
+    // Every device keeps the fill of every beacon (look.md 6 draws it); it empties twice as fast as it fills.
     if (!coop()) return;
+    if (allDownDipS_ > 0.0f) allDownDipS_ -= kDt;
     for (u32 p = 0; p < playerCount_; ++p) {
         PlayerState& pl = players_[p];
-        if (!pl.present || !pl.down || !isLocal(p)) continue;
+        if (!pl.present || !pl.down) continue;
         bool ring = false;
         for (u32 q = 0; q < playerCount_ && !ring; ++q)
             ring = q != p && players_[q].alive && lengthSq(players_[q].pos - pl.beacon) <= kReviveRingWu * kReviveRingWu;
+        const double step = m1_ - m0_;
         if (!ring) {
-            pl.reviveTicks = 0.0;
+            pl.reviveTicks = pl.reviveTicks > 2.0 * step ? pl.reviveTicks - 2.0 * step : 0.0;
             continue;
         }
-        pl.reviveTicks += m1_ - m0_;
-        if (pl.reviveTicks >= kReviveBeats * kTicksPerBeat) revivePlayer(p, true);
+        pl.reviveTicks += step;
+        if (isLocal(p) && pl.reviveTicks >= kReviveBeats * kTicksPerBeat) revivePlayer(p, true);
     }
 }
 
@@ -788,7 +799,7 @@ void World::revivePlayer(u32 p, bool byTeammate) {
     pl.down = false;
     pl.cells = 1;
     pl.chain = pl.chain / 2 > 1 ? pl.chain / 2 : 1u;
-    pl.invulS = kInvulnerableS;
+    pl.invulS = static_cast<float>(kTicksPerBar) / ticksPerSecond();  // look.md 6: it cannot be hurt for one bar
     pl.pos = pl.prevPos = pl.beacon;
     pl.vel = Vec2{};
     pl.reviveTicks = 0.0;
@@ -812,6 +823,7 @@ void World::checkAllDown() {
     }
     if (!any && playerCount_ == 0) return;
     ++counters_.deaths;
+    allDownDipS_ = static_cast<float>(kTicksPerBeat) / ticksPerSecond();  // look.md 6: time dips to 50% for one beat
     Event ev;
     ev.type = EventType::Death;
     ev.a = 0xFF;

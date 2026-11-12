@@ -188,7 +188,9 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             m.seed = r.u64v();
             m.players = r.u8v();
             m.runOffset = r.f64v();
-            if (r.bad() || !finite(m.bar) || !finite(m.runOffset) || m.players < 1 || m.players > kMaxPlayers) return false;
+            m.mask = r.u8v();
+            if (r.bad() || !finite(m.bar) || !finite(m.runOffset) || m.players < 1 || m.players > kMaxPlayers || m.mask == 0 || m.mask > 0xF)
+                return false;
             if (sink) sink->onRunStart(m);
             return true;
         }
@@ -372,6 +374,36 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             const u8 mask = r.u8v();
             if (r.bad() || mask > 0xF) return false;
             if (sink) sink->onSeats(mask);
+            return true;
+        }
+        case Msg::Ready: {
+            const u8 ready = r.u8v();
+            if (r.bad() || ready > 1) return false;
+            if (sink) sink->onReady(ready);
+            return true;
+        }
+        case Msg::Lobby: {
+            MsgLobby m;
+            m.seats = r.u8v();
+            m.ready = r.u8v();
+            m.code = r.u16v();
+            m.state = r.u8v();
+            const u8 reserved = r.u8v();
+            for (u32 s = 0; s < 4; ++s) {
+                bool ended = false;
+                for (u32 k = 0; k < 16; ++k) {
+                    const u8 c = r.u8v();
+                    if (c == 0) {
+                        ended = true;
+                        continue;
+                    }
+                    if (ended || c < 0x20 || c > 0x7E) return false;  // printable, then zeros only
+                    m.names[s][k] = static_cast<char>(c);
+                }
+                if (!ended) return false;
+            }
+            if (r.bad() || reserved != 0 || m.seats > 0xF || (m.ready & ~m.seats) != 0 || m.state > 1) return false;
+            if (sink) sink->onLobby(m);
             return true;
         }
         case Msg::Pose: {
@@ -587,13 +619,14 @@ bool PacketWriter::putPong(i64 t0, i64 t1, i64 t2) {
     return true;
 }
 bool PacketWriter::putRunStart(const MsgRunStart& m) {
-    if (!begin(Msg::RunStart, 29)) return false;
+    if (!begin(Msg::RunStart, 30)) return false;
     u16v(m.within);
     u16v(m.run);
     f64v(m.bar);
     u64v(m.seed);
     u8v(m.players);
     f64v(m.runOffset);
+    u8v(m.mask);
     return true;
 }
 u32 PacketWriter::putSpawns(u16 run, double base, const NetSpawn* items, u32 n) {
@@ -766,6 +799,31 @@ bool PacketWriter::putPause(const MsgPause& m) {
 bool PacketWriter::putSeats(u8 mask) {
     if (!begin(Msg::Seats, 1)) return false;
     u8v(mask);
+    return true;
+}
+bool PacketWriter::putReady(u8 ready) {
+    if (!begin(Msg::Ready, 1)) return false;
+    u8v(ready);
+    return true;
+}
+bool PacketWriter::putLobby(const MsgLobby& m) {
+    if (!begin(Msg::Lobby, 6 + 64)) return false;
+    u8v(m.seats);
+    u8v(m.ready);
+    u16v(m.code);
+    u8v(m.state);
+    u8v(0);
+    for (u32 s = 0; s < 4; ++s) {
+        bool ended = false;
+        for (u32 k = 0; k < 16; ++k) {
+            char c = ended || k == 15 ? '\0' : m.names[s][k];
+            if (c < 0x20 || c > 0x7E) {
+                c = '\0';
+                ended = true;
+            }
+            u8v(static_cast<u8>(c));
+        }
+    }
     return true;
 }
 bool PacketWriter::putPose(const MsgPose& m) {

@@ -16,6 +16,7 @@
 // world.tick() and afterTick(), then send(). Nothing here allocates after start().
 
 #include "net/link.h"
+#include "net/lobby.h"
 #include "net/protocol.h"
 #include "net/sync.h"
 #include "sim/world.h"
@@ -35,6 +36,11 @@ struct SessionConfig {
     char name[16] = "PLAYER";
     u64 seed = 1;
     float startLeadS = 3.0f;    // host: the run's first bar line at least this far after the last seat joined
+    // M4 stage B. Headless peers, bots and the soak start when every seat is in and start again when all are down;
+    // the game's lobby starts on START and again on RETRY, and the host's beacon is heard on the network.
+    bool autoStart = true;
+    bool autoRestart = true;
+    bool beacon = false;
 };
 
 // What the net overlay and the soak report show (per second where it says so).
@@ -46,6 +52,7 @@ struct SessionStats {
     float songOffsetMs = 0.0f;                          // client: its song against the host's, by its clock estimate
     float clockOffsetMs = 0.0f, clockRttMs = 0.0f;      // client: host - local (ms), the sample's round trip
     float dilation = 0.0f;                              // client: the clock's steering (rate - 1)
+    float predictUndoMs = 0.0f;                         // client: how long a predicted kill waits for its verdict
     u32 snaps = 0, corrections = 0;                     // totals
     u32 corrUnknown = 0, corrOtherRun = 0;              // client: corrections for no enemy here / another run
     // Client: enemies on this player's screen, drawn position against the host's sample as each correction lands.
@@ -96,6 +103,16 @@ public:
     double resumeSong() const { return resumeAt_; }
     void resumed();  // the driver passed resumeSong(): the run goes on with the new offset
     void requestPause(bool on);
+    // M4 stage B: the lobby (design/screens.md). A seat is taken once its player is welcomed and ready once its
+    // clock has settled; the host starts when every seated player is ready and at least two are seated.
+    u8 lobbySeats() const { return lobbySeats_; }
+    u8 lobbyReady() const { return lobbyReady_; }
+    const char* seatName(u32 s) const { return s < sim::kMaxPlayers ? names_[s] : ""; }
+    u16 roomCode() const { return roomCode_; }
+    bool canStart() const;
+    bool requestStart();  // host: the run starts on a bar line for everyone
+    void requestRetry();  // host: after all were down, a new run for everyone on the next bar line
+    bool synced() const { return host() || clock_.samples() >= ClockSync::kSamples; }
     // The remote players for a tick ending at host time `hostUs` (drawn ~66 ms behind, TECH_SPEC 8.1).
     void fillRemote(sim::TickInput& in, i64 hostUs) const;
     void afterTick();
@@ -143,6 +160,8 @@ private:
     void onHeartbeat(const MsgHeartbeat& m) override;
     void onStats(const MsgStats& m) override;
     void onAttention(u16 run, const u32* serials, u32 n) override;
+    void onReady(u8 ready) override;
+    void onLobby(const MsgLobby& m) override;
 
     void handleConnect(u32 peer, u32 info);
     void service();
@@ -235,6 +254,12 @@ private:
     double seenStamp_[sim::kMaxEnemies] = {};
     u32 attention_[kMaxAttention] = {};
     i64 nextAttentionUs_ = 0;
+    // M4 stage B: the lobby.
+    char names_[sim::kMaxPlayers][16] = {};
+    u8 lobbySeats_ = 0, lobbyReady_ = 0;
+    u16 roomCode_ = 0;
+    bool lobbyDirty_ = false, readySent_ = false;
+    BeaconSender beacon_;
     // Client: this player's claims since the last send (they leave with the pose, merged and sorted).
     static constexpr u32 kPendingClaims = 1024;
     sim::NetClaim pendClaims_[kPendingClaims];
