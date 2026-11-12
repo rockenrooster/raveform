@@ -351,6 +351,50 @@ void testVariantOnBarLine() {
     CHECK(e.stats().variant.load() == 1);
 }
 
+// A Track change in the phrase cycle: an eight-bar Break starts on the next bar line, the tempo ramps bar
+// by bar to the new Track's, the new Track (key, kit, sound) takes over on the Break's fifth bar, and the
+// next Groove is at the new tempo.
+void testTrackChange() {
+    Engine e;
+    CHECK(e.init(*g_music, *g_bank, kRate));
+    e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
+    float buf[2 * 256];
+    u64 done = 0;
+    const auto run = [&](u64 frames, BeatEvent* log, u32& count) {
+        for (u64 f = 0; f < frames; f += 256) {
+            e.render(buf, 256, 2);
+            done += 256;
+            BeatEvent ev;
+            while (e.popEvent(ev))
+                if (count < 4096) log[count++] = ev;
+        }
+    };
+    BeatEvent* log = static_cast<BeatEvent*>(std::calloc(4096, sizeof(BeatEvent)));
+    u32 count = 0;
+    run(2 * 96000 + 1000, log, count);  // two bars and a little
+    e.post(cmd(CmdType::SetTrack, 1));
+    count = 0;
+    run(12 * 96000, log, count);        // the Break and the start of the next Groove
+    i32 breakBar = -1, trackBar = -1;
+    double lastBpm = 0.0;
+    u32 tempoChanges = 0;
+    for (u32 i = 0; i < count; ++i) {
+        const BeatEvent& ev = log[i];
+        if (ev.kind == BeatKind::Section && ev.a == static_cast<u8>(Section::Break) && breakBar < 0) breakBar = static_cast<i32>(ev.index);
+        if (ev.kind == BeatKind::Track) trackBar = static_cast<i32>(ev.tick / 384.0);
+        if (ev.kind == BeatKind::Tempo) {
+            ++tempoChanges;
+            lastBpm = ev.value;
+        }
+    }
+    CHECK_MSG(breakBar == 3, "the Break began on bar %d", breakBar);
+    CHECK_MSG(trackBar == breakBar + 4, "the Track changed on bar %d (Break on %d)", trackBar, breakBar);
+    CHECK_MSG(tempoChanges >= 6, "%u tempo steps", tempoChanges);
+    CHECK_MSG(std::fabs(lastBpm - g_music->tracks[1].bpm) < 0.01, "ended at %.3f BPM", lastBpm);
+    CHECK(e.stats().track.load() == 1);
+    std::free(log);
+}
+
 // Effects and every mode render without touching the heap.
 void testNoAllocations() {
     Engine e;
@@ -436,6 +480,7 @@ int main() {
         {"conductor: grid through the Build dip", testConductorGrid},
         {"lead follows fire", testLeadFollowsFire},
         {"variant on the bar line", testVariantOnBarLine},
+        {"track change through the Break", testTrackChange},
         {"no allocations in any mode", testNoAllocations},
     };
     for (const Test& t : tests) {
