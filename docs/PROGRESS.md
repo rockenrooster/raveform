@@ -1,6 +1,102 @@
 # RAVEFORM — Progress
 
-## M3 stage C "the crowd and the threats" — 2026-11-12
+## M3 stage C2 "the crowd in the frame" — 2026-11-12
+
+Built on `main` (never pushed): `fc01068` (the crowd counted in the frame, Prism's rainbow, Chain
+separators) and the docs commit. Design input: `37a6442` (GAME_DESIGN 5, 7 and 8; species.json
+`firstSlice.crowd` `count`, `arrive`, `stray`; the reference renderer's soft lights).
+
+### What changed
+
+- **The crowd is counted in the frame** (`world_spawner.cpp`): a player's frame in the simulation is the
+  reference view, 1,600 x 720 wu (2400 x 1080 px at 1.5 px a wu, zoom 1) centred on the ship
+  (`tuning::kFrameHalfWWu/HWu`). The director counts the enemies in that frame grown by `count.frameScale`
+  (1.25) and the crowd's fodder still warping in; floods land along one frame edge `arrive.floodOutsideWu`
+  (120-320 wu) outside it, the edge the ship is heading for likelier; rings on the ellipse
+  `arrive.ringFrameScale` (1.15) x the frame; corner swarms `arrive.cornerOutsideWu` (150 wu) outside each
+  corner; fodder outside twice the frame (`stray.frameScale`) for `stray.bars` (2) bars dissolves without
+  Shards. Arrivals keep 260 wu from a ship and out of the Trio's ring (tested). The neediest frame is
+  filled (co-op ready).
+- **The refill** (my mechanism, numbers chosen): each bar orders the frame's whole gap (species.json's
+  `refillBars` 2 held the frame near half its target in view while the bot kills 550 a minute), plus a
+  running debt (half the last shortfall, at most the last bar's kills and half the target, so an idle
+  frame is not overfilled), plus the kills not yet replaced; killed fodder is replaced on the beat, a
+  formation (at least 16) at a time; the Groove's crowd lands on the third beat of the Break's last bar
+  and the Drop's with the mega-wave.
+- **Fodder behaviour** (tuned): Drifters home at 1.0 rad/s (was 0.15) at their own speed; Shoals seek at
+  0.5 (was 1.0) at 0.7 of their speed (133 wu/s, the -30% allowed); while a boss lives both keep 450 wu off
+  the ships (they turn away inside it), so the fight has room.
+- **The bot** (`bot.cpp`): in a boss fight it shoots a body only within 140 wu (was 250 for any target), and
+  it keeps its last Nova for bullets (it used to spend them all on the crowd before the boss came).
+- **Prism's rainbow** (GAME_DESIGN 7): the centre lane in the player's colour, the others 50 and 100 degrees
+  round the OKLCH hue wheel to either side at lightness 0.80 and full chroma, white cores; the
+  mini-refractions keep their lane's hue (the lane rides in the shot's flags, bits 2-4).
+- **Score and Chain**: 64-bit throughout (sim `u64`, HUD, `highscores.txt` `%llu`, the bench JSON's
+  64-bit integer); Chain with thousands separators wherever it shows (`X12,369`), as the score was.
+- `--sim crowd`: in view with the game's own camera (its lead, the boss's lean and zoom), the counted
+  frame, alive, hits by cause, boss fights won and lost; `--trace` adds a line a bar and a line a second
+  of each boss fight. `--nohits` (app): hits cost nothing (a measured run deep in the game).
+  `--picture bot_N` is now the careful bot's real run (it retries after a death); `bot_N_nohits` the old one.
+
+### Numbers (M3 stage C2)
+
+Enemies in view (the camera's frame) during Groove against the target, careful bot 20 seeds x 30 min; the
+no-hits run (20 x 24 min) for Track 3 and the loop:
+
+| Track, cycle | Target | In view (ratio) | Counted frame | Drop peak in view / target |
+|---|---|---|---|---|
+| 1, 1-4 | 20 / 45 / 80 / 120 | 10.7 / 28.6 / 47.7 / 70.7 (0.54 / 0.64 / 0.60 / 0.59) | 19 / 47 / 79 / 118 | 2.79 / 2.94 / 2.50 |
+| 2, 1-3 | 150 / 190 / 230 | 86.5 / 115.6 / 124.6 (0.58 / 0.61 / 0.54) | 144 / 189 / 209 | 2.16 / 1.89 |
+| 3, 1-3 (no hits) | 240 / 270 / 300 | 129 / 147 / 134 (0.54 / 0.54 / 0.45) | 210 / 234 / 223 | 1.47 / 1.17 |
+| 4, 1-4 (no hits) | 320 | 136-147 (0.42-0.46) | 233-244 | 1.00-1.16 |
+
+Difficulty: careful bot median first death **6.07 min**, Track 2 in **20 of 20** runs (Track 3 in none in
+30 minutes), 4.3 deaths a run, boss fights won 77 (80 s on average) and lost 39; careless bot median first
+death **1.41 min** (1.5-4 wanted), 18.4 deaths a run. Kills a minute: careful 553, careless 519, no hits
+1,400. No overflow, no NaN, no heap allocation in the loops, no Shard dropped. What hits the careful bot:
+bullets and beams 290 of 350 (189 of them in boss fights), fodder bodies 42. Files: `captures\m3c2\crowd_*.txt`.
+
+- Tests: audio 2134, sim 5236 (the crowd's arrivals: 260 wu from the ship, within twice the frame plus a
+  pack's scatter), 0 failures; determinism PASS for both bots.
+- Desktop Debug, bench_play 60 s at minute 10 (fast-forward 600 s; Track 2): 0 validation messages, 0 heap
+  allocations (frame, pacer, other threads, audio callback); enemies in view 102 / 274, bullets 9 / 60 (the
+  desktop lost focus three times, so its timing is not graded). The densest part on desktop (fast-forward
+  640 s with `--nohits`: Track 3, cycle 2, Drop): alive 500 / 600, in view 205 / 427, bullets 65 / 174.
+- The M1 stills against the re-exported references (the reference fades soft lights as `glow.frag` does):
+  `look_card` without bloom mean abs 0.36, soft light p10 / p50 / p90 0.99 / 0.99 / 1.00; with bloom 1.26,
+  0.93 / 0.98 / 1.00; `frame_reef` 1.10, luminance ratio 0.982, 0.96 / 0.98 / 0.99 (`captures\m3c2\m1_stills\`).
+- **Moto, the real game at minute 10** (bench_play, 600 s of warm-up, 120 s measured; tier medium, governor
+  off, no cuts; shared phone, foreign load 0.82 cores; `captures\bench\ZY22BXMJG3-bench_play-20261112-084705.json`):
+  0 of 7,188 frames missed, panel P95 1 period, max 19.7 ms: **PASS**. Main thread 4.60 / 4.97 / 5.98 ms
+  (P50 / P95 / max), GPU 13.19 / 13.64 / 14.09 ms, sim tick 0.28 / 0.66 / 1.23 ms, audio underruns 0, heap
+  allocations ours 0. **Enemies in view 108 / 379, enemy bullets in view 11 / 96** (mean / max; stage C:
+  58 / 157 and 12 / 113); alive 378 / 600; Track 2, cycle 2 at the end, one death.
+- **Moto, the densest part** (bench_play `--fast-forward 640 --nohits`: Track 3, cycles 2-3, 120 s;
+  `...-085929.json`): 0 of 7,188 missed, P95 1 period, max 19.7 ms: **PASS**; main 4.69 / 5.02 / 5.91 ms,
+  GPU 13.20 / 13.88 / 14.69 ms, sim tick 0.32 / 0.49 / 1.03 ms; enemies in view 126 / 396, bullets in view
+  12 / 110, alive 464 / 602; heap 0.
+
+### Pictures (`captures\m3c2\`, 2400x1080, `*.small.png`)
+
+bot_3, bot_6, bot_10, bot_15 (the careful bot's real run: it died twice in Track 2 and went again, so
+minute 15 is a new run's Track 1), bot_3_nohits ... bot_15_nohits (one run: minute 15 is Reef's
+Kaleidos), hud_drop (Track 1's third Drop, 80 in view), boost_prism (the rainbow fan, Debug), and
+moto_inapp_track2 (the Moto, in-app, Track 2's Build with `--nohits`). Bot frames and hud_drop from the dev
+build.
+
+### Not done (stage C2)
+
+- **In view is short of 0.6 in three of the seven Track 1-2 cells** (0.54, 0.58, 0.54) and in Track 3 and
+  the loop (0.42-0.54); the Drop peaks fall under 1.2 in Track 3's second cycle and the loop. Why: the
+  counted frame is 1.56 times the view's area and every arrival lands outside the view, so with the
+  frame at its target the view holds about 0.6 of it; the bot kills 550 a minute, so the frame sags
+  between refills; from Track 3 the 600-body cap binds (alive 470-540, arrivals and threats included).
+  Holding 0.6 everywhere would need the count in the plain frame (`count.frameScale` 1.0) or arrivals
+  nearer, and a higher cap: the lead's call.
+- **The careless bot dies at 1.41 min** (1.5 wanted): Shoal schools in the frame from Track 1's second
+  cycle; slower and less seeking Shoals (0.7 speed, seek 0.5 or 0.25, turn rate halved) moved it from 1.23
+  to 1.38-1.42 only.
+- Kaleidos is still every Track's boss; the medley waits for M6.
 
 Built on `main` (never pushed): `acc7b93` (the crowd, Reef, director and crowd tests), `416fdf7` (the
 refill replaces killed fodder; the Groove's pre-spawn), `255ab44` (the bot fights the boss within reach),

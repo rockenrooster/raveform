@@ -42,7 +42,9 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | The M3 review set (scripted strips, bot frames at 30 s / 2 / 5 min, stress) | `scripts\review-m3.ps1 [-Out captures\m3] [-Config debug\|dev] [-SkipStrips] [-SkipFrames]` |
 | The M3 stage B review set (screens, Trio, HUD per section, Riffs, Boosts, edge chevrons, Kaleidos, Track change, bot at 3 / 6 / 10 / 15 min) | `scripts\review-m3b.ps1 [-Out captures\m3b] [-Config debug\|dev] [-Only trio,boss_beam]` |
 | The M3 stage C review set (bot at 3 / 6 / 10 / 15 min, the Drop with the crowd, edge chevrons with Kaleidos, Prism's fan, the Track name card, the boss's death strip) | `scripts\review-m3b.ps1 -Out captures\m3c -Only bot_3,bot_6,bot_10,bot_15,hud_drop,edge,boost_prism,track_change,boss_death` (`-Config dev` for the bot frames: their fast-forward is slow in Debug) |
-| The crowd and the difficulty over many seeds (M3 stage C acceptance) | `build\desktop-dev\raveform_headless.exe --sim crowd [--seeds 20] [--minutes 30] [--seed N] [--policy reckless] [--god] [--trace]` (Groove mean near the ship against the target per Track and cycle, Drop peaks, first death, Tracks reached, kills a minute; `--god`: hits cost nothing, so every cell is measured; `--trace`: a line a minute) |
+| The M3 stage C2 review set (the careful bot's real run and the no-hits run at 3 / 6 / 10 / 15 min, the Drop with the crowd, Prism's rainbow) | `scripts\review-m3b.ps1 -Out captures\m3c2 -Config dev -Only bot_3,bot_6,bot_10,bot_15,bot_3_nohits,bot_6_nohits,bot_10_nohits,bot_15_nohits,hud_drop` and `-Only boost_prism` (Debug) |
+| The crowd and the difficulty over many seeds (M3 stage C / C2 acceptance) | `build\desktop-dev\raveform_headless.exe --sim crowd [--seeds 20] [--minutes 30] [--seed N] [--policy reckless] [--god] [--trace]` (per Track and cycle: enemies in view with the game's camera during Groove against the target, the counted frame, alive, the Drop's peak in view; first death, Tracks reached, kills a minute, hits by cause, boss fights; `--god`: hits cost nothing, so every cell is measured; `--trace`: a line a minute, a bar and a second of each boss fight) |
+| The densest part of the game, measured (Moto) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Warmup 5 -Seconds 120 -AppArgs '--fast-forward 640 --nohits' -Deploy` (Track 3, cycle 2) |
 | Bot, 30 simulated minutes with a minute table | `build\desktop-dev\raveform_headless.exe --sim soak --minutes 30 [--seed N] [--policy reckless]` |
 | The real game at minute 10, measured (Moto) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Warmup 600 -Seconds 120 -Deploy` |
 
@@ -85,9 +87,11 @@ careless after S seconds of a run, so a loop test reaches game over. Stage B pic
 screen_pause|screen_game_over|trio|trio_answer|trio_take|hud_groove|hud_build|hud_drop|hud_break|riff_orbitals|
 riff_pulse|riff_sentinel|boost_prism|boost_hyper|boost_halo|boost_magnet_storm|edge|boss_bloom|boss_refraction|
 boss_spiral|boss_naked|boss_beam_tell|boss_beam|boss_iris|boss_pair_death|boss_death|track_change|bot_3|bot_6|
-bot_10|bot_15` with `--strip 1` (8 for the three strips; the bot frames and `hud_drop` run with hits costing nothing,
-so the Tracks come on time). Stage C: the run's Tracks are First Light, Solar Wind and Reef, then the loop; the crowd
-keeps fodder near the ship (`firstSlice.crowd`). The band follows the director (`Play::conductBand`);
+bot_10|bot_15|bot_3_nohits|bot_6_nohits|bot_10_nohits|bot_15_nohits` with `--strip 1` (8 for the three strips;
+`bot_N` is the careful bot's real run at minute N, retrying after a death; `bot_N_nohits` and `hud_drop` run with hits
+costing nothing, so the Tracks come on time). Stage C: the run's Tracks are First Light, Solar Wind and Reef, then the
+loop; stage C2: the crowd is counted in each player's frame (`firstSlice.crowd`, `tuning::kFrameHalfWWu/HWu`).
+`--nohits`: hits cost nothing for the whole run (a measured run deep in the game). The band follows the director (`Play::conductBand`);
 benchmarks and `--bot` are the run alone. `--scenario touch_test` is M0's touch scene (formerly the default). `bench_play` (the bot plays the normal
 game) and `bench_stress` (about 700 enemies and 1,500 enemy bullets around a bot-driven, invulnerable ship)
 are measured like the other benchmarks and add a `sim` object to the result (tick time per 60 Hz tick
