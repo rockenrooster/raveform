@@ -72,6 +72,7 @@ struct DirectorState {
     i32 boostTicks = 0;        // sim ticks until the next Boost is due
     bool boostDue = false;
     u32 boostsDropped = 0;
+    u32 crowdLost = 0;         // fodder killed since the last bar line (the crowd replaces it)
     u32 lastBar = kNoBar;      // the last bar the director planned
 };
 

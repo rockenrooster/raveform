@@ -592,6 +592,7 @@ void World::killEnemy(u32 i, u8 killer) {
     ev.f = e.heading[i];
     emit(ev);
     ++counters_.kills;
+    if (s.hue == 0 && director_.crowdLost < 100000u) ++director_.crowdLost;
     if (killer < kMaxPlayers && players_[killer].present) {
         // Score = enemy value x Chain (GAME_DESIGN 5: the Chain is a multiplier from x1).
         PlayerState& pl = players_[killer];
@@ -850,6 +851,7 @@ u64 World::hash() const {
     val(director_.boostTicks);
     val(director_.boostDue);
     val(director_.lastBar);
+    val(director_.crowdLost);
     val(phrase_.bar);
     val(phrase_.section);
     val(phrase_.sectionBar);

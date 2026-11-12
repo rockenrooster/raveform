@@ -404,7 +404,7 @@ private:
     void directorBar(double barTick, u32 bar);
     void directorBeat(double beatTick);
     void spendBudget(double landTick);
-    void spendCrowd(double landTick);
+    void spendCrowd(double landTick, const Phrase& ph);
     void spawnCrowd(u16 species, u32 count, double landTick);
     void strayFodder();
     void megaWave(double landTick);

@@ -270,11 +270,13 @@ void World::spawnCrowd(u16 speciesIndex, u32 count, double landTick) {
     }
 }
 
-void World::spendCrowd(double landTick) {
+void World::spendCrowd(double landTick, const Phrase& ph) {
     // GAME_DESIGN 8, the crowd: count the enemies near the ships, close the gap to the population target
-    // over refillBars bars with fodder formations (species.json firstSlice.crowd).
+    // over refillBars bars with fodder formations (species.json firstSlice.crowd), and replace the fodder
+    // killed since the last bar line on top (so a strong build meets the target, not a steady shortfall).
     const SpeciesTable::Crowd& c = species_->crowd;
-    const Phrase& ph = phrase_;
+    const u32 lost = director_.crowdLost;
+    director_.crowdLost = 0;
     const float target = crowdTarget(c, ph.track, ph.cycle ? ph.cycle : 1u) * crowdScale(c, ph);
     crowdGoal_ = target;
     const Enemies& e = enemies_;
@@ -293,7 +295,8 @@ void World::spendCrowd(double landTick) {
     crowdNear_ = near;
     const float gap = target - static_cast<float>(near);
     if (gap < 1.0f) return;
-    u32 want = static_cast<u32>(std::ceil(gap / (c.refillBars > 1.0f ? c.refillBars : 1.0f)));
+    u32 want = static_cast<u32>(std::ceil(gap / (c.refillBars > 1.0f ? c.refillBars : 1.0f))) + lost;
+    if (static_cast<float>(want) > gap) want = static_cast<u32>(std::ceil(gap));
     if (want < c.formationMin && gap >= static_cast<float>(c.formationMin)) want = c.formationMin;
     for (u32 formations = 0; formations < 8 && want; ++formations) {
         if (enemies_.count >= kDirectorAliveCap) return;
@@ -487,7 +490,7 @@ void World::directorBar(double barTick, u32 bar) {
     if (spawner_.mode != Spawner::Mode::Slice || !anyAlive) return;
     const double land = barTick + kWarpBeats * kTicksPerBeat;
     strayFodder();
-    spendCrowd(land);
+    spendCrowd(land, ph);
     // The threats: the budget by Track, cycle and section (none during the boss's Drop: kaleidos.md).
     const float base = baseBudget(species_->budget, species_->budgetCycles, ph.track, ph.cycle ? ph.cycle : 1u);
     d.budgetPerBar = ph.bossDrop ? 0.0f : base * sectionScale(ph) * d.assist;
@@ -506,7 +509,12 @@ void World::directorBeat(double beatTick) {
     const double land = tickOfBar(bar + 1);
     if (spawner_.mode != Spawner::Mode::Slice) return;
     if (cur.section == Section::Build && next.section == Section::Drop && !next.bossDrop) megaWave(land);
-    if (cur.section == Section::Break && next.section == Section::Groove) spotlight(land, next);
+    if (cur.section == Section::Break && next.section == Section::Groove) {
+        spotlight(land, next);
+        // The Groove's crowd warps in over the Break's last two beats, as the debuts do, so the Groove does
+        // not begin empty.
+        spendCrowd(land, next);
+    }
 }
 
 void World::runDirector() {

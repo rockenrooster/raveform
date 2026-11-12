@@ -8,6 +8,10 @@
 //       The bot plays the stage A game (the simple spawner, Track 1's tempo), retrying after each death.
 //       Checks every tick: no NaN or infinity, no pool overflow; reports kills, deaths, peak entity counts
 //       and the tick's time (P50 / P95 / max). Exit 0 = clean.
+//   raveform_headless --sim crowd [--seeds 20] [--minutes 30] [--seed 1] [--policy play|reckless] [--god]
+//       The crowd and the difficulty over many seeds (M3 stage C): enemies near the ship during Groove
+//       against the target per Track and cycle, Drop peaks, first death, Tracks reached, kills a minute.
+//       --god: hits cost nothing, so every Track and cycle is measured (no difficulty numbers then).
 //   raveform_headless --sim stress [--seconds 120] [--seed 1]
 //       bench_stress without a window: about 700 enemies and 1,500 enemy bullets around the bot's ship.
 // Each prints a summary and one line tagged RFSIM (JSON).
@@ -285,7 +289,7 @@ int runSoak(const SpeciesTable& species, float seconds, u64 seed, float bpm, boo
 // The crowd and the difficulty over many seeds (M3 stage C): per Track and cycle the mean number of enemies
 // near the ship during Groove against the crowd's target, the Drop's peak, kills a minute, the first death
 // and the Tracks reached.
-int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, Bot::Policy policy) {
+int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, Bot::Policy policy, bool god) {
     const u32 ticks = static_cast<u32>(minutes * 3600.0f);
     auto* world = new (std::nothrow) World;
     if (!world) return 2;
@@ -307,7 +311,9 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     for (u32 s = 0; s < seeds && s < 256; ++s) {
         world->init(&species);
         SimRunner runner;
-        runner.start(world, seed0 + s, Spawner::Mode::Slice, policy, 120.0f);
+        runner.start(world, seed0 + s, Spawner::Mode::Slice, policy, 120.0f, god);
+        // The world's counters run on across init (they are the session's): this seed's share is the difference.
+        const WorldCounters c0 = world->counters();
         float peak[4][5] = {};
         bool sawDrop[4][5] = {};
         firstDeath[s] = minutes + 1.0f;
@@ -344,19 +350,22 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     ++cells[tr][cy].dropRuns;
                 }
         const WorldCounters& c = world->counters();
-        kills += c.kills;
+        const u32 seedKills = c.kills - c0.kills, seedShards = c.shardsDropped - c0.shardsDropped;
+        kills += seedKills;
         deaths += runner.deaths();
-        overflow += c.enemiesDropped + c.bulletsDropped + c.shotsDropped + c.shardsDropped + c.eventsDropped;
+        overflow += (c.enemiesDropped - c0.enemiesDropped) + (c.bulletsDropped - c0.bulletsDropped) + (c.shotsDropped - c0.shotsDropped) +
+                    seedShards + (c.eventsDropped - c0.eventsDropped);
         if (!world->finite()) ++nan;
         std::printf("[sim]   seed %llu: first death %.2f min, Track %u reached, %u kills, %u deaths, Shards dropped %u\n",
-                    static_cast<unsigned long long>(seed0 + s), firstDeath[s] > minutes ? -1.0 : firstDeath[s], maxTrack[s], c.kills,
-                    runner.deaths(), c.shardsDropped);
+                    static_cast<unsigned long long>(seed0 + s), firstDeath[s] > minutes ? -1.0 : firstDeath[s], maxTrack[s], seedKills,
+                    runner.deaths(), seedShards);
     }
-    std::printf("[sim] crowd (%s bot): %u seeds x %.0f min\n", policy == Bot::Policy::Reckless ? "careless" : "careful", seeds, minutes);
+    std::printf("[sim] crowd (%s bot%s): %u seeds x %.0f min\n", policy == Bot::Policy::Reckless ? "careless" : "careful", god ? ", god mode" : "", seeds, minutes);
     std::printf("[sim]   Track cycle  target  Groove mean  ratio  Drop peak (runs)  peak/target\n");
-    for (u32 tr = 0; tr < 3; ++tr) {
+    for (u32 tr = 0; tr < 4; ++tr) {
         for (u32 cy = 1; cy <= cyclesOfTrack(tr + 1); ++cy) {
             const Cell& c = cells[tr][cy];
+            if (tr == 3 && !c.grooveTicks) continue;  // the loop's first Track, when a run got there
             const float target = crowdTarget(cr, tr + 1, cy);
             const double mean = c.grooveTicks ? c.grooveSum / static_cast<double>(c.grooveTicks) : 0.0;
             const double pk = c.dropRuns ? c.dropPeakSum / c.dropRuns : 0.0;
@@ -398,6 +407,7 @@ int simHeadlessMain(int argc, char** argv) {
     u64 seed = 1;
     u32 seeds = 20;
     Bot::Policy policy = Bot::Policy::Play;
+    bool god = false;
     for (int i = 3; i < argc; ++i) {
         const char* a = argv[i];
         const char* next = i + 1 < argc ? argv[i + 1] : nullptr;
@@ -413,6 +423,8 @@ int simHeadlessMain(int argc, char** argv) {
         } else if (std::strcmp(a, "--seed") == 0 && next) {
             seed = std::strtoull(next, nullptr, 10);
             ++i;
+        } else if (std::strcmp(a, "--god") == 0) {
+            god = true;
         } else if (std::strcmp(a, "--seeds") == 0 && next) {
             seeds = static_cast<u32>(std::strtoul(next, nullptr, 10));
             ++i;
@@ -434,11 +446,11 @@ int simHeadlessMain(int argc, char** argv) {
     } else if (std::strcmp(mode, "soak") == 0) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes : 10.0f) * 60.0f, seed, bpm, false, policy);
     } else if (std::strcmp(mode, "crowd") == 0) {
-        code = runCrowd(*species, seeds, minutes > 0.0f ? minutes : 30.0f, seed, policy);
+        code = runCrowd(*species, seeds, minutes > 0.0f ? minutes : 30.0f, seed, policy, god);
     } else if (std::strcmp(mode, "stress") == 0) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes * 60.0f : 120.0f), seed, bpm, true, policy);
     } else {
-        std::printf("usage: raveform_headless --sim determinism|soak|crowd|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless]\n");
+        std::printf("usage: raveform_headless --sim determinism|soak|crowd|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless] [--god]\n");
     }
     delete species;
     return code;
