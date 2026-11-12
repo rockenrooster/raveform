@@ -161,6 +161,12 @@ plays `arp[k mod 16]`. The whole arp takes the first 2⅔ beats; steps 16–23 r
 1⅓ beats, and the next bar starts again at `arp[0]` (conductor.json: "the arpeggio position is the step's
 position in the bar"). At 1/32 (32 steps) the arp plays twice per bar, at 1/16 once.
 
+**Decided (lead, 2026-11-11):** the user heard both, found both excellent and left the choice to the lead.
+Both are kept, one after the other: the first half of the Surge runs one grid step faster, the second half
+two (`conductor.json` `drop.surgeSteps: [1, 2]`, GAME_DESIGN §4.1; capped at 1/32). Not built yet: the
+conductor still plays one step for the whole Surge. Build it with the gameplay Surge in M3 (it is a fire
+rate as well as a sound).
+
 ### Device (Moto One 5G Ace, shared phone, Swappy 60 Hz)
 
 | Run | Panel missed | CPU-side P95 / max ms | Main thread CPU P50 / P95 | Underruns | Engine time per callback P50 / P95 / max | Load P95 (time / callback length) | Result file |

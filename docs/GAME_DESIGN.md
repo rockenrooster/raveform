@@ -76,7 +76,7 @@ engine move through them together, always on bar lines.
 |---|---|---|---|---|
 | **Groove** | Normal spawning to the threat budget | Drums, bass, the players' layers | Steady pulse | Farm Shards, build Chain |
 | **Build** | Spawn rate ramps; a Rift may open | Snare roll, riser, filter opens; last bar the drums drop out | Colours drain toward white, grid tightens, slow zoom-in; last bar darkens and time dips to 85% | Tension |
-| **Drop** | Mega-wave, mini-boss or boss enters on the downbeat | Full arrangement | Bloom burst, shockwave from every player, zoom snaps out, palette accent swaps | **Surge** for the first half: fire grid one step faster, score ×2, magnet ×2 |
+| **Drop** | Mega-wave, mini-boss or boss enters on the downbeat | Full arrangement | Bloom burst, shockwave from every player, zoom snaps out, palette accent swaps | **Surge** for the first half, in two gears: fire grid one step faster for its first half, two steps for its second (triplets, then double time; capped at 1/32), score ×2, magnet ×2 |
 | **Break** | Fodder dissolves into Shards in the first bar; nothing dangerous spawns | Pads, filtered drums | Cool, desaturated, slow drifting particles | Upgrade **Trio** appears; new-species spotlight in the last two beats |
 
 Forms: **Short** = 8 / 4 / 8 / 4 bars (24 bars); **Standard** = 16 / 8 / 16 / 8 bars (48 bars).

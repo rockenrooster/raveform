@@ -73,6 +73,15 @@ python design/tools/musicvariants.py     # renders the comparison and prints the
 Decided by the user on 2026-11-11: all three ship. The player picks one in the audio settings (Club is
 the default); the change takes hold on the next bar line.
 
+## Surge: both gears
+
+The staged previews play the Drop's lead at double time (1/32); the design rule had Surge one grid
+step faster (1/16 triplets). The engine rendered both back to back (`captures/m2/surge_compare.mp3`,
+Drops at 0:16 and 0:49). Heard by the user on 2026-11-11: both excellent, choice left to the lead.
+Both are kept, in order: the first half of the Surge runs in triplets, the second half at double
+time, so the gun shifts gear twice inside the Drop (`conductor.json`, `drop.surgeSteps`). To be built
+with the gameplay Surge in M3; until then the conductor plays triplets for the whole Surge.
+
 ## Who plays what — `conductor.json`
 
 The Track files hold one staged run written out bar by bar, for listening. In the game the same
