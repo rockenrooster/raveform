@@ -175,6 +175,7 @@ rate as well as a sound).
 | `bench_idle`, full band (30 s) | 0% | 17.93 / 20.31 | – / 1.78 ms | 0 | 0.90 / 1.15 / 1.29 ms | 0.237 | `ZY22BXMJG3-bench_idle-20261111-180352.json` |
 | `bench_idle`, full band, **10 minutes** (133,130 callbacks) | 0% | 17.90 / 21.36 | – / 1.78 ms | **0** | 0.90 / 1.06 / 1.34 ms | **0.220** (P99 0.265) | `ZY22BXMJG3-bench_idle-20261111-180929.json` |
 | **Contract run**: `bench_endgame --tier low`, full band on Track 3, 10-minute warm-up then 120 s (7,188 frames) | **0%** (PASS) | 17.83 / 20.34 | 4.70 / 4.92 ms | **0** | 1.02 / 1.13 / 1.30 ms (CPU time P95 1.08) | **0.234** (P99 0.289) | `ZY22BXMJG3-bench_endgame-20261111-191123.json` |
+| **Contract run repeated on the final build** by the lead (same command, after the overlay fix; 159,742 callbacks) | **0%** (PASS), worst frame 22.4 ms | 17.82 / 22.40 | 4.67 / 4.90 ms | **0** | worst callback 1.38 ms | – | `ZY22BXMJG3-bench_endgame-20261111-201832.json` |
 
 - "Every layer playing" (`--band full`): peak 72 voices on Track 1 (81 on Track 3 on the desktop), no
   steals. Burst 240 frames (5 ms), buffer 480, AAudio shared (not MMAP). Callback wall time equals its
@@ -189,7 +190,10 @@ rate as well as a sound).
   13.72; the callback ran on the big cores 6 and 7, next to the main thread; 81 voices at peak, no
   steals; heard-clock latency 34.6 ms. The stage carried its endgame load on the band's clock (73,517 kills,
   49 Drops, 24 boss breaks in the 12 minutes). Its 239 main-thread allocations in the window are the
-  overlay's, fixed after it (above).
+  overlay's, fixed after it (above). The repeat on the final build (`-201832`) has 0 main-thread
+  allocations in the window, 73,470 kills, GPU 13.41 / 13.76 ms, battery 25.6 → 28.0 °C, thermal status 0.
+  The 4 per frame inside the pacer and 1 per frame on another thread are Swappy's own, as in every run
+  since M0.
 - The first contract run (`-185010`) is void: the stage stopped after its first sixteenth (the stale
   timestamp, above). The valid run still had the stale timestamp at start-up (the stage's limits rode it
   out: one resynchronisation 0.08 s after the start); the band's guard came after it and the stale
