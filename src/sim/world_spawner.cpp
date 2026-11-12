@@ -575,10 +575,11 @@ void World::directorBar(double barTick, u32 bar) {
                 }
                 break;
             case Section::Break:
-                // Play test 1 (GAME_DESIGN 5): every Break gives back one Shield cell and one Nova (up to the caps).
+                // Play test 1 (GAME_DESIGN 5): every Break gives back one Shield cell and one Nova (up to the caps); from the
+                // loop's first Track on, none (GAME_DESIGN 8: the loop is where a run ends).
                 for (u32 p = 0; p < playerCount_; ++p) {
                     PlayerState& pl = players_[p];
-                    if (!pl.present || !pl.alive) continue;
+                    if (!pl.present || !pl.alive || (ph.track > kSongs && !kLoopBreakRefills)) continue;
                     if (pl.cells < pl.cellCap) ++pl.cells;
                     if (pl.novas < pl.novaCap) ++pl.novas;
                     Event ev;

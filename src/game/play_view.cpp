@@ -1114,7 +1114,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             const float quarterS = 15.0f / std::fmax(in.bpm, 30.0f);
             const float backAge = t - cellBackT_;
             const u32 cap = me.cellCap > 8 ? 8u : me.cellCap;
-            const u32 every = regenEveryBars(me.loadout.mods[kRegen]);
+            const u32 every = w.regenPeriod(w.viewPlayer());  // (the loop stretches it)
             if (backAge >= 0.0f && backAge < quarterS && cellBackTo_ == cells && cells >= 1) {
                 whole = cells - 1;
                 grow = backAge / quarterS;

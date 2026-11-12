@@ -1341,6 +1341,45 @@ void testPlayTest2() {
         for (u32 t = 0; t < 60 * 41; ++t) stepWorld(*w, music, Vec2{});
         CHECK_MSG(w->player(0).cellDue < 1.0f && w->player(0).cellDue > 0.9f / (kLoopCellRamp * kLoopCellRamp), "Track 5 Cell clock %.3f after 41 s",
                   w->player(0).cellDue);
+        // The lead's decision (`2fba23c`): Regen's period stretches; enemies and their bullets are faster (capped).
+        w->grantUpgrade(0, kRegen);
+        CHECK(w->regenPeriod(0) == static_cast<u32>(std::ceil(16.0f * kLoopRegenStretch * kLoopRegenStretch - 1e-3f)));
+        w->spawnBullet(Vec2{900.0f, 500.0f}, Vec2{100.0f, 0.0f}, 0.0f);
+        const Bullets& bl = w->bullets();
+        CHECK(bl.count > 0 && std::fabs(bl.vx[bl.count - 1] - 100.0f * std::fmin(kLoopBulletSpeedRamp * kLoopBulletSpeedRamp, kLoopBulletSpeedMax)) < 1e-3f);
+        delete w;
+    }
+    {
+        // In the loop the Breaks give back nothing; a Sentry's volley has more arms (here Track 7: x min(ramp^4, max)).
+        auto* w = new (std::nothrow) World;
+        w->init(g_species);
+        w->spawner().mode = Spawner::Mode::Off;
+        w->resetRun(33, 0.0, 1);
+        w->rules().godMode = true;
+        w->directorMut().track = 7;
+        double music = 0.0;
+        w->playerMut(0).cells = 2;
+        w->playerMut(0).novas = 1;
+        u32 refills = 0, bars = 0;
+        // Track 7 is First Light again (Short cycles): its first Break at bar 20.
+        CHECK(songOfTrack(7) == 0);
+        while (music < 21.0 * kTicksPerBar) {
+            stepWorld(*w, music, Vec2{});
+            refills += countEvents(*w, EventType::Refill);
+            bars = w->phrase().bar;
+        }
+        CHECK_MSG(refills == 0 && w->player(0).cells == 2 && w->player(0).novas == 1 && w->phrase().section == Section::Break, "refills %u by bar %u",
+                  refills, bars);
+        const i32 i = w->spawnEnemy(SpeciesTable::index(Family::Sentry, 1, kVariantB), Vec2{300.0f, 0.0f}, 0.0f, 0.0);
+        CHECK(i >= 0);
+        u32 most = 0;
+        for (u32 t = 0; t < 600; ++t) {
+            const u32 before = w->bullets().count;
+            stepWorld(*w, music, Vec2{});
+            if (countEvents(*w, EventType::EnemyShot) && w->bullets().count > before && w->bullets().count - before > most) most = w->bullets().count - before;
+        }
+        const float ramp = std::fmin(kLoopShooterRamp * kLoopShooterRamp * kLoopShooterRamp * kLoopShooterRamp, kLoopShooterMax);
+        CHECK_MSG(most >= static_cast<u32>(3.0f * ramp) && most <= static_cast<u32>(3.0f * ramp) + 1, "a Track 7 volley of %u (x%.2f)", most, ramp);
         delete w;
     }
     {

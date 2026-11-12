@@ -880,12 +880,30 @@ void World::updateCells(float dt) {
     }
 }
 
+u32 World::regenPeriod(u32 p) const {
+    // Regen's period by stacks (16, 8, 4 bars), stretched a Track at a time in the loop (GAME_DESIGN 8).
+    const u32 every = p < kMaxPlayers ? regenEveryBars(players_[p].loadout.mods[kRegen]) : 0u;
+    if (!every) return 0;
+    return static_cast<u32>(std::ceil(static_cast<float>(every) * loopRamp(kLoopRegenStretch, phrase_.track) - 1e-3f));
+}
+
+u32 World::shooterCount(u32 base, u32& rngState) const {
+    // The loop raises every shooter's bullet count a Track at a time (GAME_DESIGN 8): base x the ramp, the fraction by
+    // chance (the enemy's own stream), and only while a quarter of the enemy bullet pool is free (inside the pools).
+    if (loopShooters_ <= 1.0f) return base;
+    const float want = static_cast<float>(base) * loopShooters_;
+    u32 n = static_cast<u32>(want);
+    if (rand01(rngState) < want - static_cast<float>(n)) ++n;
+    if (bullets_.count + n > Bullets::kCap - Bullets::kCap / 4) return base;
+    return n;
+}
+
 void World::regenBar() {
     // Regen (Mod 18, play test 2): while a cell is missing it grows back by itself every 16, 8, then 4 bars (counted on bar
-    // lines; the view draws the growing arc). Each device its own players'.
+    // lines; the view draws the growing arc), stretched in the loop. Each device its own players'.
     for (u32 p = 0; p < playerCount_; ++p) {
         PlayerState& pl = players_[p];
-        const u32 every = regenEveryBars(pl.loadout.mods[kRegen]);
+        const u32 every = regenPeriod(p);
         if (!every || !pl.present || !pl.alive || !isLocal(p) || pl.cells >= pl.cellCap) {
             pl.regenBars = 0;
             continue;

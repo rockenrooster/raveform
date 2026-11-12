@@ -131,6 +131,12 @@ bool Play::scriptSetupB() {
         return true;
     }
     if (is(p, "track_change")) return true;
+    if (is(p, "loop_encore")) {
+        // GAME_DESIGN 8 (the lead's decision after play test 2): the loop's first Track card, ENCORE and NO MORE REFILLS.
+        w.directorMut().track = 3;
+        w.rules().godMode = true;
+        return true;
+    }
     return false;
 }
 
@@ -349,7 +355,7 @@ bool Play::scriptInputB(StickInput& in) {
         if (is(p, "boss_iris") && music > fight + 1.0 * kTicksPerBar && barIn > 20.0 && barIn < 60.0) captureFrom_ = now;
         return true;
     }
-    if (is(p, "track_change")) {
+    if (is(p, "track_change") || is(p, "loop_encore")) {
         if (t == 10) {
             // The boss has just fallen: the Track-change Break begins on the next bar line.
             DirectorState& d = w.directorMut();
@@ -357,7 +363,7 @@ bool Play::scriptInputB(StickInput& in) {
         }
         // M3 stage C: the new Track's name card, written and holding, half a bar into the new Track.
         const DirectorState& dir = w.director();
-        if (captureFrom_ < 0 && w.phrase().track >= 2 && !w.phrase().trackChange && dir.trackBar != kNoBar &&
+        if (captureFrom_ < 0 && w.phrase().track >= (is(p, "loop_encore") ? 4u : 2u) && !w.phrase().trackChange && dir.trackBar != kNoBar &&
             music >= w.tickOfBar(dir.trackBar) + 0.5 * kTicksPerBar)
             captureFrom_ = now;
         return true;
@@ -371,7 +377,7 @@ bool Play::scriptEventsB() {
     const i64 now = static_cast<i64>(frameNo_);
     if (captureFrom_ >= 0) return starts(p, "screen_") || starts(p, "hud_") || starts(p, "bot_") || starts(p, "trio") ||
                                    starts(p, "riff_") || starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") ||
-                                   is(p, "split7") || starts(p, "pt2_");
+                                   is(p, "split7") || starts(p, "pt2_") || is(p, "loop_encore");
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         if (is(p, "trio_take") && e.type == EventType::TrioTake) captureFrom_ = now;
@@ -383,7 +389,8 @@ bool Play::scriptEventsB() {
         }
     }
     return starts(p, "screen_") || starts(p, "hud_") || starts(p, "bot_") || starts(p, "trio") || starts(p, "riff_") ||
-           starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") || is(p, "split7") || starts(p, "pt2_");
+           starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") || is(p, "split7") || starts(p, "pt2_") ||
+           is(p, "loop_encore");
 }
 
 }  // namespace rf

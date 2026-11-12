@@ -502,6 +502,8 @@ public:
     const CellPickups& cellPickups() const { return cellPickups_; }
     // Play test 2: a ship inside one of its own level-up Trio's orb rings (the shelter: it cannot be hurt).
     bool sheltered(u32 p) const;
+    // A player's Regen period in bars now (0: no Regen); the loop stretches it (GAME_DESIGN 8).
+    u32 regenPeriod(u32 p) const;
     // Pictures and tests: a Cell for a player; Shards collected as if picked up (the level meter).
     void dropCellNow(Vec2 pos, u8 owner) { spawnCell(pos, Vec2{}, owner); }
     void collectShardsNow(u32 p, u32 n) {
@@ -709,6 +711,9 @@ private:
     CellPickups cellPickups_;
     BossState boss_;
     u8 hitShotFlags_ = 0;  // play test 2: the flags of the shot whose hit hitEnemy() is applying (its Impact's Prism lane)
+    // The loop's ramps this tick (GAME_DESIGN 8; 1 in the first pass): enemy speed, enemy bullet speed, shooters' counts.
+    float loopSpeed_ = 1.0f, loopBulletSpeed_ = 1.0f, loopShooters_ = 1.0f;
+    u32 shooterCount(u32 base, u32& rngState) const;  // a volley's bullets with the loop's ramp, inside the pool
     Rng rng_{1};         // the director's stream
     Rng upgradeRng_{2};  // Trios and Boost types (their own stream, so a pick never moves a spawn)
     u64 seed_ = 1;

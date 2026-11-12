@@ -126,6 +126,10 @@ void World::tick(const TickInput& in) {
     applyPlayers(in);
     if (role_ != NetRole::Solo) updateDowned();
     runSpawner();  // the director first: the phrase this tick plays in (Surge, the Build's last bar)
+    // The loop's ramps this tick (GAME_DESIGN 8, "The loop is where a run ends"): 1 through Track 3.
+    loopSpeed_ = std::fmin(loopRamp(kLoopEnemySpeedRamp, phrase_.track), kLoopEnemySpeedMax);
+    loopBulletSpeed_ = std::fmin(loopRamp(kLoopBulletSpeedRamp, phrase_.track), kLoopBulletSpeedMax);
+    loopShooters_ = std::fmin(loopRamp(kLoopShooterRamp, phrase_.track), kLoopShooterMax);
     const float dt = kDt * timeScale();
     if (dipS_ > 0.0f) dipS_ -= kDt;
     spawnShots(in);
@@ -854,6 +858,7 @@ bool World::spawnBullet(Vec2 pos, Vec2 vel, float advanceS, float lifeS) {
         ++counters_.bulletsDropped;
         return false;
     }
+    vel = vel * loopBulletSpeed_;  // the loop speeds up every enemy bullet (GAME_DESIGN 8; 1 in the first pass)
     const u32 i = b.count++;
     b.px[i] = pos.x;
     b.py[i] = pos.y;

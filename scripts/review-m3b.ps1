@@ -49,7 +49,7 @@ $singles = @('screen_notice', 'screen_title', 'screen_settings_sound', 'screen_s
              'riff_sentinel', 'boost_prism', 'boost_hyper', 'boost_halo', 'boost_magnet_storm', 'edge', 'boss_bloom', 'boss_refraction',
              'boss_spiral', 'boss_naked', 'boss_beam_tell', 'boss_beam', 'boss_iris', 'track_change', 'bot_3', 'bot_6', 'bot_10', 'bot_15', 'bot_3_nohits', 'bot_6_nohits', 'bot_10_nohits', 'bot_15_nohits',
              'pt2_level_trio', 'pt2_cell_crowd', 'pt2_halo8', 'pt2_hud_level', 'pt2_overcharge_0', 'pt2_overcharge_1', 'pt2_overcharge_2',
-             'pt2_overcharge_3', 'pt2_overcharge_4', 'pt2_overcharge_5')
+             'pt2_overcharge_3', 'pt2_overcharge_4', 'pt2_overcharge_5', 'loop_encore')
 $strips = @('trio_take', 'boss_pair_death', 'boss_death')
 if ($Only.Count) {
     $singles = @($singles | Where-Object { $Only -contains $_ })

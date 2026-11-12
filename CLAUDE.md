@@ -100,7 +100,7 @@ screen_pause|screen_game_over|trio|trio_answer|trio_take|trio_locked|trio_hold|s
 riff_pulse|riff_sentinel|boost_prism|boost_hyper|boost_halo|boost_magnet_storm|edge|boss_bloom|boss_refraction|
 boss_spiral|boss_naked|boss_beam_tell|boss_beam|boss_iris|boss_pair_death|boss_death|track_change|bot_3|bot_6|
 bot_10|bot_15|bot_3_nohits|bot_6_nohits|bot_10_nohits|bot_15_nohits|pt2_level_trio|pt2_cell_crowd|pt2_halo8|pt2_hud_level|
-pt2_overcharge_0..5` with `--strip 1` (8 for the three strips;
+pt2_overcharge_0..5|loop_encore` with `--strip 1` (8 for the three strips;
 `bot_N` is the careful bot's real run at minute N, retrying after a death; `bot_N_nohits` and `hud_drop` run with hits
 costing nothing, so the Tracks come on time). Stage C: the run's Tracks are First Light, Solar Wind and Reef, then the
 loop; stage C2: the crowd is counted in each player's frame (`firstSlice.crowd`, `tuning::kFrameHalfWWu/HWu`).

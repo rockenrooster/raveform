@@ -226,8 +226,10 @@ void World::updateEnemies(float dt) {
                     if (e.state[i] == kGlint && m1_ >= e.until[i]) {
                         const float age = tickAgeOf(e.until[i]);
                         const float aim = tp >= 0 ? angleOf(to) : h;
-                        for (int k = -1; k <= 1; ++k)
-                            spawnBullet(Vec2{x, y}, dirOf(aim + static_cast<float>(k) * kHoundBurstSpread) * bulletSpeed, age);
+                        const u32 n = shooterCount(3u, e.rng[i]);  // the loop adds to every volley (GAME_DESIGN 8)
+                        for (u32 k = 0; k < n; ++k)
+                            spawnBullet(Vec2{x, y}, dirOf(aim + (static_cast<float>(k) - 0.5f * static_cast<float>(n - 1)) * kHoundBurstSpread) * bulletSpeed,
+                                        age);
                         e.state[i] = kMoving;
                         Event ev;
                         ev.type = EventType::EnemyShot;
@@ -252,8 +254,8 @@ void World::updateEnemies(float dt) {
                             e.until[i] += static_cast<double>(fd.dashBeats) * kTicksPerBeat;
                             e.vx[i] = e.a[i] * dash;
                             e.vy[i] = e.b[i] * dash;
-                            e.x[i] += e.vx[i] * (age - dt);  // the dash began `age` ago (the motion below adds dt)
-                            e.y[i] += e.vy[i] * (age - dt);
+                            e.x[i] += e.vx[i] * loopSpeed_ * (age - dt);  // the dash began `age` ago (the motion below adds dt)
+                            e.y[i] += e.vy[i] * loopSpeed_ * (age - dt);
                         }
                         break;
                     case kDash:
@@ -317,7 +319,7 @@ void World::updateEnemies(float dt) {
                 const auto volley = [&](double t) {
                     const float turn = static_cast<float>(t / kTicksPerBar) * kSentryTurnsPerBar * kTau;
                     const float age = tickAgeOf(t);
-                    const u32 arms = fd.patternArms ? fd.patternArms : 3u;
+                    const u32 arms = shooterCount(fd.patternArms ? fd.patternArms : 3u, e.rng[i]);  // the loop adds arms (GAME_DESIGN 8)
                     for (u32 k = 0; k < arms; ++k) {
                         const float a = e.b[i] + turn + kTau * static_cast<float>(k) / static_cast<float>(arms);
                         spawnBullet(Vec2{x, y}, dirOf(a) * fd.bulletSpeed, age);
@@ -359,9 +361,9 @@ void World::updateEnemies(float dt) {
             default: break;
         }
 
-        // Integrate (own motion plus the decaying knockback), then the walls.
-        e.x[i] += (e.vx[i] + e.kx[i]) * dt;
-        e.y[i] += (e.vy[i] + e.ky[i]) * dt;
+        // Integrate (own motion, faster in the loop (GAME_DESIGN 8), plus the decaying knockback), then the walls.
+        e.x[i] += (e.vx[i] * loopSpeed_ + e.kx[i]) * dt;
+        e.y[i] += (e.vy[i] * loopSpeed_ + e.ky[i]) * dt;
         e.kx[i] *= knock;
         e.ky[i] *= knock;
         const float r = e.radius[i];

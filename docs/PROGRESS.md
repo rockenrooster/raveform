@@ -173,6 +173,42 @@ chevron), `pt2_halo8` and `pt2_halo8_zoom` (eight cells, one growing back), `pt2
 - Tests: `raveform_sim_tests` 5,466 checks (the ramp: 1 through Track 3, then compounding; a Track 5 enemy's health
   and Cell clock), `scripts\test.ps1` passes.
 
+### The loop takes the sustain away (the lead's decision, `2fba23c`)
+
+From the loop's first Track on, besides the three factors: the Breaks give back no cell and no Nova
+(`kLoopBreakRefills`); Regen's periods stretch by 1.5 a Track (the view's growing arc follows,
+`World::regenPeriod`); enemies move 6% a Track faster (at most x1.6), enemy bullets 6% (at most x1.5), and every
+shooter's volley (a Hound B's burst, a Sentry's arms; the bosses keep their own density ramp) grows 15% a Track (at most
+x3, the fraction by the enemy's own random stream, and only while a quarter of the 2,048 enemy bullets is free).
+The loop's first Track card reads `ENCORE` over `TRACK 4`, the name, and `NO MORE REFILLS` under it
+(`captures\playtest2\loop_encore.png`).
+
+**The targets cannot be reached inside the bounds** (each factor within a third of the design's step: threat 1.2-1.4,
+health and Cells 1.167-1.333, Regen 1.333-1.667, the speeds 1.04-1.08, shooters 1.10-1.20; the caps as designed).
+What each lever did, added one at a time at the top of its bound (6 seeds x 40 minutes each bot):
+
+| levers | careful: deaths in 6, hits a run | careless: median first death (Tracks) |
+|---|---|---|
+| the design's values, all levers | 0, 12 | 33.6 min (12-14) |
+| top of bounds: threat, health, Cells only | 0, 14 | none in 40 min |
+| + the Breaks refill nothing | 0, 13 | none |
+| + Regen stretched x1.667 a Track | 0, 11 | 31.7 min (11-12) |
+| + enemy speed x1.08 a Track | 0, 15 | 31.5 min (11-12) |
+| + enemy bullet speed x1.08 a Track | 0, 13 | 30.6 min (11-12) |
+| + volleys x1.2 a Track (every lever at its top) | 1 (36.9 min, Track 13), 13 | 30.2 min (11-12) |
+
+Targets: the careful bot's median first death at minutes 18-30, the careless bot's at 9-16. Only Regen's stretch
+moved the careless bot (from no death to about minute 31, Track 11-12, where Regen has all but stopped); every other
+lever moved it by less than a minute, and the careful bot is hit about 13 times a run whatever the levers do. Nobody
+dies in the first pass. Stopped there as asked; the levers stay at the design's values, which keep every pool inside
+its cap (overflow 0 in all fourteen runs).
+
+- The Moto's densest part with these levers (`--fast-forward 640 --nohits`, Track 5): 0 of 7,188 frames missed,
+  panel P95 1 period, max 20.8 ms, **PASS**; alive 566 / 900, enemy bullets 20 / 276 (they were 9 / 134), in view
+  128 / 543 (`captures\bench\ZY22BXMJG3-bench_play-20261112-164949.json`).
+- `scripts\test.ps1` passes (`raveform_sim_tests` 5,472 checks: no refill at a loop Break, Regen's stretched period,
+  faster enemy bullets, a Track 7 Sentry's larger volley; both soaks 211-213 kbit/s worst second, error 5.1 / 7.0 wu).
+
 ## Play test 1, second pass — 2026-11-12 (the lead's ruling in `39afc70`)
 
 - **Auto Nova** (on by default; `AUTO NOVA  FIRES ONE BEFORE YOUR LAST CELL GOES` under CONTROLS, saved as

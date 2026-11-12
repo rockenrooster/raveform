@@ -191,6 +191,16 @@ constexpr float kCellPickupWu = 30.0f;      // chosen: taken when its ring touch
 // health (the boss's too) by kLoopHealthRamp and stretches the Cell clocks by kLoopCellRamp, compounding (sim/director.h
 // loopRamp). Tuned with the bots within 1.15-1.5 (docs/PROGRESS.md, play test 2). The first pass is untouched.
 constexpr float kLoopThreatRamp = 1.3f, kLoopHealthRamp = 1.25f, kLoopCellRamp = 1.25f;
+// The lead's decision after the first ramp (GAME_DESIGN 8, `2fba23c`): from the loop's first Track the Breaks give back no
+// cell and no Nova; Regen's periods stretch by kLoopRegenStretch a Track; enemies move kLoopEnemySpeedRamp faster a Track
+// (at most kLoopEnemySpeedMax), their bullets kLoopBulletSpeedRamp (at most kLoopBulletSpeedMax, so a pattern can still be
+// read), and every shooter's bullet count rises kLoopShooterRamp a Track (at most kLoopShooterMax, and only while the
+// enemy bullet pool has a quarter free). Each compounding; tuned within a third of the design's step (docs/PROGRESS.md).
+constexpr bool kLoopBreakRefills = false;  // the lead: the loop's Breaks give back no cell and no Nova
+constexpr float kLoopRegenStretch = 1.5f;
+constexpr float kLoopEnemySpeedRamp = 1.06f, kLoopEnemySpeedMax = 1.6f;
+constexpr float kLoopBulletSpeedRamp = 1.06f, kLoopBulletSpeedMax = 1.5f;
+constexpr float kLoopShooterRamp = 1.15f, kLoopShooterMax = 3.0f;
 // The ramp holds a boss's bullet density at most this many times kaleidos.json's counts: the enemy bullet pool (2,048)
 // then holds the naked core's bursts at 174 BPM (about 465 alive at 1x) with room for the other shooters (chosen; TECH_SPEC 7:
 // what multiplies projectiles carries its own cap).

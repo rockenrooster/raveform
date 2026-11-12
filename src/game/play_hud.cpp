@@ -536,11 +536,14 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             const float out = clampf((u - kCardOut) / kCardStreak, 0.0f, 1.0f);
             char small[24];
             std::snprintf(small, sizeof small, "TRACK %u", ph.track);
-            const char* lines[2] = {small, st.trackName};
-            const float caps[2] = {28.0f * s, 110.0f * s}, tubes[2] = {1.2f * s, 4.0f * s};
-            const float nameTop = 0.62f * H;
-            const float tops[2] = {nameTop - caps[0] - 26.0f * s, nameTop};
-            for (u32 l = 0; l < 2; ++l) {
+            // GAME_DESIGN 8 (the loop is where a run ends): the loop's first Track card says so, ENCORE above the name and
+            // NO MORE REFILLS under it, at the size of the TRACK n line.
+            const bool encore = ph.track == sim::kSongs + 1;
+            const char* lines[4] = {small, st.trackName, "ENCORE", "NO MORE REFILLS"};
+            const float caps[4] = {28.0f * s, 110.0f * s, 28.0f * s, 28.0f * s}, tubes[4] = {1.2f * s, 4.0f * s, 1.2f * s, 1.2f * s};
+            const float nameTop = 0.62f * H + (encore ? 40.0f * s : 0.0f);  // (the extra line above stays clear of the ship)
+            const float tops[4] = {nameTop - caps[0] - 26.0f * s, nameTop, nameTop - 2.0f * caps[0] - 2.0f * 26.0f * s, nameTop + caps[1] + 26.0f * s};
+            for (u32 l = 0; l < (encore ? 4u : 2u); ++l) {
                 const char* t = lines[l];
                 const u32 n = static_cast<u32>(std::strlen(t));
                 const float cap = caps[l], x0 = cx - 0.5f * textW(font, cap, t);
@@ -558,7 +561,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
                         const float dx = side * 0.75f * W * out * out * lag;
                         const float k = level * on * (1.0f - out) * (g == 0 ? 1.0f : 0.45f / static_cast<float>(g));
                         if (k <= 0.01f) continue;
-                        if (l == 0)
+                        if (l != 1)
                             font.drawField(d.hud, {x + dx, tops[l]}, cap, tubes[l], col(white, 1.4f * k), col(white, 1.4f * k), col(white, 1.4f * k), one);
                         else
                             font.drawField(d.hud, {x + dx, tops[l]}, cap, tubes[l], col(palette.hue[0], 1.7f * k), col(palette.hue[1], 1.7f * k),
