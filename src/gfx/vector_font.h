@@ -25,6 +25,10 @@ public:
     // Draws with the top-left of the first cap box at `origin`; returns the advance in pixels.
     float draw(CapsuleBatch& batch, Vec2 origin, const TextStyle& style, const char* text) const;
     float measure(const TextStyle& style, const char* text) const;
+    // M3 (HUD, look.md §6): a colour field across the cap height, top -> middle -> baseline (linear
+    // colours with their intensity), each stroke `halfWidth` px. Returns the advance in pixels.
+    float drawField(CapsuleBatch& batch, Vec2 origin, float capHeight, float halfWidth, Vec3 top, Vec3 middle, Vec3 bottom,
+                    const char* text) const;
     u32 glyphCount() const { return glyphCount_; }
     u32 segmentCount() const { return segmentCount_; }
 

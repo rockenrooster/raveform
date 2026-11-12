@@ -66,6 +66,13 @@ struct AppArgs {
     u32 gpuBurn = 0;           // --gpu-burn N: profiling load that keeps the GPU at its highest clock
     u32 mute = 0;              // --mute <names>: MuteBits (analysis pictures)
     u32 cycles = 20;           // lifecycle_test cycles
+    // M3 begin: the game (game/play.h): --scenario play (the default), bench_play, bench_stress
+    bool bot = false;          // --bot: the bot plays (on screen; bench_play and bench_stress always)
+    u64 seed = 1;              // --seed N: the run's random seed
+    float fastForward = 0.0f;  // --fast-forward S: S seconds of the game before the first frame (pictures)
+    char picture[32] = {};     // --picture <name>: a scripted review scene (fire, kill_small, ..., sentry)
+    bool paletteSet = false;   // --palette given (else the game uses its Track's palette)
+    // M3 end
     // M2 audio begin
     AudioArgs audio;           // --band, --track, --sound, ... (audio/audio_args.h)
     // M2 audio end

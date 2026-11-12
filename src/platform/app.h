@@ -23,6 +23,7 @@
 #include "audio/band.h"
 #include "game/audio_scene.h"
 // M2 audio end
+#include "game/play.h"  // M3
 
 struct SDL_Window;
 
@@ -85,8 +86,14 @@ private:
     Palettes palettes_;
     const Palette* palette_ = nullptr;
     GlyphSet glyphs_;
-    enum class Content : u8 { M0, SceneFile, Stage, Sheet, Audio };  // Audio: the M2 audio scenes
+    enum class Content : u8 { M0, SceneFile, Stage, Sheet, Audio, Play };  // Audio: M2's scenes; Play: the game (M3)
     Content content_ = Content::M0;
+    // M3 begin
+    Play play_;
+    bool playBench_ = false;  // bench_play / bench_stress
+    bool playPicture_ = false;
+    void openGamepad(u32 id);
+    // M3 end
     Stage stage_;
     GlyphSheet sheet_;
     TierSettings tier_;
@@ -122,6 +129,7 @@ private:
     };
     Series gpu_[GpuPassTimes::Count];
     Series inView_, bulletsInView_, glyphCount_, sparksLive_, capsuleCount_, crowdGain_, swarmGain_, load_;
+    Series simTickMs_, simEnemies_, simBullets_, simShards_;  // M3: per tick / per frame over the window
     u64 gpuFrameSeen_ = ~0ull;
     float governorMissed_ = 0.0f;  // governor input: share of recent frames that missed a refresh
     bool fourFingerLatch_ = false;

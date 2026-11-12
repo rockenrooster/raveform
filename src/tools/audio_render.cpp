@@ -563,7 +563,11 @@ int calibrate(const Options& opt, const MusicData& music, const SampleBank& bank
 
 }  // namespace
 
+// M3: the simulation's headless runs (src/tools/sim_headless.cpp): --sim determinism | soak | stress.
+int simHeadlessMain(int argc, char** argv);
+
 int main(int argc, char** argv) {
+    if (argc > 1 && std::strcmp(argv[1], "--sim") == 0) return simHeadlessMain(argc, argv);
     Options opt;
     for (int i = 1; i < argc; ++i) {
         const char* a = argv[i];

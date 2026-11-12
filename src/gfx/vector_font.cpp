@@ -109,6 +109,29 @@ float VectorFont::draw(CapsuleBatch& batch, Vec2 origin, const TextStyle& style,
     return x - origin.x;
 }
 
+float VectorFont::drawField(CapsuleBatch& batch, Vec2 origin, float capHeight, float halfWidth, Vec3 top, Vec3 middle,
+                            Vec3 bottom, const char* text) const {
+    const float unit = capHeight / kCapUnits;
+    // y in font units: 6 at the cap (top), 0 at the baseline.
+    const auto field = [&](int y) {
+        const float u = 1.0f - static_cast<float>(y) / kCapUnits;  // 0 top .. 1 baseline
+        return u < 0.5f ? mix(top, middle, u * 2.0f) : mix(middle, bottom, u * 2.0f - 1.0f);
+    };
+    float x = origin.x;
+    for (const char* c = text; *c; ++c) {
+        if (const Glyph* g = lookup(*c)) {
+            for (u32 k = 0; k < g->count; ++k) {
+                const Segment& s = segments_[g->first + k];
+                const Vec2 a{x + s.x0 * unit, origin.y + (kCapUnits - s.y0) * unit};
+                const Vec2 b{x + s.x1 * unit, origin.y + (kCapUnits - s.y1) * unit};
+                batch.line(a, b, halfWidth, field(s.y0), field(s.y1), 0);
+            }
+        }
+        x += kAdvanceUnits * unit;
+    }
+    return x - origin.x;
+}
+
 float VectorFont::measure(const TextStyle& style, const char* text) const {
     return static_cast<float>(std::strlen(text)) * kAdvanceUnits * style.capHeight / kCapUnits;
 }

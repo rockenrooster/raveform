@@ -165,6 +165,33 @@ target_compile_options(raveform_audio PRIVATE -Wall -Wextra -Wno-missing-field-i
 set_target_properties(raveform_audio PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # M2 audio end
 
+# M3 sim begin
+# The simulation (TECH_SPEC 7): world, pools, grid, enemies, spawner, player controller and bot. No SDL,
+# no Vulkan, no audio: the game, the headless runs and the tests link it. design/species.json is embedded
+# like the other design data. Optimised in every configuration, like the band, so a Debug build keeps up.
+add_custom_command(OUTPUT ${RF_GEN}/species.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/species.json -DOUT=${RF_GEN}/species.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/species.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed species.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
+add_library(raveform_sim STATIC
+  src/sim/bot.cpp
+  src/sim/grid.cpp
+  src/sim/player_controller.cpp
+  src/sim/sim_runner.cpp
+  src/sim/species.cpp
+  src/sim/world.cpp
+  src/sim/world_enemies.cpp
+  src/sim/world_spawner.cpp
+  ${RF_GEN}/species.json.inc)
+target_include_directories(raveform_sim PUBLIC ${RF_ROOT}/src ${RF_GEN})
+target_compile_options(raveform_sim PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti> -fno-math-errno)
+target_compile_options(raveform_sim PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror $<$<CONFIG:Debug>:-O2>)
+set_target_properties(raveform_sim PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# M3 sim end
+
 # ---- raveform_core: everything except the entry point ----------------------------------------
 set(RF_CORE_SOURCES
   src/core/alloc_counter.cpp
@@ -229,17 +256,29 @@ target_sources(raveform_core PRIVATE
   src/audio/band.cpp
   src/audio/platform_audio.cpp
   src/game/audio_scene.cpp)
+# M3: the game (the fight of stage A) on the simulation.
+target_link_libraries(raveform_core PUBLIC raveform_sim)
+target_sources(raveform_core PRIVATE
+  src/game/music_clock.cpp
+  src/game/play.cpp
+  src/game/play_hud.cpp
+  src/game/play_view.cpp)
 if(NOT ANDROID)
   # The band without a window: offline renders, the loudness calibration, the unit tests.
   set(RF_HEADLESS_CORE src/core/json_doc.cpp src/core/log.cpp src/core/alloc_counter.cpp)
-  add_executable(raveform_headless src/tools/audio_render.cpp ${RF_HEADLESS_CORE})
-  target_link_libraries(raveform_headless PRIVATE raveform_audio)
+  add_executable(raveform_headless src/tools/audio_render.cpp src/tools/sim_headless.cpp ${RF_HEADLESS_CORE})
+  target_link_libraries(raveform_headless PRIVATE raveform_sim raveform_audio)  # M3: --sim runs
   target_compile_options(raveform_headless PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
   target_link_options(raveform_headless PRIVATE -static)
   add_executable(raveform_tests tests/audio_tests.cpp ${RF_HEADLESS_CORE})
   target_link_libraries(raveform_tests PRIVATE raveform_audio)
   target_compile_options(raveform_tests PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
   target_link_options(raveform_tests PRIVATE -static)
+  # M3: the simulation's unit tests.
+  add_executable(raveform_sim_tests tests/sim_tests.cpp ${RF_HEADLESS_CORE})
+  target_link_libraries(raveform_sim_tests PRIVATE raveform_sim)
+  target_compile_options(raveform_sim_tests PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
+  target_link_options(raveform_sim_tests PRIVATE -static)
 endif()
 # M2 audio end
 

@@ -1,0 +1,373 @@
+// Enemy behaviour per family (GAME_DESIGN 7.2), driven by the species table and the heard musical time.
+// What `a` and `b` hold per family:
+//   drifter  a = wander turn rate for this beat (rad/s)            b = -
+//   hound    a = -                                                b = -
+//   shoal    a = the heading the flock wants (rad)                 b = -
+//   ram      a, b = the committed dash direction
+//   carom    a = speed factor (1 at the start, +gain per bounce)    b = -
+//   sentry   a = -                                                b = the arms' phase (rad)
+// R4: every ranged or dash attack is telegraphed for at least one beat and resolves on a beat.
+
+#include <cmath>
+
+#include "sim/tuning.h"
+#include "sim/world.h"
+
+namespace rf::sim {
+
+using namespace tuning;
+
+i32 World::nearestPlayer(float x, float y) const {
+    i32 best = -1;
+    float bestD = 0.0f;
+    for (u32 p = 0; p < playerCount_; ++p) {
+        const PlayerState& pl = players_[p];
+        if (!pl.alive) continue;
+        const float dx = pl.pos.x - x, dy = pl.pos.y - y;
+        const float d = dx * dx + dy * dy;
+        if (best < 0 || d < bestD) {
+            best = static_cast<i32>(p);
+            bestD = d;
+        }
+    }
+    return best;
+}
+
+bool World::engagedBy(float x, float y) const {
+    for (u32 p = 0; p < playerCount_; ++p) {
+        const PlayerState& pl = players_[p];
+        if (pl.alive && std::fabs(x - pl.pos.x) <= kEngageHalfW && std::fabs(y - pl.pos.y) <= kEngageHalfH) return true;
+    }
+    return false;
+}
+
+void World::landEnemy(u32 i) {
+    // The moment it becomes solid: each family starts its motion.
+    Enemies& e = enemies_;
+    const Species& s = species_->get(e.species[i]);
+    const FamilyData& fd = species_->family(s.family);
+    e.state[i] = kMoving;
+    e.until[i] = m1_;
+    const i32 tp = nearestPlayer(e.x[i], e.y[i]);
+    const Vec2 to = tp >= 0 ? players_[tp].pos - Vec2{e.x[i], e.y[i]} : dirOf(e.heading[i]);
+    const float toward = angleOf(to);
+    switch (s.family) {
+        case Family::Drifter:
+            e.heading[i] = randRange(e.rng[i], 0.0f, kTau);
+            e.a[i] = randRange(e.rng[i], -fd.wanderTurn, fd.wanderTurn);
+            break;
+        case Family::Hound:
+        case Family::Ram:
+        case Family::Sentry:
+            e.heading[i] = toward;
+            e.b[i] = randRange(e.rng[i], 0.0f, kTau);
+            break;
+        case Family::Shoal:
+            e.heading[i] = toward + randRange(e.rng[i], -0.4f, 0.4f);
+            e.a[i] = e.heading[i];
+            break;
+        case Family::Carom: {
+            e.heading[i] = toward + randRange(e.rng[i], -kCaromAimSpread, kCaromAimSpread);
+            e.a[i] = 1.0f;
+            const Vec2 v = dirOf(e.heading[i]) * s.speed;
+            e.vx[i] = v.x;
+            e.vy[i] = v.y;
+            break;
+        }
+        default: break;
+    }
+    e.pheading[i] = e.heading[i];
+}
+
+void World::flock(u32 i, const Species& s, float dt) {
+    // Shoal (GAME_DESIGN 7.2): boids in schools of 12-40 that seek the nearest player. Neighbours are
+    // gathered every other tick (staggered by spawn number); the heading steers toward the wanted one
+    // every tick.
+    Enemies& e = enemies_;
+    const FamilyData& fd = species_->family(Family::Shoal);
+    if (((e.serial[i] + static_cast<u32>(tick_)) & 1u) == 0u) {
+        const float R = fd.flockRadius, R2 = R * R, sep = fd.separation;
+        const float x = e.x[i], y = e.y[i];
+        Vec2 centre{}, align{}, push{};
+        u32 n = 0;
+        grid_.query(x - R, y - R, x + R, y + R, [&](u32 j) {
+            if (j == i || (e.flags[j] & kFlagDead)) return;
+            if (species_->get(e.species[j]).family != Family::Shoal) return;
+            const float dx = e.x[j] - x, dy = e.y[j] - y;
+            const float d2 = dx * dx + dy * dy;
+            if (d2 > R2) return;
+            centre = centre + Vec2{e.x[j], e.y[j]};
+            align = align + Vec2{e.vx[j], e.vy[j]};
+            ++n;
+            if (d2 < sep * sep && d2 > 1e-6f) {
+                const float d = std::sqrt(d2);
+                push = push - Vec2{dx, dy} * ((sep - d) / (sep * d));
+            }
+        });
+        Vec2 want{};
+        const i32 tp = nearestPlayer(x, y);
+        if (tp >= 0) want = normalizeOr(players_[tp].pos - Vec2{x, y}, Vec2{}) * kShoalSeek;
+        if (n) {
+            const Vec2 c = centre * (1.0f / static_cast<float>(n));
+            want = want + normalizeOr(c - Vec2{x, y}, Vec2{}) * kShoalCohesion;
+            want = want + normalizeOr(align, Vec2{}) * kShoalAlignment;
+            want = want + push * kShoalSeparation;
+        }
+        if (lengthSq(want) > 1e-8f) e.a[i] = angleOf(want);
+    }
+    e.heading[i] = turnToward(e.heading[i], e.a[i], kShoalTurn * dt);
+    const Vec2 v = dirOf(e.heading[i]) * s.speed;
+    e.vx[i] = v.x;
+    e.vy[i] = v.y;
+}
+
+void World::updateEnemies(float dt) {
+    Enemies& e = enemies_;
+    threatInView_ = 0.0f;
+    const bool beat = crossed(m0_, m1_, kTicksPerBeat);
+    const double beatTick = std::floor(m1_ / kTicksPerBeat) * kTicksPerBeat;  // the beat crossed (when beat)
+    const float knock = std::exp(-kKnockbackDecay * dt);
+    const PlayerState& p0 = players_[0];
+    const float bulletSpeed = species_->bulletSpeed;
+
+    for (u32 i = 0; i < e.count; ++i) {
+        e.px[i] = e.x[i];
+        e.py[i] = e.y[i];
+        e.pheading[i] = e.heading[i];
+        if (e.flags[i] & kFlagDead) continue;
+        if (e.state[i] == kWarping) {
+            if (m1_ < e.until[i]) continue;
+            landEnemy(i);
+            Event ev;
+            ev.type = EventType::WarpLand;
+            ev.species = e.species[i];
+            ev.x = e.x[i];
+            ev.y = e.y[i];
+            ev.age = tickAgeOf(e.until[i]);
+            emit(ev);
+        }
+        const Species& s = species_->get(e.species[i]);
+        const FamilyData& fd = species_->family(s.family);
+        const float x = e.x[i], y = e.y[i];
+        const i32 tp = nearestPlayer(x, y);
+        const Vec2 target = tp >= 0 ? players_[tp].pos : Vec2{x, y};
+        const Vec2 to = target - Vec2{x, y};
+        const bool engaged = engagedBy(x, y);
+        e.flags[i] = static_cast<u8>(engaged ? (e.flags[i] | kFlagEngaged) : (e.flags[i] & ~kFlagEngaged));
+        if (p0.alive && std::fabs(x - p0.pos.x) <= 800.0f && std::fabs(y - p0.pos.y) <= 360.0f) threatInView_ += s.threat;
+
+        switch (s.family) {
+            case Family::Drifter: {
+                // Wander (a new turn rate each beat), leaning a little toward the nearest player.
+                if (beat) e.a[i] = randRange(e.rng[i], -fd.wanderTurn, fd.wanderTurn);
+                float h = e.heading[i] + e.a[i] * dt;
+                if (tp >= 0) h += clampf(wrapAngle(angleOf(to) - h), -1.0f, 1.0f) * kDrifterHomeTurn * dt;
+                e.heading[i] = h;
+                const Vec2 v = dirOf(h) * s.speed;
+                e.vx[i] = v.x;
+                e.vy[i] = v.y;
+                break;
+            }
+            case Family::Hound: {
+                // Steer straight at the nearest player; a pack keeps a little apart.
+                float h = e.heading[i];
+                if (tp >= 0) h = turnToward(h, angleOf(to), fd.turnRate * dt);
+                e.heading[i] = h;
+                Vec2 v = dirOf(h) * s.speed;
+                const float R = kHoundSeparationWu;
+                Vec2 push{};
+                grid_.query(x - R, y - R, x + R, y + R, [&](u32 j) {
+                    if (j == i || (e.flags[j] & kFlagDead) || e.species[j] != e.species[i]) return;
+                    const float dx = x - e.x[j], dy = y - e.y[j];
+                    const float d2 = dx * dx + dy * dy;
+                    if (d2 >= R * R || d2 < 1e-6f) return;
+                    const float d = std::sqrt(d2);
+                    push = push + Vec2{dx, dy} * ((R - d) / (R * d));
+                });
+                v = v + push * s.speed;
+                e.vx[i] = v.x;
+                e.vy[i] = v.y;
+                if (s.variant == kVariantB) {
+                    // A 3-shot burst on beat 1, after a glint on beat 4 (one beat of telegraph).
+                    if (e.state[i] == kMoving && engaged && tp >= 0) {
+                        forCrossings(m0_, m1_, kTicksPerBeat, [&](double t, i64 k) {
+                            if ((((k % 4) + 4) % 4) != 3 || e.state[i] != kMoving) return;
+                            e.state[i] = kGlint;
+                            e.until[i] = t + kTicksPerBeat;
+                            Event ev;
+                            ev.type = EventType::Telegraph;
+                            ev.species = e.species[i];
+                            ev.x = x;
+                            ev.y = y;
+                            ev.tick = e.until[i];
+                            emit(ev);
+                        });
+                    }
+                    if (e.state[i] == kGlint && m1_ >= e.until[i]) {
+                        const float age = tickAgeOf(e.until[i]);
+                        const float aim = tp >= 0 ? angleOf(to) : h;
+                        for (int k = -1; k <= 1; ++k)
+                            spawnBullet(Vec2{x, y}, dirOf(aim + static_cast<float>(k) * kHoundBurstSpread) * bulletSpeed, age);
+                        e.state[i] = kMoving;
+                        Event ev;
+                        ev.type = EventType::EnemyShot;
+                        ev.species = e.species[i];
+                        ev.x = x;
+                        ev.y = y;
+                        emit(ev);
+                    }
+                }
+                break;
+            }
+            case Family::Shoal: flock(i, s, dt); break;
+            case Family::Ram: {
+                // Telegraph one beat, dash one beat in a straight line, rest two (species.json motion).
+                const float dash = fd.dashSpeed * (fd.speed > 0.0f ? s.speed / fd.speed : 1.0f);
+                switch (e.state[i]) {
+                    case kTelegraph:
+                        e.vx[i] = e.vy[i] = 0.0f;
+                        if (m1_ >= e.until[i]) {
+                            const float age = tickAgeOf(e.until[i]);
+                            e.state[i] = kDash;
+                            e.until[i] += static_cast<double>(fd.dashBeats) * kTicksPerBeat;
+                            e.vx[i] = e.a[i] * dash;
+                            e.vy[i] = e.b[i] * dash;
+                            e.x[i] += e.vx[i] * (age - dt);  // the dash began `age` ago (the motion below adds dt)
+                            e.y[i] += e.vy[i] * (age - dt);
+                        }
+                        break;
+                    case kDash:
+                        e.vx[i] = e.a[i] * dash;
+                        e.vy[i] = e.b[i] * dash;
+                        if (m1_ >= e.until[i]) {
+                            e.state[i] = kRest;
+                            e.until[i] += static_cast<double>(fd.restBeats) * kTicksPerBeat;
+                        }
+                        break;
+                    case kRest:
+                        e.vx[i] *= 0.85f;
+                        e.vy[i] *= 0.85f;
+                        if (m1_ >= e.until[i]) e.state[i] = kMoving;
+                        break;
+                    default: {
+                        float h = e.heading[i];
+                        if (tp >= 0) h = turnToward(h, angleOf(to), 3.0f * dt);
+                        e.heading[i] = h;
+                        const Vec2 v = dirOf(h) * s.speed;
+                        e.vx[i] = v.x;
+                        e.vy[i] = v.y;
+                        if (beat && engaged && tp >= 0 && lengthSq(to) < kRamEngageWu * kRamEngageWu) {
+                            const Vec2 d = normalizeOr(to, dirOf(h));
+                            e.state[i] = kTelegraph;
+                            e.until[i] = beatTick + static_cast<double>(fd.telegraphBeats) * kTicksPerBeat;
+                            e.a[i] = d.x;
+                            e.b[i] = d.y;
+                            e.heading[i] = angleOf(d);
+                            e.vx[i] = e.vy[i] = 0.0f;
+                            Event ev;
+                            ev.type = EventType::Telegraph;
+                            ev.species = e.species[i];
+                            ev.x = x;
+                            ev.y = y;
+                            ev.x2 = d.x;
+                            ev.y2 = d.y;
+                            ev.tick = e.until[i];
+                            emit(ev);
+                        }
+                        break;
+                    }
+                }
+                break;
+            }
+            case Family::Carom: {
+                // Straight lines, reflecting off the walls (below), faster per bounce.
+                const Vec2 d = normalizeOr(Vec2{e.vx[i], e.vy[i]}, dirOf(e.heading[i]));
+                const Vec2 v = d * (s.speed * e.a[i]);
+                e.vx[i] = v.x;
+                e.vy[i] = v.y;
+                e.heading[i] = angleOf(d);
+                break;
+            }
+            case Family::Sentry: {
+                // Stationary once placed; the B variant fires a rotating three-arm pattern every two
+                // sixteenths while a player is near, after a glint of one beat.
+                e.vx[i] = e.vy[i] = 0.0f;
+                if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(to), 2.0f * dt);
+                if (s.variant != kVariantB) break;
+                const auto volley = [&](double t) {
+                    const float turn = static_cast<float>(t / kTicksPerBar) * kSentryTurnsPerBar * kTau;
+                    const float age = tickAgeOf(t);
+                    const u32 arms = fd.patternArms ? fd.patternArms : 3u;
+                    for (u32 k = 0; k < arms; ++k) {
+                        const float a = e.b[i] + turn + kTau * static_cast<float>(k) / static_cast<float>(arms);
+                        spawnBullet(Vec2{x, y}, dirOf(a) * fd.bulletSpeed, age);
+                    }
+                    Event ev;
+                    ev.type = EventType::EnemyShot;
+                    ev.species = e.species[i];
+                    ev.x = x;
+                    ev.y = y;
+                    emit(ev);
+                };
+                if (e.state[i] == kMoving) {
+                    if (engaged && beat) {
+                        e.state[i] = kGlint;
+                        e.until[i] = beatTick + kTicksPerBeat;
+                        Event ev;
+                        ev.type = EventType::Telegraph;
+                        ev.species = e.species[i];
+                        ev.x = x;
+                        ev.y = y;
+                        ev.tick = e.until[i];
+                        emit(ev);
+                    }
+                } else if (e.state[i] == kGlint) {
+                    if (m1_ >= e.until[i]) {
+                        e.state[i] = kFiring;
+                        volley(e.until[i]);
+                    }
+                } else if (e.state[i] == kFiring) {
+                    if (!engaged) {
+                        e.state[i] = kMoving;
+                    } else {
+                        const double every = kTicksPerStep * static_cast<double>(fd.fireEverySteps ? fd.fireEverySteps : 2u);
+                        forCrossings(m0_, m1_, every, [&](double t, i64) { volley(t); });
+                    }
+                }
+                break;
+            }
+            default: break;
+        }
+
+        // Integrate (own motion plus the decaying knockback), then the walls.
+        e.x[i] += (e.vx[i] + e.kx[i]) * dt;
+        e.y[i] += (e.vy[i] + e.ky[i]) * dt;
+        e.kx[i] *= knock;
+        e.ky[i] *= knock;
+        const float r = e.radius[i];
+        const float lx = kArenaHalfW - r, ly = kArenaHalfH - r;
+        const bool hitX = e.x[i] < -lx || e.x[i] > lx;
+        const bool hitY = e.y[i] < -ly || e.y[i] > ly;
+        if (!hitX && !hitY) continue;
+        e.x[i] = clampf(e.x[i], -lx, lx);
+        e.y[i] = clampf(e.y[i], -ly, ly);
+        if (s.family == Family::Drifter) {
+            if (hitX) e.heading[i] = kPi - e.heading[i];
+            if (hitY) e.heading[i] = -e.heading[i];
+        } else if (s.family == Family::Carom) {
+            if (hitX) e.vx[i] = -e.vx[i];
+            if (hitY) e.vy[i] = -e.vy[i];
+            e.a[i] = std::fmin(e.a[i] + fd.speedGainPerBounce, fd.maxSpeedFactor);
+        } else {
+            if (hitX) e.kx[i] = 0.0f;
+            if (hitY) e.ky[i] = 0.0f;
+            if (e.state[i] == kDash) {
+                // A Ram meeting the wall stops its dash (variant C rebounds; not in the slice).
+                e.state[i] = kRest;
+                e.until[i] = std::floor(m1_ / kTicksPerBeat) * kTicksPerBeat + static_cast<double>(fd.restBeats) * kTicksPerBeat;
+            }
+        }
+    }
+}
+
+}  // namespace rf::sim

@@ -84,6 +84,10 @@ bool Band::init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice
         mode = Mode::Conductor;
     } else if (sync) {
         mode = Mode::Metronome;
+    } else if (defaults.game && !defaults.pictures) {
+        // M3: the game drives the band (fire, intensity, effects); stage A holds it in Groove.
+        mode = Mode::Conductor;
+        game_ = true;
     } else if (bench && !defaults.pictures) {
         // Benchmarks measure the frame-rate contract with sound on: the band's fullest arrangement.
         mode = Mode::Conductor;
@@ -124,7 +128,8 @@ bool Band::init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice
     if (!platformAudioInit()) haptics_ = haptics_ && false;
     mode_ = mode;
     active_ = true;
-    sendInitialState(args, bench ? defaults.benchTrack : 0);
+    sendInitialState(args, bench && !game_ ? defaults.benchTrack : 0);
+    if (game_ && !args.section[0]) holdSection(Section::Groove);
     if (full) {
         // The load test, every layer playing: the Drop held (the whole bed), every Riff at level 2, four
         // players firing on the 1/16-triplet grid (Double-Time) with one Split harmony each, and the
@@ -147,7 +152,7 @@ bool Band::init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice
         fullLoad_ = true;
         stressLoad_ = stress;
     }
-    RF_LOG("audio: band %s, track %s, sound %s, sync offset %.0f ms%s, haptics %s", full ? (stress ? "stress (load test)" : "full (load test)") : (mode == Mode::Conductor ? "play" : (mode == Mode::Staged ? "staged" : "metronome")),
+    RF_LOG("audio: band %s, track %s, sound %s, sync offset %.0f ms%s, haptics %s", full ? (stress ? "stress (load test)" : "full (load test)") : (game_ ? "game (Groove held)" : (mode == Mode::Conductor ? "play" : (mode == Mode::Staged ? "staged" : "metronome"))),
            trackName(), variantName(), syncOffsetMs_, syncTouched_ ? "" : " (automatic)", haptics_ ? "on" : "off");
     return true;
 }
@@ -321,14 +326,14 @@ void Band::releaseHeard() {
     view_.events = heard_;
 }
 
-bool Band::fireAt(i64 wallNs) const {
-    bool held = false;
+u8 Band::fireAt(i64 wallNs) const {
+    u8 mode = 0;
     for (u32 i = 0; i < fireCount_; ++i) {
         const FireEdge& e = fireEdges_[(fireHead_ + i) % countOf(fireEdges_)];
         if (e.ns > wallNs) break;
-        held = e.held;
+        mode = e.mode;
     }
-    return held;
+    return mode;
 }
 
 void Band::computeShots(i64 nowNs, i64 displayLeadNs) {
@@ -349,7 +354,9 @@ void Band::computeShots(i64 nowNs, i64 displayLeadNs) {
         if (stepTick <= lastShotTick_) continue;
         const double age = (view_.heardFrame - tempo_.frameAt(stepTick)) / rate_;
         const i64 heardAt = nowNs + displayLeadNs - static_cast<i64>(age * 1e9);
-        if (!fireAt(heardAt - static_cast<i64>(capNs))) continue;
+        const u8 held = fireAt(heardAt - static_cast<i64>(capNs));
+        if (!held) continue;
+        if (held == 2 && ((s * grid % kTicksPerBar) / grid) % 2 != 0) continue;  // M3: half-rate grid (as the lead)
         if (view_.shotCount >= countOf(shots_)) break;
         LeadShot& shot = shots_[view_.shotCount++];
         shot.player = 0;
@@ -471,17 +478,46 @@ void Band::update(i64 displayLeadNs) {
 
 // ---------------------------------------------------------------- mix state
 
-void Band::setFire(bool held) {
-    if (!active_ || held == fire_) return;
-    fire_ = held;
+void Band::setFireMode(u8 mode) {
+    if (mode > 2) mode = 1;
+    if (!active_ || mode == fireMode_) return;
+    fireMode_ = mode;
+    fire_ = mode != 0;
     const u32 cap = countOf(fireEdges_);
     if (fireCount_ == cap) {
         fireHead_ = (fireHead_ + 1) % cap;
         --fireCount_;
     }
-    fireEdges_[(fireHead_ + fireCount_) % cap] = {audioNowNs(), held};
+    fireEdges_[(fireHead_ + fireCount_) % cap] = {audioNowNs(), mode};
     ++fireCount_;
-    post({.type = CmdType::SetFire, .a = 0, .b = static_cast<u8>(held ? 1 : 0)});
+    post({.type = CmdType::SetFire, .a = 0, .b = mode});
+}
+
+// ---------------------------------------------------------------- M3: the game's effect interface
+
+void Band::kill(u8 size, u32 count) {
+    while (count > 0) {
+        const u32 n = count > 255 ? 255 : count;
+        post({.type = CmdType::Kill, .a = size, .b = static_cast<u8>(n)});
+        count -= n;
+    }
+}
+
+void Band::shard() { post({.type = CmdType::Shard, .x = 1.0f}); }
+
+void Band::nova(double blastTick) { post({.type = CmdType::Nova, .when = Timing::AtTick, .x = 1.0f, .tick = blastTick}); }
+
+void Band::warp(double landTick, float pan) {
+    post({.type = CmdType::Warp, .when = Timing::AtTick, .x = 1.0f, .y = pan, .tick = landTick});
+}
+
+void Band::sfxAt(Sfx s, double tick, float gain, float pan) {
+    post({.type = CmdType::Sfx, .when = Timing::AtTick, .a = static_cast<u8>(s), .x = gain, .y = pan, .tick = tick});
+}
+
+void Band::holdSection(Section s) {
+    post({.type = CmdType::SetSection, .a = static_cast<u8>(s)});
+    setHold(true);
 }
 
 void Band::setIntensity(float v) {
@@ -517,7 +553,7 @@ void Band::setMode(Mode m) {
     post({.type = CmdType::SetMode, .a = static_cast<u8>(m), .b = static_cast<u8>(track_), .c = static_cast<u8>(m == Mode::Staged ? 1 : 0)});
     if (m == Mode::Conductor) {
         post({.type = CmdType::SetIntensity, .x = intensity_});
-        if (fire_) post({.type = CmdType::SetFire, .a = 0, .b = 1});
+        if (fire_) post({.type = CmdType::SetFire, .a = 0, .b = fireMode_});
     }
 }
 

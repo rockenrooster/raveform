@@ -71,6 +71,8 @@ struct BandDefaults {
     const char* scenario = "";  // audio_test: the phrase cycle; sync: the metronome; bench_*: the load test
     bool pictures = false;      // --screenshot / --fixed-step: no band unless --band asks for one
     u32 benchTrack = 0;         // bench_*: this Track (1-based; the palette's), 0 = the first
+    bool game = false;          // M3: the game (play, bench_play, bench_stress): conductor mode, held in Groove,
+                                // the game sets fire, intensity and the effects
 };
 
 class Band {
@@ -94,8 +96,12 @@ public:
     const BeatView& view() const { return view_; }
 
     // Mix state (main thread; each change becomes a command to the audio thread).
-    void setFire(bool held);
+    void setFire(bool held) { setFireMode(held ? 1 : 0); }
+    // M3: 0 off, 1 every grid step, 2 every other step (the auto-aim assist's half-rate grid, GAME_DESIGN
+    // 2). The lead plays a note, and computeShots() reports a shot, only on the steps the mode fires.
+    void setFireMode(u8 mode);
     bool fire() const { return fire_; }
+    u8 fireMode() const { return fireMode_; }
     void setIntensity(float v);
     float intensity() const { return intensity_; }
     void nextSection();
@@ -111,6 +117,18 @@ public:
     void toggleRiff(audio::Riff r);
     bool riff(audio::Riff r) const { return riffs_[static_cast<u32>(r)] != 0; }
     void playSfx(audio::Sfx s, float gain = 1.0f);
+    // M3: the game's effect interface (TECH_SPEC 6.3). Kills are aggregated by the engine per 1/32 step;
+    // each Shard plays the next note of its run; the Nova inhales now and blasts on `blastTick` (the
+    // game's beat, song ticks); a warp-in swells into `landTick`; an effect can be placed on a tick.
+    void kill(u8 size, u32 count);
+    void shard();
+    void nova(double blastTick);
+    void warp(double landTick, float pan);
+    void sfxAt(audio::Sfx s, double tick, float gain = 1.0f, float pan = 0.0f);
+    // M3: start a section on the next bar line and hold it (stage A keeps the band in Groove).
+    void holdSection(audio::Section s);
+    bool fullLoad() const { return fullLoad_; }  // --band full / stress: the load test owns the mix
+    bool gameMode() const { return game_; }
     const audio::MusicData& music() const { return *music_; }
     const char* variantName() const;
     const char* trackName() const;
@@ -162,7 +180,7 @@ private:
     void drainEvents();
     void releaseHeard();
     void computeShots(i64 nowNs, i64 displayLeadNs);
-    bool fireAt(i64 wallNs) const;
+    u8 fireAt(i64 wallNs) const;  // the fire mode held at that wall time
     void loadSync();
     void haptic(int kind);
     void sendInitialState(const AudioArgs& args, u32 defaultTrack);
@@ -220,13 +238,15 @@ private:
     // Mix state.
     audio::Mode mode_ = audio::Mode::Silent;
     bool fire_ = false;
+    u8 fireMode_ = 0;
+    bool game_ = false;
     float intensity_ = 0.6f;
     bool hold_ = false;
     u32 variant_ = 0, track_ = 0;
     u8 riffs_[static_cast<u32>(audio::Riff::Count)] = {};
     struct FireEdge {
         i64 ns;
-        bool held;
+        u8 mode;  // 0 off, 1 every step, 2 every other step
     } fireEdges_[64];
     u32 fireHead_ = 0, fireCount_ = 0;
 

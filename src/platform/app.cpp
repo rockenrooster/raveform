@@ -198,10 +198,15 @@ bool App::init() {
     // Pictures (fixed 1/60 s steps) keep the scripted song clock and need no band; benchmarks play the
     // full band on the palette's Track (Reef: Track 3, the stage's 132 BPM).
     const bool pictureRun = args_.fixedStep || args_.screenshot[0];
+    // M3: the game is the default when no scenario (and no scene file) is given.
+    const bool gameScenario = !args_.sceneFile[0] && (!args_.scenario[0] || std::strcmp(args_.scenario, "play") == 0 ||
+                                                      std::strcmp(args_.scenario, "bench_play") == 0 ||
+                                                      std::strcmp(args_.scenario, "bench_stress") == 0);
     BandDefaults bandDefaults;
     bandDefaults.scenario = args_.scenario;
     bandDefaults.pictures = pictureRun;
     bandDefaults.benchTrack = palette_->track;
+    bandDefaults.game = gameScenario;
     if (!band_.init(args_.audio, bandDefaults, &audio_)) return false;
     if (std::strcmp(args_.scenario, "audio_test") == 0 || std::strcmp(args_.scenario, "sync") == 0) {
         audioScene_.init(std::strcmp(args_.scenario, "sync") == 0 ? AudioScene::Kind::Sync : AudioScene::Kind::AudioTest, band_,
@@ -233,8 +238,42 @@ bool App::init() {
     } else if (std::strcmp(args_.scenario, "glyph_sheet") == 0) {
         sheet_.init(look_, palettes_, *palette_, glyphs_, font_, args_.page);
         content_ = Content::Sheet;
+    } else if (gameScenario) {
+        // M3: the fight. Its palette is its Track's (Track 1 First Light: Ultraviolet) unless --palette says.
+        if (!args_.paletteSet) {
+            const u32 track = (band_.active() ? band_.track() : 0u) + 1u;
+            for (u32 i = 0; i < palettes_.count; ++i)
+                if (palettes_.list[i].track == track) palette_ = &palettes_.list[i];
+        }
+        PlayOptions po;
+        po.kind = std::strcmp(args_.scenario, "bench_stress") == 0
+                      ? PlayOptions::Kind::Stress
+                      : (std::strcmp(args_.scenario, "bench_play") == 0 ? PlayOptions::Kind::BenchPlay : PlayOptions::Kind::Play);
+        playBench_ = po.kind != PlayOptions::Kind::Play;
+        playPicture_ = args_.picture[0] != 0;
+        po.bot = args_.bot || playBench_;
+        po.fixedStep = pictureRun;
+        po.seed = args_.seed;
+        po.fastForwardS = args_.fastForward;
+        std::snprintf(po.picture, sizeof po.picture, "%s", args_.picture);
+#if defined(__ANDROID__)
+        // Touch controls in physical sizes (GAME_DESIGN 2): the display scale is Android's density, 1 dp =
+        // 1/160 inch.
+        const float density = SDL_GetWindowDisplayScale(window_);
+        if (density > 0.0f) po.pxPerMm = density * 160.0f / 25.4f;
+#endif
+        if (!play_.init(po, look_, palettes_, *palette_, glyphs_, font_, tier_, &band_)) return false;
+        play_.setReduceFlashing(args_.reduceFlashing);
+        play_.setMute(args_.mute);
+        play_.setStrip(args_.strip);
+        stage_.setReduceFlashing(args_.reduceFlashing);  // the flag's one home (key R, overlay)
+        content_ = Content::Play;
+        if (!playBench_ && !playPicture_) {
+            // Gamepads (GAME_DESIGN 2) for interactive play only; benchmarks keep the subsystem off.
+            if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) RF_WARN("gamepad: %s", SDL_GetError());
+        }
     }
-    const bool benchScenario = std::strcmp(args_.scenario, "bench_idle") == 0 || benchMid || benchEndgame;
+    const bool benchScenario = std::strcmp(args_.scenario, "bench_idle") == 0 || benchMid || benchEndgame || playBench_;
     if (benchScenario) {
         // The run starts once the tier is known (after the first-launch probe, if one runs).
         if (tierProbe_.active) {
@@ -257,13 +296,26 @@ bool App::init() {
         renderer_.pacer().enableStats(true);  // Swappy's display-side histograms (Swappy only)
     } else if (std::strcmp(args_.scenario, "lifecycle_test") == 0) {
         RF_LOG("lifecycle_test: %u cycles of surface release/restore and swapchain rebuilds", args_.cycles);
-    } else if (args_.scenario[0] && content_ != Content::Sheet && content_ != Content::Audio) {  // M2 audio: Audio
-        RF_ERR("unknown scenario '%s' (known: bench_idle, bench_mid, bench_endgame, glyph_sheet, lifecycle_test)",
+    } else if (args_.scenario[0] && content_ != Content::Sheet && content_ != Content::Audio && content_ != Content::Play &&
+               std::strcmp(args_.scenario, "touch_test") != 0) {  // M2 audio: Audio; M3: Play, touch_test (M0's scene)
+        RF_ERR("unknown scenario '%s' (known: play, bench_play, bench_stress, bench_idle, bench_mid, bench_endgame, "
+               "glyph_sheet, lifecycle_test, touch_test, audio_test, sync)",
                args_.scenario);
         return false;
     }
+    if (benchScenario && content_ == Content::Play) {
+        // M3: the simulation's numbers over the window, per tick and per frame.
+        const u32 cap = static_cast<u32>((args_.seconds + 5.0f) * 240.0f) + 1024;
+        Series* sims[] = {&simTickMs_, &simEnemies_, &simBullets_, &simShards_};
+        for (Series* s : sims) {
+            const u32 c = s == &simTickMs_ ? cap * 4 : cap;
+            s->v = static_cast<float*>(std::malloc(sizeof(float) * c));
+            s->cap = s->v ? c : 0;
+        }
+    }
     // Governor v1: on for interactive stages; benchmarks keep the tier fixed (TECH_SPEC 5.4).
-    governorOn_ = content_ == Content::Stage && (args_.governor == 1 || (args_.governor < 0 && !benchScenario));
+    governorOn_ = (content_ == Content::Stage || content_ == Content::Play) &&
+                  (args_.governor == 1 || (args_.governor < 0 && !benchScenario && !pictureRun));
     governor_.reset(tier_.tier, static_cast<float>(renderer_.pacer().targetIntervalNs() * 1e-6));
     if (tierProbe_.active) {
         // First launch on this GPU: measure the endgame stage tier by tier (TECH_SPEC 5.4).
@@ -287,8 +339,10 @@ bool App::init() {
            tier_.render.distortionShift == 0 ? "off" : (tier_.render.distortionShift == 3 ? "1/8" : "1/4"),
            tier_.render.aberration ? "on" : "off", tier_.particleDensity, tier_.glass ? "on" : "off", tier_.killPools,
            governorOn_ ? "on" : "off");
-    if (args_.screenshot[0] && args_.frames == 0) args_.frames = 120;
+    if (args_.screenshot[0] && args_.frames == 0 && !playPicture_) args_.frames = 120;
     overlayOn_ = args_.overlay;
+    // M3: interactive play starts without the overlay (it would cover the score); F1 shows it.
+    if (content_ == Content::Play && !playBench_ && !playPicture_) overlayOn_ = false;
     refreshOverlay(startNs_);
     return true;
 }
@@ -345,6 +399,37 @@ void App::handleEvent(const SDL_Event& e) {
         audioScene_.key(static_cast<int>(e.key.key), e.type == SDL_EVENT_KEY_DOWN))
         return;
     // M2 audio end
+    // M3 begin: the game's keyboard, mouse and gamepads (touch goes through touchDown/Move/Up).
+    if (content_ == Content::Play) {
+        switch (e.type) {
+            case SDL_EVENT_KEY_DOWN:
+            case SDL_EVENT_KEY_UP:
+                if (!e.key.repeat && play_.key(static_cast<int>(e.key.key), e.type == SDL_EVENT_KEY_DOWN)) return;
+                break;
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+                if (e.button.which == SDL_TOUCH_MOUSEID) return;
+                play_.mouseButton(e.button.button, e.type == SDL_EVENT_MOUSE_BUTTON_DOWN, windowToLogical(e.button.x, e.button.y));
+                return;
+            case SDL_EVENT_MOUSE_MOTION:
+                if (e.motion.which != SDL_TOUCH_MOUSEID) play_.mouseMove(windowToLogical(e.motion.x, e.motion.y));
+                return;
+            case SDL_EVENT_GAMEPAD_ADDED: openGamepad(e.gdevice.which); return;
+            case SDL_EVENT_GAMEPAD_REMOVED:
+                if (SDL_Gamepad* pad = SDL_GetGamepadFromID(e.gdevice.which)) SDL_CloseGamepad(pad);
+                play_.padRemoved();
+                return;
+            case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+                play_.padAxis(e.gaxis.axis, static_cast<float>(e.gaxis.value) / 32767.0f);
+                return;
+            case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+            case SDL_EVENT_GAMEPAD_BUTTON_UP:
+                play_.padButton(e.gbutton.button, e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN);
+                return;
+            default: break;
+        }
+    }
+    // M3 end
     switch (e.type) {
         case SDL_EVENT_QUIT:
         case SDL_EVENT_TERMINATING:
@@ -368,6 +453,7 @@ void App::handleEvent(const SDL_Event& e) {
             } else if (e.key.key == SDLK_R) {
                 stage_.setReduceFlashing(!stage_.reduceFlashing());
                 audioScene_.setReduceFlashing(stage_.reduceFlashing());  // M2 audio: the sync screen's ring
+                play_.setReduceFlashing(stage_.reduceFlashing());        // M3
                 RF_LOG("reduce flashing: %s", stage_.reduceFlashing() ? "on" : "off");
                 if (overlayOn_) refreshOverlay(nowNs());
             } else if (e.key.key == SDLK_K && !bench_.active()) {
@@ -450,7 +536,19 @@ u32 App::activeTouches() const {
     return n;
 }
 
+void App::openGamepad(u32 id) {
+    if (SDL_Gamepad* pad = SDL_OpenGamepad(static_cast<SDL_JoystickID>(id))) {
+        RF_LOG("gamepad: %s", SDL_GetGamepadName(pad) ? SDL_GetGamepadName(pad) : "(unnamed)");
+    } else {
+        RF_WARN("gamepad %u: %s", id, SDL_GetError());
+    }
+}
+
 void App::touchDown(u64 id, Vec2 pos) {
+    if (content_ == Content::Play) {  // M3: the sticks and buttons; no gestures, no tone
+        play_.touchDown(id, pos);
+        return;
+    }
     if (content_ == Content::Audio) audioScene_.touchDown(id, pos);  // M2 audio
     for (TouchPoint& t : touches_) {
         if (t.active) continue;
@@ -472,12 +570,20 @@ void App::touchDown(u64 id, Vec2 pos) {
 }
 
 void App::touchMove(u64 id, Vec2 pos) {
+    if (content_ == Content::Play) {  // M3
+        play_.touchMove(id, pos);
+        return;
+    }
     if (content_ == Content::Audio) audioScene_.touchMove(id, pos);  // M2 audio
     for (TouchPoint& t : touches_)
         if (t.active && t.id == id) t.pos = pos;
 }
 
 void App::touchUp(u64 id) {
+    if (content_ == Content::Play) {  // M3
+        play_.touchUp(id);
+        return;
+    }
     if (content_ == Content::Audio) audioScene_.touchUp(id);  // M2 audio
     for (TouchPoint& t : touches_)
         if (t.active && t.id == id) t.active = false;
@@ -602,6 +708,15 @@ void App::frame(u64 loopStartNs) {
             params.ringCount = params.wellCount = 0;
             params.aberration = false;
         }
+    } else if (content_ == Content::Play) {
+        // M3: the fight (game/play.h). It advances on the band's heard clock (or the simulated one).
+        play_.setLayout(w, h, insetMin_, insetMax_);
+        play_.frame(dt);
+        play_.render(draw, params, background_, *variant_, w, h, insetMin_, insetMax_);
+        if (args_.mute & kMuteSparkles) draw.sparkles.clear();
+        if (args_.mute & kMutePools) draw.pools.clear();
+        renderer_.setBackground(background_);
+        if (play_.pictureDone()) quit_ = true;
     } else if (content_ == Content::Sheet) {
         sheet_.render(draw, params, background_, w, h);
         renderer_.setBackground(background_);
@@ -640,7 +755,8 @@ void App::frame(u64 loopStartNs) {
     }
 
     const u64 firstShot = args_.frames > args_.strip ? args_.frames - (args_.strip ? args_.strip - 1 : 0) : 1;
-    const bool capture = screenshotRequested_ || (args_.screenshot[0] && args_.frames && frames_ + 1 >= firstShot);
+    bool capture = screenshotRequested_ || (args_.screenshot[0] && args_.frames && frames_ + 1 >= firstShot);
+    if (content_ == Content::Play && playPicture_) capture = screenshotRequested_ || (args_.screenshot[0] && play_.captureNow());  // M3
     renderer_.endFrame(draw, params, capture);
     lastCapsules_ = renderer_.lastCapsuleCount();
     afterPresent(loopStartNs, nowNs(), capture);
@@ -677,6 +793,7 @@ void App::nextPalette() {
     palette_ = &palettes_.list[i];
     stage_.setPalette(*palette_);
     sheet_.setPalette(*palette_);
+    if (content_ == Content::Play) play_.setPalette(*palette_);  // M3
     RF_LOG("palette: %s", palette_->id);
     if (overlayOn_) refreshOverlay(nowNs());
 }
@@ -686,6 +803,7 @@ void App::applyTier(Tier t) {
     applyCuts(tier_, args_.cuts);
     renderer_.setTier(tier_.render);
     if (content_ == Content::Stage) stage_.setTier(tier_);
+    if (content_ == Content::Play) play_.setTier(tier_);  // M3
     RF_LOG("tier: %s", tier_.name);
     if (overlayOn_) refreshOverlay(nowNs());
 }
@@ -787,12 +905,22 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
             char name[64];
             std::snprintf(name, sizeof name, "raveform_%llu.png", static_cast<unsigned long long>(frames_));
             resolveOutputPath(name, path, sizeof path);
+        } else if (content_ == Content::Play && playPicture_) {
+            captureName(path, sizeof path, play_.captureIndex());  // M3: the scripted strip's frame
         } else {
             const u64 firstShot = args_.frames > args_.strip ? args_.frames - (args_.strip ? args_.strip - 1 : 0) : 1;
             captureName(path, sizeof path, static_cast<u32>(frames_ >= firstShot ? frames_ - firstShot : 0));
         }
         if (!renderer_.saveCapture(path) && !screenshotRequested_) exitCode_ = 5;
         screenshotRequested_ = false;
+        if (content_ == Content::Play) {  // M3: what the picture holds
+            const Play::Stats& ps = play_.stats();
+            const ViewStats& vs = play_.viewStats();
+            RF_LOG("play: picture %s: tick %llu, %u enemies (%u in view), %u enemy bullets (%u in view), %u Shards, %u shots, "
+                   "%u kills, score %llu, Chain %u, load %.0f, crowd gain %.3f, zoom %.3f",
+                   path, static_cast<unsigned long long>(ps.ticks), ps.enemies, vs.enemiesInView, ps.bullets, vs.bulletsInView,
+                   ps.shards, ps.shots, ps.kills, static_cast<unsigned long long>(ps.score), ps.chain, vs.load, vs.crowdGain, vs.zoom);
+        }
         if (content_ == Content::Stage) {  // what the picture holds (outside any measurement that counts)
             const StageStats& st = stage_.stats();
             RF_LOG("stage: song %.3f s, %u enemies in view (%u slots), %u enemy bullets in view (%u alive), %u Shards, "
@@ -825,6 +953,21 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
                 crowdGain_.add(st.crowdGain);
                 swarmGain_.add(st.swarmGain);
                 load_.add(st.load);
+            } else if (content_ == Content::Play) {  // M3
+                const Play::Stats& ps = play_.stats();
+                const ViewStats& vs = play_.viewStats();
+                inView_.add(static_cast<float>(vs.enemiesInView));
+                bulletsInView_.add(static_cast<float>(vs.bulletsInView));
+                glyphCount_.add(static_cast<float>(vs.glyphs));
+                sparksLive_.add(static_cast<float>(renderer_.liveParticles()));
+                capsuleCount_.add(static_cast<float>(lastCapsules_));
+                crowdGain_.add(vs.crowdGain);
+                swarmGain_.add(vs.swarmGain);
+                load_.add(vs.load);
+                for (u32 k = 0; k < ps.ticksLastFrame && k < countOf(ps.tickMs); ++k) simTickMs_.add(ps.tickMs[k]);
+                simEnemies_.add(static_cast<float>(ps.enemies));
+                simBullets_.add(static_cast<float>(ps.bullets));
+                simShards_.add(static_cast<float>(ps.shards));
             }
         }
         FramePacer& pacer = renderer_.pacer();
@@ -872,6 +1015,7 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
         const Tier before = governor_.tier();
         const bool changed = governor_.update(intervalMs * 0.001f, governorMissed_, gt.valid ? gt.ms[GpuPassTimes::Total] : 0.0f, 0);
         stage_.setDensity(governor_.density());
+        play_.setDensity(governor_.density());  // M3
         if (changed && governor_.tier() != before) applyTier(governor_.tier());
     }
     if (std::strcmp(args_.scenario, "lifecycle_test") == 0) stepLifecycleTest();
@@ -918,7 +1062,7 @@ void App::refreshOverlay(u64 nowNs) {
     const float target = static_cast<float>(p.targetIntervalNs() * 1e-6);
 
     overlay_.clear();
-    overlay_.addLine(kTitle, "RAVEFORM M1  %s BUILD  FRAME %llu", RF_BUILD_NAME, static_cast<unsigned long long>(frames_));
+    overlay_.addLine(kTitle, "RAVEFORM M3  %s BUILD  FRAME %llu", RF_BUILD_NAME, static_cast<unsigned long long>(frames_));
     {
         const GpuPassTimes& gt = renderer_.gpuTimes();
         // The stroke font has capitals only.
@@ -944,6 +1088,14 @@ void App::refreshOverlay(u64 nowNs) {
             overlay_.addLine(kText, "ENEMIES %u IN VIEW  BULLETS %u  GLYPHS %u  SPARKS %u  SHARDS %u", st.enemiesInView,
                              st.bulletsInView, st.glyphInstances, renderer_.liveParticles(), st.shards);
             overlay_.addLine(kText, "LIGHT BUDGET: LOAD %.0f  CROWD %.2f  SWARM %.2f", st.load, st.crowdGain, st.swarmGain);
+        } else if (content_ == Content::Play) {  // M3
+            const Play::Stats& ps = play_.stats();
+            const ViewStats& vs = play_.viewStats();
+            overlay_.addLine(kText, "SIM TICK %.2f MS  ENEMIES %u (%u IN VIEW)  BULLETS %u (%u)  SHARDS %u  SHOTS %u",
+                             ps.ticksLastFrame ? ps.tickMs[0] : 0.0f, ps.enemies, vs.enemiesInView, ps.bullets, vs.bulletsInView,
+                             ps.shards, ps.shots);
+            overlay_.addLine(kText, "KILLS %u  DEATHS %u  CHAIN %u  LOAD %.0f  CROWD %.2f  ZOOM %.2f", ps.kills, ps.deaths, ps.chain,
+                             vs.load, vs.crowdGain, vs.zoom);
         }
     }
     // Contract (PLAN 5, changed to P95 on 2026-11-10): warn when the P95 interval is a missed vsync,
@@ -1070,6 +1222,7 @@ void App::reportBench() {
     for (u32 k = 0; k < GpuPassTimes::Count; ++k) gpu[k] = pct(gpu_[k]);
     const Pct inView = pct(inView_), bullets = pct(bulletsInView_), glyphs = pct(glyphCount_), sparks = pct(sparksLive_),
               capsules = pct(capsuleCount_), crowd = pct(crowdGain_), swarm = pct(swarmGain_), load = pct(load_);
+    const Pct simTick = pct(simTickMs_), simEnemies = pct(simEnemies_), simBullets = pct(simBullets_), simShards = pct(simShards_);
     const char* const passNames[GpuPassTimes::Count] = {"scene",      "pools",     "background", "bloom", "afterglow",
                                                         "distortion", "composite", "wait",       "total"};
 
@@ -1181,10 +1334,43 @@ void App::reportBench() {
             };
             gain("crowd_gain", crowd);
             gain("swarm_gain", swarm);
-            j.integer("kills", stage_.stats().kills);
-            j.integer("drops", stage_.stats().drops);
-            j.integer("boss_breaks", stage_.stats().bossBreaks);
-            j.integer("enemy_slots", stage_.stats().enemies);
+            if (content_ == Content::Play) {
+                j.integer("kills", play_.stats().kills);
+            } else {
+                j.integer("kills", stage_.stats().kills);
+                j.integer("drops", stage_.stats().drops);
+                j.integer("boss_breaks", stage_.stats().bossBreaks);
+                j.integer("enemy_slots", stage_.stats().enemies);
+            }
+            j.endObject();
+        }
+        if (content_ == Content::Play && simTickMs_.count) {
+            // M3: the simulation over the window. tick_ms per 60 Hz tick (main thread wall time); entity
+            // counts per frame [mean, max] (alive in the pools, not only in view).
+            const Play::Stats& ps = play_.stats();
+            j.beginObject("sim");
+            j.integer("ticks", simTickMs_.count);
+            j.beginArray("tick_ms");
+            j.num(nullptr, simTick.p50, 3);
+            j.num(nullptr, simTick.p95, 3);
+            j.num(nullptr, simTick.max, 3);
+            j.endArray();
+            const auto pair = [&j](const char* key, const Pct& p) {
+                j.beginArray(key);
+                j.num(nullptr, p.mean, 0);
+                j.num(nullptr, p.max, 0);
+                j.endArray();
+            };
+            pair("enemies", simEnemies);
+            pair("enemy_bullets", simBullets);
+            pair("shards", simShards);
+            j.integer("kills", ps.kills);
+            j.integer("deaths", ps.deaths);
+            j.integer("restarts", ps.restarts);
+            j.integer("score", static_cast<i64>(ps.score));
+            j.integer("best_chain", ps.bestChain);
+            j.integer("pool_overflow", ps.overflow);
+            j.boolean("finite", play_.world().finite());
             j.endObject();
         }
         j.boolean("overlay", overlayOn_);

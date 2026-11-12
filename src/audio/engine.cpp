@@ -157,7 +157,7 @@ struct Engine::Pending {
 };
 
 struct Engine::Player {
-    bool fire = false;
+    u8 fire = 0;  // 0 off, 1 every grid step, 2 every other step (M3: the auto-aim assist's half-rate grid)
     Timbre timbre = Timbre::P1Saw;
     u8 riff[static_cast<u32>(Riff::Count)] = {};
     u8 split = 0, doubleTime = 0, pierce = 0, overcharge = 0, crit = 0;
@@ -346,7 +346,7 @@ void Engine::applyCommand(const Command& c) {
             formSet_ = true;
             break;
         case CmdType::SetFire:
-            if (p) p->fire = c.b != 0;
+            if (p) p->fire = c.b > 2 ? 1 : c.b;
             break;
         case CmdType::SetTimbre:
             if (p && c.b < static_cast<u8>(Timbre::Count)) p->timbre = static_cast<Timbre>(c.b);
@@ -420,6 +420,9 @@ void Engine::applyCommand(const Command& c) {
             const double now = tempo_.tickAt(static_cast<double>(frame_));
             double beat = std::ceil(now / kPpq) * kPpq;
             if (beat - now < 6.0) beat += kPpq;  // too close: the following beat
+            // M3: the game names the beat (the same rule from heard time plus the output latency, so the
+            // blast it draws and the one heard coincide); used while it is still six ticks ahead.
+            if (c.when == Timing::AtTick && c.tick - now >= 6.0) beat = c.tick;
             const u32 steps = static_cast<u32>(std::lround((beat - now) / 12.0));
             const i32 id = bank_->inhale(track_, steps);
             playSample(id, Bus::Sfx, frame_, sfxLevel(Sfx::NovaInhale) * c.x, 0.0f);
@@ -1364,6 +1367,7 @@ void Engine::leadStep(i64 tick, i64 inBar) {
         if (pl.fire) {
             if (inBar % grid != 0 || (p.leadStopsHalf && inBar >= kTicksPerBar / 2)) continue;
             const u32 k = static_cast<u32>(inBar / grid);
+            if (pl.fire == 2 && (k & 1u) != 0) continue;  // M3: the assist fires on every other step
             const u8 note = p.chord->arp[k % 16];
             const float accent = inBar % kPpq == 0 ? r.accentBeat : (inBar % (kPpq / 2) == 0 ? r.accentEighth : r.accentOther);
             const float pan = r.panDepth * std::sin(k * r.panRate + static_cast<float>(p.index));

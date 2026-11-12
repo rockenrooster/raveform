@@ -122,7 +122,23 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             usedNext = true;
         } else if (is("--palette") && next) {
             ok = copyString(a.palette, sizeof a.palette, next);
+            a.paletteSet = true;
             usedNext = true;
+        // M3 begin
+        } else if (is("--bot")) {
+            a.bot = true;
+        } else if (is("--seed") && next) {
+            u32 s = 0;
+            ok = parseUint(next, s);
+            a.seed = s;
+            usedNext = true;
+        } else if (is("--fast-forward") && next) {
+            ok = parseFloat(next, a.fastForward) && a.fastForward >= 0.0f && a.fastForward <= 3600.0f;
+            usedNext = true;
+        } else if (is("--picture") && next) {
+            ok = copyString(a.picture, sizeof a.picture, next);
+            usedNext = true;
+        // M3 end
         } else if (is("--strip") && next) {
             ok = parseUint(next, a.strip) && a.strip <= 64;
             usedNext = true;
@@ -178,11 +194,13 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
 void logArgs(const AppArgs& a) {
     RF_LOG("args: scenario='%s' seconds=%.1f warmup=%.1f frames=%u screenshot='%s' res=%dx%d "
            "validation=%d tone=%d swappy=%d fps=%.1f affinity=%s overlay=%d cycles=%u scene='%s' still=%d bloom=%d "
-           "look=%s reduce_flashing=%d tier=%s cuts=%u palette=%s strip=%u page=%u governor=%d fixed_step=%d mute=0x%x",
+           "look=%s reduce_flashing=%d tier=%s cuts=%u palette=%s strip=%u page=%u governor=%d fixed_step=%d mute=0x%x "
+           "bot=%d seed=%llu fast_forward=%.1f picture='%s'",
            a.scenario, a.seconds, a.warmupSeconds, a.frames, a.screenshot, a.width, a.height, a.validation,
            a.tone ? 1 : 0, a.swappy ? 1 : 0, a.fps, a.fastCores ? "big" : "all", a.overlay ? 1 : 0, a.cycles,
            a.sceneFile, a.still ? 1 : 0, a.bloom ? 1 : 0, a.look, a.reduceFlashing ? 1 : 0,
-           a.tier[0] ? a.tier : "(default)", a.cuts, a.palette, a.strip, a.page, a.governor, a.fixedStep ? 1 : 0, a.mute);
+           a.tier[0] ? a.tier : "(default)", a.cuts, a.palette, a.strip, a.page, a.governor, a.fixedStep ? 1 : 0, a.mute,
+           a.bot ? 1 : 0, static_cast<unsigned long long>(a.seed), a.fastForward, a.picture);
 }
 
 }  // namespace rf

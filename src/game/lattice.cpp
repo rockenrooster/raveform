@@ -212,13 +212,20 @@ u32 Lattice::draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle
     const auto outside = [&](Vec2 p) {
         return p.x < -pad || p.y < -pad || p.x > view.widthPx + pad || p.y > view.heightPx + pad;
     };
+    // M3: inside the arena only (rest positions), when bounded.
+    const auto inArena = [&](int i, int j) {
+        if (!view.bounded) return true;
+        const float x = static_cast<float>(i) * spacing_, y = static_cast<float>(j) * spacing_;
+        return x >= view.boundsMin.x && x <= view.boundsMax.x && y >= view.boundsMin.y && y <= view.boundsMax.y;
+    };
     u32 n = 0;
     for (int j = j0_; j < j0_ + rows_; ++j) {
         for (int i = i0_; i < i0_ + cols_; ++i) {
             const u32 s = slot(i, j);
             const Vec2 a = px_[s];
             const bool aOut = outside(a);
-            if (i + 1 < i0_ + cols_) {
+            if (!inArena(i, j)) continue;
+            if (i + 1 < i0_ + cols_ && inArena(i + 1, j)) {
                 const u32 t = slot(i + 1, j);
                 if (!(aOut && outside(px_[t]))) {
                     const u32 flags = ((flat_[s] & 1u) ? kFlatStart : 0u) | ((flat_[t] & 1u) ? kFlatEnd : 0u);
@@ -226,7 +233,7 @@ u32 Lattice::draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle
                     ++n;
                 }
             }
-            if (j + 1 < j0_ + rows_) {
+            if (j + 1 < j0_ + rows_ && inArena(i, j + 1)) {
                 const u32 t = slot(i, j + 1);
                 if (!(aOut && outside(px_[t]))) {
                     const u32 flags = ((flat_[s] & 2u) ? kFlatStart : 0u) | ((flat_[t] & 2u) ? kFlatEnd : 0u);

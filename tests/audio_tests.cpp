@@ -327,6 +327,51 @@ void testLeadFollowsFire() {
     freeCapture(c);
 }
 
+// M3: the auto-aim assist's half-rate grid (SetFire b = 2): a note on every other step, on the even ones
+// (the same steps the game's computeShots and the sim fire on), and the Nova blast on the game's beat.
+void testLeadHalfRateAndNovaTick() {
+    Engine e;
+    CHECK(e.init(*g_music, *g_bank, kRate));
+    e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
+    e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 0.0f));
+    Capture c;
+    const u64 bar = 2 * kRate;  // 120 BPM
+    c.out = static_cast<float*>(std::calloc(bar * 3 * 2, sizeof(float)));
+    c.events = static_cast<BeatEvent*>(std::calloc(20000, sizeof(BeatEvent)));
+    const auto renderTo = [&](u64 from, u64 to) {
+        for (u64 f = from; f < to; f += 64) {
+            e.render(c.out + f * 2, 64, 2);
+            BeatEvent ev;
+            while (e.popEvent(ev)) c.events[c.eventCount++] = ev;
+        }
+    };
+    renderTo(0, bar / 2);
+    e.post(cmd(CmdType::SetFire, 0, 2));
+    // A Nova pressed now (tick ~96) asking for the blast on beat 7 (tick 672), a beat later than the
+    // engine's own next-beat rule would pick.
+    Command nova = cmd(CmdType::Nova);
+    nova.when = Timing::AtTick;
+    nova.tick = 672.0;
+    nova.x = 1.0f;
+    e.post(nova);
+    renderTo(bar / 2, bar * 3);
+    u32 notes = 0, odd = 0;
+    double blastTick = -1.0;
+    for (u32 i = 0; i < c.eventCount; ++i) {
+        const BeatEvent& ev = c.events[i];
+        if (ev.kind == BeatKind::Sfx && ev.a == static_cast<u8>(Sfx::NovaBlast)) blastTick = ev.tick;
+        if (ev.kind != BeatKind::Lead) continue;
+        const u32 b = static_cast<u32>(ev.tick / 384.0);
+        if (b != 1 && b != 2) continue;
+        ++notes;
+        if (static_cast<u32>(std::fmod(ev.tick, 384.0) / 24.0) % 2 != 0) ++odd;
+    }
+    CHECK_MSG(notes == 16, "bars 1-2 at half rate: %u notes", notes);
+    CHECK_MSG(odd == 0, "%u notes on odd steps", odd);
+    CHECK_MSG(blastTick == 672.0, "Nova blast at tick %.1f", blastTick);
+    freeCapture(c);
+}
+
 // A sound variant takes hold on the next bar line.
 void testVariantOnBarLine() {
     Engine e;
@@ -493,6 +538,7 @@ int main() {
         {"staged: burst independence, grid, no allocation", testStagedBurstIndependence},
         {"conductor: grid through the Build dip", testConductorGrid},
         {"lead follows fire", testLeadFollowsFire},
+        {"lead at half rate, Nova on the game's beat (M3)", testLeadHalfRateAndNovaTick},
         {"variant on the bar line", testVariantOnBarLine},
         {"track change through the Break", testTrackChange},
         {"no allocations in any mode", testNoAllocations},

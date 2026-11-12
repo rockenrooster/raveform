@@ -166,6 +166,9 @@ bool loadLook(Look& out) {
     out.aberrationSnareRefPx = r.num("beat.aberrationSnareRefPx");
     out.dropBurstBloom = r.num("beat.dropBurst.bloom");
     out.dropBurstDecayMs = r.num("beat.dropBurst.decayMs");
+    out.novaPumpBloom = r.num("beat.novaPump.bloom");  // M3: the Nova's bloom pump (look.md §5, §7)
+    out.novaPumpMs = r.num("beat.novaPump.ms");
+    out.novaPumpReduced = r.num("beat.novaPump.reducedFlashing");
     out.reduceFlashingScale = r.num("beat.reduceFlashingScale");
     out.latticeRippleRefPx = r.num("beat.latticeKickRippleRefPx");
     out.latticeRippleSpeedWu = r.num("beat.latticeKickRippleSpeedWu");

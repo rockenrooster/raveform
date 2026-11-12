@@ -90,6 +90,7 @@ struct Look {
     float kickDecayMs = 0.0f, snareDecayMs = 0.0f, hatDecayMs = 0.0f;
     float exposureKick = 0.0f, bloomKick = 0.0f, zoomKick = 0.0f, aberrationSnareRefPx = 0.0f;
     float dropBurstBloom = 0.0f, dropBurstDecayMs = 0.0f;
+    float novaPumpBloom = 0.0f, novaPumpMs = 0.0f, novaPumpReduced = 0.0f;  // M3
     float reduceFlashingScale = 0.5f;
     float latticeRippleRefPx = 0.0f, latticeRippleSpeedWu = 0.0f, latticeHatShimmer = 0.0f;
     float backgroundBass = 0.0f, backgroundHueDriftDegrees = 0.0f;

@@ -34,6 +34,9 @@ struct LatticeView {
         float radiusWu, amplitudeWu, widthWu;
     } ripples[4];
     u32 rippleCount = 0;
+    // M3: the arena (GAME_DESIGN 9): lines whose rest nodes lie outside these world bounds are not drawn.
+    bool bounded = false;
+    Vec2 boundsMin, boundsMax;
 };
 
 class Lattice {
