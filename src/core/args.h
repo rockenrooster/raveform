@@ -72,6 +72,7 @@ struct AppArgs {
     float recklessAfter = 0;   // --reckless-after S: with --autoplay, the bot turns careless after S s of a run (tests the loop)
     u64 seed = 1;              // --seed N: the run's random seed
     float fastForward = 0.0f;  // --fast-forward S: S seconds of the game before the first frame (pictures)
+    bool noHits = false;       // --nohits: hits cost nothing (a measured run deep in the game, e.g. Track 3; C2)
     char picture[32] = {};     // --picture <name>: a scripted review scene (fire, kill_small, ..., sentry)
     bool paletteSet = false;   // --palette given (else the game uses its Track's palette)
     // M3 end

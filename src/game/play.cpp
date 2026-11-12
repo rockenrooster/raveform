@@ -74,7 +74,7 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
     if (opt.kind == PlayOptions::Kind::Stress) mode = Spawner::Mode::Stress;
     if (picture) mode = Spawner::Mode::Off;
     world_->spawner().mode = mode;
-    world_->rules().godMode = opt.kind == PlayOptions::Kind::Stress;
+    world_->rules().godMode = opt.kind == PlayOptions::Kind::Stress || opt.noHits;
     world_->rules().novas = opt.kind != PlayOptions::Kind::Stress;
     world_->resetRun(opt.seed, 0.0, 1);
     controller_.reset(world_->player(0).pos);

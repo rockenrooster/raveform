@@ -279,6 +279,7 @@ bool App::init() {
         po.fixedStep = pictureRun;
         po.seed = args_.seed;
         po.fastForwardS = args_.fastForward;
+        po.noHits = args_.noHits;
         std::snprintf(po.picture, sizeof po.picture, "%s", args_.picture);
 #if defined(__ANDROID__)
         // Touch controls in physical sizes (GAME_DESIGN 2): the display scale is Android's density, 1 dp =

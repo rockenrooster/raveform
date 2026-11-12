@@ -137,6 +137,8 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             ok = parseUint(next, s);
             a.seed = s;
             usedNext = true;
+        } else if (is("--nohits")) {
+            a.noHits = true;
         } else if (is("--fast-forward") && next) {
             ok = parseFloat(next, a.fastForward) && a.fastForward >= 0.0f && a.fastForward <= 3600.0f;
             usedNext = true;

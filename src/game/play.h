@@ -36,6 +36,7 @@ struct PlayOptions {
     bool fixedStep = false;     // pictures: exactly one tick per frame, the simulated clock
     u64 seed = 1;
     float fastForwardS = 0.0f;  // --fast-forward S: run S seconds of the game before the first frame
+    bool noHits = false;        // C2: hits cost nothing (--nohits: a measured run deep in the game)
     char picture[32] = {};      // --picture <name>: a scripted scene for the review strips
     float pxPerMm = 0.0f;       // touch control sizes (0: scale with the screen height)
     bool autoplay = false;      // --autoplay: the screens as in play, the bot playing each run (taps start and retry)
