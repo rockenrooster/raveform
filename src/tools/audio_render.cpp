@@ -43,6 +43,7 @@ struct Options {
     bool pcm16 = false;
     bool randomBursts = false;
     bool raw = false;
+    bool profile = false;
     u32 burst = 192;
     float seconds = 0.0f;
     u64 seed = 1;
@@ -249,12 +250,13 @@ void mockStep(Render& r, const MusicData& music, u32 frameIndex, Random& rng) {
     const double bar = t / barS;
     const bool build = bar >= 8.0 && bar < 12.0, drop = bar >= 12.0 && bar < 20.0, brk = bar >= 20.0 && bar < 24.0;
     if (!brk && !(bar >= 11.5 && bar < 12.0)) {
+        // sfxproto's chances per 1/32 step (small) and per eighth (medium), as chances per 1/60 s frame.
         const double pSmall = drop ? 0.55 : (build ? 0.35 : 0.22);
-        if (rng.uniform() < pSmall * 32.0 * barS / 60.0) {
+        if (rng.uniform() < pSmall * 32.0 / (60.0 * barS)) {
             const u32 count = 1 + static_cast<u32>(-std::log(1.0 - rng.uniform()) * (drop ? 3.5 : (build ? 1.6 : 0.8)));
             e.post(cmd(CmdType::Kill, 0, static_cast<u8>(count > 255 ? 255 : count)));
         }
-        if (rng.uniform() < (drop ? 0.45 : 0.18) * 8.0 * barS / 60.0) {
+        if (rng.uniform() < (drop ? 0.45 : 0.18) * 8.0 / (60.0 * barS)) {
             e.post(cmd(CmdType::Kill, 1, 1));
             const u32 run = 3 + rng.below(6);
             for (u32 k = 0; k < run; ++k) e.post(cmd(CmdType::Shard, 0, 0, 0, 1.0f));
@@ -301,7 +303,7 @@ void fullStep(Render& r, u32 frameIndex) {
         e.post(cmd(CmdType::SetTimbre, p, p));
         for (u8 k = 0; k < 3; ++k) e.post(cmd(CmdType::SetRiff, p, k, 2));
         Command m = cmd(CmdType::SetMods, p);
-        m.mods[0] = 2;  // split
+        m.mods[0] = 1;  // split (the device load test --band full)
         m.mods[1] = 1;  // double time
         e.post(m);
     }
@@ -370,6 +372,8 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
         engine.setStemTap(stemTap, &stems);
     }
     engine.setRawOutput(opt.raw);
+    EngineProfile profile;
+    if (opt.profile) engine.setProfile(&profile);
     if (v != music.defaultVariant) engine.post(cmd(CmdType::SetVariant, static_cast<u8>(v)));
     const auto t0 = std::chrono::steady_clock::now();
     const u64 allocsBefore = heapAllocCountThisThread();
@@ -428,6 +432,13 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
         std::printf("wrote %s\n", opt.out);
     }
     if (opt.meta) writeMeta(opt.meta, music, t, v, opt.render, r.frames, opt);
+    if (opt.profile) {
+        u64 total = 0;
+        for (u64 ns : profile.ns) total += ns;
+        std::printf("profile (%% of the engine's block time, %.1f ms per second of audio):", total * 1e-6 / seconds);
+        for (u32 s = 0; s < EngineProfile::Count; ++s) std::printf("  %s %.1f", EngineProfile::name(s), total ? 100.0 * profile.ns[s] / total : 0.0);
+        std::printf("\n");
+    }
     std::free(r.out);
     return 0;
 }
@@ -513,6 +524,7 @@ int main(int argc, char** argv) {
         else if (eq(a, "--check")) opt.check = true;
         else if (eq(a, "--pcm16")) opt.pcm16 = true;
         else if (eq(a, "--raw")) opt.raw = true;
+        else if (eq(a, "--profile")) opt.profile = true;
         else if (eq(a, "--random-bursts")) opt.randomBursts = true;
         else if (eq(a, "--burst") && next) {
             opt.burst = static_cast<u32>(std::atoi(next));

@@ -109,6 +109,13 @@ struct EngineStats {
     std::atomic<float> masterPeak{0.0f};  // since the last read-and-reset by the reader
 };
 
+// Offline profiling: nanoseconds spent per stage of renderBlock (set with Engine::setProfile).
+struct EngineProfile {
+    enum Stage : u32 { Lead, Bass, Stab, Pad, Samples, BusFx, Delay, Reverb, SfxReverb, Master, Count };
+    u64 ns[Count] = {};
+    static const char* name(u32 s);
+};
+
 // Offline only: called after each block with every bus (after its effects) and the reverb return, all
 // before the master stage, so stems can be compared with the prototype's.
 using StemTapFn = void (*)(void* user, const float* const* busL, const float* const* busR, const float* wetL,
@@ -140,6 +147,7 @@ public:
     const MusicData& music() const { return *music_; }
     // Offline calibration only: the master without the output gain and the limiter.
     void setRawOutput(bool raw) { rawOutput_ = raw; }
+    void setProfile(EngineProfile* p) { profile_ = p; }
     void setStemTap(StemTapFn fn, void* user) {
         stemFn_ = fn;
         stemUser_ = user;
@@ -192,6 +200,8 @@ private:
 
     // Rendering.
     void renderBlock(float* out, u32 n, u32 channels);
+    template <Timbre T>
+    void renderLead(LeadVoice& v, float* __restrict L, float* __restrict R, u32 cnt, float sr);
     void updateBpmStat();
 
     const MusicData* music_ = nullptr;
@@ -261,7 +271,7 @@ private:
     float bus_[kBusCount][2][kBlock] = {};
     float wet_[2][kBlock] = {};
     Biquad padHp_[2], hatsLp_[2], masterHp_[2];
-    FdnReverb reverb_, sfxReverb_;
+    FdnReverb reverb_;
     float* delayLine_ = nullptr;   // mono history of the lead bus
     u32 delayMask_ = 0;
     u32 delayPos_ = 0;
@@ -286,6 +296,7 @@ private:
     float peak_ = 0.0f;
 
     bool rawOutput_ = false;
+    EngineProfile* profile_ = nullptr;
     StemTapFn stemFn_ = nullptr;
     void* stemUser_ = nullptr;
     void* memory_ = nullptr;

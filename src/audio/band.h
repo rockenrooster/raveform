@@ -123,6 +123,8 @@ public:
         u32 callbacks = 0;
         float callbackUsP50 = 0, callbackUsP95 = 0, callbackUsP99 = 0, callbackUsMax = 0;
         float loadP50 = 0, loadP95 = 0, loadP99 = 0, loadMax = 0;  // engine time / callback duration
+        float cpuUsP50 = 0, cpuUsP95 = 0, cpuUsP99 = 0, cpuUsMax = 0;  // the callback thread's CPU time
+        u32 cpus[16] = {};
         u32 burst = 0;
         float burstMs = 0;
         float updateUsP50 = 0, updateUsP95 = 0, updateUsMax = 0;  // main thread, per frame
@@ -171,6 +173,8 @@ private:
     static constexpr u32 kUsBuckets = 2048;     // 10 us each
     static constexpr u32 kLoadBuckets = 2048;   // 0.1% each
     std::atomic<u32>* usHist_ = nullptr;
+    std::atomic<u32>* cpuUsHist_ = nullptr;
+    std::atomic<u32> cpuHist_[16];  // callbacks per CPU (value-initialised, C++20)
     std::atomic<u32>* loadHist_ = nullptr;
     std::atomic<u32> histCallbacks_{0};
     audio::SeqLatest<ClockSnapshot> clock_;
@@ -186,6 +190,7 @@ private:
     bool syncTouched_ = false;
     bool bluetooth_ = false;
     u32 routeGeneration_ = 0;
+    u32 burst_ = 0, deviceRate_ = 0;  // cached at each stream open
     audio::TempoMap tempo_;         // mirrored, the current song
     audio::TempoMap nextTempo_;     // a song that starts later (until it is heard)
     bool haveNextTempo_ = false;
@@ -216,6 +221,7 @@ private:
 
     // The load test (--band full) also feeds the effects every frame.
     bool fullLoad_ = false;
+    bool stressLoad_ = false;
     u32 fullFrame_ = 0;
 
     // Haptics.

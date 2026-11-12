@@ -62,13 +62,23 @@ inline float svfG(float fcHz, float sampleRate) {
     return std::tan(kPiF * fc / sampleRate);
 }
 
+struct SvfCoefs {
+    float a1, a2, a3;
+};
+inline SvfCoefs svfCoefs(float g, float k) {
+    const float a1 = 1.0f / (1.0f + g * (g + k));
+    return {a1, g * a1, g * g * a1};
+}
+
 struct SvfLowpass {
     float ic1 = 0.0f;
     float ic2 = 0.0f;
     float tick(float x, float g, float k) {
-        const float a1 = 1.0f / (1.0f + g * (g + k));
-        const float a2 = g * a1;
-        const float a3 = g * a2;
+        const SvfCoefs c = svfCoefs(g, k);
+        return tick(x, c.a1, c.a2, c.a3);
+    }
+    // With precomputed coefficients (the voices interpolate them between control-rate knots).
+    float tick(float x, float a1, float a2, float a3) {
         const float v3 = x - ic2;
         const float v1 = a1 * ic1 + a2 * v3;
         const float v2 = ic2 + a2 * ic1 + a3 * v3;

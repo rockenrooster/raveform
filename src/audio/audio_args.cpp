@@ -46,7 +46,7 @@ bool parseAudioArg(const char* arg, const char* next, AudioArgs& a, bool& usedNe
     if (!next) return false;
     usedNext = true;
     if (eq(arg, "--band")) {
-        static const char* const kModes[] = {"off", "play", "staged", "full", "metronome"};
+        static const char* const kModes[] = {"off", "play", "staged", "full", "stress", "metronome"};
         return oneOf(next, kModes, countOf(kModes)) && copy(a.band, sizeof a.band, next);
     }
     if (eq(arg, "--track")) return copy(a.track, sizeof a.track, next);

@@ -1,6 +1,7 @@
 #pragma once
 // Command-line switches of the band (M2), parsed by core/args.cpp through parseAudioArg().
-//   --band off|play|staged|full|metronome   what the band plays (default: off, except in the audio scenes)
+//   --band off|play|staged|full|stress|metronome  what the band plays (default: off, except in the audio
+//                                           scenes); full / stress: the load tests (src/audio/band.cpp)
 //   --track 1|2|track01|track02             the Track (default 1)
 //   --sound club|arcade|velvet              the sound variant (default club, variants.json "reference")
 //   --intensity X                           director intensity 0..1 (play)

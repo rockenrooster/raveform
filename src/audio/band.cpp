@@ -3,6 +3,12 @@
 #include <SDL3/SDL_filesystem.h>
 #include <SDL3/SDL_stdinc.h>
 
+#if defined(__ANDROID__) || defined(__linux__)
+#include <sched.h>
+#include <time.h>
+#define RF_THREAD_CPU_TIME 1
+#endif
+
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -45,6 +51,7 @@ Band::~Band() {
     delete bank_;
     delete music_;
     delete[] usHist_;
+    delete[] cpuUsHist_;
     delete[] loadHist_;
     delete[] pending_;
     delete[] heard_;
@@ -55,14 +62,15 @@ bool Band::init(const AudioArgs& args, const char* scenario, AudioDevice* device
     logAudioArgs(args);
     const bool audioTest = eq(scenario, "audio_test"), sync = eq(scenario, "sync");
     Mode mode = Mode::Silent;
-    bool full = false;
+    bool full = false, stress = false;
     if (args.band[0]) {
         if (eq(args.band, "off")) return true;
         if (eq(args.band, "play")) mode = Mode::Conductor;
         if (eq(args.band, "staged")) mode = Mode::Staged;
-        if (eq(args.band, "full")) {
+        if (eq(args.band, "full") || eq(args.band, "stress")) {
             mode = Mode::Conductor;
             full = true;
+            stress = eq(args.band, "stress");
         }
         if (eq(args.band, "metronome")) mode = Mode::Metronome;
     } else if (audioTest) {
@@ -77,11 +85,13 @@ bool Band::init(const AudioArgs& args, const char* scenario, AudioDevice* device
     bank_ = new (std::nothrow) SampleBank;
     engine_ = new (std::nothrow) Engine;
     usHist_ = new (std::nothrow) std::atomic<u32>[kUsBuckets];
+    cpuUsHist_ = new (std::nothrow) std::atomic<u32>[kUsBuckets];
     loadHist_ = new (std::nothrow) std::atomic<u32>[kLoadBuckets];
     pending_ = new (std::nothrow) BeatEvent[kPending];
     heard_ = new (std::nothrow) BeatEvent[kHeardMax];
-    if (!music_ || !bank_ || !engine_ || !usHist_ || !loadHist_ || !pending_ || !heard_) return false;
+    if (!music_ || !bank_ || !engine_ || !usHist_ || !cpuUsHist_ || !loadHist_ || !pending_ || !heard_) return false;
     for (u32 i = 0; i < kUsBuckets; ++i) usHist_[i].store(0);
+    for (u32 i = 0; i < kUsBuckets; ++i) cpuUsHist_[i].store(0);
     for (u32 i = 0; i < kLoadBuckets; ++i) loadHist_[i].store(0);
     if (!music_->load()) return false;
     rate_ = 48000;  // the stream asks for 48 kHz (TECH_SPEC 6.2); a device at another rate gets silence and a warning
@@ -105,7 +115,9 @@ bool Band::init(const AudioArgs& args, const char* scenario, AudioDevice* device
     active_ = true;
     sendInitialState(args);
     if (full) {
-        // The load test: the Drop held, all four players firing with mods, every Riff at level 2.
+        // The load test, every layer playing: the Drop held (the whole bed), every Riff at level 2, four
+        // players firing on the 1/16-triplet grid (Double-Time) with one Split harmony each, and the
+        // effects fed every frame. --band stress doubles the harmony (Split x2): the extreme case.
         post({.type = CmdType::SetPlayers, .a = 4, .b = 0});
         post({.type = CmdType::SetSection, .a = static_cast<u8>(Section::Drop)});
         post({.type = CmdType::HoldSection, .a = 1});
@@ -114,16 +126,17 @@ bool Band::init(const AudioArgs& args, const char* scenario, AudioDevice* device
             post({.type = CmdType::SetTimbre, .a = p, .b = p});
             for (u8 k = 0; k < 3; ++k) post({.type = CmdType::SetRiff, .a = p, .b = k, .c = 2});
             Command m{.type = CmdType::SetMods, .a = p};
-            m.mods[0] = 2;  // Split x2
-            m.mods[1] = 1;  // Double-Time
+            m.mods[0] = stress ? 2 : 1;  // Split
+            m.mods[1] = 1;               // Double-Time
             post(m);
         }
         fire_ = true;
         intensity_ = 1.0f;
         post({.type = CmdType::SetIntensity, .x = 1.0f});
         fullLoad_ = true;
+        stressLoad_ = stress;
     }
-    RF_LOG("audio: band %s, track %s, sound %s, sync offset %.0f ms%s, haptics %s", full ? "full (load test)" : (mode == Mode::Conductor ? "play" : (mode == Mode::Staged ? "staged" : "metronome")),
+    RF_LOG("audio: band %s, track %s, sound %s, sync offset %.0f ms%s, haptics %s", full ? (stress ? "stress (load test)" : "full (load test)") : (mode == Mode::Conductor ? "play" : (mode == Mode::Staged ? "staged" : "metronome")),
            trackName(), variantName(), syncOffsetMs_, syncTouched_ ? "" : " (automatic)", haptics_ ? "on" : "off");
     return true;
 }
@@ -169,6 +182,13 @@ void Band::render(void* self, float* out, u32 frames, u32 channels, u32 sampleRa
     auto* b = static_cast<Band*>(self);
     const u64 allocs0 = heapAllocCountThisThread();
     const i64 t0 = audioNowNs();
+#if defined(RF_THREAD_CPU_TIME)
+    // The callback's own CPU time (wall time also counts preemption) and the core it ran on.
+    timespec c0{};
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &c0);
+    const int cpu = sched_getcpu();
+    if (cpu >= 0 && cpu < 16) b->cpuHist_[cpu].fetch_add(1, std::memory_order_relaxed);
+#endif
     const u32 gen = b->device_ ? b->device_->generation() : 0;
     if (gen != b->cbGeneration_) {
         b->cbGeneration_ = gen;
@@ -189,6 +209,14 @@ void Band::render(void* self, float* out, u32 frames, u32 channels, u32 sampleRa
     }
     b->cbStreamFrames_ += frames;
     const i64 t1 = audioNowNs();
+#if defined(RF_THREAD_CPU_TIME)
+    timespec c1{};
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &c1);
+    const i64 cpuNs = (static_cast<i64>(c1.tv_sec) - c0.tv_sec) * 1000000000ll + (c1.tv_nsec - c0.tv_nsec);
+    u32 cb = static_cast<u32>(cpuNs / 10000);
+    if (cb >= kUsBuckets) cb = kUsBuckets - 1;
+    b->cpuUsHist_[cb].fetch_add(1, std::memory_order_relaxed);
+#endif
     const double us = static_cast<double>(t1 - t0) * 1e-3;
     const double load = frames ? (static_cast<double>(t1 - t0) * 1e-9) / (static_cast<double>(frames) / sampleRate) : 0.0;
     u32 ub = static_cast<u32>(us / 10.0);
@@ -322,7 +350,9 @@ void Band::update(i64 displayLeadNs) {
     const u32 gen = device_ ? device_->generation() : 0;
     if (gen != routeGeneration_ && device_ && device_->isOpen()) {
         routeGeneration_ = gen;
-        const AudioStats st = device_->stats();
+        const AudioStats st = device_->stats();  // once per stream (Oboe's queries may allocate)
+        burst_ = st.framesPerBurst;
+        deviceRate_ = st.sampleRate;
         const int type = platformAudioDeviceType(st.deviceId);
         bluetooth_ = isBluetoothDeviceType(type);
         RF_LOG("audio: output device %d (type %d)%s", st.deviceId, type, bluetooth_ ? ", Bluetooth" : "");
@@ -516,7 +546,9 @@ bool Band::saveSync() {
 void Band::resetMeasurements() {
     if (!active_) return;
     for (u32 i = 0; i < kUsBuckets; ++i) usHist_[i].store(0, std::memory_order_relaxed);
+    for (u32 i = 0; i < kUsBuckets; ++i) cpuUsHist_[i].store(0, std::memory_order_relaxed);
     for (u32 i = 0; i < kLoadBuckets; ++i) loadHist_[i].store(0, std::memory_order_relaxed);
+    for (auto& h : cpuHist_) h.store(0, std::memory_order_relaxed);
     histCallbacks_.store(0, std::memory_order_relaxed);
     callbackAllocs_.store(0, std::memory_order_relaxed);
     updateCount_ = 0;
@@ -545,10 +577,11 @@ Band::Report Band::report() const {
         return static_cast<u32>(total);
     };
     rep.callbacks = pct(usHist_, kUsBuckets, 10.0f, &rep.callbackUsP50, &rep.callbackUsP95, &rep.callbackUsP99, &rep.callbackUsMax);
+    pct(cpuUsHist_, kUsBuckets, 10.0f, &rep.cpuUsP50, &rep.cpuUsP95, &rep.cpuUsP99, &rep.cpuUsMax);
+    for (u32 i = 0; i < 16; ++i) rep.cpus[i] = cpuHist_[i].load(std::memory_order_relaxed);
     pct(loadHist_, kLoadBuckets, 0.001f, &rep.loadP50, &rep.loadP95, &rep.loadP99, &rep.loadMax);
-    const AudioStats st = device_ ? device_->stats() : AudioStats{};
-    rep.burst = st.framesPerBurst;
-    rep.burstMs = st.sampleRate ? 1000.0f * st.framesPerBurst / st.sampleRate : 0.0f;
+    rep.burst = burst_;
+    rep.burstMs = deviceRate_ ? 1000.0f * burst_ / deviceRate_ : 0.0f;
     // Main thread per-frame cost over the recent frames.
     const u32 n = updateCount_ < countOf(updateUs_) ? updateCount_ : countOf(updateUs_);
     if (n) {
@@ -581,7 +614,7 @@ void Band::writeJson(JsonWriter& j) const {
     if (!active_) return;
     const Report r = report();
     j.beginObject("audio_engine");
-    j.str("mode", mode_ == Mode::Conductor ? (fullLoad_ ? "full" : "play") : (mode_ == Mode::Staged ? "staged" : "metronome"));
+    j.str("mode", mode_ == Mode::Conductor ? (fullLoad_ ? (stressLoad_ ? "stress" : "full") : "play") : (mode_ == Mode::Staged ? "staged" : "metronome"));
     j.str("track", music_->tracks[track_].id);
     j.str("sound", music_->variants[variant_].id);
     j.integer("callbacks", r.callbacks);
@@ -594,6 +627,15 @@ void Band::writeJson(JsonWriter& j) const {
     j.num(nullptr, r.callbackUsP95, 0);
     j.num(nullptr, r.callbackUsP99, 0);
     j.num(nullptr, r.callbackUsMax, 0);
+    j.endArray();
+    j.beginArray("callback_cpu_us");  // the callback thread's own CPU time (Android), same buckets
+    j.num(nullptr, r.cpuUsP50, 0);
+    j.num(nullptr, r.cpuUsP95, 0);
+    j.num(nullptr, r.cpuUsP99, 0);
+    j.num(nullptr, r.cpuUsMax, 0);
+    j.endArray();
+    j.beginArray("callback_cores");  // callbacks per CPU number
+    for (u32 i = 0; i < 8; ++i) j.integer(nullptr, r.cpus[i]);
     j.endArray();
     j.beginArray("callback_load");
     j.num(nullptr, r.loadP50, 3);
