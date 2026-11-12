@@ -40,6 +40,9 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | Simulation, headless (determinism, 10-minute bot soak, stress) | `build\desktop-dev\raveform_headless.exe --sim determinism\|soak\|stress [--minutes M] [--seconds S] [--seed N] [--policy play\|reckless]` (exit 0 = pass; one `RFSIM` JSON line) |
 | M3 stress contract run (Moto) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_stress -Seconds 60 -Warmup 60 -AppArgs '--tier low' -Deploy` (`bench_play`: the bot plays the normal game, measured) |
 | The M3 review set (scripted strips, bot frames at 30 s / 2 / 5 min, stress) | `scripts\review-m3.ps1 [-Out captures\m3] [-Config debug\|dev] [-SkipStrips] [-SkipFrames]` |
+| The M3 stage B review set (screens, Trio, HUD per section, Riffs, Boosts, edge chevrons, Kaleidos, Track change, bot at 3 / 6 / 10 min) | `scripts\review-m3b.ps1 [-Out captures\m3b] [-Config debug\|dev] [-Only trio,boss_beam]` |
+| Bot, 30 simulated minutes with a minute table | `build\desktop-dev\raveform_headless.exe --sim soak --minutes 30 [--seed N] [--policy reckless]` |
+| The real game at minute 10, measured (Moto) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Warmup 600 -Seconds 120 -Deploy` |
 
 Desktop exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 benchmark aborted,
 5 screenshot failed. Device serials: Moto `ZY22BXMJG3`, OnePlus 12R `a0e622a5`, Galaxy Tab `R5GL362BEHX`.
@@ -66,11 +69,21 @@ so they show their cost at the GPU's top clock),
 `--no-swappy` (plain FIFO), `--fps HZ` (Android target refresh; default = panel maximum), `--no-overlay`,
 `--affinity big|all` (Android: pin the main thread and the threads it starts to the non-little cores, or
 leave placement to the scheduler), `--cycles N`. Keys: F1 overlay, F12 screenshot, T tone hold, L next look, P next
-palette, K next tier, R reduce flashing, Esc / Back quit. Taps (decided when the last finger lifts): two fingers next look, three
+palette, K next tier, R reduce flashing, Esc / Back quit (in the game with its screens: pause and back; Enter is the screen's main control). Taps (decided when the last finger lifts): two fingers next look, three
 the overlay, four next palette. Raw launch: `adb -s <serial> shell "am start -n dev.raveform.game/.RaveformActivity --es args '--scenario bench_idle --seconds 60'"`.
 
-The game (M3 stage A, `game/play.h`, `src/sim/`): no `--scenario` (or `--scenario play`) starts the fight;
-`--scenario touch_test` is M0's touch scene (formerly the default). `bench_play` (the bot plays the normal
+The game (M3, `game/play.h`, `src/sim/`; stage B adds the director, upgrades, Kaleidos and the screens): with no
+`--scenario` (or `--scenario play`) the game opens on the first-launch notice (once), then the title over the bot's
+attract run; PLAY, pause (the ring top right, Esc / Back / P), RESUME with a count-in, game over, RETRY, HOME and
+SETTINGS (SOUND, CONTROLS, LOOK). Settings go to `settings.txt`, scores to `highscores.txt` and the baked one-shots
+to `baked_audio.bin`, all in `SDL_GetPrefPath()` (`adb shell pm clear dev.raveform.game` brings the first launch
+back). `--autoplay`: the screens with the bot playing each run (tap PLAY and RETRY). Stage B pictures:
+`--picture screen_notice|screen_title|screen_settings_sound|screen_settings_controls|screen_settings_look|
+screen_pause|screen_game_over|trio|trio_answer|trio_take|hud_groove|hud_build|hud_drop|hud_break|riff_orbitals|
+riff_pulse|riff_sentinel|boost_prism|boost_hyper|boost_halo|boost_magnet_storm|edge|boss_bloom|boss_refraction|
+boss_spiral|boss_naked|boss_beam_tell|boss_beam|boss_iris|boss_pair_death|boss_death|track_change|bot_3|bot_6|
+bot_10` with `--strip 1` (8 for the three strips). The band follows the director (`Play::conductBand`);
+benchmarks and `--bot` are the run alone. `--scenario touch_test` is M0's touch scene (formerly the default). `bench_play` (the bot plays the normal
 game) and `bench_stress` (about 700 enemies and 1,500 enemy bullets around a bot-driven, invulnerable ship)
 are measured like the other benchmarks and add a `sim` object to the result (tick time per 60 Hz tick
 [p50, p95, max], entity counts, kills, deaths, pool overflows). `--bot` (the bot plays), `--seed N`,

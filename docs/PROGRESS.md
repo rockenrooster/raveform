@@ -11,6 +11,173 @@
 - 2026-11-11 (M2): benchmarks play the band's fullest arrangement by default, so the contract is measured
   with sound on; `--no-audio` gives the silent comparison (M0's silent stream, as M1 measured).
 
+## M3 Vertical slice, stage B "the rest of the slice" — status 2026-11-12 (night)
+
+Stage B is built on `main` (commits `7e9b97b`, `9ac3547`, `be3c086` and the docs commit): the director,
+the Surge's two gears, upgrades with the Trio, Kaleidos, the full HUD, the screens with saved settings and
+high scores, the start-up cache, the bot for all of it, tests and the review pictures. The user asked the
+lead to continue without check-ins; the decisions taken alone are listed below.
+
+### How it is built (M3 stage B)
+
+- **Director** (`src/sim/director.h/.cpp`, `world_spawner.cpp`): `phraseAt(state, bar)` places every run
+  bar in the cycle (Track 1: four Short cycles; its fourth Drop is Kaleidos's and is held while it lives;
+  the boss's death schedules the eight-bar Track-change Break on the first bar line at least half a bar
+  away; Track 2: three Standard cycles; then the loop, +4 BPM a Track up to 174). Per bar it spends
+  `base(track, cycle) x section scale x assist` on formations (cluster, ring, pincer, sweep, corners) from
+  the debuted roster; the Drop's mega-wave warps in over the Build's last two beats; debuts get a
+  spotlight group over the Break's last two beats with their name on screen; the Break's first bar
+  dissolves fodder into Shards; a Boost is due every 20-30 s and drops from the next kill; the boss's Drop
+  spends 30% on fodder only. The phrase gives the sim its Surge (score and magnet x2, the fire grid one
+  then two steps faster) and the Build's last bar at 85% (world time and the simulated clock).
+- **The band follows the director** (`Play::conductBand`): in the second half of every heard bar the band
+  is told the next bar (`SetPhrase`: section, bar in it, length), a new run (`SetTrack` at once, Track 1 at
+  its tempo), the Track change (`SetTrack` through the Break, with the loop's tempo), the boss's bar
+  (`SetBoss`: the firing pairs' P3 bells on their steps, the iris's gong, a beam's riser and stab) and the
+  local player's loadout (lead harmony, grid with Double-Time / Surge gear / Hyper, Riff layers). A run
+  and RETRY start on the first bar line at least half a bar away, so the band starts them on the same line.
+  Pause freezes the run and holds the band; RESUME counts four beats in and goes on where the run paused
+  within its bar (the run's ticks = the band's minus a whole number of bars).
+- **Upgrades** (`src/sim/upgrades.*`, `world_upgrades.cpp`): eight Mods, three Riffs, four Boosts; the
+  Trio's draw (weights, the weapon guarantee, the Riff guarantee), a bonus Trio after the boss, the ring as
+  clock, a random orb homing at the end. Effect words are in `upgradeWords()`.
+- **Kaleidos** (`src/sim/boss.*`, `world_boss.cpp`; data parsed from the embedded kaleidos.json): pairs,
+  rest rule, lens plates, iris, four phases, fans, core rings, beams with their telegraph bar, drift,
+  contact, Nova damage, pair death (one-beat flinch, the wheel reverses), death (Shards, the Track ends).
+- **View and HUD** (`play_view_b.cpp`, `play_hud.cpp`, `content/icons.*`): section looks (Build drain and
+  zoom-in, last bar darker; Drop shockwave, bloom and zoom snap; Break cool), the Trio as screens.md draws
+  it with icons from icons.json, Riffs, Boosts, Kaleidos (arms, glass, white-hot resting pair, reflections,
+  lens, core, iris, gold health arc, beams, entrance, pair death, death), HUD per look.md 6, edge chevrons
+  (danger for shooters, gold for Boosts, white for the boss), the palette following the Track with a
+  cross-fade in the Track-change Break.
+- **Screens** (`game/screens.*`, `game/settings.*`): first-launch notice, title over the attract run (live
+  waveform from a master-bus scope in the band), pause with count-in, game over with the set list,
+  settings (SOUND cards with live signature lines, faders over a meter, SYNC opening the M2 calibration,
+  haptics; CONTROLS: swap sides, auto-aim; LOOK: effects tier, frame-rate target, reduce flashing).
+  `settings.txt` and `highscores.txt` in the app's private storage, written to a temporary file and renamed.
+- **Start-up**: the baked one-shots are cached (`baked_audio.bin`, 30 MB, keyed by the music hash and the
+  rate); the first-launch tier probe runs behind the notice / title (PLAY stops it a tier below the one
+  being measured).
+
+### How to run
+
+| What | Command |
+|---|---|
+| The game with its screens | `scripts\run-desktop.ps1` (Android: the app's icon) |
+| The screens with the bot playing every run | `--autoplay` |
+| Review pictures (`captures\m3b\`) | `scripts\review-m3b.ps1 [-Only trio,boss_beam]` |
+| Bot 30 minutes headless (minute table) | `build\desktop-dev\raveform_headless.exe --sim soak --minutes 30 [--seed N] [--policy reckless]` |
+| The fight at minute 10, measured | `--scenario bench_play --fast-forward 600 --seconds 60` (the run realigns to the band's bars) |
+
+### Numbers (M3 stage B; the phones are shared with other sessions)
+
+- Tests: audio 2122 checks, sim 5219 checks (new: director cycle, Trio rules, upgrade stacking, Kaleidos
+  damage and phases), 0 failures; determinism PASS for both bots over 2 min (`test.ps1`) and 12 min.
+- Bot, 30 simulated minutes headless (careful bot, seed 1 / seed 7; reckless bot, seed 1): no crash, no
+  overflow, no NaN, 0 heap allocations in the loop; tick P95 0.010 / 0.063 / 0.006 ms, max 0.059 / 0.185 /
+  0.141 ms. Seed 1: 5,452 kills, 2 deaths (both at Track 2's Kaleidos, 10:19 and 19:26), Tracks reached
+  2; Kaleidos of Track 1 falls at 5:43 (entered 2:49), 14:35 and 24:22. Seed 7: 4,775 kills, 2 deaths (both
+  at Track 2's Kaleidos), Track 1's boss 1:41 the first time but over 7 minutes the third time (fodder piles
+  up to 226 alive meanwhile). Reckless: 15 deaths, the longest life 196 s, no boss beaten. **First reading
+  of the difficulty:** a careful bot clears Track 1 in about 5 minutes and is stopped by Track 2's Kaleidos
+  (1.5x health) every time; a careless one dies every 1.5-2 minutes. Per-minute tables:
+  `captures\m3b\bot_30min_*.txt`.
+- Desktop Debug (validation on), bench_play: 60 s of the boss fight (fast-forward 172 s): 0 validation
+  messages, 0 heap allocations, 0 audio-callback allocations, 16 / 37 enemies (mean / max), 198 / 320
+  bullets. 60 s at minute 10 (fast-forward 600 s; the bot had cleared Track 2 and was in Track 3, the loop,
+  Drop): 0 validation, 0 allocations, 21 / 81 enemies.
+- Start-up on the Moto (shared phone): first launch after a data clear, activity start to the first frame
+  of the game (the notice over the tier probe) 3.4 s (baking 2.6 s of it; the probe then chose medium in
+  5.3 s behind the notice); later launches 0.67 s (the one-shots from the cache in 20 ms).
+- Look v2.3 (`afterglow.knee` 0.9, read from look.json): `captures\m1` re-shot with `review-m1.ps1`;
+  `scenes.py light` (dark<48, dark<96, >=200, luminance): bench_mid frame 600 38.6% / 78.7% / 3.0% /
+  0.0752; bench_endgame frame 600 15.8% / 48.4% / 11.8% / 0.1590; the quiet strip (frame 407, eight frames)
+  16.6-17.4% / 49.6-50.6% / 10.1-10.7% / 0.1493-0.1531.
+- MOTO_NUMBERS
+
+### Effect words (two to four words, mine)
+
+Split `+1 SHOT LANE` (screens.md), Double-Time `TRIPLET FIRE GRID` then `THIRTY-SECOND FIRE GRID`, Pierce
+`+1 ENEMY PIERCED`, Ricochet `+1 WALL BOUNCE`, Overcharge `+25% SHOT DAMAGE`, Extra Cell `+1 SHIELD CELL`,
+Magnet `WIDER SHARD PULL` (the Trio picture), On-Beat Crit `BEAT SHOTS X2` / `X3` / `X4`; Orbitals
+`NEW RIFF: TWO ORBITERS` (the Trio picture) then `LEVEL n: THREE / FOUR ... ORBITERS`; Pulse Ring
+`NEW RIFF: BEAT RINGS`, `LEVEL 2: EVERY BEAT`, `LEVEL 3: SECOND RING` (screens.md), `LEVEL 4: WIDER RINGS`,
+`LEVEL 5: HEAVIER RINGS`; Sentinel `NEW RIFF: OFF-BEAT DRONE` then `LEVEL n: BURST OF n`. Boosts (HUD):
+Prism `FIVE-WAY RAINBOW FAN`, Hyper `DOUBLE-SPEED GRID`, Halo `BLOCKS THREE HITS`, Magnet Storm `EVERY SHARD
+COMES`.
+
+### Numbers chosen (`src/sim/tuning.h` stage B block, `play_view_b.cpp`, `game/screens.cpp`)
+
+Director: mega-wave 3 bars of Drop budget; the loop's budget +2 per cycle past species.json's last (12);
+no new bodies while 600 enemies live; spotlight group 560 wu from the ship (3, Shoal its minimum 12, Ram
+and Carom 2, Sentry 1). Trio: touched when the ship's hit circle is 6 wu inside the orb; the timed-out orb
+flies at 900 wu/s; draw weights Mod 1.0, new Riff 1.2, Riff level 1.0. Mods: Split lanes 5 degrees apart,
+Overcharge +15% shot radius a stack, at most 15 shots a step. Riffs: Orbitals at 64 wu, 10 wu hit, 1 damage
+an eighth; Pulse Ring 230 wu (290 from level 4) in 0.25 s, 2 damage (x1.5 at level 5), second ring 0.10 s
+later; Sentinel range 700 wu, station 34 left / 30 up of the ship, follow 0.12 s, bursts 4 degrees apart.
+Boosts: pickup 26 wu, uncollected 8 bars; Prism lanes 9 degrees, mini shots +-35 degrees for 0.22 s at
+half damage; Halo 0.6 s invulnerable per absorbed hit. Kaleidos: pairs 500 and core 2,000 points
+(x Chain); a pair drops 20 Shards; a Nova deals 60 to each pair and to the core once open; the arms' hit
+shape from 78 to 274 wu; the loop's Kaleidos +6% health a Track after Track 2. View: Build drain 0.45 and
+zoom-in 10%, last bar exposure 0.78; Drop zoom snap 8%; Break drain 0.22; Boost orb 20 wu. Screens: the
+title waveform 750 scope points (128 frames each), the pause music dip 0.45 (no low-pass yet).
+
+### Decisions taken alone
+
+1. Tracks after 2 loop First Light and Solar Wind (Track 3 = First Light at 130 BPM, ...); the key is not
+   transposed and the palette not recombined (each song keeps its own); Kaleidos is every Track's boss.
+2. The Track-change Break after a boss holds two Trios: the boss's bonus Trio first (half the Break as its
+   clock), then the Break's own.
+3. Assist: a lost cell lowers it 10% at once (once a cycle); two clean cycles raise it 10%; 0.8-1.3.
+4. A held boss Drop keeps its Surge for the first half of its nominal length only.
+5. Kaleidos's entrance bar: it neither fires nor takes damage; the rest rotation counts from the bar after.
+   In Refraction the firing pair fans from beat 2 (beat 1 is its beam's).
+6. Boss damage reaches the core only through an open sector (a dead pair's plates) or the 8-degree gaps
+   between plates, judged where the shot crosses the lens ring.
+7. A pause can come mid-bar; the run resumes where it paused within its bar after a four-beat count-in,
+   so its bars stay on the band's (screens.md's "starts on the bar line after" holds when paused on one).
+8. Game over holds a Break in the band; RETRY / PLAY start Track 1 at once on the next safe bar line.
+9. The first-launch notice offers REDUCE FLASHING and CONTINUE; my wording.
+10. Fusions wait for M5: the Trio keeps a fourth orb slot.
+11. The frame-rate target setting applies from the next start.
+12. Debut names on screen are family and tier (`HOUND II  B`).
+
+### Contradictions and gaps found
+
+- species.json `firstSlice` has no elite rules, so the slice spawns no elites.
+- GAME_DESIGN 8's Drop "2.0 then decays to 1.2" has no curve: linear across the Drop's bars.
+- kaleidos.md gives no score for the boss and no Nova damage number; chosen (above).
+- screens.md's pause count-in "on the bar line after" cannot hold for a mid-bar pause without moving the
+  run's bars off the band's (decision 7).
+
+### Pictures for the lead (`captures\m3b\`, 2400x1080, desktop Debug, fixed 1/60 s steps; `*.small.png`)
+
+screen_notice, screen_title, screen_settings_sound / _controls / _look, screen_pause (mid count-in),
+screen_game_over; trio, trio_answer, strip_trio_take (8 frames); hud_groove, hud_build, hud_drop (Surge),
+hud_break; riff_orbitals, riff_pulse, riff_sentinel; boost_prism, boost_hyper, boost_halo,
+boost_magnet_storm; edge (danger chevron for a shooter off screen, gold for a Boost); boss_bloom,
+boss_refraction, boss_spiral, boss_naked, boss_beam_tell, boss_beam, boss_iris, strip_boss_pair_death,
+strip_boss_death; track_change (Track 1 to 2, bar 5 of the Break); bot_3, bot_6, bot_10. From the Moto:
+MOTO_PICTURES.
+
+### Stage B changes in shared files
+
+`audio/engine.*` (SetPhrase, SetBoss with its bells / gong / riser / stab, SetTrack at once or with a tempo,
+the Surge's two gears from conductor.json), `audio/band.*` (the director's API, the master-bus scope and
+meter, the baked-sound cache), `audio/music_data.*` (`drop.surgeSteps`), `audio/bake.*` (cache save and
+load), `platform/app.*` (the probe behind the title, SYNC from settings and back, the settings' tier and
+frame rate, the first-frame log, the run's place in the bench result), `core/args.*` (`--autoplay`),
+`game/audio_scene.h` (`clearQuit`), `CMakeLists.txt` (kaleidos.json and icons.json embedded, new sources).
+
+### Not done, not verified
+
+- The game-over set list's ten-second medley; the pause's low-pass (a music dip stands in); the growl an
+  octave down (the elite patch at its own pitch); haptic strength (SOFT and STRONG are both "on"); the 50 ms
+  hit-stop at Kaleidos's death; CO-OP (M4).
+- Not tried by a person: touch feel of the Trio and the screens, readability of the boss fight, the
+  difficulty curve (the bot's reading above), SYNC from settings and back on a phone, swap sides.
+- MOTO_GAPS
+
 ## M3 Vertical slice, stage A "the fight" — status 2026-11-11 (late night)
 
 Stage A is built on `main`: the simulation, the fight on the band's heard clock with sticks, gamepad,

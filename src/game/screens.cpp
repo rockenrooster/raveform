@@ -568,7 +568,7 @@ void Play::screenSettings(Ui& ui) {
             const bool waiting = settings_.variant == k && !isPlaying;
             ui.roundRect(a, b, 40.0f * s, (isPlaying ? 1.7f : 1.0f) * s, c0[k], isPlaying ? 2.2f : (waiting ? 1.5f : 0.8f));
             if (isPlaying) {
-                const Vec3 g = ui.col(c0[k], 0.085f);
+                const Vec3 g = ui.col(c0[k], 0.035f);  // glass (screens.md 0.085, before the HUD's own tone map)
                 for (float y = a.y + 30.0f * s; y < b.y - 20.0f * s; y += 6.0f * s) ui.draw().hud.line({a.x + 30.0f * s, y}, {b.x - 30.0f * s, y}, 3.0f * s, g, g, 0);
                 ui.draw().pools.glow((a + b) * 0.5f, 0.4f * cw, c0[k] * 0.06f);
             }
