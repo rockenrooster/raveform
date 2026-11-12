@@ -144,6 +144,15 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
         case EventType::HaloBlock:
             addShockRings(at, 1, 120.0f, palettes_->player[3], whiteV(), t, 0.25f);
             break;
+        case EventType::Leave:
+            // M4 stage B: the ship of a player that left fades where it was (its seat opens; the run goes on).
+            if (e.a < kMaxPlayers) {
+                leaveT_[e.a] = t;
+                leavePos_[e.a] = at;
+                leaveHeading_[e.a] = e.f;
+                addShockRings(at, 1, 160.0f, palettes_->player[e.a] * 0.7f, whiteV() * 0.5f, t, 0.5f);
+            }
+            break;
         case EventType::CritBurst: {
             // Play test 1, On-Beat Crit: the beat shot's hit bursts over 80 wu, in the shooter's colours.
             const u32 q = e.a < kMaxPlayers ? e.a : w.viewPlayer();

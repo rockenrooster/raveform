@@ -90,8 +90,9 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
     view_.setIcons(&icons_, upgradeIcons_, boostIcons_);
     view_.setFont(&font);
     // The screens around the run: interactive play only (benchmarks, pictures and --bot are the run alone; M4
-    // stage A: co-op has no screens either).
-    flow_ = opt.kind == PlayOptions::Kind::Play && (!opt.bot || opt.autoplay) && !picture && !opt.fixedStep && !opt.net;
+    // stage A: co-op from the command line has no screens either). M4 stage B: --coop drives the screens (with --bot,
+    // the bot plays each run).
+    flow_ = opt.kind == PlayOptions::Kind::Play && (!opt.bot || opt.autoplay || opt.coopAuto) && !picture && !opt.fixedStep && !opt.net;
     if (flow_) {
         loadSettings(settings_);
         loadHighScores(scores_);
@@ -190,6 +191,12 @@ void Play::frame(float realDt) {
     }
     const bool fixed = opt_.fixedStep;
     frameDt_ = fixed ? kDt : (realDt > 0.1f ? 0.1f : realDt);
+    // M4 stage B: --coop (host or join from the command line) and --coop-shot's moments before a session.
+    if (flow_ && opt_.coopAuto && !coopAutoDone_) {
+        coopAutoStep();
+        if (coop()) return;  // a session began: the next frame runs it
+    }
+    if (flow_ && opt_.coopShot[0]) coopScreenShot();
     const BeatView* bv = (bandDrives_ && band_) ? &band_->view() : nullptr;
     // M3 stage B: pause freezes the run; the count-in ends on the resume point (game/screens.cpp).
     if (countIn_) {
@@ -349,9 +356,13 @@ void Play::afterTick() {
                 // The bot taps retry (also in the bot_ pictures, C2: the real careful bot's run goes on).
                 if (opt_.bot || opt_.kind != PlayOptions::Kind::Play || std::strncmp(opt_.picture, "bot_", 4) == 0) retryRequest_ = true;
                 if (bandDrives_) band_->playSfx(audio::Sfx::GameOver);
-                RF_LOG("play: the ship is lost (Track %u, bar %u, score %llu)", w.phrase().track, w.phrase().bar, static_cast<unsigned long long>(w.player(0).score));
-                if (flow_ && screen_ == Screen::Run) {
+                RF_LOG("play: %s (Track %u, bar %u, score %llu)", coop() ? "every ship is down: the run is over" : "the ship is lost",
+                       w.phrase().track, w.phrase().bar, static_cast<unsigned long long>(w.player(seat_).score));
+                if (flow_ && (screen_ == Screen::Run || (coop() && (screen_ == Screen::Paused || screen_ == Screen::Settings)))) {
+                    // M4 stage B: in co-op the run ends when all are down at once (GAME_DESIGN 10); the host's RETRY
+                    // starts the next one for everyone.
                     endRun(true);
+                    coopOver_ = coop();
                     screen_ = Screen::GameOver;
                     overS_ = -0.6f;  // a breath before the score counts up
                 } else if (flow_ && attract()) {
@@ -361,6 +372,12 @@ void Play::afterTick() {
             case EventType::Restart:
                 controller_.reset(w.player(seat_).pos);
                 touch_.reset();
+                if (coopFlowActive_ && coopOver_) {
+                    // M4 stage B: the host's RETRY: the next run, everyone's screens back to it.
+                    coopOver_ = false;
+                    if (screen_ == Screen::GameOver) screen_ = Screen::Run;
+                    applySettings();
+                }
                 // A new run: its record starts (the set list's first Track).
                 runSeconds_ = 0.0f;
                 runTrackMax_ = 1;
@@ -411,14 +428,16 @@ void Play::afterTick() {
                 }
                 break;
             case EventType::Hit:
-                if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 3, 0};
-                if (bandDrives_) band_->playSfx(audio::Sfx::Hit);
+                // M4 stage B: the set list keeps whose hit it was (screens.md: each player's crosses in their colour);
+                // this device sounds its own player's.
+                if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 3, e.a};
+                if (bandDrives_ && e.a == seat_) band_->playSfx(audio::Sfx::Hit);
                 break;
             case EventType::NovaPress:
-                if (bandDrives_) band_->nova(e.tick);
+                if (bandDrives_ && e.a == seat_) band_->nova(e.tick);
                 break;
             case EventType::Dash:
-                if (bandDrives_) band_->playSfx(e.b ? audio::Sfx::PerfectDash : audio::Sfx::Dash);
+                if (bandDrives_ && e.a == seat_) band_->playSfx(e.b ? audio::Sfx::PerfectDash : audio::Sfx::Dash);
                 break;
             case EventType::TrioUnlock:
                 // Play test 1 (screens.md): the orbs light on the Break's third beat with a chime (a bell two octaves
@@ -427,6 +446,7 @@ void Play::afterTick() {
                     band_->leadNote(0, 4, 0.55f, 0.0f, e.tick + (coop() ? netBandOffset_ : clock_.offset()), static_cast<u8>(audio::Timbre::P3Bell));
                 break;
             case EventType::TrioTake:
+                if (e.a != seat_) break;  // M4: a teammate's pick is theirs (their device sounds it)
                 RF_LOG("play: Trio: took %s (now %u) at bar %u", upgradeInfo(e.b).name, e.c, w.phrase().bar);
                 if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 2, e.b};
                 takenT_ = static_cast<float>(tickEnd_);
@@ -435,13 +455,16 @@ void Play::afterTick() {
                 if (bandDrives_) band_->sfxAt(audio::Sfx::Upgrade, (std::floor(band_->view().heardTick / kTicksPerStep) + 1.0) * kTicksPerStep);
                 break;
             case EventType::BoostTake:
-                if (bandDrives_) band_->playSfx(audio::Sfx::Boost);
+                if (bandDrives_ && e.a == seat_) band_->playSfx(audio::Sfx::Boost);
                 break;
             case EventType::HaloBlock:
-                if (bandDrives_) band_->playSfx(audio::Sfx::Shield);
+                if (bandDrives_ && e.a == seat_) band_->playSfx(audio::Sfx::Shield);
                 break;
             case EventType::Revive:
                 if (e.a == seat_) controller_.reset(w.player(seat_).pos);  // M4: back where the beacon was
+                // look.md 6: the revive's close is the octave of its fill's notes, in the revived player's lead.
+                if (bandDrives_ && coop() && e.b)
+                    band_->leadNote(bandSlot(e.a), 2, 0.8f, clampf((e.x - w.player(seat_).pos.x) / 800.0f, -1.0f, 1.0f) * 0.6f);
                 break;
             case EventType::BossEnter:
                 RF_LOG("play: Kaleidos enters (Track %u, bar %u)", w.phrase().track, w.phrase().bar);
@@ -496,10 +519,13 @@ void Play::bandFrame() {
         lastShardTick_ = heard;
     }
     conductBand();
-    // The bed's intensity (Groove) follows the threat on screen.
+    // The bed's intensity (Groove) follows the threat on screen. M4 stage B (GAME_DESIGN 10: the shared bed is
+    // identical on every device): in a co-op run the host's, bar by bar (coopBed).
     const float target = clampf(tuning::kIntensityFloor + world_->threatInView() * tuning::kIntensityPerThreat, 0.0f, 1.0f);
     intensity_ += (target - intensity_) * (1.0f - std::exp(-frameDt_ / tuning::kIntensityTau));
-    if (std::fabs(intensity_ - intensityPosted_) >= kIntensityStep) {
+    if (coop() && netRunStarted_) {
+        coopBed();
+    } else if (std::fabs(intensity_ - intensityPosted_) >= kIntensityStep) {
         band_->setIntensity(intensity_);
         intensityPosted_ = intensity_;
     }
@@ -640,10 +666,23 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     const PlayerState& p = w.player(seat_);
     hs.score = p.score;
     if (coop()) {
-        // GAME_DESIGN 10: the team's score is the sum of the players' (each keeps its own Chain).
+        // GAME_DESIGN 10: the team's score is the sum of the players' (each keeps its own Chain); M4 stage B
+        // (screens.md): each player's own under it in their colour, ranked.
         hs.score = 0;
+        hs.coopPlayers = w.playerCount();
+        hs.me = static_cast<u8>(seat_);
+        hs.rankCount = 0;
         for (u32 q = 0; q < kMaxPlayers; ++q)
-            if (w.player(q).present) hs.score += w.player(q).score;
+            if (w.player(q).present) {
+                hs.score += w.player(q).score;
+                hs.playerScore[q] = w.player(q).score;
+                u32 at = hs.rankCount++;
+                while (at > 0 && hs.playerScore[hs.rank[at - 1]] < hs.playerScore[q]) {
+                    hs.rank[at] = hs.rank[at - 1];
+                    --at;
+                }
+                hs.rank[at] = static_cast<u8>(q);
+            }
     }
     hs.chain = p.chain;
     hs.chainPulse = view_.chainPulse(vi.time);
@@ -773,6 +812,11 @@ void Play::openSettings(Screen back) {
 }
 
 void Play::pauseRun() {
+    if (coop()) {
+        // M4 stage B (GAME_DESIGN 10): any player may pause; it holds for everyone on the next beat (even while down).
+        if (flow_ && screen_ == Screen::Run) coopPause(true);
+        return;
+    }
     if (!flow_ || screen_ != Screen::Run || !world_->player(0).alive) return;
     screen_ = Screen::Paused;
     countIn_ = false;
@@ -812,8 +856,8 @@ void Play::beginCountIn() {
 }
 
 void Play::endRun(bool died) {
-    // The run's numbers go to the high scores (a quit run counts as well; it was played).
-    const PlayerState& p = world_->player(0);
+    // The run's numbers go to the high scores (a quit run counts as well; it was played). M4: this device's player's.
+    const PlayerState& p = world_->player(seat_);
     HighScore h;
     h.score = p.score;
     h.track = runTrackMax_;

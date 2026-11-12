@@ -78,6 +78,13 @@ struct HudState {
     float spotlightAge = -1.0f;
     bool runHud = true;          // the run's HUD (off on the title and the game-over screen)
     bool pausePressed = false;
+    // M4 stage B (screens.md, look.md 6): in co-op the score is the team's; each player's own sits under it in their
+    // colour, ranked.
+    u32 coopPlayers = 0;         // players in the run (> 1: co-op)
+    u64 playerScore[4] = {};
+    u8 rank[4] = {};             // seats, the highest score first
+    u8 rankCount = 0;
+    u8 me = 0;                   // this device's seat
 };
 
 // The pause ring's centre and radius (top right corner, look.md 6), for its touch target.

@@ -23,6 +23,8 @@ constexpr float kBossWorkFarWu = 750.0f;
 // M3 stage C2: with the crowd in the frame something is always within 250 wu; in a boss fight the bot shoots
 // a body only when it is this close (about to touch), else the boss.
 constexpr float kBossFodderWu = 140.0f;
+// M4: a downed teammate's beacon this near is worth going to (two frames wide).
+constexpr float kReviveReachWu = 1600.0f;
 }  // namespace
 
 void Bot::reset(u64 seed, Policy policy) {
@@ -253,6 +255,23 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
             // On it: hold still near its centre; the field's other pulls only nudge (the hold empties if it leaves).
             holding = true;
             holdPull = d * (3.0f / ring);
+        }
+    }
+    // M4 co-op (GAME_DESIGN 10): a teammate's beacon within reach: go and stand in its ring until it revives.
+    if (!holding) {
+        for (u32 q = 0; q < w.playerCount(); ++q) {
+            const PlayerState& o = w.player(q);
+            if (q == player || !o.present || !o.down) continue;
+            const Vec2 d = o.beacon - pos;
+            const float dist = length(d);
+            if (dist > kReviveReachWu) continue;
+            if (dist > 0.5f * tuning::kReviveRingWu) {
+                if (dist > 1e-3f) force = force + d * (2.4f / dist);
+            } else {
+                holding = true;
+                holdPull = d * (3.0f / tuning::kReviveRingWu);
+            }
+            break;
         }
     }
     const BoostPickups& bp = w.boostPickups();

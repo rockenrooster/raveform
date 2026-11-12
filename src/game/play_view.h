@@ -191,6 +191,10 @@ private:
     float reviveT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};  // the ring's close (view clock)
     bool reviveFill_[sim::kMaxPlayers] = {};  // closed by a teammate (else at a Break: no fill)
     float allDownT_ = -100.0f, allDownRest_ = 0.0f;
+    // M4 stage B: a player that left fades where its ship was.
+    float leaveT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};
+    Vec2 leavePos_[sim::kMaxPlayers];
+    float leaveHeading_[sim::kMaxPlayers] = {};
     void drawCoop(FrameDraw& d, const ViewInput& in);
     float novaPump_ = 0.0f;  // bloom +60% for 120 ms (look.md §7)
     float hitT_ = -100.0f;   // the last hit taken (panic ring, cell shatter)

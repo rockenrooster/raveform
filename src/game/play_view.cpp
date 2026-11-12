@@ -210,6 +210,7 @@ void PlayView::resetEffects() {
         novaPressT_[p] = novaBlastT_[p] = novaFrontT_[p] = -100.0f;
         mateTrailCount_[p] = 0;
         reviveT_[p] = -100.0f;
+        leaveT_[p] = -100.0f;
     }
     allDownT_ = -100.0f;
     allDownRest_ = 0.0f;

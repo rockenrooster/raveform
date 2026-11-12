@@ -355,6 +355,7 @@ void Play::coopTestStep() {
             PlayerState& pl = w.playerMut(seat_);
             if (pl.alive) {
                 pl.cells = 0;
+                pl.novas = 0;  // (Auto Nova would fire one instead)
                 pl.invulS = pl.novaInvulS = 0.0f;
                 w.spawnBullet(pl.pos, Vec2{}, 0.0f);
                 RF_LOG("net: --coop-down-at %.1f s: this ship is downed", static_cast<double>(opt_.coopDownAt));
@@ -402,6 +403,47 @@ void Play::coopTestStep() {
     }
     if (is("over") && screen_ == Screen::GameOver && overS_ > 2.6f) coopShotReady_ = true;
     if (is("hud") && netRunStarted_ && runSeconds_ > 30.0f) coopShotReady_ = true;
+}
+
+void Play::coopScreenShot() {
+    // --coop-shot's moments on the screens before a session: the join screen with a room heard (or after 6 s), the code
+    // typed, the local network's screen, a refusal's message.
+    if (!opt_.coopShot[0] || coopShotReady_ || session_) return;
+    const char* shot = opt_.coopShot;
+    const auto is = [&](const char* name) { return std::strcmp(shot, name) == 0; };
+    if (screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission) {
+        coopShotT_ += frameDt_;
+    } else {
+        coopShotT_ = 0.0f;
+        return;
+    }
+    if (is("join") && screen_ == Screen::CoopJoin && ((browser_ && browser_->count() && coopShotT_ > 2.0f) || coopShotT_ > 6.0f)) coopShotReady_ = true;
+    if (is("code") && screen_ == Screen::CoopJoin && codeLen_ == 4 && coopShotT_ > 0.5f) coopShotReady_ = true;
+    if (is("permission") && screen_ == Screen::NetPermission && coopShotT_ > 1.0f) coopShotReady_ = true;
+    if (is("message") && screen_ == Screen::CoopJoin && coopMessage_[0] && coopMessageT_ > 1.0f) coopShotReady_ = true;
+}
+
+void Play::coopBed() {
+    // GAME_DESIGN 10: the shared bed is identical on every device. The host decides each bar's intensity a quarter
+    // into the bar before it and sends it; every device posts it to its band half a bar ahead (the band plans a bar
+    // when its write head reaches the line), a client keeping the last it had when one is late.
+    if (!bandDrives_ || !band_ || !session_ || !band_->view().running) return;
+    const double heard = band_->view().heardTick;
+    const double line = std::floor(heard / kTicksPerBar) * kTicksPerBar;
+    const double inBar = (heard - line) / kTicksPerBar;
+    const u32 nextBar = world_->barOf(line + kTicksPerBar - netBandOffset_ + 1.0);
+    if (session_->host() && inBar >= 0.25 && bedSentBar_ != nextBar) {
+        bedLevel_ = static_cast<u8>(clampf(intensity_, 0.0f, 1.0f) * 255.0f + 0.5f);
+        session_->sendBed(nextBar, bedLevel_);
+        bedSentBar_ = nextBar;
+    }
+    if (inBar >= 0.5 && bedPostedBar_ != nextBar) {
+        u8 level = bedLevel_;
+        if (!session_->host() && session_->bedLevel(nextBar, level)) bedLevel_ = level;
+        band_->setIntensity(static_cast<float>(bedLevel_) / 255.0f);
+        intensityPosted_ = static_cast<float>(bedLevel_) / 255.0f;
+        bedPostedBar_ = nextBar;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------- the band

@@ -220,7 +220,8 @@ bool App::init() {
     // M2 audio begin
     // Pictures (fixed 1/60 s steps) keep the scripted song clock and need no band; benchmarks play the
     // full band on the palette's Track (Reef: Track 3, the stage's 132 BPM).
-    const bool pictureRun = args_.fixedStep || args_.screenshot[0];
+    // (M4 stage B: a --coop-shot picture is the game in real time, its screens and its band, taken when the moment comes.)
+    const bool pictureRun = args_.fixedStep || (args_.screenshot[0] && !args_.coopShot[0]);
     // M3: the game is the default when no scenario (and no scene file) is given.
     const bool gameScenario = !args_.sceneFile[0] && (!args_.scenario[0] || std::strcmp(args_.scenario, "play") == 0 ||
                                                       std::strcmp(args_.scenario, "bench_play") == 0 ||

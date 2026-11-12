@@ -195,7 +195,8 @@ float Ui::fader(u32 id, Vec2 left, float width, float value, float meter, const 
 // ---------------------------------------------------------------------------------------------- screens
 
 void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& variant, float W, float H, Vec2 insetMin, Vec2 insetMax) {
-    ui_.begin(d, *font_, *look_, variant, W, H, insetMin, insetMax, uiPtr_, palettes_->player[0], palette_->accent);
+    // (M4: the primary controls carry this device's player colour, P1's in solo.)
+    ui_.begin(d, *font_, *look_, variant, W, H, insetMin, insetMax, uiPtr_, palettes_->player[seat_ < kMaxPlayers ? seat_ : 0], palette_->accent);
     switch (screen_) {
         case Screen::Notice:
             params.exposurePump *= 0.33f;
@@ -207,15 +208,30 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
             break;
         case Screen::Paused:
             params.exposurePump *= 0.2f;
-            screenPause(ui_);
+            if (coop()) screenPauseCoop(ui_);
+            else screenPause(ui_);
             break;
         case Screen::GameOver:
             params.exposurePump *= 0.45f;
-            screenGameOver(ui_);
+            if (coop()) screenGameOverCoop(ui_);
+            else screenGameOver(ui_);
             break;
         case Screen::Settings:
             params.exposurePump *= 0.33f;
             screenSettings(ui_);
+            break;
+        // M4 stage B: the co-op screens (game/screens_coop.cpp).
+        case Screen::CoopJoin:
+            params.exposurePump *= 0.33f;
+            screenCoopJoin(ui_);
+            break;
+        case Screen::CoopLobby:
+            params.exposurePump *= 0.33f;
+            screenCoopLobby(ui_);
+            break;
+        case Screen::NetPermission:
+            params.exposurePump *= 0.33f;
+            screenNetPermission(ui_);
             break;
         default: break;
     }
@@ -329,10 +345,13 @@ void Play::screenTitle(Ui& ui) {
             ui.dot(c, 4.0f * s, b == 0 ? mag : white, b == beat ? 1.8f : 0.35f);
         }
     }
-    // PLAY (one tap: a run on the next bar line), CO-OP (M4: not yet), SETTINGS.
+    // PLAY (one tap: a run on the next bar line), CO-OP (M4 stage B: the join screen), SETTINGS.
     const float y = 759.0f * s;
     if (ui.pill(10, {cx, y}, {600.0f * s, 140.0f * s}, "PLAY", 52.0f * s, true) || keyPrimary_) startRun();
-    ui.pill(11, {cx - 505.0f * s, y}, {330.0f * s, 104.0f * s}, "CO-OP", 30.0f * s, false, false);
+    if (ui.pill(11, {cx - 505.0f * s, y}, {330.0f * s, 104.0f * s}, "CO-OP", 30.0f * s, false)) {
+        if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+        openCoop();
+    }
     if (ui.pill(12, {cx + 505.0f * s, y}, {330.0f * s, 104.0f * s}, "SETTINGS", 30.0f * s, false)) openSettings(Screen::Title);
     // The ship under PLAY, idling, turning toward the last touch.
     {
@@ -364,6 +383,9 @@ void Play::screenTitle(Ui& ui) {
         ui.text({m, H - 54.0f * s}, 14.0f * s, palettes_->player[3], 1.4f, line, 0.0f);
         ui.text({W - std::fmax(132.0f * s, ui.insetMax().x), H - 54.0f * s}, 14.0f * s, white, 0.5f, "HEADPHONES RECOMMENDED", 1.0f);
     }
+    // M4 stage B: why a co-op session ended (the host left, the connection was lost), for a few seconds.
+    coopMessageT_ += frameDt_;
+    if (coopMessage_[0] && coopMessageT_ < 10.0f) ui.text({cx, 870.0f * s}, 18.0f * s, palettes_->danger, 1.5f, coopMessage_);
     keyPrimary_ = keyBack_ = false;
 }
 
@@ -629,6 +651,17 @@ void Play::screenSettings(Ui& ui) {
         char off[32];
         std::snprintf(off, sizeof off, band_ && band_->syncOffsetTouched() ? "%+.0f MS" : "AUTOMATIC", band_ ? band_->syncOffsetMs() : 0.0f);
         ui.text({m + 180.0f * s, H - 56.0f * s}, 14.0f * s, palettes_->player[3], 1.3f, off);
+        // M4 (GAME_DESIGN 12): in co-op the music can come from the host's phone alone (a client keeps its own lead).
+        {
+            static const char* const kOnOff[2] = {"OFF", "ON"};
+            const float hx = cx + 700.0f * s;
+            ui.text({hx, 782.0f * s}, 13.0f * s, white, 0.8f, "CO-OP: MUSIC FROM THE HOST'S PHONE ONLY");
+            const u32 ho = ui.segmented(12, {hx, 828.0f * s}, 320.0f * s, 56.0f * s, kOnOff, 2, settings_.musicHostOnly ? 1u : 0u, 20.0f * s);
+            if ((ho != 0) != settings_.musicHostOnly) {
+                settings_.musicHostOnly = ho != 0;
+                changed = true;
+            }
+        }
         static const char* const kH[3] = {"OFF", "SOFT", "STRONG"};
         ui.text({cx, H - 200.0f * s}, 13.0f * s, white, 0.8f, "HAPTICS");
         const u32 h = ui.segmented(9, {cx, H - 140.0f * s}, 560.0f * s, 70.0f * s, kH, 3, settings_.haptics, 22.0f * s);
@@ -650,7 +683,7 @@ void Play::screenSettings(Ui& ui) {
         const u32 aa = ui.segmented(6, {cx, 570.0f * s}, 420.0f * s, 80.0f * s, kOnOff, 2, settings_.autoAim ? 1u : 0u, 26.0f * s);
         // Play test 1, second pass (screens.md CONTROLS): Auto Nova, on by default.
         ui.text({cx, 680.0f * s}, 18.0f * s, white, 1.1f, "AUTO NOVA  FIRES ONE BEFORE YOUR LAST CELL GOES");
-        const u32 an = ui.segmented(9, {cx, 750.0f * s}, 420.0f * s, 80.0f * s, kOnOff, 2, settings_.autoNova ? 1u : 0u, 26.0f * s);
+        const u32 an = ui.segmented(11, {cx, 750.0f * s}, 420.0f * s, 80.0f * s, kOnOff, 2, settings_.autoNova ? 1u : 0u, 26.0f * s);
         if ((sw != 0) != settings_.swapSides || (aa != 0) != settings_.autoAim || (an != 0) != settings_.autoNova) {
             settings_.swapSides = sw != 0;
             settings_.autoAim = aa != 0;

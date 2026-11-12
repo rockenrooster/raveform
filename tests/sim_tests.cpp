@@ -404,7 +404,7 @@ void testSpecies() {
         CHECK(h.killSize() == 0);
     }
     CHECK(s.rosterCount == 12);
-    CHECK(s.budgetCycles[0] == 4 && s.budgetCycles[1] == 3);
+    CHECK(s.budgetCycles[0] == 3 && s.budgetCycles[1] == 3);  // play test 2 (species.json): Track 1 has three cycles
     CHECK(s.get(SpeciesTable::index(Family::Ram, 3, kVariantA)).killSize() == 1);
     CHECK(s.get(SpeciesTable::index(Family::Ram, 5, kVariantA)).killSize() == 2);
     CHECK(s.family(Family::Sentry).patternArms == 3);

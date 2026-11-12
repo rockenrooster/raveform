@@ -666,8 +666,19 @@ void World::netBossState(const float pairHp[3], float coreHp, Vec2 pos) {
 void World::netSetPresent(u32 p, bool present) {
     if (p >= kMaxPlayers) return;
     PlayerState& pl = players_[p];
+    const bool was = pl.present;
     pl.present = present;
     if (present) return;
+    if (was) {
+        // M4 stage B (GAME_DESIGN 10): the ship fades where it was; its seat opens; the run goes on.
+        Event ev;
+        ev.type = EventType::Leave;
+        ev.a = static_cast<u8>(p);
+        ev.x = pl.pos.x;
+        ev.y = pl.pos.y;
+        ev.f = pl.heading;
+        emit(ev);
+    }
     pl.alive = false;
     pl.down = false;
     pl.fire = 0;

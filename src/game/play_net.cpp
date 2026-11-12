@@ -72,6 +72,11 @@ bool Play::netInit() {
 
 void Play::netFrame(float realDt) {
     frameDt_ = realDt > 0.1f ? 0.1f : (realDt < 0.0f ? 0.0f : realDt);
+    if (coopFlowActive_) {
+        // M4 stage B: the screens follow the session; an ended session goes back to the title (and solo play).
+        coopFlow();
+        if (!session_) return;
+    }
     net::Session& s = *session_;
     World& w = *world_;
     const i64 localUs = net::wireNowUs();
@@ -158,6 +163,7 @@ void Play::netFrame(float realDt) {
         }
     }
     if (!s.host()) netBandServo();
+    coopBand();  // M4 stage B: the teammates' leads, the beacons, the revive's notes (GAME_DESIGN 10)
     bandFrame();
     s.send(localUs, controller_.pose());
 

@@ -187,6 +187,8 @@ enum class EventType : u8 {
     CritBurst,   // a beat shot's hit burst (On-Beat Crit): a = player; x, y; f = its radius
     TrioUnlock,  // the Trio's orbs light (the Break's third beat): a = player; tick = that beat
     Refill,      // a Break gave back a cell and a Nova: a = player; b = cells now, c = Novas now
+    // M4 stage B.
+    Leave,       // a player's device left the run (its seat opened): a = player; x, y = where its ship was; f = heading
 };
 // Impact events on the boss carry this species, with c = 1 lens plate, 2 arm, 3 core.
 constexpr u16 kBossSpecies = 0xFFFF;

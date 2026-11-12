@@ -93,6 +93,7 @@ private:
     BeaconInfo rooms_[kMaxRooms];
     u32 count_ = 0, malformed_ = 0;
     int lastError_ = 0;
+    bool netRef_ = false;  // the network library held while listening (the join screen comes before any session)
 };
 
 }  // namespace rf::net

@@ -268,6 +268,21 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
                        col(gold, 2.0f * pulse), col(amber, 2.0f * pulse), text);
         d.pools.glow({m + 44.0f * s, top + 107.0f * s}, 60.0f * s, gold * (0.10f * pulse));
     }
+    // M4 stage B: co-op, each player's own score under the team's, in their colour, ranked (yours brighter).
+    if (st.coopPlayers > 1) {
+        const float y0 = top + (st.chain >= 2 ? 140.0f : 92.0f) * s;
+        for (u32 k = 0; k < st.rankCount && k < 4; ++k) {
+            const u32 q = st.rank[k];
+            char num[32];
+            groupDigits(num, sizeof num, st.playerScore[q]);
+            char line[48];
+            std::snprintf(line, sizeof line, "P%u  %s", q + 1, num);
+            const float cap = 13.0f * s;
+            const float lvl = q == st.me ? 1.7f : 1.1f;
+            const Vec3 pc = col(palettes.player[q], lvl);
+            font.drawField(d.hud, {m, y0 + static_cast<float>(k) * 26.0f * s}, cap, 0.65f * s, pc, pc, pc, line);
+        }
+    }
     // Nova stock: top right, one four-point star per Nova, lit in the player colour.
     for (u32 k = 0; k < st.novaCap; ++k) {
         const Vec2 c{W - mr - 150.0f * s - static_cast<float>(k) * 50.0f * s, top + 62.0f * s};

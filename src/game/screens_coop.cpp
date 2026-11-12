@@ -258,8 +258,8 @@ void Play::screenCoopLobby(Ui& ui) {
             ui.draw().hud.line(c + polarC(a0, r), c + polarC(a1, r), (ready ? 1.3f : 1.0f) * s, kc, kc, 0);
         }
         if (ready) {
-            const Vec3 g = ui.col(colour, 0.07f + 0.1f * pulse);
-            ui.draw().hud.line({c.x - 0.6f * r, c.y}, {c.x + 0.6f * r, c.y}, 0.8f * r, g, g, 0);
+            // Glass: the disc inside the ring at 0.07 (screens.py), and a pool.
+            ui.dot(c, 0.97f * r, colour, 0.07f + 0.1f * pulse);
             ui.draw().pools.glow(c, 240.0f * s, colour * (0.10f + 0.15f * pulse));
         }
         shipGlyph(ui, c, 44.0f * s, -0.25f * kTwoPi, colour, light, ready ? 1.0f : 0.35f);  // pointing up
@@ -297,6 +297,165 @@ void Play::screenCoopLobby(Ui& ui) {
         ui.text({cx, 985.0f * s}, 24.0f * s, white, 0.8f, connecting ? "CONNECTING" : "WAITING FOR HOST");
     }
     if (ui.pill(221, {m + 170.0f * s, 970.0f * s}, {300.0f * s, 90.0f * s}, "LEAVE", 24.0f * s, false) || keyBack_) {
+        leaveCoop("");
+        if (band_) band_->playSfx(audio::Sfx::UiBack);
+    }
+    keyPrimary_ = keyBack_ = false;
+}
+
+// ---------------------------------------------------------------------------------------------- pause, game over
+
+void Play::screenPauseCoop(Ui& ui) {
+    // screens.md "Pause": in co-op any player may pause; it takes hold on the next beat for everyone and the count-in
+    // is shared (the host's song decides when the run goes on). No RESTART: the run is everyone's; LEAVE RUN asks once.
+    const float s = ui.s(), W = ui.W(), cx = 0.5f * W;
+    const Vec3 white{1.0f, 1.0f, 1.0f};
+    const Vec3 gold = palettes_->player[3];
+    ui.tube({cx, 300.0f * s}, 96.0f * s, white, palette_->accent, palette_->hue[2], 1.5f, "PAUSED");
+    ui.text({cx, 340.0f * s}, 14.0f * s, palette_->accent, 1.1f, "FOR EVERYONE IN THE ROOM");
+    {
+        u64 team = 0;
+        for (u32 q = 0; q < kMaxPlayers; ++q)
+            if (world_->player(q).present) team += world_->player(q).score;
+        char num[32], line[128];
+        std::snprintf(num, sizeof num, "%llu", static_cast<unsigned long long>(team));
+        const u32 secs = static_cast<u32>(runSeconds_);
+        std::snprintf(line, sizeof line, "TEAM %s   TRACK %u   %u:%02u", num, world_->phrase().track, secs / 60u, secs % 60u);
+        ui.text({cx, 400.0f * s}, 20.0f * s, gold, 1.4f, line);
+    }
+    net::Session* se = session_;
+    if (se && se->resuming()) {
+        // The shared count-in: four numbered rings fill on the last four beats before the run goes on.
+        const double left = se->resumeSong() - se->songAt(se->hostNow());
+        const float u = static_cast<float>(1.0 - left / (4.0 * kTicksPerBeat));
+        for (u32 k = 0; k < 4; ++k) {
+            const Vec2 c{cx + (static_cast<float>(k) - 1.5f) * 150.0f * s, 600.0f * s};
+            const float fill = u * 4.0f - static_cast<float>(k) < 0.0f ? 0.0f : (u * 4.0f - static_cast<float>(k) > 1.0f ? 1.0f : u * 4.0f - static_cast<float>(k));
+            ui.ring(c, 52.0f * s, (fill >= 1.0f ? 1.6f : 0.9f) * s, palettes_->player[seat_], fill >= 1.0f ? 2.0f : 0.6f, 48);
+            const u32 segs = static_cast<u32>(48.0f * fill);
+            for (u32 j = 0; j < segs; ++j) {
+                const float a0 = -0.25f * kTwoPi + kTwoPi * static_cast<float>(j) / 48.0f, a1 = a0 + kTwoPi / 48.0f;
+                const Vec3 c2 = ui.col(palettes_->player[seat_], 1.8f);
+                ui.draw().hud.line(c + polarC(a0, 52.0f * s), c + polarC(a1, 52.0f * s), 3.0f * s, c2, c2, 0);
+            }
+            char n[4];
+            std::snprintf(n, sizeof n, "%u", 4u - k);
+            ui.text({c.x, c.y + 18.0f * s}, 36.0f * s, white, fill > 0.0f ? 1.8f : 0.6f, n);
+        }
+        keyPrimary_ = keyBack_ = false;
+        return;
+    }
+    if (askQuit_) {
+        ui.text({cx, 560.0f * s}, 24.0f * s, white, 1.3f, "LEAVE THIS RUN? THE OTHERS PLAY ON");
+        if (ui.pill(30, {cx - 200.0f * s, 700.0f * s}, {320.0f * s, 100.0f * s}, "YES", 30.0f * s, false)) {
+            askQuit_ = false;
+            leaveCoop("");
+            if (band_) band_->playSfx(audio::Sfx::UiBack);
+            keyPrimary_ = keyBack_ = false;
+            return;
+        }
+        if (ui.pill(31, {cx + 200.0f * s, 700.0f * s}, {320.0f * s, 100.0f * s}, "NO", 30.0f * s, true) || keyBack_) askQuit_ = false;
+        keyPrimary_ = keyBack_ = false;
+        return;
+    }
+    if (ui.pill(20, {cx, 600.0f * s}, {600.0f * s, 130.0f * s}, "RESUME", 52.0f * s, true) || keyPrimary_ || keyBack_) coopPause(false);
+    if (ui.pill(22, {cx + 340.0f * s, 780.0f * s}, {320.0f * s, 100.0f * s}, "SETTINGS", 30.0f * s, false)) openSettings(Screen::Paused);
+    if (ui.pill(23, {cx - 340.0f * s, 780.0f * s}, {320.0f * s, 100.0f * s}, "LEAVE RUN", 30.0f * s, false, true, false, Vec3{0.6f, 0.6f, 0.6f}))
+        askQuit_ = true;
+    keyPrimary_ = keyBack_ = false;
+}
+
+void Play::screenGameOverCoop(Ui& ui) {
+    // screens.md "Game over": in co-op the score is the team's, each player's own under it in their colour, ranked,
+    // and the set list carries each player's crosses in their colour. The host's RETRY starts the next run for
+    // everyone; the others wait for it. HOME leaves the room.
+    const float s = ui.s(), W = ui.W(), H = ui.H(), cx = 0.5f * W;
+    const Vec3 white{1.0f, 1.0f, 1.0f};
+    const Vec3 gold = palettes_->player[3], amber = palettes_->playerDeep[3];
+    const float m = std::fmax(132.0f * s, ui.insetMin().x);
+    const World& w = *world_;
+    ui.text({cx, 130.0f * s}, 44.0f * s, palette_->accent, 1.6f, "RUN OVER");
+    u64 team = 0;
+    u8 order[kMaxPlayers];
+    u32 n = 0;
+    for (u32 q = 0; q < kMaxPlayers; ++q)
+        if (w.player(q).present) {
+            team += w.player(q).score;
+            order[n++] = static_cast<u8>(q);
+        }
+    for (u32 i = 1; i < n; ++i)
+        for (u32 j = i; j > 0 && w.player(order[j]).score > w.player(order[j - 1]).score; --j) {
+            const u8 t = order[j];
+            order[j] = order[j - 1];
+            order[j - 1] = t;
+        }
+    // The team's score counts up over one bar.
+    {
+        const float bars = overS_ * (static_cast<float>(w.bpm()) / 60.0f) / 4.0f;
+        const float u = bars < 0.0f ? 0.0f : (bars > 1.0f ? 1.0f : bars);
+        const u64 shown = static_cast<u64>(static_cast<double>(team) * (1.0 - (1.0 - u) * (1.0 - u)));
+        char num[32];
+        {
+            char raw[32];
+            std::snprintf(raw, sizeof raw, "%llu", static_cast<unsigned long long>(shown));
+            const size_t len = std::strlen(raw);
+            size_t o = 0;
+            for (size_t i = 0; i < len && o + 2 < sizeof num; ++i) {
+                num[o++] = raw[i];
+                const size_t rest = len - 1 - i;
+                if (rest && rest % 3 == 0) num[o++] = ',';
+            }
+            num[o] = 0;
+        }
+        const float cap = 120.0f * s;
+        const float wd = ui.measure(cap, num);
+        ui.font().drawField(ui.draw().hud, {cx - 0.5f * wd, 300.0f * s - cap}, cap, 4.0f * s, ui.col(white, 1.6f), ui.col(gold, 1.6f), ui.col(amber, 1.6f), num);
+        ui.text({cx, 336.0f * s}, 14.0f * s, palette_->accent, 1.1f, "TEAM");
+    }
+    // The ranking: each player's own score, in their colour (yours marked).
+    for (u32 k = 0; k < n; ++k) {
+        const u32 q = order[k];
+        const PlayerState& pl = w.player(q);
+        char line[96];
+        std::snprintf(line, sizeof line, "%u   P%u%s   %llu   X%u   %u KILLS", k + 1, q + 1, q == seat_ ? " (YOU)" : "", static_cast<unsigned long long>(pl.score),
+                      pl.bestChain, pl.kills);
+        ui.text({cx, (400.0f + 40.0f * static_cast<float>(k)) * s}, 26.0f * s, palettes_->player[q], q == seat_ ? 1.8f : 1.2f, line);
+    }
+    // The set list: the run as the song it was; a white star where a boss fell, a gold tick per upgrade (yours), a
+    // cross per hit in the colour of the player it hit.
+    {
+        const float x0 = m, x1 = W - std::fmax(132.0f * s, ui.insetMax().x), y = 640.0f * s;
+        const float total = runSeconds_ > 1.0f ? runSeconds_ : 1.0f;
+        const auto xAt = [&](float t) { return x0 + (x1 - x0) * (t / total < 0.0f ? 0.0f : (t / total > 1.0f ? 1.0f : t / total)); };
+        ui.draw().hud.line({x0, y}, {x1, y}, 4.0f * s, ui.col(palette_->accent, 1.0f), ui.col(palette_->accent, 1.0f), 0);
+        for (u32 k = 0; k < markCount_; ++k) {
+            const Mark& mk = marks_[k];
+            const float x = xAt(mk.t);
+            if (mk.kind == 1) {
+                for (u32 a = 0; a < 4; ++a) {
+                    const Vec2 dv = polarC(kTwoPi * static_cast<float>(a) / 8.0f, 14.0f * s);
+                    ui.draw().hud.line(Vec2{x, y - 22.0f * s} - dv, Vec2{x, y - 22.0f * s} + dv, 0.9f * s, ui.col(white, 2.0f), ui.col(white, 2.0f), 0);
+                }
+            } else if (mk.kind == 2) {
+                ui.draw().hud.line({x, y - 14.0f * s}, {x, y - 4.0f * s}, 1.1f * s, ui.col(gold, 1.8f), ui.col(gold, 1.8f), 0);
+            } else if (mk.kind == 3) {
+                const Vec3 c = ui.col(palettes_->player[mk.a < kMaxPlayers ? mk.a : 0], 1.8f);
+                ui.draw().hud.line({x - 5.0f * s, y + 6.0f * s}, {x + 5.0f * s, y + 16.0f * s}, 0.9f * s, c, c, 0);
+                ui.draw().hud.line({x + 5.0f * s, y + 6.0f * s}, {x - 5.0f * s, y + 16.0f * s}, 0.9f * s, c, c, 0);
+            }
+        }
+        ui.text({x0, y + 48.0f * s}, 11.0f * s, white, 0.6f, "STAR = BOSS BEATEN   GOLD = YOUR UPGRADES   CROSSES = HITS, IN THE COLOUR OF WHO TOOK THEM", 0.0f);
+    }
+    const float right = W - std::fmax(132.0f * s, ui.insetMax().x);
+    if (session_ && session_->host()) {
+        if (ui.pill(40, {right - 300.0f * s, H - 240.0f * s}, {600.0f * s, 140.0f * s}, "RETRY", 52.0f * s, true) || keyPrimary_) {
+            session_->requestRetry();
+            if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+        }
+    } else {
+        ui.text({right - 300.0f * s, H - 225.0f * s}, 24.0f * s, white, 0.8f, "WAITING FOR THE HOST");
+    }
+    if (ui.pill(41, {right - 165.0f * s, H - 110.0f * s}, {330.0f * s, 90.0f * s}, "HOME", 28.0f * s, false) || keyBack_) {
         leaveCoop("");
         if (band_) band_->playSfx(audio::Sfx::UiBack);
     }

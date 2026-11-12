@@ -152,7 +152,7 @@ public:
     enum class Screen : u8 { Notice, Title, Run, Paused, GameOver, Settings, CoopJoin, CoopLobby, NetPermission };
     Screen screen() const { return screen_; }
     bool flows() const { return flow_; }
-    bool runStarted() const { return !flow_ || (screen_ != Screen::Notice && screen_ != Screen::Title && !(screen_ == Screen::Settings && settingsBack_ == Screen::Title)); }
+    bool runStarted() const { return !flow_ || (!attract() && screen_ != Screen::CoopLobby); }
     bool takeSyncRequest() {
         const bool r = syncRequest_;
         syncRequest_ = false;
@@ -188,7 +188,12 @@ private:
     void endRun(bool died);
     void openSettings(Screen back);
     void applySettings();
-    bool attract() const { return flow_ && (screen_ == Screen::Notice || screen_ == Screen::Title || (screen_ == Screen::Settings && settingsBack_ == Screen::Title)); }
+    // The title's attract run (the bot plays it) behind the notice, the title, its settings and (M4 stage B) the
+    // join and local network screens.
+    bool attract() const {
+        return flow_ && (screen_ == Screen::Notice || screen_ == Screen::Title || (screen_ == Screen::Settings && settingsBack_ == Screen::Title) ||
+                         screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission);
+    }
     void uiPointer(Vec2 pos, bool down);
     void buildInput(sim::StickInput& in);
     void runTick(double music0, double music1, bool firstOfFrame);
@@ -212,9 +217,15 @@ private:
     void screenNetPermission(Ui& ui);
     void coopRecordScore();
     void coopAutoStep();   // --coop: host or join from the command line
-    void coopTestStep();   // --coop-down-at, --coop-pause-at, --coop-shot
-    void coopBand();       // GAME_DESIGN 10: the teammates' leads, the beacons, the revive's notes, the bed
+    void coopTestStep();   // --coop-down-at, --coop-pause-at, --coop-shot (in a session)
+    void coopScreenShot(); // --coop-shot's moments on the screens before a session (join, code, permission, message)
+    void coopBand();       // GAME_DESIGN 10: the teammates' leads, the beacons, the revive's notes
+    void coopBed();        // GAME_DESIGN 10: the bed's intensity, the host's, bar by bar
     void coopPause(bool on);
+    void screenPauseCoop(Ui& ui);
+    void screenGameOverCoop(Ui& ui);
+    // The band's slot of seat q (0 is this device's player; the others follow in seat order).
+    u8 bandSlot(u32 q) const { return static_cast<u8>(q == seat_ ? 0u : (q < seat_ ? q + 1u : q)); }
     bool coopAutoDone_ = false;
     float coopAutoT_ = 0.0f, coopShotT_ = 0.0f;
     bool coopShotReady_ = false, coopDowned_ = false, coopPaused_ = false, coopResumed_ = false;

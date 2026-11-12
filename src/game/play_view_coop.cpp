@@ -21,6 +21,7 @@ constexpr float kBeaconHullScale = 1.0f / 3.0f, kBeaconHull = 0.4f;  // the hull
 constexpr float kBeaconFlarePx = 300.0f, kBeaconFlare = 0.8f, kBeaconFlareSwell = 0.2f;  // quoted
 constexpr float kCloseFlashS = 0.12f, kCloseFlash = 0.9f;  // the ring's white flash as it closes (quoted)
 constexpr u32 kBeaconDashes = 24;          // chosen: the lobby's open seat draws 24 dashes too (screens.py)
+constexpr float kLeaveFadeS = 1.0f;        // chosen (stage B): a player that left fades over a second
 Vec2 lerp2(Vec2 a, Vec2 b, float t) { return a + (b - a) * t; }
 float lerpAngle(float a, float b, float t) { return a + wrapAngle(b - a) * t; }
 }  // namespace
@@ -51,6 +52,14 @@ void PlayView::drawCoop(FrameDraw& d, const ViewInput& in) {
         const PlayerState& pl = w.player(q);
         if (!pl.present) {
             mateTrailCount_[q] = 0;
+            // M4 stage B: a player that left: its ship fades where it was over a second (its seat opened).
+            const float age = t - leaveT_[q];
+            if (age >= 0.0f && age < kLeaveFadeS && q != me) {
+                const float f = 1.0f - age / kLeaveFadeS;
+                const Vec3 c = palettes_->player[q], cd = palettes_->playerDeep[q];
+                glyph(d.glyphs, gShip_, false, leavePos_[q], leaveHeading_[q], leaveHeading_[q], shipScale * (1.0f + 0.3f * age),
+                      hull.intensity * kMateLevel * f, 0.5f * hull.width, kGlyphPlayer, c, cd);
+            }
             continue;
         }
         const Vec3 c = palettes_->player[q], cd = palettes_->playerDeep[q], cl = palettes_->playerLight[q];

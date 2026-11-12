@@ -198,6 +198,7 @@ void BeaconSender::update(i64 nowUs, const BeaconInfo& info) {
 
 bool BeaconBrowser::start(WireKind kind) {
     stop();
+    netRef_ = netInit();  // (Winsock on Windows: the join screen listens before any session has started the library)
     socket_ = wireDatagramOpen(kind, NetSim{}, kBeaconUdpPort, true);
     count_ = malformed_ = 0;
     lastError_ = socket_ ? 0 : wireLastError();
@@ -208,6 +209,8 @@ void BeaconBrowser::stop() {
     if (socket_) wireDatagramClose(socket_);
     socket_ = 0;
     count_ = 0;
+    if (netRef_) netShutdown();
+    netRef_ = false;
 }
 
 void BeaconBrowser::poll(i64 nowUs) {
