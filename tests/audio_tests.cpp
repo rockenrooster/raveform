@@ -207,43 +207,46 @@ void freeCapture(Capture& c) {
 }
 
 void testStagedBurstIndependence() {
-    // The same song rendered in bursts of 192 and in random bursts: identical samples and events.
+    // Each Track's song rendered in bursts of 192 and in random bursts: identical samples and events.
     const u64 frames = static_cast<u64>(kRate) * 20;
-    Capture a, b;
-    {
-        Engine e;
-        CHECK(e.init(*g_music, *g_bank, kRate));
-        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Staged), 0, 0));
-        runEngine(e, a, frames, 192);
+    for (u32 t = 0; t < g_music->trackCount; ++t) {
+        Capture a, b;
+        {
+            Engine e;
+            CHECK(e.init(*g_music, *g_bank, kRate));
+            e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Staged), static_cast<u8>(t), 0));
+            runEngine(e, a, frames, 192);
+        }
+        {
+            Engine e;
+            CHECK(e.init(*g_music, *g_bank, kRate));
+            e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Staged), static_cast<u8>(t), 0));
+            runEngine(e, b, frames, 0);
+        }
+        u64 diff = 0;
+        for (u64 i = 0; i < frames * 2; ++i) diff += a.out[i] != b.out[i];
+        CHECK_MSG(diff == 0, "%s: %llu samples differ between burst patterns", g_music->tracks[t].id,
+                  static_cast<unsigned long long>(diff));
+        CHECK(a.eventCount == b.eventCount && a.eventCount > 100);
+        bool same = a.eventCount == b.eventCount;
+        for (u32 i = 0; same && i < a.eventCount; ++i)
+            same = a.events[i].frame == b.events[i].frame && a.events[i].kind == b.events[i].kind;
+        CHECK(same);
+        CHECK_MSG(a.allocs == 0 && b.allocs == 0, "render allocated %llu / %llu times",
+                  static_cast<unsigned long long>(a.allocs), static_cast<unsigned long long>(b.allocs));
+        // Every onset on its grid position: frame == round(tick * frames per tick) (constant tempo).
+        const double fpt = 60.0 * kRate / (g_music->tracks[t].bpm * 96.0);
+        u32 checked = 0, off = 0;
+        for (u32 i = 0; i < a.eventCount; ++i) {
+            const BeatEvent& e = a.events[i];
+            if (e.tick < 0.0 || e.kind == BeatKind::Tempo) continue;
+            ++checked;
+            if (std::llabs(e.frame - static_cast<i64>(std::llround(e.tick * fpt))) > 0) ++off;
+        }
+        CHECK_MSG(checked > 300 && off == 0, "%s: %u of %u onsets off the grid", g_music->tracks[t].id, off, checked);
+        freeCapture(a);
+        freeCapture(b);
     }
-    {
-        Engine e;
-        CHECK(e.init(*g_music, *g_bank, kRate));
-        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Staged), 0, 0));
-        runEngine(e, b, frames, 0);
-    }
-    u64 diff = 0;
-    for (u64 i = 0; i < frames * 2; ++i) diff += a.out[i] != b.out[i];
-    CHECK_MSG(diff == 0, "%llu samples differ between burst patterns", static_cast<unsigned long long>(diff));
-    CHECK(a.eventCount == b.eventCount && a.eventCount > 100);
-    bool same = a.eventCount == b.eventCount;
-    for (u32 i = 0; same && i < a.eventCount; ++i)
-        same = a.events[i].frame == b.events[i].frame && a.events[i].kind == b.events[i].kind;
-    CHECK(same);
-    CHECK_MSG(a.allocs == 0 && b.allocs == 0, "render allocated %llu / %llu times", static_cast<unsigned long long>(a.allocs),
-              static_cast<unsigned long long>(b.allocs));
-    // Every onset on its grid position: frame == round(tick * frames per tick) (constant tempo).
-    const double fpt = 60.0 * kRate / (g_music->tracks[0].bpm * 96.0);
-    u32 checked = 0, off = 0;
-    for (u32 i = 0; i < a.eventCount; ++i) {
-        const BeatEvent& e = a.events[i];
-        if (e.tick < 0.0 || e.kind == BeatKind::Tempo) continue;
-        ++checked;
-        if (std::llabs(e.frame - static_cast<i64>(std::llround(e.tick * fpt))) > 0) ++off;
-    }
-    CHECK_MSG(checked > 300 && off == 0, "%u of %u onsets off the grid", off, checked);
-    freeCapture(a);
-    freeCapture(b);
 }
 
 // The conductor through a whole Short cycle (with the Build's 85% bar): every onset sits on the grid of
@@ -431,11 +434,12 @@ void testNoAllocations() {
 
 void testMusicData() {
     const MusicData& m = *g_music;
-    CHECK(m.trackCount == 2);
+    CHECK(m.trackCount == 3);
     CHECK(m.variantCount == 3);
     CHECK(std::strcmp(m.variants[m.defaultVariant].id, "club") == 0);
     const i32 t2 = m.trackIndex("track02"), arcade = m.variantIndex("arcade"), club = m.variantIndex("club");
     CHECK(t2 == 1 && arcade >= 0 && club >= 0);
+    CHECK(m.trackIndex("track03") == 2 && m.trackIndex("3") == 2);
     // Order of application: patches.json, then the variant, then the Track.
     CHECK(m.sound[0][club].lead.fcStart == 4200.0f);   // patches.json
     CHECK(m.sound[0][arcade].lead.fcStart == 7000.0f); // variant
@@ -445,6 +449,16 @@ void testMusicData() {
     CHECK(m.sound[0][club].sectionGain[static_cast<u32>(Section::Build)][1] == 0.66f);
     CHECK(m.tracks[0].arrangementBars == 24);
     CHECK(m.tracks[0].longestBassSteps == 1.5f);
+    // Track 3 carries mix, send and patch overrides; each wins over the variant.
+    const SoundParams& s3 = m.sound[2][arcade];
+    CHECK(m.tracks[2].bpm == 132.0f && m.tracks[2].arrangementBars == 24);
+    CHECK(m.tracks[2].longestBassSteps == 0.8f);
+    CHECK(s3.mix.lead == 0.33f && s3.mix.stab == 0.80f && s3.mix.shaker == 0.08f && s3.mix.bass == 0.58f);
+    CHECK(s3.send[static_cast<u32>(Bus::Stab)] == 0.42f && s3.send[static_cast<u32>(Bus::Lead)] == 0.26f);
+    CHECK(m.sound[2][arcade].lead.q == 2.8f && m.sound[2][club].lead.q == 2.8f);
+    CHECK(m.sound[2][club].reverb.rt60 == 1.7f && m.sound[2][club].delay.steps == 4.0f);
+    CHECK(m.sound[2][club].stab.length == 0.34f && m.sound[2][club].pad.lfoHz == 0.18f);
+    CHECK(m.sound[2][club].kick.sweepTau == 0.016f && m.sound[2][club].kickHz == 55.0f);
     // conductor.json: structured numbers and the numbers stated in its sentences.
     const ConductorRules& r = m.conductor;
     CHECK(r.gridTicks[0] == 24 && r.gridTicks[1] == 16 && r.gridTicks[2] == 12);

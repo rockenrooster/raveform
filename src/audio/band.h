@@ -66,6 +66,13 @@ struct BeatView {
     float envelope(audio::BeatKind k, float decaySeconds) const;
 };
 
+// What the run asks of the band where no switch (--band, --track, --no-audio) says otherwise.
+struct BandDefaults {
+    const char* scenario = "";  // audio_test: the phrase cycle; sync: the metronome; bench_*: the load test
+    bool pictures = false;      // --screenshot / --fixed-step: no band unless --band asks for one
+    u32 benchTrack = 0;         // bench_*: this Track (1-based; the palette's), 0 = the first
+};
+
 class Band {
 public:
     Band() = default;
@@ -73,9 +80,11 @@ public:
     Band& operator=(const Band&) = delete;
     ~Band();
 
-    // Load time: music data, one-shots, engine. `scenario` picks the default mode ("audio_test" plays
-    // the phrase cycle, "sync" the metronome); --band overrides. Returns false only on a broken data set.
-    bool init(const AudioArgs& args, const char* scenario, AudioDevice* device);
+    // Load time: music data, one-shots, engine. The scenario picks the default mode ("audio_test" plays
+    // the phrase cycle, "sync" the metronome, benchmarks the fullest arrangement so the frame-rate
+    // contract is measured with sound on); --band overrides, --no-audio turns the band off. Returns false
+    // only on a broken data set.
+    bool init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice* device);
     bool active() const { return active_; }
     // The device callback (AudioRenderFn); `self` is the Band.
     static void render(void* self, float* out, u32 frames, u32 channels, u32 sampleRate);
@@ -156,7 +165,7 @@ private:
     bool fireAt(i64 wallNs) const;
     void loadSync();
     void haptic(int kind);
-    void sendInitialState(const AudioArgs& args);
+    void sendInitialState(const AudioArgs& args, u32 defaultTrack);
 
     bool active_ = false;
     AudioDevice* device_ = nullptr;
@@ -181,6 +190,8 @@ private:
 
     // Main thread: heard clock.
     bool modelValid_ = false;
+    static constexpr u32 kSnapLogs = 12;  // the first snaps (and stale timestamps) of a run are logged
+    u32 snapLogs_ = 0, staleLogs_ = 0;
     double model_ = 0.0;     // heard engine frame at modelNs_
     i64 modelNs_ = 0;
     u32 modelGeneration_ = 0;

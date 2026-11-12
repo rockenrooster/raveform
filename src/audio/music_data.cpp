@@ -27,6 +27,9 @@ const char kTrack01Json[] =
 const char kTrack02Json[] =
 #include "music_track02.json.inc"
     ;
+const char kTrack03Json[] =
+#include "music_track03.json.inc"
+    ;
 const char kCalibrationJson[] =
 #include "audio_loudness_calibration.json.inc"
     ;
@@ -35,7 +38,8 @@ struct TrackSource {
     const char* text;
     const char* file;
 };
-const TrackSource kTrackSources[] = {{kTrack01Json, "track01.json"}, {kTrack02Json, "track02.json"}};
+const TrackSource kTrackSources[] = {
+    {kTrack01Json, "track01.json"}, {kTrack02Json, "track02.json"}, {kTrack03Json, "track03.json"}};
 
 u64 fnv1a(u64 h, const char* s, size_t n) {
     for (size_t i = 0; i < n; ++i) {

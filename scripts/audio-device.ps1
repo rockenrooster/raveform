@@ -1,6 +1,6 @@
 # M2 device runs under the phone lock of the shared-phone rule (CLAUDE.md, lead's rule of 2026-11-11):
 # writes captures\locks\<serial>.lock in the main checkout ("m2" and the time) when the phone is free,
-# deploys this worktree's APK right before the run, and deletes the lock when the run ends.
+# deploys this checkout's last built APK right before the run, and deletes the lock when the run ends.
 #   scripts\audio-device.ps1 -Run bench [-Seconds 60] [-AppArgs '--band full']      bench_idle with the band
 #   scripts\audio-device.ps1 -Run screenshot -AppArgs '--scenario sync --no-overlay'  in-app capture
 #   scripts\audio-device.ps1 -Run soak -Seconds 600                                  the 10-minute underrun run

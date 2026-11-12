@@ -6,6 +6,7 @@
 #include <cstring>
 #include <initializer_list>
 
+#include "audio/band.h"
 #include "core/args.h"
 #include "core/half.h"
 #include "core/log.h"
@@ -594,7 +595,76 @@ void Stage::place(Enemy& e, float t, Vec2 S) const {
 
 float Stage::beatAmount() const { return reduceFlashing_ ? look_->reduceFlashingScale : 1.0f; }
 
+float Stage::beatLen() const {
+    return beat_ && beat_->running ? static_cast<float>(60.0 / beat_->bpm) : 60.0f / 132.0f;
+}
+
+void Stage::followBand() {
+    const BeatView& v = *beat_;
+    if (!v.running) return;  // the song clock waits for the band's
+    if (!beatAnchored_) {
+        // The stage's song starts on the band's next bar line (at once when the band's song has not begun).
+        const double bar = static_cast<double>(audio::kTicksPerBar);
+        beatTick0_ = std::ceil((v.heardTick > 0.0 ? v.heardTick : 0.0) / bar) * bar;
+        if (!songStarted_) {  // the song clock: minus the time until that bar line
+            songClock_ = -(beatTick0_ - v.heardTick) / static_cast<double>(audio::kPpq) * 60.0 / v.bpm;
+            songStarted_ = true;
+        }
+        lastHeardSeconds_ = v.songSeconds;
+        beatAnchored_ = true;
+        if (beatLogs_ < 8) {
+            ++beatLogs_;
+            RF_LOG("stage: on the band's clock from bar %.0f (heard tick %.1f, %.1f BPM)", beatTick0_ / bar, v.heardTick, v.bpm);
+        }
+    }
+    // The heard time's progress, at most 0.1 s a frame and never backwards: a heard clock that jumps
+    // (resynchronised, a new stream) moves the stage's song by 0.1 s at most.
+    double d = v.songSeconds - lastHeardSeconds_;
+    lastHeardSeconds_ = v.songSeconds;
+    d = d < 0.0 ? 0.0 : (d > 0.1 ? 0.1 : d);
+    songClock_ += d;
+    const float t = static_cast<float>(songClock_);
+    if (t > songT_) songT_ = t;
+}
+
+float Stage::stepTime(u32 step) const {
+    if (heard()) {
+        // Now, less the ticks heard since the step, at the present tempo.
+        const double ago = beat_->heardTick - (beatTick0_ + static_cast<double>(audio::kTicksPerStep) * step);
+        return songT_ - static_cast<float>(ago / static_cast<double>(audio::kPpq) * 60.0 / beat_->bpm);
+    }
+    return static_cast<float>(step) * beatLen() * 0.25f;
+}
+
+int Stage::beatIndex() const {
+    if (heard()) return static_cast<int>(std::floor((beat_->heardTick - beatTick0_) / static_cast<double>(audio::kPpq)));
+    return static_cast<int>(std::floor(songT_ / beatLen()));
+}
+
 void Stage::envelopes() {
+    if (beat_) {
+        // The heard events drive the pumps (look.md §7): what the player hears, when it is heard.
+        using audio::BeatKind;
+        const BeatView& v = *beat_;
+        kick_ = v.envelope(BeatKind::Kick, look_->kickDecayMs * 1e-3f);
+        snare_ = std::fmax(v.envelope(BeatKind::Clap, look_->snareDecayMs * 1e-3f),
+                           v.envelope(BeatKind::Snare, look_->snareDecayMs * 1e-3f));
+        hat_ = v.envelope(BeatKind::Hat, look_->hatDecayMs * 1e-3f);
+        bass_ = v.envelope(BeatKind::Bass, 0.18f);
+        const double kick = v.lastFrame[static_cast<u32>(BeatKind::Kick)];
+        if (kick != kickFrame_) {
+            prevKickFrame_ = kickFrame_;
+            kickFrame_ = kick;
+        }
+        // Song time of a heard frame (the lattice ripples, the Pulse Ring, the ornaments' steps).
+        const auto at = [&](double frame) {
+            return frame < -1e17 ? -10.0f : songT_ - static_cast<float>((v.heardFrame - frame) / v.rate);
+        };
+        lastKickT_ = at(kickFrame_);
+        prevKickT_ = at(prevKickFrame_);
+        lastHatT_ = at(v.lastFrame[static_cast<u32>(BeatKind::Hat)]);
+        return;
+    }
     const float beat = beatLen(), t = songT_;
     const float b = std::floor(t / beat);
     lastKickT_ = b * beat;
@@ -617,18 +687,59 @@ void Stage::envelopes() {
 
 void Stage::advance(float dt) {
     lastDt_ = dt;
-    songT_ += dt;
+    if (beat_) {
+        followBand();
+    } else {
+        songT_ += dt;
+    }
     if (songT_ >= hitStopUntil_) simT_ += dt;  // hit-stop freezes the action, not the song
     envelopes();
-    const float sixteenth = beatLen() * 0.25f;
-    while (static_cast<float>(nextSixteenth_) * sixteenth <= songT_) onSixteenth(nextSixteenth_++);
+    if (heard()) {
+        // Sixteenths on the band's grid, as they are heard, at most four a frame. The heard clock can
+        // jump (resynchronised, a new stream): more than a bar back, the stage carries on from where it
+        // is heard (from the next bar line when that is before the stage's song began); more than a bar
+        // ahead for half a second (the app was stopped), the missed sixteenths are skipped.
+        const double step = static_cast<double>(audio::kTicksPerStep), bar = static_cast<double>(audio::kTicksPerBar);
+        const double tick = beat_->heardTick, next = beatTick0_ + static_cast<double>(nextSixteenth_) * step;
+        beatBehindFrames_ = tick > next + bar ? beatBehindFrames_ + 1 : 0;
+        if (tick < next - step - bar) {
+            if (beatLogs_ < 8) {
+                ++beatLogs_;
+                RF_LOG("stage: the heard clock jumped back to tick %.1f (next sixteenth at %.1f)", tick, next);
+            }
+            if (tick >= beatTick0_) {
+                nextSixteenth_ = static_cast<u32>((tick - beatTick0_) / step) + 1;
+            } else {
+                beatAnchored_ = false;  // anchored again on the next frame
+                nextSixteenth_ = 0;
+            }
+        } else if (beatBehindFrames_ >= 30) {
+            if (beatLogs_ < 8) {
+                ++beatLogs_;
+                RF_LOG("stage: sixteenths from tick %.1f to %.1f skipped", next, tick);
+            }
+            nextSixteenth_ = static_cast<u32>((tick - beatTick0_) / step);
+            beatBehindFrames_ = 0;
+        }
+        for (u32 n = 0; n < 4 && heard() && beatTick0_ + static_cast<double>(nextSixteenth_) * step <= tick; ++n)
+            onSixteenth(nextSixteenth_++);
+    } else if (!beat_) {
+        const float sixteenth = beatLen() * 0.25f;
+        while (static_cast<float>(nextSixteenth_) * sixteenth <= songT_) onSixteenth(nextSixteenth_++);
+    }
 
     // Build bar before each Drop (endgame): drain, vignette, stiffer lattice, slow zoom-in.
     buildAmount_ = 0.0f;
-    if (kind_ == StageKind::Endgame) {
+    if (kind_ == StageKind::Endgame && heard()) {
+        const double bars = (beat_->heardTick - beatTick0_) / static_cast<double>(audio::kTicksPerBar);
+        const double barIndex = std::floor(bars);
+        if (bars >= 0.0 && static_cast<int>(barIndex) % 8 == 7) buildAmount_ = smooth01(static_cast<float>(bars - barIndex));
+    } else if (kind_ == StageKind::Endgame && !beat_) {
         const float bar = barLen();
         const float barIndex = std::floor(songT_ / bar);
         if (static_cast<int>(barIndex) % 8 == 7) buildAmount_ = smooth01((songT_ - barIndex * bar) / bar);
+    }
+    if (kind_ == StageKind::Endgame) {
         // Loose spirals: a steady stream from the boss.
         static constexpr float kSpiralRate = 50.0f;
         const float prev = simT_ - dt;
@@ -671,7 +782,7 @@ void Stage::advance(float dt) {
 void Stage::onSixteenth(u32 step) {
     const float beat = beatLen();
     const u32 inBeat = step % 4u, beatIndex = step / 4u, inBar = beatIndex % 4u, bar = step / 16u;
-    const float when = static_cast<float>(step) * beat * 0.25f;
+    const float when = stepTime(step);
     const bool endgame = kind_ == StageKind::Endgame;
     const float tSim = simT_;
     const Vec2 S = shipAt(tSim);
@@ -1514,7 +1625,7 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
     }
     if (playerShown) {  // Pulse Ring: every second beat (bench_mid), a double ring every beat (endgame); 250 wu in 0.4 s
         const float sinceBeat = song - lastKickT_;
-        const bool on = endgame || (static_cast<int>(std::floor(song / beat)) % 2 == 0);
+        const bool on = endgame || (beatIndex() % 2 == 0);
         for (u32 k = 0; k < (endgame ? 2u : 1u) && on; ++k) {
             const float age = sinceBeat - 0.1f * static_cast<float>(k);
             if (age < 0.0f || age > 0.4f) continue;
@@ -1531,7 +1642,7 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
         // Lancer beam across the whole view every second beat (scenes.md §4: 6 px wide, intensity 4, 150 ms),
         // half player colour and half white, as in the endgame target (design/tools/crowd.py).
         const float sinceBeat = song - lastKickT_;
-        if ((static_cast<int>(std::floor(song / beat)) % 2) == 1 && sinceBeat < 0.15f) {
+        if ((beatIndex() % 2) == 1 && sinceBeat < 0.15f) {
             const Vec2 a = S, b = S + dir(aim) * 2400.0f;
             const Vec3 beam = (player * 0.5f + W1 * 0.5f) * 4.0f;
             d.scene.line(toScreen(a), toScreen(b), 3.0f * refPx_, beam, beam, 0);

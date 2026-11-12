@@ -1,8 +1,12 @@
 #pragma once
 // Command-line switches of the band (M2), parsed by core/args.cpp through parseAudioArg().
-//   --band off|play|staged|full|stress|metronome  what the band plays (default: off, except in the audio
-//                                           scenes); full / stress: the load tests (src/audio/band.cpp)
-//   --track 1|2|track01|track02             the Track (default 1)
+//   --band off|play|staged|full|stress|metronome  what the band plays (default: play in audio_test,
+//                                           metronome in sync, full in bench_* unless pictures are taken
+//                                           (--screenshot, --fixed-step), else off); full / stress: the
+//                                           load tests (src/audio/band.cpp)
+//   --no-audio                              no band in any scenario (the device keeps M0's silent stream,
+//                                           as the M1 numbers were measured): for comparison
+//   --track 1|2|3|track01|...               the Track (default 1; bench_*: the palette's Track, Reef = 3)
 //   --sound club|arcade|velvet              the sound variant (default club, variants.json "reference")
 //   --intensity X                           director intensity 0..1 (play)
 //   --section groove|build|drop|break       start in this section (play); --hold keeps it
@@ -16,6 +20,7 @@ namespace rf {
 
 struct AudioArgs {
     char band[12] = {};
+    bool noAudio = false;
     char track[12] = {};
     char sound[12] = {};
     float intensity = -1.0f;

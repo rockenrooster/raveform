@@ -59,6 +59,7 @@ struct AudioDevice::Impl {
     u64 lastTuneNs = 0;
     u64 retryAtNs = 0;   // a failed reopen is retried after a pause
     bool wantOpen = false;
+    i32 deviceId = 0;    // read once per stream: Oboe 1.11's getDeviceId() can allocate (the overlay's stats())
 
     bool openStream() {
         oboe::AudioStreamBuilder builder;
@@ -87,11 +88,12 @@ struct AudioDevice::Impl {
             stream.reset();
             return false;
         }
+        deviceId = stream->getDeviceId();
         RF_LOG("audio: %s %s %s%s, %d Hz, %d ch, burst %d, buffer %d of %d, device %d", oboe::convertToText(stream->getAudioApi()),
                oboe::convertToText(stream->getSharingMode()), oboe::convertToText(stream->getPerformanceMode()),
                oboe::OboeExtensions::isMMapUsed(stream.get()) ? " mmap" : "", stream->getSampleRate(),
                stream->getChannelCount(), burst, stream->getBufferSizeInFrames(), stream->getBufferCapacityInFrames(),
-               stream->getDeviceId());
+               deviceId);
         return true;
     }
 
@@ -185,7 +187,7 @@ AudioStats AudioDevice::stats() const {
     s.exclusive = st.getSharingMode() == oboe::SharingMode::Exclusive;
     s.lowLatency = st.getPerformanceMode() == oboe::PerformanceMode::LowLatency;
     s.mmap = oboe::OboeExtensions::isMMapUsed(&st);
-    s.deviceId = st.getDeviceId();
+    s.deviceId = impl_->deviceId;
     return s;
 }
 

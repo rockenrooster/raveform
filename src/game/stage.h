@@ -16,6 +16,8 @@
 
 namespace rf {
 
+struct BeatView;  // audio/band.h
+
 enum class StageKind : u8 { Mid, Endgame };
 
 struct StageStats {
@@ -58,6 +60,12 @@ public:
     // Reduce-flashing mode (look.md §7): every beat amount x beat.reduceFlashingScale, no Drop burst.
     void setReduceFlashing(bool on) { reduceFlashing_ = on; }
     bool reduceFlashing() const { return reduceFlashing_; }
+    // Real-time runs: the song clock, the sixteenths and the beat envelopes follow the band's heard time
+    // and heard events (audio/band.h). The stage's song starts on the band's next bar line and waits
+    // until the band's clock is known. Without it (pictures, the tier probe): the scripted 132 BPM clock
+    // of design/scenes.md §2.
+    void setBeat(const BeatView* view) { beat_ = view; }
+    bool followsBand() const { return beat_ != nullptr; }
 
     void advance(float dt);
     // Emits one frame: primitives into `draw`, composite controls into `params` (look and bloom are
@@ -80,8 +88,12 @@ private:
     struct DistortRing;
 
     // Clock and envelopes (design/scenes.md §2, look.md §7).
-    float beatLen() const { return 60.0f / 132.0f; }
+    float beatLen() const;  // the band's tempo while it plays, else 132 BPM
     float barLen() const { return 4.0f * beatLen(); }
+    bool heard() const { return beat_ != nullptr && beatAnchored_; }  // on the band's clock (and it is known)
+    void followBand();
+    float stepTime(u32 step) const;  // song time of a sixteenth
+    int beatIndex() const;           // beats since the song began
     void envelopes();
     Vec2 shipAt(float t) const;
     Vec2 shipVelocity(float t) const;
@@ -142,6 +154,16 @@ private:
     float hitStopUntil_ = -1.0f;
     float kick_ = 0.0f, snare_ = 0.0f, hat_ = 0.0f, bass_ = 0.0f;
     float lastKickT_ = -10.0f, prevKickT_ = -10.0f, lastHatT_ = -10.0f;
+    // The band's heard clock (setBeat).
+    const BeatView* beat_ = nullptr;
+    bool beatAnchored_ = false;
+    bool songStarted_ = false;
+    double beatTick0_ = 0.0;         // the band's song tick of the stage's sixteenth 0 (a bar line)
+    double songClock_ = 0.0;         // the stage's song time, advanced by the heard time's progress
+    double lastHeardSeconds_ = 0.0;  // the band's heard song seconds on the previous frame
+    u32 beatBehindFrames_ = 0;       // frames the heard clock has been more than a bar ahead of the sixteenths
+    u32 beatLogs_ = 0;               // the first anchors and jumps of a run are logged
+    double kickFrame_ = -1e18, prevKickFrame_ = -1e18;  // heard engine frames of the last two kicks
 
     // Camera.
     Vec2 cam_;

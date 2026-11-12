@@ -26,8 +26,16 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | Scene picture or strip (desktop, fixed 1/60 s steps) | `scripts\run-desktop.ps1 -NoBuild -Res 2400x1080 -Frames 600 -Screenshot captures\m1\x.png -AppArgs '--scenario bench_endgame --seconds 600 --warmup 0 --no-overlay [--look haze] [--palette furnace] [--strip 8]'` |
 | M1 contract run (Moto) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_endgame -Seconds 120 -Warmup 600 -AppArgs '--tier low' -Deploy` (10-minute soak, then 120 s) |
 | GPU cost at the top clock | `scripts\bench-android.ps1 -Serial moto -Scenario bench_endgame -Seconds 15 -Warmup 4 -AppArgs '--tier low --gpu-burn 40' -Deploy` |
-| The M1 review set (stills + compare, glyph sheets, frame-600 pictures, both strips, `scenes.py light` lines) | `scripts\review-m1.ps1` (writes `captures\m1\`) |
+| The M1 review set (stills + compare, glyph sheets, frame-600 pictures, both strips, `scenes.py light` lines) | `scripts\review-m1.ps1 [-Out captures\m1]` (writes `captures\m1\` unless `-Out`) |
 | Where a frame's light comes from (one class off at a time) | `scripts\light-breakdown.ps1 [-Frame 600] [-Out captures\light]` |
+| Unit tests (audio suite: queues, tempo map, sequencer timing, lead rule, variants, music data, no allocation) + loudness calibration check | `scripts\test.ps1` (exit 0 = all passed) |
+| Audio match against the prototype: every Track × variant, match table, onset check, listening files | `scripts\render-audio.ps1 [-SkipRef] [-Only track03_club] [-NoListening]` (writes `captures\m2\`, `match_table.md`) |
+| Prototype references (musicproto.py as a library; writes nothing under `design/`) | `python -I -B scripts\audio_ref.py captures\m2\ref [track03 [club]]` |
+| Loudness calibration (after any music data or DSP change; `test.ps1` fails while it is stale) | `scripts\calibrate-audio.ps1 [-Check]`, then rebuild |
+| Offline renders of the band (headless, the same engine) | `build\desktop-dev\raveform_headless.exe --render staged\|mock\|sfx\|leads\|full\|surge [--track 1\|2\|3] [--sound club\|arcade\|velvet] --out x.wav [--pcm16] [--events x.csv] [--meta x.json] [--stems dir] [--random-bursts] [--profile] [--seconds S]` |
+| One-shots against the prototype's synthesis | `raveform_headless.exe --dump-samples captures\m2\samples`, then `python -I -B scripts\audio_samples.py captures\m2\samples` |
+| Audio scenes (desktop) | `scripts\run-desktop.ps1 -AppArgs '--scenario audio_test'` / `'--scenario sync'` |
+| Audio device jobs under the phone lock (deploys the last built APK) | `scripts\audio-device.ps1 -Run bench\|screenshot\|soak [-Seconds 60] [-Scenario bench_idle] [-AppArgs '--band full']` |
 
 Desktop exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 benchmark aborted,
 5 screenshot failed. Device serials: Moto `ZY22BXMJG3`, OnePlus 12R `a0e622a5`, Galaxy Tab `R5GL362BEHX`.
@@ -55,6 +63,23 @@ so they show their cost at the GPU's top clock),
 leave placement to the scheduler), `--cycles N`. Keys: F1 overlay, F12 screenshot, T tone hold, L next look, P next
 palette, K next tier, R reduce flashing, Esc / Back quit. Taps (decided when the last finger lifts): two fingers next look, three
 the overlay, four next palette. Raw launch: `adb -s <serial> shell "am start -n dev.raveform.game/.RaveformActivity --es args '--scenario bench_idle --seconds 60'"`.
+
+Audio (M2, `src/audio/audio_args.h`): `--scenario audio_test|sync` (the band on heard time with its
+controls; the sync calibration screen of `design/screens.md`), `--band off|play|staged|full|stress|metronome`
+(default: `play` in audio_test, `metronome` in sync, `full` in every `bench_*` unless pictures are taken, else
+off; `full` = the load test, every layer playing: Drop held, four players firing on the 1/16-triplet grid with
+one Split harmony, every Riff at level 2, kills every frame; `stress` = Split ×2), `--no-audio` (no band in
+any scenario: M0's silent stream, as M1 measured; for comparison), `--track 1|2|3` (default 1; `bench_*`:
+the palette's Track, Reef = 3 at the stage's 132 BPM), `--sound club|arcade|velvet`, `--intensity X`,
+`--section groove|build|drop|break`, `--hold`, `--fire`, `--haptics on|off` (default on in the audio scenes),
+`--sync-offset MS` (this run only). In real time the stages run on the band's heard clock and heard beat
+events (`Stage::setBeat`); `--screenshot` / `--fixed-step` runs keep the scripted 132 BPM clock and play no
+band unless `--band` asks (the stage still keeps the script), so pictures stay repeatable. Keys in
+audio_test: Space (hold) fire, V sound, N next section, H hold, X next Track, Up/Down intensity, 1/2/3 Riffs,
+M staged/conductor, C sync screen, G haptics; mouse or finger held anywhere else = fire, on-screen buttons
+for all of them. Sync screen: Left/Right ±5 ms, A auto, Enter/Esc/Back done; touch: drag the slider, − / +
+(hold repeats), AUTO, DONE. Benchmarks with the band add `audio_engine` to the result (callback wall and
+CPU time, load = engine time / callback period, cores, callback heap allocations, voices, latency).
 
 Log tags: `RAVEFORM` (everything), `RFBENCH` (one JSON line per benchmark or test, also on desktop
 stdout), `RFLIFE` (background / foreground / first present after resume). On Android the `RFBENCH`
@@ -90,7 +115,10 @@ cannot read its clock): compare passes at the top clock with `--gpu-burn 40`.
   2174x1020 until `RaveformActivity` called `setDecorFitsSystemWindows(false)`).
 - Design data (`design/look.json`, `look_variants.json`, `palettes.json`, `glyphs.json`, `vector_font.txt`)
   is embedded at build time and read at start-up; numbers are never retyped into code.
-- The audio callback never allocates, locks, logs or calls JNI.
+- The audio callback never allocates, locks, logs or calls JNI. The music (`design/music/*.json`) is
+  embedded like the other design data; the loudness calibration (`src/audio/loudness_calibration.json`)
+  carries a hash of it and of `kDspVersion` (bump it when the DSP changes a render's loudness).
+- Python prototypes run as libraries with `python -I -B` and never write under `design/`.
 - Only phone numbers count for performance; desktop timing is informational.
 - Git: `Invoke-RfGit` (Git for Windows + schannel). Commit only at working checkpoints, never push, never
   commit `design/` files you did not write. Build output, `captures/` and fetched `third_party/` are ignored.

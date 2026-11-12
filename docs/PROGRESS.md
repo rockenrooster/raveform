@@ -8,6 +8,221 @@
   and the maximum are still recorded.
 - 2026-11-10: the contract is judged on the panel side (when each frame reached the display, counted in
   whole refresh periods); the present-call interval is reported, not graded (PLAN §5).
+- 2026-11-11 (M2): benchmarks play the band's fullest arrangement by default, so the contract is measured
+  with sound on; `--no-audio` gives the silent comparison (M0's silent stream, as M1 measured).
+
+## M2 Audio engine and beat clock — status 2026-11-11 (night)
+
+Built on branch `m2-audio` (worktree `Raveform-m2`, cut from `4ef7086`), accepted by the lead (the renders
+re-measured with the lead's own script: loudness, six bands, third octaves, 50 ms envelope) and merged
+into `main` (`14cc3cf`; the one conflict, `src/platform/app.cpp`, kept both sides: M1's tier probe and
+benchmark start, M2's band update and audio scenes). Since the merge: the stage runs on the band's
+heard clock, benchmarks play the full band, Track 3 is embedded and calibrated, the Surge listening file
+is rendered and the sync screen follows reduce-flashing mode. Device numbers come from the **shared**
+Moto One 5G Ace (`ZY22BXMJG3`), taken under the phone lock, at the media volume already set.
+
+| Done criterion (brief / PLAN §7 M2) | Status | Evidence |
+|---|---|---|
+| Offline match with the prototype, Tracks 1–3, three variants | **Met** | Table below; `captures/m2/match_table.md`, `captures/m2/eng/*.match.json` |
+| Every onset within one sample of its grid position | **Met** (0 samples, 1226–1329 onsets per render) | `scripts/audio_check.py onsets`; unit tests (every Track staged, the conductor through the Build's 85% bar) |
+| True peak ≤ −1 dBFS, loudness −14 ± 2 LUFS | **Met** (TP −5.0 to −5.9; −14.00) | Same |
+| Moto: callback within 25% of the burst period at P95, every layer playing | **Met**: 22.0% over 10 minutes (`bench_idle --band full`); contract run below | `captures/bench/ZY22BXMJG3-bench_idle-20261111-180929.json` |
+| Moto: zero underruns over 10 minutes | **Met**: 0 underruns, 133,130 callbacks, every layer playing | Same file |
+| Moto: the frame-rate contract with the band playing | **Met** at Low (`bench_endgame`, full band on Track 3, 10-minute warm-up then 120 s): panel 0 of 7,188 frames missed, worst frame 20.3 ms (CPU side), main thread P50 / P95 4.70 / 4.92 ms, 0 underruns, callback load P95 23.4% | `captures/bench/ZY22BXMJG3-bench_endgame-20261111-191123.json` |
+| Calibration screen works on desktop and Moto, flash drawn from heard time with the edited offset | **Built**; "flash and click coincide" needs the user | `captures/m2/desktop_sync.small.png`, `moto_sync.small.png` |
+| Desktop Debug: 0 validation messages; 0 heap allocations in the frame and in the callback | **Met** with the band: `bench_endgame` 60 s (full band, Track 3): validation 0, `heap_allocs` 0, pacer 0, other threads 0, `callback_heap_allocs` 0 | `run-desktop.ps1 -AppArgs '--scenario bench_endgame --seconds 60'` |
+| Unit tests for tempo map, sequencer timing, queues, run by a script | **Met** (12 tests, 2118 checks) | `scripts\test.ps1` |
+| Renders for the user | **Done** | `captures/m2/*.mp3` (list at the end) |
+
+### How it is built (M2)
+
+| Piece | Where | What |
+|---|---|---|
+| Music data | `src/audio/music_data.*` | Embeds and parses `design/music/{patches,variants,conductor,track01,track02,track03}.json` (CMake, like the other design data). Resolves every Track × variant in the prototype's order: patches.json, then the variant, then the Track's `mix`, `send` and `patch` overrides. conductor.json: structured numbers read directly; the numbers it states in sentences ("Level rises 0.35 -> 1.0", "85% speed", "steps 0, 6 and 12", ...) are extracted with a check of how many there are, so an edit that changes a sentence's shape fails at start-up instead of being misread |
+| One-shots | `src/audio/bake.*`, `fft.*` | Drum kit per Track × variant, clap, snare, shaker, pulse, impact, risers, swells and every sound effect of `sfxproto.py`, synthesised at load with the prototype's recipes: 139 one-shots, 30.1 MB, 0.96 s on the desktop (Tracks 1–2 only: 109, 19.8 MB, 0.66 s). Pitched effects are baked on the chord tones the Tracks use; others play at a rate from the nearest |
+| Engine (audio thread) | `src/audio/engine.*`, `dsp.h`, `reverb.*`, `tempo_map.*`, `spsc.h` | Tempo map (96 PPQ, segments start on exact ticks), sequencer scanning the grid every 2 ticks, modes **Staged** (the Track's `arrangement`, the prototype's logic), **Conductor** (phrase cycle Groove/Build/Drop/Break in the Short/Standard forms, bed by intensity with hysteresis, fills, Build rules incl. the 85% last bar, Drop impact and Surge, Break echo, Riffs, four players' leads with Split/Double-Time/Pierce/Overcharge/On-Beat Crit/Prism/Hyper, Track change through an 8-bar Break with a tempo ramp and the key on bar 5), **Metronome** (the sync screen), **Script** (sheets). Voices: P1–P4 leads, bass, stabs, pads, sampler; buses, sidechain, ping-pong delay, FDN reverb, section gain, soft clip, output gain, effect ducks, limiter. Commands in and beat events out through lock-free SPSC rings. No allocation, lock, log, file or JNI in `render()`; denormals flushed by the device layer |
+| Device layer | `src/audio/audio_device*.{h,cpp}` | Oboe: presentation timestamps (`getTimestamp(CLOCK_MONOTONIC)`), stream generations, reopen after a disconnect (route change) or any other stream error (retry every 0.5 s), underruns and buffer growth, the device id read once per stream (Oboe's `getDeviceId()` can allocate). SDL: no timestamps; a buffer estimate |
+| Band (main thread) | `src/audio/band.*`, `platform_audio.*`, `audio_args.*` | Owns music data, bank, engine; the callback publishes `{engine frame, stream frame, wall time}` (seqlock). **Heard time** for the frame being drawn: the device timestamp (else the buffer estimate + 10 ms; a timestamp older than 0.5 s or past the write head is ignored) at the moment the frame reaches the panel (2 refresh periods ahead), minus the sync offset; slewed 10% per frame, snapped beyond 25 ms. Releases beat events at heard time, mirrors the tempo map, computes the lead rule's shots (TECH_SPEC 6.3), haptics (light tick on heard kicks and clicks, heavy on the Drop impact, ≥ 120 ms apart, `RaveformActivity.haptic`), Bluetooth detection, sync offset in `SDL_GetPrefPath()/audio_sync.txt`. Picks its default mode from the scenario (below) |
+| Stage on the band | `src/game/stage.*`, `src/platform/app.cpp` | Below |
+| Scenes | `src/game/audio_scene.*` | `--scenario audio_test` and `--scenario sync` (design/screens.md), reduce-flashing mode included |
+| Offline renderer | `src/tools/audio_render.cpp` → `raveform_headless` | Same engine against a simulated device (fixed or random bursts) and scripted MixState timelines (`staged`, `mock`, `full`, `surge`, the sheets); WAV + event log + stems; loudness calibration; dev seed search |
+| Tests | `tests/audio_tests.cpp` → `raveform_tests` | Queues (incl. two-thread stress), seqlock, tempo map (constant, changes, capacity, 126 BPM rounding = prototype), each Track's staged render bit-identical with 192-frame and random 1–1000-frame bursts with every onset on the grid, conductor grid through the 85% bar, lead follows fire, variant on the bar line, Track change through the Break, no allocation in any mode, music data (override order incl. Track 3's, conductor numbers, calibration current) |
+
+### The stage on the band's clock (what each run follows)
+
+- **Real time** (benchmarks, any interactive run of a stage): `Stage::setBeat(&band_.view())`. The song clock
+  is the band's heard song time; the sixteenths fire as the heard tick passes their grid position; the kick,
+  snare (clap or snare roll), hat and bass envelopes come from heard events with look.md §7's decays; the
+  lattice ripples follow the last two heard kicks, the ornaments step on heard hats, the Pulse Ring and the
+  Lancer beam count heard beats. The stage's own script (Drop every 8 bars, Build bar, boss break every 16)
+  is counted in heard bars from the band's next bar line; the band's sections are not followed yet (the
+  benchmark's band holds its Drop). The song clock waits while the band's clock is unknown and then
+  advances by the heard time's progress (at most 0.1 s a frame, never backwards); at most four sixteenths
+  fire in a frame; a heard clock that jumps back more than a bar resynchronises the sixteenths, one more
+  than a bar ahead for half a second (an app that was stopped) skips them. The first contract run on the
+  Moto showed why: right after the stream started, AAudio returned a timestamp of position 0 taken 88 s
+  earlier, the heard clock jumped 88 s ahead for one frame, and the stage, then without these limits,
+  skipped its sixteenths there and waited (11 kills in 12 minutes, no Drop). The band now also ignores a
+  device timestamp older than 0.5 s or one that puts the ear past the write head (the buffer estimate
+  stands in), and logs the first twelve snaps of its heard clock and ignored timestamps; the stage logs
+  its anchors and jumps.
+- **Pictures** (`--screenshot`, `--fixed-step`): the scripted 132 BPM clock of scenes.md §2 and no band
+  unless `--band` asks (the stage keeps the script even then). The acceptance numbers are unchanged:
+  `frame_reef`, `look_card`, `look_card_nobloom` compare output identical to `captures/m1/*.compare.txt`,
+  and every `scenes.py light` line identical to `captures/m1/light.txt` (`bench_endgame` frame 600: 14.0%,
+  0.1645), regenerated by `scripts\review-m1.ps1 -Out captures\m2\review_m1`.
+- **Benchmarks** (`bench_idle`, `bench_mid`, `bench_endgame`): `--band full` by default (every layer playing:
+  the Drop held, four players on the 1/16-triplet grid with one Split harmony, every Riff at level 2, kills
+  every frame), on the palette's Track (`palettes.json` `track`: Reef = Track 3, 132 BPM like the stage's
+  script). `--no-audio` turns the band off for comparison.
+- **Tier probe**: its own stage on the scripted clock.
+
+### Match against the prototype (staged arrangement of each Track, `scripts\render-audio.ps1`)
+
+Prototype: `design/tools/musicproto.py` run as a library by `scripts/audio_ref.py` (references in
+`captures/m2/ref/`). Engine: `raveform_headless --render staged`. Same measurement code for both
+(`scripts/audio_metrics.py`, which calls musicproto's `lufs` and `band_report`). Band and section
+columns: the largest absolute difference over the six bands / the eight sections.
+
+| Render | LUFS engine | LUFS prototype | True peak dBFS | Worst band diff dB | Worst section diff dB | Onsets checked | Worst onset error (samples) | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| track01_club | -14.00 | -14.00 | -5.19 | 0.18 | 0.58 | 1226 | 0 | pass |
+| track01_arcade | -14.00 | -14.00 | -5.20 | 0.19 | 0.60 | 1226 | 0 | pass |
+| track01_velvet | -14.00 | -14.00 | -5.91 | 0.49 | 0.38 | 1226 | 0 | pass |
+| track02_club | -14.00 | -14.00 | -5.58 | 0.42 | 0.28 | 1254 | 0 | pass |
+| track02_arcade | -14.00 | -14.00 | -5.59 | 0.39 | 0.36 | 1254 | 0 | pass |
+| track02_velvet | -14.00 | -14.00 | -5.70 | 0.31 | 0.32 | 1254 | 0 | pass |
+| track03_club | -14.00 | -14.00 | -4.96 | 0.19 | 0.14 | 1329 | 0 | pass |
+| track03_arcade | -14.00 | -14.00 | -5.00 | 0.20 | 0.12 | 1329 | 0 | pass |
+| track03_velvet | -14.00 | -14.00 | -5.18 | 0.17 | 0.17 | 1329 | 0 | pass |
+
+- Loudness is equal by construction (the output gain is calibrated on the engine's own render, as the
+  prototype normalises its own); the match shows in the loudness **before** that gain: engine −8.96 /
+  −8.92 / −8.25 (Track 1), −8.52 / −8.53 / −8.41 (Track 2), −9.23 / −9.19 / −9.00 (Track 3) LUFS against
+  the prototype's −8.94 / −8.90 / −8.33, −8.43 / −8.54 / −8.34, −9.19 / −9.14 / −8.99 (within 0.09 LU).
+  Track 3's output gains: −4.77 / −4.81 / −5.00 dB (club / arcade / velvet); Tracks 1–2 unchanged.
+- The worst section of Tracks 1–2 is the Break (−0.2 to −0.6 dB): the pad stem is 0.7 dB below the
+  prototype's, mostly the oscillators' random start phases (the prototype's own pad moves by 0.58 dB
+  between phase draws; numpy's draw cannot be reproduced). Track 3's Break is within 0.17 dB.
+- Effect sheet and lead timbres (`sfxproto.py`'s renders): engine −15.23 LUFS / −4.37 dBFS peak vs −15.2 /
+  −4.4; −14.03 / −2.69 vs −14.0 / −2.6. Gameplay mock: −12.94 LUFS, true peak −1.71 (the prototype's own
+  mock, a different 16-bar script: −12.9 / −2.4).
+- One-shots against the prototype's synthesis, sample by sample (`scripts/audio_samples.py`):
+  deterministic ones are identical; noise-based ones agree in their band statistics, within the spread
+  of the noise draw. Stems (`--stems`): bass, stab, pulse, snare, lead, drums within 0.15 dB RMS; pad
+  −0.68 dB; reverb return +0.26 dB (FDN, below).
+
+### Where the engine differs from the prototype, and why
+
+1. **Reverb.** The prototype convolves with 1.82 s of decaying noise per channel. Real time: two mono
+   feedback delay networks (8 prime-length lines, Hadamard feedback, per-line losses for the exact RT60)
+   after the same input mix, pre-delay and first-order 320 Hz / 7 kHz band limits, with four allpass
+   diffusers. The output gain gives the impulse response unit energy (as the prototype normalises its
+   IR), corrected so the 250 Hz–6 kHz share of the energy equals the prototype IR's: the return is now
+   0.26 dB above the prototype's. The effects' reverb send joins the music reverb, divided by the
+   master's present gain: one reverb instead of two (CPU).
+2. **Zero-phase FFT filters on running buses** (pad high-pass 220 Hz, Break hats low-pass 5 kHz, master
+   high-pass 30 Hz): causal Butterworth biquads, same magnitude, other phase. Baked one-shots keep the
+   exact zero-phase filters (Bluestein FFT for deterministic signals; spectral synthesis for noise).
+3. **Noise** comes from the engine's own generator, so noise one-shots match statistically. The kick's
+   click seed (1061) was chosen with `raveform_headless --seed-search kick` to give the prototype's click
+   spectrum (all kicks within about ±0.7 dB per band).
+4. **Riser**: the twelve band noises are synthesised frame by frame in the frequency domain with the exact
+   band shapes (STFT overlap-add), instead of 24 FFT filters as long as the Build.
+5. **Loudness normalisation**: a fixed output gain per Track × variant (`src/audio/loudness_calibration.json`,
+   written by `scripts\calibrate-audio.ps1`, embedded; a hash of the music data and `kDspVersion` flags it
+   stale at start-up and in `scripts\test.ps1`).
+6. **Control rate**: filter coefficients and envelopes are exact every 32 samples of each voice's age and
+   interpolated linearly between, so nothing is divided per sample and the output does not depend on the
+   device's callback sizes (tested bit for bit).
+7. **Polyphony**: each player's lead holds at most 12 notes; the oldest then fades out in 5 ms.
+8. **Output stage**: after the music's soft clip and output gain, a soft knee (linear to 0.66, ceiling
+   0.8) keeps music plus effects below −1 dBFS true peak; the music alone peaks near −5 dBFS untouched.
+9. Where the staged arrangement and conductor.json disagree, conductor mode follows conductor.json: Surge
+   moves the lead one grid step (below), the Build keeps the bed as it stood (clap included), Riffs rest in
+   the Break. The Build's last bar runs at 85%: the riser is stretched over it and the swell ends on the
+   downbeat. Kill aggregation: small kills as the prototype's mock, medium and large so one kill plays at
+   its LEVEL, more up to +4 dB. A Shard run restarts after a 0.5 s pause.
+
+### Surge listening test (for the lead and the user)
+
+`captures/m2/surge_compare.mp3` (`raveform_headless --render surge`, also `.wav`): Track 1, Club, conductor
+mode, Short form, intensity 1.0 (the whole Groove bed), P1 firing throughout, no Riffs. Groove 4 bars
+(0:00), Build 4 (0:08), **Drop 1 at 0:16.353** with Surge as the rule has it (conductor.json `lead.grid`: one
+step, the 1/16 triplet, for the Drop's first 4 bars, then 1/16); Groove again at 0:32.353, Build 0:40.353,
+**Drop 2 at 0:48.706** with Surge at 1/32 (the staged arrangement's "double" lead, which the user heard and
+liked; here with the conductor's accents and pan); the Break from 1:04.706, faded out by 1:06.7. Each
+Build's last bar runs at 85%, so the Drops sit 0.353 s later than whole bars. The event log confirms 24 lead
+notes per bar at 16 ticks in Drop 1's Surge, 32 at 12 ticks in Drop 2's, 16 at 24 ticks after.
+The rule is unchanged; the test uses a listening-only command (`CmdType::SetSurge`, default one step).
+
+The arp has 16 entries and the triplet grid 24 steps per bar: step k (0–23, its position in the bar)
+plays `arp[k mod 16]`. The whole arp takes the first 2⅔ beats; steps 16–23 replay `arp[0..7]` over the last
+1⅓ beats, and the next bar starts again at `arp[0]` (conductor.json: "the arpeggio position is the step's
+position in the bar"). At 1/32 (32 steps) the arp plays twice per bar, at 1/16 once.
+
+### Device (Moto One 5G Ace, shared phone, Swappy 60 Hz)
+
+| Run | Panel missed | CPU-side P95 / max ms | Main thread CPU P50 / P95 | Underruns | Engine time per callback P50 / P95 / max | Load P95 (time / callback length) | Result file |
+|---|---|---|---|---|---|---|---|
+| `bench_idle`, no band (`--band off`, 15 s) | 0% | 17.78 / 19.51 | – / 1.69 ms | 0 | – | – | `ZY22BXMJG3-bench_idle-20261111-175755.json` |
+| `bench_idle`, full band (30 s) | 0% | 17.93 / 20.31 | – / 1.78 ms | 0 | 0.90 / 1.15 / 1.29 ms | 0.237 | `ZY22BXMJG3-bench_idle-20261111-180352.json` |
+| `bench_idle`, full band, **10 minutes** (133,130 callbacks) | 0% | 17.90 / 21.36 | – / 1.78 ms | **0** | 0.90 / 1.06 / 1.34 ms | **0.220** (P99 0.265) | `ZY22BXMJG3-bench_idle-20261111-180929.json` |
+| **Contract run**: `bench_endgame --tier low`, full band on Track 3, 10-minute warm-up then 120 s (7,188 frames) | **0%** (PASS) | 17.83 / 20.34 | 4.70 / 4.92 ms | **0** | 1.02 / 1.13 / 1.30 ms (CPU time P95 1.08) | **0.234** (P99 0.289) | `ZY22BXMJG3-bench_endgame-20261111-191123.json` |
+
+- "Every layer playing" (`--band full`): peak 72 voices on Track 1 (81 on Track 3 on the desktop), no
+  steals. Burst 240 frames (5 ms), buffer 480, AAudio shared (not MMAP). Callback wall time equals its
+  thread CPU time (no preemption); the callback runs on the big cores 6 and 7.
+- Main thread per frame (`Band::update`): 25 µs P50, 31 µs P95. Heard-clock latency 32–35 ms, from the
+  device's timestamps.
+- Heap allocations: 0 in the callback. On the main thread the overlay's `AudioDevice::stats()` allocated
+  about 2 a second with or without the band (Oboe 1.11's `getDeviceId()`, added in M2); the id is now read
+  once per stream: 0 in a 30 s check run (`ZY22BXMJG3-bench_endgame-20261111-192659.json`).
+- Contract run against M1's run without sound (`-164531`, Low): panel 0 missed in both; main thread P50 /
+  P95 4.70 / 4.92 ms against 4.59 / 4.81; GPU at the governor's clock 13.44 / 13.77 ms against 13.35 /
+  13.72; the callback ran on the big cores 6 and 7, next to the main thread; 81 voices at peak, no
+  steals; heard-clock latency 34.6 ms. The stage carried its endgame load on the band's clock (73,517 kills,
+  49 Drops, 24 boss breaks in the 12 minutes). Its 239 main-thread allocations in the window are the
+  overlay's, fixed after it (above).
+- The first contract run (`-185010`) is void: the stage stopped after its first sixteenth (the stale
+  timestamp, above). The valid run still had the stale timestamp at start-up (the stage's limits rode it
+  out: one resynchronisation 0.08 s after the start); the band's guard came after it and the stale
+  timestamp did not recur in the one check run since, so the guard has not been exercised on the device.
+
+### M2 blocks in shared files (all in `// M2 audio begin/end` blocks unless noted)
+
+| File | Change |
+|---|---|
+| `CMakeLists.txt` | Embed the music JSON and the calibration; `raveform_audio` static library linked into `raveform_core`; band and scene sources; desktop `raveform_headless` and `raveform_tests` |
+| `src/core/args.{h,cpp}` | `AudioArgs audio;` in `AppArgs`; one `isAudioArg` branch (parsed in `audio/audio_args.cpp`) |
+| `src/platform/app.{h,cpp}` | `Band band_`, `AudioScene audioScene_`, `Content::Audio`; band defaults from the scenario, pictures and palette; band and scene init before the device opens; `openAudio()`; key and touch hooks; `band_.update()` before the frame's content; the stage's `setBeat` in real time; key R also reaches the sync screen; `band_.resetMeasurements()` at the measure start; `band_.writeJson(j)`; one overlay line |
+| `src/game/stage.{h,cpp}` | `setBeat`, heard-clock `advance` / `envelopes`; the scripted path is unchanged arithmetic |
+| `android/.../RaveformActivity.java` | `haptic(int)` and `audioDeviceType(int)` |
+
+### Not done, not verified, open
+
+- Needs the user: that it grooves; that flash and click coincide on a speaker; that Bluetooth can be
+  corrected with the slider (no Bluetooth device here); whether haptics on kicks feel right; Surge at the
+  rule's 1/16 triplet or at 1/32 (the file above); Track 3's three-note lead (design/music/README.md).
+- The stage follows heard time and heard beat events, not yet the band's sections (its Drops are the
+  script's) nor the lead rule's shots (`view().shots`; the scripted player fires on its own grid). A Track
+  change would restart the band's song clock under a running stage; no stage run can change Track yet.
+- The pad stem is 0.7 dB below the prototype's (mostly start phases): inside the match.
+- The callback load at P95 (22–24% of the burst) leaves little margin under 25%; next step: lead voices
+  processed in pairs or fours.
+- Start-up: the one-shots bake before the device opens (0.96 s desktop; 2.51 s on the Moto with Track 3,
+  1.74 s without).
+  TECH_SPEC 6.5 caches baked sounds on disk; not done (or bake on a worker during the logo).
+- 12R and tablet not attached: no numbers.
+- Settings screen (sound variant, haptics strength, volumes) comes later; variants switch on the next bar
+  line from the key, the tap and `--sound`.
+
+### Files for the lead (`D:\Stuff\DevFolder\Android_Games\Raveform\captures\m2\`)
+
+`surge_compare.mp3`, `track01_club.mp3`, `track01_arcade.mp3`, `track01_velvet.mp3`, `track02_club.mp3`,
+`track03_club.mp3`, `sfx_sheet.mp3`, `lead_timbres.mp3`, `gameplay_mock.mp3` (each also as a 16-bit `.wav`),
+`match_table.md`, `review_m1\` (the M1 review set on the merged build), sync screenshots `*.small.png`,
+`sync_strip\` (30 frames of the sync screen, normal and reduce-flashing).
 
 ## M1 Look and renderer — status 2026-11-11 (evening)
 
@@ -455,8 +670,8 @@ snap, white front with an RGB fringe from the aberration of its distortion ring)
 - The light targets of scenes.md §5 for `bench_endgame` are not met (above): the lead's decision.
 - 12R and tablet: not attached; every M1 item for them is pending (including the surface-size check,
   the contract at 120 / 90 Hz and the in-app captures).
-- Audio is still the M0 test tone: beat envelopes come from the scripted 132 BPM clock (M2 brings the
-  audio engine, in parallel on `m2-audio`).
+- Audio was still the M0 test tone: beat envelopes came from the scripted 132 BPM clock. Superseded by
+  M2 (above): in real time the stage now runs on the band's heard clock; pictures keep the script.
 
 ### Waiting on the user (carried from M0 and the lead)
 

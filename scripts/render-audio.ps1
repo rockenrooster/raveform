@@ -17,7 +17,7 @@ $out = Join-Path $RF_ROOT 'captures\m2'
 $eng = Join-Path $out 'eng'
 $ref = Join-Path $out 'ref'
 New-Item -ItemType Directory -Force $out, $eng, $ref | Out-Null
-$tracks = @('track01', 'track02')
+$tracks = @('track01', 'track02', 'track03')
 $sounds = @('club', 'arcade', 'velvet')
 $haveFfmpeg = [bool](Get-Command ffmpeg -ErrorAction SilentlyContinue)
 

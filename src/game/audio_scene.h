@@ -6,7 +6,7 @@
 //  - sync: the calibration screen of design/screens.md (a 120 BPM metronome, the ring, the beat dots,
 //    the offset slider with - and +, AUTO and DONE). The flash is drawn from heard time with the
 //    offset being edited, so what the player sees is what the game will do.
-// Integration for the M1 stage: docs/PROGRESS_M2.md.
+// The stage reads the same heard clock (Stage::setBeat; docs/PROGRESS.md, M2).
 
 #include "audio/band.h"
 #include "content/look.h"
@@ -24,6 +24,9 @@ public:
     void init(Kind kind, Band& band, const VectorFont& font, const Palettes& palettes, const Palette& palette,
               const Look& look);
     void setPalette(const Palette& p) { palette_ = &p; }
+    // Reduce-flashing mode (--reduce-flashing, key R; design/screens.md): the ring's flash disc at 0.2
+    // instead of 0.45 and no expanding ring.
+    void setReduceFlashing(bool on) { reduceFlashing_ = on; }
     // SDL keycode; true when the scene used it.
     bool key(int sdlKey, bool down);
     // Logical pixels.
@@ -68,6 +71,7 @@ private:
 
     Kind kind_ = Kind::AudioTest;
     bool startedInSync_ = false;
+    bool reduceFlashing_ = false;
     Band* band_ = nullptr;
     const VectorFont* font_ = nullptr;
     const Palettes* palettes_ = nullptr;

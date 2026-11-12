@@ -469,6 +469,7 @@ void Engine::applyCommand(const Command& c) {
             musicGain_ = c.x;
             sfxGain_ = c.y;
             break;
+        case CmdType::SetSurge: surgeSteps_ = c.a; break;
         case CmdType::Reset:
             for (u32 i = 0; i < kLeadVoices; ++i) lead_[i].active = false;
             for (u32 i = 0; i < kBassVoices; ++i) bass_[i].active = false;
@@ -1168,7 +1169,7 @@ void Engine::planConductorBar(i64 barTick) {
     // along the grid list (capped at the last); Hyper halves it.
     const bool surge = section_ == Section::Drop && sectionBar_ < sectionBars_ / 2;
     for (u32 i = 0; i < playerCount_; ++i) {
-        u32 idx = players_[i].doubleTime + (surge ? 1u : 0u);
+        u32 idx = players_[i].doubleTime + (surge ? surgeSteps_ : 0u);
         if (idx > 2) idx = 2;
         u32 g = r.gridTicks[idx];
         if (players_[i].hyper && g % 2 == 0) g /= 2;

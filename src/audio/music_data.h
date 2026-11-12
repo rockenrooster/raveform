@@ -1,6 +1,6 @@
 #pragma once
 // The music as data (design/music/*.json, embedded at build time, parsed once at start-up): the sound
-// (patches.json), its three variants (variants.json), the Tracks (track01.json, track02.json) and the
+// (patches.json), its three variants (variants.json), the Tracks (track01.json to track03.json) and the
 // conductor's rules (conductor.json). Numbers are read from the files, never retyped: the resolved
 // parameter sets follow the prototype's order (patches.json, then the variant, then the Track's own
 // overrides).

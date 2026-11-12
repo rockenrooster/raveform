@@ -28,13 +28,17 @@ bool copy(char* dst, size_t cap, const char* src) {
 }  // namespace
 
 bool isAudioArg(const char* arg) {
-    static const char* const kArgs[] = {"--band", "--track", "--sound", "--intensity", "--section",
-                                        "--hold", "--fire",  "--haptics", "--sync-offset"};
+    static const char* const kArgs[] = {"--band", "--no-audio", "--track",   "--sound",      "--intensity", "--section",
+                                        "--hold", "--fire",     "--haptics", "--sync-offset"};
     return oneOf(arg, kArgs, countOf(kArgs));
 }
 
 bool parseAudioArg(const char* arg, const char* next, AudioArgs& a, bool& usedNext) {
     usedNext = false;
+    if (eq(arg, "--no-audio")) {
+        a.noAudio = true;
+        return true;
+    }
     if (eq(arg, "--hold")) {
         a.hold = true;
         return true;
@@ -77,9 +81,11 @@ bool parseAudioArg(const char* arg, const char* next, AudioArgs& a, bool& usedNe
 void logAudioArgs(const AudioArgs& a) {
     char offset[16] = "saved";
     if (a.syncOffsetSet) std::snprintf(offset, sizeof offset, "%.0f", a.syncOffsetMs);
-    RF_LOG("args (audio): band=%s track=%s sound=%s intensity=%.2f section=%s hold=%d fire=%d haptics=%d sync_offset=%s",
-           a.band[0] ? a.band : "(default)", a.track[0] ? a.track : "(default)", a.sound[0] ? a.sound : "(default)",
-           a.intensity, a.section[0] ? a.section : "(default)", a.hold ? 1 : 0, a.fire ? 1 : 0, a.haptics, offset);
+    RF_LOG("args (audio): band=%s no_audio=%d track=%s sound=%s intensity=%.2f section=%s hold=%d fire=%d haptics=%d "
+           "sync_offset=%s",
+           a.band[0] ? a.band : "(default)", a.noAudio ? 1 : 0, a.track[0] ? a.track : "(default)",
+           a.sound[0] ? a.sound : "(default)", a.intensity, a.section[0] ? a.section : "(default)", a.hold ? 1 : 0,
+           a.fire ? 1 : 0, a.haptics, offset);
 }
 
 }  // namespace rf

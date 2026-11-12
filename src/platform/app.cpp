@@ -195,10 +195,19 @@ bool App::init() {
 #endif
 
     // M2 audio begin
-    if (!band_.init(args_.audio, args_.scenario, &audio_)) return false;
+    // Pictures (fixed 1/60 s steps) keep the scripted song clock and need no band; benchmarks play the
+    // full band on the palette's Track (Reef: Track 3, the stage's 132 BPM).
+    const bool pictureRun = args_.fixedStep || args_.screenshot[0];
+    BandDefaults bandDefaults;
+    bandDefaults.scenario = args_.scenario;
+    bandDefaults.pictures = pictureRun;
+    bandDefaults.benchTrack = palette_->track;
+    if (!band_.init(args_.audio, bandDefaults, &audio_)) return false;
     if (std::strcmp(args_.scenario, "audio_test") == 0 || std::strcmp(args_.scenario, "sync") == 0) {
         audioScene_.init(std::strcmp(args_.scenario, "sync") == 0 ? AudioScene::Kind::Sync : AudioScene::Kind::AudioTest, band_,
                          font_, palettes_, *palette_, look_);
+        audioScene_.setReduceFlashing(args_.reduceFlashing);
+        stage_.setReduceFlashing(args_.reduceFlashing);  // the flag's one home (key R, overlay)
         content_ = Content::Audio;
     }
     if (!openAudio()) RF_WARN("audio: no output device; continuing silently");
@@ -214,6 +223,12 @@ bool App::init() {
         stage_.setMute(args_.mute);
         stage_.setReduceFlashing(args_.reduceFlashing);
         if (args_.mute) RF_LOG("stage: muted light 0x%x (analysis picture)", args_.mute);
+        // M2 audio begin: in real time the stage runs on the band's heard clock and beat events; pictures
+        // keep the scripted 132 BPM clock so they stay repeatable (design/scenes.md §2).
+        if (band_.active() && !pictureRun) stage_.setBeat(&band_.view());
+        RF_LOG("stage: %s", stage_.followsBand() ? "song clock and beat envelopes from the band (heard time)"
+                                                 : "scripted song clock");
+        // M2 audio end
         content_ = Content::Stage;
     } else if (std::strcmp(args_.scenario, "glyph_sheet") == 0) {
         sheet_.init(look_, palettes_, *palette_, glyphs_, font_, args_.page);
@@ -352,6 +367,7 @@ void App::handleEvent(const SDL_Event& e) {
                 nextPalette();
             } else if (e.key.key == SDLK_R) {
                 stage_.setReduceFlashing(!stage_.reduceFlashing());
+                audioScene_.setReduceFlashing(stage_.reduceFlashing());  // M2 audio: the sync screen's ring
                 RF_LOG("reduce flashing: %s", stage_.reduceFlashing() ? "on" : "off");
                 if (overlayOn_) refreshOverlay(nowNs());
             } else if (e.key.key == SDLK_K && !bench_.active()) {

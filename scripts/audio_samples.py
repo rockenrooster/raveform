@@ -52,7 +52,7 @@ def stats(x):
 
 def main():
     d = sys.argv[1]
-    tracks = [load("track01.json"), load("track02.json")]
+    tracks = [load("track01.json"), load("track02.json"), load("track03.json")]
     variants = load("variants.json")["variants"]
     refs = {}
     for t, tr in enumerate(tracks):

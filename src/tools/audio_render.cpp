@@ -3,7 +3,8 @@
 // log; also the loudness calibration and the listening sheets.
 //
 //   raveform_headless --render staged --track track01 --sound club --out x.wav [--events x.csv] [--stems dir]
-//   raveform_headless --render mock|sfx|leads|full --out x.wav [--pcm16]
+//   raveform_headless --render mock|sfx|leads|full|surge --out x.wav [--pcm16]
+//     (surge: the Surge listening test, Groove 4 / Build 4 / Drop 8 twice, Surge one grid step then two)
 //   raveform_headless --calibrate [--write src/audio/loudness_calibration.json] [--check]
 //
 // Exit codes: 0 ok, 1 failure, 2 bad arguments, 3 calibration out of date (--check).
@@ -91,12 +92,25 @@ struct Render {
     Random rng{12345};
     Options opt;
     double nextMainS = 0.0;
+    // What the engine planned, from its events (scripts that react to the bar line).
+    i32 lastBar = -1;      // the last bar planned
+    i32 scriptedBar = -1;  // the last bar a script reacted to
+    struct SectionStart {
+        Section section;
+        u32 bar;
+        double seconds;
+    } sections[32];
+    u32 sectionCount = 0;
 };
 
 void drainEvents(Render& r) {
     BeatEvent e;
     while (r.engine->popEvent(e)) {
         ++r.eventCount;
+        if (e.kind == BeatKind::Bar) r.lastBar = static_cast<i32>(e.tick / kTicksPerBar);
+        if (e.kind == BeatKind::Section && r.sectionCount < countOf(r.sections))
+            r.sections[r.sectionCount++] = {static_cast<Section>(e.a), static_cast<u32>(e.tick / kTicksPerBar),
+                                            static_cast<double>(e.frame) / kRate};
         if (r.events)
             std::fprintf(r.events, "%lld,%.6f,%s,%u,%u,%u,%.6f,%u,%.4f\n", static_cast<long long>(e.frame), e.tick,
                          beatKindName(e.kind), e.a, e.b, e.c, e.value, e.index, e.x);
@@ -313,6 +327,30 @@ void fullStep(Render& r, u32 frameIndex) {
     }
 }
 
+// The Surge listening test: the conductor with the local player firing throughout, the Groove bed full.
+// Groove 4 bars, Build 4, Drop 8 with Surge as conductor.json has it (one grid step: 1/16 -> 1/16
+// triplet); then the same sixteen bars with Surge moved two steps (1/32, the staged arrangement's
+// "double" lead). Section changes are posted once the bar before them is planned.
+constexpr u32 kSurgeBars = 32;
+void surgeStep(Render& r, u32 track, u32 frameIndex) {
+    Engine& e = *r.engine;
+    if (frameIndex == 0) {
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(track), 0));
+        e.post(cmd(CmdType::SetForm, static_cast<u8>(Form::Short)));  // Build 4 bars, Drop 8
+        e.post(cmd(CmdType::SetPlayers, 1, 0));
+        e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+        e.post(cmd(CmdType::SetFire, 0, 1));
+    }
+    if (r.lastBar < 0 || r.lastBar == r.scriptedBar) return;
+    r.scriptedBar = r.lastBar;
+    const i32 next = r.lastBar + 1;
+    if (next == 4 || next == 20) e.post(cmd(CmdType::SetSection, static_cast<u8>(Section::Build)));
+    if (next == 16) {
+        e.post(cmd(CmdType::SetSection, static_cast<u8>(Section::Groove)));
+        e.post(cmd(CmdType::SetSurge, 2));
+    }
+}
+
 void writeMeta(const char* path, const MusicData& music, u32 t, u32 v, const char* kind, u64 frames, const Options& opt) {
     FILE* f = std::fopen(path, "w");
     if (!f) return;
@@ -345,10 +383,16 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
     double seconds = opt.seconds;
     const bool staged = eq(opt.render, "staged");
     const bool mock = eq(opt.render, "mock"), sfx = eq(opt.render, "sfx"), leads = eq(opt.render, "leads"),
-               full = eq(opt.render, "full");
+               full = eq(opt.render, "full"), surge = eq(opt.render, "surge");
     if (staged && seconds <= 0.0f) seconds = static_cast<float>(tr.arrangementBars * barS + 2.5);  // musicproto.Mixer length
     if (mock && seconds <= 0.0f) seconds = static_cast<float>(26.0 * barS + 2.5);
     if (full && seconds <= 0.0f) seconds = 60.0f;
+    constexpr double kSurgeTailS = 2.0, kSurgeFadeS = 1.5;  // into the Break that follows, faded out
+    if (surge) {
+        // Two Builds, each with its last bar at the conductor's slower speed.
+        const double dip = barS / music.conductor.buildLastBarSpeed - barS;
+        seconds = static_cast<float>(kSurgeBars * barS + 2.0 * dip + kSurgeTailS);
+    }
     double sheetLen = 0.0;
     if (sfx) {
         sheetSfx(r, bank, sheetLen, true);
@@ -356,7 +400,7 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
     }
     if (leads) seconds = static_cast<float>(4 * 4.5 + 0.5);
     if (seconds <= 0.0f) {
-        RF_ERR("unknown render '%s' (staged, mock, sfx, leads, full)", opt.render);
+        RF_ERR("unknown render '%s' (staged, mock, sfx, leads, full, surge)", opt.render);
         return 2;
     }
     r.frames = static_cast<u64>(seconds * kRate);
@@ -399,11 +443,27 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
         while (r.done < r.frames) {
             if (mock) mockStep(r, music, frameIndex, rng);
             if (full) fullStep(r, frameIndex);
+            if (surge) surgeStep(r, t, frameIndex);
             ++frameIndex;
             renderTo(r, r.done + kRate / 60);
         }
     }
     drainEvents(r);
+    if (surge) {
+        // Faded out in the Break that follows the second Drop; then where each section began.
+        const u64 fade = static_cast<u64>(kSurgeFadeS * kRate);
+        for (u64 i = 0; i < fade && i < r.frames; ++i) {
+            const float g = static_cast<float>(i) / static_cast<float>(fade);
+            r.out[(r.frames - 1 - i) * 2] *= g;
+            r.out[(r.frames - 1 - i) * 2 + 1] *= g;
+        }
+        for (u32 i = 0; i < r.sectionCount; ++i) {
+            const auto& s = r.sections[i];
+            const double m = std::floor(s.seconds / 60.0);
+            std::printf("surge: %-6s from bar %2u at %6.3f s (%.0f:%06.3f)%s\n", sectionName(s.section), s.bar, s.seconds, m,
+                        s.seconds - 60.0 * m, s.section == Section::Drop ? (s.bar < 16 ? "  Surge 1/16 triplet (the rule)" : "  Surge 1/32") : "");
+        }
+    }
     const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     const u64 allocs = heapAllocCountThisThread() - allocsBefore;
     for (FILE* f : stems.f)

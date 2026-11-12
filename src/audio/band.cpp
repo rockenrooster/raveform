@@ -27,6 +27,7 @@ namespace {
 
 constexpr double kFallbackExtraMs = 10.0;     // device latency beyond the buffer when there is no timestamp
 constexpr double kSnapMs = 25.0;              // a heard-clock error larger than this snaps instead of slewing
+constexpr i64 kTimestampMaxAgeNs = 500000000; // an older device timestamp is stale (fresh ones are a few ms old)
 constexpr double kSlew = 0.1;                 // share of the error corrected per frame
 constexpr double kLeadRuleCapMs = 80.0;       // TECH_SPEC 6.3: min(outputLatency, 80 ms)
 constexpr i64 kHapticGapNs = 120000000;       // at most one light tick per 120 ms
@@ -57,12 +58,18 @@ Band::~Band() {
     delete[] heard_;
 }
 
-bool Band::init(const AudioArgs& args, const char* scenario, AudioDevice* device) {
+bool Band::init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice* device) {
     device_ = device;
     logAudioArgs(args);
+    const char* scenario = defaults.scenario ? defaults.scenario : "";
     const bool audioTest = eq(scenario, "audio_test"), sync = eq(scenario, "sync");
+    const bool bench = std::strncmp(scenario, "bench_", 6) == 0;
     Mode mode = Mode::Silent;
     bool full = false, stress = false;
+    if (args.noAudio) {
+        RF_LOG("audio: no band (--no-audio)");
+        return true;  // the M0 test tone keeps the device, silent unless held
+    }
     if (args.band[0]) {
         if (eq(args.band, "off")) return true;
         if (eq(args.band, "play")) mode = Mode::Conductor;
@@ -77,6 +84,10 @@ bool Band::init(const AudioArgs& args, const char* scenario, AudioDevice* device
         mode = Mode::Conductor;
     } else if (sync) {
         mode = Mode::Metronome;
+    } else if (bench && !defaults.pictures) {
+        // Benchmarks measure the frame-rate contract with sound on: the band's fullest arrangement.
+        mode = Mode::Conductor;
+        full = true;
     } else {
         return true;  // no band: the M0 test tone keeps the device
     }
@@ -113,7 +124,7 @@ bool Band::init(const AudioArgs& args, const char* scenario, AudioDevice* device
     if (!platformAudioInit()) haptics_ = haptics_ && false;
     mode_ = mode;
     active_ = true;
-    sendInitialState(args);
+    sendInitialState(args, bench ? defaults.benchTrack : 0);
     if (full) {
         // The load test, every layer playing: the Drop held (the whole bed), every Riff at level 2, four
         // players firing on the 1/16-triplet grid (Double-Time) with one Split harmony each, and the
@@ -141,13 +152,19 @@ bool Band::init(const AudioArgs& args, const char* scenario, AudioDevice* device
     return true;
 }
 
-void Band::sendInitialState(const AudioArgs& args) {
+void Band::sendInitialState(const AudioArgs& args, u32 defaultTrack) {
     if (args.track[0]) {
         const i32 t = music_->trackIndex(args.track);
         if (t < 0) {
             RF_WARN("audio: unknown track '%s'; playing track01", args.track);
         } else {
             track_ = static_cast<u32>(t);
+        }
+    } else if (defaultTrack > 0) {
+        if (defaultTrack <= music_->trackCount) {
+            track_ = defaultTrack - 1;
+        } else {
+            RF_WARN("audio: no Track %u in the music data; playing track01", defaultTrack);
         }
     }
     variant_ = music_->defaultVariant;
@@ -367,10 +384,23 @@ void Band::update(i64 displayLeadNs) {
     AudioTimestamp ts;
     double raw = 0.0;
     bool rawOk = false;
+    bool fromTimestamp = false;
     if (clock_.read(cs) && device_ && cs.generation == device_->generation()) {
         if (device_->timestamp(ts)) {
             const double base = static_cast<double>(cs.engineFrame - cs.streamFrame);  // engine frame of stream frame 0
             raw = base + static_cast<double>(ts.position) + static_cast<double>(tDisplay - ts.timeNs) * r * 1e-9;
+            // A stale timestamp is not used: AAudio's first one after a start can carry position 0 at a time
+            // long past (seen on the Moto: 88 s), which would put the ear far ahead of the write head.
+            const double heardNow = raw - static_cast<double>(displayLeadNs) * r * 1e-9;
+            fromTimestamp = t0 - ts.timeNs < kTimestampMaxAgeNs && heardNow <= static_cast<double>(cs.engineFrame + cs.frames);
+            if (!fromTimestamp && staleLogs_ < kSnapLogs) {
+                ++staleLogs_;
+                RF_LOG("audio: device timestamp not used (position %lld, %.1f ms old, write head %lld)",
+                       static_cast<long long>(ts.position), static_cast<double>(t0 - ts.timeNs) * 1e-6,
+                       static_cast<long long>(cs.engineFrame));
+            }
+        }
+        if (fromTimestamp) {
             timestamped_ = true;
         } else {
             raw = static_cast<double>(cs.engineFrame) - static_cast<double>(device_->bufferedFrames()) +
@@ -384,6 +414,15 @@ void Band::update(i64 displayLeadNs) {
         const double predicted = model_ + static_cast<double>(tDisplay - modelNs_) * r * 1e-9;
         const double err = raw - predicted;
         if (!modelValid_ || gen != modelGeneration_ || std::fabs(err) > kSnapMs * r * 1e-3) {
+            if (snapLogs_ < kSnapLogs) {  // rare: the first ones of a run are logged (diagnosis)
+                ++snapLogs_;
+                RF_LOG("audio: heard clock %s at engine frame %.0f (%+.1f ms from the model; %s; stream %u, "
+                       "write head %lld, stream frame %lld, timestamp position %lld, %.1f ms old)",
+                       modelValid_ ? "snapped" : "starts", raw, modelValid_ ? err / r * 1e3 : 0.0,
+                       fromTimestamp ? "device timestamp" : "buffer estimate", gen, static_cast<long long>(cs.engineFrame),
+                       static_cast<long long>(cs.streamFrame), fromTimestamp ? static_cast<long long>(ts.position) : -1ll,
+                       fromTimestamp ? static_cast<double>(t0 - ts.timeNs) * 1e-6 : 0.0);
+            }
             model_ = raw;
         } else {
             model_ = predicted + kSlew * err;

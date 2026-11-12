@@ -1,7 +1,7 @@
 #pragma once
 // The band (TECH_SPEC 6): the audio thread owns the musical clock and plays everything patterned,
 // sample-accurately, from the Track data and a small mirror of game state. The DSP is a port of
-// design/tools/musicproto.py and sfxproto.py (the specification); docs/PROGRESS_M2.md lists where a
+// design/tools/musicproto.py and sfxproto.py (the specification); docs/PROGRESS.md (M2) lists where a
 // real-time engine has to differ.
 //
 // Threads: render() runs on the audio thread (no allocation, locks, logging, file access or JNI);
@@ -81,6 +81,7 @@ enum class CmdType : u8 {
     Drum,          // Script: a = Pat (kit sample), x = gain, y = pan
     SetGains,      // x = music gain, y = effects gain (linear)
     Reset,         // silence everything and restart the song clock at the next block
+    SetSurge,      // listening tests only: a = grid steps the Surge moves the lead (conductor.json: 1), from the next bar
 };
 
 struct Command {
@@ -242,6 +243,7 @@ private:
     Form form_ = Form::Short;
     bool formSet_ = false;
     bool hold_ = false;
+    u32 surgeSteps_ = 1;  // conductor.json lead.grid: "Surge moves one further" (SetSurge, listening tests)
     bool nextSection_ = false;
     i32 forceSection_ = -1;
     bool buildFollowed_ = false;   // the current Drop follows a Build (impact)

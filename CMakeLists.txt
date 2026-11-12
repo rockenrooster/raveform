@@ -132,7 +132,7 @@ endforeach()
 # platform code, so the headless renderer and the tests link it too. Its DSP is optimised in every
 # configuration, so a Debug build still plays in real time.
 set(RF_AUDIO_GENERATED)
-foreach(data patches variants conductor track01 track02)
+foreach(data patches variants conductor track01 track02 track03)
   add_custom_command(OUTPUT ${RF_GEN}/music_${data}.json.inc
     COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/music/${data}.json -DOUT=${RF_GEN}/music_${data}.json.inc
             -P ${RF_ROOT}/cmake/EmbedText.cmake

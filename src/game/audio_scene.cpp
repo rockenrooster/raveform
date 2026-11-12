@@ -321,14 +321,15 @@ void AudioScene::drawButton(FrameDraw& d, const Button& b, bool active) const {
 
 void AudioScene::drawRing(FrameDraw& d, Vec2 c, float radius, bool) const {
     // design/screens.md: white at 0.5, width 2.0; on each heard beat a filled disc at 0.45 fading over
-    // 120 ms, the outline jumping to 2.6, and a ring expanding to 260 px over 200 ms.
+    // 120 ms, the outline jumping to 2.6, and a ring expanding to 260 px over 200 ms. Reduce-flashing
+    // mode: the disc at 0.2 and no expanding ring.
     const BeatView& v = band_->view();
     const float beatS = static_cast<float>(60.0 / (v.bpm > 1.0 ? v.bpm : 120.0));
     const float age = v.running ? v.beatPhase * beatS : 10.0f;
     const float flash = age < 0.12f ? 1.0f - age / 0.12f : 0.0f;
     ring(d.scene, c, radius, 1.0f * s_, kWhite, 0.5f + (2.6f - 0.5f) * flash);
-    if (flash > 0.0f) disc(d.scene, c, radius, kWhite * (0.45f * flash));
-    if (age < 0.2f) {
+    if (flash > 0.0f) disc(d.scene, c, radius, kWhite * ((reduceFlashing_ ? 0.2f : 0.45f) * flash));
+    if (age < 0.2f && !reduceFlashing_) {
         const float u = age / 0.2f;
         ring(d.scene, c, radius + (260.0f * s_ - radius) * u, 1.0f * s_, kWhite, 1.2f * (1.0f - u));
     }
