@@ -93,7 +93,17 @@ lead to continue without check-ins; the decisions taken alone are listed below.
   `scenes.py light` (dark<48, dark<96, >=200, luminance): bench_mid frame 600 38.6% / 78.7% / 3.0% /
   0.0752; bench_endgame frame 600 15.8% / 48.4% / 11.8% / 0.1590; the quiet strip (frame 407, eight frames)
   16.6-17.4% / 49.6-50.6% / 10.1-10.7% / 0.1493-0.1531.
-- MOTO_NUMBERS
+- **Moto, the real game at minute 10** (bench_play, the bot playing from the start, 600 s of warm-up then 120 s
+  measured; the tier the first-launch probe chose: medium; shared phone, foreign load 0.81 cores; result
+  `captures\bench\ZY22BXMJG3-bench_play-20261111-234125.json`): panel P95 16.667 ms (1 period), 0 of 7,188 frames
+  missed, none over 50 ms (max 20.0 ms CPU side): **PASS**. Sim tick 0.077 / 0.130 / 0.298 ms (P50 / P95 / max);
+  main thread CPU 4.32 / 4.53 / 6.25 ms; GPU 12.77 / 13.15 / 14.08 ms; audio underruns 0, worst callback 1.19 ms;
+  heap allocations ours 0 (main thread and audio callback). On screen: the bot had beaten both Kaleidos fights and
+  was in Track 3 (First Light at 130 BPM), cycle 4, the boss's Drop, with 12 upgrades and no death; enemies alive
+  49 / 175 (mean / max), in view 23 / 158, enemy bullets 33 / 264, Shards 96 / 310, 3,830 kills.
+- Regression, Moto bench_endgame 30 s (`--tier low`, as stage A): 0 of 1,797 missed, main 4.64 / 4.86 ms (stage A
+  4.63 / 4.87), GPU 13.45 / 13.79 ms (13.50 / 13.81): unchanged. `test.ps1` passes; the M1 stills compare as at
+  the v2.3 re-shoot (soft light mean abs 0.00020 / 0.00169 / 0.00138).
 
 ### Effect words (two to four words, mine)
 

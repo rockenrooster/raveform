@@ -39,6 +39,7 @@ struct PlayOptions {
     char picture[32] = {};      // --picture <name>: a scripted scene for the review strips
     float pxPerMm = 0.0f;       // touch control sizes (0: scale with the screen height)
     bool autoplay = false;      // --autoplay: the screens as in play, the bot playing each run (taps start and retry)
+    float recklessAfter = 0.0f; // --reckless-after S
 };
 
 class Play {

@@ -240,6 +240,8 @@ void Play::frame(float realDt) {
     if (flow_) {
         const PlayerState& me = world_->player(0);
         if (screen_ == Screen::Run && me.alive && !world_->restartPending()) runSeconds_ += frameDt_;
+        if (opt_.autoplay && opt_.recklessAfter > 0.0f)
+            bot_.setPolicy(screen_ == Screen::Run && runSeconds_ > opt_.recklessAfter ? Bot::Policy::Reckless : Bot::Policy::Play);
         if (screen_ == Screen::GameOver) overS_ += frameDt_;
     }
 

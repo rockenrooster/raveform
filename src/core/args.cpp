@@ -129,6 +129,9 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             a.bot = true;
         } else if (is("--autoplay")) {
             a.autoplay = true;
+        } else if (is("--reckless-after") && next) {
+            a.recklessAfter = static_cast<float>(std::atof(next));
+            ++i;
         } else if (is("--seed") && next) {
             u32 s = 0;
             ok = parseUint(next, s);

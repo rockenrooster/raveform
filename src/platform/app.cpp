@@ -275,6 +275,7 @@ bool App::init() {
         playPicture_ = args_.picture[0] != 0;
         po.bot = args_.bot || playBench_;
         po.autoplay = args_.autoplay;
+        po.recklessAfter = args_.recklessAfter;
         po.fixedStep = pictureRun;
         po.seed = args_.seed;
         po.fastForwardS = args_.fastForward;

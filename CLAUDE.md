@@ -77,7 +77,8 @@ The game (M3, `game/play.h`, `src/sim/`; stage B adds the director, upgrades, Ka
 attract run; PLAY, pause (the ring top right, Esc / Back / P), RESUME with a count-in, game over, RETRY, HOME and
 SETTINGS (SOUND, CONTROLS, LOOK). Settings go to `settings.txt`, scores to `highscores.txt` and the baked one-shots
 to `baked_audio.bin`, all in `SDL_GetPrefPath()` (`adb shell pm clear dev.raveform.game` brings the first launch
-back). `--autoplay`: the screens with the bot playing each run (tap PLAY and RETRY). Stage B pictures:
+back). `--autoplay`: the screens with the bot playing each run (tap PLAY and RETRY); `--reckless-after S` makes that bot
+careless after S seconds of a run, so a loop test reaches game over. Stage B pictures:
 `--picture screen_notice|screen_title|screen_settings_sound|screen_settings_controls|screen_settings_look|
 screen_pause|screen_game_over|trio|trio_answer|trio_take|hud_groove|hud_build|hud_drop|hud_break|riff_orbitals|
 riff_pulse|riff_sentinel|boost_prism|boost_hyper|boost_halo|boost_magnet_storm|edge|boss_bloom|boss_refraction|

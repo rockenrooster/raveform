@@ -14,6 +14,7 @@ namespace rf::sim {
 class Bot {
 public:
     enum class Policy : u8 { Play, Stress, Reckless };
+    void setPolicy(Policy p) { policy_ = p; }  // --autoplay --reckless-after: the run ends on its own
     void reset(u64 seed, Policy policy);
     StickInput think(const World& world, u32 player, const PlayerController& controller, double musicTick);
     Policy policy() const { return policy_; }
