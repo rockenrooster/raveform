@@ -197,6 +197,12 @@ constexpr float kLoopThreatRamp = 1.3f, kLoopHealthRamp = 1.25f, kLoopCellRamp =
 // read), and every shooter's bullet count rises kLoopShooterRamp a Track (at most kLoopShooterMax, and only while the
 // enemy bullet pool has a quarter free). Each compounding; tuned within a third of the design's step (docs/PROGRESS.md).
 constexpr bool kLoopBreakRefills = false;  // the lead: the loop's Breaks give back no cell and no Nova
+// The halo burns down (GAME_DESIGN 8, `daec945`, the last pass on the loop): on the first downbeat of every Track of the loop
+// from kLoopHaloBurnFrom on, every ship loses kLoopHaloBurn cells of capacity (never below one); in the loop no kill
+// drops a Cell and Regen stops (a boss's two Cells, a Halo, Extra Cell picks inside the burnt capacity and the Novas in
+// stock remain). The knob the lead allows: one or two cells, from the loop's first or second Track (docs/PROGRESS.md).
+constexpr u32 kLoopHaloBurn = 2;
+constexpr u32 kLoopHaloBurnFrom = 4;
 constexpr float kLoopRegenStretch = 1.5f;
 constexpr float kLoopEnemySpeedRamp = 1.06f, kLoopEnemySpeedMax = 1.6f;
 constexpr float kLoopBulletSpeedRamp = 1.06f, kLoopBulletSpeedMax = 1.5f;

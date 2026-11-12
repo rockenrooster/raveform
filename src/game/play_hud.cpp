@@ -7,6 +7,7 @@
 
 #include "content/icons.h"
 #include "sim/sim_types.h"
+#include "sim/tuning.h"
 
 namespace rf {
 
@@ -537,13 +538,32 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             char small[24];
             std::snprintf(small, sizeof small, "TRACK %u", ph.track);
             // GAME_DESIGN 8 (the loop is where a run ends): the loop's first Track card says so, ENCORE above the name and
-            // NO MORE REFILLS under it, at the size of the TRACK n line.
+            // NO MORE REFILLS under it; once the halo burns down its last line is HALO n (the capacity the burn left; the first
+            // card that burns shows both lines), all at the size of the TRACK n line.
             const bool encore = ph.track == sim::kSongs + 1;
-            const char* lines[4] = {small, st.trackName, "ENCORE", "NO MORE REFILLS"};
-            const float caps[4] = {28.0f * s, 110.0f * s, 28.0f * s, 28.0f * s}, tubes[4] = {1.2f * s, 4.0f * s, 1.2f * s, 1.2f * s};
+            const bool burnt = ph.track >= sim::tuning::kLoopHaloBurnFrom;
+            char halo[16];
+            std::snprintf(halo, sizeof halo, "HALO %u", static_cast<u32>(w.player(w.viewPlayer()).cellCap));
+            const float under = 28.0f * s + 26.0f * s;  // a small line and its gap
             const float nameTop = 0.62f * H + (encore ? 40.0f * s : 0.0f);  // (the extra line above stays clear of the ship)
-            const float tops[4] = {nameTop - caps[0] - 26.0f * s, nameTop, nameTop - 2.0f * caps[0] - 2.0f * 26.0f * s, nameTop + caps[1] + 26.0f * s};
-            for (u32 l = 0; l < (encore ? 4u : 2u); ++l) {
+            const char* lines[5] = {small, st.trackName, nullptr, nullptr, nullptr};
+            float caps[5] = {28.0f * s, 110.0f * s, 28.0f * s, 28.0f * s, 28.0f * s};
+            float tubes[5] = {1.2f * s, 4.0f * s, 1.2f * s, 1.2f * s, 1.2f * s};
+            float tops[5] = {nameTop - caps[0] - 26.0f * s, nameTop, 0.0f, 0.0f, 0.0f};
+            u32 count = 2;
+            float below = nameTop + caps[1] + 26.0f * s;
+            if (encore) {
+                lines[count] = "ENCORE";
+                tops[count++] = nameTop - 2.0f * under;
+                lines[count] = "NO MORE REFILLS";
+                tops[count++] = below;
+                below += under;
+            }
+            if (burnt) {
+                lines[count] = halo;
+                tops[count++] = below;
+            }
+            for (u32 l = 0; l < count; ++l) {
                 const char* t = lines[l];
                 const u32 n = static_cast<u32>(std::strlen(t));
                 const float cap = caps[l], x0 = cx - 0.5f * textW(font, cap, t);

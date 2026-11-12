@@ -539,6 +539,12 @@ void World::directorBar(double barTick, u32 bar) {
     const Phrase& ph = phrase_;
     bool anyAlive = false;
     for (u32 p = 0; p < playerCount_; ++p) anyAlive = anyAlive || players_[p].alive;
+    // GAME_DESIGN 8 (the halo burns down): on the first downbeat of every loop Track from kLoopHaloBurnFrom (not in its
+    // Track-change Break), once a Track. A client follows the host's Track the same way.
+    if (ph.track >= kLoopHaloBurnFrom && !ph.trackChange && ph.track > d.burnedTrack) {
+        d.burnedTrack = ph.track;
+        burnHalos();
+    }
 
     if (ph.sectionBar == 0) {
         Event ev;

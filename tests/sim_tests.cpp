@@ -1336,14 +1336,13 @@ void testPlayTest2() {
         if (i >= 0)
             CHECK_MSG(std::fabs(w->enemies().hp[i] - g_species->get(drifter).health * kLoopHealthRamp * kLoopHealthRamp) < 1e-4f, "Track 5 health %.4f",
                       w->enemies().hp[i]);
-        // One cell missing: due after 40 s x kLoopCellRamp^2 (not after 40 s).
-        w->playerMut(0).cells = w->player(0).cellCap - 1;
+        // The halo burns down (`daec945`): no kill drops a Cell in the loop and Regen stops, so a missing cell stays missing.
+        w->playerMut(0).cells = w->player(0).cellCap > 1 ? static_cast<u8>(w->player(0).cellCap - 1) : static_cast<u8>(1);
         for (u32 t = 0; t < 60 * 41; ++t) stepWorld(*w, music, Vec2{});
-        CHECK_MSG(w->player(0).cellDue < 1.0f && w->player(0).cellDue > 0.9f / (kLoopCellRamp * kLoopCellRamp), "Track 5 Cell clock %.3f after 41 s",
-                  w->player(0).cellDue);
-        // The lead's decision (`2fba23c`): Regen's period stretches; enemies and their bullets are faster (capped).
+        CHECK_MSG(w->player(0).cellDue == 0.0f, "Track 5 Cell clock %.3f after 41 s", w->player(0).cellDue);
         w->grantUpgrade(0, kRegen);
-        CHECK(w->regenPeriod(0) == static_cast<u32>(std::ceil(16.0f * kLoopRegenStretch * kLoopRegenStretch - 1e-3f)));
+        CHECK(w->regenPeriod(0) == 0);
+        // The lead's decision (`2fba23c`): enemies and their bullets are faster (capped).
         w->spawnBullet(Vec2{900.0f, 500.0f}, Vec2{100.0f, 0.0f}, 0.0f);
         const Bullets& bl = w->bullets();
         CHECK(bl.count > 0 && std::fabs(bl.vx[bl.count - 1] - 100.0f * std::fmin(kLoopBulletSpeedRamp * kLoopBulletSpeedRamp, kLoopBulletSpeedMax)) < 1e-3f);
@@ -1380,6 +1379,76 @@ void testPlayTest2() {
         }
         const float ramp = std::fmin(kLoopShooterRamp * kLoopShooterRamp * kLoopShooterRamp * kLoopShooterRamp, kLoopShooterMax);
         CHECK_MSG(most >= static_cast<u32>(3.0f * ramp) && most <= static_cast<u32>(3.0f * ramp) + 1, "a Track 7 volley of %u (x%.2f)", most, ramp);
+        delete w;
+    }
+    {
+        // The halo burns down (GAME_DESIGN 8, `daec945`): on the first downbeat of every loop Track every ship loses
+        // kLoopHaloBurn cells of capacity, never below one, and the cells above it, with no invulnerability and the Chain
+        // untouched; Extra Cell refills inside the burnt capacity; no kill drops a Cell, a boss still drops two.
+        auto* w = new (std::nothrow) World;
+        w->init(g_species);
+        w->spawner().mode = Spawner::Mode::Off;
+        w->resetRun(41, 0.0, 2);  // co-op's rule too: every ship burns alike
+        for (u32 k = 0; k < 4; ++k) w->grantUpgrade(0, kExtraCell);
+        w->grantUpgrade(1, kExtraCell);
+        w->grantUpgrade(1, kExtraCell);
+        CHECK(w->player(0).cellCap == 8 && w->player(1).cellCap == 6);
+        w->playerMut(0).chain = 40;
+        w->playerMut(1).cells = 3;
+        w->directorMut().track = 3;  // the first pass's last Track, its boss dead: the Track-change Break into Track 4
+        w->directorMut().bossSpawned = true;
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->directorMut().changeBar = 2;
+        u32 burns = 0, expectCap0 = 8;
+        const u32 burnFrom = kLoopHaloBurnFrom;
+        for (u32 track = 4; track <= 8; ++track) {
+            const double line = w->tickOfBar(w->director().changeBar + kTrackChangeBars);
+            while (music + kTicksPerSimTick < line - 0.5) {  // (stop short of the line: a step must not cross it)
+                stepWorld(*w, music, Vec2{});
+                burns += countEvents(*w, EventType::HaloBurn);
+            }
+            CHECK_MSG(w->player(0).cellCap == expectCap0, "before Track %u: capacity %u (want %u), phrase Track %u bar %u change bar %u", track,
+                      w->player(0).cellCap, expectCap0, w->phrase().track, w->phrase().bar, w->director().changeBar);  // nothing before the first downbeat
+            while (music < line + 2.0 * kTicksPerSimTick) {
+                stepWorld(*w, music, Vec2{});
+                burns += countEvents(*w, EventType::HaloBurn);
+            }
+            CHECK(w->phrase().track == track && !w->phrase().trackChange);
+            if (track >= burnFrom) expectCap0 = expectCap0 > kLoopHaloBurn + 1 ? expectCap0 - kLoopHaloBurn : 1u;
+            CHECK_MSG(w->player(0).cellCap == expectCap0 && w->player(0).cells <= expectCap0 && w->player(0).burnCap == expectCap0,
+                      "Track %u: capacity %u (want %u)", track, w->player(0).cellCap, expectCap0);
+            if (track == burnFrom) {
+                CHECK(w->player(0).invulS <= 0.0f && w->player(0).chain == 40 && w->player(0).cells == expectCap0);
+                CHECK(w->player(1).cellCap == (6u > kLoopHaloBurn + 1 ? 6u - kLoopHaloBurn : 1u) && w->player(1).cells <= w->player(1).cellCap);
+                // Extra Cell refills inside the burnt capacity (player 1 has two picks left).
+                w->playerMut(1).cells = 1;
+                w->grantUpgrade(1, kExtraCell);
+                CHECK(w->player(1).cellCap == w->player(1).burnCap && w->player(1).cells == w->player(1).cellCap);
+            }
+            w->directorMut().changeBar = w->runBar() + 2;  // the next Track's boss falls at once
+        }
+        CHECK(burns == 2u * (9u - burnFrom));  // two ships, a burn a loop Track
+        CHECK(w->player(0).cellCap >= 1);
+        // In the loop no kill drops a Cell; a boss's two still fall.
+        w->playerMut(0).cells = 1;
+        w->spawner().mode = Spawner::Mode::Slice;
+        for (u32 t = 0; t < 60 * 30; ++t) stepWorld(*w, music, Vec2{});
+        const i32 e = w->spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), Vec2{300.0f, 0.0f}, 0.0f, 0.0);
+        if (e >= 0) w->killEnemy(static_cast<u32>(e), 0);
+        u32 drops = 0;
+        for (u32 i = 0; i < w->cellPickups().count; ++i) drops += w->cellPickups().owner[i] == 0 ? 1u : 0u;
+        CHECK(w->player(0).cellDue == 0.0f && drops == 0);
+        // A boss killed in the loop still drops its two Cells for every ship.
+        w->rules().godMode = true;
+        w->spawnBossNow(w->tickOfBar(w->runBar() + 1), Vec2{600.0f, 0.0f});
+        w->killBossNextTick(0x7, true);
+        stepWorld(*w, music, Vec2{});
+        u32 bossCells[2] = {0, 0};
+        for (u32 i = 0; i < w->cellPickups().count; ++i)
+            if (!w->cellPickups().dead[i] && w->cellPickups().owner[i] < 2) ++bossCells[w->cellPickups().owner[i]];
+        CHECK_MSG(w->phrase().track >= 8 && w->boss().dying && bossCells[0] == tuning::kBossCells && bossCells[1] == tuning::kBossCells,
+                  "a Track %u boss: Cells %u and %u", w->phrase().track, bossCells[0], bossCells[1]);
         delete w;
     }
     {

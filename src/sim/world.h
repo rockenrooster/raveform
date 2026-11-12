@@ -193,6 +193,7 @@ enum class EventType : u8 {
     LevelUp,     // a player's Shard meter filled: a = player; f = the level reached (its Trio opens on a coming bar line)
     CellDrop,    // a Cell (health pickup) fell: a = its owner; x, y
     CellTake,    // a cell came back: a = player, b = cells now, c = 1 grown back by Regen (0: a Cell taken); x, y
+    HaloBurn,    // GAME_DESIGN 8, the loop: a = player, b = its capacity now, c = cells held before; x, y (the arcs shatter)
 };
 // Impact events on the boss carry this species, with c = 1 lens plate, 2 arm, 3 core. Play test 2: every Impact carries
 // b = the shooter (0xFF: none); an enemy's Impact c = a Prism lane + 3 (1..5; 0: none).
@@ -390,6 +391,7 @@ struct PlayerState {
     u8 levelsBanked = 0;      // levels whose Trio has not opened yet
     float cellDue = 0.0f;     // toward the next Cell (1: the next kill near the player drops one)
     u8 regenBars = 0;         // bars the missing cell has been growing back (Regen)
+    u8 burnCap = kMaxCells;   // GAME_DESIGN 8: the most cells the halo can hold once the loop has burnt it down
     u32 cellsTaken = 0, cellsRegrown = 0, levelTrios = 0;
     bool invulnerable() const { return invulS > 0.0f || novaInvulS > 0.0f || dashing; }
     bool boost(u8 b) const {
@@ -648,6 +650,7 @@ private:
     void shelterTrios();
     void cellClock();               // every tick: the Cells' drop clock per player
     void regenBar();                // every bar line: Regen
+    void burnHalos();               // a loop Track's first downbeat: the halos burn down (GAME_DESIGN 8)
     bool dropCellFor(u32 p, Vec2 at, u32& rngState);  // a death near p: its Cell, when one is due
     void spawnCell(Vec2 at, Vec2 vel, u8 owner);
     void updateCells(float dt);

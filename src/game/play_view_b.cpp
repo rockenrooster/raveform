@@ -179,6 +179,11 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
         case EventType::CellDrop:
             if (e.a == w.viewPlayer()) addPool(at, 10.0f, 60.0f, palettes_->player[3], 1.2f, 0.0f, 0.3f, false, 1, false, false, t);
             break;
+        case EventType::HaloBurn:
+            // GAME_DESIGN 8 (the halo burns down): the lost arcs shatter outward on the beat; no panic ring.
+            if (e.a < kMaxPlayers && e.c > e.b)
+                shatterArcs(at, e.c < 8 ? e.c : 8u, e.b, e.c < 8 ? e.c : 8u, mix(palettes_->player[e.a], whiteV(), 0.3f) * 2.0f, t);
+            break;
         case EventType::BossPair: {
             // kaleidos.md: both arms shatter outward along their axis in mirror image; the lens plates
             // crack and fall inward; the wheel flinches.

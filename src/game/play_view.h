@@ -98,6 +98,9 @@ private:
     void addDistortion(Vec2 at, float toWu, float lifeS, float amountRefPx, float widthRefPx, float t);
     void sparkRequest(const SparkReq& r);
     void shatterGlyph(int glyph, Vec2 at, float heading, float scale, Vec3 colour, float speedLo, float speedHi, float t);
+    // The halo's arcs [from, to) of an n-arc halo fly apart (a lost cell, the loop's burn; look.md 5): the halo glyphs are all
+    // ornament (layer 1), which shatterGlyph's hull pass skips.
+    void shatterArcs(Vec2 at, u32 slots, u32 from, u32 to, Vec3 colour, float t);
     // Drawing helpers (world -> logical px; the scene view shakes, the threat view does not).
     Vec2 toScene(Vec2 w) const { return (w - cam_) * pxPerWu_ + centre_ + shake_; }
     bool visible(Vec2 w, float marginWu) const;

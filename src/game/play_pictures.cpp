@@ -131,9 +131,11 @@ bool Play::scriptSetupB() {
         return true;
     }
     if (is(p, "track_change")) return true;
-    if (is(p, "loop_encore")) {
-        // GAME_DESIGN 8 (the lead's decision after play test 2): the loop's first Track card, ENCORE and NO MORE REFILLS.
+    if (is(p, "loop_encore") || is(p, "loop_burn")) {
+        // GAME_DESIGN 8 (the lead's decisions after play test 2): the loop's first Track card (ENCORE, NO MORE REFILLS, HALO 6)
+        // and the halo burning down on its first downbeat (a full eight-cell halo loses two arcs).
         w.directorMut().track = 3;
+        for (u32 k = 0; k < 4; ++k) w.grantUpgrade(0, kExtraCell);
         w.rules().godMode = true;
         return true;
     }
@@ -355,7 +357,7 @@ bool Play::scriptInputB(StickInput& in) {
         if (is(p, "boss_iris") && music > fight + 1.0 * kTicksPerBar && barIn > 20.0 && barIn < 60.0) captureFrom_ = now;
         return true;
     }
-    if (is(p, "track_change") || is(p, "loop_encore")) {
+    if (is(p, "track_change") || is(p, "loop_encore") || is(p, "loop_burn")) {
         if (t == 10) {
             // The boss has just fallen: the Track-change Break begins on the next bar line.
             DirectorState& d = w.directorMut();
@@ -363,7 +365,7 @@ bool Play::scriptInputB(StickInput& in) {
         }
         // M3 stage C: the new Track's name card, written and holding, half a bar into the new Track.
         const DirectorState& dir = w.director();
-        if (captureFrom_ < 0 && w.phrase().track >= (is(p, "loop_encore") ? 4u : 2u) && !w.phrase().trackChange && dir.trackBar != kNoBar &&
+        if (captureFrom_ < 0 && !is(p, "loop_burn") && w.phrase().track >= (is(p, "loop_encore") ? 4u : 2u) && !w.phrase().trackChange && dir.trackBar != kNoBar &&
             music >= w.tickOfBar(dir.trackBar) + 0.5 * kTicksPerBar)
             captureFrom_ = now;
         return true;
@@ -377,12 +379,13 @@ bool Play::scriptEventsB() {
     const i64 now = static_cast<i64>(frameNo_);
     if (captureFrom_ >= 0) return starts(p, "screen_") || starts(p, "hud_") || starts(p, "bot_") || starts(p, "trio") ||
                                    starts(p, "riff_") || starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") ||
-                                   is(p, "split7") || starts(p, "pt2_") || is(p, "loop_encore");
+                                   is(p, "split7") || starts(p, "pt2_") || is(p, "loop_encore") || is(p, "loop_burn");
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         if (is(p, "trio_take") && e.type == EventType::TrioTake) captureFrom_ = now;
         if (is(p, "boss_pair_death") && e.type == EventType::BossPair && e.a == 1) captureFrom_ = now;
         if (is(p, "boss_death") && e.type == EventType::BossDeath) captureFrom_ = now;
+        if (is(p, "loop_burn") && e.type == EventType::HaloBurn) captureFrom_ = now + 3;  // the arcs a few frames into their flight
         if (captureFrom_ >= 0) {
             RF_LOG("play: picture '%s' captures from frame %lld", p, static_cast<long long>(captureFrom_));
             break;
@@ -390,7 +393,7 @@ bool Play::scriptEventsB() {
     }
     return starts(p, "screen_") || starts(p, "hud_") || starts(p, "bot_") || starts(p, "trio") || starts(p, "riff_") ||
            starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") || is(p, "split7") || starts(p, "pt2_") ||
-           is(p, "loop_encore");
+           is(p, "loop_encore") || is(p, "loop_burn");
 }
 
 }  // namespace rf

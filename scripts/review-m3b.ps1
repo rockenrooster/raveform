@@ -18,7 +18,8 @@
 #   pt2_overcharge_2,pt2_overcharge_3,pt2_overcharge_4,pt2_overcharge_5,boost_prism and -Config dev -Only pt2_hud_level (a
 #   level-up Trio in a fight with the ship sheltered in an orb, a Cell in a crowd, the halo at eight cells with one
 #   growing back, Overcharge 0-5, the HUD's Shard level); it also writes overcharge_sheet.png (the six side by side) and
-#   pt2_halo8_zoom.png (the halo three times larger).
+#   pt2_halo8_zoom.png (the halo three times larger). The loop: loop_encore (the loop's first Track card, ENCORE ...
+#   NO MORE REFILLS, HALO 6) and loop_burn (two arcs shattering as the halo burns down; also loop_burn_zoom.png).
 # Debug (the default) runs with validation; the script stops on the first run that is not clean.
 param(
     [string]$Out = 'captures\m3b',
@@ -49,7 +50,7 @@ $singles = @('screen_notice', 'screen_title', 'screen_settings_sound', 'screen_s
              'riff_sentinel', 'boost_prism', 'boost_hyper', 'boost_halo', 'boost_magnet_storm', 'edge', 'boss_bloom', 'boss_refraction',
              'boss_spiral', 'boss_naked', 'boss_beam_tell', 'boss_beam', 'boss_iris', 'track_change', 'bot_3', 'bot_6', 'bot_10', 'bot_15', 'bot_3_nohits', 'bot_6_nohits', 'bot_10_nohits', 'bot_15_nohits',
              'pt2_level_trio', 'pt2_cell_crowd', 'pt2_halo8', 'pt2_hud_level', 'pt2_overcharge_0', 'pt2_overcharge_1', 'pt2_overcharge_2',
-             'pt2_overcharge_3', 'pt2_overcharge_4', 'pt2_overcharge_5', 'loop_encore')
+             'pt2_overcharge_3', 'pt2_overcharge_4', 'pt2_overcharge_5', 'loop_encore', 'loop_burn')
 $strips = @('trio_take', 'boss_pair_death', 'boss_death')
 if ($Only.Count) {
     $singles = @($singles | Where-Object { $Only -contains $_ })
@@ -78,6 +79,12 @@ $halo = Join-Path $Out 'pt2_halo8.png'
 if (Test-Path $halo) {
     python -I -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).convert("RGB").crop((1090,430,1310,650)).resize((660,660),Image.LANCZOS).save(sys.argv[2])' $halo (Join-Path $Out 'pt2_halo8_zoom.png')
     Write-Host "[review] pt2_halo8_zoom"
+}
+# The loop: the halo burning down (two arcs shattering from eight), three times larger.
+$burn = Join-Path $Out 'loop_burn.png'
+if (Test-Path $burn) {
+    python -I -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).convert("RGB").crop((1050,390,1350,690)).resize((900,900),Image.LANCZOS).save(sys.argv[2])' $burn (Join-Path $Out 'loop_burn_zoom.png')
+    Write-Host "[review] loop_burn_zoom"
 }
 foreach ($s in $strips) {
     $png = Join-Path $Out "strip_$s.png"

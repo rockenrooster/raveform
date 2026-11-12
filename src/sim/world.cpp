@@ -1159,7 +1159,9 @@ u64 World::hash() const {
         val(pl.levelsBanked);
         val(pl.cellDue);
         val(pl.regenBars);
+        val(pl.burnCap);
     }
+    val(director_.burnedTrack);
     {
         const CellPickups& c = cellPickups_;
         val(c.count);

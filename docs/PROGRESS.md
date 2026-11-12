@@ -209,6 +209,44 @@ its cap (overflow 0 in all fourteen runs).
 - `scripts\test.ps1` passes (`raveform_sim_tests` 5,472 checks: no refill at a loop Break, Regen's stretched period,
   faster enemy bullets, a Track 7 Sentry's larger volley; both soaks 211-213 kbit/s worst second, error 5.1 / 7.0 wu).
 
+### The halo burns down (the lead's last pass on the loop, `daec945`)
+
+On the first downbeat of every Track of the loop (not in its Track-change Break) every present ship loses two cells of
+capacity, never below one (`kLoopHaloBurn` 2 from `kLoopHaloBurnFrom` 4, `World::burnHalos`, the `HaloBurn` event);
+cells held above the new capacity go with it. The lost arcs shatter outward on the beat (`PlayView::shatterArcs`; the
+halo glyphs are ornament, which `shatterGlyph` skips, so a lost cell's arc had not been shattering either and now
+does); no panic ring, no invulnerability, the Chain untouched. In the loop no kill drops a Cell and Regen stops (the
+Breaks already gave nothing back); a boss still drops two Cells (no elites or mini-bosses exist in the slice), and a
+Halo, Extra Cell picks (only inside the capacity the burn left, `PlayerState::burnCap`) and the Novas in stock still
+work. In co-op every device burns every present ship alike, down ones too; a revive still returns with one cell. The
+Track card's last line reads `HALO n`, the viewed ship's capacity (6, 4, 2, 1 from a full halo); the loop's first card
+shows both `NO MORE REFILLS` and `HALO 6` (`captures\playtest2\loop_encore.png`); two arcs shattering from an eight-cell
+halo: `captures\playtest2\loop_burn.png` and `loop_burn_zoom.png` (Debug, 0 validation messages).
+
+The knob (one or two cells a Track, from the loop's first or second Track), 8 seeds x 40 minutes each bot:
+
+| burn | careful: median first death (its Track) | careless: median first death (its Track) |
+|---|---|---|
+| 2 cells from Track 4 (the design's) | 31.3 min (11-12) | 21.6 min (8) |
+| 2 cells from Track 5 | 31.3 min (11-12) | 21.6 min (8) |
+| 1 cell from Track 4 | 31.3 min (11-12) | 21.7 min (8) |
+| 1 cell from Track 5 | 34.3 min (13) | 25.3 min (9-10) |
+
+No setting reaches the targets; two cells from the loop's first Track is the nearest and stays. Over 20 seeds x 40
+minutes:
+
+- Careful: median first death **32.1 min, in Track 12** (target 18-30). 18 of 20 runs die, at 18.8-35.3 min (Tracks
+  7-13); two live the 40 minutes. No death in the first pass. Boss fights lost 6.1%; it is hit about once in five
+  minutes, 119 of its 153 hits in boss fights, so it outlives the burn to one cell (Track 7) by several Tracks.
+- Careless: median first death **21.6 min, in Track 8** (target 9-16). Every run dies, at 13.6-24.7 min (Tracks 5-9).
+  No death in the first pass (one in five allowed). Boss fights lost 8.2%.
+- Pool overflows 0, heap allocations 0 in both. The burn changes no spawn, speed or bullet count (it removes sustain
+  only), so the Moto's densest part was not measured again.
+- `scripts\test.ps1` passes (`raveform_sim_tests` 5,495 checks: two ships of 8 and 6 cells burn over Tracks 4-8, the
+  first to 6/4/2/1/1, nothing before each first downbeat, the cells above the capacity lost, no invulnerability, the
+  Chain kept, an Extra Cell refilling inside the burnt capacity, one burn a ship a Track; no kill drops a Cell in the
+  loop and Regen's period is 0 there; a boss killed in the loop drops two Cells for each ship).
+
 ## Play test 1, second pass — 2026-11-12 (the lead's ruling in `39afc70`)
 
 - **Auto Nova** (on by default; `AUTO NOVA  FIRES ONE BEFORE YOUR LAST CELL GOES` under CONTROLS, saved as

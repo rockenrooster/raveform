@@ -327,6 +327,31 @@ void PlayView::shatterGlyph(int g, Vec2 at, float heading, float scale, Vec3 col
     }
 }
 
+void PlayView::shatterArcs(Vec2 at, u32 slots, u32 from, u32 to, Vec3 colour, float t) {
+    if (slots < 1 || slots > 8 || gHalo_[slots] < 0 || from >= to) return;
+    const GlyphDef& gd = glyphs_->def(static_cast<u32>(gHalo_[slots]));
+    const GlyphSegment* segs = glyphs_->segments() + gd.firstSegment;
+    const u32 per = gd.segmentCount / slots;
+    const float rot = 0.3f * t, c = std::cos(rot), s = std::sin(rot);  // as the halo is drawn (render: haloRot)
+    const float scale = kStandardEnemyWu * glyphs_->def(static_cast<u32>(gShip_)).size;
+    for (u32 k = from * per; k < to * per && k < gd.segmentCount; ++k) {
+        Shatter& p = shatter_[shatterHead_];
+        shatterHead_ = (shatterHead_ + 1) % shatterCap_;
+        const Vec2 a = rotate(segs[k].a, c, s) * scale, b = rotate(segs[k].b, c, s) * scale;
+        const Vec2 mid = (a + b) * 0.5f;
+        const float ml = length(mid);
+        p.a = a - mid;
+        p.b = b - mid;
+        p.centre = at + mid;
+        p.v = (ml > 1e-3f ? mid * (1.0f / ml) : dir(rng_.range(0.0f, kTau))) * rng_.range(160.0f, 320.0f);
+        p.spin = rng_.range(-9.0f, 9.0f);
+        p.born = t;
+        p.life = look_->boom.shatterS;
+        p.colour = colour;
+        p.dimmed = false;
+    }
+}
+
 void PlayView::killRecipe(Vec2 at, u8 size, u8 hue, float heading, int g, float radius, float t, i32 owner) {
     // look.md §5: small (tier I-II), medium (III-IV), large (V, elites).
     const Look::Explosions& boom = look_->boom;
@@ -481,9 +506,8 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 // Shield cell lost (look.md §5): the arc shatters outward, a panic ring pushes out.
                 if (mine) hitT_ = t;
                 const u8 left = e.b;
-                const int arcs = gHalo_[left + 1 <= 8 ? left + 1 : 8];
-                shatterGlyph(arcs, at, rng_.range(0.0f, kTau), kStandardEnemyWu, mix(player, white(), 0.3f) * 2.0f, 160.0f, 320.0f,
-                             t);
+                // The lost arc, the last of the halo it was (play test 2: the halo glyphs are ornament, which shatterGlyph skips).
+                if (left < 8) shatterArcs(at, left + 1u, left, left + 1u, mix(player, white(), 0.3f) * 2.0f, t);
                 addShockRings(at, 1, kPanicRadiusWu, player, light, t, kPanicRingS);
                 lattice_.impulse(at, 260.0f, 120.0f);
                 if (mine && kHitShakeRefPx > shakeAmp_) shakeAmp_ = kHitShakeRefPx;

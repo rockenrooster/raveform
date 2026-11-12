@@ -211,8 +211,9 @@ void World::applyUpgrade(u32 p, u8 u) {
     }
     ++l.mods[u];
     if (u == kExtraCell) {
-        // GAME_DESIGN 6.2 (play test 1): +1 Shield cell capacity and every cell refilled.
-        if (pl.cellCap < kMaxCells) ++pl.cellCap;
+        // GAME_DESIGN 6.2 (play test 1): +1 Shield cell capacity and every cell refilled; in the loop inside the capacity the
+        // burn has left (GAME_DESIGN 8).
+        if (pl.cellCap < kMaxCells && pl.cellCap < pl.burnCap) ++pl.cellCap;
         pl.cells = pl.cellCap;
     }
 }
@@ -760,7 +761,8 @@ void World::cellClock() {
     // last cell (linear in between); the next kill near it drops the Cell (dropCellFor). At full health the clock rests.
     for (u32 p = 0; p < playerCount_; ++p) {
         PlayerState& pl = players_[p];
-        if (!pl.present || !pl.alive || !isLocal(p) || pl.cells >= pl.cellCap) {
+        // GAME_DESIGN 8 (the halo burns down): in the loop no kill drops a Cell (a boss's two remain).
+        if (!pl.present || !pl.alive || !isLocal(p) || pl.cells >= pl.cellCap || phrase_.track > kSongs) {
             pl.cellDue = 0.0f;
             continue;
         }
@@ -881,10 +883,34 @@ void World::updateCells(float dt) {
 }
 
 u32 World::regenPeriod(u32 p) const {
-    // Regen's period by stacks (16, 8, 4 bars), stretched a Track at a time in the loop (GAME_DESIGN 8).
+    // Regen's period by stacks (16, 8, 4 bars); in the loop Regen stops (GAME_DESIGN 8, the halo burns down: no more refills
+    // means all of them), which leaves kLoopRegenStretch nothing to stretch.
     const u32 every = p < kMaxPlayers ? regenEveryBars(players_[p].loadout.mods[kRegen]) : 0u;
-    if (!every) return 0;
+    if (!every || phrase_.track > kSongs) return 0;
     return static_cast<u32>(std::ceil(static_cast<float>(every) * loopRamp(kLoopRegenStretch, phrase_.track) - 1e-3f));
+}
+
+void World::burnHalos() {
+    // GAME_DESIGN 8 (the halo burns down): every ship loses kLoopHaloBurn cells of capacity (never below one) and the cells
+    // held above it, on the loop Track's first downbeat; no panic ring, no invulnerability, the Chain untouched. Every
+    // device burns every present ship alike (co-op: the owners' Stats agree), down ones too (a revive brings one cell back).
+    for (u32 p = 0; p < playerCount_; ++p) {
+        PlayerState& pl = players_[p];
+        if (!pl.present) continue;
+        const u8 before = pl.cells;
+        const u8 cap = pl.cellCap > kLoopHaloBurn + 1u ? static_cast<u8>(pl.cellCap - kLoopHaloBurn) : static_cast<u8>(1);
+        pl.cellCap = cap;
+        pl.burnCap = cap;
+        if (pl.cells > cap) pl.cells = cap;
+        Event ev;
+        ev.type = EventType::HaloBurn;
+        ev.a = static_cast<u8>(p);
+        ev.b = cap;
+        ev.c = before;
+        ev.x = pl.pos.x;
+        ev.y = pl.pos.y;
+        emit(ev);
+    }
 }
 
 u32 World::shooterCount(u32 base, u32& rngState) const {

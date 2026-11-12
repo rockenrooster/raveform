@@ -85,6 +85,7 @@ struct DirectorState {
     u32 crowdKills = 0;        // C2: fodder killed since the last bar line (the debt never exceeds it)
     u32 lastBar = kNoBar;      // the last bar the director planned
     float crowdDebtP[kMaxPlayers] = {};  // M4 co-op: each player's frame keeps its own debt
+    u8 burnedTrack = 0;        // GAME_DESIGN 8 (the halo burns down): the last loop Track whose first downbeat burnt the halos
 };
 
 // Where bar `bar` of the run sits, given what the director knows now.
