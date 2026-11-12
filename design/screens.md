@@ -133,6 +133,13 @@ Not a screen: the upgrade choice happens in the world, at the Break, with the ru
 | **Taking it** | The arc closes | The orb folds into the ship in two beats' worth of sparks in its two colours, the icon flies to the band row of the HUD, the other two pop into sparks of their own colours, the ring closes. The pickup sound is the "upgrade taken" chord, on the next sixteenth |
 | Hint | Bottom centre, cap 14 px, white at 0.7 | `STAY ON ONE TO TAKE IT`, on the first three Trios of a run |
 
+**A level-up Trio** (GAME_DESIGN 6.1, Shard levels) is the same ring and orbs, opened round the
+ship on a bar line in the middle of the fight. Differences: the fight is not dimmed; the ring is
+gold instead of the accent and runs for four bars; `LEVEL 7` in gold, cap 16 wu, sits at the ring's
+centre for the first bar; each orb's thin ring is drawn double, because a ship inside it cannot be
+hurt and bodies that touch it are shoved off. Everything else — the two locked beats, the
+two-beat hold, the nearest orb at the end — is the same.
+
 With a **Fusion** on offer the triangle turns point down (orbs at lower centre, upper left, upper
 right) and the Fusion sits above the ring at 230 wu: its icon at ×1.45 in the eight-point frame, a
 four-arm gold flare and a two-arm white one, its words in gold, and two thin gold lines running up to
@@ -156,6 +163,7 @@ Effect words (final, 2026-11-12; plain words, no music terms, so a first-time pl
 | Ricochet | `SHOTS BOUNCE +2` |
 | Overcharge | `+50% SHOT DAMAGE` |
 | Extra Cell | `+1 CELL, ALL REFILLED` |
+| Regen | `CELL REGROWS: 16 BARS`, then `8 BARS`, `4 BARS` |
 | Magnet | `SHARD PULL X2`, then `X3`, `X4`, `X5` |
 | On-Beat Crit | `BEAT SHOTS X3`, `X5`, `X8` |
 | Orbitals | `NEW RIFF: THREE ORBITERS`, then `LEVEL 2: FIVE ORBITERS` and so on by twos |

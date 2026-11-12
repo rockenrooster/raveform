@@ -25,14 +25,14 @@
   },
   "enemyBullet": {"speed": 240, "radius": 5, "note": "Slow on purpose: bullets are a pattern to read, not a reflex test. Ranged attacks fire on the beat after a one-beat telegraph."},
   "firstSlice": {
-    "note": "Roster for milestone M3: twelve species from six families, with their debut. Track 1 uses Short cycles (24 bars), Track 2 Standard cycles (48 bars).",
+    "note": "Roster for milestone M3: twelve species from six families, with their debut. Track 1 uses three Short cycles (24 bars each), later Tracks three Standard cycles (36 bars each): play test 2 cut the Tracks to three quarters, so Track 1 lost its fourth cycle and its debuts, budgets and crowd were folded into three.",
     "roster": [
       {"species": "drifter_1_A", "debut": {"track": 1, "cycle": 1}},
       {"species": "hound_1_A",   "debut": {"track": 1, "cycle": 1}},
       {"species": "shoal_1_A",   "debut": {"track": 1, "cycle": 2}},
-      {"species": "drifter_2_A", "debut": {"track": 1, "cycle": 3}},
+      {"species": "drifter_2_A", "debut": {"track": 1, "cycle": 2}},
       {"species": "ram_1_A",     "debut": {"track": 1, "cycle": 3}},
-      {"species": "hound_2_A",   "debut": {"track": 1, "cycle": 4}},
+      {"species": "hound_2_A",   "debut": {"track": 1, "cycle": 3}},
       {"species": "carom_1_A",   "debut": {"track": 2, "cycle": 1}},
       {"species": "sentry_1_B",  "debut": {"track": 2, "cycle": 1}},
       {"species": "shoal_2_A",   "debut": {"track": 2, "cycle": 2}},
@@ -40,11 +40,11 @@
       {"species": "hound_2_B",   "debut": {"track": 2, "cycle": 3}},
       {"species": "carom_2_A",   "debut": {"track": 2, "cycle": 3}}
     ],
-    "threatBudgetPerBar": {"track1": [2.0, 3.0, 4.5, 6.0], "track2": [7.0, 9.0, 12.0], "track3": [14.0, 16.0, 18.0],
+    "threatBudgetPerBar": {"track1": [2.0, 3.5, 6.0], "track2": [7.0, 9.0, 12.0], "track3": [14.0, 16.0, 18.0],
                            "note": "Budget per bar during Groove, by cycle. Sections scale it as in GAME_DESIGN section 8. Since 2026-11-12 it buys threats only (hueRole hunter and special); fodder comes from the crowd block. Track 3 (Reef, Standard cycles) has no debuts of its own until milestone M5: it plays Track 2's full roster."},
     "crowd": {
       "note": "Population targets (GAME_DESIGN section 8, the crowd and the threats): enemies alive in and just around a player's frame (count.frameScale) during Groove, by Track and cycle; sections scale it. The director closes the gap to the target with fodder formations over refillBars bars. Starting values: tune with the bot (20 seeds or more) and report every change. The counted frame is 1.56 times the view's area, so with the count at its target expect about 0.6 of the target inside the view itself (measured in stage C2: 0.54-0.64).",
-      "aliveTarget": {"track1": [20, 45, 80, 120], "track2": [150, 190, 230], "track3": [240, 270, 300]},
+      "aliveTarget": {"track1": [20, 60, 120], "track2": [150, 190, 230], "track3": [240, 270, 300]},
       "loopStepPerTrack": 20,
       "max": 400,
       "sectionScale": {"groove": 1.0, "build": [1.0, 1.3], "drop": [1.6, 1.2], "break": 0.0, "bossDrop": 0.5},

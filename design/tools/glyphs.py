@@ -416,7 +416,7 @@ def build():
         glyphs.append(entry)
 
     add("ship", ship(), kind="player", facesHeading=True, size=1.0)
-    for n in range(1, 7):
+    for n in range(1, 9):
         add("halo_%d" % n, halo(n), kind="player", facesHeading=False, size=1.0)
     add("shard", shard(), kind="pickup", facesHeading=False, size=0.3)
     add("enemy_bullet", enemy_bullet(), kind="threat", facesHeading=False, size=0.38)

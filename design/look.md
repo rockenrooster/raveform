@@ -329,6 +329,36 @@ Other signature effects:
   2026-11-11).
 - **Afterglow:** hot light leaves a short soft tail (§7).
 
+### The build on the shots (play test 2, 2026-11-12)
+
+A stronger build must look stronger. The **tail** of a shot is always its owner's colour, so a
+shot can be told from a teammate's; the **head** (the front 45% of the streak), the muzzle flash
+and the impact sparks show the build.
+
+| Overcharge | Head | Width | Also |
+|---|---|---|---|
+| 0 | White | × 1 | — |
+| 1 | Amber, OKLCH 0.82 at 70° | × 1.15 | — |
+| 2 | Gold, 0.88 at 95° | × 1.3 | — |
+| 3 | White with a gold rim | × 1.45 | A spark off every second shot |
+| 4 | Ice blue, 0.85 at 230° | × 1.6 | A spark off every shot |
+| 5 | Electric violet, 0.72 at 295°, white core | × 1.8 | Afterglow on the shot; the impact flash doubles |
+
+Full chroma throughout; length grows 8% a stack. Warm, then through white to blue and violet:
+hotter each time, and never near the danger colour.
+
+- **On-Beat Crit:** a beat shot carries a four-point star at its head, 10, 14 and 18 wu by stack,
+  white to gold; its burst is a gold ring of 80 wu.
+- **Pierce:** one small chevron behind the head for each stack.
+- **Riffs:** what a Riff throws is its owner's base colour at levels 1 and 2, the light colour at 3
+  and 4, and has a white core with the player's rim at 5.
+- **Prism:** five lanes: the owner's colour in the middle, the others 60° and 120° round the OKLCH
+  hue wheel to either side at lightness 0.70 and full chroma. A lane that would fall within 30° of
+  the danger hue moves to the nearest edge of that band. The streak is the lane's colour end to
+  end, white only in its front 15%, drawn at 0.6 of the shot level and 1.3 of its width: the tone
+  map bleaches anything brighter, which is why the first build's fan looked pale. Glow, sparks and
+  mini-refractions take the lane's colour.
+
 Beat response amounts are in `docs/GAME_DESIGN.md` §11.1; their envelopes are in §7.
 
 ---
@@ -359,6 +389,7 @@ HUD layout at 2400×1080 (scale with screen height; keep a 132 px side margin cl
 |---|---|---|
 | Score | Top left, cap height 34 | White running to the accent at the baseline, 1.6 |
 | Chain | Under the score, cap height 22 | White to gold to amber, pulses on pickup |
+| **Shard level** | Under the Chain: `LV 7` at cap 12 and a bar 220 px wide, 5 px tall | Gold fill on a white outline at 0.3. When it fills it flashes white, the number steps with a bright two-note rise, and the bar empties as the Trio opens |
 | Track and tempo | Top centre, cap height 12 | Palette accent |
 | **Phrase bar** | Top centre under it, 520 px wide | Four segments sized by bars (Groove, Build, Drop, Break), each in its own colour, the current one lit, a white playhead, and "DROP IN n" in bars — the player can always see the song's shape |
 | Nova stock | Top right | One four-point star per Nova, lit in the player colour |
@@ -371,6 +402,17 @@ HUD layout at 2400×1080 (scale with screen height; keep a 132 px side margin cl
 | Edge indicators | Screen edges | Chevrons 44 px tall (at 1080 lines; the first build's 22 px was about 1.5 mm on a phone and could not be read): white for elites, gold for events, danger colour for incoming ranged attacks. A boss off screen gets a 64 px double chevron in its accent colour that swells 15% on every beat. Each sits 28 px inside the edge on a dark disc at 0.5, so it reads over any scene |
 
 No world object spawns under the score, phrase bar or Nova stock.
+
+**Cells** (health pickups). A gold ring of radius 16 wu with a white plus inside, swelling 15% on
+the beat, with a thin vertical flare 120 px tall so it can be found in a crowd. It is the only
+plus sign in the game. Taken: the halo's missing arc draws itself in a quarter of a beat with a
+rising note of the player's lead, and eight gold sparks. Off screen while its player is on the
+last cell: a gold chevron with a plus at its tip.
+
+**Regen.** The arc that is growing back is drawn as a dashed outline that fills clockwise; it is
+not a cell until it is whole.
+
+**The halo holds up to eight arcs** (`halo_7`, `halo_8` in `glyphs.json`).
 
 ### Co-op (M4)
 

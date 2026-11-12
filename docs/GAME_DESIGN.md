@@ -79,13 +79,15 @@ engine move through them together, always on bar lines.
 | **Drop** | Mega-wave, mini-boss or boss enters on the downbeat | Full arrangement | Bloom burst, shockwave from every player, zoom snaps out, palette accent swaps | **Surge** for the first half, in two gears: fire grid one step faster for its first half, two steps for its second (triplets, then double time; capped at 1/32), score ×2, magnet ×2 |
 | **Break** | Fodder dissolves into Shards in the first bar; nothing dangerous spawns | Pads, filtered drums | Cool, desaturated, slow drifting particles | Upgrade **Trio** appears; new-species spotlight in the last two beats |
 
-Forms: **Short** = 8 / 4 / 8 / 4 bars (24 bars); **Standard** = 16 / 8 / 16 / 8 bars (48 bars).
+Forms: **Short** = 8 / 4 / 8 / 4 bars (24 bars); **Standard** = 12 / 4 / 16 / 4 bars (36 bars: the
+Drop is the longest part). Until play test 2 (2026-11-12) Standard was 16 / 8 / 16 / 8; the user
+asked for Tracks three quarters as long.
 
 ### 4.2 Tracks
 
-A Track is a block with its own tempo, key, palette, enemy families and boss. Track 1 uses four Short
-cycles (about 3.2 minutes) so the first upgrade arrives within 45 seconds. Later Tracks use three
-Standard cycles (about 4 minutes). A mini-boss arrives on the Drop of the middle cycle from Track 2 on; the
+A Track is a block with its own tempo, key, palette, enemy families and boss. Track 1 uses three Short
+cycles (72 bars, about 2.4 minutes) so the first upgrade arrives within 45 seconds. Later Tracks use three
+Standard cycles (108 bars, about 3.4 minutes). A mini-boss arrives on the Drop of the middle cycle from Track 2 on; the
 boss arrives on the last Drop. Killing the boss ends the Track, grants a bonus Trio and starts the
 next Track's Break, during which tempo, key and palette cross-fade.
 
@@ -114,7 +116,7 @@ and a single RETRY button.
 | Speed | 520 wu/s, near-instant acceleration, slight glide on release |
 | Size | Visual radius 14 wu; hit radius 5 wu (forgiving) |
 | Primary weapon | One shot per 1/16 step, 1400 wu/s, lead-arp note per shot |
-| Shield cells | Start 4, cap 6; one cell comes back at every Break. A hit removes one, fires a panic pulse (clears bullets within 220 wu, shoves enemies), grants 2.5 s invulnerability and halves the Chain. Health is shown on the ship itself: its halo has one arc per cell |
+| Shield cells | Start 4, up to 8 with Extra Cell; one cell comes back at every Break, more with Regen, and **Cells** dropped by enemies restore one each (section 6.1). A hit removes one, fires a panic pulse (clears bullets within 220 wu, shoves enemies), grants 2.5 s invulnerability and halves the Chain. Health is shown on the ship itself: its halo has one arc per cell |
 | Nova | Start with 3, capacity 4 (up to 6 with Mods); one comes back at every Break. Rule R6. Clears bullets and non-boss enemies in view; heavy damage to bosses. **Auto Nova** (on by default, a switch under CONTROLS): a hit that would take the last Shield cell fires a Nova from the stock instead and costs no cell |
 | Dash | One charge, recharges in 2 beats. 220 wu in 0.12 s, invulnerable throughout. Perfect Dash refunds half the recharge and emits a small shock ring |
 
@@ -147,6 +149,22 @@ except settings, local high scores and lifetime stats.
   option affects weapons; if the player has fewer than four Riffs and none was offered in the last two
   Trios, one is.
 - **Fusion.** When both ingredients of a Fusion are maxed, it appears as a gold fourth orb.
+- **Shard levels** (play test 2, 2026-11-12: "upgrades need to happen more often, maybe scale by
+  collected Shards"). Collected Shards fill a level meter under the Chain. Each time it fills the
+  player gains a level, and a Trio opens round the ship on the next bar line, wherever the fight
+  is: the same three orbs, held to be taken. Level n needs 25 × 1.22^(n−1) Shards (25, 31, 37,
+  45, 55 …); tune the base and the ratio with the bot so that a level comes every 20 to 30
+  seconds through the first three Tracks. Levels that fill while a Trio is open are banked and
+  the next Trio opens on the bar line after the last one closes. A level-up Trio lasts four bars
+  (the ring is the clock; the nearest orb is taken at the end). The fight does not step back for
+  it, so the orbs are shelters: nothing spawns inside the ring, **a ship inside an orb's ring
+  cannot be hurt**, and bodies touching that ring are shoved away. The Break's Trio stays as it
+  is, free of charge. When every Mod and Riff is at its cap the orbs offer three different Boosts.
+- **Cells** (health pickups; play test 2). A Cell restores one Shield cell. Kills drop them only
+  while the player is below full health: about one every 40 seconds with one cell missing, about
+  one every 15 seconds on the last cell (director controlled, like Boosts; at most two loose at
+  once). Every elite and mini-boss drops one and a boss two, whatever the health. A Cell lasts
+  eight bars and is pulled by the magnet like a Shard. Look: `design/look.md` section 6.
 - **Boss kill:** an extra Trio. **Boosts** drop from enemies (roughly one every 20–30 s, director
   controlled), from Vaults and from events.
 - Limits: 4 Riff slots, Riff levels 1–5, Mod caps per the table, 2 Boosts active at once (a third
@@ -168,7 +186,7 @@ Weapon
 | 8 | Accent | The shot on beat 1 is a full-length piercing lance; then beats 1+3; then every beat | 3 | Accented note, white flash line |
 | 9 | Echo | Each shot repeats as a ghost one beat later at half damage; then two echoes | 2 | Delay line on the lead |
 | 10 | Wave | Shots travel in sine paths with a wider hit radius | 2 | Vibrato |
-| 11 | Overcharge | +50% damage, larger hotter shots | 5 | More drive on the lead |
+| 11 | Overcharge | +50% damage, larger hotter shots: the shot's head changes colour with every stack (look.md section 5, "The build on the shots") | 5 | More drive on the lead |
 | 12 | Rear Guard | Also fire backward on off-beats; then sideways too | 2 | Off-beat counter-melody |
 | 13 | Arc | Kills chain lightning to 2 more enemies | 3 | Zap arpeggio |
 | 14 | Burn | Hits ignite for 2 beats; burning enemies ignite neighbours on death | 3 | Crackle layer |
@@ -179,8 +197,8 @@ Defence and movement
 
 | # | Mod | Effect per stack | Cap |
 |---|---|---|---|
-| 17 | Extra Cell | +1 Shield cell capacity and refill every cell | 2 |
-| 18 | Regen | Restore a cell every third Break; then every second; then every Break | 3 |
+| 17 | Extra Cell | +1 Shield cell capacity and refill every cell (up to 8 cells) | 4 |
+| 18 | Regen | A cell grows back by itself every 16 bars; then every 8; then every 4. The halo's next arc draws itself as it grows | 3 |
 | 19 | Afterimage | Dash leaves a decoy enemies chase for 2 beats | 2 |
 | 20 | Reserve | +1 Dash charge | 2 |
 | 21 | Shockstep | Dash emits a damaging ring; a Perfect Dash doubles it | 3 |
@@ -231,7 +249,7 @@ Rhythm
 
 | # | Boost | Effect |
 |---|---|---|
-| 1 | Prism | Every shot refracts into a 5-way rainbow fan; hits spawn mini-refractions. The fan is a real rainbow: the centre lane keeps the player's colour, the lanes beside it sit 50° and 100° round the hue wheel to either side (lightness 0.80, full chroma), all with white cores; the mini-refractions take their lane's hue |
+| 1 | Prism | Every shot refracts into a 5-way rainbow fan; hits spawn mini-refractions. The fan is a real rainbow in saturated colour (play test 2: the first build's lanes were too pale): the centre lane keeps the player's colour, the lanes beside it sit 60° and 120° round the hue wheel to either side at lightness 0.70 and full chroma, coloured end to end (look.md section 5); the mini-refractions take their lane's hue |
 | 2 | Hyper | Primary and all Riffs run at double grid |
 | 3 | Supernova Rounds | Every shot explodes on impact |
 | 4 | Colossus | Ship ×3 size, invulnerable, rams through enemies (2 bars) |
@@ -270,7 +288,7 @@ Rhythm
   did not have; no stack is a small percentage. The numbers of the first slice (Mods 1-4, 11, 17,
   25, 31; Riffs 1-3) were raised to this rule on that day; M5 writes the rest to the same scale.
 - No upgrade may break the entity caps (TECH_SPEC §7): effects that multiply projectiles carry their own caps.
-- First slice (M3): Mods 1–4, 11, 17, 25, 31; Riffs 1–3; Boosts 1, 2, 7, 8.
+- First slice (M3): Mods 1–4, 11, 17, 25, 31, and 18 since play test 2; Riffs 1–3; Boosts 1, 2, 7, 8.
 
 ---
 
