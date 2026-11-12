@@ -430,8 +430,16 @@ phases; it fits inside the entity caps.
   the bosses' bullet density by 1.3 and enemy health by 1.25, and stretches the Cell clocks by
   1.25, each compounding. Targets over 20 seeds of 40 minutes: the careful bot's median first
   death between minutes 18 and 30, the careless bot's between 9 and 16; in the first pass the
-  careful bot loses no run and the careless bot at most one in five. Tune the three factors
-  between 1.15 and 1.5 to land there. Enemy counts still are not a lever.
+  careful bot loses no run and the careless bot at most one in five. Those three
+  factors alone never reached the ship (the bots lived 40 minutes at 1.5 each: the build kills
+  everything first and Regen, Cells, the Breaks' refills and Auto Nova outrun the hits), so the
+  loop also takes away what keeps the ship alive and speeds up what hunts it. From the first
+  Track of the loop: **the Breaks no longer give back a cell or a Nova**; Regen's periods stretch
+  by 1.5 for each Track of the loop; enemy speed rises 6% a Track (at most × 1.6) and enemy
+  bullet speed 6% a Track (at most × 1.5, so a pattern can still be read); every shooter's bullet
+  count rises 15% a Track (at most × 3, inside the pools). The loop's first Track card says so:
+  `ENCORE` above the Track's name, and under it `NO MORE REFILLS`. Tune every factor within a
+  third of its value to land on the targets. Enemy counts still are not a lever.
 - **Co-op.** Budget × (1 + 0.6 × (players − 1)); elite, mini-boss and boss health × (1 + 0.5 × (players − 1)).
 
 Tune with the offline simulation: bot players run 30 minutes headless and the tool charts budget,
