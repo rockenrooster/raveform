@@ -31,6 +31,7 @@ constexpr i64 kTimestampMaxAgeNs = 500000000; // an older device timestamp is st
 constexpr double kSlew = 0.1;                 // share of the error corrected per frame
 constexpr double kLeadRuleCapMs = 80.0;       // TECH_SPEC 6.3: min(outputLatency, 80 ms)
 constexpr i64 kHapticGapNs = 120000000;       // at most one light tick per 120 ms
+constexpr float kPauseLowpassHz = 600.0f, kPauseLowpassRampS = 0.15f;  // M3 stage C: screens.md pause (about 600 Hz, 150 ms)
 
 bool eq(const char* a, const char* b) { return std::strcmp(a, b) == 0; }
 
@@ -335,7 +336,7 @@ void Band::releaseHeard() {
                 if (haptics_ && view_.running) {
                     const i64 now = audioNowNs();
                     if (now - lastHapticNs_ >= kHapticGapNs) {
-                        platformHaptic(HapticKind::Light);
+                        platformHaptic(HapticKind::Light, hapticStrong_);
                         lastHapticNs_ = now;
                         ++hapticCalls_;
                     }
@@ -343,7 +344,7 @@ void Band::releaseHeard() {
                 break;
             case BeatKind::Impact:
                 if (haptics_ && view_.running) {
-                    platformHaptic(HapticKind::Heavy);
+                    platformHaptic(HapticKind::Heavy, hapticStrong_);
                     lastHapticNs_ = audioNowNs();
                     ++hapticCalls_;
                 }
@@ -597,6 +598,12 @@ u32 Band::scope(float* out, u32 n) const {
 
 void Band::setGains(float music, float effects) { post({.type = CmdType::SetGains, .x = music, .y = effects}); }
 
+void Band::setMuffle(bool on) {
+    if (on == muffled_) return;
+    muffled_ = on;
+    post({.type = CmdType::SetMuffle, .x = on ? kPauseLowpassHz : 0.0f, .y = kPauseLowpassRampS});
+}
+
 void Band::setIntensity(float v) {
     intensity_ = v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
     post({.type = CmdType::SetIntensity, .x = intensity_});
@@ -640,7 +647,14 @@ void Band::toggleRiff(Riff r) {
     post({.type = CmdType::SetRiff, .a = 0, .b = static_cast<u8>(r), .c = level});
 }
 
-void Band::playSfx(Sfx s, float gain) { post({.type = CmdType::Sfx, .a = static_cast<u8>(s), .x = gain}); }
+void Band::playSfx(Sfx s, float gain, float rate) { post({.type = CmdType::Sfx, .a = static_cast<u8>(s), .x = gain, .level = rate}); }
+
+void Band::hapticPreview() {
+    if (!haptics_) return;
+    platformHaptic(HapticKind::Medium, hapticStrong_);
+    lastHapticNs_ = audioNowNs();
+    ++hapticCalls_;
+}
 
 const char* Band::variantName() const { return music_ ? music_->variants[variant_].name : "-"; }
 const char* Band::trackName() const { return music_ ? music_->tracks[track_].name : "-"; }

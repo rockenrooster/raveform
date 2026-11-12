@@ -25,6 +25,10 @@ constexpr float kAimBiasWu = 60.0f;       // ... and leans this far along the ai
 constexpr float kLookAheadTau = 0.25f;    // s: the lead eases in and out
 constexpr float kZoomCalm = 1.0f, kZoomBusy = 0.85f;  // GAME_DESIGN 9: breathes between 0.85x and 1.25x
 constexpr float kZoomLoadLo = 60.0f, kZoomLoadHi = 300.0f, kZoomTau = 2.0f;
+// GAME_DESIGN 9 (M3 stage C): while a boss lives within 1,800 wu of the ship the camera holds 0.85x and leans
+// toward the boss by 30% of the offset, at most 320 wu. The lean's ease is chosen.
+constexpr float kBossCamWu = 1800.0f, kBossZoom = 0.85f, kBossLeanShare = 0.30f, kBossLeanMaxWu = 320.0f;
+constexpr float kBossLeanTau = 0.5f;
 constexpr float kWallIntensity = 1.6f, kWallWidth = 2.6f, kWallSnare = 0.6f, kWallBass = 0.3f;
 constexpr float kHitShakeRefPx = 4.0f, kNovaShakeRefPx = 3.0f, kDeathShakeRefPx = 6.0f;
 constexpr float kMuzzleFlashS = 0.06f, kMuzzleFlashRefPx = 10.0f, kMuzzleFlash = 0.9f;
@@ -34,7 +38,10 @@ constexpr u32 kNovaInhaleSparks = 140, kNovaFrontSparks = 400;
 constexpr float kPanicRingS = 0.25f;
 constexpr u32 kDashGhosts = 5;            // look.md §5
 constexpr float kDashGhostS = 0.25f;
-constexpr float kIndicatorInsetRefPx = 46.0f, kIndicatorSizeRefPx = 16.0f;
+// Edge chevrons (look.md §6 gives the height, the inset and the disc): their shape, chosen. A chevron is 0.4 of
+// its height deep; the boss's two sit 0.32 of the height apart; the disc's radius is 0.68 of the height; the
+// stroke's half width 0.055 of it, with the threat layer's dark rim.
+constexpr float kChevronDepth = 0.4f, kChevronPairGap = 0.32f, kChevronDisc = 0.68f, kChevronStroke = 0.055f;
 
 Vec2 dir(float a) { return {std::cos(a), std::sin(a)}; }
 Vec2 perp(Vec2 v) { return {-v.y, v.x}; }
@@ -575,6 +582,17 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     // ---- Camera (GAME_DESIGN 9): follows the ship with look-ahead along its velocity and a lean toward
     // its aim; zoom breathes with the crowd; the kick punches it a little (look.md §7).
     const Vec2 S = in.shipPos;
+    Vec2 leanTarget{};
+    bool bossNear = false;
+    if (w.boss().active && !w.boss().dying) {
+        const Vec2 off = lerp2(w.boss().prevPos, w.boss().pos, a) - S;
+        if (lengthSq(off) < kBossCamWu * kBossCamWu) {
+            bossNear = true;
+            leanTarget = off * kBossLeanShare;
+            const float l = length(leanTarget);
+            if (l > kBossLeanMaxWu) leanTarget = leanTarget * (kBossLeanMaxWu / l);
+        }
+    }
     {
         // The lead follows the course at cruising speed at most (a Dash does not swing the camera).
         const float sp = length(in.shipVel);
@@ -583,7 +601,8 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         const float k = 1.0f - std::exp(-in.dt / kLookAheadTau);
         lookAhead_ = lookAhead_ + (target - lookAhead_) * k;
         const float busy = clampf((stats_.load - kZoomLoadLo) / (kZoomLoadHi - kZoomLoadLo), 0.0f, 1.0f);
-        const float zt = kZoomCalm + (kZoomBusy - kZoomCalm) * busy;
+        const float zt = bossNear ? kBossZoom : kZoomCalm + (kZoomBusy - kZoomCalm) * busy;
+        bossLean_ = bossLean_ + (leanTarget - bossLean_) * (1.0f - std::exp(-in.dt / kBossLeanTau));
         zoomBase_ += (zt - zoomBase_) * (1.0f - std::exp(-in.dt / kZoomTau));
         zoomBase_ = clampf(zoomBase_, look_->zoomMin, look_->zoomMax);
     }
@@ -593,7 +612,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     centre_ = {0.5f * W, 0.5f * H};
     viewW_ = W / pxPerWu_;
     viewH_ = H / pxPerWu_;
-    cam_ = S + lookAhead_;
+    cam_ = S + lookAhead_ + bossLean_;
     // The view may look up to 240 wu past a wall, no further.
     const float mx = kArenaHalfW + 240.0f - 0.5f * viewW_, my = kArenaHalfH + 240.0f - 0.5f * viewH_;
     if (mx > 0.0f) cam_.x = clampf(cam_.x, -mx, mx);
@@ -834,23 +853,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         // Edge indicators (look.md §6): an engaged shooter outside the view, in the danger colour.
         if (!inView && s.ranged() && (e.state[i] == kGlint || e.state[i] == kFiring) && stats_.indicators < 8 &&
             shown(kMutePriority)) {
-            const Vec2 dsc = toScreen(pos) - centre_;
-            const float inset = kIndicatorInsetRefPx * refPx_;
-            const float hx = 0.5f * W - inset, hy = 0.5f * H - inset;
-            const float k = std::fmin(hx / std::fmax(std::fabs(dsc.x), 1e-3f), hy / std::fmax(std::fabs(dsc.y), 1e-3f));
-            const Vec2 c = centre_ + dsc * k;
-            const float ang = angleOf(dsc);
-            const float sz = kIndicatorSizeRefPx * refPx_;
-            const Vec2 p0 = c + rotate(Vec2{-0.6f, 0.8f}, std::cos(ang), std::sin(ang)) * sz;
-            const Vec2 p1 = c + rotate(Vec2{0.6f, 0.0f}, std::cos(ang), std::sin(ang)) * sz;
-            const Vec2 p2 = c + rotate(Vec2{-0.6f, -0.8f}, std::cos(ang), std::sin(ang)) * sz;
-            const float hw = 0.5f * look_->threat.bulletWidth * refPx_;
-            const Vec3 core = mix(danger, W1, 0.25f);
-            d.threatRims.line(p0, p1, hw + look_->threat.bulletRim * refPx_, Vec3{}, Vec3{}, 0);
-            d.threatRims.line(p1, p2, hw + look_->threat.bulletRim * refPx_, Vec3{}, Vec3{}, 0);
-            d.threatCores.line(p0, p1, hw, core, core, 0);
-            d.threatCores.line(p1, p2, hw, core, core, 0);
-            d.pools.glow(c, 22.0f * refPx_, danger * 0.3f);
+            edgeChevron(d, pos, danger, false, 1.0f);
             ++stats_.indicators;
         }
         if (!visible(pos, 2.5f * scale + 40.0f)) continue;
@@ -1212,4 +1215,40 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     (void)lastWarpLandT_;
 }
 
+void PlayView::edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, float swell) {
+    const Look::EdgeIndicator& ei = look_->edge;
+    const float h = (boss ? ei.bossChevron : ei.chevron) * refPx_;
+    const float disc = kChevronDisc * h;
+    const float W = 2.0f * centre_.x, H = 2.0f * centre_.y;
+    // The disc sits the inset inside the edge, on the line from the centre toward the target.
+    const Vec2 dsc = toScreen(world) - centre_;
+    const float inset = ei.inset * refPx_ + disc;
+    const float hx = 0.5f * W - inset, hy = 0.5f * H - inset;
+    if (hx <= 0.0f || hy <= 0.0f) return;
+    const float k = std::fmin(hx / std::fmax(std::fabs(dsc.x), 1e-3f), hy / std::fmax(std::fabs(dsc.y), 1e-3f));
+    const Vec2 c = centre_ + dsc * k;
+    const float ang = angleOf(dsc), cs = std::cos(ang), sn = std::sin(ang);
+    d.threatRims.line(c, c, disc, Vec3{}, Vec3{}, kDisc | capsuleOpacity(ei.discAlpha));
+    const float s = h * swell;
+    const float hw = kChevronStroke * s, rim = look_->threat.bulletRim * refPx_;
+    const Vec3 core{clampf(colour.x, 0.0f, 1.0f), clampf(colour.y, 0.0f, 1.0f), clampf(colour.z, 0.0f, 1.0f)};
+    const float depth = (boss ? 0.75f : 1.0f) * kChevronDepth * s;  // the boss's pair is shallower, to stay on its disc
+    const auto chevron = [&](float along) {
+        const Vec2 tip = c + rotate(Vec2{along + 0.5f * depth, 0.0f}, cs, sn);
+        const Vec2 a0 = c + rotate(Vec2{along - 0.5f * depth, 0.5f * s}, cs, sn);
+        const Vec2 a1 = c + rotate(Vec2{along - 0.5f * depth, -0.5f * s}, cs, sn);
+        d.threatRims.line(a0, tip, hw + rim, Vec3{}, Vec3{}, 0);
+        d.threatRims.line(tip, a1, hw + rim, Vec3{}, Vec3{}, 0);
+        d.threatCores.line(a0, tip, hw, core, core, 0);
+        d.threatCores.line(tip, a1, hw, core, core, 0);
+    };
+    if (boss) {
+        chevron(0.5f * kChevronPairGap * s);
+        chevron(-0.5f * kChevronPairGap * s);
+    } else {
+        chevron(0.0f);
+    }
+    const LookSoftLight& glow = look_->soft.edgeIndicator;
+    d.pools.glow(c, glow.radius[0] * refPx_, colour * glow.intensity[0]);
+}
 }  // namespace rf

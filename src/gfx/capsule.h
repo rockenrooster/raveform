@@ -17,6 +17,14 @@ enum CapsuleFlags : u32 {
     kDisc = 4u,  // a disc: its radius is not scaled by the look's line width
 };
 
+// M3 stage C: an opacity for a capsule on the threat layer (capsule.frag), added to the other flags (0 and
+// 255 both mean opaque).
+inline u32 capsuleOpacity(float a) {
+    const float c = a < 0.0f ? 0.0f : (a > 1.0f ? 1.0f : a);
+    const u32 a8 = static_cast<u32>(c * 255.0f + 0.5f);
+    return 8u * (a8 ? a8 : 1u);
+}
+
 struct CapsuleGpu {
     float p0x, p0y, p1x, p1y;  // content pixels
     u16 c0[4];                 // binary16: colour at p0 (rgb), half width in content pixels

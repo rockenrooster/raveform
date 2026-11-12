@@ -46,11 +46,11 @@ bool platformAudioInit() {
     return g_haptic != nullptr;
 }
 
-void platformHaptic(HapticKind kind) {
+void platformHaptic(HapticKind kind, bool strong) {
     if (!g_haptic) return;
     JNIEnv* e = env();
     if (!e) return;
-    e->CallStaticVoidMethod(g_class, g_haptic, static_cast<jint>(kind));
+    e->CallStaticVoidMethod(g_class, g_haptic, static_cast<jint>(static_cast<int>(kind) + (strong ? 3 : 0)));
     clearException(e);
 }
 
@@ -69,7 +69,7 @@ int platformAudioDeviceType(i32 deviceId) {
 #else
 
 bool platformAudioInit() { return false; }
-void platformHaptic(HapticKind) {}
+void platformHaptic(HapticKind, bool) {}
 int platformAudioDeviceType(i32) { return 0; }
 
 #endif

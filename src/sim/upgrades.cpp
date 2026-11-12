@@ -28,9 +28,9 @@ const UpgradeInfo kNone{"?", "", 0, false};
 // GAME_DESIGN 6.4; durations in bars (Halo: until it has absorbed three hits, at most eight bars).
 const BoostInfo kBoosts[kBoostCount] = {
     {"PRISM", "prism", "FIVE-WAY RAINBOW FAN", 4},
-    {"HYPER", "hyper", "DOUBLE-SPEED GRID", 4},
+    {"HYPER", "hyper", "FIRE RATE X2", 4},
     {"HALO", "halo", "BLOCKS THREE HITS", 8},
-    {"MAGNET STORM", "magnet_storm", "EVERY SHARD COMES", 4},
+    {"MAGNET STORM", "magnet_storm", "PULLS EVERY SHARD", 4},
 };
 
 const char* const kNumberWords[] = {"ZERO", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN"};
@@ -40,12 +40,12 @@ const UpgradeInfo& upgradeInfo(u8 u) { return u < kUpgradeCount ? kInfo[u] : kNo
 const BoostInfo& boostInfo(u8 b) { return kBoosts[b < kBoostCount ? b : 0]; }
 
 const char* upgradeWords(u8 u, u32 level) {
-    // Effect words: two to four words, a number where there is one (screens.md "The Trio").
+    // Effect words: screens.md's table (final, 2026-11-12), word for word.
     static char buf[48];
     switch (u) {
         case kSplit: return "+1 SHOT LANE";
-        case kDoubleTime: return level <= 1 ? "TRIPLET FIRE GRID" : "THIRTY-SECOND FIRE GRID";
-        case kPierce: return "+1 ENEMY PIERCED";
+        case kDoubleTime: return level <= 1 ? "FIRE RATE X1.5" : "FIRE RATE X2";
+        case kPierce: return "SHOTS PIERCE +1";
         case kRicochet: return "+1 WALL BOUNCE";
         case kOvercharge: return "+25% SHOT DAMAGE";
         case kExtraCell: return "+1 SHIELD CELL";

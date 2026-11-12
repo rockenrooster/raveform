@@ -186,6 +186,7 @@ private:
     double tickEnd_ = 0.0;     // sim time at the end of the newest tick
     double music1_ = 0.0, musicPrev_ = 0.0;  // musical position at the end of the newest and the one before
     float alpha_ = 1.0f;
+    double hitStopUntil_ = -1.0;  // sim time: a boss's death holds the action 50 ms (look.md §5), not the song
     float frameDt_ = 1.0f / 60.0f;
     bool retryRequest_ = false;
 

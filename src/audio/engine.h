@@ -86,6 +86,7 @@ enum class CmdType : u8 {
     SetPhrase,     // M3, the game's director: from the next bar line, a = Section, b = bar in it, c = its length
     SetBoss,       // M3, the boss's bar from the next bar line: a = pairs firing (bits 0-2) | 16 on sixteenths, b = beats
                    // that fire (bits 0-3), c = 1 gong on beat 1, 2 beam riser over the bar, 4 beam stab on beat 1, 8 on
+    SetMuffle,     // M3 stage C (screens.md pause): the music bus's low-pass, x = cutoff in Hz (0: open), y = ramp in s
 };
 
 struct Command {
@@ -199,7 +200,7 @@ private:
     void playStab(const Chord& chord, float vel, float pan, i64 frame);
     void playPad(const Chord& chord, float level, float bright, i64 frame);
     void playKick(float gain, i64 frame, double tick);
-    void playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, double tick);
+    void playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, double tick, float rateMul = 1.0f);
     template <typename V>
     V* allocVoice(V* pool, u32 count);
 
@@ -306,6 +307,9 @@ private:
     u32 gainHead_ = 0, gainCount_ = 0;
     float outGain_ = 1.0f, outGainTarget_ = 1.0f;
     float musicGain_ = 1.0f, sfxGain_ = 1.0f;
+    // The pause's low-pass on the music (two one-poles a channel): 0 open .. 1 at muffleHz_, ramped.
+    float muffle_ = 0.0f, muffleTarget_ = 0.0f, muffleStep_ = 1.0f, muffleHz_ = 600.0f;
+    float muffleZ_[2][2] = {};
     struct Dip {
         i64 frame;
         float depth, tau;

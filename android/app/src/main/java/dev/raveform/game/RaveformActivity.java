@@ -7,6 +7,9 @@ import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.view.HapticFeedbackConstants;
 // M2 audio end
+import android.media.AudioAttributes;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
@@ -102,25 +105,64 @@ public class RaveformActivity extends SDLActivity {
 
     // M2 audio begin
     /**
-     * Beat haptics for the band (native code, main thread): one tick per call, posted to the UI thread and
-     * played with performHapticFeedback, which honours the system's touch-feedback setting. The three
-     * runnables are made once, so a tick allocates nothing. kind: 0 light (kick), 1 medium, 2 heavy (Drop).
+     * Beat haptics for the band (native code, main thread): one tick per call, posted to the UI thread.
+     * kind: 0 light (kick), 1 medium, 2 heavy (Drop); 3-5 the same with the STRONG setting (M3 stage C).
+     * SOFT and STRONG differ by amplitude where the vibrator has amplitude control, else by length. The
+     * effects are made on the first tick and the runnables once, so a tick allocates nothing. Without a
+     * vibrator it falls back to performHapticFeedback (one strength).
      */
-    private static final Runnable[] sHaptics = new Runnable[3];
+    private static final Runnable[] sHaptics = new Runnable[6];
+    private static final int[] HAPTIC_MS = {12, 18, 40};             // with amplitude control
+    private static final int[] HAPTIC_SOFT = {60, 90, 130};           // amplitudes 1..255
+    private static final int[] HAPTIC_STRONG = {170, 220, 255};
+    private static final int[][] HAPTIC_MS_ONOFF = {{8, 20}, {12, 30}, {30, 70}};  // without: SOFT, STRONG
+    private static final int[] HAPTIC_CONSTANTS = {HapticFeedbackConstants.CLOCK_TICK, HapticFeedbackConstants.KEYBOARD_TAP,
+                                                   HapticFeedbackConstants.LONG_PRESS};
+    private static VibrationEffect[] sEffects;
+    private static Vibrator sVibrator;
+    private static AudioAttributes sHapticAttributes;
     static {
-        final int[] constants = {HapticFeedbackConstants.CLOCK_TICK, HapticFeedbackConstants.KEYBOARD_TAP,
-                                 HapticFeedbackConstants.LONG_PRESS};
-        for (int i = 0; i < 3; ++i) {
-            final int constant = constants[i];
+        for (int i = 0; i < 6; ++i) {
+            final int kind = i;
             sHaptics[i] = new Runnable() {
                 @Override
                 public void run() {
-                    View view = mSurface;
-                    if (view != null) {
-                        view.performHapticFeedback(constant);
-                    }
+                    playHaptic(kind);
                 }
             };
+        }
+    }
+
+    private static void playHaptic(int kind) {
+        if (sEffects == null) {
+            Activity activity = mSingleton;
+            if (activity == null) {
+                return;
+            }
+            sEffects = new VibrationEffect[6];
+            Vibrator vibrator = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
+            if (vibrator != null && vibrator.hasVibrator()) {
+                boolean amplitude = vibrator.hasAmplitudeControl();
+                for (int i = 0; i < 3; ++i) {
+                    sEffects[i] = amplitude ? VibrationEffect.createOneShot(HAPTIC_MS[i], HAPTIC_SOFT[i])
+                                            : VibrationEffect.createOneShot(HAPTIC_MS_ONOFF[i][0], VibrationEffect.DEFAULT_AMPLITUDE);
+                    sEffects[i + 3] = amplitude ? VibrationEffect.createOneShot(HAPTIC_MS[i], HAPTIC_STRONG[i])
+                                                : VibrationEffect.createOneShot(HAPTIC_MS_ONOFF[i][1], VibrationEffect.DEFAULT_AMPLITUDE);
+                }
+                sHapticAttributes = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).build();
+                sVibrator = vibrator;
+                Log.i(TAG, "haptics: vibrator, amplitude control " + (amplitude ? "yes (SOFT and STRONG by amplitude)" : "no (by length)"));
+            } else {
+                Log.i(TAG, "haptics: no vibrator, performHapticFeedback");
+            }
+        }
+        if (sVibrator != null) {
+            sVibrator.vibrate(sEffects[kind], sHapticAttributes);
+            return;
+        }
+        View view = mSurface;
+        if (view != null) {
+            view.performHapticFeedback(HAPTIC_CONSTANTS[kind % 3]);
         }
     }
 

@@ -25,6 +25,8 @@ constexpr float kDropZoomOut = 0.08f;      // the Drop snaps the zoom out by thi
 constexpr float kBreakDrain = 0.22f;       // the Break: cool, desaturated
 constexpr float kTrioAnswerWu = 110.0f;    // screens.md (quoted): an orb answers within 110 wu
 constexpr float kBoostOrbWu = 20.0f;       // a Boost lying in the arena: its icon frame radius
+// M3 stage C, kaleidos.md death: the clamped white flash (0.9, as the M1 boss break's) peaks for 0.12 s.
+constexpr float kBossFlash = 0.9f, kBossFlashS = 0.12f;
 
 Vec2 dirv(float a) { return {std::cos(a), std::sin(a)}; }
 Vec2 lerpv(Vec2 a, Vec2 b, float t) { return a + (b - a) * t; }
@@ -157,10 +159,12 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
         }
         case EventType::BossDeath: {
             // Iris wide open, the clamped white flash, facets tumbling outward in six-fold symmetry, three
-            // rings, 300 sparks, the 30 px distortion ring (the 50 ms hit-stop is not done).
+            // rings, 300 sparks, the 30 px distortion ring; Play holds the action 50 ms. M3 stage C: the white
+            // flash is clamped (0.9, like the M1 boss break) and peaks for 0.12 s; the accent glow stays after it.
             const BossData& b = w.bossData();
             const Vec3 acc = oklch(b.accentL, b.accentHue, b.accentChroma * 0.16f);
-            addPool(at, 60.0f, 520.0f, whiteV(), reduceFlashing_ ? 1.2f : 3.0f, 0.0f, 0.35f, false, 1, false, false, t);
+            addPool(at, 60.0f, 420.0f, whiteV(), reduceFlashing_ ? 0.45f : kBossFlash, 0.0f, kBossFlashS, false, 1, false, false, t);
+            addPool(at, 120.0f, 520.0f, acc, reduceFlashing_ ? 0.3f : 0.6f, 0.0f, 0.45f, false, 1, false, false, t);
             addShockRings(at, 3, 1100.0f, acc, whiteV(), t, 0.6f);
             SparkReq r{};
             r.at = at;
@@ -232,17 +236,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             const float left = static_cast<float>((bp.born[i] + tuning::kBoostLifeBars * kTicksPerBar - in.music) / kTicksPerBar);
             const float fade = clamp01(left);
             if (!visible(p, 60.0f)) {
-                // Edge indicator (look.md §6): gold for events.
-                const Vec2 dsc = toScreen(p) - centre_;
-                const float inset = 46.0f * refPx_;
-                const float hx = 0.5f * W - inset, hy = 0.5f * H - inset;
-                const float k = std::fmin(hx / std::fmax(std::fabs(dsc.x), 1e-3f), hy / std::fmax(std::fabs(dsc.y), 1e-3f));
-                const Vec2 c = centre_ + dsc * k;
-                const float ang = std::atan2(dsc.y, dsc.x);
-                const float sz = 14.0f * refPx_;
-                const Vec2 f0 = c + dirv(ang) * sz, f1 = c + dirv(ang + 2.4f) * sz, f2 = c + dirv(ang - 2.4f) * sz;
-                d.hud.line(f1, f0, 1.4f * refPx_, gold * 0.9f, gold * 0.9f, 0);
-                d.hud.line(f0, f2, 1.4f * refPx_, gold * 0.9f, gold * 0.9f, 0);
+                edgeChevron(d, p, gold, false, 1.0f);  // look.md §6: gold for events
                 continue;
             }
             const Vec2 sp = toScene(p);
@@ -250,6 +244,11 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             if (icons_) icons_->draw(d, boostIcon_[bp.type[i] % kBoostCount], sp, r, fade * 1.1f);
             glyph(d.glyphs, gRing32_, false, p, 0.0f, 0.0f, kBoostOrbWu * 1.5f, 1.4f * fade, 0.5f, kGlyphFlat, gold, W1);
             d.pools.glow(sp, r * 2.6f, gold * (0.18f * fade));
+            // M3 stage C: its name under the orb, never across it: gold, cap 11 wu, 6 wu under the ring.
+            const char* name = boostInfo(bp.type[i]).name;
+            const float cap = 11.0f * pxPerWu_, top = sp.y + (kBoostOrbWu * 1.5f + 6.0f) * pxPerWu_;
+            const Vec3 g = gold * (1.3f * fade);
+            font_->drawField(d.scene, Vec2{sp.x - 0.5f * font_->measure(TextStyle{cap}, name), top}, cap, 0.8f * refPx_, g, g, g, name);
         }
     }
 
@@ -454,18 +453,11 @@ void PlayView::drawBoss(FrameDraw& d, const ViewInput& in) {
     const Vec2 pos = lerpv(s.prevPos, s.pos, a);
     const float wheel = s.prevAngle + wrapAngle(s.angle - s.prevAngle) * a;
     if (!visible(pos, b.radius * 0.5f) && !s.dying) {
-        // Edge indicator (look.md 6): a white chevron, as for elites.
-        const Vec2 dsc = toScreen(pos) - centre_;
-        const float W = 2.0f * centre_.x, H = 2.0f * centre_.y;
-        const float inset = 46.0f * refPx_;
-        const float hx = 0.5f * W - inset, hy = 0.5f * H - inset;
-        const float k = std::fmin(hx / std::fmax(std::fabs(dsc.x), 1e-3f), hy / std::fmax(std::fabs(dsc.y), 1e-3f));
-        const Vec2 c = centre_ + dsc * k;
-        const float ang = std::atan2(dsc.y, dsc.x);
-        const float sz = 18.0f * refPx_;
-        const Vec2 f0 = c + dirv(ang) * sz, f1 = c + dirv(ang + 2.4f) * sz, f2 = c + dirv(ang - 2.4f) * sz;
-        d.hud.line(f1, f0, 1.6f * refPx_, W1 * 0.9f, W1 * 0.9f, 0);
-        d.hud.line(f0, f2, 1.6f * refPx_, W1 * 0.9f, W1 * 0.9f, 0);
+        // Edge indicator (look.md §6): the boss's double chevron in its accent, swelling on every beat.
+        const float tps = std::fmax(in.bpm, 60.0f) * static_cast<float>(kTicksPerBeat) / 60.0f;
+        const float sinceBeat = static_cast<float>(std::fmod(in.music, kTicksPerBeat)) / tps;
+        const float beat = std::exp(-sinceBeat * 1000.0f / std::fmax(look_->kickDecayMs, 1.0f));
+        edgeChevron(d, pos, acc, true, 1.0f + look_->edge.bossBeatSwell * beat);
     }
     if (!visible(pos, b.radius * 2.6f)) return;
     const float tEnter = static_cast<float>((in.music - s.enterTick) / kTicksPerBar);  // bars since the entrance began

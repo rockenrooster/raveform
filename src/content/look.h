@@ -142,8 +142,13 @@ struct Look {
     float flareFadeExponent = 1.6f;
     struct SoftLights {
         LookSoftLight starDust, ember, shard, shotHead, enemyBullet, orbital, wellSeed, killFlashSmall, killFlash,
-            killPoolMedium, killPoolLarge, playerPool, wellPool;
+            killPoolMedium, killPoolLarge, playerPool, wellPool, edgeIndicator;
     } soft;
+    // Edge indicators (look.md §6, M3 stage C): chevrons on a dark disc inside the screen edge; a boss gets a
+    // larger double chevron in its accent that swells on the beat. Reference pixels at 1080 lines.
+    struct EdgeIndicator {
+        float chevron = 44.0f, bossChevron = 64.0f, bossBeatSwell = 0.15f, inset = 28.0f, discAlpha = 0.5f;
+    } edge;
     struct Explosions {
         float sparkDrag = 3.2f, streakSeconds = 0.035f, streakMaxWu = 26.0f;
         LookExplosion small, medium, large;

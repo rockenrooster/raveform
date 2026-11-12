@@ -314,6 +314,9 @@ void circle(CapsuleBatch& b, Vec2 c, float r, float hw, Vec3 col, u32 segs = 32)
     }
 }
 float textW(const VectorFont& f, float cap, const char* t) { return f.measure(TextStyle{cap}, t); }
+// The Track name card (screens.md), in bars from the Track's first downbeat; chosen: a beat to write, out on
+// the third bar's downbeat, a beat to streak; drawn at 0.8 (screens.md).
+constexpr float kCardWrite = 0.25f, kCardOut = 2.0f, kCardStreak = 0.25f, kCardLevel = 0.8f;
 }  // namespace
 
 void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookVariant& variant, const Palettes& palettes,
@@ -437,19 +440,29 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             if (mx > W - 260.0f * s) break;
         }
     }
-    // Active Boosts, above the Riff slots: icon, name and one pip per bar remaining.
+    // Active Boosts, above the Riff slots (M3 stage C): the icon with one pip per bar left to its right, its
+    // name under it, never across it (gold, cap 11 wu = 16.5 px, 6 wu = 9 px under the frame) and, through the
+    // two bars after it was taken, its effect words (screens.md) under the name.
     {
+        u32 count = 0;
+        for (const ActiveBoost& b : me.boosts) count += b.type != kNoBoost ? 1u : 0u;
         u32 n = 0;
         for (const ActiveBoost& b : me.boosts) {
             if (b.type == kNoBoost) continue;
             const BoostInfo& bi = boostInfo(b.type);
-            const float x = cx + (n == 0 ? -150.0f : 30.0f) * s, y = rowY - 92.0f * s;
+            const float x = cx + (static_cast<float>(n) - 0.5f * static_cast<float>(count - 1)) * 220.0f * s, y = rowY - 116.0f * s;
             if (st.icons) st.icons->drawHud(d.hud, st.boostIcons[b.type], {x, y}, 15.0f * s, 1.0f, hudFn, &ctx);
-            const float cap = 11.0f * s;
-            font.drawField(d.hud, {x + 24.0f * s, y - 2.0f * s}, cap, 0.55f * s, col(gold, 1.4f), col(gold, 1.4f), col(gold, 1.4f), bi.name);
+            const float cap = 16.5f * s, top = y + (15.0f + 9.0f) * s;
+            font.drawField(d.hud, {x - 0.5f * textW(font, cap, bi.name), top}, cap, 0.7f * s, col(gold, 1.4f), col(gold, 1.4f), col(gold, 1.4f), bi.name);
+            const float since = static_cast<float>((st.music - b.from) / kTicksPerBar);
+            if (since >= 0.0f && since < 2.0f) {
+                const float k = since < 1.5f ? 1.0f : (2.0f - since) * 2.0f, c2 = 11.0f * s;
+                font.drawField(d.hud, {x - 0.5f * textW(font, c2, bi.words), top + cap + 8.0f * s}, c2, 0.55f * s, col(white, 1.1f * k),
+                               col(white, 1.1f * k), col(white, 1.1f * k), bi.words);
+            }
             const u32 left = b.type == kHalo ? b.hits : static_cast<u32>(std::ceil((b.until - st.music) / kTicksPerBar));
             for (u32 p = 0; p < left && p < 8; ++p) {
-                const Vec2 q{x + 28.0f * s + static_cast<float>(p) * 10.0f * s, y + 12.0f * s};
+                const Vec2 q{x + 28.0f * s + static_cast<float>(p) * 10.0f * s, y};
                 d.hud.line(q, q, 2.4f * s, col(gold, 1.6f), col(gold, 1.6f), 0);
             }
             ++n;
@@ -468,6 +481,60 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             st.icons->drawHud(d.hud, st.upgradeIcons[u], p, (34.0f - 14.0f * e) * s, 1.4f, hudFn, &ctx);
         }
     }
+    // The Track name card (screens.md, M3 stage C): on the Track's first downbeat (the run's first Track too)
+    // it writes itself across the lower third in a beat, a two-arm flare sweeping along the name as it lands;
+    // it holds to the second bar's end, then its letters streak out to both sides on the beat. `TRACK n` cap 28
+    // white above the name at cap 110 in the palette's hues, 8 px tubes; drawn at 0.8 over the fight.
+    {
+        const DirectorState& dir = w.director();
+        const float u = dir.trackBar == kNoBar ? -1.0f : static_cast<float>((st.music - w.tickOfBar(dir.trackBar)) / kTicksPerBar);
+        if (u >= 0.0f && u < kCardOut + kCardStreak) {
+            const float level = kCardLevel;
+            const float write = clampf(u / kCardWrite, 0.0f, 1.0f);
+            const float out = clampf((u - kCardOut) / kCardStreak, 0.0f, 1.0f);
+            char small[24];
+            std::snprintf(small, sizeof small, "TRACK %u", ph.track);
+            const char* lines[2] = {small, st.trackName};
+            const float caps[2] = {28.0f * s, 110.0f * s}, tubes[2] = {1.2f * s, 4.0f * s};
+            const float nameTop = 0.62f * H;
+            const float tops[2] = {nameTop - caps[0] - 26.0f * s, nameTop};
+            for (u32 l = 0; l < 2; ++l) {
+                const char* t = lines[l];
+                const u32 n = static_cast<u32>(std::strlen(t));
+                const float cap = caps[l], x0 = cx - 0.5f * textW(font, cap, t);
+                for (u32 i = 0; i < n; ++i) {
+                    if (t[i] == ' ') continue;
+                    // Written left to right: each letter takes a short ramp once the writing passes it.
+                    const float on = clampf((write * static_cast<float>(n + 2) - static_cast<float>(i)) * 0.5f, 0.0f, 1.0f);
+                    if (on <= 0.0f) continue;
+                    const float side = (static_cast<float>(i) + 0.5f < 0.5f * static_cast<float>(n)) ? -1.0f : 1.0f;
+                    const char one[2] = {t[i], 0};
+                    const float x = x0 + static_cast<float>(i) * cap;
+                    // The streak: the letter flies out with two fading copies behind it.
+                    for (u32 g = 0; g < (out > 0.0f ? 3u : 1u); ++g) {
+                        const float lag = 1.0f - 0.3f * static_cast<float>(g);
+                        const float dx = side * 0.75f * W * out * out * lag;
+                        const float k = level * on * (1.0f - out) * (g == 0 ? 1.0f : 0.45f / static_cast<float>(g));
+                        if (k <= 0.01f) continue;
+                        if (l == 0)
+                            font.drawField(d.hud, {x + dx, tops[l]}, cap, tubes[l], col(white, 1.4f * k), col(white, 1.4f * k), col(white, 1.4f * k), one);
+                        else
+                            font.drawField(d.hud, {x + dx, tops[l]}, cap, tubes[l], col(palette.hue[0], 1.7f * k), col(palette.hue[1], 1.7f * k),
+                                           col(palette.hue[2], 1.7f * k), one);
+                    }
+                }
+            }
+            // The flare: two arms of white light, riding the writing's front along the name once.
+            if (write > 0.0f && write < 1.0f) {
+                const float w0 = textW(font, caps[1], st.trackName);
+                const Vec2 c{cx - 0.5f * w0 + w0 * write, nameTop + 0.5f * caps[1]};
+                const float arm = 0.9f * caps[1], fl = std::sin(write * kPi);
+                for (float sgn : {-1.0f, 1.0f})
+                    d.hud.line(c, c + Vec2{sgn * arm * (0.6f + 0.4f * fl), 0.0f}, 2.0f * s, col(white, 2.2f * fl * level), Vec3{}, 0);
+                d.hud.line(c, c, 5.0f * s, col(white, 2.2f * fl * level), col(white, 2.2f * fl * level), 0);
+            }
+        }
+    }
     // The boss: its name card for two bars at the entrance, then a bar under the phrase bar.
     const BossState& boss = w.boss();
     if (boss.active && !boss.dying) {
@@ -479,9 +546,11 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             const char* name = "KALEIDOS";
             font.drawField(d.hud, {cx - 0.5f * textW(font, cap, name), 0.30f * H}, cap, 3.0f * s, col(white, 2.0f * fade), col(gold, 2.0f * fade),
                            col(amber, 2.0f * fade), name);
-            const char* sub = "BOSS OF FIRST LIGHT";
+            char sub[48];
+            std::snprintf(sub, sizeof sub, "BOSS OF %s", st.trackName);
             const float c2 = 14.0f * s;
-            font.drawField(d.hud, {cx - 0.5f * textW(font, c2, sub), 0.30f * H + 34.0f * s}, c2, 0.6f * s, col(gold, 1.2f * fade),
+            // (Under the name: the origin is the top of the caps; the stage B card drew it across the name.)
+            font.drawField(d.hud, {cx - 0.5f * textW(font, c2, sub), 0.30f * H + cap + 18.0f * s}, c2, 0.6f * s, col(gold, 1.2f * fade),
                            col(gold, 1.2f * fade), col(gold, 1.2f * fade), sub);
         }
         const float y = top + 96.0f * s, bw = 300.0f * s, x0 = cx - 0.5f * bw;

@@ -402,7 +402,7 @@ void Engine::applyCommand(const Command& c) {
             const Sfx kind = static_cast<Sfx>(c.a);
             const i32 midi = c.b ? c.b : -1;  // pitched effects: the note (Nova inhale: its length in 1/32 steps)
             if (c.when == Timing::Now) {
-                playSfx(kind, midi, sfxLevel(kind) * c.x, c.y, frame_, -1.0);
+                playSfx(kind, midi, sfxLevel(kind) * c.x, c.y, frame_, -1.0, c.level > 0.0f ? c.level : 1.0f);
             } else if (pendingCount_ < kPendingMax) {
                 double tick = c.tick;
                 if (c.when == Timing::Next32) tick = std::ceil(tempo_.tickAt(static_cast<double>(frame_)) / 12.0) * 12.0;
@@ -414,6 +414,7 @@ void Engine::applyCommand(const Command& c) {
                 q.midi = midi;
                 q.gain = sfxLevel(kind) * c.x;
                 q.pan = c.y;
+                q.rate = c.level > 0.0f ? c.level : 1.0f;
             }
             break;
         }
@@ -495,6 +496,11 @@ void Engine::applyCommand(const Command& c) {
             sfxGain_ = c.y;
             break;
         case CmdType::SetSurge: surgeSteps_[0] = surgeSteps_[1] = c.a; break;
+        case CmdType::SetMuffle:
+            muffleTarget_ = c.x > 0.0f ? 1.0f : 0.0f;
+            if (c.x > 0.0f) muffleHz_ = c.x;
+            muffleStep_ = c.y > 0.0f ? 1.0f / (c.y * static_cast<float>(sr_)) : 1.0f;
+            break;
         case CmdType::Reset:
             for (u32 i = 0; i < kLeadVoices; ++i) lead_[i].active = false;
             for (u32 i = 0; i < kBassVoices; ++i) bass_[i].active = false;
@@ -554,9 +560,9 @@ void Engine::playKick(float gain, i64 frame, double tick) {
     emit(BeatKind::Kick, frame, tick, 0, 0, 0, gain);
 }
 
-void Engine::playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, double tick) {
+void Engine::playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, double tick, float rateMul) {
     i32 id = -1;
-    float rate = 1.0f;
+    float rate = rateMul;  // M3 stage C: a playback rate on top (the boss's growl an octave down)
     if (kind == Sfx::NovaInhale) {
         id = bank_->inhale(track_, midi > 0 ? static_cast<u32>(midi) : 8u);
         midi = -1;
@@ -566,7 +572,7 @@ void Engine::playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, doubl
         // faster or slower (at most a fifth away).
         const i32 baked = id >= 0 ? bank_->sample(id).midi : -1;
         if (midi >= 0 && baked >= 0 && baked != midi && std::abs(midi - baked) <= 7)
-            rate = static_cast<float>(std::exp2((midi - baked) / 12.0));
+            rate *= static_cast<float>(std::exp2((midi - baked) / 12.0));
     }
     if (id < 0) return;
     playSample(id, Bus::Sfx, frame, gain, pan, rate);
@@ -1541,7 +1547,7 @@ void Engine::firePending(i64 frameEnd) {
             playSample(q.sample, q.bus, f, q.gain, q.pan, q.rate);
             emit(q.kind, f, q.tick, 0, 0, 0, q.gain);
         } else if (q.sfx != Sfx::Count) {
-            playSfx(q.sfx, q.midi, q.gain, q.pan, f, q.tick);
+            playSfx(q.sfx, q.midi, q.gain, q.pan, f, q.tick, q.rate);
         }
         pending_[i] = pending_[--pendingCount_];
     }
@@ -2065,6 +2071,15 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
     mark(EngineProfile::Reverb);    // Master: sum, 30 Hz high-pass, section gain, soft clip, output gain; effects on top; limiter.
     const float drive = sp_->masterDrive;
     const u32 gc = gainCount_;
+    // The pause's low-pass (M3 stage C): the cutoff runs from 18 kHz to muffleHz_ on a log scale as the
+    // amount ramps; the coefficient is set once a block (a 150 ms ramp is fifteen 10 ms blocks).
+    const bool muffled = muffle_ > 0.0f || muffleTarget_ > 0.0f;
+    float muffleK = 1.0f;
+    if (muffled) {
+        const float u = muffle_ + (muffleTarget_ > muffle_ ? 0.5f : -0.5f) * std::fmin(muffleStep_ * static_cast<float>(n), std::fabs(muffleTarget_ - muffle_));
+        const float hz = std::exp(std::log(18000.0f) + (std::log(muffleHz_) - std::log(18000.0f)) * u);
+        muffleK = 1.0f - std::exp(-6.28318531f * hz / static_cast<float>(sr_));
+    }
     for (u32 i = 0; i < n; ++i) {
         float l = wet_[0][i], r = wet_[1][i];
         for (u32 b = 0; b < kBusCount; ++b) {
@@ -2109,6 +2124,17 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
             l *= d;
             r *= d;
         }
+        if (muffled) {
+            muffleZ_[0][0] += (l - muffleZ_[0][0]) * muffleK;
+            muffleZ_[0][1] += (muffleZ_[0][0] - muffleZ_[0][1]) * muffleK;
+            muffleZ_[1][0] += (r - muffleZ_[1][0]) * muffleK;
+            muffleZ_[1][1] += (muffleZ_[1][0] - muffleZ_[1][1]) * muffleK;
+            l = muffleZ_[0][1];
+            r = muffleZ_[1][1];
+        } else {
+            muffleZ_[0][0] = muffleZ_[0][1] = l;  // the filter follows, so it engages without a step
+            muffleZ_[1][0] = muffleZ_[1][1] = r;
+        }
         l += bus_[static_cast<u32>(Bus::Sfx)][0][i] * sfxGain_;
         r += bus_[static_cast<u32>(Bus::Sfx)][1][i] * sfxGain_;
         if (!rawOutput_) {
@@ -2126,6 +2152,10 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         peak_ = std::fmax(peak_, std::fmax(std::fabs(l), std::fabs(r)));
     }
     mark(EngineProfile::Master);
+    if (muffle_ != muffleTarget_) {
+        const float stepN = muffleStep_ * static_cast<float>(n);
+        muffle_ = muffleTarget_ > muffle_ ? std::fmin(muffle_ + stepN, muffleTarget_) : std::fmax(muffle_ - stepN, muffleTarget_);
+    }
     // Forget dips that are over.
     for (u32 k = 0; k < dipCount_;) {
         if (static_cast<float>(frame_ + n - dips_[k].frame) / sr > 6.0f * dips_[k].tau) {

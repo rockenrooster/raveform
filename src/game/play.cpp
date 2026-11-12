@@ -221,7 +221,12 @@ void Play::frame(float realDt) {
     if (bandDrives_) band_->setFireMode(controller_.pose().fire);
 
     stats_.ticksLastFrame = 0;
-    if (fixed) {
+    // A hit-stop (a boss's death, look.md §5) holds the ticks and the view's clock while the song runs on; the
+    // ticks it held run in the frames after it, three a frame, on the same musical positions.
+    const bool held = clock_.simTime() < hitStopUntil_;
+    if (held) {
+        alpha_ = 1.0f;
+    } else if (fixed && clock_.simTime() - tickEnd_ < 1.5 * kDt) {
         tickEnd_ = clock_.simTime();
         runTick(music1_, clock_.musicAt(tickEnd_), true);
         alpha_ = 1.0f;
@@ -232,8 +237,8 @@ void Play::frame(float realDt) {
             runTick(music1_, clock_.musicAt(tickEnd_), n == 0);
             ++n;
         }
-        // Beyond three ticks a frame, drop time rather than spiral (TECH_SPEC 4).
-        if (clock_.simTime() - tickEnd_ > 3.0 * kDt) tickEnd_ = clock_.simTime() - 0.5 * kDt;
+        // Beyond three ticks a frame, drop time rather than spiral (TECH_SPEC 4); not while catching up a hit-stop.
+        if (clock_.simTime() - tickEnd_ > 3.0 * kDt && clock_.simTime() > hitStopUntil_ + 0.1) tickEnd_ = clock_.simTime() - 0.5 * kDt;
         alpha_ = clampf(static_cast<float>((clock_.simTime() - tickEnd_) / kDt), 0.0f, 1.0f);
     }
     bandFrame();
@@ -423,13 +428,15 @@ void Play::afterTick() {
                 if (bandDrives_) band_->playSfx(audio::Sfx::Elite);
                 break;
             case EventType::BossPair:
-                // kaleidos.md: that voice leaves the chord; a low growl (the elite-arrives patch) enters.
-                if (bandDrives_) band_->playSfx(audio::Sfx::Elite, 1.2f);
+                // kaleidos.md: that voice leaves the chord; a low growl (the elite-arrives patch) enters, an octave
+                // down (M3 stage C).
+                if (bandDrives_) band_->playSfx(audio::Sfx::Elite, 1.2f, 0.5f);
                 break;
             case EventType::BossDeath:
                 RF_LOG("play: Kaleidos falls (Track %u, run %.1f s)", w.phrase().track, runSeconds_);
                 if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 1, 0};
                 if (bandDrives_) band_->kill(2, 6);
+                hitStopUntil_ = clock_.simTime() + static_cast<double>(look_->boom.bossHitStopMs) * 0.001;
                 break;
             default: break;
         }
@@ -607,7 +614,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     hs.icons = &icons_;
     hs.upgradeIcons = upgradeIcons_;
     hs.boostIcons = boostIcons_;
-    hs.trackName = w.phrase().song == 0 ? "FIRST LIGHT" : "SOLAR WIND";
+    hs.trackName = songName(w.phrase().song);
     hs.bpm = clock_.bpm();
     hs.runHud = runHud;
     hs.pausePressed = pausePressed_ || screen_ == Screen::Paused;
@@ -637,7 +644,7 @@ void Play::updatePalette(double music) {
     // GAME_DESIGN 4.2: each Track has its palette; the Track-change Break cross-fades it.
     if (!paletteFollows_ || !basePalette_) return;
     const auto forSong = [&](u32 song) {
-        const u32 want = song == 0 ? 1u : 2u;
+        const u32 want = song + 1u;  // palettes.json: ultraviolet, solar, reef for Tracks 1-3
         for (u32 i = 0; i < palettes_->count; ++i)
             if (palettes_->list[i].track == want) return &palettes_->list[i];
         return basePalette_;
@@ -649,7 +656,7 @@ void Play::updatePalette(double music) {
         view_.setPalette(*to);
         return;
     }
-    const Palette* from = forSong(ph.song == 0 ? 1u : 0u);
+    const Palette* from = forSong((ph.song + kSongs - 1u) % kSongs);
     const double inBar = (music - world_->tickOfBar(ph.bar)) / kTicksPerBar;
     float u = clampf((static_cast<float>(ph.sectionBar) + static_cast<float>(inBar)) / static_cast<float>(ph.sectionBars), 0.0f, 1.0f);
     u = u * u * (3.0f - 2.0f * u);
@@ -676,9 +683,13 @@ void Play::applySettings() {
     touch_.setSwap(settings_.swapSides);
     if (band_ && band_->active()) {
         if (band_->variant() != settings_.variant) band_->setVariant(settings_.variant);
-        const float pauseDip = screen_ == Screen::Paused ? 0.45f : 1.0f;  // the music under pause (no low-pass yet)
+        // The music under pause (and its settings): dipped and behind the low-pass, until the count-in ends.
+        const bool underPause = screen_ == Screen::Paused || (screen_ == Screen::Settings && settingsBack_ == Screen::Paused);
+        const float pauseDip = underPause ? 0.45f : 1.0f;
         band_->setGains(settings_.music * settings_.master * pauseDip, settings_.effects * settings_.master);
+        band_->setMuffle(underPause);
         band_->setHaptics(settings_.haptics > 0);
+        band_->setHapticStrong(settings_.haptics == 2);  // M3 stage C: SOFT and STRONG differ
     }
 }
 
@@ -693,6 +704,7 @@ void Play::restartRun() {
     world_->requestRestart();
     screen_ = Screen::Run;
     countIn_ = false;
+    applySettings();  // RESTART from pause: the music comes out from under the pause
     if (band_) band_->playSfx(audio::Sfx::UiConfirm);
 }
 

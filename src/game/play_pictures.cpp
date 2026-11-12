@@ -1,4 +1,4 @@
-// The review pictures of M3 stage B (docs/PROGRESS.md; scripts/review-m3b.ps1): scripted moments of the
+// The review pictures of M3 stage B and C (docs/PROGRESS.md; scripts/review-m3b.ps1): scripted moments of the
 // screens, the Trio, the HUD through the phrase cycle, each Riff and Boost, Kaleidos and the bot's run.
 // Fixed 1/60 s steps and no band, like stage A's pictures.
 
@@ -47,14 +47,29 @@ bool Play::scriptSetupB() {
         w.spawner().mode = Spawner::Mode::Slice;
         if (is(p, "hud_groove")) scriptFastForwardS_ = 8.0f;
         if (is(p, "hud_build")) scriptFastForwardS_ = 19.0f;
-        if (is(p, "hud_drop")) scriptFastForwardS_ = 24.4f;
+        // M3 stage C: the Drop with the real crowd: Track 1's third cycle (bar 60, 80 near the ship x 1.6), at
+        // 121.06 s (each Build's last bar runs at 85%).
+        if (is(p, "hud_drop")) scriptFastForwardS_ = 121.1f;
         if (is(p, "hud_break")) scriptFastForwardS_ = 40.25f;
         if (is(p, "bot_3")) scriptFastForwardS_ = 180.0f;
         if (is(p, "bot_6")) scriptFastForwardS_ = 360.0f;
         if (is(p, "bot_10")) scriptFastForwardS_ = 600.0f;
+        if (is(p, "bot_15")) scriptFastForwardS_ = 900.0f;  // M3 stage C: Track 3, Reef
+        // M3 stage C: the bot's run at minute n is one run (hits cost nothing), so the Tracks come on time.
+        if (starts(p, "bot_") || is(p, "hud_drop")) w.rules().godMode = true;
         return true;
     }
     if (starts(p, "trio")) return true;
+    if (is(p, "boost_prism")) {
+        // M3 stage C: the fan in open air, toward a few targets far to the right.
+        for (u32 k = 0; k < 5; ++k) {
+            const Vec2 at{900.0f + 60.0f * static_cast<float>(k), -240.0f + 120.0f * static_cast<float>(k)};
+            const i32 i = w.spawnEnemy(SpeciesTable::index(Family::Drifter, 2, kVariantA), at, kPi, 0.0);
+            if (i >= 0) w.setEnemyHp(static_cast<u32>(i), 4000.0f);
+        }
+        w.rules().godMode = true;
+        return true;
+    }
     if (starts(p, "riff_") || starts(p, "boost_")) {
         ring(14, 330.0f, Family::Drifter, 2, 400.0f);
         if (!is(p, "riff_sentinel")) ring(8, 210.0f, Family::Hound, 1, 400.0f);  // (the drone's shots need room to show)
@@ -146,6 +161,12 @@ bool Play::scriptInputB(StickInput& in) {
             in.aim = Vec2{e.x[0], e.y[0]} - ship;
             in.aimActive = true;
         }
+        if (is(p, "boost_prism")) {
+            // M3 stage C: while the fan fires, after the run's Track card has gone (2.25 bars): once the shots in
+            // the air make a fan, or at the latest at 6 s.
+            if (captureFrom_ < 0 && t >= 290 && (w.shots().count >= 14 || t >= 360)) captureFrom_ = now;
+            return true;
+        }
         const u32 at = is(p, "boost_magnet_storm") ? 72u : (is(p, "riff_pulse") ? 96u : 110u);
         if (is(p, "riff_sentinel")) {
             // Just after an off-beat, while the burst is in the air.
@@ -157,10 +178,14 @@ bool Play::scriptInputB(StickInput& in) {
         return true;
     }
     if (is(p, "edge")) {
-        if (captureFrom_ < 0) {
+        // M3 stage C: Kaleidos off screen too (beyond the camera's 1,800 wu lean), its double chevron caught
+        // just after a beat, while it swells.
+        if (t == 2) w.spawnBossNow((std::floor(music / kTicksPerBar) + 1.0) * kTicksPerBar, Vec2{-1900.0f, -700.0f});
+        if (captureFrom_ < 0 && w.boss().active && t > 290) {  // after the run's Track card
             const Enemies& e = w.enemies();
-            for (u32 i = 0; i < e.count; ++i)
-                if (e.state[i] == kGlint || e.state[i] == kFiring) captureFrom_ = now + 2;
+            bool engaged = false;
+            for (u32 i = 0; i < e.count; ++i) engaged = engaged || e.state[i] == kGlint || e.state[i] == kFiring;
+            if (engaged && std::fmod(music, kTicksPerBeat) < 10.0) captureFrom_ = now + 1;
         }
         return true;
     }
@@ -216,8 +241,11 @@ bool Play::scriptInputB(StickInput& in) {
             DirectorState& d = w.directorMut();
             d.changeBar = w.barOf(music) + 1;
         }
-        const u32 changeBar = w.director().changeBar;
-        if (changeBar != kNoBar && captureFrom_ < 0 && music >= w.tickOfBar(changeBar) + 4.4 * kTicksPerBar) captureFrom_ = now;
+        // M3 stage C: the new Track's name card, written and holding, half a bar into the new Track.
+        const DirectorState& dir = w.director();
+        if (captureFrom_ < 0 && w.phrase().track >= 2 && !w.phrase().trackChange && dir.trackBar != kNoBar &&
+            music >= w.tickOfBar(dir.trackBar) + 0.5 * kTicksPerBar)
+            captureFrom_ = now;
         return true;
     }
     return false;

@@ -26,7 +26,7 @@ struct UiColour {
 };
 Vec3 uiColourFn(const void* user, Vec3 c, float i) { return static_cast<const UiColour*>(user)->ui->col(c, i); }
 Vec3 trackAccent(const Palettes& p, u32 track) {
-    const u32 want = track % 2 == 1 ? 1u : 2u;
+    const u32 want = sim::songOfTrack(track) + 1u;  // the Track's song's palette (ultraviolet, solar, reef)
     for (u32 i = 0; i < p.count; ++i)
         if (p.list[i].track == want) return p.list[i].accent;
     return p.list[0].accent;
@@ -489,7 +489,7 @@ void Play::screenGameOver(Ui& ui) {
                 if (xb > xa + 2.0f) {
                     ui.draw().hud.line({xa + 2.0f * s, y}, {xb - 2.0f * s, y}, 5.0f * s, ui.col(c, 1.3f), ui.col(c, 1.3f), 0);
                     char name[40];
-                    std::snprintf(name, sizeof name, "%u %s", track, track % 2 == 1 ? "FIRST LIGHT" : "SOLAR WIND");
+                    std::snprintf(name, sizeof name, "%u %s", track, sim::songName(sim::songOfTrack(track)));
                     if (xb - xa > 200.0f * s) ui.text({xa + 4.0f * s, y + 34.0f * s}, 12.0f * s, c, 1.2f, name, 0.0f);
                 }
             }
@@ -627,7 +627,12 @@ void Play::screenSettings(Ui& ui) {
         if (h != settings_.haptics) {
             settings_.haptics = static_cast<u8>(h);
             changed = true;
-            if (band_ && h) band_->playSfx(audio::Sfx::UiTick, h == 2 ? 1.0f : 0.6f);
+            if (band_ && h) {
+                band_->playSfx(audio::Sfx::UiTick, h == 2 ? 1.0f : 0.6f);
+                band_->setHaptics(true);
+                band_->setHapticStrong(h == 2);
+                band_->hapticPreview();  // the new strength, felt at once
+            }
         }
     } else if (settingsTab_ == 1) {
         static const char* const kOnOff[2] = {"OFF", "ON"};

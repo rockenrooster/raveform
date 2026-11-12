@@ -6,7 +6,7 @@
 
 layout(location = 0) in vec4 inEnds;   // p0.xy, p1.xy (content pixels)
 layout(location = 1) in vec4 inC0;     // colour at p0 (linear HDR), half width (content pixels)
-layout(location = 2) in vec4 inC1;     // colour at p1, flags (1 flat start, 2 flat end, 4 disc)
+layout(location = 2) in vec4 inC1;     // colour at p1, flags (1 flat start, 2 flat end, 4 disc, 8 x opacity)
 
 layout(push_constant) uniform Push {
     vec4 view;   // logical width, height, 2/width, 2/height

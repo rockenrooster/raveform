@@ -34,8 +34,8 @@ const char* songName(u32 song);  // "FIRST LIGHT", "SOLAR WIND", "REEF"
 
 struct Phrase {
     u32 bar = 0;               // bars since the run began
-    u8 track = 1;              // the run's Track (1, 2, 3 = First Light again, ...)
-    u8 song = 0;               // its music: 0 First Light, 1 Solar Wind
+    u8 track = 1;              // the run's Track (1, 2, 3, then 4 = First Light again, ...)
+    u8 song = 0;               // its music: 0 First Light, 1 Solar Wind, 2 Reef
     u8 cycle = 1, cycles = 4;  // 1-based; 0 in the Track-change Break
     Section section = Section::Groove;
     u16 sectionBar = 0, sectionBars = 8;  // a held boss Drop keeps counting past sectionBars

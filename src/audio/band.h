@@ -116,7 +116,7 @@ public:
     audio::Mode mode() const { return mode_; }
     void toggleRiff(audio::Riff r);
     bool riff(audio::Riff r) const { return riffs_[static_cast<u32>(r)] != 0; }
-    void playSfx(audio::Sfx s, float gain = 1.0f);
+    void playSfx(audio::Sfx s, float gain = 1.0f, float rate = 1.0f);  // rate: 0.5 an octave down
     // M3: the game's effect interface (TECH_SPEC 6.3). Kills are aggregated by the engine per 1/32 step;
     // each Shard plays the next note of its run; the Nova inhales now and blasts on `blastTick` (the
     // game's beat, song ticks); a warp-in swells into `landTick`; an effect can be placed on a tick.
@@ -137,6 +137,8 @@ public:
     void setBoss(u8 pairs, bool sixteenths, u8 beats, u8 flags);
     void setLoadout(const u8 mods[5], const u8 riffs[3], bool prism, bool hyper);
     void setGains(float music, float effects);
+    // M3 stage C (screens.md pause): the music behind a low-pass of about 600 Hz, ramped over 150 ms.
+    void setMuffle(bool on);
     // The master bus, for pictures of the music (title waveform, sound cards): the latest n values, one
     // per 128 frames (signed peak), oldest first; and a decaying peak level (0..1).
     u32 scope(float* out, u32 n) const;
@@ -157,6 +159,8 @@ public:
 
     // Haptics: a light tick on heard kicks (and clicks), heavy on the Drop. Rate-limited.
     void setHaptics(bool on) { haptics_ = on; }
+    void setHapticStrong(bool strong) { hapticStrong_ = strong; }  // the STRONG setting (M3 stage C)
+    void hapticPreview();  // one medium tick at the current strength (the settings screen)
     bool haptics() const { return haptics_; }
 
     // Measurements (benchmarks and the overlay).
@@ -277,6 +281,8 @@ private:
 
     // Haptics.
     bool haptics_ = false;
+    bool hapticStrong_ = false;
+    bool muffled_ = false;
     i64 lastHapticNs_ = 0;
     u32 hapticCalls_ = 0;
 

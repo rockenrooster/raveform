@@ -109,6 +109,9 @@ private:
     void eventB(const sim::World& w, const sim::Event& e, float t);
     void drawStageB(FrameDraw& d, const ViewInput& in, float W, float H);
     void drawBoss(FrameDraw& d, const ViewInput& in);
+    // Edge indicator (look.md §6, M3 stage C): a chevron inside the screen edge pointing at world, on a dark
+    // disc, in the threat layer; oss: the larger double chevron, scaled by swell.
+    void edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, float swell);
     float beatAmount() const;
 
     const Look* look_ = nullptr;
@@ -129,7 +132,7 @@ private:
     bool speciesGlyphsReady_ = false;
 
     // Camera.
-    Vec2 cam_, lookAhead_, centre_, shake_;
+    Vec2 cam_, lookAhead_, bossLean_, centre_, shake_;
     float zoom_ = 1.0f, zoomBase_ = 1.0f, pxPerWu_ = 1.5f, refPx_ = 1.0f, viewW_ = 1600.0f, viewH_ = 720.0f;
     float shakeAmp_ = 0.0f;
     bool hasPrevView_ = false;

@@ -83,6 +83,20 @@ struct Reader {
         RF_ERR("look: no soft light '%s'", id);
         ok = false;
     }
+    void edge(const char* id, Look::EdgeIndicator& out) {
+        const JsonValue* list = doc.find("softLights");
+        for (const JsonValue* e = doc.firstChild(list); e; e = doc.nextSibling(e)) {
+            char name[24] = {};
+            doc.text("id", name, sizeof name, e);
+            if (std::strcmp(name, id) != 0) continue;
+            out.chevron = static_cast<float>(doc.number("chevronRefPx", out.chevron, nullptr, e));
+            out.bossChevron = static_cast<float>(doc.number("bossChevronRefPx", out.bossChevron, nullptr, e));
+            out.bossBeatSwell = static_cast<float>(doc.number("bossBeatSwell", out.bossBeatSwell, nullptr, e));
+            out.inset = static_cast<float>(doc.number("insetRefPx", out.inset, nullptr, e));
+            out.discAlpha = static_cast<float>(doc.number("discAlpha", out.discAlpha, nullptr, e));
+            return;
+        }
+    }
     void explosion(const char* size, LookExplosion& out) {
         const JsonValue* e = doc.find(size);
         if (!e) {
@@ -285,6 +299,8 @@ bool loadLook(Look& out) {
     r.soft("killPoolLarge", s.killPoolLarge);
     r.soft("playerPool", s.playerPool);
     r.soft("wellPool", s.wellPool);
+    r.soft("edgeIndicator", s.edgeIndicator);
+    r.edge("edgeIndicator", out.edge);
 
     Look::Explosions& b = out.boom;
     b.sparkDrag = r.num("explosions.sparkDragPerSecond");
