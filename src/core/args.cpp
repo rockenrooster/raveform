@@ -127,6 +127,8 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
         // M3 begin
         } else if (is("--bot")) {
             a.bot = true;
+        } else if (is("--autoplay")) {
+            a.autoplay = true;
         } else if (is("--seed") && next) {
             u32 s = 0;
             ok = parseUint(next, s);

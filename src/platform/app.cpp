@@ -18,6 +18,10 @@
 
 #if defined(__ANDROID__)
 #include "platform/android/android_glue.h"
+#if defined(__linux__)
+#include <time.h>
+#include <unistd.h>
+#endif
 #endif
 
 namespace rf {
@@ -146,7 +150,7 @@ bool App::init() {
 
     // M3 stage B: the player's settings (frame-rate target, effects) for interactive play.
     Settings playerSettings;
-    const bool interactiveGame = !args_.sceneFile[0] && (!args_.scenario[0] || std::strcmp(args_.scenario, "play") == 0) && !args_.bot &&
+    const bool interactiveGame = !args_.sceneFile[0] && (!args_.scenario[0] || std::strcmp(args_.scenario, "play") == 0) && (!args_.bot || args_.autoplay) &&
                                  !args_.screenshot[0] && !args_.fixedStep && !args_.picture[0];
     if (interactiveGame) loadSettings(playerSettings);
 
@@ -270,6 +274,7 @@ bool App::init() {
         playBench_ = po.kind != PlayOptions::Kind::Play;
         playPicture_ = args_.picture[0] != 0;
         po.bot = args_.bot || playBench_;
+        po.autoplay = args_.autoplay;
         po.fixedStep = pictureRun;
         po.seed = args_.seed;
         po.fastForwardS = args_.fastForward;
@@ -662,6 +667,33 @@ void App::updateSafeArea() {
     insetMax_ = {(ww - safe.x - safe.w) * sx, (wh - safe.y - safe.h) * sy};
 }
 
+double App::processAgeMs() {
+#if defined(__linux__)
+    // /proc/self/stat field 22: the process's start in clock ticks since boot.
+    FILE* f = std::fopen("/proc/self/stat", "r");
+    if (!f) return -1.0;
+    char buf[1024];
+    const size_t n = std::fread(buf, 1, sizeof buf - 1, f);
+    std::fclose(f);
+    buf[n] = 0;
+    const char* p = std::strrchr(buf, ')');
+    if (!p) return -1.0;
+    unsigned long long start = 0;
+    int field = 2;
+    for (const char* c = p + 1; *c && field < 22; ++c)
+        if (*c == ' ') {
+            ++field;
+            if (field == 22) start = std::strtoull(c + 1, nullptr, 10);
+        }
+    timespec ts{};
+    clock_gettime(CLOCK_BOOTTIME, &ts);
+    const double nowS = static_cast<double>(ts.tv_sec) + static_cast<double>(ts.tv_nsec) * 1e-9;
+    return (nowS - static_cast<double>(start) / static_cast<double>(sysconf(_SC_CLK_TCK))) * 1000.0;
+#else
+    return nsToMs(nowNs() - startNs_);
+#endif
+}
+
 void App::frame(u64 loopStartNs) {
     audio_.update();
     audioDoneNs_ = nowNs();
@@ -726,6 +758,11 @@ void App::frame(u64 loopStartNs) {
             play_.setLayout(w, h, insetMin_, insetMax_);
             play_.frame(dt);
             play_.renderProbeTitle(draw, params, *variant_, w, h, insetMin_, insetMax_);
+            if (!firstPlayFrameLogged_) {
+                firstPlayFrameLogged_ = true;
+                RF_LOG("play: first frame %.0f ms after the process started (%.0f ms after init began; the tier probe runs behind it)", processAgeMs(),
+                       nsToMs(nowNs() - startNs_));
+            }
             params.exposurePump *= 0.33f;
             if (play_.runStarted() && tierProbe_.active) {
                 const u32 c = tierProbe_.candidate;
@@ -756,6 +793,11 @@ void App::frame(u64 loopStartNs) {
         play_.setLayout(w, h, insetMin_, insetMax_);
         play_.frame(dt);
         play_.render(draw, params, background_, *variant_, w, h, insetMin_, insetMax_);
+        if (!firstPlayFrameLogged_) {
+            // M3 stage B (start-up): how long from the process's start to the first frame of the game.
+            firstPlayFrameLogged_ = true;
+            RF_LOG("play: first frame %.0f ms after the process started (%.0f ms after init began)", processAgeMs(), nsToMs(nowNs() - startNs_));
+        }
         if (args_.mute & kMuteSparkles) draw.sparkles.clear();
         if (args_.mute & kMutePools) draw.pools.clear();
         renderer_.setBackground(background_);
@@ -1428,6 +1470,14 @@ void App::reportBench() {
             j.integer("best_chain", ps.bestChain);
             j.integer("pool_overflow", ps.overflow);
             j.boolean("finite", play_.world().finite());
+            // M3 stage B: where the run was when the window closed (what was on screen).
+            const sim::World& pw = play_.world();
+            j.integer("track", pw.phrase().track);
+            j.integer("cycle", pw.phrase().cycle);
+            j.str("section", sim::sectionLabel(pw.phrase().section));
+            j.integer("run_bar", pw.phrase().bar);
+            j.boolean("boss", pw.boss().active);
+            j.integer("upgrades", pw.player(0).loadout.taken);
             j.endObject();
         }
         j.boolean("overlay", overlayOn_);

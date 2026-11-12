@@ -453,6 +453,20 @@ void PlayView::drawBoss(FrameDraw& d, const ViewInput& in) {
     const Vec3 danger = palettes_->danger;
     const Vec2 pos = lerpv(s.prevPos, s.pos, a);
     const float wheel = s.prevAngle + wrapAngle(s.angle - s.prevAngle) * a;
+    if (!visible(pos, b.radius * 0.5f) && !s.dying) {
+        // Edge indicator (look.md 6): a white chevron, as for elites.
+        const Vec2 dsc = toScreen(pos) - centre_;
+        const float W = 2.0f * centre_.x, H = 2.0f * centre_.y;
+        const float inset = 46.0f * refPx_;
+        const float hx = 0.5f * W - inset, hy = 0.5f * H - inset;
+        const float k = std::fmin(hx / std::fmax(std::fabs(dsc.x), 1e-3f), hy / std::fmax(std::fabs(dsc.y), 1e-3f));
+        const Vec2 c = centre_ + dsc * k;
+        const float ang = std::atan2(dsc.y, dsc.x);
+        const float sz = 18.0f * refPx_;
+        const Vec2 f0 = c + dirv(ang) * sz, f1 = c + dirv(ang + 2.4f) * sz, f2 = c + dirv(ang - 2.4f) * sz;
+        d.hud.line(f1, f0, 1.6f * refPx_, W1 * 0.9f, W1 * 0.9f, 0);
+        d.hud.line(f0, f2, 1.6f * refPx_, W1 * 0.9f, W1 * 0.9f, 0);
+    }
     if (!visible(pos, b.radius * 2.6f)) return;
     const float tEnter = static_cast<float>((in.music - s.enterTick) / kTicksPerBar);  // bars since the entrance began
     const double barStart = std::floor(in.music / kTicksPerBar) * kTicksPerBar;

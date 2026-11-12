@@ -90,7 +90,9 @@ private:
     Content content_ = Content::M0;
     // M3 begin
     Play play_;
-    bool syncFromPlay_ = false;     // M3 stage B: the sync screen was opened from the game's settings
+    bool syncFromPlay_ = false;
+    bool firstPlayFrameLogged_ = false;
+    double processAgeMs();     // M3 stage B: the sync screen was opened from the game's settings
     Tier autoTier_ = Tier::High;    // the device's tier (probe or cache): settings' AUTO
     bool playBench_ = false;  // bench_play / bench_stress
     bool playPicture_ = false;

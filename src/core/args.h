@@ -68,6 +68,7 @@ struct AppArgs {
     u32 cycles = 20;           // lifecycle_test cycles
     // M3 begin: the game (game/play.h): --scenario play (the default), bench_play, bench_stress
     bool bot = false;          // --bot: the bot plays (on screen; bench_play and bench_stress always)
+    bool autoplay = false;     // --autoplay (M3 stage B): the game with its screens, the bot playing each run
     u64 seed = 1;              // --seed N: the run's random seed
     float fastForward = 0.0f;  // --fast-forward S: S seconds of the game before the first frame (pictures)
     char picture[32] = {};     // --picture <name>: a scripted review scene (fire, kill_small, ..., sentry)

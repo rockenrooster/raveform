@@ -87,7 +87,7 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
     view_.setIcons(&icons_, upgradeIcons_, boostIcons_);
     view_.setFont(&font);
     // The screens around the run: interactive play only (benchmarks, pictures and --bot are the run alone).
-    flow_ = opt.kind == PlayOptions::Kind::Play && !opt.bot && !picture && !opt.fixedStep;
+    flow_ = opt.kind == PlayOptions::Kind::Play && (!opt.bot || opt.autoplay) && !picture && !opt.fixedStep;
     if (flow_) {
         loadSettings(settings_);
         loadHighScores(scores_);
@@ -112,6 +112,14 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
         bandDrives_ = drives;
         view_.resetEffects();
         frameNo_ = 0;
+        if (bandDrives_) {
+            // The band's song starts now: the run goes on from where the fast-forward left it, against the
+            // band's timeline from a bar line on (as after a pause, without the count-in rings).
+            pauseMusic_ = music1_;
+            realign_ = true;
+            countIn_ = true;
+            countInEnd_ = 1e18;
+        }
         // Pictures time their moment from the first drawn frame.
         scriptTick_ = 0;
         captureFrom_ = -1;
@@ -141,7 +149,7 @@ void Play::buildInput(StickInput& in) {
         scriptInput(in);
         return;
     }
-    if (opt_.bot || attract()) {
+    if (opt_.bot || opt_.autoplay || attract()) {
         // The bot plays (--bot, benchmarks, and the title's attract run).
         in = bot_.think(*world_, 0, controller_, clock_.heardNow());
         return;
@@ -174,7 +182,7 @@ void Play::frame(float realDt) {
     frameDt_ = fixed ? kDt : (realDt > 0.1f ? 0.1f : realDt);
     const BeatView* bv = (bandDrives_ && band_) ? &band_->view() : nullptr;
     // M3 stage B: pause freezes the run; the count-in ends on the resume point (game/screens.cpp).
-    if (flow_ && countIn_) {
+    if (countIn_) {
         if (realign_ && bv && bv->running) {
             realign_ = false;
             beginCountIn();
@@ -191,11 +199,17 @@ void Play::frame(float realDt) {
             }
         }
     }
-    const bool frozen = flow_ && (countIn_ || screen_ == Screen::Paused || (screen_ == Screen::Settings && settingsBack_ == Screen::Paused));
+    const bool frozen = countIn_ || (flow_ && (screen_ == Screen::Paused || (screen_ == Screen::Settings && settingsBack_ == Screen::Paused)));
     paused_ = frozen;
     if (frozen) {
         stats_.ticksLastFrame = 0;
         bandFrame();
+        if (opt_.picture[0]) {
+            // Picture scripts keep their own clock through a pause (they script the count-in).
+            StickInput unused;
+            scriptInput(unused);
+            pictureFrame();
+        }
         return;
     }
     if (!clock_.fromBand()) clock_.setBpm(world_->tempoAt(music1_));
@@ -229,22 +243,7 @@ void Play::frame(float realDt) {
         if (screen_ == Screen::GameOver) overS_ += frameDt_;
     }
 
-    // Picture runs: capture `stripFrames_` frames from the scripted moment.
-    captureNow_ = false;
-    if (opt_.picture[0]) {
-        scriptEvents();
-        ++scriptTick_;
-        if (captureFrom_ >= 0 && static_cast<i64>(frameNo_) >= captureFrom_) {
-            const u64 k = frameNo_ - static_cast<u64>(captureFrom_);
-            if (k < stripFrames_) {
-                captureNow_ = true;
-                captureIndex_ = static_cast<u32>(k);
-            } else {
-                pictureDone_ = true;
-            }
-        }
-        if (scriptTick_ > 60u * 30u) pictureDone_ = true;  // a script that never triggers ends after 30 s
-    }
+    pictureFrame();
 
     const World& w = *world_;
     const PlayerState& p = w.player(0);
@@ -268,6 +267,24 @@ void Play::frame(float realDt) {
     const WorldCounters& c = w.counters();
     stats_.overflow = c.enemiesDropped + c.bulletsDropped + c.shotsDropped + c.shardsDropped + c.eventsDropped;
     stats_.ticks = w.tickCount();
+}
+
+void Play::pictureFrame() {
+    // Picture runs: capture `stripFrames_` frames from the scripted moment.
+    captureNow_ = false;
+    if (!opt_.picture[0]) return;
+    scriptEvents();
+    ++scriptTick_;
+    if (captureFrom_ >= 0 && static_cast<i64>(frameNo_) >= captureFrom_) {
+        const u64 k = frameNo_ - static_cast<u64>(captureFrom_);
+        if (k < stripFrames_) {
+            captureNow_ = true;
+            captureIndex_ = static_cast<u32>(k);
+        } else {
+            pictureDone_ = true;
+        }
+    }
+    if (scriptTick_ > 60u * 30u) pictureDone_ = true;  // a script that never triggers ends after 30 s
 }
 
 void Play::runTick(double music0, double music1, bool firstOfFrame) {
@@ -314,6 +331,7 @@ void Play::afterTick() {
             case EventType::Death:
                 if (opt_.bot || opt_.kind != PlayOptions::Kind::Play) retryRequest_ = true;  // the bot taps retry
                 if (bandDrives_) band_->playSfx(audio::Sfx::GameOver);
+                RF_LOG("play: the ship is lost (Track %u, bar %u, score %llu)", w.phrase().track, w.phrase().bar, static_cast<unsigned long long>(w.player(0).score));
                 if (flow_ && screen_ == Screen::Run) {
                     endRun(true);
                     screen_ = Screen::GameOver;
@@ -385,6 +403,7 @@ void Play::afterTick() {
                 if (bandDrives_) band_->playSfx(e.b ? audio::Sfx::PerfectDash : audio::Sfx::Dash);
                 break;
             case EventType::TrioTake:
+                RF_LOG("play: Trio: took %s (now %u) at bar %u", upgradeInfo(e.b).name, e.c, w.phrase().bar);
                 if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 2, e.b};
                 takenT_ = static_cast<float>(tickEnd_);
                 takenFrom_ = view_.toScreen(Vec2{e.x, e.y});
@@ -398,6 +417,7 @@ void Play::afterTick() {
                 if (bandDrives_) band_->playSfx(audio::Sfx::Shield);
                 break;
             case EventType::BossEnter:
+                RF_LOG("play: Kaleidos enters (Track %u, bar %u)", w.phrase().track, w.phrase().bar);
                 if (bandDrives_) band_->playSfx(audio::Sfx::Elite);
                 break;
             case EventType::BossPair:
@@ -405,6 +425,7 @@ void Play::afterTick() {
                 if (bandDrives_) band_->playSfx(audio::Sfx::Elite, 1.2f);
                 break;
             case EventType::BossDeath:
+                RF_LOG("play: Kaleidos falls (Track %u, run %.1f s)", w.phrase().track, runSeconds_);
                 if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 1, 0};
                 if (bandDrives_) band_->kill(2, 6);
                 break;
@@ -478,6 +499,7 @@ void Play::conductBand() {
         // A new run on that line: Track 1 at its tempo, Short form, its first Groove.
         band_->setHold(false);
         band_->changeTrack(0, bpmOfTrack(1), true);
+        postedBpm_ = bpmOfTrack(1);
         band_->setForm(audio::Form::Short);
         band_->setPhrase(audio::Section::Groove, 0, kSectionBars[0][0]);
         off();
@@ -502,7 +524,15 @@ void Play::conductBand() {
         band_->setHold(false);
         band_->changeTrack(next.song, next.trackBpm, false);
         band_->setForm(next.song == 0 ? audio::Form::Short : audio::Form::Standard);
+        postedBpm_ = next.trackBpm;
     }
+    if (!next.trackChange && (band_->track() != next.song || std::fabs(postedBpm_ - next.trackBpm) > 0.01f)) {
+        // The band plays another Track or tempo than the run (a new run, a fast-forward, the loop after a
+        // resync): it changes on the next bar line.
+        band_->changeTrack(next.song, next.trackBpm, true);
+        band_->setForm(next.song == 0 ? audio::Form::Short : audio::Form::Standard);
+    }
+    postedBpm_ = next.trackBpm;
     if (holdPosted_) {
         band_->setHold(false);
         holdPosted_ = false;

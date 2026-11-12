@@ -72,7 +72,7 @@ bool Play::scriptSetupB() {
         return true;
     }
     if (is(p, "edge")) {
-        w.spawnEnemy(SpeciesTable::index(Family::Sentry, 1, kVariantB), Vec2{1450.0f, -120.0f}, 0.0f, 0.0);
+        w.spawnEnemy(SpeciesTable::index(Family::Sentry, 1, kVariantB), Vec2{860.0f, -60.0f}, 0.0f, 0.0);  // engaged, just off screen
         w.dropBoost(Vec2{-1500.0f, 260.0f}, kPrism);
         w.rules().godMode = true;
         return true;
@@ -179,18 +179,22 @@ bool Play::scriptInputB(StickInput& in) {
         if (is(p, "boss_naked") || is(p, "boss_death")) pairsToKill = 3;
         if (music > fight + 8.0) {
             for (u32 k = 0; k < pairsToKill; ++k) killPair(k);
-            if (is(p, "boss_pair_death") && music > fight + 1.5 * kTicksPerBar) killPair(1);
+            if (is(p, "boss_pair_death") && music > fight + 1.5 * kTicksPerBar && (b.alive & 2u)) {
+                killPair(1);  // (its event is gone before scriptEvents() runs: the strip starts here)
+                if (captureFrom_ < 0) captureFrom_ = now + 1;
+            }
         }
         if (is(p, "boss_death") && b.alive == 0 && music > fight + 2.2 * kTicksPerBar && !b.dying) {
             const Vec2 dv = dirOf(w.bossArmAngle(0));
             w.shootBoss(b.pos + dv * 90.0f, b.pos + dv * 20.0f, 1e6f);
+            if (captureFrom_ < 0) captureFrom_ = now + 1;
         }
         if (captureFrom_ >= 0) return true;
         const double barIn = std::fmod(music, kTicksPerBar);
         if ((is(p, "boss_bloom") || is(p, "boss_refraction") || is(p, "boss_spiral") || is(p, "boss_naked")) &&
             music > fight + 1.6 * kTicksPerBar && barIn > 150.0 && barIn < 200.0)
             captureFrom_ = now;
-        if (is(p, "boss_beam_tell") && music > fight + 1.0 * kTicksPerBar && w.bossBeamState(0, music) == 1) {
+        if (is(p, "boss_beam_tell") && music > fight + 1.0 * kTicksPerBar) {
             for (u32 pr = 0; pr < 3; ++pr)
                 if (w.bossBeamState(pr, music) == 1 && barIn > 200.0) captureFrom_ = now;
         }

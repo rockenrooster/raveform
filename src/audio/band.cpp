@@ -110,7 +110,17 @@ bool Band::init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice
     for (u32 i = 0; i < kLoadBuckets; ++i) loadHist_[i].store(0);
     if (!music_->load()) return false;
     rate_ = 48000;  // the stream asks for 48 kHz (TECH_SPEC 6.2); a device at another rate gets silence and a warning
-    if (!bank_->bake(*music_, rate_)) return false;
+    // The baked one-shots come from the app's cache when it holds this music at this rate (M3 stage B:
+    // start-up; baking costs about 1.7 s on the Moto); else they are baked and cached.
+    {
+        char cache[512];
+        prefPath(cache, sizeof cache, "baked_audio.bin");
+        const u64 key = music_->hash ^ (static_cast<u64>(rate_) * 0x9E3779B97F4A7C15ull);
+        if (!bank_->loadCache(cache, key)) {
+            if (!bank_->bake(*music_, rate_)) return false;
+            if (!bank_->saveCache(cache, key)) RF_WARN("audio: could not cache the baked one-shots (%s)", cache);
+        }
+    }
     if (!engine_->init(*music_, *bank_, rate_, 1)) {
         RF_ERR("audio: engine init failed");
         return false;

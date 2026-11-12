@@ -38,6 +38,7 @@ struct PlayOptions {
     float fastForwardS = 0.0f;  // --fast-forward S: run S seconds of the game before the first frame
     char picture[32] = {};      // --picture <name>: a scripted scene for the review strips
     float pxPerMm = 0.0f;       // touch control sizes (0: scale with the screen height)
+    bool autoplay = false;      // --autoplay: the screens as in play, the bot playing each run (taps start and retry)
 };
 
 class Play {
@@ -156,6 +157,7 @@ private:
     void scriptSetup();
     void scriptInput(sim::StickInput& in);
     void scriptEvents();
+    void pictureFrame();
     // play_pictures.cpp (M3 stage B): true when the picture is one of stage B's.
     bool scriptSetupB();
     bool scriptInputB(sim::StickInput& in);
@@ -205,6 +207,7 @@ private:
     double plannedLine_ = -1e9;  // the bar line the band was last told about
     bool overHeld_ = false, bossPosted_ = false, holdPosted_ = true, paused_ = false;
     u32 loadoutSig_ = ~0u;
+    float postedBpm_ = 120.0f;
 
     // Pictures.
     u64 frameNo_ = 0;

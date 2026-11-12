@@ -42,6 +42,11 @@ public:
     // Bakes everything the Tracks and variants of `music` need at `sampleRate`.
     bool bake(const MusicData& music, u32 sampleRate);
     void release();
+    // M3 stage B (start-up): the baked bank on disk (TECH_SPEC 11: cached baked audio). key names what
+    // was baked (the music data's hash, which includes the DSP version, and the sample rate); a file with
+    // another key, or a damaged one, is not used. Load and save time only.
+    bool saveCache(const char* path, u64 key) const;
+    bool loadCache(const char* path, u64 key);
 
     const Sample& sample(i32 id) const { return samples_[id]; }
     u32 count() const { return count_; }

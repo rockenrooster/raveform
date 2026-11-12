@@ -893,4 +893,74 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate) {
     return true;
 }
 
+// ---------------------------------------------------------------------------------------------- cache
+
+namespace {
+constexpr u32 kCacheMagic = 0x42534652u;  // "RFSB"
+constexpr u32 kCacheVersion = 1;
+template <typename T>
+bool put(FILE* f, const T& v) { return std::fwrite(&v, sizeof v, 1, f) == 1; }
+template <typename T>
+bool get(FILE* f, T& v) { return std::fread(&v, sizeof v, 1, f) == 1; }
+}  // namespace
+
+bool SampleBank::saveCache(const char* path, u64 key) const {
+    char tmp[600];
+    std::snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    FILE* f = std::fopen(tmp, "wb");
+    if (!f) return false;
+    bool ok = put(f, kCacheMagic) && put(f, kCacheVersion) && put(f, key) && put(f, count_) && put(f, bytes_);
+    for (u32 i = 0; ok && i < count_; ++i) {
+        const Sample& s = samples_[i];
+        ok = put(f, s.frames) && put(f, s.channels) && put(f, s.midi) && put(f, s.tag) && std::fwrite(s.name, sizeof s.name, 1, f) == 1;
+        const size_t n = static_cast<size_t>(s.frames) * s.channels;
+        if (ok && n) ok = std::fwrite(s.data, sizeof(float), n, f) == n;
+    }
+    ok = ok && put(f, kits_) && put(f, clap_) && put(f, snare_) && put(f, shaker_) && put(f, pulse_) && put(f, impact_) && put(f, risers_) &&
+         put(f, riserCount_) && put(f, swellHalf_) && put(f, swellBar_) && put(f, sfxFirst_) && put(f, sfxCount_) && put(f, inhale_) &&
+         put(f, shardScale_) && put(f, kCacheMagic);
+    ok = (std::fclose(f) == 0) && ok;
+    if (!ok) {
+        std::remove(tmp);
+        return false;
+    }
+    std::remove(path);
+    return std::rename(tmp, path) == 0;
+}
+
+bool SampleBank::loadCache(const char* path, u64 key) {
+    const auto t0 = std::chrono::steady_clock::now();
+    FILE* f = std::fopen(path, "rb");
+    if (!f) return false;
+    u32 magic = 0, version = 0, count = 0;
+    u64 fileKey = 0, bytes = 0;
+    bool ok = get(f, magic) && get(f, version) && get(f, fileKey) && get(f, count) && get(f, bytes) && magic == kCacheMagic &&
+              version == kCacheVersion && fileKey == key && count <= kMaxSamples;
+    release();
+    for (u32 i = 0; ok && i < count; ++i) {
+        Sample& s = samples_[i];
+        ok = get(f, s.frames) && get(f, s.channels) && get(f, s.midi) && get(f, s.tag) && std::fread(s.name, sizeof s.name, 1, f) == 1 &&
+             s.channels >= 1 && s.channels <= 2 && s.frames < 48000u * 120u;
+        const size_t n = static_cast<size_t>(s.frames) * s.channels;
+        if (!ok) break;
+        s.data = static_cast<float*>(std::malloc(sizeof(float) * (n ? n : 1)));
+        ok = s.data && (n == 0 || std::fread(s.data, sizeof(float), n, f) == n);
+        count_ = i + 1;
+    }
+    u32 tail = 0;
+    ok = ok && get(f, kits_) && get(f, clap_) && get(f, snare_) && get(f, shaker_) && get(f, pulse_) && get(f, impact_) && get(f, risers_) &&
+         get(f, riserCount_) && get(f, swellHalf_) && get(f, swellBar_) && get(f, sfxFirst_) && get(f, sfxCount_) && get(f, inhale_) &&
+         get(f, shardScale_) && get(f, tail) && tail == kCacheMagic;
+    std::fclose(f);
+    if (!ok) {
+        release();
+        return false;
+    }
+    count_ = count;
+    bytes_ = bytes;
+    bakeSeconds_ = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    RF_LOG("audio: %u one-shots (%.1f MB) from the cache in %.0f ms", count_, bytes_ / 1048576.0, bakeSeconds_ * 1000.0);
+    return true;
+}
+
 }  // namespace rf::audio
