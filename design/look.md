@@ -332,7 +332,8 @@ Other signature effects:
 ### The build on the shots (play test 2, 2026-11-12)
 
 A stronger build must look stronger. The **tail** of a shot is always its owner's colour, so a
-shot can be told from a teammate's; the **head** (the front 45% of the streak), the muzzle flash
+shot can be told from a teammate's; the **head** (the front 65% of the streak; 45% in the first build read as a coloured tip on the
+owner's shot), the muzzle flash
 and the impact sparks show the build.
 
 | Overcharge | Head | Width | Also |

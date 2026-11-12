@@ -152,9 +152,10 @@ except settings, local high scores and lifetime stats.
 - **Shard levels** (play test 2, 2026-11-12: "upgrades need to happen more often, maybe scale by
   collected Shards"). Collected Shards fill a level meter under the Chain. Each time it fills the
   player gains a level, and a Trio opens round the ship on the next bar line, wherever the fight
-  is: the same three orbs, held to be taken. Level n needs 25 × 1.22^(n−1) Shards (25, 31, 37,
-  45, 55 …); tune the base and the ratio with the bot so that a level comes every 20 to 30
-  seconds through the first three Tracks. Levels that fill while a Trio is open are banked and
+  is: the same three orbs, held to be taken. Level n needs 170 × 1.17^(n−1) Shards (170, 199,
+  233, 272 …): the curve the bot runs settled on, giving a level about every 28 seconds in
+  Track 1, 16 in Track 2 and 31 in Track 3 (the Shard income rises sevenfold from Track 1 to 2,
+  so no one curve is even; the first guess of 25 × 1.22 gave a level every 9 seconds). Levels that fill while a Trio is open are banked and
   the next Trio opens on the bar line after the last one closes. A level-up Trio lasts four bars
   (the ring is the clock; the nearest orb is taken at the end). The fight does not step back for
   it, so the orbs are shelters: nothing spawns inside the ring, **a ship inside an orb's ring
@@ -423,6 +424,14 @@ phases; it fits inside the entity caps.
   spends the remainder on higher tiers and elites instead of more bodies.
 - **Endless.** From Track 7, tiers shift upward, elites gain stacked traits, and enemy health and speed
   rise 6% per Track. Tempo rises to its cap, then holds.
+- **The loop is where a run ends** (2026-11-12: with Shard levels, Cells and Regen neither bot
+  died in 30 minutes, and a run that cannot end is not a run). The first pass through the Tracks
+  is the power fantasy and stays as tuned. Every Track after it multiplies the threat budget and
+  the bosses' bullet density by 1.3 and enemy health by 1.25, and stretches the Cell clocks by
+  1.25, each compounding. Targets over 20 seeds of 40 minutes: the careful bot's median first
+  death between minutes 18 and 30, the careless bot's between 9 and 16; in the first pass the
+  careful bot loses no run and the careless bot at most one in five. Tune the three factors
+  between 1.15 and 1.5 to land there. Enemy counts still are not a lever.
 - **Co-op.** Budget × (1 + 0.6 × (players − 1)); elite, mini-boss and boss health × (1 + 0.5 × (players − 1)).
 
 Tune with the offline simulation: bot players run 30 minutes headless and the tool charts budget,
