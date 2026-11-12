@@ -51,7 +51,7 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | M4 co-op peers without a screen over real UDP (one process each; each prints an `RFNET` line) | `raveform_headless.exe --net host [--players 4] [--bind 127.0.0.1] [--port 47778] [--minutes 15] [--netsim ...]`, then per client `raveform_headless.exe --net join <ip> [--bind <ip>] [--same-clock --clock-offset-ms X --clock-ppm P] [--seed N] [--minutes 15]` (`--same-clock`: one PC, so the true song offset is measured) |
 | M4 co-op in the game (desktop; no lobby screens) | `scripts\run-desktop.ps1 -AppArgs '--host --players 2 [--bot] [--net-overlay]'` and `-AppArgs '--join <ip> [--bot]'`; bots in the host's process: `'--host --loopback-bots 3 --bot'` |
 | M4 co-op benchmark (Moto hosting three in-process bot clients) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Warmup 600 -Seconds 120 -AppArgs '--host --loopback-bots 3' -Deploy` (the result's `net` object: the session, the bots' worker frame time) |
-| M4 two peers' views of one moment (desktop, two windows) | `run-desktop.ps1 -NoBuild -Res 2400x1080 -Screenshot captures\m4\host.png -AppArgs '--host --players 2 --bot --net-capture-bar 40 --net-overlay'` and the same with `'--join 127.0.0.1 --bot ...'` (`-Screenshot captures\m4\client.png`) |
+| M4 two peers' views of one moment (desktop, two windows started together) | `run-desktop.ps1 -NoBuild -Res 2400x1080 -Screenshot captures\m4\host.png -AppArgs '--host --players 2 --bind 127.0.0.1 --bot --net-capture-bar 40 [--net-overlay] [--net-view-seat 0]'` and `-Screenshot captures\m4\client.png -AppArgs '--join 127.0.0.1 --bind 127.0.0.1 --bot --net-capture-bar 40 ...'` (`--net-view-seat 0`: both cameras on the host's ship) |
 
 Desktop exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 benchmark aborted,
 5 screenshot failed. Device serials: Moto `ZY22BXMJG3`, OnePlus 12R `a0e622a5`, Galaxy Tab `R5GL362BEHX`.
@@ -80,7 +80,7 @@ so they show their cost at the GPU's top clock),
 leave placement to the scheduler), `--cycles N`; M4 co-op (stage A, no lobby screens): `--host` (`--players N`
 seats 2-4, `--bind <ip>`, `--port N`), `--join <ip>`, `--loopback-bots N` (host: N bot clients in this process on
 the loopback network), `--netsim loss=..,jitter=..,delay=..,dup=..,reorder=..` (the condition simulator on what
-this device sends), `--net-overlay` (the overlay on its network page), `--net-capture-bar B` (with `--screenshot`:
+this device sends), `--net-overlay` (the overlay on its network page), `--net-view-seat N` (pictures: the camera on seat N's ship), `--net-capture-bar B` (with `--screenshot`:
 the picture as the run reaches bar B, the same musical moment on every peer, then quit). Keys: F1 overlay, F2 the
 overlay's network page (co-op), P pause for everyone (co-op), F12 screenshot, T tone hold, L next look, P next
 palette, K next tier, R reduce flashing, Esc / Back quit (in the game with its screens: pause and back; Enter is the screen's main control). Taps (decided when the last finger lifts): two fingers next look, three
@@ -121,7 +121,7 @@ Audio (M2, `src/audio/audio_args.h`): `--scenario audio_test|sync` (the band on 
 controls; the sync calibration screen of `design/screens.md`), `--band off|play|staged|full|stress|metronome`
 (default: `play` in audio_test, `metronome` in sync, `full` in every `bench_*` unless pictures are taken, else
 off; `full` = the load test, every layer playing: Drop held, four players firing on the 1/16-triplet grid with
-one Split harmony, every Riff at level 2, kills every frame; `stress` = Split ×2), `--no-audio` (no band in
+one Split harmony, every Riff at level 2, kills every frame; `stress` = Split ×2), `--silent` (everything plays and is measured, the output is zeroed at the device: PC runs), `--no-audio` (no band in
 any scenario: M0's silent stream, as M1 measured; for comparison), `--track 1|2|3` (default 1; `bench_*`:
 the palette's Track, Reef = 3 at the stage's 132 BPM), `--sound club|arcade|velvet`, `--intensity X`,
 `--section groove|build|drop|break`, `--hold`, `--fire`, `--haptics on|off` (default on in the audio scenes),

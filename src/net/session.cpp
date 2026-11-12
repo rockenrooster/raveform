@@ -23,9 +23,9 @@ constexpr i64 kExtrapMaxUs = 100000;
 constexpr u32 kCorrPerPacket = 32;      // 32 x 30 bytes + headers: under 1,000 bytes a packet (the limit is 1,200)
 constexpr double kBar = 384.0, kBeat = 96.0;
 // TECH_SPEC 8.4: at most 250 kbit/s down per client. Everything sent to a client is counted on the wire against
-// 192 kbit/s with 2 KB saved at most; corrections fill what the rest leaves. The margin to 250 is for a reliable
+// 184 kbit/s with 1.5 KB saved at most; corrections fill what the rest leaves. The margin to 250 is for a reliable
 // burst (a wave's spawns) on top of a full second, and for jitter bunching arrivals.
-constexpr float kDownBytesPerS = 24000.0f, kDownBurstBytes = 2000.0f, kDatagramOverhead = 40.0f;
+constexpr float kDownBytesPerS = 23000.0f, kDownBurstBytes = 1500.0f, kDatagramOverhead = 40.0f;
 // The accumulator knows only the host's copies: a client asks (5 Hz, with its pose) for the enemies on its screen
 // that no correction has reached for this long, and the host sends those (and their schools) next.
 constexpr i64 kAttentionEveryUs = 200000;
@@ -134,8 +134,8 @@ void Session::stop() {
 // ---------------------------------------------------------------------------------------------- in
 
 void Session::receive(i64 localUs) {
-    // The frame's clocks. The link itself is serviced once a frame, in send(), after everything is queued: one
-    // datagram a frame carries the acknowledgements and the data together.
+    // The frame's clocks. The link itself is serviced once a frame, in send(), after everything is queued (the
+    // frame's data leaves in one datagram a peer; ENet acknowledges what arrives at once, in its own).
     localNow_ = localUs;
     if (!startUs_) startUs_ = localUs;
     hostNow_ = host() ? localUs : clock_.hostNowUs(localUs);

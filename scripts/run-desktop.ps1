@@ -30,7 +30,7 @@ if ($Screenshot) {
     $shot = [IO.Path]::GetFullPath((Join-Path (Get-Location) $Screenshot))
     New-Item -ItemType Directory -Force (Split-Path -Parent $shot) | Out-Null
     $argv += @('--screenshot', $shot)
-    if ($Frames -le 0) { $Frames = 120 }
+    if ($Frames -le 0 -and $AppArgs -notmatch '--net-capture-bar') { $Frames = 120 }  # M4: that picture waits for its bar
 }
 if ($Frames -gt 0) { $argv += @('--frames', "$Frames") }
 

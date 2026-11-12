@@ -1,5 +1,130 @@
 # RAVEFORM — Progress
 
+## M4 stage A "LAN co-op: the network" — 2026-11-12
+
+Built on `main` (never pushed): `0fb5003` (the network core: transport, sync, replication, co-op simulation,
+loopback soak), `de58136` (co-op in the game, bot clients in the process, silent PC runs) and the closing commit
+(budget, docs). Stage B (lobby, discovery, room codes, the screens) is next.
+
+### What was built
+
+- **`src/net`**, a static library like `src/sim` (no SDL, Vulkan or audio; the game, `raveform_headless` and the
+  tests link it). ENet 1.3.18 (tag `v1.3.18`, commit `2662c0de09e3`, MIT) is fetched by `fetch-deps.ps1` with tag
+  and commit checked and compiled unmodified: a forced include (`enet_remap.h`) routes its socket and clock calls to
+  `wire.cpp`, whose virtual sockets are real UDP or an in-process loopback network, with a network condition
+  simulator under both (delay, jitter, loss, duplication, reordering; PCG32 draws). ENet's memory comes from fixed
+  pools. Ports 47778 (game) and 47777 (beacon, stage B); channel 0 reliable, 1 unreliable, 2 control.
+- **Time and song sync** (`sync.h`): NTP-style pings at 4 Hz (20 Hz until 16 samples); the minimum-RTT sample of
+  the last 16 leads a 1/RTT²-weighted window, averaged over about 20 s; the client's clock follows with at most 1%
+  dilation (a snap only before a run). The host publishes its song anchored to host time (tick, tempo now, the next
+  bar line and the tempo after it) with the 4 Hz heartbeat. In the game the host's song is its band's heard clock;
+  a client ticks at 60 Hz of its host time, each tick at the song's position then, and steers its band toward the
+  host's song: 0.03% of tempo per millisecond off, at most 0.3%, taken on bar lines; more than 60 ms off (the start,
+  a stall) the band holds its next bar line until the host's song reaches one (the re-seek; engine commands
+  `SetRate`, `HoldBar`).
+- **Replication** (`session.cpp`, TECH_SPEC 8.1): poses at 30 Hz (two states; the host relays the others'), player
+  events reliable, hit claims and the host's verdicts with the 300 ms undo of predicted kills, spawn batches at least
+  two beats early, the director's state on change, the heartbeat with the boss's health, a census (count and an
+  order-free digest of the live serials) every 2 s, and enemy corrections by a priority accumulator at 15 Hz a
+  client (at most 32 a packet, under 1,000 bytes), applied as an offset decaying over 150 ms, snapped above 96 wu.
+  Enemy bullets and boss attacks are not sent. Every packet is validated whole before any of it is used.
+- **Co-op simulation** (`world_net.cpp`, the world's co-op branches; solo play unchanged): an enemy picks a player
+  by distance and keeps it (looks again every fourth sixteenth, changes for one 0.7 times as near); Shards local,
+  Boost orbs and Trios once per player; each player's own Chain, the team's score the sum (the HUD shows it); down
+  and revive (a beacon; a teammate two beats in its ring revives it, else the next Break; half the Chain lost; all
+  down ends the run and the host starts the next on a bar line); no friendly fire; pause for everyone on the next
+  beat (P); boss health x(1 + 0.5 per extra player), threat budget x(1 + 0.6 per extra player).
+- **Peers without a screen**: `raveform_headless --net soak|host|join` (commands in CLAUDE.md). The game hosts or
+  joins from the command line (`--host`, `--join <ip>`), the bot or a person playing; `--loopback-bots N` runs N
+  bot clients in the host's process on a worker thread. Teammates, their shots and downed players' beacons are drawn
+  in their seat colours. The overlay's network page (F2, `--net-overlay`): RTT, loss, bandwidth, corrections,
+  position error, clock, song and band offsets, census, the bots' worker time. The bench result gains a `net`
+  object. `--net-capture-bar` and `--net-view-seat` take every peer's picture at one musical moment.
+- **Tests** (`scripts\test.ps1`): 87 net checks (round trips; the packet fuzz: 200,000 random and 200,000 mutated
+  packets, nothing allocated; the wire; clock and song; a short session) and both 10-minute loopback soaks.
+- **PC runs are silent** (the user's rule, 2026-11-12): `--silent` zeroes the output at the device after the
+  limiter (everything still runs and is measured); `run-desktop.ps1` and the review scripts pass it unless `-Sound`.
+
+### Acceptance
+
+| Check | Result | Limit |
+|---|---|---|
+| Loopback soak, clean, 10 simulated min (`test.ps1`, seed 1) | 0 disconnects, 0 stalls; census 900 checks, 0 mismatches; on-screen error 5.57 wu RMS; song offset 1.47 ms RMS, 2.59 max; down 234.9 / up 38.2 kbit/s worst second; largest datagram 1,385 B; 0 overflow, 0 ENet pool fallbacks, 0 heap allocations | < 12 wu, < 10 ms, 250 / 60, ≤ 1,472 B, 0 |
+| Loopback soak, 5% loss + 80 ms jitter, with a pause | 0 / 0; census 894 / 0; 3.55 wu; 1.82 / 4.09 ms; 199.9 / 36.2; 1,391 B; 0 / 0 / 0; the pause held and resumed on the same tick everywhere | as above |
+| Ten seeds each way (final code) | all pass: clean 1.6-5.6 wu RMS, song max 2.6 ms, down ≤ 234.9, up ≤ 40.4; impaired 3.5-5.9 wu, song max ≤ 6.7 ms, down ≤ 232.1, up ≤ 41.5; no census mismatch | as above |
+| Four processes over UDP on 127.0.0.1, 15 min | 0 disconnects, 0 stalls on all four; census 448 checks a client, 0 mismatches; on-screen error 3.53 / 6.59 / 8.46 wu RMS (as each correction lands); true song offset 2.27 / 5.27 / 2.93 ms RMS, max 4.19 / 9.79 / 5.73 ms; down ≤ 222.3, up ≤ 36.7 kbit/s worst second; largest datagram 1,388 B (host); 0 overflow, 0 pool fallbacks, 0 heap allocations on every peer (`captures\m4\udp4_final`; an earlier run with the 192 kbit/s budget: 4.6-6.4 wu, song max 7.9 ms) | as above |
+| Solo unchanged | `test.ps1` passes (determinism for both bots: hashes `a328fe20f6918107`, `b78fc8ac8fa23f01` as before); `--sim crowd` 5 x 30 min careful and 5 x 10 min careless, `--sim soak` and determinism outputs identical to the pre-M4 baseline (timing lines aside) | unchanged |
+| Moto, `bench_play` at minute 10, hosting three in-process loopback bots (`ZY22BXMJG3-bench_play-20261112-114310.json`) | 7,188 frames in 120 s, 0 missed (panel and present calls), worst interval 22.8 ms (P95 17.87; solo 17.71); heap allocations 0 (Swappy's and the other threads' counts as in solo); host tick p50/p95/max 0.36/0.59/8.30 ms (solo 0.28/0.66/1.23) with 653 enemies on average, 1,050 at most (solo 378/600); the bots' worker 1.2/1.9/7.1 ms a frame on its own core; GPU 12.72/13.87/14.31 ms (solo 13.19/13.64/14.09) | ≤ 5% missed, no frame > 50 ms, 0 allocations |
+| Moto hosting, the PC's bot joining by IP over Wi-Fi, 5 min (`...-115632.json`, `captures\m4\wifi\pc_client.txt`) | PC client: 0 disconnects, 0 stalls, census 150 / 0, on-screen error 1.95 wu RMS (as each correction lands), down 180.0 / up 32.4 kbit/s, RTT 22-24 ms; Moto: 17,966 frames, 7 shown one period late (0.04%), worst 33.3 ms, tick 0.17/0.29/0.86 ms | as above |
+
+Numbers are taken on a shared phone. The bench's "cpu (present call returns)" line grades P95 against 16.9 ms and
+says FAIL in both co-op runs (17.87 and 17.70 ms), as it did in the accepted solo run (17.71); the panel grading
+(Swappy's statistics) passes. The co-op Moto run used a downlink budget of 192 kbit/s, the final code 184 (no
+effect on a host whose clients are in its own process). The Wi-Fi host's `net` object shows one disconnect: the
+PC client finished its five minutes 2 s before the phone's window closed.
+
+The song offset across processes peaked at 9.79 ms on one client of the final 15-minute run, close to the 10 ms
+limit (its RMS 5.27 ms; four real-time peers share four cores on the PC); the loopback soaks' peaks are 2.6-6.7 ms.
+
+On-screen error in the soak is measured every 0.3 s against the host's world in the same process; across processes
+it is measured as each correction lands (the drawn position against the host's sample, both carried to the same
+moment: the error at its largest), for enemies on that client's screen. The true song offset across processes is
+measured with one PC clock (`--same-clock`); across the PC and the phone it cannot be (two clocks).
+
+Pictures (`captures\m4\`, with `.small.png`): `coop_host_bar40` and `coop_client_bar40` (each peer's own view and
+the network page at the same tick), `coop_same_place_host` and `coop_same_place_client` (both cameras on the host's
+ship at the same tick: the enemies stand in the same places).
+
+### Decisions taken alone
+
+- Unreliable traffic goes unsequenced: ENet's sequenced channel threw away about 40% of packets under 80 ms jitter.
+  Poses and anchors carry their own time; each correction is checked against the newest applied to that enemy.
+- The accumulator knows only the host's copies, so a client also asks for the enemies on and around its screen
+  (1.5 frames) that no correction has reached for 0.75 s (eight serials, 5 Hz, with its pose); the host sends those
+  next, and a school's members always together. Without it, copies that drifted onto a client's screen (Shoals in a
+  boss fight, a Carom that landed toward another player) went 5 s uncorrected.
+- The downlink budget counts every byte to a client on the wire (ENet's headers, acknowledgements and resends
+  included): 184 kbit/s with 1.5 KB saved; corrections take what the rest leaves. The margin to 250 is a wave's
+  spawn batch and jitter bunching arrivals.
+- Everything a device sends leaves with its pose (30 Hz): one datagram a frame to a peer.
+- Claims leave with the pose, merged per enemy (hits add up, a Nova's kill replaces them) and delta-coded (a byte
+  or two an item); TECH_SPEC 8.1 says "batched per tick". The host's result is the same.
+- ENet's resend timeout is capped at one round-trip timeout (no doubling): at 5% loss each way four losses in a row
+  stalled the reliable stream for 3.5-6 s (spawns arriving after their enemies should have landed).
+- In co-op the gathering ticks of a school's flocking follow the run's tick count (the same on every device), not
+  the world's.
+- A client's simulation ticks on the host's song (its clock estimate), not on its band; its band is steered to the
+  song. Co-op shots fire on the simulation's own grid, not the band's heard lead steps.
+- Remote players' shots, Riffs and Novas are cosmetic on other devices (a remote Nova clears enemy bullets there);
+  every death drops Shards only for the players within two frames of it; each owner's device opens its Trio and
+  takes its Boost orb.
+- When every player is down, the host starts the next run on a bar line by itself (no lobby in stage A).
+- A pause takes hold on a beat at least 120 ms ahead; the run starts on a bar line at least a bar away, 3 s after
+  the last seat joined.
+- The condition simulator draws from PCG32 (xorshift32's correlated draws made loss bursts that disconnected peers).
+- Teammates in their seat colours (`palettes.player[seat]`), the local ship in its own; beacons as a ring that fills
+  as a teammate revives.
+
+### Numbers chosen
+
+`src/sim/tuning.h`: `kCoopAliveCapPerPlayer` 150 (600 to 1,050 with four), `kTargetRethinkSteps` 4,
+`kTargetStick` 0.7, `kCoopShardReachW/H` 1,600 / 720 wu, `kReviveRingWu` 90 (quoted: budget 0.6, boss health 0.5,
+revive 2 beats, undo 0.30 s, offset 0.150 s, snap 96 wu). `src/net/session.cpp`: downlink 23,000 B/s, 1,500 B saved;
+32 corrections a packet at 15 Hz; poses 30 Hz; heartbeat 4 Hz; census 2 s; remote players drawn 66 ms behind;
+priority weights 0.6 base, 8 within 1,100 x 520 wu of the client's ship, 2 within 1,700 x 800, x0.05 warping, +4 for
+2 s after landing, x(1 + speed / 300); attention 5 Hz, 0.75 s, 1.5 frames, 8 serials; start lead 3 s.
+`src/game/play_net.cpp`: band rate 0.03%/ms up to 0.3%, re-seek beyond 60 ms. `src/net/link.cpp`: resend timeout
+at most RTT + 4 x variance (50 ms floor).
+
+### Not done or not verified
+
+- The band following the host's song was checked on the desktop (two processes: one re-seek at the start, then
+  within 0.4 ms of the host's song), not on a phone client, and nobody has listened to two devices together.
+- The OnePlus 12R and the tablet are not attached (`adb devices` lists the Moto only).
+- Under 5% loss and 80 ms jitter 12-16% of a client's predicted kills are undone (their verdict came after 300 ms);
+  an enemy then reappears until the host's verdict lands.
+- Stage B: the lobby and its screens, beacons on 47777, room codes, the MulticastLock, "music from host only".
+
 ## M3 closed — the lead's ruling, 2026-11-12
 
 M3 (stages A, B, C and C2) is accepted on the Moto and the desktop. PLAN §7 exit: the solo loop is
