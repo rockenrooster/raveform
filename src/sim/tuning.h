@@ -112,32 +112,64 @@ constexpr float kTrackBpm[3] = {120.0f, 126.0f, 132.0f};                   // GA
 constexpr float kTrioRingWu = 170.0f;
 constexpr float kTrioOrbWu = 38.0f;
 constexpr float kTrioRiffScale = 1.14f;
-constexpr float kTrioTouchWu = 6.0f;          // taken when the ship's hit circle is this far inside the orb
+constexpr float kTrioTouchWu = 6.0f;          // (M3: taken on touch; play test 1 holds instead, below)
 constexpr float kTrioHomeSpeed = 900.0f;      // wu/s: the orb that flies to the ship when the clock ends
+// Play test 1 (GAME_DESIGN 6.1, screens.md "The Trio", 2026-11-12: a choice is never an accident): nothing can be
+// taken for the Break's first two beats; then an orb is taken by staying inside its thin ring (1.42 x the icon,
+// quoted) for two beats; leaving empties it at once.
+constexpr double kTrioLockBeats = 2.0;
+constexpr double kTrioHoldBeats = 2.0;
+constexpr float kTrioHoldRing = 1.42f;
 constexpr float kTrioWeightMod = 1.0f;        // draw weights: an uncapped Mod,
 constexpr float kTrioWeightNewRiff = 1.2f;    // a Riff not yet owned,
 constexpr float kTrioWeightRiffLevel = 1.0f;  // a level for an owned Riff
 
 // ---- Mods (GAME_DESIGN 6.2 gives each effect per stack; how wide, how far is chosen) ----
+// Play test 1 (2026-11-12) raised them: Split +2 lanes, Pierce +2, Ricochet +2 (and on to the nearest other enemy
+// within 300 wu), Overcharge +50%, Magnet +100% of the base radius, On-Beat Crit x3 / x5 / x8 with a burst over 80
+// wu (all quoted; sim/upgrades.h has the per-stack numbers).
 constexpr float kSplitFanDeg = 5.0f;          // Split: lanes 5 degrees apart, centred on the aim
-constexpr float kOverchargePerStack = 0.25f;  // GAME_DESIGN 6.2 (quoted): +25% damage
+constexpr float kOverchargePerStack = 0.50f;  // GAME_DESIGN 6.2 (quoted): +50% damage
 constexpr float kOverchargeRadius = 0.15f;    // and +15% shot radius per stack (look only)
-constexpr float kMagnetPerStack = 0.40f;      // GAME_DESIGN 6.2 (quoted): +40% Shard pull radius
-constexpr u32 kMaxShotsPerStep = 15;          // Split x Prism never spawns more than this per step
+constexpr float kMagnetPerStack = 1.00f;      // GAME_DESIGN 6.2 (quoted): +100% of the base pull radius
+constexpr float kRicochetSeekWu = 300.0f;     // GAME_DESIGN 6.2 (quoted): a hit bounces on to the nearest enemy this near
+constexpr float kCritBurstWu = 80.0f;         // GAME_DESIGN 6.2 (quoted): a beat shot's hit bursts this wide ...
+constexpr float kCritBurstShare = 0.5f;       // ... dealing this share of the shot's damage to the others in it (chosen)
+// The shot pool (TECH_SPEC 7.1: 1,024 a player) with Split 7 x Prism 5, Double-Time, Hyper and the endless tempo
+// on top: above kShotsSoftCap live shots of a player, every pair of Split lanes beyond the middle one fires on every
+// second step (the pairs take turns) and Prism's mini-refractions stop; above kShotsMiddleOnly the middle lane alone
+// fires; a player never has more than kShotsHardCap (a guard the rules above keep from being reached).
+constexpr u32 kShotsSoftCap = 576;
+constexpr u32 kShotsMiddleOnly = 800;
+constexpr u32 kShotsHardCap = 1000;
+constexpr u32 kMaxShotsPerStep = 35;          // Split 7 x Prism 5
+// The Shard pool (2,048): above this many out at once a loose Shard lasts one bar instead of GAME_DESIGN 5's four.
+constexpr u32 kShardsCrowded = 1536;
+constexpr double kShardCrowdedBars = 1.0;
 
 // ---- Riffs (GAME_DESIGN 6.3) ----
+// Play test 1: Orbitals 3, 5, 7, 9, 11 shards that also destroy the enemy bullets they touch; Pulse Ring on every
+// beat from level 1 at twice the damage, then a second ring, wider, heavier, and every eighth at level 5; Sentinel a
+// burst of 3, then 4, a second drone, 5, a third drone (quoted; sim/upgrades.h).
 constexpr float kOrbitalRadiusWu = 64.0f;     // Orbitals: circle around the ship, one turn per bar (quoted)
 constexpr float kOrbitalHitWu = 10.0f;
 constexpr float kOrbitalDamage = 1.0f;        // per eighth note an enemy stays in contact
 constexpr float kPulseRadiusWu = 230.0f;      // Pulse Ring: expands to this ...
-constexpr float kPulseRadiusL4 = 290.0f;      // ... (level 4 and up)
+constexpr float kPulseRadiusWide = 290.0f;    // ... (level 3 and up)
 constexpr float kPulseGrowS = 0.25f;          // ... in this long
-constexpr float kPulseDamage = 2.0f;          // per enemy the front passes (level 5: x1.5)
-constexpr float kPulseSecondRingS = 0.10f;    // level 3: a second ring this much later (screens.md example)
+constexpr float kPulseDamage = 4.0f;          // per enemy the front passes: twice M3's 2.0 (quoted), level 4 and up x1.5
+constexpr float kPulseSecondRingS = 0.10f;    // level 2: a second ring this much later (screens.md example)
 constexpr float kSentinelRangeWu = 700.0f;    // Sentinel: shoots the nearest enemy within this
-constexpr float kSentinelOffsetX = -34.0f, kSentinelOffsetY = -30.0f;  // its station beside the ship
+constexpr float kSentinelOffsetX = -34.0f, kSentinelOffsetY = -30.0f;  // the first drone's station beside the ship
+// The second and third drones' stations (mirrored, and behind the ship).
+constexpr float kSentinel2X = 34.0f, kSentinel2Y = -30.0f, kSentinel3X = 0.0f, kSentinel3Y = 42.0f;
 constexpr float kSentinelFollowTau = 0.12f;   // s
 constexpr float kSentinelSpreadDeg = 4.0f;    // a burst fans this far apart
+
+// ---- Difficulty levers (play test 1, GAME_DESIGN 8 "How hard": the threat budget and the bosses' bullet density,
+// neither below 0.7 of the first slice's). 1.0 = the first slice's numbers.
+constexpr float kThreatBudgetScale = 0.7f;
+constexpr float kBossBulletScale = 0.7f;
 
 // ---- Boosts (GAME_DESIGN 6.4) ----
 constexpr float kBoostPickupWu = 26.0f;

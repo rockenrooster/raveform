@@ -141,6 +141,18 @@ public:
     void setBoss(u8 pairs, bool sixteenths, u8 beats, u8 flags);
     void setLoadout(const u8 mods[5], const u8 riffs[3], bool prism, bool hyper);
     void setGains(float music, float effects);
+    // Play test 1 / M4: a note of a player's lead on the Track's root (degree 0 root, 1 fifth, 2 octave, 3 an octave
+    // down, 4 two octaves up), now or on `tick` (song ticks, >= 0); timbre 0xFF: the player's own.
+    void leadNote(u8 player, u8 degree, float gain, float pan, double tick = -1.0, u8 timbre = 0xFF);
+    // M4 co-op (GAME_DESIGN 10): the players in this device's mix. Slot 0 is this device's player (setFireMode and
+    // setLoadout speak for it); the others are its teammates, quieter by distance, each in its fixed timbre.
+    void setPlayers(u8 count);
+    void setPlayerTimbre(u8 slot, u8 timbre);
+    void setPlayerFire(u8 slot, u8 mode);
+    void setPlayerDistance(u8 slot, float wu);
+    void setPlayerLoadout(u8 slot, const u8 mods[5], const u8 riffs[3], bool prism, bool hyper);
+    void setBeacon(u8 slot, bool on, float pan);  // look.md 6: a downed player's beacon
+    void setHostOnly(bool on);                    // the SOUND setting "music from host only" (a co-op client)
     // M3 stage C (screens.md pause): the music behind a low-pass of about 600 Hz, ramped over 150 ms.
     void setMuffle(bool on);
     // The master bus, for pictures of the music (title waveform, sound cards): the latest n values, one

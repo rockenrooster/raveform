@@ -49,6 +49,12 @@ constexpr float kKillPanSmall = 0.6f, kKillPanMedium = 0.5f, kShardPan = 0.3f;
 constexpr double kShardRunGapS = 0.5;  // a pause this long starts a new Shard run (engine choice)
 constexpr float kMetronomeBpm = 120.0f;  // design/screens.md sync calibration
 constexpr float kClickGain = 0.5f;
+// Play test 1 / M4 (engine choices): a LeadNote's velocity; the beacon (look.md 6: 12 dB under the leads, an eighth
+// tremolo, alternating these velocities); the bed's ramp per block under "music from host only".
+constexpr float kLeadNoteVel = 0.9f;
+constexpr float kBeaconGain = 0.2512f;  // -12 dB
+constexpr float kBeaconVelOn = 0.85f, kBeaconVelOff = 0.5f;
+constexpr float kBedRampPerBlock = 0.05f;
 // Output stage: a soft knee that leaves the music bed (peaks near -5 dBFS) untouched and keeps
 // music plus effects below -1 dBFS true peak (the ceiling leaves room for inter-sample overshoot).
 constexpr float kLimitKnee = 0.66f, kLimitCeiling = 0.8f;
@@ -154,6 +160,9 @@ struct Engine::Pending {
     BeatKind kind = BeatKind::Sfx;
     i32 midi = -1;
     float gain = 0.0f, pan = 0.0f, rate = 1.0f;
+    i8 lead = -1;      // play test 1 (LeadNote): a lead note of this player's ...
+    Timbre timbre = Timbre::P1Saw;
+    float note = 0.0f; // ... at this pitch (MIDI)
 };
 
 struct Engine::Player {
@@ -163,6 +172,8 @@ struct Engine::Player {
     u8 split = 0, doubleTime = 0, pierce = 0, overcharge = 0, crit = 0;
     bool prism = false, hyper = false;
     float distance = 0.0f;
+    bool beacon = false;  // M4: down, its beacon sounding (look.md 6)
+    float beaconPan = 0.0f;
 };
 
 struct Engine::BarPlan {
@@ -490,6 +501,35 @@ void Engine::applyCommand(const Command& c) {
             playLead(0, t, c.b, c.x, c.level, c.y, frame_);
             break;
         }
+        case CmdType::LeadNote: {
+            // Play test 1 (the Trio's chime and its hold) and M4 (the revive's fill): a note of a player's lead on the
+            // Track's root, now or on a tick.
+            const u8 slot = c.a < kMaxPlayers ? c.a : 0;
+            const Timbre tb = c.c < static_cast<u8>(Timbre::Count) ? static_cast<Timbre>(c.c) : players_[slot].timbre;
+            const float note = leadNoteMidi(c.b);
+            const float gain = sp_->mix.lead * c.x;
+            if (c.when == Timing::AtTick && pendingCount_ < kPendingMax) {
+                Pending& q = pending_[pendingCount_++];
+                q = Pending{};
+                q.frame = frameOf(c.tick);
+                q.tick = c.tick;
+                q.lead = static_cast<i8>(slot);
+                q.timbre = tb;
+                q.note = note;
+                q.gain = gain;
+                q.pan = c.y;
+            } else {
+                playLead(slot, tb, note, kLeadNoteVel, gain, c.y, frame_);
+            }
+            break;
+        }
+        case CmdType::SetBeacon:
+            if (p) {
+                p->beacon = c.b != 0;
+                p->beaconPan = c.y;
+            }
+            break;
+        case CmdType::SetHostOnly: hostOnly_ = c.a != 0; break;
         case CmdType::Drum: {
             const DrumKit& kit = bank_->kit(track_, variant_);
             const Pat pat = static_cast<Pat>(c.a);
@@ -1464,6 +1504,17 @@ void Engine::conductorStep(i64 tick, i64 inBar) {
     (void)r;
 }
 
+float Engine::leadNoteMidi(u8 degree) const {
+    // The Track's root in the lead's register: the tonic at or below the bar's first arpeggio note.
+    const Track& t = *tr_;
+    const Chord& ch = plan_ && plan_->chord ? *plan_->chord : t.chordAtBar(0);
+    const i32 tonic = t.chords[t.progression[0]].bass % 12;
+    const i32 top = ch.arp[0];
+    const i32 root = top - (((top - tonic) % 12) + 12) % 12;
+    static constexpr i32 kDegree[5] = {0, 7, 12, -12, 24};
+    return static_cast<float>(root + kDegree[degree < 5 ? degree : 0]);
+}
+
 void Engine::leadStep(i64 tick, i64 inBar) {
     const BarPlan& p = *plan_;
     const ConductorRules& r = music_->conductor;
@@ -1472,7 +1523,17 @@ void Engine::leadStep(i64 tick, i64 inBar) {
     const double tk = static_cast<double>(tick);
     for (u32 i = 0; i < playerCount_; ++i) {
         const Player& pl = players_[i];
+        // M4 co-op, "music from host only": the other players' leads are their own phones'.
+        if (hostOnly_ && i != localPlayer_) continue;
         const float level = i == localPlayer_ ? 1.0f : (pl.distance > r.othersFarWu ? r.othersFarLevel : r.othersLevel);
+        // M4 (look.md 6): a downed player's beacon is its lead holding the Track's root an octave down, an eighth-note
+        // tremolo 12 dB under the leads, panned by where it is.
+        if (pl.beacon && inBar % (kPpq / 2) == 0) {
+            const i64 f = frameOf(tk);
+            const bool onBeat = inBar % kPpq == 0;
+            playLead(static_cast<u8>(i), pl.timbre, leadNoteMidi(3), onBeat ? kBeaconVelOn : kBeaconVelOff, s.mix.lead * level * kBeaconGain,
+                     pl.beaconPan, f, 0.5f);
+        }
         const u32 grid = p.leadGrid[i] ? p.leadGrid[i] : r.gridTicks[0];
         if (pl.fire) {
             if (inBar % grid != 0 || (p.leadStopsHalf && inBar >= kTicksPerBar / 2)) continue;
@@ -1561,7 +1622,9 @@ void Engine::firePending(i64 frameEnd) {
             continue;
         }
         const i64 f = q.frame < frame_ ? frame_ : q.frame;
-        if (q.sample >= 0) {
+        if (q.lead >= 0) {
+            playLead(static_cast<u8>(q.lead), q.timbre, q.note, kLeadNoteVel, q.gain, q.pan, f);
+        } else if (q.sample >= 0) {
             playSample(q.sample, q.bus, f, q.gain, q.pan, q.rate);
             emit(q.kind, f, q.tick, 0, 0, 0, q.gain);
         } else if (q.sfx != Sfx::Count) {
@@ -2049,6 +2112,22 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         }
     }
     mark(EngineProfile::Delay);
+    // M4 co-op, "music from host only": the bed (every music bus but the lead) ramps to silence on this device.
+    {
+        const float target = hostOnly_ ? 0.0f : 1.0f;
+        if (bedGain_ != target || target < 1.0f) {
+            const float from = bedGain_;
+            bedGain_ = target > from ? std::fmin(target, from + kBedRampPerBlock) : std::fmax(target, from - kBedRampPerBlock);
+            const float step = (bedGain_ - from) / static_cast<float>(n);
+            for (u32 b = 0; b < kBusCount; ++b) {
+                if (b == static_cast<u32>(Bus::Lead) || b == static_cast<u32>(Bus::Sfx)) continue;
+                for (u32 ch = 0; ch < 2; ++ch) {
+                    float* x = bus_[b][ch];
+                    for (u32 i = 0; i < n; ++i) x[i] *= from + step * static_cast<float>(i + 1);
+                }
+            }
+        }
+    }
     // Sends -> reverb. The effects' send (sfxproto: reverb(sfx x 0.18), mixed after the music) joins the
     // music's sends, divided by the master's present gain (section gain x drive x output gain, the
     // soft clip is near linear at reverb levels), so one reverb serves both at the prototype's level.

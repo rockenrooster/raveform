@@ -575,6 +575,21 @@ void World::directorBar(double barTick, u32 bar) {
                 }
                 break;
             case Section::Break:
+                // Play test 1 (GAME_DESIGN 5): every Break gives back one Shield cell and one Nova (up to the caps).
+                for (u32 p = 0; p < playerCount_; ++p) {
+                    PlayerState& pl = players_[p];
+                    if (!pl.present || !pl.alive) continue;
+                    if (pl.cells < pl.cellCap) ++pl.cells;
+                    if (pl.novas < pl.novaCap) ++pl.novas;
+                    Event ev;
+                    ev.type = EventType::Refill;
+                    ev.a = static_cast<u8>(p);
+                    ev.b = pl.cells;
+                    ev.c = pl.novas;
+                    ev.x = pl.pos.x;
+                    ev.y = pl.pos.y;
+                    emit(ev);
+                }
                 if (anyAlive && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios)) {
                     // The Trio (GAME_DESIGN 6.1); after a boss, its bonus Trio first, each with half the Break.
                     // Co-op: each device opens its own players' Trios (loot is instanced; the others hear of it).
@@ -604,7 +619,8 @@ void World::directorBar(double barTick, u32 bar) {
     // The threats: the budget by Track, cycle and section (none during the boss's Drop: kaleidos.md); co-op x
     // (1 + 0.6 x (players - 1)) (GAME_DESIGN 8).
     const float base = baseBudget(species_->budget, species_->budgetCycles, ph.track, ph.cycle ? ph.cycle : 1u);
-    d.budgetPerBar = ph.bossDrop ? 0.0f : base * sectionScale(ph) * d.assist * coopBudgetScale();
+    // Play test 1: the threat budget's lever (tuning::kThreatBudgetScale, 1 = the first slice's numbers).
+    d.budgetPerBar = ph.bossDrop ? 0.0f : base * sectionScale(ph) * d.assist * coopBudgetScale() * kThreatBudgetScale;
     if (d.budgetPerBar <= 0.0f) return;
     d.bank = std::fmin(d.bank + d.budgetPerBar, d.budgetPerBar * kBankBars);
     spendBudget(land);

@@ -591,6 +591,50 @@ void Band::setLoadout(const u8 mods[5], const u8 riffs[3], bool prism, bool hype
     localHyper_ = hyper;
 }
 
+// ---------------------------------------------------------------- play test 1, M4 co-op
+
+void Band::leadNote(u8 player, u8 degree, float gain, float pan, double tick, u8 timbre) {
+    Command c{.type = CmdType::LeadNote, .a = player, .b = degree, .c = timbre, .x = gain, .y = pan};
+    if (tick >= 0.0) {
+        c.when = Timing::AtTick;
+        c.tick = tick;
+    }
+    post(c);
+}
+
+void Band::setPlayers(u8 count) { post({.type = CmdType::SetPlayers, .a = count, .b = 0}); }
+
+void Band::setPlayerTimbre(u8 slot, u8 timbre) { post({.type = CmdType::SetTimbre, .a = slot, .b = timbre}); }
+
+void Band::setPlayerFire(u8 slot, u8 mode) {
+    if (slot == 0) {
+        setFireMode(mode);
+        return;
+    }
+    post({.type = CmdType::SetFire, .a = slot, .b = mode});
+}
+
+void Band::setPlayerDistance(u8 slot, float wu) { post({.type = CmdType::SetDistance, .a = slot, .x = wu}); }
+
+void Band::setPlayerLoadout(u8 slot, const u8 mods[5], const u8 riffs[3], bool prism, bool hyper) {
+    if (slot == 0) {
+        setLoadout(mods, riffs, prism, hyper);
+        return;
+    }
+    Command c{.type = CmdType::SetMods, .a = slot};
+    for (u32 k = 0; k < 5; ++k) c.mods[k] = mods[k];
+    post(c);
+    for (u32 r = 0; r < static_cast<u32>(Riff::Count); ++r) post({.type = CmdType::SetRiff, .a = slot, .b = static_cast<u8>(r), .c = riffs[r]});
+    post({.type = CmdType::SetBoost, .a = slot, .b = 0, .c = static_cast<u8>(prism ? 1 : 0)});
+    post({.type = CmdType::SetBoost, .a = slot, .b = 1, .c = static_cast<u8>(hyper ? 1 : 0)});
+}
+
+void Band::setBeacon(u8 slot, bool on, float pan) {
+    post({.type = CmdType::SetBeacon, .a = slot, .b = static_cast<u8>(on ? 1 : 0), .y = pan});
+}
+
+void Band::setHostOnly(bool on) { post({.type = CmdType::SetHostOnly, .a = static_cast<u8>(on ? 1 : 0)}); }
+
 u32 Band::scope(float* out, u32 n) const {
     const u32 head = scopeHead_.load(std::memory_order_acquire);
     if (n > kScope) n = kScope;

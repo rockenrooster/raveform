@@ -420,6 +420,12 @@ void Play::afterTick() {
             case EventType::Dash:
                 if (bandDrives_) band_->playSfx(e.b ? audio::Sfx::PerfectDash : audio::Sfx::Dash);
                 break;
+            case EventType::TrioUnlock:
+                // Play test 1 (screens.md): the orbs light on the Break's third beat with a chime (a bell two octaves
+                // over the Track's root, on that beat).
+                if (bandDrives_ && e.a == seat_)
+                    band_->leadNote(0, 4, 0.55f, 0.0f, e.tick + (coop() ? netBandOffset_ : clock_.offset()), static_cast<u8>(audio::Timbre::P3Bell));
+                break;
             case EventType::TrioTake:
                 RF_LOG("play: Trio: took %s (now %u) at bar %u", upgradeInfo(e.b).name, e.c, w.phrase().bar);
                 if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 2, e.b};
@@ -454,6 +460,19 @@ void Play::afterTick() {
                 break;
             default: break;
         }
+    }
+    // Play test 1 (screens.md, the Trio): holding an orb plays two rising notes of the player's lead, the root as the
+    // fill starts and the fifth a beat later; leaving silences it (a new hold starts again from the root).
+    {
+        const TrioState& tr = w.trio(seat_);
+        const i8 orb = tr.open ? tr.holdOrb : static_cast<i8>(-1);
+        if (orb != holdOrbSeen_) {
+            holdOrbSeen_ = orb;
+            holdStage_ = 0;
+        }
+        const u8 stage = orb < 0 ? 0 : (tr.holdTicks >= kTicksPerBeat ? 2 : (tr.holdTicks > 0.0 ? 1 : 0));
+        if (bandDrives_ && stage > holdStage_) band_->leadNote(0, stage == 1 ? 0 : 1, 0.8f, 0.0f);
+        holdStage_ = stage;
     }
 }
 

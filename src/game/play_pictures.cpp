@@ -63,8 +63,9 @@ bool Play::scriptSetupB() {
         return true;
     }
     if (starts(p, "trio")) return true;
-    if (is(p, "boost_prism")) {
-        // M3 stage C: the fan in open air, toward a few targets far to the right.
+    if (is(p, "boost_prism") || is(p, "split7")) {
+        // M3 stage C: the fan in open air, toward a few targets far to the right (play test 1: Split's seven lanes too).
+        if (is(p, "split7")) for (u32 k = 0; k < 3; ++k) w.grantUpgrade(0, kSplit);
         for (u32 k = 0; k < 5; ++k) {
             const Vec2 at{900.0f + 60.0f * static_cast<float>(k), -240.0f + 120.0f * static_cast<float>(k)};
             const i32 i = w.spawnEnemy(SpeciesTable::index(Family::Drifter, 2, kVariantA), at, kPi, 0.0);
@@ -139,38 +140,50 @@ bool Play::scriptInputB(StickInput& in) {
     }
     if (starts(p, "trio")) {
         const u8 forced[3] = {kSplit, kMagnet, kOrbitals};
-        if (t == 20) w.openTrioNow(0, music + 4.0 * kTicksPerBar, forced);
+        // Play test 1: the Trio opens after the run's Track card has gone (2.25 bars), so the card does not cover it.
+        constexpr u32 kOpen = 300;
+        if (t == kOpen) w.openTrioNow(0, music + 4.0 * kTicksPerBar, forced);
         const TrioState& tr = w.trio(0);
         if (is(p, "trio")) {
-            if (t == 80 && captureFrom_ < 0) captureFrom_ = now;
+            if (t == kOpen + 80 && captureFrom_ < 0) captureFrom_ = now;  // lit (the third beat), the ship off the orbs
+        } else if (is(p, "trio_locked")) {
+            if (t == kOpen + 52 && captureFrom_ < 0) captureFrom_ = now;  // play test 1: under two beats in, the orbs still outlines
         } else if (tr.open) {
             const Vec2 orb = tr.orbPos[2];
             const Vec2 d = orb - ship;
             const float dist = length(d);
             const float stop = is(p, "trio_answer") ? 92.0f : 0.0f;
-            if (t > 40 && dist > stop + 6.0f) in.move = d * (0.55f / std::fmax(dist, 1.0f));
-            if (is(p, "trio_answer") && t > 40 && dist <= stop + 8.0f && captureFrom_ < 0) captureFrom_ = now + 6;
+            if (t > kOpen + 20 && dist > stop + 6.0f) in.move = d * (0.55f / std::fmax(dist, 1.0f));
+            // (Play test 1: an orb answers once the Trio is lit, after its two locked beats.)
+            if (is(p, "trio_answer") && t > kOpen + 20 && dist <= stop + 8.0f && music > tr.openTick + (tuning::kTrioLockBeats + 0.25) * kTicksPerBeat &&
+                captureFrom_ < 0)
+                captureFrom_ = now + 6;
+            // Play test 1: the hold half filled.
+            if (is(p, "trio_hold") && tr.holdOrb >= 0 && tr.holdTicks >= 0.5 * tuning::kTrioHoldBeats * kTicksPerBeat && captureFrom_ < 0)
+                captureFrom_ = now;
         }
         return true;
     }
-    if (starts(p, "riff_") || starts(p, "boost_")) {
+    if (starts(p, "riff_") || starts(p, "boost_") || is(p, "split7")) {
         const Enemies& e = w.enemies();
         if (t == 30 && is(p, "boost_prism")) w.grantBoost(0, kPrism);
         if (t == 30 && is(p, "boost_hyper")) w.grantBoost(0, kHyper);
         if (t == 30 && is(p, "boost_halo")) w.grantBoost(0, kHalo);
         if (t == 60 && is(p, "boost_magnet_storm")) w.grantBoost(0, kMagnetStorm);
-        const bool fires = is(p, "boost_prism") || is(p, "boost_hyper");
+        const bool fires = is(p, "boost_prism") || is(p, "boost_hyper") || is(p, "split7");
         if (fires && t >= 40 && e.count) {
             in.aim = Vec2{e.x[0], e.y[0]} - ship;
             in.aimActive = true;
         }
-        if (is(p, "boost_prism")) {
+        if (is(p, "boost_prism") || is(p, "split7")) {
             // M3 stage C: while the fan fires, after the run's Track card has gone (2.25 bars): once the shots in
-            // the air make a fan, or at the latest at 6 s.
-            if (captureFrom_ < 0 && t >= 290 && (w.shots().count >= 14 || t >= 360)) captureFrom_ = now;
+            // the air make a fan, or at the latest at 6 s (play test 1, Split: seven lanes in the air).
+            const u32 enough = is(p, "split7") ? 30u : 14u;
+            if (captureFrom_ < 0 && t >= 290 && (w.shots().count >= enough || t >= 360)) captureFrom_ = now;
             return true;
         }
-        const u32 at = is(p, "boost_magnet_storm") ? 72u : (is(p, "riff_pulse") ? 96u : 110u);
+        // (Play test 1: Orbitals after the run's Track card, so the card does not cover the shards.)
+        const u32 at = is(p, "boost_magnet_storm") ? 72u : (is(p, "riff_pulse") ? 96u : (is(p, "riff_orbitals") ? 330u : 110u));
         if (is(p, "riff_sentinel")) {
             // Just after an off-beat, while the burst is in the air.
             const double inBeat = std::fmod(music, kTicksPerBeat);
@@ -259,7 +272,8 @@ bool Play::scriptEventsB() {
     const World& w = *world_;
     const i64 now = static_cast<i64>(frameNo_);
     if (captureFrom_ >= 0) return starts(p, "screen_") || starts(p, "hud_") || starts(p, "bot_") || starts(p, "trio") ||
-                                   starts(p, "riff_") || starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change");
+                                   starts(p, "riff_") || starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") ||
+                                   is(p, "split7");
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         if (is(p, "trio_take") && e.type == EventType::TrioTake) captureFrom_ = now;
@@ -271,7 +285,7 @@ bool Play::scriptEventsB() {
         }
     }
     return starts(p, "screen_") || starts(p, "hud_") || starts(p, "bot_") || starts(p, "trio") || starts(p, "riff_") ||
-           starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change");
+           starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") || is(p, "split7");
 }
 
 }  // namespace rf

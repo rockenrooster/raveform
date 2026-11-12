@@ -3,7 +3,8 @@
 # (*_sheet.png: eight frames at half size, two rows of four). The scripted moments are in
 # src/game/play_pictures.cpp:
 #   screens: screen_notice, screen_title, screen_settings_sound / _controls / _look, screen_pause (mid
-#   count-in), screen_game_over; the Trio: trio, trio_answer, trio_take (strip); the HUD: hud_groove,
+#   count-in), screen_game_over; the Trio: trio, trio_answer, trio_take (strip), and since play test 1 trio_locked,
+#   trio_hold (half filled) and split7 (Split at seven lanes); the HUD: hud_groove,
 #   hud_build, hud_drop (Surge), hud_break; riff_orbitals, riff_pulse, riff_sentinel; boost_prism,
 #   boost_hyper, boost_halo, boost_magnet_storm; edge; Kaleidos: boss_bloom, boss_refraction, boss_spiral,
 #   boss_naked, boss_beam_tell, boss_beam, boss_iris, boss_pair_death (strip), boss_death (strip);
@@ -39,7 +40,7 @@ $sheet = 'import sys; from PIL import Image; fs=[Image.open(p).convert("RGB") fo
          's=Image.new("RGB",(4*w,2*h)); [s.paste(f.resize((w,h),Image.LANCZOS),((i%4)*w,(i//4)*h)) for i,f in enumerate(fs)]; s.save(sys.argv[1])'
 
 $singles = @('screen_notice', 'screen_title', 'screen_settings_sound', 'screen_settings_controls', 'screen_settings_look', 'screen_pause',
-             'screen_game_over', 'trio', 'trio_answer', 'hud_groove', 'hud_build', 'hud_drop', 'hud_break', 'riff_orbitals', 'riff_pulse',
+             'screen_game_over', 'trio', 'trio_answer', 'trio_locked', 'trio_hold', 'split7', 'hud_groove', 'hud_build', 'hud_drop', 'hud_break', 'riff_orbitals', 'riff_pulse',
              'riff_sentinel', 'boost_prism', 'boost_hyper', 'boost_halo', 'boost_magnet_storm', 'edge', 'boss_bloom', 'boss_refraction',
              'boss_spiral', 'boss_naked', 'boss_beam_tell', 'boss_beam', 'boss_iris', 'track_change', 'bot_3', 'bot_6', 'bot_10', 'bot_15', 'bot_3_nohits', 'bot_6_nohits', 'bot_10_nohits', 'bot_15_nohits')
 $strips = @('trio_take', 'boss_pair_death', 'boss_death')

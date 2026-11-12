@@ -20,8 +20,10 @@ constexpr float kRefPxPerWu = 1.5f;       // look.md: 1 wu = 1.5 reference px at
 constexpr float kStandardEnemyWu = 14.0f;  // look.md §4: glyph sizes are relative to a 14 wu enemy
 
 // Numbers chosen for the view (docs/PROGRESS.md M3, "numbers chosen"): the look bible gives none.
-constexpr float kLookAheadS = 0.25f;      // the camera leads the ship by its velocity x this (scenes.md §2's 0.25 s)
-constexpr float kAimBiasWu = 60.0f;       // ... and leans this far along the aim while firing
+// GAME_DESIGN 9 (play test 1, 2026-11-12): half the first build's lead, which swung the view too far on every change
+// of direction (0.25 s, 60 wu). The ease times stay.
+constexpr float kLookAheadS = 0.125f;     // the camera leads the ship by its velocity x this (65 wu at full speed)
+constexpr float kAimBiasWu = 30.0f;       // ... and leans this far along the aim while firing
 constexpr float kLookAheadTau = 0.25f;    // s: the lead eases in and out
 constexpr float kZoomCalm = 1.0f, kZoomBusy = 0.85f;  // GAME_DESIGN 9: breathes between 0.85x and 1.25x
 constexpr float kZoomLoadLo = 60.0f, kZoomLoadHi = 300.0f, kZoomTau = 2.0f;

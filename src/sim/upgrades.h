@@ -35,6 +35,26 @@ const UpgradeInfo& upgradeInfo(u8 u);
 // The effect words for taking `u` to `level` (stacks or Riff level after the pick): two to four words.
 const char* upgradeWords(u8 u, u32 level);
 
+// What each stack or level gives (GAME_DESIGN 6.2, 6.3 as raised after play test 1, 2026-11-12: every pick is felt
+// at once). The world, the view and the effect words read these.
+inline u32 splitLanes(u32 stacks) { return 1u + 2u * stacks; }        // 1, 3, 5, 7 lanes
+inline u32 pierceCount(u32 stacks) { return 2u * stacks; }            // enemies a shot passes through
+inline u32 ricochetBounces(u32 stacks) { return 2u * stacks; }        // off walls, and on to the nearest other enemy
+inline float onBeatCritMultiplier(u32 stacks) {                      // x3, x5, x8 on the beat
+    constexpr float k[4] = {1.0f, 3.0f, 5.0f, 8.0f};
+    return k[stacks < 3 ? stacks : 3];
+}
+inline u32 orbitalCount(u32 level) { return level ? 1u + 2u * level : 0u; }  // 3, 5, 7, 9, 11 shards
+inline u32 sentinelBurst(u32 level) {                                // shots a drone fires on each off-beat
+    constexpr u32 k[6] = {0, 3, 4, 4, 5, 5};
+    return k[level < 5 ? level : 5];
+}
+inline u32 sentinelDrones(u32 level) {                               // a second drone at level 3, a third at 5
+    constexpr u32 k[6] = {0, 1, 1, 2, 2, 3};
+    return k[level < 5 ? level : 5];
+}
+constexpr u32 kMaxDrones = 3;
+
 struct BoostInfo {
     const char* name;
     const char* icon;

@@ -44,6 +44,7 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask) {
     e.freeCount = kMaxEnemies;
     for (u32 s = 0; s < kMaxEnemies; ++s) e.freeSlots[s] = kMaxEnemies - 1 - s;  // slot 0 is taken first
     bullets_.count = shots_.count = shards_.count = 0;
+    for (u32& n : shotsLive_) n = 0;
     serial_ = 0;
     dipS_ = 0.0f;
     allDownDipS_ = 0.0f;
@@ -257,30 +258,42 @@ void World::fireShot(u32 p, float advanceS, double stepTick) {
     const Loadout& l = pl.loadout;
     const Vec2 d = normalizeOr(pl.aim, dirOf(pl.heading));
     const Vec2 muzzle = pl.pos + d * kMuzzleWu;
-    // species.json note: one player shot deals 1 damage. Overcharge +25% a stack; On-Beat Crit: shots on
-    // quarter-note beats x2, x3, x4 (GAME_DESIGN 6.2).
+    // species.json note: one player shot deals 1 damage. Play test 1 (GAME_DESIGN 6.2): Overcharge +50% a stack;
+    // On-Beat Crit: shots on quarter-note beats x3, x5, x8, bursting over 80 wu.
     float damage = 1.0f + kOverchargePerStack * static_cast<float>(l.mods[kOvercharge]);
     u8 flags = 0;
     const double inBeat = std::fmod(stepTick, kTicksPerBeat);
     if (l.mods[kOnBeatCrit] && (inBeat < 0.5 || kTicksPerBeat - inBeat < 0.5)) {
-        damage *= 1.0f + static_cast<float>(l.mods[kOnBeatCrit]);
+        damage *= onBeatCritMultiplier(l.mods[kOnBeatCrit]);
         flags |= kShotCrit;
     }
     const bool prism = pl.boost(kPrism);
     if (prism) flags |= kShotPrism;
-    // Split: +1 lane a stack in a tight fan; Prism: every lane refracts into five (capped per step).
-    const u32 lanes = 1u + l.mods[kSplit];
+    // Split: +2 lanes a stack in a tight fan (3, 5, 7); Prism: every lane refracts into five. Above the soft cap of
+    // live shots every pair of lanes beyond the middle one fires on every second step, the pairs taking turns; above
+    // kShotsMiddleOnly the middle lane alone fires (tuning.h; the pool stays inside its 1,024 a player with Split 7,
+    // Prism, Double-Time and Hyper at 174 BPM, in the Build's slowed last bar too).
+    const u32 lanes = splitLanes(l.mods[kSplit]);
     const u32 fan = prism ? 5u : 1u;
+    const u32 live = shotsLive_[p < kMaxPlayers ? p : 0];
+    const u32 thin = lanes < 3 ? 0u : (live >= kShotsMiddleOnly ? 2u : (live >= kShotsSoftCap ? 1u : 0u));
+    const i64 step = static_cast<i64>(std::floor(stepTick / leadGrid(p) + 0.5));
     const float base = angleOf(d);
     const float deg = kTau / 360.0f;
+    const u8 pierce = static_cast<u8>(pierceCount(l.mods[kPierce]));
+    const u8 bounces = static_cast<u8>(ricochetBounces(l.mods[kRicochet]));
+    const i32 mid = static_cast<i32>(lanes / 2);
     u32 made = 0;
     for (u32 lane = 0; lane < lanes; ++lane) {
-        const float la = base + (static_cast<float>(lane) - 0.5f * static_cast<float>(lanes - 1)) * kSplitFanDeg * deg;
+        const i32 off = static_cast<i32>(lane) - mid;
+        const i32 ring = off < 0 ? -off : off;  // 0 the middle, 1 its neighbours, 2 and 3 the outer pairs
+        if (thin == 2 && ring >= 1) continue;
+        if (thin == 1 && ring >= 1 && ((ring + step) & 1) != 0) continue;
+        const float la = base + static_cast<float>(off) * kSplitFanDeg * deg;
         for (u32 f = 0; f < fan && made < kMaxShotsPerStep; ++f, ++made) {
             const float a = la + (static_cast<float>(f) - 0.5f * static_cast<float>(fan - 1)) * kPrismFanDeg * deg;
-            const u8 lane = prism ? shotLaneFlags(static_cast<i32>(f) - 2) : 0;
-            spawnShotRaw(p, muzzle, dirOf(a), advanceS, damage, kShotPrimary, static_cast<u8>(flags | lane), kShotLifeS, l.mods[kPierce],
-                         l.mods[kRicochet]);
+            const u8 laneFlag = prism ? shotLaneFlags(static_cast<i32>(f) - 2) : 0;
+            spawnShotRaw(p, muzzle, dirOf(a), advanceS, damage, kShotPrimary, static_cast<u8>(flags | laneFlag), kShotLifeS, pierce, bounces);
         }
     }
     ++pl.shotsFired;
@@ -421,9 +434,10 @@ void World::moveProjectiles(float dt) {
         if (s.life[i] <= 0.0f || !insideArena(s.x[i], s.y[i])) s.dead[i] = 1;
     }
     // Shards: loose ones slow down and wait; inside a player's magnet they home in; after four bars they
-    // are gone (GAME_DESIGN 5).
+    // are gone (GAME_DESIGN 5). Play test 1: while more than kShardsCrowded are out (the stronger build kills several
+    // times as fast), they last one bar, so the pool keeps room for the next kills.
     Shards& h = shards_;
-    const double lifeTicks = kShardLifeBars * kTicksPerBar;
+    const double lifeTicks = (h.count > kShardsCrowded ? kShardCrowdedBars : kShardLifeBars) * kTicksPerBar;
     const float drag = std::exp(-kShardDrag * dt);
     for (u32 i = 0; i < h.count; ++i) {
         h.px[i] = h.x[i];
@@ -532,17 +546,38 @@ void World::collide() {
         const Vec2 at{ax + dx * bestT, ay + dy * bestT};
         const Vec2 dir{s.dx[k], s.dy[k]};
         const u8 owner = s.owner[k];
-        const bool refract = (s.flags[k] & kShotPrism) && s.kind[k] == kShotPrimary;
+        // Prism (GAME_DESIGN 6.4): a shot's first hit spawns two mini-refractions (play test 1: the first only, and
+        // none above the soft cap of live shots).
+        const bool refract = (s.flags[k] & (kShotPrism | kShotRefracted)) == kShotPrism && s.kind[k] == kShotPrimary &&
+                             shotsLive_[owner < kMaxPlayers ? owner : 0] < kShotsSoftCap;
+        const u32 hitHandle = e.handle[i];
         if (s.pierce[k] > 0) {
             // Pierce (GAME_DESIGN 6.2): through this one, on to the next.
             --s.pierce[k];
-            s.lastHit[k] = e.handle[i];
+            s.lastHit[k] = hitHandle;
+        } else if (s.bounces[k] > 0 && s.kind[k] != kShotMini) {
+            // Ricochet (play test 1): from the enemy it hit on to the nearest other one within 300 wu; none near: spent.
+            const i32 next = ricochetTarget(i, at);
+            if (next >= 0) {
+                --s.bounces[k];
+                const Vec2 nd = normalizeOr(Vec2{e.x[next], e.y[next]} - at, dir);
+                s.dx[k] = nd.x;
+                s.dy[k] = nd.y;
+                s.x[k] = s.px[k] = at.x;
+                s.y[k] = s.py[k] = at.y;
+                s.lastHit[k] = hitHandle;
+            } else {
+                s.dead[k] = 1;
+            }
         } else {
             s.dead[k] = 1;
         }
-        hitEnemy(i, s.damage[k], owner, at, dir);
+        const bool crit = (s.flags[k] & kShotCrit) != 0 && s.kind[k] == kShotPrimary;
+        const float dmg = s.damage[k];
+        hitEnemy(i, dmg, owner, at, dir);
+        if (crit) critBurst(i, owner, at, dmg * kCritBurstShare);
         if (refract) {
-            // Prism (GAME_DESIGN 6.4): hits spawn mini-refractions.
+            s.flags[k] = static_cast<u8>(s.flags[k] | kShotRefracted);
             const float a = angleOf(dir), deg = kTau / 360.0f;
             for (float side : {-1.0f, 1.0f})
                 spawnShotRaw(owner, at, dirOf(a + side * kPrismMiniDeg * deg), 0.0f, kPrismMiniDamage, kShotMini,
@@ -915,6 +950,9 @@ void World::compact() {
         s.kind[i] = s.kind[l];
         s.flags[i] = s.flags[l];
     }
+    // Play test 1: each player's live shots, for the pool's per-player caps in the next tick.
+    for (u32& n : shotsLive_) n = 0;
+    for (u32 i = 0; i < s.count; ++i) ++shotsLive_[s.owner[i] < kMaxPlayers ? s.owner[i] : 0];
     Shards& h = shards_;
     for (u32 i = 0; i < h.count;) {
         if (!h.dead[i]) {
@@ -1073,8 +1111,14 @@ u64 World::hash() const {
             val(a.until);
             val(a.hits);
         }
-        val(pl.sentinel.x);
-        val(pl.sentinel.y);
+        for (const Vec2& s : pl.sentinel) {
+            val(s.x);
+            val(s.y);
+        }
+    }
+    for (const TrioState& t : trio_) {
+        val(t.holdOrb);
+        val(t.holdTicks);
     }
     if (role_ != NetRole::Solo) {
         // M4: what co-op adds (solo hashes stay what M3's were).

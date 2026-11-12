@@ -182,6 +182,10 @@ enum class EventType : u8 {
     // M4 co-op (GAME_DESIGN 10). Death with a = 0xFF: every player is down at once (the run is over).
     Down,        // a hit at zero cells shattered the ship into a beacon: a = player; x, y = the beacon
     Revive,      // a = player; b = 1 by a teammate, 0 at the Break; x, y
+    // Play test 1.
+    CritBurst,   // a beat shot's hit burst (On-Beat Crit): a = player; x, y; f = its radius
+    TrioUnlock,  // the Trio's orbs light (the Break's third beat): a = player; tick = that beat
+    Refill,      // a Break gave back a cell and a Nova: a = player; b = cells now, c = Novas now
 };
 // Impact events on the boss carry this species, with c = 1 lens plate, 2 arm, 3 core.
 constexpr u16 kBossSpecies = 0xFFFF;
@@ -258,7 +262,8 @@ struct Shots {
     u8 pierce[kCap], bounces[kCap];  // Pierce and Ricochet left
     u8 kind[kCap], flags[kCap];      // ShotKind; ShotFlag
 };
-enum ShotFlag : u8 { kShotCrit = 1, kShotPrism = 2, kShotLaneMask = 7u << 2 };
+// kShotRefracted (play test 1): a Prism shot refracts on its first hit only.
+enum ShotFlag : u8 { kShotCrit = 1, kShotPrism = 2, kShotLaneMask = 7u << 2, kShotRefracted = 32 };
 // M3 stage C2: a Prism shot's lane in its fan (-2..2, GAME_DESIGN 7: the rainbow), kept in flags bits 2-4 (0: none);
 // its mini-refractions carry it on.
 inline u8 shotLaneFlags(i32 lane) { return static_cast<u8>((lane + 3) << 2); }
@@ -285,7 +290,7 @@ struct PulseWave {
     float lastR = 0.0f;   // radius at the end of the last tick
     u8 level = 1;
 };
-constexpr u32 kPulseWaves = 6;
+constexpr u32 kPulseWaves = 12;  // play test 1: two rings every eighth at level 5 (every sixteenth under Hyper)
 
 struct ActiveBoost {
     u8 type = kNoBoost;
@@ -303,7 +308,11 @@ struct TrioState {
     Vec2 centre;
     Vec2 orbPos[4];
     double openTick = 0.0, closeTick = 0.0;  // the clock (musical ticks)
-    i8 homing = -1;        // the orb flying to the ship after the clock ran out
+    // Play test 1: locked for the Break's first two beats (until openTick + kTrioLockBeats); then the orb the ship
+    // stays inside fills over kTrioHoldBeats (musical ticks so far; leaving empties it at once).
+    i8 holdOrb = -1;
+    double holdTicks = 0.0;
+    i8 homing = -1;        // the orb flying to the ship after the clock ran out (the nearest)
     u8 queued = 0;         // further Trios in this Break (the boss's bonus Trio)
     u32 opened = 0;        // Trios opened this run (the first shows the hint)
     u8 sinceRiff = 0;      // Trios in a row without a new Riff
@@ -342,7 +351,7 @@ struct PlayerState {
     // M3 stage B: upgrades and Boosts.
     Loadout loadout;
     ActiveBoost boosts[kBoostSlots];
-    Vec2 sentinel, prevSentinel;  // the Sentinel drone
+    Vec2 sentinel[kMaxDrones], prevSentinel[kMaxDrones];  // the Sentinel drones (play test 1: up to three)
     PulseWave pulses[kPulseWaves];
     u32 boostsTaken = 0;
     // M4 co-op (GAME_DESIGN 10): down, a beacon, revive.
@@ -368,6 +377,7 @@ struct Rules {
 struct WorldCounters {
     u32 enemiesDropped = 0, bulletsDropped = 0, shotsDropped = 0, shardsDropped = 0, eventsDropped = 0;
     u32 kills = 0, deaths = 0, spawned = 0, restarts = 0;
+    u32 shotsCapped = 0;  // play test 1: shots a player's hard cap held back (the soft cap's rules should keep it 0)
     // M4 co-op.
     u32 netOpsDropped = 0, netLogDropped = 0;  // pool overflows of the network's queues
     u32 predicted = 0, confirmed = 0, undone = 0, lateSpawns = 0, unknownIds = 0, downs = 0, revives = 0;
@@ -424,6 +434,8 @@ public:
     void setPredictUndoS(float s) { predictUndoS_ = s; }
     float predictUndoS() const { return predictUndoS_; }
     const SpatialGrid& grid() const { return grid_; }
+    // Play test 1: a player's live shots as the last tick ended (the shot pool's per-player caps, tuning.h).
+    u32 shotsLive(u32 p) const { return p < kMaxPlayers ? shotsLive_[p] : 0u; }
     const Event* events() const { return events_; }
     u32 eventCount() const { return eventCount_; }
     const WorldCounters& counters() const { return counters_; }
@@ -594,6 +606,10 @@ private:
     void hitEnemy(u32 i, float dmg, u8 owner, Vec2 at, Vec2 dir);
     void spawnShotRaw(u32 p, Vec2 pos, Vec2 dir, float advanceS, float damage, u8 kind, u8 flags, float life, u8 pierce,
                       u8 bounces);
+    // Play test 1: a beat shot's burst (On-Beat Crit) around its hit; the nearest other enemy a Ricochet goes on to.
+    void critBurst(u32 hit, u8 owner, Vec2 at, float damage);
+    i32 ricochetTarget(u32 hit, Vec2 at) const;
+    void orbitalBullets(const PlayerState& pl, u32 n);
     // world_boss.cpp
     void updateBoss(float dt);
     void bossFire(double stepTick);
@@ -650,6 +666,7 @@ private:
     float allDownDipS_ = 0.0f;  // M4: all down, time at 50% for one beat (look.md 6)
     float predictUndoS_ = 0.30f;  // M4 client: a predicted death unconfirmed this long is undone (tuning::kPredictUndoS at least)
     float threatInView_ = 0.0f;
+    u32 shotsLive_[kMaxPlayers] = {};  // play test 1: each player's live shots (counted in compact(), added on spawn)
     u32 crowdInFrame_ = 0;
     float crowdGoal_ = 0.0f;
     bool restartPending_ = false;

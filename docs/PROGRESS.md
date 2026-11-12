@@ -1,5 +1,104 @@
 # RAVEFORM — Progress
 
+## Play test 1 — 2026-11-12 (the user's first play test; design in `004c594`)
+
+Three changes to solo play, done before the rest of M4 stage B (whose first checkpoint, `988f718`, came just before).
+
+### What changed
+
+- **A Trio is never taken by accident** (GAME_DESIGN 6.1, screens.md "The Trio"). The orbs are locked for the
+  Break's first two beats: the ring draws itself over the first beat, the orbs fade in over the second as outlines
+  at 0.5 with their words readable, and on the third beat they light (a short white flash) with a chime. After
+  that an orb is taken by staying inside its thin ring (1.42 x the icon) for two beats while it fills as a solid
+  arc in the player colour, clockwise from twelve, with two rising notes of the player's lead (the root as the fill
+  starts, the fifth a beat later). Flying through does nothing; leaving empties it at once. If none is taken, the
+  orb nearest the ship flies to it at the Break's end (it was a random one). The hint reads `STAY ON ONE TO TAKE IT`
+  on the first three Trios of a run. The bot holds still on its choice (both policies). In co-op the rule is each
+  player's own, on its own device.
+- **The camera leads half as far** (GAME_DESIGN 9): `kLookAheadS` 0.25 -> 0.125 s and `kAimBiasWu` 60 -> 30 wu in
+  `play_view.cpp`; the ease times are unchanged. Nothing else was tuned around the old lead: the crowd is counted in
+  a frame centred on the ship (not the camera), floods pick their edge from the ship's heading, edge chevrons
+  follow the camera, the boss lean has its own constants. The one copy of the old numbers was the camera model in
+  `--sim crowd` (its "in view" column), now 0.125 s and 30 wu too.
+- **Upgrades felt at once, an easy game** (GAME_DESIGN 5, 6.2, 6.3, 6.6, 8): 4 Shield cells at the start (cap 6), 3
+  Novas (capacity 4), one of each back at every Break (every present living player, on every device), the Dash in
+  two beats. Split +2 lanes a stack (3, 5, 7; cap 3); Pierce +2; Ricochet +2 bounces, off walls and from each enemy
+  hit on to the nearest other solid enemy within 300 wu; Overcharge +50%; Extra Cell +1 capacity and every cell
+  refilled (cap 2); Magnet +100% of the base radius a stack (90, 180, 270, 360, 450 wu); On-Beat Crit x3, x5, x8 with a
+  burst over 80 wu. Orbitals 3, 5, 7, 9, 11 shards that also destroy the enemy bullets they touch; Pulse Ring on
+  every beat from level 1 at twice M3's damage, then a second ring, wider, heavier, and every eighth at level 5;
+  Sentinel a burst of 3, then 4, a second drone, 5, a third drone. The effect words are screens.md's new table. The
+  per-stack numbers live in one place (`sim/upgrades.h`), read by the world, the view and the words.
+- New engine command `LeadNote` (a player's lead on the Track's root, now or on a tick: the chime and the hold's
+  notes; M4's revive fill will use it), and two for stage B's band (`SetBeacon`, `SetHostOnly`), idle until then.
+
+### Bots against the targets (`raveform_headless --sim crowd --seeds 20 --minutes 30`, both policies)
+
+| | before (the first slice) | after, levers 1.0 | after, levers 0.7 (shipped) | target |
+|---|---|---|---|---|
+| careful: median first death | 6.07 min | no death in 16 of 20 runs | no death in 15 of 20 runs | 15 min or later |
+| careful: Track 3 reached | 0 of 20 | 20 of 20 (Track 8-9 by minute 30) | 20 of 20 | 70% |
+| careful: boss fights lost | 39 of 116 (34%) | 5 of 145 (3.4%) | 5 of 143 (3.5%) | at most 10% |
+| careful: kills a minute | 553 | 4,327 | 4,069 | |
+| careless: median first death | 1.21 min | 2.69 min | **3.01 min** | 4 min or later |
+| careless: Track 2 reached | 0 of 20 | 1 of 20 | **6 of 20** | 10 of 20 |
+| careless: boss fights lost | 11 of 11 | 86 of 88 | 88 of 94 | |
+| careless: kills a minute | 503 | 683 | 697 | |
+| pools | no overflow | **13,061 Shards dropped** (careful) | no overflow | none |
+
+Enemies in view during Groove (careful bot, Track 1 cycles 1-4 / Track 2 cycles 1-3): before 10.7 / 28.6 / 47.7 /
+70.7 / 86.5 / 115.6 / 124.6, after 9.7 / 26.8 / 40.3 / 63.9 / 88.8 / 106.5 / 126.0; Track 3 is now reached (117 /
+124 / 124) and the loop's Track 4 too (92-101, the director's alive cap of 600 holds it there). The crowd targets
+are untouched.
+
+**The careless bot misses both of its targets** even with both levers at their floor (`tuning.h`:
+`kThreatBudgetScale` 0.7, `kBossBulletScale` 0.7: the bosses' fans and core rings at 0.7 of kaleidos.json's
+counts). Its first death is the first boss fight (Track 1's Kaleidos comes at about 3.2 min): 93.6% of its boss
+fights are lost, and half of all its hits are Shoal bodies it flies into (it never dodges bodies or bullets, and
+uses neither Nova nor Dash). Neither lever reaches that. The next levers would be the lead's: what a Shoal or
+Drifter body costs on contact, the invulnerability after a hit (1.5 s), or Kaleidos's health for Track 1.
+
+### Choices made (play test 1)
+
+- **The shot pool's caps** (the brief asked for a rule if one was needed): a player's live shots are counted each
+  tick. Above 576, every pair of Split lanes beyond the middle one fires on every second step (the pairs take
+  turns) and Prism's mini-refractions stop; above 800 the middle lane alone fires (with its Prism fan); a player
+  never has more than 1,000 (a guard). A Prism shot refracts on its first hit only. Measured worst case (sim test:
+  four players, each with Split 7, Double-Time 2, Pierce 3, Ricochet 3, Crit 3, every Riff at level 5, Prism and
+  Hyper refreshed, 174 BPM, a crowd of 500, 20 s): pool peak 3,478 of 4,096, a player 871 of 1,024, nothing
+  dropped, the guard never reached. The bots' 30-minute runs peak at 642 shots.
+- **The Shard pool**: the stronger build kills eight times as fast late in a run, and the 2,048 Shards overflowed
+  (13,061 dropped over 20 runs). While more than 1,536 are out, a loose Shard lasts one bar instead of four. No
+  Shard was dropped after.
+- Ricochet: Pierce first (a shot passes through while it has Pierce left), then each hit bounces on to the nearest
+  other solid enemy within 300 wu; with none there the shot is spent. On-Beat Crit's burst: every other enemy
+  within 80 wu of the hit takes half the beat shot's damage, drawn as a quick ring in the shooter's colours.
+- Pulse Ring's "twice as often" at level 5 is a ring every eighth; Sentinel's second and third drones sit mirrored
+  beside the ship and behind it, each picking its own nearest enemy.
+- The chime is a bell (P3's timbre) two octaves over the Track's root, placed on the unlock beat; the hold's notes
+  are the player's own lead, 0.8 of its level.
+
+### Checks
+
+- **Moto, the real game at minute 10** (bench_play, the careful bot, 600 s of warm-up then 120 s; tier medium;
+  shared phone, foreign load 1.01 cores; nothing in front before the run; `captures\bench\ZY22BXMJG3-bench_play-20261112-131820.json`):
+  0 of 7,188 frames missed, panel P95 1 period, max 19.7 ms: **PASS**. Main thread 4.66 / 4.93 / 5.81 ms, GPU
+  13.45 / 14.22 / 15.14 ms, sim tick 0.25 / 0.34 / 0.75 ms (stage C2: 0.28 / 0.66 / 1.23), heap allocations ours
+  0, no pool overflow. The stronger build is already in **Track 4** at minute 12 (C2: Track 2), 30,680 kills in the
+  window, alive 398 / 600, Shards 393 / 807, enemies in view 83 / 293, no death.
+
+- `raveform_sim_tests`: 5,257 checks, 0 failures, with the tests moved to the new rules (Trio lock, hold, leaving,
+  the nearest at the end; cells and Novas back at a Break; Ricochet, the Crit burst, Orbitals eating bullets; the
+  per-stack numbers and words; the shot pool's worst case). Determinism passes (new hash `6f07f9f66a12842c`: the
+  rules changed). Audio tests 2,134 / 0, loudness check, network tests 87 / 0.
+- To play it: the APK `android\app\build\outputs\apk\dev\app-dev.apk` (installed on the Moto by the run above) and
+  the desktop build `build\desktop-dev\raveform.exe` (`scripts\run-desktop.ps1 -Config dev -NoBuild`; add `-Sound` to
+  hear it).
+- Pictures in `captures\playtest1\` (`*.small.png`): `trio_locked` (under two beats in: outlines, words readable),
+  `trio_hold` (the hold half filled), `split7`, `riff_orbitals` (level 3: seven shards), `bot_10` (the careful bot's
+  real run at minute 10: Track 3, score 2.6 billion, Chain x13,363), from `scripts\review-m3b.ps1 -Out
+  captures\playtest1 -Only ...` (the first four Debug with validation, `bot_10` RelWithDebInfo).
+
 ## M4 stage A "LAN co-op: the network" — 2026-11-12
 
 Built on `main` (never pushed): `0fb5003` (the network core: transport, sync, replication, co-op simulation,

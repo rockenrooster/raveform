@@ -580,11 +580,11 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         font.drawField(d.hud, {cx - 0.5f * textW(font, c2, "NEW"), 0.24f * H - cap - 12.0f * s}, c2, 0.6f * s, col(gold, 1.4f * fade),
                        col(gold, 1.4f * fade), col(gold, 1.4f * fade), "NEW");
     }
-    // The first Trio of a run: the hint.
+    // The first three Trios of a run: the hint (screens.md, play test 1).
     const TrioState& tr = w.trio(w.viewPlayer());
-    if (tr.open && tr.opened == 1) {
+    if (tr.open && tr.opened >= 1 && tr.opened <= 3) {
         const float cap = 14.0f * s;
-        const char* hint = "FLY INTO ONE";
+        const char* hint = "STAY ON ONE TO TAKE IT";
         font.drawField(d.hud, {cx - 0.5f * textW(font, cap, hint), H - bottom - 150.0f * s}, cap, 0.7f * s, col(white, 0.7f), col(white, 0.7f),
                        col(white, 0.7f), hint);
     }

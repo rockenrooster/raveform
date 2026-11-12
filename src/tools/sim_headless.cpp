@@ -307,8 +307,8 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         for (Cell& c : row) c = Cell{};
     static float firstDeath[256];
     static u32 maxTrack[256];
-    u64 kills = 0, deaths = 0, overflow = 0, allocs = 0;
-    u32 nan = 0;
+    u64 kills = 0, deaths = 0, overflow = 0, allocs = 0, capped = 0;
+    u32 nan = 0, shotsPeak = 0;
     // What hit the ship (C2 tuning): a body of each family within reach, else a bullet or a beam.
     u64 hitsBy[kFamilyCount + 1] = {}, hitsInBossFight = 0, hitsBySection[4] = {};
     u64 bossWon = 0, bossLost = 0;
@@ -329,8 +329,8 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         u32 lastHits = 0, lastBar = 0xFFFFFFFFu, killsAtBar = 0;
         bool bossOn = false;
         u32 bossFrom = 0;
-        // The camera as PlayView draws it (GAME_DESIGN 9): a lead along the ship's velocity (at most cruise
-        // speed x 0.25 s) and 60 wu along its aim while firing, eased over 0.25 s; 0.85x and a lean of 30% (at
+        // The camera as PlayView draws it (GAME_DESIGN 9, play test 1): a lead along the ship's velocity (at most
+        // cruise speed x 0.125 s) and 30 wu along its aim while firing, eased over 0.25 s; 0.85x and a lean of 30% (at
         // most 320 wu) toward the boss while it lives within 1,800 wu. In view is that camera's frame.
         Vec2 lookAhead{}, lean{};
         float zoom = 1.0f;
@@ -339,6 +339,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
             const u32 d0 = runner.deaths();
             runner.step();
             const World& w = *world;
+            if (w.shots().count > shotsPeak) shotsPeak = w.shots().count;
             if (runner.deaths() > d0 && firstDeath[s] > minutes) firstDeath[s] = static_cast<float>(t) / 3600.0f;
             const Phrase& ph = w.phrase();
             if (ph.track > maxTrack[s]) maxTrack[s] = ph.track;
@@ -417,8 +418,8 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
             if (!p.alive || w.restartPending()) continue;
             {
                 const float sp = length(p.vel);
-                Vec2 lead = (sp > kPlayerSpeed ? p.vel * (kPlayerSpeed / sp) : p.vel) * 0.25f;
-                if (p.fire) lead = lead + p.aim * 60.0f;
+                Vec2 lead = (sp > kPlayerSpeed ? p.vel * (kPlayerSpeed / sp) : p.vel) * 0.125f;
+                if (p.fire) lead = lead + p.aim * 30.0f;
                 lookAhead = lookAhead + (lead - lookAhead) * (1.0f - std::exp(-kDt / 0.25f));
                 const sim::BossState& b = w.boss();
                 Vec2 leanTo{};
@@ -474,6 +475,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         deaths += runner.deaths();
         overflow += (c.enemiesDropped - c0.enemiesDropped) + (c.bulletsDropped - c0.bulletsDropped) + (c.shotsDropped - c0.shotsDropped) +
                     seedShards + (c.eventsDropped - c0.eventsDropped);
+        capped += c.shotsCapped - c0.shotsCapped;
         if (!world->finite()) ++nan;
         std::printf("[sim]   seed %llu: first death %.2f min, Track %u reached, %u kills, %u deaths, Shards dropped %u\n",
                     static_cast<unsigned long long>(seed0 + s), firstDeath[s] > minutes ? -1.0 : firstDeath[s], maxTrack[s], seedKills,
@@ -522,6 +524,9 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     std::printf("[sim]   kills a minute %.0f, deaths a run %.1f; overflow %llu, NaN runs %u, heap allocations in the loops %llu\n",
                 static_cast<double>(kills) / (static_cast<double>(n) * minutes), static_cast<double>(deaths) / n,
                 static_cast<unsigned long long>(overflow), nan, static_cast<unsigned long long>(allocs));
+    std::printf("[sim]   boss fights lost %.1f%%; shots alive at most %u (pool %u), held back by a player's cap %llu\n",
+                bossWon + bossLost ? 100.0 * static_cast<double>(bossLost) / static_cast<double>(bossWon + bossLost) : 0.0, shotsPeak,
+                Shots::kCap, static_cast<unsigned long long>(capped));
     logTagged("RFSIM", "{\"test\":\"crowd\",\"seeds\":%u,\"minutes\":%.0f,\"policy\":\"%s\",\"first_death_median\":%.2f,\"track2\":%u,\"track3\":%u,"
                        "\"kills_per_min\":%.1f,\"overflow\":%llu,\"nan\":%u,\"allocs\":%llu}",
               n, minutes, policy == Bot::Policy::Reckless ? "careless" : "careful", median, t2, t3,

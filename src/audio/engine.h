@@ -90,6 +90,13 @@ enum class CmdType : u8 {
     SetRate,       // M4 (TECH_SPEC 8.2): the song's tempo times x (a co-op client's gentle rate correction), from the next
                    // bar line; the engine takes 0.99..1.01
     HoldBar,       // M4 (TECH_SPEC 8.2 re-seek): the next bar line waits x seconds (the song holds there, then goes on)
+    LeadNote,      // play test 1 / M4: a = player, b = degree on the Track's root (0 root, 1 fifth, 2 octave, 3 an octave
+                   // down, 4 two octaves up), c = Timbre (0xFF: the player's own), x = gain (x the lead's level), y = pan;
+                   // timing Now or AtTick (tick)
+    SetBeacon,     // M4 (look.md 6): a = player, b = 1 down: its lead holds the Track's root an octave down with an
+                   // eighth-note tremolo, 12 dB under the leads; y = pan
+    SetHostOnly,   // M4 co-op, the SOUND setting "music from host only": a = 1: the bed and the other players' leads
+                   // are silent on this device (its own lead and the effects stay)
 };
 
 struct Command {
@@ -312,6 +319,10 @@ private:
     u32 gainHead_ = 0, gainCount_ = 0;
     float outGain_ = 1.0f, outGainTarget_ = 1.0f;
     float musicGain_ = 1.0f, sfxGain_ = 1.0f;
+    // M4 co-op, "music from host only": the bed's gain (every music bus but the lead), ramped toward 0 or 1.
+    bool hostOnly_ = false;
+    float bedGain_ = 1.0f;
+    float leadNoteMidi(u8 degree) const;
     // The pause's low-pass on the music (two one-poles a channel): 0 open .. 1 at muffleHz_, ramped.
     float muffle_ = 0.0f, muffleTarget_ = 0.0f, muffleStep_ = 1.0f, muffleHz_ = 600.0f;
     float muffleZ_[2][2] = {};

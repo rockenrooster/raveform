@@ -16,6 +16,13 @@ constexpr float kArmStep = kTau / 6.0f;
 
 u32 pairsIn(u8 mask) { return (mask & 1u) + ((mask >> 1) & 1u) + ((mask >> 2) & 1u); }
 
+// A count scaled by a lever (play test 1), rounded, never below `least` (an exact count at scale 1).
+u32 scaledCount(u32 n, float scale, u32 least) {
+    if (scale == 1.0f) return n;
+    const u32 m = static_cast<u32>(std::lround(static_cast<float>(n) * scale));
+    return m < least ? least : m;
+}
+
 // Half-width of an arm's hull at `u` wu from the centre: the facets' widths, joined.
 float armHalfWidth(const BossData& b, float u) {
     const BossData::Facet* f = b.facets;
@@ -373,7 +380,8 @@ void World::bossFire(double t) {
             if (!(mask & (1u << (k % 3)))) continue;
             const float a = wheel + static_cast<float>(k) * kArmStep;
             const Vec2 tip = s.pos + dirOf(a) * b.tip.armRadius;
-            const u32 fan = ph.fan ? ph.fan : 1u;
+            // Play test 1: the bullet density's lever (tuning::kBossBulletScale, 1 = kaleidos.json's numbers).
+            const u32 fan = scaledCount(ph.fan ? ph.fan : 1u, kBossBulletScale, 1u);
             for (u32 j = 0; j < fan; ++j) {
                 const float da = (static_cast<float>(j) - 0.5f * static_cast<float>(fan - 1)) * spread;
                 spawnBullet(tip, dirOf(a + da) * b.bulletSpeed, adv, b.bulletLife);
@@ -394,7 +402,7 @@ void World::bossFire(double t) {
             fire = t >= s.phaseTick && (in < 0.5 || every - in < 0.5);
         }
         if (fire) {
-            const u32 n = ph.coreBurst;
+            const u32 n = scaledCount(ph.coreBurst, kBossBulletScale, 4u);
             const u32 index = static_cast<u32>(std::floor(t / (2.0 * kTicksPerStep) + 0.5));
             const float turn = (index & 1u) ? 0.5f * kTau / static_cast<float>(n) : 0.0f;
             for (u32 j = 0; j < n; ++j) {

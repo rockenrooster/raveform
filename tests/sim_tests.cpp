@@ -646,7 +646,7 @@ void testTrioRules() {
     CHECK(drawTrio(full, since, rng, o) == 0);
     // A capped Mod and a maxed Riff are never offered.
     Loadout some;
-    some.mods[kSplit] = 4;
+    some.mods[kSplit] = upgradeInfo(kSplit).cap;
     some.riffs[riffIndex(kOrbitals)] = kRiffMaxLevel;
     for (u32 k = 0; k < 300; ++k) {
         u8 s2 = 0;
@@ -660,25 +660,35 @@ void testUpgradeStacking() {
     World* w = quietWorld();
     double music = 0.0;
     stepWorld(*w, music, Vec2{});
-    // Caps (GAME_DESIGN 6.2): Split stacks to 4; Extra Cell raises the capacity and refills, up to 6 cells.
+    // Play test 1 (GAME_DESIGN 5, 6.2): 4 cells and 3 Novas at the start (capacity 4), the Dash in two beats.
+    CHECK(w->player(0).cells == 4 && w->player(0).cellCap == 4 && w->player(0).novas == 3 && w->player(0).novaCap == 4);
+    CHECK(kDashRechargeBeats == 2.0);
+    // Caps: Split stacks to 3 (7 lanes); Extra Cell raises the capacity and refills every cell, twice (6 cells).
     for (u32 k = 0; k < 6; ++k) w->grantUpgrade(0, kSplit);
-    CHECK(w->player(0).loadout.mods[kSplit] == 4);
+    CHECK(w->player(0).loadout.mods[kSplit] == 3 && splitLanes(3) == 7);
     w->playerMut(0).cells = 1;
     w->grantUpgrade(0, kExtraCell);
-    CHECK(w->player(0).cellCap == 4 && w->player(0).cells == 2);
+    CHECK_MSG(w->player(0).cellCap == 5 && w->player(0).cells == 5, "cells %u of %u", w->player(0).cells, w->player(0).cellCap);
     for (u32 k = 0; k < 4; ++k) w->grantUpgrade(0, kExtraCell);
-    CHECK(w->player(0).cellCap == 6 && w->player(0).loadout.mods[kExtraCell] == 3);
+    CHECK(w->player(0).cellCap == 6 && w->player(0).cells == 6 && w->player(0).loadout.mods[kExtraCell] == 2);
+    // The numbers per stack and level.
+    CHECK(pierceCount(1) == 2 && ricochetBounces(3) == 6 && onBeatCritMultiplier(1) == 3.0f && onBeatCritMultiplier(3) == 8.0f);
+    CHECK(orbitalCount(1) == 3 && orbitalCount(5) == 11 && sentinelBurst(1) == 3 && sentinelBurst(4) == 5);
+    CHECK(sentinelDrones(2) == 1 && sentinelDrones(3) == 2 && sentinelDrones(5) == 3);
+    CHECK(std::strcmp(upgradeWords(kSplit, 1), "+2 SHOT LANES") == 0 && std::strcmp(upgradeWords(kMagnet, 2), "SHARD PULL X3") == 0);
+    CHECK(std::strcmp(upgradeWords(kOnBeatCrit, 2), "BEAT SHOTS X5") == 0 && std::strcmp(upgradeWords(kOrbitals, 2), "LEVEL 2: FIVE ORBITERS") == 0);
+    CHECK(std::strcmp(upgradeWords(kSentinel, 5), "LEVEL 5: THIRD DRONE") == 0 && std::strcmp(upgradeWords(kPulseRing, 5), "LEVEL 5: TWICE AS OFTEN") == 0);
     // Riffs level 1..5.
     for (u32 k = 0; k < 7; ++k) w->grantUpgrade(0, kPulseRing);
     CHECK(w->player(0).loadout.riffs[riffIndex(kPulseRing)] == kRiffMaxLevel);
-    // Split 4: five lanes per step; with Prism, five each, capped at kMaxShotsPerStep.
-    const u32 before = w->shots().count;
-    stepWorld(*w, music, Vec2{}, 1);
+    // Split 3: seven lanes per step.
     u32 made = 0;
-    for (u32 k = 0; k < w->eventCount(); ++k)
-        if (w->events()[k].type == EventType::Shot) made += w->events()[k].b;
-    CHECK(made == 0 || made % 5 == 0);
-    (void)before;
+    for (u32 t = 0; t < 30 && !made; ++t) {
+        stepWorld(*w, music, Vec2{}, 1);
+        for (u32 k = 0; k < w->eventCount(); ++k)
+            if (w->events()[k].type == EventType::Shot) made = w->events()[k].b;
+    }
+    CHECK_MSG(made == 7, "Split 3: %u lanes", made);
     World* p = quietWorld();
     double mp = 0.0;
     stepWorld(*p, mp, Vec2{});
@@ -691,7 +701,7 @@ void testUpgradeStacking() {
         for (u32 k = 0; k < p->eventCount(); ++k)
             if (p->events()[k].type == EventType::Shot) volley = p->events()[k].b;
     }
-    CHECK_MSG(volley == 15, "Split 2 x Prism: %u shots", volley);
+    CHECK_MSG(volley == 25, "Split 2 x Prism: %u shots", volley);
     // The lead grid: Double-Time moves it 1/16 -> triplets -> 1/32; Hyper halves it.
     CHECK(p->leadGrid(0) == 24.0);
     p->grantUpgrade(0, kDoubleTime);
@@ -712,7 +722,7 @@ void testUpgradeStacking() {
     }
     CHECK_MSG(p->player(0).cells == cells - 1, "cells %u -> %u", cells, p->player(0).cells);
     CHECK(!p->player(0).boost(kHalo));
-    // Pierce 1: one shot goes through the first of two Drifters in its lane and kills both.
+    // Pierce (one stack passes two): one shot goes through the first of two Drifters in its lane and kills both.
     World* q = quietWorld();
     double mq = 0.0;
     stepWorld(*q, mq, Vec2{});
@@ -730,7 +740,7 @@ void testUpgradeStacking() {
         kills += countEvents(*q, EventType::Kill);
     }
     CHECK_MSG(kills == 2, "pierce kills %u", kills);
-    // Overcharge: +25% damage a stack; On-Beat Crit doubles shots on the beat.
+    // Overcharge: +50% damage a stack; On-Beat Crit triples shots on the beat.
     World* o = quietWorld();
     double mo = 0.0;
     stepWorld(*o, mo, Vec2{});
@@ -741,8 +751,8 @@ void testUpgradeStacking() {
         stepWorld(*o, mo, Vec2{}, 1);
         for (u32 k = 0; k < o->shots().count; ++k) {
             const float dmg = o->shots().damage[k];
-            if (std::fabs(dmg - 2.5f) < 1e-4f) sawCrit = true;
-            if (std::fabs(dmg - 1.25f) < 1e-4f) sawPlain = true;
+            if (std::fabs(dmg - 4.5f) < 1e-4f) sawCrit = true;
+            if (std::fabs(dmg - 1.5f) < 1e-4f) sawPlain = true;
         }
     }
     CHECK(sawCrit && sawPlain);
@@ -750,6 +760,221 @@ void testUpgradeStacking() {
     delete p;
     delete q;
     delete o;
+}
+
+void testPlayTest1() {
+    // Play test 1 (2026-11-12): the Trio is held to be taken, a Break gives back a cell and a Nova, Ricochet goes on
+    // to the nearest enemy, a beat shot bursts, Orbitals eat bullets, and the shot pool keeps its caps.
+    g_test = "playtest1";
+    const u8 forced[3] = {kSplit, kMagnet, kOrbitals};
+    const double lock = tuning::kTrioLockBeats * kTicksPerBeat, hold = tuning::kTrioHoldBeats * kTicksPerBeat;
+    {
+        // Locked for two beats: sitting on an orb from the start takes nothing until two beats after the unlock.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->openTrioNow(0, music + 8.0 * kTicksPerBar, forced);
+        const TrioState& tr = w->trio(0);
+        const Vec2 orb = tr.orbPos[1];
+        const double open = tr.openTick;
+        u32 unlocks = 0;
+        double takenAt = -1.0;
+        u8 taken = kNoUpgrade;
+        for (u32 t = 0; t < 400 && takenAt < 0.0; ++t) {
+            stepWorld(*w, music, orb);
+            unlocks += countEvents(*w, EventType::TrioUnlock);
+            for (u32 k = 0; k < w->eventCount(); ++k)
+                if (w->events()[k].type == EventType::TrioTake) {
+                    takenAt = music;
+                    taken = w->events()[k].b;
+                }
+        }
+        CHECK(unlocks == 1);
+        CHECK_MSG(takenAt >= open + lock + hold - 1e-6 && takenAt < open + lock + hold + 2.0 * kTicksPerSimTick, "taken at %.1f (open %.1f)",
+                  takenAt, open);
+        CHECK(taken == kMagnet && w->player(0).loadout.mods[kMagnet] == 1);
+        delete w;
+    }
+    {
+        // Flying through does nothing; leaving empties the fill at once; staying two beats takes it.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->openTrioNow(0, music + 8.0 * kTicksPerBar, forced);
+        const TrioState& tr = w->trio(0);
+        const Vec2 orb = tr.orbPos[0], away = tr.centre;
+        while (music < tr.openTick + lock + 1.0) stepWorld(*w, music, away);
+        for (u32 t = 0; t < 20; ++t) stepWorld(*w, music, orb);  // a third of a beat on it
+        CHECK(tr.open && tr.holdOrb == 0 && tr.holdTicks > 0.0);
+        stepWorld(*w, music, away);
+        CHECK(tr.open && tr.holdOrb == -1 && tr.holdTicks == 0.0);
+        bool took = false;
+        for (u32 t = 0; t < 80 && !took; ++t) {
+            stepWorld(*w, music, orb);
+            took = countEvents(*w, EventType::TrioTake) > 0;
+        }
+        CHECK(took && w->player(0).loadout.mods[kSplit] == 1);
+        delete w;
+    }
+    {
+        // None taken: at the Break's end the orb nearest the ship flies to it.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->openTrioNow(0, music + 2.0 * kTicksPerBar, forced);
+        const TrioState& tr = w->trio(0);
+        const Vec2 nearRight = tr.orbPos[2] + Vec2{120.0f, 0.0f};  // outside its ring, nearest the right orb (Orbitals)
+        u8 taken = kNoUpgrade;
+        for (u32 t = 0; t < 600 && taken == kNoUpgrade; ++t) {
+            stepWorld(*w, music, nearRight);
+            for (u32 k = 0; k < w->eventCount(); ++k)
+                if (w->events()[k].type == EventType::TrioTake) taken = w->events()[k].b;
+        }
+        CHECK_MSG(taken == kOrbitals, "taken %u", taken);
+        delete w;
+    }
+    {
+        // A Break gives back a cell and a Nova (up to the caps): the director's world, a hit and a Nova spent first.
+        auto* w = new (std::nothrow) World;
+        w->init(g_species);
+        w->spawner().mode = Spawner::Mode::Off;
+        w->resetRun(3, 0.0, 1);
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{}, 0, true);  // a Nova
+        w->playerMut(0).cells = 2;
+        u32 refills = 0;
+        while (music < 20.0 * kTicksPerBar + 2.0 * kTicksPerSimTick) {
+            stepWorld(*w, music, Vec2{});
+            refills += countEvents(*w, EventType::Refill);
+        }
+        CHECK_MSG(refills == 1 && w->player(0).cells == 3 && w->player(0).novas == 3, "refills %u, cells %u, novas %u", refills,
+                  w->player(0).cells, w->player(0).novas);
+        delete w;
+    }
+    {
+        // Ricochet: a shot that kills nothing outright bounces from the enemy it hit on to the nearest other one.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->grantUpgrade(0, kRicochet);
+        const u16 drifter = SpeciesTable::index(Family::Drifter, 1, kVariantA);
+        const i32 a = w->spawnEnemy(drifter, Vec2{300.0f, 0.0f}, 0.0f, 0.0);
+        const i32 b = w->spawnEnemy(drifter, Vec2{300.0f, 200.0f}, 0.0f, 0.0);
+        CHECK(a >= 0 && b >= 0);
+        w->setEnemyHp(static_cast<u32>(a), 100.0f);
+        w->setEnemyHp(static_cast<u32>(b), 100.0f);
+        u32 shots = 0;
+        for (u32 t = 0; t < 40 && shots == 0; ++t) {
+            stepWorld(*w, music, Vec2{}, 1);
+            shots += countEvents(*w, EventType::Shot);
+        }
+        u32 impacts = 0;
+        bool turned = false;
+        for (u32 t = 0; t < 30; ++t) {
+            stepWorld(*w, music, Vec2{});
+            impacts += countEvents(*w, EventType::Impact);
+            for (u32 k = 0; k < w->shots().count; ++k) turned = turned || w->shots().dy[k] > 0.5f;
+        }
+        CHECK_MSG(turned && impacts >= 2, "turned %d, impacts %u", turned ? 1 : 0, impacts);
+        delete w;
+    }
+    {
+        // On-Beat Crit's burst: the beat shot's hit hurts the enemies within 80 wu of it.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->grantUpgrade(0, kOnBeatCrit);
+        // The targets arrive just before a beat, close, so the beat's shot meets them where they were put.
+        while (std::fmod(music, kTicksPerBeat) < kTicksPerBeat - 8.0) stepWorld(*w, music, Vec2{});
+        const u16 drifter = SpeciesTable::index(Family::Drifter, 1, kVariantA);
+        const i32 a = w->spawnEnemy(drifter, Vec2{150.0f, 0.0f}, 0.0f, 0.0);
+        const i32 b = w->spawnEnemy(drifter, Vec2{150.0f, 50.0f}, 0.0f, 0.0);
+        w->setEnemyHp(static_cast<u32>(a), 1000.0f);
+        w->setEnemyHp(static_cast<u32>(b), 1000.0f);
+        u32 bursts = 0;
+        for (u32 t = 0; t < 30 && !bursts; ++t) {
+            stepWorld(*w, music, Vec2{}, 1);
+            bursts += countEvents(*w, EventType::CritBurst);
+        }
+        CHECK_MSG(bursts > 0 && w->enemies().hp[b] < 1000.0f, "bursts %u, the neighbour's health %.1f", bursts, w->enemies().hp[b]);
+        delete w;
+    }
+    {
+        // Orbitals: the shards destroy the enemy bullets they touch.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->grantUpgrade(0, kOrbitals);
+        for (u32 k = 0; k < 24; ++k) {
+            const float a = kTau * static_cast<float>(k) / 24.0f;
+            w->spawnBullet(dirOf(a) * tuning::kOrbitalRadiusWu, Vec2{}, 0.0f, 10.0f);
+        }
+        const u32 before = w->bullets().count;
+        for (u32 t = 0; t < 120; ++t) stepWorld(*w, music, Vec2{});
+        CHECK_MSG(w->bullets().count < before, "bullets %u -> %u", before, w->bullets().count);
+        delete w;
+    }
+    {
+        // The shot pool's caps (TECH_SPEC 7.1, 1,024 a player): four players, each with Split 7, Double-Time 2, Pierce,
+        // Ricochet, Overcharge, Crit, every Riff at level 5, Prism and Hyper, at 174 BPM in a crowd, for 20 seconds.
+        auto* w = new (std::nothrow) World;
+        w->init(g_species);
+        w->spawner().mode = Spawner::Mode::Off;
+        w->resetRun(9, 0.0, 4);
+        for (u32 p = 0; p < 4; ++p) {
+            for (u32 k = 0; k < 3; ++k) w->grantUpgrade(p, kSplit);
+            for (u32 k = 0; k < 2; ++k) w->grantUpgrade(p, kDoubleTime);
+            for (u32 k = 0; k < 3; ++k) w->grantUpgrade(p, kPierce);
+            for (u32 k = 0; k < 3; ++k) w->grantUpgrade(p, kRicochet);
+            for (u32 k = 0; k < 3; ++k) w->grantUpgrade(p, kOnBeatCrit);
+            for (u32 k = 0; k < 5; ++k) {
+                w->grantUpgrade(p, kOrbitals);
+                w->grantUpgrade(p, kPulseRing);
+                w->grantUpgrade(p, kSentinel);
+            }
+            w->grantBoost(p, kPrism);
+            w->grantBoost(p, kHyper);
+        }
+        w->rules().godMode = true;
+        const u16 drifter = SpeciesTable::index(Family::Drifter, 1, kVariantA);
+        double music = 0.0;
+        const double perTick = 174.0 * 96.0 / 60.0 / 60.0;
+        u32 peak = 0, peakPlayer = 0;
+        for (u32 t = 0; t < 60 * 20; ++t) {
+            if (t % 30 == 0)
+                for (u32 k = 0; k < 40 && w->enemies().count < 500; ++k) {
+                    const float a = kTau * static_cast<float>(k) / 40.0f;
+                    const i32 i = w->spawnEnemy(drifter, Vec2{std::cos(a) * 420.0f, std::sin(a) * 300.0f}, a, 0.0);
+                    if (i >= 0) w->setEnemyHp(static_cast<u32>(i), 30.0f);
+                }
+            TickInput in;
+            in.music0 = music;
+            in.music1 = music + perTick;
+            in.bpm = 174.0f;
+            for (u32 p = 0; p < 4; ++p) {
+                in.players[p].present = true;
+                in.players[p].pos = Vec2{static_cast<float>(p) * 40.0f, 0.0f};
+                in.players[p].aim = dirOf(static_cast<float>(t) * 0.01f + static_cast<float>(p) * 1.5f);
+                in.players[p].fire = 1;
+            }
+            w->tick(in);
+            music = in.music1;
+            if (w->shots().count > peak) peak = w->shots().count;
+            for (u32 p = 0; p < 4; ++p) peakPlayer = w->shotsLive(p) > peakPlayer ? w->shotsLive(p) : peakPlayer;
+            if (t % 240 == 239)
+                for (u32 p = 0; p < 4; ++p) {
+                    w->grantBoost(p, kPrism);  // the same Boost again refreshes it: Prism and Hyper all the way through
+                    w->grantBoost(p, kHyper);
+                }
+        }
+        const WorldCounters& c = w->counters();
+        CHECK_MSG(c.shotsDropped == 0 && c.shotsCapped == 0 && peak <= Shots::kCap && peakPlayer <= 1024, "shots peak %u (a player %u), dropped %u, capped %u",
+                  peak, peakPlayer, c.shotsDropped, c.shotsCapped);
+        std::printf("[sim tests] shot pool, four players at full strength with Prism and Hyper at 174 BPM: peak %u (a player %u), "
+                    "dropped %u, held back by a player's cap %u\n",
+                    peak, peakPlayer, c.shotsDropped, c.shotsCapped);
+        delete w;
+    }
 }
 
 void testBoss() {
@@ -829,6 +1054,7 @@ int main() {
     testCrowd();
     testTrioRules();
     testUpgradeStacking();
+    testPlayTest1();
     testBoss();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;

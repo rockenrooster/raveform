@@ -228,9 +228,11 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
             }
         }
     }
-    // A Trio: fly into the orb the bot likes best (a new Riff, then a weapon, then the rest); a Boost
-    // lying near: fetch it.
+    // A Trio: go to the orb the bot likes best (a new Riff, then a weapon, then the rest) and stay on it until it
+    // is taken (play test 1: an orb is held for two beats); a Boost lying near: fetch it.
     const TrioState& tr = w.trio(player);
+    bool holding = false;
+    Vec2 holdPull{};
     if (tr.open && tr.homing < 0 && tr.orbs) {
         u32 pick = 0;
         i32 bestScore = -1;
@@ -244,7 +246,14 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
         }
         const Vec2 d = tr.orbPos[pick] - pos;
         const float dist = length(d);
-        if (dist > 1e-3f) force = force + d * (2.2f / dist);
+        const float ring = tuning::kTrioHoldRing * tuning::kTrioOrbWu * (isRiff(tr.upgrade[pick]) ? tuning::kTrioRiffScale : 1.0f);
+        if (dist > 0.5f * ring) {
+            if (dist > 1e-3f) force = force + d * (2.2f / dist);
+        } else {
+            // On it: hold still near its centre; the field's other pulls only nudge (the hold empties if it leaves).
+            holding = true;
+            holdPull = d * (3.0f / ring);
+        }
     }
     const BoostPickups& bp = w.boostPickups();
     for (u32 k = 0; k < bp.count; ++k) {
@@ -263,6 +272,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     // A slow wander so an empty arena still gets crossed.
     wander_ += rng_.range(-0.35f, 0.35f);
     force = force + dirOf(wander_) * 0.25f;
+    if (holding) force = force * 0.25f + holdPull;
     const float f = length(force);
     in.move = f > 0.05f ? force * (std::fmin(f, 1.0f) / f) : Vec2{};
 

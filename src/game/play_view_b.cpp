@@ -144,6 +144,13 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
         case EventType::HaloBlock:
             addShockRings(at, 1, 120.0f, palettes_->player[3], whiteV(), t, 0.25f);
             break;
+        case EventType::CritBurst: {
+            // Play test 1, On-Beat Crit: the beat shot's hit bursts over 80 wu, in the shooter's colours.
+            const u32 q = e.a < kMaxPlayers ? e.a : w.viewPlayer();
+            const float lvl = q == w.viewPlayer() ? 1.0f : 0.6f;
+            addShockRings(at, 1, e.f, palettes_->playerLight[q] * lvl, whiteV() * lvl, t, 0.16f);
+            break;
+        }
         case EventType::BossPair: {
             // kaleidos.md: both arms shatter outward along their axis in mirror image; the lens plates
             // crack and fall inward; the wheel flinches.
@@ -273,7 +280,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
         const Loadout& l = pq.loadout;
         const bool hyper = pq.boost(kHyper);
         if (const u8 lv = l.riffs[riffIndex(kOrbitals)]) {
-            const u32 n = lv + 1u;
+            const u32 n = orbitalCount(lv);
             const double turn = hyper ? kTicksPerBar * 0.5 : kTicksPerBar;
             const double ph = std::fmod(in.music - w.director().startTick, turn) / turn;
             const float shardScale = 9.0f;
@@ -292,11 +299,13 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             if (r < 4.0f) continue;
             glyph(d.glyphs, gRing128_, false, pw.centre, 0.0f, 0.0f, r, 2.0f * (1.0f - u * u), 0.6f + 0.6f * (1.0f - u), kGlyphRingW, player, light);
         }
-        if (l.riffs[riffIndex(kSentinel)]) {
-            const Vec2 s = lerpv(pq.prevSentinel, pq.sentinel, a);
-            glyph(d.glyphs, gMarkC_ >= 0 ? gMarkC_ : gRing32_, false, s, t * 2.0f, t * 2.0f, 8.0f, 2.4f, 0.6f, kGlyphFlat, light, player);
-            glyph(d.glyphs, gRing32_, false, s, 0.0f, 0.0f, 11.0f, 1.2f, 0.5f, kGlyphFlat, player, player);
-            d.sparkles.glow(toScene(s), 9.0f * refPx_, player * 0.7f);
+        if (const u8 lv = l.riffs[riffIndex(kSentinel)]) {
+            for (u32 k = 0; k < sentinelDrones(lv) && k < kMaxDrones; ++k) {
+                const Vec2 s = lerpv(pq.prevSentinel[k], pq.sentinel[k], a);
+                glyph(d.glyphs, gMarkC_ >= 0 ? gMarkC_ : gRing32_, false, s, t * 2.0f, t * 2.0f, 8.0f, 2.4f, 0.6f, kGlyphFlat, light, player);
+                glyph(d.glyphs, gRing32_, false, s, 0.0f, 0.0f, 11.0f, 1.2f, 0.5f, kGlyphFlat, player, player);
+                d.sparkles.glow(toScene(s), 9.0f * refPx_, player * 0.7f);
+            }
         }
         // Halo: a gold ring around the ship, one arc per hit it can still take.
         for (const ActiveBoost& b : pq.boosts) {
@@ -316,37 +325,45 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
     // ---- Kaleidos.
     drawBoss(d, in);
 
-    // ---- The Trio (screens.md): the ring is the clock; three orbs with icon, name, effect words, pips.
+    // ---- The Trio (screens.md): the ring is the clock; three orbs with icon, name, effect words, pips. Play test 1:
+    // locked for two beats (the ring draws itself in one, the orbs fade in as outlines over the next, their words
+    // already readable), lit on the third; the orb the ship stays on fills as a solid arc over two beats.
     const TrioState& tr = w.trio(w.viewPlayer());
     if (tr.open && me.alive && icons_ && font_) {
         const float span = static_cast<float>(tr.closeTick - tr.openTick);
         const float left = span > 1.0f ? clamp01(static_cast<float>((tr.closeTick - in.music) / span)) : 0.0f;
+        const float beats = static_cast<float>((in.music - tr.openTick) / kTicksPerBeat);
+        const float drawn = clamp01(beats);                 // the ring draws itself over the first beat
+        const float fadeIn = clamp01(beats - 1.0f);         // the orbs fade in over the second
+        const bool locked = beats < static_cast<float>(tuning::kTrioLockBeats);
+        const float lightUp = locked ? 0.0f : clamp01(1.0f - (beats - static_cast<float>(tuning::kTrioLockBeats)) * 3.0f);  // the third beat's flash
         const Vec2 c = tr.centre;
         const float R = tuning::kTrioRingWu;
         const u32 segs = 96;
         for (u32 s = 0; s < segs; ++s) {
             const float u0 = static_cast<float>(s) / segs, u1 = static_cast<float>(s + 1) / segs;
+            if (u0 >= drawn) break;
             const float a0 = -0.5f * kPi + u0 * kTau, a1 = -0.5f * kPi + u1 * kTau;
             const bool lit = u0 < left;
             const Vec3 col = lit ? mix(accent, W1, 0.5f + 0.5f * std::sin(u0 * kTau * 2.0f)) * 1.3f : W1 * 0.16f;
             d.scene.line(toScene(c + dirv(a0) * R), toScene(c + dirv(a1) * R), (lit ? 1.0f : 0.7f) * refPx_, col, col, 0);
         }
-        if (left > 0.0f) {
+        if (left > 0.0f && drawn >= 1.0f) {
             const Vec2 bead = c + dirv(-0.5f * kPi + left * kTau) * R;
             d.sparkles.glow(toScene(bead), 8.0f * refPx_, W1 * 1.6f);
         }
-        // Which orb answers: the nearest within 110 wu, or the one the ship flies at.
+        // Which orb answers: the one being held, else the nearest within 110 wu, or the one the ship flies at (lit only).
         i32 answer = -1;
         float best = kTrioAnswerWu;
         const Vec2 ship = in.shipPos;
-        for (u32 k = 0; k < tr.orbs; ++k) {
+        for (u32 k = 0; k < tr.orbs && !locked; ++k) {
             const float dd = length(tr.orbPos[k] - ship);
             if (dd < best) {
                 best = dd;
                 answer = static_cast<i32>(k);
             }
         }
-        if (answer < 0 && length(in.shipVel) > 120.0f) {
+        if (!locked && answer < 0 && length(in.shipVel) > 120.0f) {
             const Vec2 v = normalizeOr(in.shipVel, Vec2{1.0f, 0.0f});
             float bestCos = 0.97f;
             for (u32 k = 0; k < tr.orbs; ++k) {
@@ -357,29 +374,48 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
                 }
             }
         }
+        if (tr.holdOrb >= 0) answer = tr.holdOrb;
         if (tr.homing >= 0) answer = tr.homing;
+        const float holdFill = clamp01(static_cast<float>(tr.holdTicks / (tuning::kTrioHoldBeats * kTicksPerBeat)));
         for (u32 k = 0; k < tr.orbs; ++k) {
             const u8 u = tr.upgrade[k];
             const bool riff = isRiff(u);
             const bool ans = static_cast<i32>(k) == answer;
             const Vec2 p = tr.orbPos[k];
+            if (fadeIn <= 0.0f) continue;
             const float orbWu = tuning::kTrioOrbWu * (riff ? tuning::kTrioRiffScale : 1.0f) * (ans ? 1.12f : 1.0f) * swell;
             const Vec2 sp = toScene(p);
+            // Locked: outlines at 0.5, fading in; lit: the icon at its level (the third beat flashes it).
+            const float iconLevel = locked ? 0.5f * fadeIn : (ans ? 1.35f : 1.0f) + 0.8f * lightUp;
             icons_->draw(d, upgradeIcon_[u], sp, orbWu * pxPerWu_ / icons_->size(upgradeIcon_[u]) * (riff ? tuning::kTrioRiffScale : 1.0f),
-                         ans ? 1.35f : 1.0f);
+                         iconLevel);
+            if (lightUp > 0.0f) d.pools.glow(sp, orbWu * 2.6f * pxPerWu_, W1 * (0.25f * lightUp));
             // The thin ring at 1.42x; answering: in the player colour at 2.0 with a dashed outer ring and a pool.
-            const float ringWu = 1.42f * orbWu;
+            const float ringWu = tuning::kTrioHoldRing * orbWu;
             const u32 n = 64;
             for (u32 s = 0; s < n; ++s) {
                 const float a0 = kTau * static_cast<float>(s) / n, a1 = kTau * static_cast<float>(s + 1) / n;
-                const Vec3 col = ans ? player * 2.0f : W1 * 0.7f;
+                const Vec3 col = locked ? W1 * (0.35f * fadeIn) : (ans ? player * 2.0f : W1 * 0.7f);
                 d.scene.line(toScene(p + dirv(a0) * ringWu), toScene(p + dirv(a1) * ringWu), (ans ? 1.2f : 0.6f) * refPx_, col, col, 0);
                 if (ans && s % 2 == 0) {
                     const float r2 = ringWu * 1.18f;
                     d.scene.line(toScene(p + dirv(a0) * r2), toScene(p + dirv(a1) * r2), 0.8f * refPx_, player * 1.4f, player * 1.4f, 0);
                 }
             }
-            if (ans) {
+            // Holding: the thin ring fills as a solid arc in the player colour, clockwise from twelve o'clock.
+            if (static_cast<i32>(k) == tr.holdOrb && holdFill > 0.0f) {
+                const u32 arc = 64;
+                for (u32 s = 0; s < arc; ++s) {
+                    const float u0 = static_cast<float>(s) / arc;
+                    if (u0 >= holdFill) break;
+                    const float u1 = std::fmin(static_cast<float>(s + 1) / arc, holdFill);
+                    const float a0 = -0.5f * kPi + u0 * kTau, a1 = -0.5f * kPi + u1 * kTau;
+                    d.scene.line(toScene(p + dirv(a0) * ringWu), toScene(p + dirv(a1) * ringWu), 3.2f * refPx_, player * 2.4f, light * 2.0f, 0);
+                }
+                const Vec2 tip = p + dirv(-0.5f * kPi + holdFill * kTau) * ringWu;
+                d.sparkles.glow(toScene(tip), 10.0f * refPx_, light * 1.8f);
+            }
+            if (ans && !locked) {
                 d.pools.glow(sp, ringWu * 2.2f * pxPerWu_, player * 0.22f);
                 d.scene.line(toScene(ship), toScene(p - normalizeOr(p - ship, Vec2{1.0f, 0.0f}) * ringWu), 1.0f * refPx_, player * 0.4f,
                              light * 1.6f, 0);
@@ -391,7 +427,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             const float wName = font_->measure(TextStyle{capName}, info.name), wWords = font_->measure(TextStyle{capWords}, words);
             const float gap = (ringWu + 14.0f) * pxPerWu_;
             Vec2 org;  // the name's baseline, left end
-            const float lift = ans ? 1.9f : 1.3f;
+            const float lift = (ans ? 1.9f : 1.3f) * (locked ? fadeIn : 1.0f);
             float align = 0.0f;  // 0 left-aligned at org.x, 1 right-aligned, 0.5 centred
             if (k == 0) {
                 org = Vec2{sp.x, sp.y - gap - capWords - 18.0f * refPx_};
@@ -403,7 +439,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
                 org = Vec2{sp.x + gap, sp.y - 4.0f * refPx_};
                 align = 0.0f;
             }
-            const Vec3 nameCol = W1 * lift, wordCol = accent * (ans ? 1.9f : 1.3f);
+            const Vec3 nameCol = W1 * lift, wordCol = accent * ((ans ? 1.9f : 1.3f) * (locked ? fadeIn : 1.0f));
             // (The font's origin is the top of its caps; org and wy are baselines.)
             font_->drawField(d.scene, Vec2{org.x - align * wName, org.y - capName}, capName, 0.9f * refPx_, nameCol, nameCol, nameCol, info.name);
             const float wy = org.y + capWords + 12.0f * refPx_;

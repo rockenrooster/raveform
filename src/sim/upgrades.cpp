@@ -9,14 +9,14 @@ namespace rf::sim {
 using namespace tuning;
 
 namespace {
-// GAME_DESIGN 6.2 / 6.3 (names, caps); icons from design/icons.json.
+// GAME_DESIGN 6.2 / 6.3 (names, caps; play test 1: Split 3, Extra Cell 2); icons from design/icons.json.
 const UpgradeInfo kInfo[kUpgradeCount] = {
-    {"SPLIT", "split", 4, true},
+    {"SPLIT", "split", 3, true},
     {"DOUBLE-TIME", "double_time", 2, true},
     {"PIERCE", "pierce", 3, true},
     {"RICOCHET", "ricochet", 3, true},
     {"OVERCHARGE", "overcharge", 5, true},
-    {"EXTRA CELL", "extra_cell", 3, false},
+    {"EXTRA CELL", "extra_cell", 2, false},
     {"MAGNET", "magnet", 4, false},
     {"ON-BEAT CRIT", "on_beat_crit", 3, true},
     {"ORBITALS", "orbitals", kRiffMaxLevel, true},
@@ -33,43 +33,56 @@ const BoostInfo kBoosts[kBoostCount] = {
     {"MAGNET STORM", "magnet_storm", "PULLS EVERY SHARD", 4},
 };
 
-const char* const kNumberWords[] = {"ZERO", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN"};
+const char* const kNumberWords[] = {"ZERO", "ONE", "TWO",   "THREE", "FOUR",  "FIVE",
+                                     "SIX",  "SEVEN", "EIGHT", "NINE", "TEN", "ELEVEN"};
 }  // namespace
 
 const UpgradeInfo& upgradeInfo(u8 u) { return u < kUpgradeCount ? kInfo[u] : kNone; }
 const BoostInfo& boostInfo(u8 b) { return kBoosts[b < kBoostCount ? b : 0]; }
 
 const char* upgradeWords(u8 u, u32 level) {
-    // Effect words: screens.md's table (final, 2026-11-12), word for word.
+    // Effect words: screens.md's table (final, play test 1, 2026-11-12), word for word.
     static char buf[48];
     switch (u) {
-        case kSplit: return "+1 SHOT LANE";
+        case kSplit: return "+2 SHOT LANES";
         case kDoubleTime: return level <= 1 ? "FIRE RATE X1.5" : "FIRE RATE X2";
-        case kPierce: return "SHOTS PIERCE +1";
-        case kRicochet: return "+1 WALL BOUNCE";
-        case kOvercharge: return "+25% SHOT DAMAGE";
-        case kExtraCell: return "+1 SHIELD CELL";
-        case kMagnet: return "WIDER SHARD PULL";
+        case kPierce: return "SHOTS PIERCE +2";
+        case kRicochet: return "SHOTS BOUNCE +2";
+        case kOvercharge: return "+50% SHOT DAMAGE";
+        case kExtraCell: return "+1 CELL, ALL REFILLED";
+        case kMagnet:
+            std::snprintf(buf, sizeof buf, "SHARD PULL X%u", (level < 1 ? 1u : level) + 1u);
+            return buf;
         case kOnBeatCrit:
-            std::snprintf(buf, sizeof buf, "BEAT SHOTS X%u", level + 1);
+            std::snprintf(buf, sizeof buf, "BEAT SHOTS X%u", static_cast<u32>(onBeatCritMultiplier(level < 1 ? 1u : level)));
             return buf;
-        case kOrbitals:
-            if (level <= 1) return "NEW RIFF: TWO ORBITERS";
-            std::snprintf(buf, sizeof buf, "LEVEL %u: %s ORBITERS", level, kNumberWords[level + 1 < 8 ? level + 1 : 7]);
+        case kOrbitals: {
+            const u32 n = orbitalCount(level < 1 ? 1u : level);
+            if (level <= 1) {
+                std::snprintf(buf, sizeof buf, "NEW RIFF: %s ORBITERS", kNumberWords[n < 12 ? n : 11]);
+                return buf;
+            }
+            std::snprintf(buf, sizeof buf, "LEVEL %u: %s ORBITERS", level, kNumberWords[n < 12 ? n : 11]);
             return buf;
+        }
         case kPulseRing:
             switch (level) {
                 case 0:
                 case 1: return "NEW RIFF: BEAT RINGS";
-                case 2: return "LEVEL 2: EVERY BEAT";
-                case 3: return "LEVEL 3: SECOND RING";
-                case 4: return "LEVEL 4: WIDER RINGS";
-                default: return "LEVEL 5: HEAVIER RINGS";
+                case 2: return "LEVEL 2: SECOND RING";
+                case 3: return "LEVEL 3: WIDER RINGS";
+                case 4: return "LEVEL 4: HEAVIER RINGS";
+                default: return "LEVEL 5: TWICE AS OFTEN";
             }
         case kSentinel:
-            if (level <= 1) return "NEW RIFF: OFF-BEAT DRONE";
-            std::snprintf(buf, sizeof buf, "LEVEL %u: BURST OF %u", level, level);
-            return buf;
+            switch (level) {
+                case 0:
+                case 1: return "NEW RIFF: OFF-BEAT DRONE";
+                case 2: return "LEVEL 2: BURST OF 4";
+                case 3: return "LEVEL 3: SECOND DRONE";
+                case 4: return "LEVEL 4: BURST OF 5";
+                default: return "LEVEL 5: THIRD DRONE";
+            }
         default: return "";
     }
 }

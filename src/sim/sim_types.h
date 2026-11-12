@@ -37,12 +37,14 @@ constexpr float kPlayerSpeed = 520.0f;
 constexpr float kPlayerVisualRadius = 14.0f;
 constexpr float kPlayerHitRadius = 5.0f;
 constexpr float kShotSpeed = 1400.0f;
-constexpr u8 kStartCells = 3, kMaxCells = 6;
-constexpr u8 kStartNovas = 2, kNovaCapacity = 3;
+// Play test 1 (2026-11-12, "easy, almost a power fantasy"): 4 cells (cap 6) and 3 Novas (capacity 4) at the start,
+// one of each back at every Break, the Dash in two beats.
+constexpr u8 kStartCells = 4, kMaxCells = 6;
+constexpr u8 kStartNovas = 3, kNovaCapacity = 4;
 constexpr float kInvulnerableS = 1.5f;
 constexpr float kPanicRadiusWu = 220.0f;
 constexpr float kDashWu = 220.0f, kDashS = 0.12f;
-constexpr double kDashRechargeBeats = 4.0;
+constexpr double kDashRechargeBeats = 2.0;
 constexpr float kPerfectDashS = 0.060f;  // R7: within +-60 ms of a beat
 constexpr float kFireContinueS = 0.400f;  // GAME_DESIGN 2: the right thumb leaves the stick for a button
 constexpr float kShardMagnetWu = 90.0f;

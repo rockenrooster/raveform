@@ -345,6 +345,9 @@ private:
     float spotlightT_ = -100.0f;
     float takenT_ = -100.0f;
     Vec2 takenFrom_;
+    // Play test 1: the Trio hold's notes (the orb being held, the notes played for it).
+    i8 holdOrbSeen_ = -1;
+    u8 holdStage_ = 0;
 };
 
 }  // namespace rf
