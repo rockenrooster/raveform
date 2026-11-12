@@ -144,6 +144,32 @@ Rules:
   a third and cannot be taken.
 - Nothing here is a touch target. The sticks stay where they are.
 
+Effect words (final, 2026-11-12; plain words, no music terms, so a first-time player can choose):
+
+| Upgrade | Words by stack or level |
+|---|---|
+| Split | `+1 SHOT LANE` |
+| Double-Time | `FIRE RATE X1.5`, then `FIRE RATE X2` |
+| Pierce | `SHOTS PIERCE +1` |
+| Ricochet | `+1 WALL BOUNCE` |
+| Overcharge | `+25% SHOT DAMAGE` |
+| Extra Cell | `+1 SHIELD CELL` |
+| Magnet | `WIDER SHARD PULL` |
+| On-Beat Crit | `BEAT SHOTS X2`, `X3`, `X4` |
+| Orbitals | `NEW RIFF: TWO ORBITERS`, then `LEVEL n: THREE ORBITERS` and so on |
+| Pulse Ring | `NEW RIFF: BEAT RINGS`, `LEVEL 2: EVERY BEAT`, `LEVEL 3: SECOND RING`, `LEVEL 4: WIDER RINGS`, `LEVEL 5: HEAVIER RINGS` |
+| Sentinel | `NEW RIFF: OFF-BEAT DRONE`, then `LEVEL n: BURST OF n` |
+| Boosts (HUD) | Prism `FIVE-WAY RAINBOW FAN`, Hyper `FIRE RATE X2`, Halo `BLOCKS THREE HITS`, Magnet Storm `PULLS EVERY SHARD` |
+
+## Track name card (M3)
+
+A new Track announces itself like a boss does. On the first downbeat after a Track-change Break the
+card writes itself across the lower third and holds for two bars, then its letters streak out to
+both sides on the beat: `TRACK 2` at cap 28 in white above, the Track's name (`SOLAR WIND`) at cap
+110 in the new palette's gradient, 8 px tubes, a two-arm flare sweeping along the name once as it
+lands. The first Track of a run gets the same card on its first downbeat. Enemies spawn as normal
+underneath; the card is drawn at 0.8 so it never hides a threat.
+
 ## Game over (M3)
 
 The palette is the one the run ended in. The score is the headline; everything else explains it.
@@ -168,7 +194,7 @@ The run freezes and dims to a fifth; the music carries on under a low-pass.
 | Element | Place | Behaviour |
 |---|---|---|
 | `PAUSED` | Top centre, cap 96 | Accent → white → accent |
-| **RESUME** | Centre, 600 × 130, label 48, player colour | **Counts the player back in:** four numbered rings fill on four beats, and the run starts on the bar line after them. Nobody is dropped into a fight mid-phrase |
+| **RESUME** | Centre, 600 × 130, label 48, player colour | **Counts the player back in:** four numbered rings fill on four beats, and the run goes on from the place in its bar where it was paused, so the run's bars stay on the band's (as built in M3: a pause on a bar line resumes on a bar line). Nobody is dropped into a fight without the count |
 | RESTART, SETTINGS | Left and right, 320 × 100 | Restart asks once |
 | Run line | Under the count, cap 14, gold | Track, tempo, score, Chain |
 | QUIT RUN | Bottom centre, 320 × 90, outline at 0.3 | Asks once |

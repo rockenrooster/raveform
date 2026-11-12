@@ -359,8 +359,18 @@ phases; it fits inside the entity caps.
   species has a threat cost; the director spends the budget on **formations** rather than single
   spawns: ring around a player, edge sweep, corner swarms, pincer, spiral rain, Rift bursts, escort
   around an elite, closing wall.
-- **Sections** scale the budget: Groove 1.0, Build ramps 1.0 → 1.6, Drop 2.0 then decays to 1.2,
-  Break 0.
+- **The crowd and the threats** (2026-11-12, after the first bot runs showed 10–20 enemies alive
+  where this document promises hundreds). The threat budget above buys only the *threats*: hunters
+  and specials, the species that can hurt a careless player. The *crowd* is fodder (Drifters,
+  Shoals, Caroms and their later kin) and follows a **population target** instead: the number of
+  enemies the director keeps near the ships, by Track and cycle (`design/species.json`,
+  `firstSlice.crowd`). Each bar the director counts the enemies near the players and warps in
+  fodder formations (floods of 16–80 bodies from one side, rings, corner swarms) to close the gap
+  over the next two bars. A strong build therefore gets more to kill, more Shards and a louder
+  song, and the danger still rises only with the threat budget. Fodder left far behind every ship
+  dissolves without Shards and is replaced near the players.
+- **Sections** scale the budget and the population target: Groove 1.0, Build ramps 1.0 → 1.6 (crowd
+  1.0 → 1.3), Drop 2.0 then decays to 1.2 (crowd 1.6 → 1.2), Break 0.
 - **Debuts.** New species unlock on a schedule by Track and cycle. Each debut gets a spotlight at the
   end of a Break: a small group alone, with its name on screen, before it joins the pool.
 - **Assist.** After a lost Shield cell the budget eases 10% for one cycle; after two clean cycles it
@@ -383,7 +393,9 @@ entity counts, kills per second and damage taken per cycle.
 - **Size:** 9600 × 5400 wu, bounded by glowing walls — about 45 screens. The warping grid covers it.
 - **Camera:** follows the player with look-ahead along velocity and a small bias toward the aim
   direction; zoom breathes between 0.85× and 1.25× with enemy density and boss fights. Each device has
-  its own camera.
+  its own camera. **Boss fights:** while a boss lives within 1,800 wu of the ship the camera holds
+  0.85× and leans toward the boss by 30% of the offset to it (at most 320 wu), so the boss is in the
+  frame whenever its bullets are.
 - **Indicators:** edge arrows for elites, bosses, teammates, events and incoming ranged attacks; an
   optional corner radar.
 

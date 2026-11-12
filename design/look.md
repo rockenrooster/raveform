@@ -368,7 +368,7 @@ HUD layout at 2400×1080 (scale with screen height; keep a 132 px side margin cl
 | Health | On the ship | The halo (§4) — there is no health bar |
 | Sticks | Bottom corners | Dashed 150 px rings at 0.34, a filled thumb pad that follows the thumb |
 | Nova and Dash buttons | Above and inside the aim stick | Idle: outline at 0.5 with a label. **Pressed: filled disc in the player colour at 0.45, outline at 2.0 and thicker, label at 1.8** |
-| Edge indicators | Screen edges | Small chevrons: white for elites, gold for events, danger colour for incoming ranged attacks |
+| Edge indicators | Screen edges | Chevrons 44 px tall (at 1080 lines; the first build's 22 px was about 1.5 mm on a phone and could not be read): white for elites, gold for events, danger colour for incoming ranged attacks. A boss off screen gets a 64 px double chevron in its accent colour that swells 15% on every beat. Each sits 28 px inside the edge on a dark disc at 0.5, so it reads over any scene |
 
 No world object spawns under the score, phrase bar or Nova stock.
 

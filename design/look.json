@@ -144,7 +144,8 @@
   {"id": "killPoolLarge", "kind": "pool", "radiusWu": [150.0, 250.0], "colour": "hue", "intensity": [0.32, 0.05]},
   {"id": "playerPool", "kind": "pool", "radiusWu": 100.0, "colour": "player", "intensity": 0.13},
   {"id": "wellPool", "kind": "pool", "radiusWu": 100.0, "colour": "hue", "intensity": 0.16},
-  {"id": "edgeIndicator", "kind": "pool", "radiusRefPx": 22.0, "colour": "own", "intensity": 0.3}
+  {"id": "edgeIndicator", "kind": "pool", "radiusRefPx": 44.0, "colour": "own", "intensity": 0.3,
+   "chevronRefPx": 44.0, "bossChevronRefPx": 64.0, "bossBeatSwell": 0.15, "insetRefPx": 28.0, "discAlpha": 0.5}
  ],
 
  "explosions": {
