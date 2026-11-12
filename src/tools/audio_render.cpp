@@ -17,6 +17,7 @@
 #include "audio/bake.h"
 #include "audio/engine.h"
 #include "audio/fft.h"
+#include "audio/reverb.h"
 #include "audio/music_data.h"
 #include "audio/wav.h"
 #include "core/alloc_counter.h"
@@ -39,6 +40,7 @@ struct Options {
     const char* meta = nullptr;
     const char* write = nullptr;
     const char* dumpSamples = nullptr;
+    const char* dumpReverb = nullptr;
     const char* seedTarget = nullptr;  // --seed-search kick --target "sub,bass,lowmid,mid,himid,high"
     bool calibrate = false;
     bool check = false;
@@ -522,6 +524,7 @@ int main(int argc, char** argv) {
         else if (eq(a, "--meta")) ok = take(opt.meta);
         else if (eq(a, "--write")) ok = take(opt.write);
         else if (eq(a, "--dump-samples")) ok = take(opt.dumpSamples);
+        else if (eq(a, "--dump-reverb")) ok = take(opt.dumpReverb);
         else if (eq(a, "--seed-search")) {
             const char* what = nullptr;
             ok = take(what) && eq(what, "kick");
@@ -597,6 +600,23 @@ int main(int argc, char** argv) {
             std::free(k);
         }
         for (u32 r = 0; r < 5; ++r) std::printf("seed %llu: rms band error %.2f dB\n", static_cast<unsigned long long>(bestSeed[r]), std::sqrt(best[r] / 3.0));
+        return 0;
+    }
+    if (opt.dumpReverb) {
+        // The reverb's impulse response, both channels (Track 1, the default sound): <file> as float32 L then R.
+        FdnReverb* rv = new FdnReverb;
+        const ReverbPatch rp = music->sound[0][music->defaultVariant].reverb;
+        if (!rv->init(kRate, &rp, 1)) return 1;
+        const u32 n = kRate * 3;
+        float* ir = static_cast<float*>(std::calloc(2 * n, sizeof(float)));
+        rv->impulseResponse(0, 0, ir, n);
+        rv->impulseResponse(0, 1, ir + n, n);
+        if (FILE* f = std::fopen(opt.dumpReverb, "wb")) {
+            std::fwrite(ir, sizeof(float), 2 * n, f);
+            std::fclose(f);
+        }
+        std::free(ir);
+        delete rv;
         return 0;
     }
     if (opt.dumpSamples) {

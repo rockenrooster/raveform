@@ -206,6 +206,6 @@ struct MusicData {
 };
 
 // Bumped whenever the engine's DSP changes the loudness of a render (invalidates the calibration).
-constexpr u32 kDspVersion = 2;
+constexpr u32 kDspVersion = 3;
 
 }  // namespace rf::audio

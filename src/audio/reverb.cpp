@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "audio/dsp.h"
+#include "audio/fft.h"
 
 namespace rf::audio {
 
@@ -78,18 +79,45 @@ bool FdnReverb::init(double sampleRate, const ReverbPatch* sets, u32 setCount) {
             continue;
         }
         configure(sets_[i], sets[i]);
-        // Unit-energy impulse response, measured.
+        // Normalisation, measured on the impulse response. The prototype's IR has unit energy and the
+        // spectrum of its band limits; the network's modes tilt its spectrum a little, so the energy is
+        // matched where the sends live (250 Hz - 6 kHz): the network's energy there equals the share the
+        // prototype's IR has there. (Total energy: within a few tenths of a dB of one.)
         const u32 n = static_cast<u32>((2.0 * sets[i].rt60 + kMaxPredelay + 0.2) * sampleRate);
+        const u32 m = 65536;  // the spectrum from the first 1.4 s (the rest holds well under 0.1% of the energy)
+        auto* spec = static_cast<Complex*>(std::malloc(sizeof(Complex) * m));
+        const SpectralShape shape = SpectralShape::bandpass(sets[i].highpass, sets[i].lowpass, 1);
+        double expectIn = 0.0, expectAll = 0.0;
+        for (u32 b = 1; b < m / 2; ++b) {
+            const double f = static_cast<double>(b) * sampleRate / m, g = shape.gain(f);
+            expectAll += g * g;
+            if (f >= 250.0 && f < 6000.0) expectIn += g * g;
+        }
         for (u32 c = 0; c < 2; ++c) {
             sets_[i].out[c] = 1.0f;
             clear();
             double e = 0.0;
             for (u32 k = 0; k < n; ++k) {
-                const double y = tick(ch_[c], sets_[i], c, k == 0 ? 1.0f : 0.0f);
-                e += y * y;
+                const float y = tick(ch_[c], sets_[i], c, k == 0 ? 1.0f : 0.0f);
+                e += static_cast<double>(y) * y;
+                if (spec && k < m) spec[k] = {y, 0.0};
             }
-            sets_[i].out[c] = e > 0.0 ? static_cast<float>(1.0 / std::sqrt(e)) : 0.0f;
+            double scale = e > 0.0 ? 1.0 / std::sqrt(e) : 0.0;
+            if (spec && e > 0.0 && expectAll > 0.0) {
+                for (u32 k = n < m ? n : m; k < m; ++k) spec[k] = {0.0, 0.0};
+                fftPow2(spec, m, false);
+                double in = 0.0, all = 0.0;
+                for (u32 b = 1; b < m / 2; ++b) {
+                    const double f = static_cast<double>(b) * sampleRate / m;
+                    const double p = spec[b].re * spec[b].re + spec[b].im * spec[b].im;
+                    all += p;
+                    if (f >= 250.0 && f < 6000.0) in += p;
+                }
+                if (in > 0.0 && all > 0.0) scale *= std::sqrt((expectIn / expectAll) / (in / all));
+            }
+            sets_[i].out[c] = static_cast<float>(scale);
         }
+        std::free(spec);
     }
     clear();
     active_ = 0;
