@@ -12,6 +12,7 @@
 //       The crowd and the difficulty over many seeds (M3 stage C): enemies near the ship during Groove
 //       against the target per Track and cycle, Drop peaks, first death, Tracks reached, kills a minute.
 //       --god: hits cost nothing, so every Track and cycle is measured (no difficulty numbers then).
+//       --trace: one line a minute (Track, section, enemies, kills, ship, boss).
 //   raveform_headless --sim stress [--seconds 120] [--seed 1]
 //       bench_stress without a window: about 700 enemies and 1,500 enemy bullets around the bot's ship.
 // Each prints a summary and one line tagged RFSIM (JSON).
@@ -289,7 +290,7 @@ int runSoak(const SpeciesTable& species, float seconds, u64 seed, float bpm, boo
 // The crowd and the difficulty over many seeds (M3 stage C): per Track and cycle the mean number of enemies
 // near the ship during Groove against the crowd's target, the Drop's peak, kills a minute, the first death
 // and the Tracks reached.
-int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, Bot::Policy policy, bool god) {
+int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, Bot::Policy policy, bool god, bool trace) {
     const u32 ticks = static_cast<u32>(minutes * 3600.0f);
     auto* world = new (std::nothrow) World;
     if (!world) return 2;
@@ -327,6 +328,13 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
             const Phrase& ph = w.phrase();
             if (ph.track > maxTrack[s]) maxTrack[s] = ph.track;
             const PlayerState& p = w.player(0);
+            if (trace && t % 3600u == 3599u) {
+                const sim::BossState& b = w.boss();
+                std::printf("[trace] min %3u  T%u c%u %s%s  alive %3u  kills %6u  ship (%6.0f %6.0f) %s  boss %s pairs %u core %.0f/%.0f hits %u%s\n",
+                            t / 3600u + 1u, ph.track, ph.cycle, sectionLabel(ph.section), ph.bossDrop ? " boss" : "", w.enemies().count,
+                            w.counters().kills - c0.kills, p.pos.x, p.pos.y, p.alive ? "alive" : "down", b.active ? "on" : "off",
+                            static_cast<unsigned>(b.alive), b.coreHp, b.coreMax, b.hits, b.dying ? " dying" : "");
+            }
             if (!p.alive || w.restartPending()) continue;
             u32 near = 0;
             const Enemies& e = w.enemies();
@@ -407,7 +415,7 @@ int simHeadlessMain(int argc, char** argv) {
     u64 seed = 1;
     u32 seeds = 20;
     Bot::Policy policy = Bot::Policy::Play;
-    bool god = false;
+    bool god = false, trace = false;
     for (int i = 3; i < argc; ++i) {
         const char* a = argv[i];
         const char* next = i + 1 < argc ? argv[i + 1] : nullptr;
@@ -425,6 +433,8 @@ int simHeadlessMain(int argc, char** argv) {
             ++i;
         } else if (std::strcmp(a, "--god") == 0) {
             god = true;
+        } else if (std::strcmp(a, "--trace") == 0) {
+            trace = true;
         } else if (std::strcmp(a, "--seeds") == 0 && next) {
             seeds = static_cast<u32>(std::strtoul(next, nullptr, 10));
             ++i;
@@ -446,11 +456,11 @@ int simHeadlessMain(int argc, char** argv) {
     } else if (std::strcmp(mode, "soak") == 0) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes : 10.0f) * 60.0f, seed, bpm, false, policy);
     } else if (std::strcmp(mode, "crowd") == 0) {
-        code = runCrowd(*species, seeds, minutes > 0.0f ? minutes : 30.0f, seed, policy, god);
+        code = runCrowd(*species, seeds, minutes > 0.0f ? minutes : 30.0f, seed, policy, god, trace);
     } else if (std::strcmp(mode, "stress") == 0) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes * 60.0f : 120.0f), seed, bpm, true, policy);
     } else {
-        std::printf("usage: raveform_headless --sim determinism|soak|crowd|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless] [--god]\n");
+        std::printf("usage: raveform_headless --sim determinism|soak|crowd|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless] [--god] [--trace]\n");
     }
     delete species;
     return code;

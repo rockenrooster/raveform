@@ -16,6 +16,10 @@ constexpr float kShardReachWu = 420.0f;
 constexpr float kWallReachWu = 450.0f;
 constexpr float kKeepNearWu = 260.0f, kKeepFarWu = 520.0f;
 constexpr float kAimRangeWu = 860.0f;
+// M3 stage C: the boss is a target only within a shot's flight (1,050 wu), and with the crowd around the
+// ship comes back within a working distance of it (the swarm's pull alone led it away for minutes).
+constexpr float kBossAimWu = 1000.0f;
+constexpr float kBossWorkFarWu = 750.0f;
 }  // namespace
 
 void Bot::reset(u64 seed, Policy policy) {
@@ -62,7 +66,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     const bool bossFight = boss.active && !boss.dying && musicTick >= boss.fightTick;
     Vec2 bossAimPoint{};
     bool openSector = false;
-    if (bossFight && (target < 0 || targetD > 250.0f * 250.0f)) {
+    if (bossFight && lengthSq(pos - boss.pos) < kBossAimWu * kBossAimWu && (target < 0 || targetD > 250.0f * 250.0f)) {
         const Vec2 rel = pos - boss.pos;
         const float myAngle = angleOf(rel);
         for (u32 k = 0; k < 6; ++k) {
@@ -181,6 +185,12 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
         const float dist = length(d);
         if (dist > kKeepFarWu) force = force + d * (0.6f / dist);
         if (dist < kKeepNearWu && dist > 1e-3f) force = force - d * (0.8f / dist);
+    }
+    // The boss: within a working distance during the fight (both bots).
+    if (bossFight) {
+        const Vec2 rel = pos - boss.pos;
+        const float dist = length(rel);
+        if (dist > kBossWorkFarWu) force = force - rel * (0.9f * std::fmin((dist - kBossWorkFarWu) / 300.0f, 1.0f) / dist);
     }
     // The boss: keep off its arms and core, step out of a telegraphed beam's line, and circle with the
     // wheel toward an open sector.
