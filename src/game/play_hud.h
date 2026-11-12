@@ -10,8 +10,11 @@
 #include "gfx/renderer.h"
 #include "gfx/vector_font.h"
 #include "sim/player_controller.h"
+#include "sim/world.h"
 
 namespace rf {
+
+class IconSet;
 
 // The floating sticks and the two buttons (GAME_DESIGN 2): left half moves, right half aims and fires
 // while deflected; Nova above the aim zone, Dash beside it. Sizes are physical (pxPerMm) where the
@@ -25,6 +28,7 @@ public:
     void reset();
     void apply(sim::StickInput& in) const;  // adds what the controls hold now
     bool used() const { return used_; }      // a finger has touched the screen this session
+    void setSwap(bool on) { swap_ = on; }    // left-handed: aim on the left (takes effect at the next layout)
     void draw(CapsuleBatch& hud, GlowBatch& pools, const VectorFont& font, const Look& look, const LookVariant& variant,
               Vec3 player, float dashCharge, bool novaReady) const;
 
@@ -46,6 +50,7 @@ private:
     Button nova_, dash_;
     float stickR_ = 150.0f, padR_ = 44.0f, s_ = 1.0f, w_ = 0.0f, h_ = 0.0f;
     bool used_ = false;
+    bool swap_ = false;
 };
 
 struct HudState {
@@ -58,7 +63,25 @@ struct HudState {
     bool retryPending = false;
     float kick = 0.0f;
     bool showTouch = false;
+    // M3 stage B (look.md 6): Track and tempo, the phrase bar, the pause ring, the band row (Riff slots and
+    // Mods), active Boosts, the boss's bar and name card, a debut's name, the Trio's hint.
+    const sim::World* world = nullptr;
+    double music = 0.0;          // the rendered musical position
+    const IconSet* icons = nullptr;
+    const i32* upgradeIcons = nullptr;
+    const i32* boostIcons = nullptr;
+    const char* trackName = "";
+    float bpm = 120.0f;
+    Vec2 takenFrom;              // where the orb just taken was on screen
+    float takenAge = -1.0f;      // seconds since it was taken (< 0: none)
+    const char* spotlight = nullptr;  // a debut's name
+    float spotlightAge = -1.0f;
+    bool runHud = true;          // the run's HUD (off on the title and the game-over screen)
+    bool pausePressed = false;
 };
+
+// The pause ring's centre and radius (top right corner, look.md 6), for its touch target.
+Vec2 pauseButtonCentre(float W, float H, Vec2 insetMin, Vec2 insetMax, float& radius);
 
 // Tone maps a linear colour x intensity with the look's curve (look.md §3), for the HUD batch.
 Vec3 hudColour(const Look& look, const LookVariant& variant, Vec3 c, float intensity);
@@ -66,5 +89,7 @@ Vec3 hudColour(const Look& look, const LookVariant& variant, Vec3 c, float inten
 void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookVariant& variant, const Palettes& palettes,
              const Palette& palette,
              const HudState& st, const TouchControls& touch, float W, float H, Vec2 insetMin, Vec2 insetMax);
+void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookVariant& variant, const Palettes& palettes,
+                const Palette& palette, const HudState& st, float W, float H, Vec2 insetMin, Vec2 insetMax);
 
 }  // namespace rf

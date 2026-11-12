@@ -1,5 +1,7 @@
 #include "platform/app.h"
 
+#include "game/settings.h"
+
 #include <SDL3/SDL.h>
 
 #include <algorithm>
@@ -142,10 +144,20 @@ bool App::init() {
     // callback) inherit the placement.
     applyAffinity();
 
+    // M3 stage B: the player's settings (frame-rate target, effects) for interactive play.
+    Settings playerSettings;
+    const bool interactiveGame = !args_.sceneFile[0] && (!args_.scenario[0] || std::strcmp(args_.scenario, "play") == 0) && !args_.bot &&
+                                 !args_.screenshot[0] && !args_.fixedStep && !args_.picture[0];
+    if (interactiveGame) loadSettings(playerSettings);
+
     RendererDesc rd;
     rd.validation = args_.validation >= 0 ? args_.validation == 1 : kValidationDefault;
     rd.swappy = args_.swappy;
     rd.targetHz = args_.fps;
+    if (interactiveGame && args_.fps <= 0.0f && playerSettings.frameRate > 0) {
+        static const float kHz[4] = {0.0f, 60.0f, 90.0f, 120.0f};
+        rd.targetHz = kHz[playerSettings.frameRate < 4 ? playerSettings.frameRate : 0];
+    }
     refreshDisplay();
     if (!renderer_.init(window_, rd, look_)) return false;
     if (tierFromDevice) {
@@ -158,6 +170,12 @@ bool App::init() {
             tier_ = tierSettings(cached);
             applyCuts(tier_, args_.cuts);
             tierSource_ = "cache";
+            autoTier_ = cached;
+            if (interactiveGame && playerSettings.effectsTier > 0) {
+                tier_ = tierSettings(static_cast<Tier>(playerSettings.effectsTier - 1));
+                applyCuts(tier_, args_.cuts);
+                tierSource_ = "settings";
+            }
             RF_LOG("tier: %s, chosen on an earlier first launch (%s)", tier_.name, tierCachePath_);
         } else {
             tierProbe_.active = true;
@@ -266,6 +284,7 @@ bool App::init() {
         play_.setReduceFlashing(args_.reduceFlashing);
         play_.setMute(args_.mute);
         play_.setStrip(args_.strip);
+        play_.setPaletteFollowsTrack(!args_.paletteSet);
         stage_.setReduceFlashing(args_.reduceFlashing);  // the flag's one home (key R, overlay)
         content_ = Content::Play;
         if (!playBench_ && !playPicture_) {
@@ -677,7 +696,17 @@ void App::frame(u64 loopStartNs) {
     if (content_ == Content::Audio && !tierProbe_.active) {
         audioScene_.render(draw, params, background_, w, h, insetMin_, insetMax_);
         renderer_.setBackground(background_);
-        if (audioScene_.quitRequested()) quit_ = true;
+        if (audioScene_.quitRequested()) {
+            if (syncFromPlay_) {
+                // M3 stage B: SYNC was opened from the game's settings; DONE returns there.
+                syncFromPlay_ = false;
+                audioScene_.clearQuit();
+                content_ = Content::Play;
+                play_.returnFromSync();
+            } else {
+                quit_ = true;
+            }
+        }
     }
     // M2 audio end
     if (tierProbe_.active) {
@@ -691,10 +720,24 @@ void App::frame(u64 loopStartNs) {
         probeStage_.render(draw, params, background_, w, h);
         renderer_.setBackground(background_);
         params.gpuBurn = 20;  // keeps the GPU saturated, so its governor holds the top clock
-        TextStyle label;
-        label.capHeight = 30.0f * s;
-        label.color = kTitle;
-        font_.draw(draw.hud, {insetMin_.x + 60.0f * s, h - insetMax_.y - 80.0f * s}, label, "SETTING UP FOR THIS DEVICE");
+        if (content_ == Content::Play && play_.flows()) {
+            // M3 stage B: the probe runs behind the title (its stage at a third of its light); the title's
+            // controls are live, and PLAY ends the probe early on a safe tier.
+            play_.setLayout(w, h, insetMin_, insetMax_);
+            play_.frame(dt);
+            play_.renderProbeTitle(draw, params, *variant_, w, h, insetMin_, insetMax_);
+            params.exposurePump *= 0.33f;
+            if (play_.runStarted() && tierProbe_.active) {
+                const u32 c = tierProbe_.candidate;
+                RF_LOG("tier probe: a run started; stopping at %s", tierName(static_cast<Tier>(c > 0 ? c - 1 : 0)));
+                finishTierProbe(static_cast<Tier>(c > 0 ? c - 1 : 0));
+            }
+        } else {
+            TextStyle label;
+            label.capHeight = 30.0f * s;
+            label.color = kTitle;
+            font_.draw(draw.hud, {insetMin_.x + 60.0f * s, h - insetMax_.y - 80.0f * s}, label, "SETTING UP FOR THIS DEVICE");
+        }
     } else if (content_ == Content::Stage) {
         stage_.advance(dt);
         stage_.render(draw, params, background_, w, h);
@@ -717,6 +760,19 @@ void App::frame(u64 loopStartNs) {
         if (args_.mute & kMutePools) draw.pools.clear();
         renderer_.setBackground(background_);
         if (play_.pictureDone()) quit_ = true;
+        // M3 stage B: the settings screen's requests.
+        if (play_.takeSyncRequest()) {
+            audioScene_.init(AudioScene::Kind::Sync, band_, font_, palettes_, *palette_, look_);
+            audioScene_.setReduceFlashing(play_.settings().reduceFlashing || args_.reduceFlashing);
+            syncFromPlay_ = true;
+            content_ = Content::Audio;
+        }
+        const i32 tierReq = play_.takeTierRequest();
+        if (tierReq >= 0 && !args_.tier[0]) {
+            applyTier(tierReq == 0 ? autoTier_ : static_cast<Tier>(tierReq - 1));
+            governor_.reset(tier_.tier, static_cast<float>(renderer_.pacer().targetIntervalNs() * 1e-6));
+            RF_LOG("tier: %s (settings)", tier_.name);
+        }
     } else if (content_ == Content::Sheet) {
         sheet_.render(draw, params, background_, w, h);
         renderer_.setBackground(background_);
@@ -849,6 +905,7 @@ void App::stepTierProbe() {
 void App::finishTierProbe(Tier chosen) {
     TierProbe& p = tierProbe_;
     p.active = false;
+    autoTier_ = chosen;
     const GpuContext& g = renderer_.gpu();
     if (!writeTierCache(tierCachePath_, g.props.deviceName, g.driverVersionText, chosen, p.ms, p.budgetMs))
         RF_WARN("tier: could not write %s", tierCachePath_);

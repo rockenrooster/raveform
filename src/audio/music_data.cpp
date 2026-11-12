@@ -498,6 +498,10 @@ bool loadConductor(ConductorRules& c) {
     if (prose.read("sections.break.lead", v, 3)) {
         for (u32 i = 0; i < 3; ++i) c.breakSparseSteps[i] = static_cast<u8>(v[i]);
     }
+    if (doc.numbers("sections.drop.surgeSteps", v, 2) == 2) {
+        c.surgeSteps[0] = static_cast<u32>(v[0]);
+        c.surgeSteps[1] = static_cast<u32>(v[1]);
+    }
     if (doc.numbers("lead.grid.ticks", v, 3) == 3) {
         for (u32 i = 0; i < 3; ++i) c.gridTicks[i] = static_cast<u32>(v[i]);
     } else {

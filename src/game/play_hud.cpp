@@ -5,6 +5,7 @@
 #include <cstring>
 #include <initializer_list>
 
+#include "content/icons.h"
 #include "sim/sim_types.h"
 
 namespace rf {
@@ -116,6 +117,14 @@ void TouchControls::layout(float w, float h, Vec2 insetMin, Vec2 insetMax, float
     nova_.centre = {w - right - 430.0f * u, h - bottom - 330.0f * u};
     nova_.radius = novaR;
     dash_.centre = {w - right - 300.0f * u, h - bottom - 520.0f * u};
+    if (swap_) {
+        // Settings, CONTROLS: swap sides (the aim stick and its buttons on the left).
+        const auto mirror = [&](Vec2& p) { p.x = w - p.x; };
+        mirror(move_.rest);
+        mirror(aim_.rest);
+        mirror(nova_.centre);
+        mirror(dash_.centre);
+    }
     dash_.radius = dashR;
 }
 
@@ -137,7 +146,7 @@ bool TouchControls::down(u64 id, Vec2 p) {
         dash_.id = id;
         return true;
     }
-    Stick& s = p.x < 0.5f * w_ ? move_ : aim_;
+    Stick& s = (p.x < 0.5f * w_) != swap_ ? move_ : aim_;
     if (s.active) return false;
     s.active = true;
     s.id = id;
@@ -280,15 +289,233 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
         font.drawField(d.hud, {x0, y + 10.0f * s}, cap, 0.7f * s, lc, lc, lc, "DASH");
     }
     if (st.showTouch) touch.draw(d.hud, d.pools, font, look, variant, player, st.dashCharge, st.novas > 0);
-    if (!st.alive) {
-        // Death: a bare "TAP TO RETRY" (stage A; the game-over screen is stage B).
-        const char* msg = "TAP TO RETRY";
-        const float cap = 40.0f * s;
-        const float width = font.measure(TextStyle{cap}, msg);
-        const float in = st.retryPending ? 0.6f : 1.4f + 0.8f * st.kick;
-        font.drawField(d.hud, {0.5f * W - 0.5f * width, 0.42f * H}, cap, 1.8f * s, col(white, in), col(white, in), col(accent, in), msg);
+    if (st.world) drawRunHud(d, font, look, variant, palettes, palette, st, W, H, insetMin, insetMax);
+}
+
+Vec2 pauseButtonCentre(float W, float H, Vec2 insetMin, Vec2 insetMax, float& radius) {
+    const float s = H / 1080.0f;
+    radius = 28.0f * s;
+    return Vec2{W - std::fmax(kMargin * s, insetMax.x) + 40.0f * s, insetMin.y + 52.0f * s};
+}
+
+namespace {
+struct HudCtx {
+    const Look* look;
+    const LookVariant* variant;
+};
+Vec3 hudFn(const void* user, Vec3 c, float i) {
+    const HudCtx* h = static_cast<const HudCtx*>(user);
+    return hudColour(*h->look, *h->variant, c, i);
+}
+void circle(CapsuleBatch& b, Vec2 c, float r, float hw, Vec3 col, u32 segs = 32) {
+    for (u32 k = 0; k < segs; ++k) {
+        const float a0 = kTau * static_cast<float>(k) / segs, a1 = kTau * static_cast<float>(k + 1) / segs;
+        b.line(c + Vec2{std::cos(a0), std::sin(a0)} * r, c + Vec2{std::cos(a1), std::sin(a1)} * r, hw, col, col, 0);
     }
-    (void)insetMax;
+}
+float textW(const VectorFont& f, float cap, const char* t) { return f.measure(TextStyle{cap}, t); }
+}  // namespace
+
+void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookVariant& variant, const Palettes& palettes,
+                const Palette& palette, const HudState& st, float W, float H, Vec2 insetMin, Vec2 insetMax) {
+    using namespace sim;
+    const World& w = *st.world;
+    const float s = H / 1080.0f;
+    const Vec3 white{1.0f, 1.0f, 1.0f};
+    const Vec3 player = palettes.player[0];
+    const Vec3 gold = palettes.player[3];
+    const Vec3 accent = palette.accent;
+    const auto col = [&](Vec3 c, float i) { return hudColour(look, variant, c, i); };
+    const HudCtx ctx{&look, &variant};
+    const float cx = 0.5f * W;
+    const float top = insetMin.y;
+    const float bottom = insetMax.y;
+    if (!st.runHud) return;
+    char text[96];
+
+    // Track and tempo: top centre, cap 12, accent.
+    const Phrase& ph = w.phrase();
+    std::snprintf(text, sizeof text, "TRACK %u  %s  %.0f BPM", ph.track, st.trackName, st.bpm);
+    {
+        const float cap = 12.0f * s;
+        font.drawField(d.hud, {cx - 0.5f * textW(font, cap, text), top + 34.0f * s}, cap, 0.6f * s, col(accent, 1.2f), col(accent, 1.2f),
+                       col(accent, 1.2f), text);
+    }
+    // The phrase bar: 520 px, four segments sized by bars, each in its own colour, the current one lit, a
+    // white playhead, and "DROP IN n" in bars (look.md 6).
+    {
+        const float bw = 520.0f * s, x0 = cx - 0.5f * bw, y = top + 58.0f * s;
+        const Vec3 segCol[4] = {palette.hue[1], gold, accent, palette.hue[2]};
+        const u32 len[4] = {kSectionBars[formOfTrack(ph.track)][0], kSectionBars[formOfTrack(ph.track)][1],
+                            kSectionBars[formOfTrack(ph.track)][2], kSectionBars[formOfTrack(ph.track)][3]};
+        const u32 total = len[0] + len[1] + len[2] + len[3];
+        const double barStart = w.tickOfBar(ph.bar);
+        const float inBar = clampf(static_cast<float>((st.music - barStart) / kTicksPerBar), 0.0f, 1.0f);
+        u32 cur = static_cast<u32>(ph.section);
+        float x = x0;
+        float headX = x0;
+        for (u32 k = 0; k < 4; ++k) {
+            const float sw = bw * static_cast<float>(len[k]) / static_cast<float>(total);
+            const bool lit = k == cur && !ph.trackChange;
+            const float gap = 3.0f * s;
+            d.hud.line({x + gap, y}, {x + sw - gap, y}, (lit ? 2.6f : 1.6f) * s, col(segCol[k], lit ? 1.6f : 0.35f), col(segCol[k], lit ? 1.6f : 0.35f), 0);
+            if (lit) {
+                const float u = clampf((std::fmin(static_cast<float>(ph.sectionBar), static_cast<float>(len[k]) - 1.0f) + inBar) / static_cast<float>(len[k]), 0.0f, 1.0f);
+                headX = x + sw * u;
+            }
+            x += sw;
+        }
+        if (ph.trackChange) headX = x0 + bw * clampf((static_cast<float>(ph.sectionBar) + inBar) / static_cast<float>(ph.sectionBars), 0.0f, 1.0f);
+        d.hud.line({headX, y - 9.0f * s}, {headX, y + 9.0f * s}, 1.2f * s, col(white, 1.8f), col(white, 1.8f), 0);
+        // Bars until the next Drop.
+        if (ph.trackChange) {
+            std::snprintf(text, sizeof text, "TRACK %u", ph.track);
+        } else if (ph.section == Section::Drop) {
+            std::snprintf(text, sizeof text, ph.surge() ? "SURGE" : (ph.bossDrop ? "BOSS" : "DROP"));
+        } else {
+            u32 n = 0;
+            if (ph.section == Section::Groove) n = (len[0] - ph.sectionBar) + len[1];
+            else if (ph.section == Section::Build) n = len[1] - ph.sectionBar;
+            else n = (len[3] - ph.sectionBar) + len[0] + len[1];
+            std::snprintf(text, sizeof text, "DROP IN %u", n);
+        }
+        const float cap = 11.0f * s;
+        font.drawField(d.hud, {x0 + bw + 14.0f * s, y + 0.5f * cap}, cap, 0.55f * s, col(white, 1.0f), col(white, 1.0f), col(white, 1.0f), text);
+    }
+    // The pause ring: top right corner, 28 px with two bars.
+    {
+        float r = 0.0f;
+        const Vec2 c = pauseButtonCentre(W, H, insetMin, insetMax, r);
+        const float in = st.pausePressed ? 2.0f : 0.8f;
+        circle(d.hud, c, r, (st.pausePressed ? 1.5f : 1.0f) * s, col(white, in), 28);
+        for (float sx : {-6.0f, 6.0f}) d.hud.line(c + Vec2{sx * s, -9.0f * s}, c + Vec2{sx * s, 9.0f * s}, 1.6f * s, col(white, in), col(white, in), 0);
+    }
+    const PlayerState& me = w.player(0);
+    // The band row (bottom centre): four Riff slots with five level pips each, then the Mods taken.
+    const float rowY = H - bottom - 64.0f * s;
+    const float slot = 104.0f * s;
+    float slotX[kRiffSlots];
+    {
+        const float r = 26.0f * s;
+        u8 riffOrder[kRiffSlots] = {kNoUpgrade, kNoUpgrade, kNoUpgrade, kNoUpgrade};
+        u32 n = 0;
+        // Riffs in the order they were taken.
+        for (u32 pass = 1; pass < 256 && n < kRiffSlots; ++pass)
+            for (u8 u = kOrbitals; u < kUpgradeCount; ++u)
+                if (me.loadout.order[u] == pass) riffOrder[n++] = u;
+        for (u32 k = 0; k < kRiffSlots; ++k) {
+            const Vec2 c{cx + (static_cast<float>(k) - 1.5f) * slot, rowY};
+            slotX[k] = c.x;
+            if (riffOrder[k] == kNoUpgrade) {
+                circle(d.hud, c, r, 0.8f * s, col(white, 0.22f), 24);
+                continue;
+            }
+            const u8 u = riffOrder[k];
+            if (st.icons) st.icons->drawHud(d.hud, st.upgradeIcons[u], c, r * 0.9f, 1.0f, hudFn, &ctx);
+            d.pools.glow(c, 40.0f * s, player * 0.12f);
+            const u32 lv = me.loadout.level(u);
+            for (u32 p = 0; p < kRiffMaxLevel; ++p) {
+                const Vec2 q{c.x + (static_cast<float>(p) - 2.0f) * 11.0f * s, c.y + r + 14.0f * s};
+                if (p < lv) d.hud.line(q, q, 3.0f * s, col(white, 1.5f), col(white, 1.5f), 0);
+                else circle(d.hud, q, 3.0f * s, 0.5f * s, col(white, 0.3f), 8);
+            }
+        }
+        // Mods: small icons with their stacks, to the right.
+        float mx = cx + 2.0f * slot + 30.0f * s;
+        for (u32 pass = 1; pass < 256; ++pass) {
+            for (u8 u = 0; u < kModCount; ++u) {
+                if (me.loadout.order[u] != pass) continue;
+                const Vec2 c{mx, rowY};
+                if (st.icons) st.icons->drawHud(d.hud, st.upgradeIcons[u], c, 15.0f * s, 0.9f, hudFn, &ctx);
+                const u32 n = me.loadout.mods[u];
+                for (u32 p = 0; p < n; ++p) {
+                    const Vec2 q{c.x + (static_cast<float>(p) - 0.5f * static_cast<float>(n - 1)) * 7.0f * s, c.y + 26.0f * s};
+                    d.hud.line(q, q, 2.0f * s, col(white, 1.3f), col(white, 1.3f), 0);
+                }
+                mx += 44.0f * s;
+            }
+            if (mx > W - 260.0f * s) break;
+        }
+    }
+    // Active Boosts, above the Riff slots: icon, name and one pip per bar remaining.
+    {
+        u32 n = 0;
+        for (const ActiveBoost& b : me.boosts) {
+            if (b.type == kNoBoost) continue;
+            const BoostInfo& bi = boostInfo(b.type);
+            const float x = cx + (n == 0 ? -150.0f : 30.0f) * s, y = rowY - 92.0f * s;
+            if (st.icons) st.icons->drawHud(d.hud, st.boostIcons[b.type], {x, y}, 15.0f * s, 1.0f, hudFn, &ctx);
+            const float cap = 11.0f * s;
+            font.drawField(d.hud, {x + 24.0f * s, y - 2.0f * s}, cap, 0.55f * s, col(gold, 1.4f), col(gold, 1.4f), col(gold, 1.4f), bi.name);
+            const u32 left = b.type == kHalo ? b.hits : static_cast<u32>(std::ceil((b.until - st.music) / kTicksPerBar));
+            for (u32 p = 0; p < left && p < 8; ++p) {
+                const Vec2 q{x + 28.0f * s + static_cast<float>(p) * 10.0f * s, y + 12.0f * s};
+                d.hud.line(q, q, 2.4f * s, col(gold, 1.6f), col(gold, 1.6f), 0);
+            }
+            ++n;
+        }
+    }
+    // The orb just taken flies to the band row.
+    if (st.takenAge >= 0.0f && st.takenAge < 0.6f && st.icons) {
+        const TrioState& tr = w.trio(0);
+        const u8 u = tr.lastTaken;
+        if (u < kUpgradeCount) {
+            Vec2 target{cx + 2.0f * slot, rowY};
+            if (isRiff(u)) target = Vec2{slotX[me.loadout.riffsOwned() ? me.loadout.riffsOwned() - 1 : 0], rowY};
+            const float k = st.takenAge / 0.6f;
+            const float e = k * k * (3.0f - 2.0f * k);
+            const Vec2 p = st.takenFrom + (target - st.takenFrom) * e;
+            st.icons->drawHud(d.hud, st.upgradeIcons[u], p, (34.0f - 14.0f * e) * s, 1.4f, hudFn, &ctx);
+        }
+    }
+    // The boss: its name card for two bars at the entrance, then a bar under the phrase bar.
+    const BossState& boss = w.boss();
+    if (boss.active && !boss.dying) {
+        const Vec3 amber = palettes.playerDeep[3];
+        const float bars = static_cast<float>((st.music - boss.enterTick) / kTicksPerBar);
+        if (bars < 2.0f) {
+            const float fade = clampf(bars * 4.0f, 0.0f, 1.0f) * clampf((2.0f - bars) * 2.0f, 0.0f, 1.0f);
+            const float cap = 72.0f * s;
+            const char* name = "KALEIDOS";
+            font.drawField(d.hud, {cx - 0.5f * textW(font, cap, name), 0.30f * H}, cap, 3.0f * s, col(white, 2.0f * fade), col(gold, 2.0f * fade),
+                           col(amber, 2.0f * fade), name);
+            const char* sub = "BOSS OF FIRST LIGHT";
+            const float c2 = 14.0f * s;
+            font.drawField(d.hud, {cx - 0.5f * textW(font, c2, sub), 0.30f * H + 34.0f * s}, c2, 0.6f * s, col(gold, 1.2f * fade),
+                           col(gold, 1.2f * fade), col(gold, 1.2f * fade), sub);
+        }
+        const float y = top + 96.0f * s, bw = 300.0f * s, x0 = cx - 0.5f * bw;
+        const float cap = 11.0f * s;
+        font.drawField(d.hud, {x0 - textW(font, cap, "KALEIDOS") - 16.0f * s, y + 0.5f * cap}, cap, 0.55f * s, col(gold, 1.4f), col(gold, 1.4f),
+                       col(gold, 1.4f), "KALEIDOS");
+        const float f = boss.coreMax > 0.0f ? clampf(boss.coreHp / boss.coreMax, 0.0f, 1.0f) : 0.0f;
+        d.hud.line({x0, y}, {x0 + bw, y}, 1.0f * s, col(white, 0.18f), col(white, 0.18f), 0);
+        if (f > 0.0f) d.hud.line({x0, y}, {x0 + bw * f, y}, 2.0f * s, col(gold, 1.8f), col(amber, 1.8f), 0);
+        for (u32 p = 0; p < 3; ++p) {
+            const float pf = boss.pairMax > 0.0f ? clampf(boss.pairHp[p] / boss.pairMax, 0.0f, 1.0f) : 0.0f;
+            const float px = x0 + bw + 20.0f * s + static_cast<float>(p) * 30.0f * s;
+            d.hud.line({px, y}, {px + 22.0f * s, y}, 0.8f * s, col(palette.hue[p], 0.3f), col(palette.hue[p], 0.3f), 0);
+            if (pf > 0.0f) d.hud.line({px, y}, {px + 22.0f * s * pf, y}, 1.8f * s, col(palette.hue[p], 1.6f), col(palette.hue[p], 1.6f), 0);
+        }
+    }
+    // A debut's name (GAME_DESIGN 8: the spotlight, with its name on screen).
+    if (st.spotlight && st.spotlightAge >= 0.0f && st.spotlightAge < 3.0f) {
+        const float fade = clampf(st.spotlightAge * 3.0f, 0.0f, 1.0f) * clampf((3.0f - st.spotlightAge) * 1.5f, 0.0f, 1.0f);
+        const float cap = 26.0f * s;
+        font.drawField(d.hud, {cx - 0.5f * textW(font, cap, st.spotlight), 0.24f * H}, cap, 1.1f * s, col(white, 1.6f * fade), col(white, 1.6f * fade),
+                       col(accent, 1.6f * fade), st.spotlight);
+        const float c2 = 12.0f * s;
+        font.drawField(d.hud, {cx - 0.5f * textW(font, c2, "NEW"), 0.24f * H - cap - 12.0f * s}, c2, 0.6f * s, col(gold, 1.4f * fade),
+                       col(gold, 1.4f * fade), col(gold, 1.4f * fade), "NEW");
+    }
+    // The first Trio of a run: the hint.
+    const TrioState& tr = w.trio(0);
+    if (tr.open && tr.opened == 1) {
+        const float cap = 14.0f * s;
+        const char* hint = "FLY INTO ONE";
+        font.drawField(d.hud, {cx - 0.5f * textW(font, cap, hint), H - bottom - 150.0f * s}, cap, 0.7f * s, col(white, 0.7f), col(white, 0.7f),
+                       col(white, 0.7f), hint);
+    }
 }
 
 }  // namespace rf

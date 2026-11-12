@@ -292,6 +292,10 @@ void Engine::startMode(Mode m, u32 track, bool loop) {
     }
     applyParams();
     outGain_ = outGainTarget_;
+    bpmOverride_ = 0.0;
+    phraseSection_ = -1;
+    boss_ = BossBar{};
+    bossPending_ = false;
     // The song clock restarts at the next frame: tick 0 is the first downbeat.
     songStartFrame_ = frame_;
     const float bpm = m == Mode::Metronome ? kMetronomeBpm : tr_->bpm;
@@ -327,7 +331,25 @@ void Engine::applyCommand(const Command& c) {
     switch (c.type) {
         case CmdType::SetMode: startMode(static_cast<Mode>(c.a), c.b, c.c != 0); break;
         case CmdType::SetTrack:
-            if (c.a < music_->trackCount) pendingTrack_ = c.a;
+            if (c.a < music_->trackCount) {
+                pendingTrack_ = c.a;
+                trackNow_ = c.b == 1;
+                pendingBpm_ = c.x > 1.0f ? c.x : 0.0;
+            }
+            break;
+        case CmdType::SetPhrase:
+            if (c.a < static_cast<u8>(Section::Count)) {
+                phraseSection_ = c.a;
+                phraseBar_ = c.b;
+                phraseBars_ = c.c ? c.c : 1u;
+            }
+            break;
+        case CmdType::SetBoss:
+            bossNext_.mask = static_cast<u8>(c.a & 7u);
+            bossNext_.sixteenths = (c.a & 16u) != 0;
+            bossNext_.beats = static_cast<u8>(c.b & 15u);
+            bossNext_.flags = c.c;
+            bossPending_ = true;
             break;
         case CmdType::SetVariant:
             if (c.a < music_->variantCount) pendingVariant_ = c.a;
@@ -472,7 +494,7 @@ void Engine::applyCommand(const Command& c) {
             musicGain_ = c.x;
             sfxGain_ = c.y;
             break;
-        case CmdType::SetSurge: surgeSteps_ = c.a; break;
+        case CmdType::SetSurge: surgeSteps_[0] = surgeSteps_[1] = c.a; break;
         case CmdType::Reset:
             for (u32 i = 0; i < kLeadVoices; ++i) lead_[i].active = false;
             for (u32 i = 0; i < kBassVoices; ++i) bass_[i].active = false;
@@ -943,6 +965,8 @@ void Engine::planStagedBar(i64 barTick) {
     }
 }
 
+double Engine::trackBpm() const { return bpmOverride_ > 0.0 ? bpmOverride_ : (tr_ ? tr_->bpm : 120.0); }
+
 bool Engine::advanceCycle() {
     const u32 len[2][4] = {{8, 4, 8, 4}, {16, 8, 16, 8}};
     const auto lengthOf = [&](Section s) { return len[form_ == Form::Short ? 0 : 1][static_cast<u32>(s)]; };
@@ -979,9 +1003,41 @@ void Engine::planConductorBar(i64 barTick) {
         sectionBar_ = 0;
         sectionBars_ = form_ == Form::Short ? 8 : 16;
     } else {
+        if (trackNow_ && pendingTrack_ >= 0) {
+            // M3: a new run starts on this bar line in the Track (and tempo) the game asks for, no Break.
+            track_ = static_cast<u32>(pendingTrack_);
+            bpmOverride_ = pendingBpm_;
+            pendingTrack_ = -1;
+            trackNow_ = false;
+            ramping_ = false;
+            applyParams();
+            chordBar_ = 0;
+            if (!formSet_) form_ = track_ == 0 ? Form::Short : Form::Standard;
+            emit(BeatKind::Track, frameOf(static_cast<double>(barTick)), static_cast<double>(barTick), static_cast<u8>(track_));
+        }
         // A Track change starts with a Break on the next bar line (conductor.json trackChange).
         if (pendingTrack_ >= 0 && !ramping_) forceSection_ = static_cast<i32>(Section::Break);
-        changed = advanceCycle();
+        if (phraseSection_ >= 0) {
+            // M3: the game's director says where this bar is in the cycle; the band follows it exactly.
+            const Section next = static_cast<Section>(phraseSection_);
+            changed = next != section_ || phraseBar_ == 0;
+            if (changed) buildFollowed_ = section_ == Section::Build && next == Section::Drop;
+            section_ = next;
+            sectionBar_ = phraseBar_;
+            sectionBars_ = phraseBars_;
+            if (changed && phraseBar_ != 0) changed = false;  // joined mid-section (after a pause): no section start
+            phraseSection_ = -1;
+            forceSection_ = -1;
+            nextSection_ = false;
+        } else {
+            changed = advanceCycle();
+        }
+    }
+    if (bossPending_) {
+        boss_ = bossNext_;
+        bossPending_ = false;
+    } else if (boss_.flags & 8u) {
+        boss_.flags = static_cast<u8>(boss_.flags & ~(2u | 4u));  // a beam's sounds belong to the bar they were planned for
     }
     const bool sectionStart = changed;
     if (sectionStart && section_ == Section::Break && pendingTrack_ >= 0 && !ramping_) {
@@ -989,12 +1045,13 @@ void Engine::planConductorBar(i64 barTick) {
         sectionBars_ = 8;
         nextTrackAtBar_ = 4;
         ramping_ = true;
-        rampFrom_ = ticksPerFrameFor(tr_->bpm, sr_);
-        rampTo_ = ticksPerFrameFor(music_->tracks[pendingTrack_].bpm, sr_);
+        rampFrom_ = ticksPerFrameFor(trackBpm(), sr_);
+        rampTo_ = ticksPerFrameFor(pendingBpm_ > 0.0 ? pendingBpm_ : music_->tracks[pendingTrack_].bpm, sr_);
     }
     if (ramping_ && section_ != Section::Break) ramping_ = false;
     if (ramping_ && static_cast<i32>(sectionBar_) == nextTrackAtBar_ && pendingTrack_ >= 0) {
         track_ = static_cast<u32>(pendingTrack_);
+        bpmOverride_ = pendingBpm_;
         pendingTrack_ = -1;
         applyParams();
         chordBar_ = 0;
@@ -1007,13 +1064,12 @@ void Engine::planConductorBar(i64 barTick) {
     p.sectionBars = sectionBars_;
     p.chord = &tr_->chordAtBar(chordBar_);
     const bool last = !hold_ && sectionBar_ + 1 == sectionBars_;
-    const Track& t = *tr_;
     const SoundParams& s = *sp_;
 
     // Tempo: the Build's last bar runs at 85% (the game slows with it and returns on the downbeat); a
     // Track change ramps bar by bar across its Break; otherwise the Track's tempo.
     {
-        const double target = ticksPerFrameFor(t.bpm, sr_);
+        const double target = ticksPerFrameFor(trackBpm(), sr_);
         const double cur = tempo_.last().ticksPerFrame;
         double want = target;
         if (section_ == Section::Build && last) want = target * r.buildLastBarSpeed;
@@ -1081,6 +1137,16 @@ void Engine::planConductorBar(i64 barTick) {
     if (sectionStart && section_ == Section::Drop && buildFollowed_)
         pend(bank_->impact(), static_cast<double>(barTick), s.mix.impact, BeatKind::Impact);
     if (section_ == Section::Break && last) endingOnDownbeat(bank_->swellBar(track_), s.mix.swell * kBreakSwell);
+    if (boss_.flags & 8u) {
+        // M3, the boss: the iris opening is a deep gong on beat 1 (the impact, an octave down); a beam's
+        // telegraph bar is a rising tone (the Build's riser, sped up to fill one bar).
+        if (boss_.flags & 1u) pend(bank_->impact(), static_cast<double>(barTick), s.mix.impact * 0.45f, BeatKind::Sfx, 0.5f);
+        if (boss_.flags & 2u) {
+            const i32 id = bank_->riser(track_, 4);
+            const double baked = id >= 0 ? static_cast<double>(bank_->sample(id).tag) : 4.0;
+            pend(id, static_cast<double>(barTick), s.mix.riser * 0.7f, BeatKind::Sfx, static_cast<float>(baked));
+        }
+    }
 
     // Layers.
     const u32 kick = static_cast<u32>(Pat::Kick), clap = static_cast<u32>(Pat::Clap), hatOff = static_cast<u32>(Pat::HatOff),
@@ -1170,9 +1236,12 @@ void Engine::planConductorBar(i64 barTick) {
     }
     // The lead grid of every player: Double-Time stacks and the Surge (first half of the Drop) move it
     // along the grid list (capped at the last); Hyper halves it.
+    // The Surge runs in two gears (conductor.json drop.surgeSteps): its first half one step along, its
+    // second half two.
     const bool surge = section_ == Section::Drop && sectionBar_ < sectionBars_ / 2;
+    const u32 gear = !surge ? 0u : surgeSteps_[sectionBar_ < sectionBars_ / 4 ? 0 : 1];
     for (u32 i = 0; i < playerCount_; ++i) {
-        u32 idx = players_[i].doubleTime + (surge ? surgeSteps_ : 0u);
+        u32 idx = players_[i].doubleTime + gear;
         if (idx > 2) idx = 2;
         u32 g = r.gridTicks[idx];
         if (players_[i].hyper && g % 2 == 0) g /= 2;
@@ -1272,6 +1341,23 @@ void Engine::conductorStep(i64 tick, i64 inBar) {
     const double tk = static_cast<double>(tick);
     const i64 f = frameOf(tk);
     const DrumKit& kit = bank_->kit(track_, variant_);
+    // M3: the boss's glass bells (kaleidos.md "Sound"): one P3 bell voice per firing pair on every step it
+    // fires (A the chord's root, B its third, C its fifth), so the resting pair is a hole in the ostinato;
+    // a beam's hard stab on beat 1.
+    if ((boss_.flags & 8u) && inBar % kTicksPerStep == 0 && p.chord) {
+        const u32 st = static_cast<u32>(inBar / kTicksPerStep);
+        const bool step = boss_.sixteenths || st % 2 == 0;
+        if (boss_.mask && step && (boss_.beats & (1u << (st / 4)))) {
+            static constexpr float kBellPan[3] = {0.0f, -0.45f, 0.45f};
+            const Chord& ch = *p.chord;
+            for (u32 k = 0; k < 3; ++k) {
+                if (!(boss_.mask & (1u << k))) continue;
+                const u8 note = ch.stabCount > k ? ch.stab[k] : (ch.padCount > k ? ch.pad[k] : ch.bass);
+                playLead(7, Timbre::P3Bell, static_cast<float>(note + 12), 0.75f, 0.55f, kBellPan[k], f, 0.7f);
+            }
+        }
+        if ((boss_.flags & 4u) && st == 0) playStab(*p.chord, 1.0f, 0.0f, f);
+    }
     // Riff patterns at double rate under Hyper: the sixteen steps in half a bar.
     const bool riffStep = p.riffDouble ? inBar % 12 == 0 : inBar % kTicksPerStep == 0;
     const u32 riffSt = static_cast<u32>(p.riffDouble ? (inBar / 12) % 16 : inBar / kTicksPerStep);

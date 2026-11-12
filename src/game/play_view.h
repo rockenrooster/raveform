@@ -19,6 +19,8 @@
 namespace rf {
 
 struct BeatView;
+class IconSet;
+class VectorFont;
 
 struct ViewInput {
     const sim::World* world = nullptr;
@@ -53,6 +55,10 @@ public:
     void setReduceFlashing(bool on) { reduceFlashing_ = on; }
     void setPalette(const Palette& p) { palette_ = &p; }
     void setMute(u32 bits) { mute_ = bits; }
+    // M3 stage B: the upgrade icons and the font for the Trio's words.
+    void setIcons(const IconSet* icons, const i32* upgradeIcons, const i32* boostIcons);
+    void setFont(const VectorFont* font) { font_ = font; }
+    float trioRest() const { return trioRest_; }
     void resetEffects();
     // The effects of one tick's events; `tickEnd` is the sim time at the end of that tick.
     void onEvents(const sim::World& w, double tickEnd);
@@ -98,6 +104,11 @@ private:
     void telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight);
     void envelopes(const ViewInput& in);
     bool shown(u32 bit) const { return (mute_ & bit) == 0; }
+    // M3 stage B (play_view_b.cpp).
+    void sectionLook(const ViewInput& in);
+    void eventB(const sim::World& w, const sim::Event& e, float t);
+    void drawStageB(FrameDraw& d, const ViewInput& in, float W, float H);
+    void drawBoss(FrameDraw& d, const ViewInput& in);
     float beatAmount() const;
 
     const Look* look_ = nullptr;
@@ -186,6 +197,21 @@ private:
     Vec2 cloudTile_, starTile_;
 
     Lattice lattice_;
+
+    // M3 stage B.
+    const IconSet* icons_ = nullptr;
+    const VectorFont* font_ = nullptr;
+    i32 upgradeIcon_[sim::kUpgradeCount] = {};
+    i32 boostIcon_[sim::kBoostCount] = {};
+    float enemyLight_ = 1.0f, trioRest_ = 0.0f, drain_ = 0.0f, sectionZoom_ = 1.0f, exposureSection_ = 1.0f;
+    struct Tumble {
+        Vec2 p, v;
+        float ang = 0.0f, spin = 0.0f, born = -100.0f;
+        u8 facet = 0, pair = 0;
+    };
+    static constexpr u32 kTumbles = 24;
+    Tumble tumble_[kTumbles];
+    u32 tumbleCount_ = 0;
 };
 
 }  // namespace rf

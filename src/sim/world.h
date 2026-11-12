@@ -287,9 +287,11 @@ public:
     // A fresh run on the bar line `startTick`: empty pools, players at the start, the spawner reset.
     void resetRun(u64 seed, double startTick, u32 players = 1);
     void tick(const TickInput& in);
-    // "Tap to retry" (GAME_DESIGN 4.3, stage A): the run starts again on the next bar line.
-    void requestRestart() { restartPending_ = true; }
+    // RETRY (GAME_DESIGN 4.3): the run starts again on the first bar line at least half a bar away (so the
+    // band, told now, can start its Groove on the same line).
+    void requestRestart();
     bool restartPending() const { return restartPending_; }
+    double restartTick() const { return restartAt_; }
 
     Rules& rules() { return rules_; }
     Spawner& spawner() { return spawner_; }
@@ -437,6 +439,7 @@ private:
     float dipS_ = 0.0f;
     float threatInView_ = 0.0f;
     bool restartPending_ = false;
+    double restartAt_ = 0.0;
     bool restarted_ = false;  // this tick began a new run
     u32 serial_ = 0;
     u32 playerCount_ = 1;

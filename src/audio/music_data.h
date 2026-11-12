@@ -160,6 +160,7 @@ struct ConductorRules {
     u8 breakSparseSteps[3] = {0, 6, 12};
     // lead
     u32 gridTicks[3] = {24, 16, 12};
+    u32 surgeSteps[2] = {1, 2};  // sections.drop.surgeSteps: the Surge's two gears (M3 stage B)
     float accentBeat = 1.0f, accentEighth = 0.82f, accentOther = 0.7f;
     float panDepth = 0.25f, panRate = 0.9f;
     float othersLevel = 0.35f, othersFarLevel = 0.15f, othersFarWu = 1200.0f;

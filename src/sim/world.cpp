@@ -76,14 +76,14 @@ void World::resetRun(u64 seed, double startTick, u32 players) {
 void World::tick(const TickInput& in) {
     ++tick_;
     eventCount_ = 0;
-    if (in.retry) restartPending_ = true;
+    if (in.retry && !restartPending_) requestRestart();
     const double prev = m1_;
     double next = in.music1 > prev ? in.music1 : prev;
     restarted_ = false;
-    if (restartPending_ && crossed(prev, next, kTicksPerBar)) {
-        // Tap to retry: the new run begins on this bar line (the poses of this tick still describe the old
-        // run, so they are not applied; the controllers restart from the world's start positions).
-        const double bar = (std::floor(prev / kTicksPerBar) + 1.0) * kTicksPerBar;
+    if (restartPending_ && next >= restartAt_) {
+        // RETRY: the new run begins on this bar line (the poses of this tick still describe the old run, so
+        // they are not applied; the controllers restart from the world's start positions).
+        const double bar = restartAt_;
         const u64 seed = seed_ + 0x9E3779B97F4A7C15ull;
         resetRun(seed, bar, playerCount_);
         restarted_ = true;
@@ -120,6 +120,12 @@ void World::tick(const TickInput& in) {
     collide();
     bossContact();
     compact();
+}
+
+void World::requestRestart() {
+    if (restartPending_) return;
+    restartPending_ = true;
+    restartAt_ = (std::floor((m1_ + 0.5 * kTicksPerBar) / kTicksPerBar) + 1.0) * kTicksPerBar;
 }
 
 void World::emit(const Event& e) {

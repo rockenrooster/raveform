@@ -44,7 +44,7 @@ double MusicClock::beginFrame(const BeatView* band, float realDt, bool fixedStep
         latencyTicks_ = static_cast<float>(band->latencyMs * 1e-3 * nominal);
         // The end of this frame's sim time is drawn one tick behind (interpolation): its music one tick
         // ahead of what is heard at the frame's display time.
-        const double target = band->heardTick + nominal * static_cast<double>(sim::kDt);
+        const double target = band->heardTick - offset_ + nominal * static_cast<double>(sim::kDt);
         const double err = target - (musicStart_ + nominal * dS);
         if (err > sim::kTicksPerBar) {
             // Far behind (the band's song started late, a resumed stream): jump ahead.
@@ -67,8 +67,14 @@ double MusicClock::beginFrame(const BeatView* band, float realDt, bool fixedStep
     }
     musicEnd_ = musicStart_ + rate_ * dS;
     simTime_ += dS;
-    heardNow_ = live ? band->heardTick : musicEnd_;
+    heardNow_ = live ? band->heardTick - offset_ : musicEnd_;
     return dS;
+}
+
+void MusicClock::resume(double music, double offset) {
+    offset_ = offset;
+    musicStart_ = musicEnd_ = heardNow_ = music;
+    anchored_ = false;
 }
 
 double MusicClock::musicAt(double t) const {

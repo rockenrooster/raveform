@@ -11,11 +11,14 @@
 
 #include "audio/band.h"
 #include "content/glyphs.h"
+#include "content/icons.h"
 #include "content/look.h"
 #include "content/palette.h"
 #include "game/music_clock.h"
 #include "game/play_hud.h"
 #include "game/play_view.h"
+#include "game/screens.h"
+#include "game/settings.h"
 #include "game/tiers.h"
 #include "gfx/renderer.h"
 #include "gfx/vector_font.h"
@@ -48,11 +51,18 @@ public:
               const VectorFont& font, const TierSettings& tier, Band* band);
     void setTier(const TierSettings& tier) { view_.setTier(tier); }
     void setDensity(float d) { view_.setDensity(d); }
-    void setReduceFlashing(bool on) { view_.setReduceFlashing(on); }
+    void setReduceFlashing(bool on) {
+        forcedReduceFlashing_ = on;
+        view_.setReduceFlashing(on || settings_.reduceFlashing);
+    }
     void setPalette(const Palette& p) {
         palette_ = &p;
+        basePalette_ = &p;
         view_.setPalette(p);
     }
+    // M3 stage B: the palette follows the Track's song (Ultraviolet, Solar), cross-fading in the Track-change
+    // Break; off when --palette chose one.
+    void setPaletteFollowsTrack(bool on) { paletteFollows_ = on; }
     void setMute(u32 bits) { view_.setMute(bits); }
     void setLayout(float w, float h, Vec2 insetMin, Vec2 insetMax);
 
@@ -95,14 +105,62 @@ public:
     void setStrip(u32 frames) { stripFrames_ = frames ? frames : 1; }
     const char* pictureName() const { return opt_.picture; }
 
+    // M3 stage B: the game's screens (design/screens.md) around the run. Interactive play only; benchmarks,
+    // pictures and --bot runs are the run alone.
+    enum class Screen : u8 { Notice, Title, Run, Paused, GameOver, Settings };
+    Screen screen() const { return screen_; }
+    bool flows() const { return flow_; }
+    bool runStarted() const { return !flow_ || (screen_ != Screen::Notice && screen_ != Screen::Title && !(screen_ == Screen::Settings && settingsBack_ == Screen::Title)); }
+    bool takeSyncRequest() {
+        const bool r = syncRequest_;
+        syncRequest_ = false;
+        return r;
+    }
+    void returnFromSync();
+    i32 takeTierRequest() {
+        const i32 r = tierRequest_;
+        tierRequest_ = -1;
+        return r;
+    }
+    const Settings& settings() const { return settings_; }
+    // The first-launch tier probe runs behind the title: its stage is drawn, this draws the title over it.
+    void renderProbeTitle(FrameDraw& d, FrameParams& params, const LookVariant& variant, float W, float H, Vec2 insetMin, Vec2 insetMax);
+    // Pictures (scripted screens): show a screen as it is in the game.
+    void showScreen(Screen s) { screen_ = s; }
+
 private:
+    // screens.cpp
+    void renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& variant, float W, float H, Vec2 insetMin, Vec2 insetMax);
+    void screenNotice(Ui& ui);
+    void screenTitle(Ui& ui);
+    void screenPause(Ui& ui);
+    void screenGameOver(Ui& ui);
+    void screenSettings(Ui& ui);
+    // play.cpp: the flow.
+    void startRun();
+    void restartRun();
+    void toTitle();
+    void pauseRun();
+    void beginCountIn();
+    double countInNow() const;
+    void endRun(bool died);
+    void openSettings(Screen back);
+    void applySettings();
+    bool attract() const { return flow_ && (screen_ == Screen::Notice || screen_ == Screen::Title || (screen_ == Screen::Settings && settingsBack_ == Screen::Title)); }
+    void uiPointer(Vec2 pos, bool down);
     void buildInput(sim::StickInput& in);
     void runTick(double music0, double music1, bool firstOfFrame);
     void afterTick();
     void bandFrame();
+    void conductBand();
     void scriptSetup();
     void scriptInput(sim::StickInput& in);
     void scriptEvents();
+    // play_pictures.cpp (M3 stage B): true when the picture is one of stage B's.
+    bool scriptSetupB();
+    bool scriptInputB(sim::StickInput& in);
+    bool scriptEventsB();
+    float scriptFastForwardS_ = 0.0f;
 
     PlayOptions opt_;
     const Look* look_ = nullptr;
@@ -144,6 +202,9 @@ private:
     u32 shardsPending_ = 0;
     double lastShardTick_ = -1e9;
     double lastWarpTick_ = -1e9, lastTellTick_ = -1e9;
+    double plannedLine_ = -1e9;  // the bar line the band was last told about
+    bool overHeld_ = false, bossPosted_ = false, holdPosted_ = true, paused_ = false;
+    u32 loadoutSig_ = ~0u;
 
     // Pictures.
     u64 frameNo_ = 0;
@@ -153,6 +214,58 @@ private:
     u32 captureIndex_ = 0;
     u32 scriptTick_ = 0;
     u32 scriptFlags_ = 0;
+
+    // M3 stage B: icons, screens, settings, the run's record.
+    IconSet icons_;
+    i32 upgradeIcons_[sim::kUpgradeCount] = {};
+    i32 boostIcons_[sim::kBoostCount] = {};
+    bool flow_ = false;
+    Screen screen_ = Screen::Run, settingsBack_ = Screen::Title;
+    u8 settingsTab_ = 0;
+    Settings settings_;
+    HighScores scores_;
+    Ui ui_;
+    UiPointer uiPtr_;
+    u64 uiTouch_ = ~0ull;
+    bool keyPrimary_ = false, keyBack_ = false;
+    bool forcedReduceFlashing_ = false;
+    const Palette* basePalette_ = nullptr;
+    Palette mixed_;
+    bool paletteFollows_ = true;
+    void updatePalette(double music);
+    bool realign_ = false;
+    float layoutW_ = 2400.0f, layoutH_ = 1080.0f;
+    Vec2 insetMin_, insetMax_;
+    bool syncRequest_ = false;
+    i32 tierRequest_ = -1;
+    static constexpr u32 kScopeN = 750;  // about a bar of the master bus at 120 BPM
+    float scope_[kScopeN] = {};
+    float titleShipAngle_ = -1.5708f;
+    bool pausePressed_ = false;
+    // Pause and the count-in (band ticks, or the simulated clock's seconds without a band).
+    bool countIn_ = false;
+    double pauseMusic_ = 0.0, countInEnd_ = 0.0, resumeOffset_ = 0.0;
+    double countInClockS_ = 0.0;
+    bool askRestart_ = false, askQuit_ = false;
+    // The run: its time, Tracks, the set list's marks, the game-over numbers.
+    float runSeconds_ = 0.0f;
+    u32 runTrackMax_ = 1;
+    struct Mark {
+        float t;   // seconds into the run
+        u8 kind;   // 0 a Track began (a = Track), 1 a boss fell, 2 an upgrade, 3 a hit
+        u8 a;
+    };
+    static constexpr u32 kMarks = 256;
+    Mark marks_[kMarks];
+    u32 markCount_ = 0;
+    float overS_ = -1.0f;
+    u64 finalScore_ = 0;
+    bool newBest_ = false;
+    // HUD moments.
+    char spotlightName_[32] = {};
+    float spotlightT_ = -100.0f;
+    float takenT_ = -100.0f;
+    Vec2 takenFrom_;
 };
 
 }  // namespace rf

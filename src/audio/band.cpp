@@ -230,6 +230,25 @@ void Band::render(void* self, float* out, u32 frames, u32 channels, u32 sampleRa
         b->rateMismatch_.store(sampleRate, std::memory_order_relaxed);
     }
     b->cbStreamFrames_ += frames;
+    // M3 stage B: a scope of the master bus for the title's waveform and the sound cards (one value per
+    // 128 frames: the sample of largest magnitude, signed), and a level meter for the faders.
+    if (channels > 0) {
+        float level = b->meter_.load(std::memory_order_relaxed) * 0.9f;
+        u32 head = b->scopeHead_.load(std::memory_order_relaxed);
+        for (u32 f0 = 0; f0 < frames; f0 += 128) {
+            float best = 0.0f;
+            const u32 f1 = f0 + 128 < frames ? f0 + 128 : frames;
+            for (u32 f = f0; f < f1; ++f) {
+                const float v = out[f * channels];
+                if (std::fabs(v) > std::fabs(best)) best = v;
+            }
+            b->scope_[head % kScope] = best;
+            ++head;
+            if (std::fabs(best) > level) level = std::fabs(best);
+        }
+        b->scopeHead_.store(head, std::memory_order_release);
+        b->meter_.store(level, std::memory_order_relaxed);
+    }
     const i64 t1 = audioNowNs();
 #if defined(RF_THREAD_CPU_TIME)
     timespec c1{};
@@ -344,10 +363,15 @@ void Band::computeShots(i64 nowNs, i64 displayLeadNs) {
         lastShotTick_ = tick;
         return;
     }
-    // The local player's grid in the heard bar: Surge (first half of the Drop) moves it one step along.
+    // The local player's grid in the heard bar, as the engine plays it: Double-Time stacks and the Surge's
+    // gear (first half of the Drop: one step along, then two) move it along the grid list, capped at the
+    // last; Hyper halves it.
     const ConductorRules& r = music_->conductor;
     const bool surge = view_.section == Section::Drop && view_.sectionBar < view_.sectionBars / 2;
-    const i64 grid = static_cast<i64>(r.gridTicks[surge ? 1 : 0]);
+    u32 idx = localDoubleTime_ + (surge ? r.surgeSteps[view_.sectionBar < view_.sectionBars / 4 ? 0 : 1] : 0u);
+    if (idx > 2) idx = 2;
+    i64 grid = static_cast<i64>(r.gridTicks[idx]);
+    if (localHyper_ && grid % 2 == 0) grid /= 2;
     const double capNs = (view_.latencyMs < kLeadRuleCapMs ? view_.latencyMs : kLeadRuleCapMs) * 1e6;
     for (i64 s = static_cast<i64>(std::floor(lastShotTick_ / grid)) + 1; static_cast<double>(s * grid) <= tick; ++s) {
         const double stepTick = static_cast<double>(s * grid);
@@ -519,6 +543,49 @@ void Band::holdSection(Section s) {
     post({.type = CmdType::SetSection, .a = static_cast<u8>(s)});
     setHold(true);
 }
+
+void Band::setPhrase(Section s, u32 bar, u32 bars) {
+    post({.type = CmdType::SetPhrase, .a = static_cast<u8>(s), .b = static_cast<u8>(bar < 255 ? bar : 255),
+          .c = static_cast<u8>(bars < 255 ? bars : 255)});
+}
+
+void Band::setForm(Form f) { post({.type = CmdType::SetForm, .a = static_cast<u8>(f)}); }
+
+void Band::changeTrack(u32 track, float bpm, bool now) {
+    if (!music_ || track >= music_->trackCount) return;
+    track_ = track;
+    post({.type = CmdType::SetTrack, .a = static_cast<u8>(track), .b = static_cast<u8>(now ? 1 : 0), .x = bpm});
+    RF_LOG("audio: Track %s at %.0f BPM %s", music_->tracks[track].id, bpm, now ? "from the next bar line" : "through a Break");
+}
+
+void Band::setBoss(u8 pairs, bool sixteenths, u8 beats, u8 flags) {
+    post({.type = CmdType::SetBoss, .a = static_cast<u8>((pairs & 7u) | (sixteenths ? 16u : 0u)), .b = beats, .c = flags});
+}
+
+void Band::setLoadout(const u8 mods[5], const u8 riffs[3], bool prism, bool hyper) {
+    // SetMods: split, doubleTime, pierce, overcharge, onBeatCrit (engine.h).
+    Command c{.type = CmdType::SetMods, .a = 0};
+    for (u32 k = 0; k < 5; ++k) c.mods[k] = mods[k];
+    post(c);
+    for (u32 r = 0; r < static_cast<u32>(Riff::Count); ++r) {
+        riffs_[r] = riffs[r];
+        post({.type = CmdType::SetRiff, .a = 0, .b = static_cast<u8>(r), .c = riffs[r]});
+    }
+    post({.type = CmdType::SetBoost, .a = 0, .b = 0, .c = static_cast<u8>(prism ? 1 : 0)});
+    post({.type = CmdType::SetBoost, .a = 0, .b = 1, .c = static_cast<u8>(hyper ? 1 : 0)});
+    localDoubleTime_ = mods[1];
+    localHyper_ = hyper;
+}
+
+u32 Band::scope(float* out, u32 n) const {
+    const u32 head = scopeHead_.load(std::memory_order_acquire);
+    if (n > kScope) n = kScope;
+    if (n > head) n = head;
+    for (u32 k = 0; k < n; ++k) out[k] = scope_[(head - n + k) % kScope];
+    return n;
+}
+
+void Band::setGains(float music, float effects) { post({.type = CmdType::SetGains, .x = music, .y = effects}); }
 
 void Band::setIntensity(float v) {
     intensity_ = v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);

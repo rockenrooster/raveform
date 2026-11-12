@@ -115,7 +115,7 @@ foreach(entry ${RF_SHADERS})
 endforeach()
 
 # Design data is source data from design/: embedded verbatim and parsed at start-up (never retyped).
-foreach(data vector_font.txt look.json look_variants.json palettes.json glyphs.json)
+foreach(data vector_font.txt look.json look_variants.json palettes.json glyphs.json icons.json)
   add_custom_command(OUTPUT ${RF_GEN}/${data}.inc
     COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/${data} -DOUT=${RF_GEN}/${data}.inc
             -P ${RF_ROOT}/cmake/EmbedText.cmake
@@ -272,10 +272,15 @@ target_sources(raveform_core PRIVATE
 # M3: the game (the fight of stage A) on the simulation.
 target_link_libraries(raveform_core PUBLIC raveform_sim)
 target_sources(raveform_core PRIVATE
+  src/content/icons.cpp
   src/game/music_clock.cpp
   src/game/play.cpp
   src/game/play_hud.cpp
-  src/game/play_view.cpp)
+  src/game/play_pictures.cpp
+  src/game/play_view.cpp
+  src/game/play_view_b.cpp
+  src/game/screens.cpp
+  src/game/settings.cpp)
 if(NOT ANDROID)
   # The band without a window: offline renders, the loudness calibration, the unit tests.
   set(RF_HEADLESS_CORE src/core/json_doc.cpp src/core/log.cpp src/core/alloc_counter.cpp)

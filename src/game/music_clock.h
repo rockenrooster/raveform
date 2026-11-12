@@ -29,12 +29,20 @@ public:
     double heardNow() const { return heardNow_; }
     float latencyTicks() const { return latencyTicks_; }
     u32 snaps() const { return snaps_; }
+    // M3 stage B: the run's music is the band's heard tick minus offset (a whole number of bars, so the
+    // run's bar lines stay on the band's), set when a paused run resumes. resume() also restarts the clock
+    // at music (the position the run paused at).
+    void resume(double music, double offset);
+    double offset() const { return offset_; }
+    // The simulated clock's tempo (the director's: the Build's last bar, the Track change, the loop).
+    void setBpm(float bpm) { if (!fromBand_ && bpm > 1.0f) bpm_ = bpm; }
 
 private:
     double simTime_ = 0.0, frameStart_ = 0.0;
     double musicStart_ = 0.0, musicEnd_ = 0.0, rate_ = 192.0;
     double heardNow_ = 0.0;
     double lastSongS_ = 0.0;
+    double offset_ = 0.0;
     float bpm_ = 120.0f;
     float latencyTicks_ = 0.0f;
     bool anchored_ = false, fromBand_ = false;

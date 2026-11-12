@@ -127,6 +127,20 @@ public:
     void sfxAt(audio::Sfx s, double tick, float gain = 1.0f, float pan = 0.0f);
     // M3: start a section on the next bar line and hold it (stage A keeps the band in Groove).
     void holdSection(audio::Section s);
+    // M3 stage B: the game's director drives the band. Each applies from the next bar line (post it in the
+    // bar before): where that bar is in the cycle, the form, a Track change (through its Break, or at once
+    // for a new run; `bpm` 0 = the Track's own), the boss's bar (bells, gong, beam), the local player's
+    // upgrades (lead and Riff layers; the lead rule's grid), and the music / effects gains.
+    void setPhrase(audio::Section s, u32 bar, u32 bars);
+    void setForm(audio::Form f);
+    void changeTrack(u32 track, float bpm, bool now);
+    void setBoss(u8 pairs, bool sixteenths, u8 beats, u8 flags);
+    void setLoadout(const u8 mods[5], const u8 riffs[3], bool prism, bool hyper);
+    void setGains(float music, float effects);
+    // The master bus, for pictures of the music (title waveform, sound cards): the latest n values, one
+    // per 128 frames (signed peak), oldest first; and a decaying peak level (0..1).
+    u32 scope(float* out, u32 n) const;
+    float meter() const { return meter_.load(std::memory_order_relaxed); }
     bool fullLoad() const { return fullLoad_; }  // --band full / stress: the load test owns the mix
     bool gameMode() const { return game_; }
     const audio::MusicData& music() const { return *music_; }
@@ -244,6 +258,12 @@ private:
     bool hold_ = false;
     u32 variant_ = 0, track_ = 0;
     u8 riffs_[static_cast<u32>(audio::Riff::Count)] = {};
+    static constexpr u32 kScope = 1024;
+    float scope_[kScope] = {};
+    std::atomic<u32> scopeHead_{0};
+    std::atomic<float> meter_{0.0f};
+    u8 localDoubleTime_ = 0;  // the local player's Double-Time stacks and Hyper (the lead rule's grid)
+    bool localHyper_ = false;
     struct FireEdge {
         i64 ns;
         u8 mode;  // 0 off, 1 every step, 2 every other step

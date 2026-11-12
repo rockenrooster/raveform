@@ -58,7 +58,8 @@ enum class Timing : u8 { Now, Next32, AtTick };
 
 enum class CmdType : u8 {
     SetMode,       // a = Mode, b = track (Staged: loop when c = 1)
-    SetTrack,      // a = track: Conductor: a Break that changes Track (tempo ramp, key on bar 5); else at the next bar
+    SetTrack,      // a = track: Conductor: a Break that changes Track (tempo ramp, key on bar 5); else at the next bar.
+                   // M3: b = 1 at the next bar line without a Break; x = tempo (BPM; 0: the Track's own)
     SetVariant,    // a = variant, applied on the next bar line
     SetIntensity,  // x = 0..1 (director intensity)
     NextSection,   // the next section of the cycle starts on the next bar line
@@ -82,6 +83,9 @@ enum class CmdType : u8 {
     SetGains,      // x = music gain, y = effects gain (linear)
     Reset,         // silence everything and restart the song clock at the next block
     SetSurge,      // listening tests only: a = grid steps the Surge moves the lead (conductor.json: 1), from the next bar
+    SetPhrase,     // M3, the game's director: from the next bar line, a = Section, b = bar in it, c = its length
+    SetBoss,       // M3, the boss's bar from the next bar line: a = pairs firing (bits 0-2) | 16 on sixteenths, b = beats
+                   // that fire (bits 0-3), c = 1 gong on beat 1, 2 beam riser over the bar, 4 beam stab on beat 1, 8 on
 };
 
 struct Command {
@@ -243,7 +247,19 @@ private:
     Form form_ = Form::Short;
     bool formSet_ = false;
     bool hold_ = false;
-    u32 surgeSteps_ = 1;  // conductor.json lead.grid: "Surge moves one further" (SetSurge, listening tests)
+    u32 surgeSteps_[2] = {1, 2};  // conductor.json drop.surgeSteps: the Surge's two gears (SetSurge: both, tests)
+    // M3: the game's director drives the cycle (SetPhrase), the boss's bells (SetBoss), the Track's tempo.
+    i32 phraseSection_ = -1;
+    u32 phraseBar_ = 0, phraseBars_ = 0;
+    bool trackNow_ = false;
+    double pendingBpm_ = 0.0, bpmOverride_ = 0.0;
+    struct BossBar {
+        u8 mask = 0, beats = 0, flags = 0;
+        bool sixteenths = false;
+    };
+    BossBar boss_, bossNext_;
+    bool bossPending_ = false;
+    double trackBpm() const;
     bool nextSection_ = false;
     i32 forceSection_ = -1;
     bool buildFollowed_ = false;   // the current Drop follows a Build (impact)

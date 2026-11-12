@@ -153,6 +153,12 @@ bool PlayView::setTier(const TierSettings& tier) {
     return true;
 }
 
+void PlayView::setIcons(const IconSet* icons, const i32* upgradeIcons, const i32* boostIcons) {
+    icons_ = icons;
+    for (u32 k = 0; k < kUpgradeCount; ++k) upgradeIcon_[k] = upgradeIcons[k];
+    for (u32 k = 0; k < kBoostCount; ++k) boostIcon_[k] = boostIcons[k];
+}
+
 void PlayView::resetEffects() {
     for (u32 i = 0; i < poolCap_; ++i) pools_[i].born = -100.0f;
     for (u32 i = 0; i < emberCap_; ++i) embers_[i].born = -100.0f;
@@ -345,6 +351,10 @@ void PlayView::onEvents(const World& w, double tickEnd) {
             }
             case EventType::Impact: {
                 // A shot that hit without killing: 3-4 sparks back along it, 0.15 s (look.md §5).
+                if (e.species == kBossSpecies) {
+                    eventB(w, e, t);
+                    break;
+                }
                 const Species& s = table.get(e.species);
                 SparkReq r{};
                 r.at = at;
@@ -445,7 +455,7 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 lattice_.impulse(dash_.to, 120.0f, 70.0f);
                 break;
             case EventType::Restart: resetEffects(); break;
-            default: break;
+            default: eventB(w, e, t); break;
         }
     }
 }
@@ -577,7 +587,8 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         zoomBase_ += (zt - zoomBase_) * (1.0f - std::exp(-in.dt / kZoomTau));
         zoomBase_ = clampf(zoomBase_, look_->zoomMin, look_->zoomMax);
     }
-    zoom_ = zoomBase_ * (1.0f + look_->zoomKick * beatAmt * kick_);
+    sectionLook(in);
+    zoom_ = zoomBase_ * sectionZoom_ * (1.0f + look_->zoomKick * beatAmt * kick_);
     pxPerWu_ = kRefPxPerWu * refPx_ * zoom_;
     centre_ = {0.5f * W, 0.5f * H};
     viewW_ = W / pxPerWu_;
@@ -765,6 +776,13 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     ls.tintFarThirdHueMix = look_->grid.tintFarThirdHueMix;
     ls.tint = tier_.gridTint;
     ls.heatGain = shown(kMuteHeat) ? crowd : 0.0f;
+    if (trioRest_ > 0.0f) {
+        // screens.md, the Trio: the fight steps back, the lattice rests at 0.07.
+        ls.restIntensity += (0.07f - ls.restIntensity) * trioRest_;
+        ls.warmIntensity *= 1.0f - 0.8f * trioRest_;
+        ls.hotIntensity *= 1.0f - 0.8f * trioRest_;
+        ls.heatGain *= 1.0f - trioRest_;
+    }
     lattice_.setWells(nullptr, 0, 0.0f);
     if (shown(kMuteGrid)) lattice_.draw(d.scene, lv, ls);
 
@@ -848,7 +866,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             continue;
         }
         const Vec3 hue = palette_->hue[s.hue], partner = palette_->partner[s.hue];
-        float intensity = (look_->lines.enemyHullTier1.intensity + le.hullIntensityPerTier * (static_cast<float>(s.tier) - 1.0f)) * crowd;
+        float intensity = (look_->lines.enemyHullTier1.intensity + le.hullIntensityPerTier * (static_cast<float>(s.tier) - 1.0f)) * crowd * enemyLight_;
         const float halfWidth = 0.5f * look_->lines.enemyHullTier1.width;
         const float phase = static_cast<float>(e.serial[i] % 997u) * 0.61803f * kTau;
         float rot0, rot1;
@@ -1151,13 +1169,16 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         o.amount = r.amountRefPx * refPx_ * (1.0f - u);
     }
 
+    // ---- M3 stage B: Riffs, Boosts, the boss, the Trio (play_view_b.cpp).
+    drawStageB(d, in, W, H);
+
     // ---- Composite controls (look.md §7).
     const float pump = shown(kMutePump) ? kick_ * beatAmt : 0.0f;
     params.bloomPump = (1.0f + look_->bloomKick * pump) * (1.0f + novaPump_);
-    params.exposurePump = (1.0f + look_->exposureKick * pump) * (1.0f - novaDim);
+    params.exposurePump = (1.0f + look_->exposureKick * pump) * (1.0f - novaDim) * exposureSection_;
     params.vignette = shown(kMuteVignette);
     params.vignetteAmount = look_->vignetteAmount;
-    params.drain = 0.0f;
+    params.drain = drain_;
     params.afterglow = shown(kMuteAfterglow);
     params.afterglowGain = look_->afterglowGain == Look::Gain::Swarm ? swarm : (look_->afterglowGain == Look::Gain::Crowd ? crowd : 1.0f);
     params.dtSeconds = in.dt;

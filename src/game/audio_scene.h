@@ -35,6 +35,7 @@ public:
     void touchUp(u64 id);
     void render(FrameDraw& draw, FrameParams& params, Background& bg, float w, float h, Vec2 insetMin, Vec2 insetMax);
     bool quitRequested() const { return quit_; }
+    void clearQuit() { quit_ = false; }
     Kind kind() const { return kind_; }
 
 private:

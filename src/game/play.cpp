@@ -24,6 +24,10 @@ constexpr float kPadAimActive = 0.30f;    // the right stick fires beyond this d
 constexpr u32 kShardRunMax = 8;           // Shard notes waiting for their 1/32 step, at most
 constexpr double kShardStepTicks = 12.0;  // one Shard note per 1/32 (the engine quantizes to it)
 constexpr float kIntensityStep = 0.02f;   // the band hears a new intensity when it moved this much
+// The band is told about the next bar this far into the heard bar: after the sim's decisions for that bar
+// line (a boss death or a retry in the first half of a bar takes the next line), before its write head
+// reaches the line (latency is far below half a bar).
+constexpr double kPlanAtBar = 0.55;
 
 bool is(const char* a, const char* b) { return std::strcmp(a, b) == 0; }
 Vec2 deadZone(Vec2 v, float dz) {
@@ -45,6 +49,7 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
     look_ = &look;
     palettes_ = &palettes;
     palette_ = &palette;
+    basePalette_ = &palette;
     glyphs_ = &glyphs;
     font_ = &font;
     band_ = band;
@@ -75,12 +80,29 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
     controller_.reset(world_->player(0).pos);
     bot_.reset(opt.seed, opt.kind == PlayOptions::Kind::Stress ? Bot::Policy::Stress : Bot::Policy::Play);
     if (!view_.init(look, palettes, palette, glyphs, tier)) return false;
+    // M3 stage B: the upgrade icons (design/icons.json) and the font for the Trio's words.
+    if (!icons_.load()) return false;
+    for (u8 u = 0; u < kUpgradeCount; ++u) upgradeIcons_[u] = icons_.find(upgradeInfo(u).icon);
+    for (u8 b = 0; b < kBoostCount; ++b) boostIcons_[b] = icons_.find(boostInfo(b).icon);
+    view_.setIcons(&icons_, upgradeIcons_, boostIcons_);
+    view_.setFont(&font);
+    // The screens around the run: interactive play only (benchmarks, pictures and --bot are the run alone).
+    flow_ = opt.kind == PlayOptions::Kind::Play && !opt.bot && !picture && !opt.fixedStep;
+    if (flow_) {
+        loadSettings(settings_);
+        loadHighScores(scores_);
+        screen_ = settings_.noticeSeen ? Screen::Title : Screen::Notice;
+        applySettings();
+    }
+    markCount_ = 0;
+    marks_[markCount_++] = Mark{0.0f, 0, 1};
     if (picture) scriptSetup();
     if (bandDrives_) band->setIntensity(tuning::kIntensityFloor);
 
     // --fast-forward: the game runs on the simulated clock without drawing (pictures at 2 and 5 minutes).
-    if (opt.fastForwardS > 0.0f) {
-        const u32 ticks = static_cast<u32>(opt.fastForwardS * 60.0f);
+    const float fastForward = std::fmax(opt.fastForwardS, scriptFastForwardS_);
+    if (fastForward > 0.0f) {
+        const u32 ticks = static_cast<u32>(fastForward * 60.0f);
         const bool drives = bandDrives_;
         bandDrives_ = false;
         const PlayOptions saved = opt_;
@@ -90,7 +112,11 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
         bandDrives_ = drives;
         view_.resetEffects();
         frameNo_ = 0;
-        RF_LOG("play: fast-forwarded %.1f s (%u ticks): %u enemies, %u kills, score %llu", opt.fastForwardS, ticks,
+        // Pictures time their moment from the first drawn frame.
+        scriptTick_ = 0;
+        captureFrom_ = -1;
+        captureNow_ = pictureDone_ = false;
+        RF_LOG("play: fast-forwarded %.1f s (%u ticks): %u enemies, %u kills, score %llu", fastForward, ticks,
                world_->enemies().count, world_->counters().kills, static_cast<unsigned long long>(world_->player(0).score));
     }
     RF_LOG("play: %s%s, seed %llu, %.0f BPM, %s clock, spawner %s", opt.kind == PlayOptions::Kind::Stress ? "bench_stress" : (opt.kind == PlayOptions::Kind::BenchPlay ? "bench_play" : "play"),
@@ -99,7 +125,13 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
     return true;
 }
 
-void Play::setLayout(float w, float h, Vec2 insetMin, Vec2 insetMax) { touch_.layout(w, h, insetMin, insetMax, opt_.pxPerMm); }
+void Play::setLayout(float w, float h, Vec2 insetMin, Vec2 insetMax) {
+    layoutW_ = w;
+    layoutH_ = h;
+    insetMin_ = insetMin;
+    insetMax_ = insetMax;
+    touch_.layout(w, h, insetMin, insetMax, opt_.pxPerMm);
+}
 
 // ---------------------------------------------------------------------------------------------- frame
 
@@ -109,10 +141,12 @@ void Play::buildInput(StickInput& in) {
         scriptInput(in);
         return;
     }
-    if (opt_.bot) {
+    if (opt_.bot || attract()) {
+        // The bot plays (--bot, benchmarks, and the title's attract run).
         in = bot_.think(*world_, 0, controller_, clock_.heardNow());
         return;
     }
+    in.assist = settings_.autoAim || !flow_;
     // Keyboard: WASD or the arrows.
     Vec2 mv{static_cast<float>((keys_[3] || keys_[7]) - (keys_[1] || keys_[5])),
             static_cast<float>((keys_[2] || keys_[6]) - (keys_[0] || keys_[4]))};
@@ -139,6 +173,32 @@ void Play::frame(float realDt) {
     const bool fixed = opt_.fixedStep;
     frameDt_ = fixed ? kDt : (realDt > 0.1f ? 0.1f : realDt);
     const BeatView* bv = (bandDrives_ && band_) ? &band_->view() : nullptr;
+    // M3 stage B: pause freezes the run; the count-in ends on the resume point (game/screens.cpp).
+    if (flow_ && countIn_) {
+        if (realign_ && bv && bv->running) {
+            realign_ = false;
+            beginCountIn();
+        }
+        countInClockS_ += static_cast<double>(frameDt_) * clock_.ticksPerSecond();
+        if (!realign_ && countInNow() >= countInEnd_) {
+            clock_.resume(pauseMusic_, resumeOffset_);
+            countIn_ = false;
+            if (screen_ == Screen::Paused) {
+                screen_ = Screen::Run;
+                if (bandDrives_) band_->setHold(false);
+                plannedLine_ = -1e9;
+                applySettings();
+            }
+        }
+    }
+    const bool frozen = flow_ && (countIn_ || screen_ == Screen::Paused || (screen_ == Screen::Settings && settingsBack_ == Screen::Paused));
+    paused_ = frozen;
+    if (frozen) {
+        stats_.ticksLastFrame = 0;
+        bandFrame();
+        return;
+    }
+    if (!clock_.fromBand()) clock_.setBpm(world_->tempoAt(music1_));
     clock_.beginFrame(bv, realDt, fixed);
 
     StickInput in;
@@ -163,6 +223,11 @@ void Play::frame(float realDt) {
         alpha_ = clampf(static_cast<float>((clock_.simTime() - tickEnd_) / kDt), 0.0f, 1.0f);
     }
     bandFrame();
+    if (flow_) {
+        const PlayerState& me = world_->player(0);
+        if (screen_ == Screen::Run && me.alive && !world_->restartPending()) runSeconds_ += frameDt_;
+        if (screen_ == Screen::GameOver) overS_ += frameDt_;
+    }
 
     // Picture runs: capture `stripFrames_` frames from the scripted moment.
     captureNow_ = false;
@@ -249,11 +314,43 @@ void Play::afterTick() {
             case EventType::Death:
                 if (opt_.bot || opt_.kind != PlayOptions::Kind::Play) retryRequest_ = true;  // the bot taps retry
                 if (bandDrives_) band_->playSfx(audio::Sfx::GameOver);
+                if (flow_ && screen_ == Screen::Run) {
+                    endRun(true);
+                    screen_ = Screen::GameOver;
+                    overS_ = -0.6f;  // a breath before the score counts up
+                } else if (flow_ && attract()) {
+                    retryRequest_ = true;  // the title's bot just goes again
+                }
                 break;
             case EventType::Restart:
                 controller_.reset(w.player(0).pos);
                 touch_.reset();
+                // A new run: its record starts (the set list's first Track).
+                runSeconds_ = 0.0f;
+                runTrackMax_ = 1;
+                markCount_ = 0;
+                marks_[markCount_++] = Mark{0.0f, 0, 1};
+                loadoutSig_ = ~0u;
                 break;
+            case EventType::Section:
+                if (e.f > 0.5f) {
+                    if (e.c > runTrackMax_) runTrackMax_ = e.c;
+                    if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 0, e.c};
+                }
+                break;
+            case EventType::Spotlight: {
+                // GAME_DESIGN 8: the debut's name on screen. Its family and tier (and variant B as "B").
+                const Species& s = w.species().get(e.species);
+                static const char* const kRoman[6] = {"", "I", "II", "III", "IV", "V"};
+                char fam[16];
+                std::snprintf(fam, sizeof fam, "%s", familyName(s.family));
+                for (char* c = fam; *c; ++c)
+                    if (*c >= 'a' && *c <= 'z') *c = static_cast<char>(*c - 32);
+                std::snprintf(spotlightName_, sizeof spotlightName_, "%s %s%s", fam, kRoman[s.tier < 6 ? s.tier : 5],
+                              s.variant == kVariantB ? "  B" : (s.variant == kVariantC ? "  C" : ""));
+                spotlightT_ = static_cast<float>(tickEnd_);
+                break;
+            }
             case EventType::Kill:
                 if (!e.c && e.a < 3) ++killsPending_[e.a];
                 break;
@@ -278,6 +375,7 @@ void Play::afterTick() {
                 }
                 break;
             case EventType::Hit:
+                if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 3, 0};
                 if (bandDrives_) band_->playSfx(audio::Sfx::Hit);
                 break;
             case EventType::NovaPress:
@@ -285,6 +383,30 @@ void Play::afterTick() {
                 break;
             case EventType::Dash:
                 if (bandDrives_) band_->playSfx(e.b ? audio::Sfx::PerfectDash : audio::Sfx::Dash);
+                break;
+            case EventType::TrioTake:
+                if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 2, e.b};
+                takenT_ = static_cast<float>(tickEnd_);
+                takenFrom_ = view_.toScreen(Vec2{e.x, e.y});
+                // screens.md: the "upgrade taken" chord, on the next sixteenth.
+                if (bandDrives_) band_->sfxAt(audio::Sfx::Upgrade, (std::floor(band_->view().heardTick / kTicksPerStep) + 1.0) * kTicksPerStep);
+                break;
+            case EventType::BoostTake:
+                if (bandDrives_) band_->playSfx(audio::Sfx::Boost);
+                break;
+            case EventType::HaloBlock:
+                if (bandDrives_) band_->playSfx(audio::Sfx::Shield);
+                break;
+            case EventType::BossEnter:
+                if (bandDrives_) band_->playSfx(audio::Sfx::Elite);
+                break;
+            case EventType::BossPair:
+                // kaleidos.md: that voice leaves the chord; a low growl (the elite-arrives patch) enters.
+                if (bandDrives_) band_->playSfx(audio::Sfx::Elite, 1.2f);
+                break;
+            case EventType::BossDeath:
+                if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 1, 0};
+                if (bandDrives_) band_->kill(2, 6);
                 break;
             default: break;
         }
@@ -310,13 +432,106 @@ void Play::bandFrame() {
         --shardsPending_;
         lastShardTick_ = heard;
     }
-    // Stage A: the band stays in Groove and its intensity follows the threat on screen.
+    conductBand();
+    // The bed's intensity (Groove) follows the threat on screen.
     const float target = clampf(tuning::kIntensityFloor + world_->threatInView() * tuning::kIntensityPerThreat, 0.0f, 1.0f);
     intensity_ += (target - intensity_) * (1.0f - std::exp(-frameDt_ / tuning::kIntensityTau));
     if (std::fabs(intensity_ - intensityPosted_) >= kIntensityStep) {
         band_->setIntensity(intensity_);
         intensityPosted_ = intensity_;
     }
+}
+
+void Play::conductBand() {
+    // M3 stage B: the director is the one source of the form; the band follows it on bar lines. In the
+    // second half of every heard bar, the band is told what the next bar is: a new run, the phrase (section
+    // and bar in it), a Track change, the boss's bar. The engine applies each on that bar line.
+    if (!bandDrives_ || !clock_.fromBand()) return;
+    const World& w = *world_;
+    const PlayerState& pl = w.player(0);
+    // The local player's upgrades: the lead's harmony, grid and drive, the Riffs' layers.
+    {
+        const Loadout& l = pl.loadout;
+        const u8 mods[5] = {l.mods[kSplit], l.mods[kDoubleTime], l.mods[kPierce], l.mods[kOvercharge], l.mods[kOnBeatCrit]};
+        const bool prism = pl.boost(kPrism), hyper = pl.boost(kHyper);
+        u32 sig = 0;
+        for (u8 m : mods) sig = sig * 7u + m;
+        for (u8 r : l.riffs) sig = sig * 7u + r;
+        sig = sig * 4u + (prism ? 1u : 0u) + (hyper ? 2u : 0u);
+        if (sig != loadoutSig_) {
+            loadoutSig_ = sig;
+            band_->setLoadout(mods, l.riffs, prism, hyper);
+        }
+    }
+    const double heard = band_->view().heardTick;  // the band's own (absolute) song ticks
+    const double offset = clock_.offset();          // the run's ticks = the band's - offset (whole bars)
+    const double line = std::floor(heard / kTicksPerBar) * kTicksPerBar;
+    if (heard - line < kPlanAtBar * kTicksPerBar) return;
+    const double nextLine = line + kTicksPerBar;
+    if (nextLine <= plannedLine_ + 1.0) return;
+    plannedLine_ = nextLine;
+    const auto off = [&] {
+        if (bossPosted_) band_->setBoss(0, false, 0, 0);
+        bossPosted_ = false;
+    };
+    if (w.restartPending() && std::fabs(w.restartTick() + offset - nextLine) < 1.0) {
+        // A new run on that line: Track 1 at its tempo, Short form, its first Groove.
+        band_->setHold(false);
+        band_->changeTrack(0, bpmOfTrack(1), true);
+        band_->setForm(audio::Form::Short);
+        band_->setPhrase(audio::Section::Groove, 0, kSectionBars[0][0]);
+        off();
+        overHeld_ = false;
+        return;
+    }
+    if (!pl.alive) {
+        // The run is over: the band holds a Break under the game-over screen until the next run.
+        if (!overHeld_) {
+            band_->setPhrase(audio::Section::Break, 0, kSectionBars[0][3]);
+            band_->setHold(true);
+            off();
+            overHeld_ = true;
+        }
+        return;
+    }
+    if (overHeld_ || paused_) return;
+    const u32 bar = w.barOf(nextLine - offset + 1.0);
+    const Phrase next = w.phraseOfBar(bar);
+    if (next.trackChange && next.sectionBar == 0) {
+        // The boss is dead: the Track-change Break (tempo ramp, key on its fifth bar) into the next Track.
+        band_->setHold(false);
+        band_->changeTrack(next.song, next.trackBpm, false);
+        band_->setForm(next.song == 0 ? audio::Form::Short : audio::Form::Standard);
+    }
+    if (holdPosted_) {
+        band_->setHold(false);
+        holdPosted_ = false;
+    }
+    band_->setPhrase(static_cast<audio::Section>(next.section), next.sectionBar, next.sectionBars);
+    if (next.sectionBar == 0)
+        RF_LOG("play: band told: run bar %u (band tick %.0f) %s, %u bars, Track %u cycle %u%s", next.bar, nextLine, sectionLabel(next.section),
+               next.sectionBars, next.track, next.cycle, next.trackChange ? " (Track change)" : (next.bossDrop ? " (boss)" : ""));
+    // The boss's bar: which pairs fire on which beats (their bells), the iris's gong, a beam's riser and stab.
+    const BossState& b = w.boss();
+    const double simLine = nextLine - offset;
+    if (!b.active || b.dying || simLine < b.fightTick) {
+        off();
+        return;
+    }
+    u8 mask = 0, beats = 0, flags = 8u | 1u;
+    for (u32 k = 0; k < 4; ++k) {
+        const u8 m = static_cast<u8>(w.bossFiringMask(simLine + k * kTicksPerBeat + 48.0) |
+                                     w.bossFiringMask(simLine + k * kTicksPerBeat + 24.0) | w.bossFiringMask(simLine + k * kTicksPerBeat));
+        if (m) beats = static_cast<u8>(beats | (1u << k));
+        mask = static_cast<u8>(mask | m);
+    }
+    for (u32 p = 0; p < 3; ++p) {
+        const u8 st = w.bossBeamState(p, simLine + 1.0);
+        if (st == 1) flags = static_cast<u8>(flags | 2u);
+        if (st == 2) flags = static_cast<u8>(flags | 4u);
+    }
+    band_->setBoss(mask, b.phase == 2, beats, flags);
+    bossPosted_ = true;
 }
 
 // ---------------------------------------------------------------------------------------------- render
@@ -338,6 +553,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     vi.shipAim = pose.aim;
     vi.shipHeading = pose.heading;
     vi.shipFiring = pose.fire != 0;
+    updatePalette(vi.music);
     view_.render(d, params, bg, W, H, vi);
 
     HudState hs;
@@ -351,14 +567,217 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     hs.alive = p.alive;
     hs.retryPending = w.restartPending();
     hs.kick = view_.kick();
-    hs.showTouch = touch_.used();
-    drawHud(d, *font_, *look_, variant, *palettes_, *palette_, hs, touch_, W, H, insetMin, insetMax);
+    // The run's HUD: in the run (and under pause); the screens draw their own.
+    const bool runHud = !flow_ || screen_ == Screen::Run || screen_ == Screen::Paused;
+    hs.showTouch = touch_.used() && runHud && p.alive;
+    hs.world = &w;
+    hs.music = vi.music;
+    hs.icons = &icons_;
+    hs.upgradeIcons = upgradeIcons_;
+    hs.boostIcons = boostIcons_;
+    hs.trackName = w.phrase().song == 0 ? "FIRST LIGHT" : "SOLAR WIND";
+    hs.bpm = clock_.bpm();
+    hs.runHud = runHud;
+    hs.pausePressed = pausePressed_ || screen_ == Screen::Paused;
+    const float now = static_cast<float>(vi.time);
+    if (now - takenT_ < 0.6f) {
+        hs.takenAge = now - takenT_;
+        hs.takenFrom = takenFrom_;
+    }
+    if (spotlightName_[0] && now - spotlightT_ < 3.0f) {
+        hs.spotlight = spotlightName_;
+        hs.spotlightAge = now - spotlightT_;
+    }
+    if (runHud) {
+        drawHud(d, *font_, *look_, variant, *palettes_, *palette_, hs, touch_, W, H, insetMin, insetMax);
+    }
+    if (flow_) renderScreens(d, params, variant, W, H, insetMin, insetMax);
+}
+
+void Play::renderProbeTitle(FrameDraw& d, FrameParams& params, const LookVariant& variant, float W, float H, Vec2 insetMin, Vec2 insetMax) {
+    // The tier probe's stage runs behind the title at a third of its light; the title's controls are live.
+    params.exposurePump = 1.0f;
+    if (!flow_) return;
+    renderScreens(d, params, variant, W, H, insetMin, insetMax);
+}
+
+void Play::updatePalette(double music) {
+    // GAME_DESIGN 4.2: each Track has its palette; the Track-change Break cross-fades it.
+    if (!paletteFollows_ || !basePalette_) return;
+    const auto forSong = [&](u32 song) {
+        const u32 want = song == 0 ? 1u : 2u;
+        for (u32 i = 0; i < palettes_->count; ++i)
+            if (palettes_->list[i].track == want) return &palettes_->list[i];
+        return basePalette_;
+    };
+    const Phrase& ph = world_->phrase();
+    const Palette* to = forSong(ph.song);
+    if (!ph.trackChange) {
+        palette_ = to;
+        view_.setPalette(*to);
+        return;
+    }
+    const Palette* from = forSong(ph.song == 0 ? 1u : 0u);
+    const double inBar = (music - world_->tickOfBar(ph.bar)) / kTicksPerBar;
+    float u = clampf((static_cast<float>(ph.sectionBar) + static_cast<float>(inBar)) / static_cast<float>(ph.sectionBars), 0.0f, 1.0f);
+    u = u * u * (3.0f - 2.0f * u);
+    mixed_ = *to;
+    const auto mixv = [&](Vec3 a, Vec3 b) { return a + (b - a) * u; };
+    mixed_.bg0 = mixv(from->bg0, to->bg0);
+    mixed_.bg1 = mixv(from->bg1, to->bg1);
+    mixed_.grid = mixv(from->grid, to->grid);
+    mixed_.gridHot = mixv(from->gridHot, to->gridHot);
+    mixed_.accent = mixv(from->accent, to->accent);
+    for (u32 k = 0; k < 3; ++k) {
+        mixed_.hue[k] = mixv(from->hue[k], to->hue[k]);
+        mixed_.partner[k] = mixv(from->partner[k], to->partner[k]);
+    }
+    palette_ = &mixed_;
+    view_.setPalette(mixed_);
+}
+
+// ---------------------------------------------------------------------------------------------- flow
+
+void Play::applySettings() {
+    // Settings apply at once (screens.md: every change is heard as it is made).
+    view_.setReduceFlashing(settings_.reduceFlashing || forcedReduceFlashing_);
+    touch_.setSwap(settings_.swapSides);
+    if (band_ && band_->active()) {
+        if (band_->variant() != settings_.variant) band_->setVariant(settings_.variant);
+        const float pauseDip = screen_ == Screen::Paused ? 0.45f : 1.0f;  // the music under pause (no low-pass yet)
+        band_->setGains(settings_.music * settings_.master * pauseDip, settings_.effects * settings_.master);
+        band_->setHaptics(settings_.haptics > 0);
+    }
+}
+
+void Play::startRun() {
+    // PLAY: a run starts on the next bar line (at least half a bar away, so the band starts it with us).
+    world_->requestRestart();
+    screen_ = Screen::Run;
+    if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+}
+
+void Play::restartRun() {
+    world_->requestRestart();
+    screen_ = Screen::Run;
+    countIn_ = false;
+    if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+}
+
+void Play::toTitle() {
+    // HOME: back to the title; the bot starts a new run behind it on the next bar line.
+    screen_ = Screen::Title;
+    countIn_ = false;
+    askQuit_ = askRestart_ = false;
+    world_->requestRestart();
+    applySettings();
+    if (band_) band_->playSfx(audio::Sfx::UiBack);
+}
+
+void Play::openSettings(Screen back) {
+    settingsBack_ = back;
+    screen_ = Screen::Settings;
+    if (band_) band_->playSfx(audio::Sfx::UiTick);
+}
+
+void Play::pauseRun() {
+    if (!flow_ || screen_ != Screen::Run || !world_->player(0).alive) return;
+    screen_ = Screen::Paused;
+    countIn_ = false;
+    pauseMusic_ = music1_;
+    touch_.reset();
+    mouseFire_ = mouseNova_ = false;
+    for (bool& k : keys_) k = false;
+    if (bandDrives_) {
+        band_->setHold(true);  // the band keeps the section; nothing in the run moves
+        band_->playSfx(audio::Sfx::UiTick);
+    }
+    applySettings();
+}
+
+double Play::countInNow() const {
+    if (bandDrives_ && band_->view().running) return band_->view().heardTick;
+    return countInClockS_;
+}
+
+void Play::beginCountIn() {
+    // RESUME: four beats counted in; the run goes on where it paused within its bar, so its bar lines stay on
+    // the band's (the resume offset is a whole number of bars).
+    countIn_ = true;
+    const double barStart = std::floor(pauseMusic_ / kTicksPerBar) * kTicksPerBar;
+    const double frac = pauseMusic_ - barStart;
+    if (bandDrives_ && band_->view().running) {
+        const double heard = band_->view().heardTick;
+        const double line = std::ceil((heard + 4.0 * kTicksPerBeat - frac + 8.0) / kTicksPerBar) * kTicksPerBar;
+        countInEnd_ = line + frac;
+        resumeOffset_ = line - barStart;
+    } else {
+        countInClockS_ = 0.0;
+        countInEnd_ = 4.0 * kTicksPerBeat;  // the simulated clock: four beats of its own
+        resumeOffset_ = clock_.offset();
+    }
+    if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+}
+
+void Play::endRun(bool died) {
+    // The run's numbers go to the high scores (a quit run counts as well; it was played).
+    const PlayerState& p = world_->player(0);
+    HighScore h;
+    h.score = p.score;
+    h.track = runTrackMax_;
+    h.bestChain = p.bestChain;
+    h.seconds = static_cast<u32>(runSeconds_);
+    h.kills = p.kills;
+    const u64 before = scores_.best();
+    finalScore_ = p.score;
+    newBest_ = p.score > 0 && p.score > before;
+    if (p.score > 0 && scores_.add(h) >= 0) saveHighScores(scores_);
+    (void)died;
+}
+
+void Play::returnFromSync() {
+    // The sync screen restarted the band's song: the run (paused, or the title's) continues against the new
+    // timeline from the next bar line on.
+    if (!band_) return;
+    band_->setMode(audio::Mode::Conductor);
+    plannedLine_ = -1e9;
+    holdPosted_ = true;
+    if (screen_ == Screen::Settings && settingsBack_ == Screen::Paused) return;  // RESUME counts in against it
+    // The title's attract run: re-anchored once the band plays again (frame()).
+    pauseMusic_ = music1_;
+    realign_ = true;
+    countIn_ = true;
+    countInEnd_ = 1e18;
 }
 
 // ---------------------------------------------------------------------------------------------- input
 
+void Play::uiPointer(Vec2 pos, bool down) {
+    uiPtr_.pos = pos;
+    if (down && !uiPtr_.down) uiPtr_.pressed = true;
+    if (!down && uiPtr_.down) uiPtr_.released = true;
+    uiPtr_.down = down;
+}
+
 bool Play::key(int k, bool down) {
     const bool dead = !world_->player(0).alive;
+    if (flow_) {
+        // The screens: Enter / Space is the obvious control, Escape (Back) goes back or pauses.
+        const bool primary = k == SDLK_RETURN || k == SDLK_KP_ENTER;
+        const bool back = k == SDLK_ESCAPE || k == SDLK_AC_BACK || k == SDLK_P;
+        if (screen_ == Screen::Run) {
+            if (down && back) {
+                pauseRun();
+                return true;
+            }
+        } else {
+            if (down && primary) keyPrimary_ = true;
+            if (down && back) keyBack_ = true;
+            if (primary || back) return true;
+            if (screen_ != Screen::Paused || countIn_) return k != SDLK_F1;
+        }
+        if (dead) return true;  // the game-over screen takes over
+    }
     switch (k) {
         case SDLK_W: keys_[0] = down; return true;
         case SDLK_A: keys_[1] = down; return true;
@@ -386,26 +805,68 @@ bool Play::key(int k, bool down) {
 void Play::mouseButton(int button, bool down, Vec2 pos) {
     mousePos_ = pos;
     mouseSeen_ = true;
+    if (flow_ && screen_ != Screen::Run) {
+        if (button == SDL_BUTTON_LEFT) uiPointer(pos, down);
+        mouseFire_ = mouseNova_ = false;
+        return;
+    }
+    if (flow_ && down && button == SDL_BUTTON_LEFT) {
+        float r = 0.0f;
+        const Vec2 c = pauseButtonCentre(layoutW_, layoutH_, insetMin_, insetMax_, r);
+        if (lengthSq(pos - c) <= 4.0f * r * r) {
+            pauseRun();
+            return;
+        }
+    }
     if (button == SDL_BUTTON_LEFT) mouseFire_ = down;
     if (button == SDL_BUTTON_RIGHT) mouseNova_ = down;
-    if (down && !world_->player(0).alive) retryRequest_ = true;
+    if (!flow_ && down && !world_->player(0).alive) retryRequest_ = true;
 }
 
 void Play::mouseMove(Vec2 pos) {
     mousePos_ = pos;
     mouseSeen_ = true;
+    if (flow_ && screen_ != Screen::Run) uiPointer(pos, uiPtr_.down);
 }
 
 void Play::touchDown(u64 id, Vec2 pos) {
+    if (flow_ && screen_ != Screen::Run) {
+        // The screens: the first finger is the pointer (nothing here is a stick).
+        if (uiTouch_ == ~0ull) {
+            uiTouch_ = id;
+            uiPointer(pos, true);
+        }
+        return;
+    }
+    if (flow_) {
+        float r = 0.0f;
+        const Vec2 c = pauseButtonCentre(layoutW_, layoutH_, insetMin_, insetMax_, r);
+        if (lengthSq(pos - c) <= 4.0f * r * r) {
+            pausePressed_ = true;
+            pauseRun();
+            return;
+        }
+    }
     if (!world_->player(0).alive) {
-        retryRequest_ = true;  // "tap to retry"
+        if (!flow_) retryRequest_ = true;  // "tap to retry" (benchmarks, --bot)
         return;
     }
     touch_.down(id, pos);
 }
 
-void Play::touchMove(u64 id, Vec2 pos) { touch_.move(id, pos); }
-void Play::touchUp(u64 id) { touch_.up(id); }
+void Play::touchMove(u64 id, Vec2 pos) {
+    if (id == uiTouch_) uiPointer(pos, true);
+    touch_.move(id, pos);
+}
+
+void Play::touchUp(u64 id) {
+    if (id == uiTouch_) {
+        uiPointer(uiPtr_.pos, false);
+        uiTouch_ = ~0ull;
+    }
+    pausePressed_ = false;
+    touch_.up(id);
+}
 
 void Play::padAxis(int axis, float v) {
     switch (axis) {
@@ -443,6 +904,7 @@ enum ScriptFlag : u32 { kPressed = 1, kSpawned = 2 };
 }
 
 void Play::scriptSetup() {
+    if (scriptSetupB()) return;
     World& w = *world_;
     const SpeciesTable& s = *species_;
     const char* p = opt_.picture;
@@ -489,6 +951,7 @@ void Play::scriptInput(StickInput& in) {
     const double music = music1_;
     const float tpt = clock_.ticksPerSecond() * kDt;  // musical ticks per sim tick
     in.assist = false;
+    if (scriptInputB(in)) return;
     if (is(p, "fire")) {
         // A stream into the middle one of the five (they take 60 shots each), so the shots land.
         const Enemies& e = w.enemies();
@@ -545,6 +1008,7 @@ void Play::scriptInput(StickInput& in) {
 }
 
 void Play::scriptEvents() {
+    if (scriptEventsB()) return;
     if (captureFrom_ >= 0) return;
     const World& w = *world_;
     const char* p = opt_.picture;
