@@ -59,6 +59,35 @@ void systemProperty(const char* name, char* out, size_t capacity) {
     std::snprintf(out, capacity, "%s", value);
 }
 
+namespace {
+// A static method of RaveformActivity: "(Z)V", "()I" or "()V".
+template <typename F>
+void callActivity(const char* name, const char* sig, F&& call) {
+    auto* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+    jobject activity = activityRef();
+    if (!env || !activity) return;
+    jclass cls = env->GetObjectClass(activity);
+    jmethodID method = env->GetStaticMethodID(cls, name, sig);
+    if (method) call(env, cls, method);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    env->DeleteLocalRef(cls);
+}
+}  // namespace
+
+void setMulticastLock(bool on) {
+    callActivity("setMulticastLock", "(Z)V", [&](JNIEnv* env, jclass cls, jmethodID m) { env->CallStaticVoidMethod(cls, m, on ? JNI_TRUE : JNI_FALSE); });
+}
+
+int localNetworkState() {
+    int state = 0;
+    callActivity("localNetworkState", "()I", [&](JNIEnv* env, jclass cls, jmethodID m) { state = env->CallStaticIntMethod(cls, m); });
+    return state;
+}
+
+void requestLocalNetwork() {
+    callActivity("requestLocalNetwork", "()V", [&](JNIEnv* env, jclass cls, jmethodID m) { env->CallStaticVoidMethod(cls, m); });
+}
+
 }  // namespace rf::android
 
 // RaveformActivity.nativeWaitSurfaceReleased(int): called on the UI thread from surfaceDestroyed().

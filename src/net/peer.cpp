@@ -19,7 +19,7 @@ bool NetPeer::start(const PeerConfig& cfg, const SpeciesTable* species) {
     world_ = new (std::nothrow) World;
     if (!world_ || !species) return false;
     world_->init(species);
-    if (!session_.start(cfg.session, world_, contentHash())) return false;
+    if (!session_.start(cfg.session, world_, contentHash() ^ cfg.contentSalt)) return false;
     session_.setClock([](void* self) { const NetPeer& p = *static_cast<const NetPeer*>(self); return p.localUs(wireNowUs()); }, this);
     bot_.reset(cfg.botSeed, cfg.policy);
     controller_.reset(world_->player(0).pos);

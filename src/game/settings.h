@@ -12,6 +12,7 @@ struct Settings {
     u8 variant = 0;              // design/music/variants.json: 0 Club (the default), 1 Arcade, 2 Velvet
     float master = 1.0f, music = 1.0f, effects = 1.0f;  // 0..1
     u8 haptics = 1;              // 0 OFF, 1 SOFT, 2 STRONG
+    bool musicHostOnly = false;  // M4 (GAME_DESIGN 12): in co-op, the music plays from the host's phone only
     // CONTROLS
     bool swapSides = false;
     bool autoAim = true;

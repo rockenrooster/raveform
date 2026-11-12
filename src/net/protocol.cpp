@@ -406,6 +406,15 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             if (sink) sink->onLobby(m);
             return true;
         }
+        case Msg::Bed: {
+            MsgBed m;
+            m.run = r.u16v();
+            m.bar = r.u32v();
+            m.level = r.u8v();
+            if (r.bad() || m.bar > (1u << 24)) return false;
+            if (sink) sink->onBed(m);
+            return true;
+        }
         case Msg::Pose: {
             MsgPose m;
             if (!readPoseMsg(r, m)) return false;
@@ -824,6 +833,13 @@ bool PacketWriter::putLobby(const MsgLobby& m) {
             u8v(static_cast<u8>(c));
         }
     }
+    return true;
+}
+bool PacketWriter::putBed(const MsgBed& m) {
+    if (!begin(Msg::Bed, 7)) return false;
+    u16v(m.run);
+    u32v(m.bar);
+    u8v(m.level);
     return true;
 }
 bool PacketWriter::putPose(const MsgPose& m) {

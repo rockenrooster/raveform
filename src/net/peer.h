@@ -20,6 +20,7 @@ struct PeerConfig {
     u64 botSeed = 1;
     i64 clockOffsetUs = 0;
     double clockPpm = 0.0;
+    u64 contentSalt = 0;  // M4 stage B (tests, --net-content-salt): another content hash, so the host refuses it
 };
 
 class NetPeer {

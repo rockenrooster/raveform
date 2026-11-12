@@ -88,6 +88,17 @@ struct AppArgs {
     u32 netCaptureBar = 0;     // --net-capture-bar B: with --screenshot, the picture as the run reaches bar B, then quit
                                // (every peer at the same musical moment)
     i32 netViewSeat = -1;      // --net-view-seat N: the camera on seat N's ship (pictures of one place on every peer)
+    // M4 stage B: the co-op screens driven from the command line (tests, pictures, device runs).
+    u8 coop = 0;               // --coop host|join[:<code>|:<ip>|:list]: 1 host a room at once, 2 open the join screen
+    char coopTarget[48] = {};  //   the room code, the address, or "list" (the first room heard) to join at once
+    u32 coopStart = 0;         // --coop-start [N]: the host starts once N players (default 2) are seated and ready, and
+                               //   goes again 3 s after all are down
+    char coopName[16] = {};    // --coop-name NAME: the name on the seat
+    bool coopPermission = false;  // --coop-permission-screen: show the local network's screen (pictures)
+    u32 contentSalt = 0;       // --net-content-salt N: another content hash (the mismatch message's test)
+    char coopShot[16] = {};    // --coop-shot <moment>: with --screenshot, the picture at that co-op moment, then quit
+    float coopDownAt = -1.0f;  // --coop-down-at S: this device's ship goes down S s into the run (tests, pictures)
+    float coopPauseAt = -1.0f; // --coop-pause-at S: this device pauses for everyone S s into the run, resumes 3 s later
     // M4 end
     // M2 audio begin
     AudioArgs audio;           // --band, --track, --sound, ... (audio/audio_args.h)

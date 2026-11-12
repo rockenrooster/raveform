@@ -8,6 +8,8 @@ import android.media.AudioManager;
 import android.view.HapticFeedbackConstants;
 // M2 audio end
 import android.media.AudioAttributes;
+import android.content.pm.PackageManager;
+import android.net.wifi.WifiManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.Build;
@@ -191,6 +193,88 @@ public class RaveformActivity extends SDLActivity {
         return 0;
     }
     // M2 audio end
+
+    // M4 stage B begin (TECH_SPEC 8.3: the lobby's discovery)
+    /**
+     * The Wi-Fi multicast lock, held while the join screen listens for rooms: many drivers drop broadcast and
+     * multicast datagrams without it. Called from native code (the lobby), never from the frame loop.
+     */
+    private static WifiManager.MulticastLock sMulticastLock;
+
+    static void setMulticastLock(boolean on) {
+        Activity activity = mSingleton;
+        if (activity == null) {
+            return;
+        }
+        try {
+            if (sMulticastLock == null) {
+                WifiManager wifi = (WifiManager) activity.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wifi == null) {
+                    return;
+                }
+                sMulticastLock = wifi.createMulticastLock("raveform-lobby");
+                sMulticastLock.setReferenceCounted(false);
+            }
+            if (on && !sMulticastLock.isHeld()) {
+                sMulticastLock.acquire();
+                Log.i(TAG, "net: multicast lock held (listening for rooms)");
+            } else if (!on && sMulticastLock.isHeld()) {
+                sMulticastLock.release();
+                Log.i(TAG, "net: multicast lock released");
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "net: multicast lock: " + e);
+        }
+    }
+
+    /**
+     * Android 17 (API 37) asks the user before an app that targets it talks to the local network
+     * (ACCESS_LOCAL_NETWORK, in the NEARBY_DEVICES group); an app that targets 36 or lower keeps it with INTERNET.
+     * 0: allowed (or not needed); 1: to be asked; 2: refused; 3: the system's dialog is up.
+     */
+    private static final String LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWORK";
+    private static final int REQUEST_LOCAL_NETWORK = 4747;
+    private static volatile int sLocalNetwork = -1;
+
+    static int localNetworkState() {
+        Activity activity = mSingleton;
+        if (activity == null) {
+            return 0;
+        }
+        if (Build.VERSION.SDK_INT < 37 || activity.getApplicationInfo().targetSdkVersion < 37) {
+            return 0;
+        }
+        if (activity.checkSelfPermission(LOCAL_NETWORK) == PackageManager.PERMISSION_GRANTED) {
+            return 0;
+        }
+        return sLocalNetwork >= 0 ? sLocalNetwork : 1;
+    }
+
+    static void requestLocalNetwork() {
+        final Activity activity = mSingleton;
+        if (activity == null || localNetworkState() == 0) {
+            return;
+        }
+        sLocalNetwork = 3;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.requestPermissions(new String[] {LOCAL_NETWORK}, REQUEST_LOCAL_NETWORK);
+            }
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == REQUEST_LOCAL_NETWORK) {
+            boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            sLocalNetwork = granted ? 0 : 2;
+            Log.i(TAG, "net: local network " + (granted ? "allowed" : "refused"));
+            return;
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    }
+    // M4 stage B end
 
     /** Blocks until the render thread has destroyed its Vulkan surface (or the timeout passes). */
     static native boolean nativeWaitSurfaceReleased(int timeoutMs);

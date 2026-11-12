@@ -6,10 +6,12 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <new>
 
 #include "core/alloc_counter.h"
 #include "net/link.h"
+#include "net/lobby.h"
 #include "net/peer.h"
 #include "net/protocol.h"
 #include "net/sync.h"
@@ -544,6 +546,393 @@ void testSession(const SpeciesTable& species) {
     wireUseSimClock(false);
 }
 
+// ---------------------------------------------------------------------------------------------- M4 stage B
+
+struct LobbySink : PacketSink {
+    u32 lobbies = 0, beds = 0, refusals = 0;
+    u8 lastRefuse = 0;
+    MsgLobby lastLobby;
+    MsgBed lastBed;
+    void onLobby(const MsgLobby& m) override {
+        ++lobbies;
+        lastLobby = m;
+    }
+    void onBed(const MsgBed& m) override {
+        ++beds;
+        lastBed = m;
+    }
+    void onRefuse(u8 r) override {
+        ++refusals;
+        lastRefuse = r;
+    }
+};
+
+void testLobby() {
+    // TECH_SPEC 8.3: the beacon and the lobby's messages are parsed like every packet (exact lengths, every field
+    // checked, nothing allocated); room codes both ways, and the /16 a code can reach.
+    g_test = "beacon";
+    const u64 a0 = heapAllocCountThisThread();
+    BeaconInfo b;
+    b.version = kProtocolVersion;
+    b.port = kGamePort;
+    b.code = 0xC0DE;
+    b.players = 2;
+    b.seats = 4;
+    b.state = kBeaconLobby;
+    std::snprintf(b.name, sizeof b.name, "MOTO");
+    u8 buf[64];
+    CHECK(beaconWrite(b, buf, sizeof buf));
+    BeaconInfo r;
+    CHECK(beaconParse(buf, kBeaconBytes, r));
+    CHECK(r.version == kProtocolVersion && r.port == kGamePort && r.code == 0xC0DE && r.players == 2 && r.seats == 4 && r.compatible);
+    CHECK(std::strcmp(r.name, "MOTO") == 0);
+    CHECK(!beaconWrite(b, buf, kBeaconBytes - 1));
+    // Exact length, magic, players <= seats <= 4, a known state, reserved zero, a printable name then zeros.
+    u8 bad[64];
+    const auto broken = [&](u32 at, u8 v, u32 size) {
+        std::memcpy(bad, buf, kBeaconBytes);
+        if (at < kBeaconBytes) bad[at] = v;
+        BeaconInfo x;
+        return beaconParse(bad, size, x);
+    };
+    CHECK(!broken(99, 0, kBeaconBytes - 1));
+    CHECK(!broken(99, 0, kBeaconBytes + 1));
+    CHECK(!broken(0, 'X', kBeaconBytes));       // magic
+    CHECK(!broken(12, 5, kBeaconBytes));        // players > seats
+    CHECK(!broken(13, 0, kBeaconBytes));        // no seats
+    CHECK(!broken(13, 5, kBeaconBytes));        // five seats
+    CHECK(!broken(14, 2, kBeaconBytes));        // state
+    CHECK(!broken(15, 1, kBeaconBytes));        // reserved
+    {
+        BeaconInfo noPort = b;
+        noPort.port = 0;  // no game port
+        u8 p[kBeaconBytes];
+        CHECK(beaconWrite(noPort, p, sizeof p) && !beaconParse(p, kBeaconBytes, r));
+    }
+    CHECK(!broken(17, 0x07, kBeaconBytes));     // a control character in the name
+    CHECK(!broken(21, 'A', kBeaconBytes));      // a character after the name's end
+    CHECK(!broken(31, 'A', kBeaconBytes));      // a name without its end
+    {
+        // Another version is heard, and marked as such (the join screen shows it, greyed).
+        BeaconInfo other = b;
+        other.version = kProtocolVersion + 1;
+        CHECK(beaconWrite(other, buf, sizeof buf));
+        CHECK(beaconParse(buf, kBeaconBytes, r) && !r.compatible);
+    }
+    // Fuzz: random datagrams of every length, and mutated valid beacons.
+    u32 accepted = 0;
+    for (u32 it = 0; it < 100000; ++it) {
+        const u32 n = rnd() % 64;
+        for (u32 k = 0; k < n; ++k) buf[k] = static_cast<u8>(rnd());
+        if (rnd() % 2) std::memcpy(buf, "RFBC", 4);
+        accepted += beaconParse(buf, n, r) ? 1u : 0u;
+    }
+    u32 mutated = 0;
+    for (u32 it = 0; it < 100000; ++it) {
+        CHECK(beaconWrite(b, buf, sizeof buf));
+        buf[rnd() % kBeaconBytes] = static_cast<u8>(rnd());
+        if (beaconParse(buf, kBeaconBytes, r)) {
+            ++mutated;
+            CHECK(r.players <= r.seats && r.seats >= 1 && r.seats <= 4 && r.state <= kBeaconRunning);
+        }
+    }
+    std::printf("  beacon: random datagrams accepted %u of 100000; mutated beacons still well formed %u of 100000\n", accepted, mutated);
+    CHECK(accepted < 50);
+
+    // The lobby's messages: round trips, and what a parse refuses.
+    g_test = "lobby messages";
+    PacketWriter w;
+    LobbySink sink;
+    MsgLobby lm;
+    lm.seats = 0x7;
+    lm.ready = 0x5;
+    lm.code = 0x1234;
+    lm.state = 0;
+    std::snprintf(lm.names[0], 16, "HOST");
+    std::snprintf(lm.names[1], 16, "PLAYER TWO");
+    MsgBed bed;
+    bed.run = 3;
+    bed.bar = 140;
+    bed.level = 200;
+    w.reset();
+    CHECK(w.putLobby(lm) && w.putBed(bed) && w.putReady(1));
+    CHECK(parsePacket(w.data(), w.size(), sink));
+    CHECK(sink.lobbies == 1 && sink.lastLobby.seats == 0x7 && sink.lastLobby.ready == 0x5 && sink.lastLobby.code == 0x1234);
+    CHECK(std::strcmp(sink.lastLobby.names[1], "PLAYER TWO") == 0 && sink.lastLobby.names[2][0] == 0);
+    CHECK(sink.beds == 1 && sink.lastBed.bar == 140 && sink.lastBed.level == 200 && sink.lastBed.run == 3);
+    lm.ready = 0x8;  // ready but not seated
+    w.reset();
+    w.putLobby(lm);
+    CHECK(!parsePacket(w.data(), w.size(), sink));
+    lm.ready = 0x1;
+    lm.state = 2;
+    w.reset();
+    w.putLobby(lm);
+    CHECK(!parsePacket(w.data(), w.size(), sink));
+    lm.state = 0;
+    w.reset();
+    w.putLobby(lm);
+    {
+        u8 p[kMaxPacketBytes];
+        std::memcpy(p, w.data(), w.size());
+        p[3 + 6 + 16 + 3] = 0x01;  // a control character in the second name
+        CHECK(!parsePacket(p, w.size(), sink));
+        std::memcpy(p, w.data(), w.size());
+        p[3 + 6 + 15] = 'X';  // the first name without its end
+        CHECK(!parsePacket(p, w.size(), sink));
+    }
+    w.reset();
+    w.putReady(2);  // ready is 0 or 1
+    CHECK(!parsePacket(w.data(), w.size(), sink));
+    u32 lobbyAccepted = 0;
+    for (u32 it = 0; it < 100000; ++it) {
+        w.reset();
+        w.putLobby(lm);
+        u8 p[kMaxPacketBytes];
+        u32 n = w.size();
+        std::memcpy(p, w.data(), n);
+        p[3 + rnd() % (n - 3)] = static_cast<u8>(rnd());
+        if (rnd() % 3 == 0) n = 1 + rnd() % n;
+        lobbyAccepted += parsePacket(p, n, sink) ? 1u : 0u;
+    }
+    std::printf("  lobby: mutated lobby messages still well formed %u of 100000\n", lobbyAccepted);
+    CHECK(heapAllocCountThisThread() - a0 == 0);
+
+    // Room codes: every 16-bit value both ways; lower case is read; the confusable letters are not in it.
+    g_test = "room code";
+    bool all = true;
+    for (u32 v = 0; v < 65536; ++v) {
+        char code[5];
+        roomCodeEncode(static_cast<u16>(v), code);
+        u16 back = 0;
+        all = all && roomCodeDecode(code, back) && back == v && std::strlen(code) == 4;
+    }
+    CHECK(all);
+    u16 low = 0;
+    CHECK(roomCodeDecode("k7qm", low));
+    u16 upper = 0;
+    CHECK(roomCodeDecode("K7QM", upper) && upper == low);
+    for (const char* badCode : {"K7Q", "K7QMM", "K7Q0", "O7QM", "17QM", "I7QM", "L7QM", "Z7QM", "57QM", "S7QM", "87QM", "B7QM", "U7QM", "V7QM", ""})
+        CHECK(!roomCodeDecode(badCode, low));
+    CHECK(!roomCodeDecode(nullptr, low));
+    // The host's address from a code and the joiner's own: the joiner's /16 in front of the host's low 16 bits.
+    const u32 host = (192u << 24) | (168u << 16) | (43u << 8) | 17u;   // 192.168.43.17 (a phone's hotspot)
+    const u32 joiner = (192u << 24) | (168u << 16) | (43u << 8) | 200u;
+    char code[5];
+    roomCodeEncode(static_cast<u16>(host & 0xFFFFu), code);
+    CHECK(roomCodeDecode(code, low) && roomCodeHost(low, joiner) == host);
+    // Within the /16 the third byte may differ (a home network wider than /24) ...
+    CHECK(roomCodeHost(low, (192u << 24) | (168u << 16) | (7u << 8) | 9u) == host);
+    // ... beyond it the code cannot reach the host (the limit TECH_SPEC 8.3 accepts; the list or an address can).
+    CHECK(roomCodeHost(low, (10u << 24) | (0u << 16) | (0u << 8) | 5u) != host);
+}
+
+void testRefusals(const SpeciesTable& species) {
+    // A client with other game data, one with another protocol version, and one too many, all on the loopback
+    // network: each is refused with its reason and the host's run is not disturbed.
+    g_test = "refusals";
+    wireUseSimClock(true);
+    i64 t = 9000000000ll;
+    wireSetSimTimeUs(t);
+    auto* peers = new (std::nothrow) NetPeer[3];
+    PeerConfig h, c;
+    h.session.role = NetRole::Host;
+    h.session.seats = 2;
+    h.session.wire = WireKind::Loopback;
+    h.session.port = 47902;
+    std::snprintf(h.session.bindIp, sizeof h.session.bindIp, "127.0.0.1");
+    c = h;
+    c.session.role = NetRole::Client;
+    std::snprintf(c.session.joinIp, sizeof c.session.joinIp, "127.0.0.1");
+    PeerConfig other = c;
+    other.contentSalt = 0x5A5A;
+    CHECK(peers[0].start(h, &species));
+    CHECK(peers[1].start(other, &species));
+    Link raw;
+    CHECK(raw.connect("127.0.0.1", 47902, WireKind::Loopback, NetSim{}, kProtocolVersion + 1));
+    LobbySink rawSink;
+    bool rawGone = false;
+    for (u32 step = 0; step < 6000; ++step) {
+        t += 1000;
+        wireSetSimTimeUs(t);
+        wirePump(peers[0].session().link().socket());
+        wirePump(peers[1].session().link().socket());
+        wirePump(raw.socket());
+        if (step % 17 == 0) peers[0].frame(t);
+        if (step % 17 == 8) peers[1].frame(t);
+        Link::Event ev;
+        while (raw.poll(ev)) {
+            if (ev.type == Link::Event::Receive) parsePacket(ev.data, ev.size, rawSink);
+            if (ev.type == Link::Event::Disconnect) rawGone = true;
+        }
+        raw.flush();
+    }
+    const char* contentWhy = peers[1].session().endReason();  // (a string literal: it outlives the session)
+    CHECK(peers[1].session().state() == SessionState::Ended && std::strcmp(contentWhy, "other game data") == 0);
+    CHECK(rawGone && (rawSink.refusals == 0 || rawSink.lastRefuse == kRefuseVersion));
+    CHECK(peers[0].session().stats().refused >= 2);
+    raw.close();
+    // A seated client, then one too many: refused as full.
+    peers[1].stop();
+    CHECK(peers[1].start(c, &species));
+    CHECK(peers[2].start(c, &species));
+    for (u32 step = 0; step < 6000; ++step) {
+        t += 1000;
+        wireSetSimTimeUs(t);
+        for (u32 k = 0; k < 3; ++k) wirePump(peers[k].session().link().socket());
+        if (step % 17 == 0) peers[0].frame(t);
+        if (step % 17 == 6) peers[1].frame(t);
+        if (step % 17 == 12 && step > 300) peers[2].frame(t);
+    }
+    CHECK(peers[1].session().seat() == 1 && peers[1].session().state() != SessionState::Ended);
+    const char* why = peers[2].session().endReason();
+    CHECK(peers[2].session().state() == SessionState::Ended && (std::strcmp(why, "the run is full") == 0 || std::strcmp(why, "the run has started") == 0));
+    std::printf("  refusals: other game data: '%s'; another version: refused %s; one too many: '%s'\n", contentWhy,
+                rawGone ? "and disconnected" : "(not seen)", why);
+    for (u32 k = 0; k < 3; ++k) peers[k].stop();
+    delete[] peers;
+    wireUseSimClock(false);
+}
+
+void testLeave(const SpeciesTable& species) {
+    // GAME_DESIGN 10: a client that leaves opens its seat and the run goes on for the others; the host leaving ends
+    // the run on every client (each knows why).
+    g_test = "leave";
+    wireUseSimClock(true);
+    i64 t = 11000000000ll;
+    wireSetSimTimeUs(t);
+    auto* peers = new (std::nothrow) NetPeer[3];
+    PeerConfig h, c;
+    h.session.role = NetRole::Host;
+    h.session.seats = 3;
+    h.session.wire = WireKind::Loopback;
+    h.session.port = 47903;
+    std::snprintf(h.session.bindIp, sizeof h.session.bindIp, "127.0.0.1");
+    c = h;
+    c.session.role = NetRole::Client;
+    std::snprintf(c.session.joinIp, sizeof c.session.joinIp, "127.0.0.1");
+    CHECK(peers[0].start(h, &species));
+    c.botSeed = 3;
+    CHECK(peers[1].start(c, &species));
+    c.botSeed = 4;
+    CHECK(peers[2].start(c, &species));
+    const auto run = [&](u32 steps, bool third) {
+        for (u32 step = 0; step < steps; ++step) {
+            t += 1000;
+            wireSetSimTimeUs(t);
+            for (u32 k = 0; k < 3; ++k)
+                if ((k < 2 || third) && peers[k].session().state() != SessionState::Idle) wirePump(peers[k].session().link().socket());
+            if (step % 17 == 0) peers[0].frame(t);
+            if (step % 17 == 6) peers[1].frame(t);
+            if (third && step % 17 == 12) peers[2].frame(t);
+        }
+    };
+    run(20000, true);
+    CHECK(peers[0].session().running() && peers[1].session().running() && peers[2].session().running());
+    const u32 seat2 = peers[2].session().seat();
+    CHECK(peers[0].world().player(seat2).present);
+    // The client on seat 2 leaves.
+    peers[2].stop();
+    run(5000, false);
+    CHECK(peers[0].session().running() && peers[1].session().running());
+    CHECK((peers[0].session().lobbySeats() & (1u << seat2)) == 0);
+    CHECK(!peers[0].world().player(seat2).present && !peers[1].world().player(seat2).present);
+    CHECK(peers[0].world().player(0).present && peers[1].world().player(peers[1].session().seat()).present);
+    // The host leaves: the client's run is over, and it knows why.
+    peers[0].stop();
+    run(3000, false);
+    CHECK(peers[1].session().state() == SessionState::Ended);
+    const char* why = peers[1].session().endReason();
+    CHECK(std::strcmp(why, "the host left") == 0 || std::strcmp(why, "the host is gone") == 0);
+    std::printf("  leave: a client left (its seat opened, the run went on); the host left: '%s'\n", why);
+    for (u32 k = 0; k < 3; ++k) peers[k].stop();
+    delete[] peers;
+    wireUseSimClock(false);
+}
+
+void testDownRevive(const SpeciesTable& species) {
+    // GAME_DESIGN 10, look.md 6: a hit at zero cells downs a ship into a beacon; a teammate in its ring for two
+    // beats revives it with one cell, invulnerable for a bar (the fill empties twice as fast as it fills); every
+    // beacon revives at a Break; all down at once ends the run (time at 50% for a beat).
+    g_test = "down and revive";
+    auto* w = new (std::nothrow) World;
+    w->init(&species);
+    w->spawner().mode = Spawner::Mode::Off;
+    w->setNet(NetRole::Host, 0x3);  // both players this device's (as a host with its bots)
+    w->resetRun(5, 0.0, 2);
+    double music = 0.0;
+    const double perTick = 120.0 * 96.0 / 60.0 / 60.0;
+    Vec2 pos[2] = {{0.0f, 0.0f}, {300.0f, 0.0f}};
+    u32 downs = 0, revives = 0, teamDeaths = 0;
+    u8 lastReviveBy = 0xFF;
+    const auto step = [&]() {
+        TickInput in;
+        in.music0 = music;
+        in.music1 = music + perTick;
+        in.bpm = 120.0f;
+        for (u32 p = 0; p < 2; ++p) {
+            in.players[p].present = true;
+            in.players[p].pos = pos[p];
+        }
+        w->tick(in);
+        music = in.music1;
+        for (u32 k = 0; k < w->eventCount(); ++k) {
+            const Event& e = w->events()[k];
+            if (e.type == EventType::Down) ++downs;
+            if (e.type == EventType::Revive) {
+                ++revives;
+                lastReviveBy = e.b;
+            }
+            if (e.type == EventType::Death && e.a == 0xFF) ++teamDeaths;
+        }
+    };
+    const auto down = [&](u32 p) {
+        PlayerState& pl = w->playerMut(p);
+        pl.cells = 0;
+        pl.invulS = pl.novaInvulS = 0.0f;
+        w->spawnBullet(pos[p], Vec2{}, 0.0f);
+        step();
+    };
+    step();
+    down(1);
+    CHECK(downs == 1 && w->player(1).down && !w->player(1).alive && w->player(0).alive);
+    CHECK(std::fabs(w->player(1).beacon.x - 300.0f) < 1.0f);
+    // A teammate in the ring for two beats: revived with one cell, invulnerable for a bar.
+    pos[0] = Vec2{300.0f, 60.0f};
+    u32 ticks = 0;
+    while (!revives && ticks < 200) {
+        step();
+        ++ticks;
+    }
+    const double beats = static_cast<double>(ticks) * perTick / kTicksPerBeat;
+    CHECK(revives == 1 && lastReviveBy == 1 && w->player(1).alive && w->player(1).cells == 1);
+    CHECK(beats > 1.9 && beats < 2.2);
+    CHECK(std::fabs(w->player(1).invulS - static_cast<float>(kTicksPerBar) / w->ticksPerSecond()) < 0.1f);
+    // The fill empties twice as fast as it fills: a beat in, half a beat out, and it is empty.
+    pos[0] = Vec2{0.0f, 0.0f};
+    for (u32 k = 0; k < 200; ++k) step();  // past the bar of invulnerability
+    down(1);
+    pos[0] = Vec2{300.0f, 60.0f};
+    while (w->player(1).reviveTicks < kTicksPerBeat) step();
+    pos[0] = Vec2{0.0f, 0.0f};
+    for (double gone = 0.0; gone < 0.5 * kTicksPerBeat + perTick; gone += perTick) step();
+    CHECK(w->player(1).down && w->player(1).reviveTicks < 1e-6);
+    // At the Break every beacon revives on its first beat, without the fill.
+    while (music < 20.0 * kTicksPerBar + 2.0 * perTick) step();
+    CHECK(revives == 2 && lastReviveBy == 0 && w->player(1).alive);
+    // All down at once: the run is over; time dips to 50% for a beat.
+    for (u32 k = 0; k < 200; ++k) step();
+    down(1);
+    down(0);
+    CHECK(teamDeaths == 1 && w->timeScale() == 0.5f);
+    for (u32 k = 0; k < 40; ++k) step();
+    CHECK(w->timeScale() != 0.5f);
+    std::printf("  down and revive: revived by a teammate after %.2f beats, the fill emptied at twice the speed, the Break revived, "
+                "all down ended the run\n",
+                beats);
+    delete w;
+}
+
 }  // namespace
 
 int main() {
@@ -557,6 +946,10 @@ int main() {
     testWire();
     testClock();
     testSession(*species);
+    testLobby();
+    testRefusals(*species);
+    testLeave(*species);
+    testDownRevive(*species);
     std::printf("[net tests] %d checks, %d failures\n", g_checks, g_failures);
     delete species;
     return g_failures;

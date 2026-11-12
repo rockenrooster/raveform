@@ -98,6 +98,8 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     lobbySeats_ = lobbyReady_ = 0;
     roomCode_ = 0;
     lobbyDirty_ = readySent_ = false;
+    for (BedEntry& e : bed_) e = BedEntry{};
+    bedHead_ = 0;
     if (host()) {
         if (!link_.listen(cfg_.bindIp, cfg_.port, kMaxLinkPeers, cfg_.wire, cfg_.sim)) {
             netShutdown();
@@ -707,6 +709,30 @@ void Session::onReady(u8 ready) {
     lobbyDirty_ = true;
 }
 
+void Session::sendBed(u32 bar, u8 level) {
+    if (!host() || state_ != SessionState::Running) return;
+    MsgBed m;
+    m.run = world_->runId();
+    m.bar = bar;
+    m.level = level;
+    reliable([&](PacketWriter& w) { return w.putBed(m); });
+}
+
+void Session::onBed(const MsgBed& m) {
+    if (host()) return;
+    bed_[bedHead_ % 8] = BedEntry{m.run, m.bar, m.level};
+    ++bedHead_;
+}
+
+bool Session::bedLevel(u32 bar, u8& level) const {
+    for (const BedEntry& e : bed_)
+        if (e.bar == bar && e.run == world_->runId()) {
+            level = e.level;
+            return true;
+        }
+    return false;
+}
+
 void Session::onLobby(const MsgLobby& m) {
     if (host()) return;
     lobbySeats_ = m.seats;
@@ -898,6 +924,7 @@ void Session::afterTick() {
             m.seed = w.restartSeed();
             m.players = static_cast<u8>(w.restartPlayers());
             m.runOffset = runOffset_;
+            m.mask = w.restartMask() ? w.restartMask() : 1;  // the seats still taken (one left during the run: not in it)
             reliable([&](PacketWriter& pw) { return pw.putRunStart(m); });
             announcedRun_ = m.run;
         }

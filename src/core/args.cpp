@@ -178,6 +178,40 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             ok = parseUint(next, v) && v < 4;
             a.netViewSeat = static_cast<i32>(v);
             usedNext = true;
+        } else if (is("--coop") && next) {
+            // M4 stage B: host | join | join:<code> | join:<ip> | join:list
+            if (std::strcmp(next, "host") == 0) {
+                a.coop = 1;
+            } else if (std::strncmp(next, "join", 4) == 0 && (next[4] == '\0' || next[4] == ':')) {
+                a.coop = 2;
+                ok = next[4] == '\0' || copyString(a.coopTarget, sizeof a.coopTarget, next + 5);
+            } else {
+                ok = false;
+            }
+            usedNext = true;
+        } else if (is("--coop-start")) {
+            a.coopStart = 2;
+            if (next && next[0] >= '2' && next[0] <= '4' && next[1] == '\0') {
+                a.coopStart = static_cast<u32>(next[0] - '0');
+                usedNext = true;
+            }
+        } else if (is("--coop-name") && next) {
+            ok = copyString(a.coopName, sizeof a.coopName, next);
+            usedNext = true;
+        } else if (is("--coop-permission-screen")) {
+            a.coopPermission = true;
+        } else if (is("--net-content-salt") && next) {
+            ok = parseUint(next, a.contentSalt);
+            usedNext = true;
+        } else if (is("--coop-shot") && next) {
+            ok = copyString(a.coopShot, sizeof a.coopShot, next);
+            usedNext = true;
+        } else if (is("--coop-down-at") && next) {
+            ok = parseFloat(next, a.coopDownAt) && a.coopDownAt >= 0.0f;
+            usedNext = true;
+        } else if (is("--coop-pause-at") && next) {
+            ok = parseFloat(next, a.coopPauseAt) && a.coopPauseAt >= 0.0f;
+            usedNext = true;
         // M4 end
         } else if (is("--strip") && next) {
             ok = parseUint(next, a.strip) && a.strip <= 64;

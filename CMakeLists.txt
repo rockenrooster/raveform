@@ -329,7 +329,7 @@ target_sources(raveform_core PRIVATE
   src/game/settings.cpp)
 # M4: co-op in the game (the network library; the game hosts or joins from the command line).
 target_link_libraries(raveform_core PUBLIC raveform_net)
-target_sources(raveform_core PRIVATE src/game/play_net.cpp src/game/play_view_coop.cpp)
+target_sources(raveform_core PRIVATE src/game/play_net.cpp src/game/play_view_coop.cpp src/game/play_coop.cpp src/game/screens_coop.cpp)
 if(NOT ANDROID)
   # The band without a window: offline renders, the loudness calibration, the unit tests.
   set(RF_HEADLESS_CORE src/core/json_doc.cpp src/core/log.cpp src/core/alloc_counter.cpp)

@@ -56,12 +56,17 @@ struct PlayOptions {
     u32 loopbackBots = 0;       // --loopback-bots N: N bot clients in this process (host; the phone's co-op benchmark)
     i32 netViewSeat = -1;       // --net-view-seat N (pictures): the camera on seat N's ship
     // M4 stage B: the co-op screens driven from the command line (tests, pictures).
-    u8 coopAuto = 0;            // --coop host|join[:code|:ip]: 1 open the lobby as host, 2 the join screen
-    char coopTarget[48] = {};   //   the room code or address to join at once
-    bool coopAutoStart = false; // --coop-start: the host starts as soon as it can, and goes again after all are down
+    u8 coopAuto = 0;            // --coop host|join[:code|:ip|:list]: 1 host a room at once, 2 the join screen
+    char coopTarget[48] = {};   //   the room code, the address or "list" (the first room heard) to join
+    u32 coopStart = 0;          // --coop-start [N]: the host starts once N are seated and ready, and goes again 3 s
+                                //   after all are down
     char coopName[16] = {};     // --coop-name: the name shown on the seat
     bool coopPermissionScreen = false;  // --coop-permission-screen: show the local-network rationale (pictures)
     u32 contentSalt = 0;        // --net-content-salt N: another content hash (the mismatch message's test)
+    char coopShot[16] = {};     // --coop-shot lobby|lobby2..4|join|code|permission|message|beacon|revive|pause|over|hud:
+                                //   with --screenshot, the picture when that moment comes, then quit
+    float coopDownAt = -1.0f;   // --coop-down-at S: this device's ship is downed S seconds into the run (tests, pictures)
+    float coopPauseAt = -1.0f;  // --coop-pause-at S: this device pauses for everyone S s into the run, resumes 3 s later
 };
 
 class Play {
@@ -124,6 +129,8 @@ public:
 
     // M4 co-op (game/play_net.cpp).
     bool coop() const { return session_ != nullptr; }
+    // M4 stage B: --coop-shot's moment has come (the app takes its picture and quits).
+    bool coopShotNow() const { return coopShotReady_; }
     double runMusic() const { return music1_; }  // the run's musical position at the newest tick
     const net::Session* session() const { return session_; }
     u32 seat() const { return seat_; }
@@ -204,6 +211,25 @@ private:
     void screenCoopLobby(Ui& ui);
     void screenNetPermission(Ui& ui);
     void coopRecordScore();
+    void coopAutoStep();   // --coop: host or join from the command line
+    void coopTestStep();   // --coop-down-at, --coop-pause-at, --coop-shot
+    void coopBand();       // GAME_DESIGN 10: the teammates' leads, the beacons, the revive's notes, the bed
+    void coopPause(bool on);
+    bool coopAutoDone_ = false;
+    float coopAutoT_ = 0.0f, coopShotT_ = 0.0f;
+    bool coopShotReady_ = false, coopDowned_ = false, coopPaused_ = false, coopResumed_ = false;
+    // The band's view of the co-op mix (what was last posted; slot 0 is this device's player).
+    u8 bandPlayers_ = 1;
+    u8 bandTimbre_[sim::kMaxPlayers] = {0, 0xFF, 0xFF, 0xFF};
+    u8 bandFire_[sim::kMaxPlayers] = {};
+    float bandDist_[sim::kMaxPlayers] = {};
+    u32 bandLoadSig_[sim::kMaxPlayers] = {};
+    bool bandBeacon_[sim::kMaxPlayers] = {};
+    float bandBeaconPan_[sim::kMaxPlayers] = {};
+    u8 reviveStage_[sim::kMaxPlayers] = {};
+    bool hostOnlyPosted_ = false;
+    u32 bedSentBar_ = 0xFFFFFFFFu, bedPostedBar_ = 0xFFFFFFFFu;
+    u8 bedLevel_ = 0;
     net::BeaconBrowser* browser_ = nullptr;
     char codeTyped_[5] = {};
     u32 codeLen_ = 0;

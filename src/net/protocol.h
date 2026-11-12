@@ -17,7 +17,7 @@ enum class Msg : u8 {
     // control (channel 2)
     Hello = 1, Welcome, Refuse, Ping, Pong, Bye,
     // the game, reliable (channel 0)
-    RunStart = 16, Spawns, Deaths, Claims, BossClaims, Boss, BoostDrop, Director, PlayerEvent, Census, Pause, Seats, Ready, Lobby,
+    RunStart = 16, Spawns, Deaths, Claims, BossClaims, Boss, BoostDrop, Director, PlayerEvent, Census, Pause, Seats, Ready, Lobby, Bed,
     // the game, unreliable (channel 1)
     Pose = 48, Players, Corrections, Heartbeat, Stats, Attention,
 };
@@ -50,6 +50,13 @@ struct MsgLobby {
     u16 code = 0;     // the room code's 16 bits
     u8 state = 0;     // 0 lobby, 1 a run is going
     char names[4][16] = {};
+};
+// The bed's intensity for a bar (M4 stage B, GAME_DESIGN 10: the shared bed is identical on every device): the host
+// decides it half a bar ahead; every device posts it to its band for that bar.
+struct MsgBed {
+    u16 run = 0;
+    u32 bar = 0;      // the run's bar
+    u8 level = 0;     // intensity x 255
 };
 struct MsgBoss {
     u16 run = 0;
@@ -141,6 +148,7 @@ public:
     virtual void onSeats(u8) {}
     virtual void onReady(u8) {}
     virtual void onLobby(const MsgLobby&) {}
+    virtual void onBed(const MsgBed&) {}
     virtual void onPose(const MsgPose&) {}
     virtual void onCorrections(u16, double) {}  // then onCorrection per enemy
     virtual void onCorrection(const sim::NetEnemyState&) {}
@@ -184,6 +192,7 @@ public:
     bool putSeats(u8 mask);
     bool putReady(u8 ready);
     bool putLobby(const MsgLobby& m);
+    bool putBed(const MsgBed& m);
     bool putPose(const MsgPose& m);  // as Msg::Pose (client -> host) ...
     // ... or the host's relay of every player's pose in one message.
     bool putPlayers(const MsgPose* poses, u32 n);

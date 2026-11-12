@@ -113,6 +113,10 @@ public:
     bool requestStart();  // host: the run starts on a bar line for everyone
     void requestRetry();  // host: after all were down, a new run for everyone on the next bar line
     bool synced() const { return host() || clock_.samples() >= ClockSync::kSamples; }
+    // M4 stage B (GAME_DESIGN 10: the shared bed is identical on every device): the bed's intensity for a run bar,
+    // decided by the host half a bar ahead and posted by every device to its band for that bar.
+    void sendBed(u32 bar, u8 level);          // host
+    bool bedLevel(u32 bar, u8& level) const;  // client: the host's level for that bar, when it has come
     // The remote players for a tick ending at host time `hostUs` (drawn ~66 ms behind, TECH_SPEC 8.1).
     void fillRemote(sim::TickInput& in, i64 hostUs) const;
     void afterTick();
@@ -162,6 +166,7 @@ private:
     void onAttention(u16 run, const u32* serials, u32 n) override;
     void onReady(u8 ready) override;
     void onLobby(const MsgLobby& m) override;
+    void onBed(const MsgBed& m) override;
 
     void handleConnect(u32 peer, u32 info);
     void service();
@@ -260,6 +265,12 @@ private:
     u16 roomCode_ = 0;
     bool lobbyDirty_ = false, readySent_ = false;
     BeaconSender beacon_;
+    struct BedEntry {
+        u16 run = 0;
+        u32 bar = 0xFFFFFFFFu;
+        u8 level = 0;
+    } bed_[8];
+    u32 bedHead_ = 0;
     // Client: this player's claims since the last send (they leave with the pose, merged and sorted).
     static constexpr u32 kPendingClaims = 1024;
     sim::NetClaim pendClaims_[kPendingClaims];

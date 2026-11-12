@@ -290,6 +290,16 @@ bool App::init() {
         po.players = args_.players;
         po.loopbackBots = args_.loopbackBots;
         po.netViewSeat = args_.netViewSeat;
+        // M4 stage B: the co-op screens from the command line.
+        po.coopAuto = args_.coop;
+        std::snprintf(po.coopTarget, sizeof po.coopTarget, "%s", args_.coopTarget);
+        po.coopStart = args_.coopStart;
+        std::snprintf(po.coopName, sizeof po.coopName, "%s", args_.coopName);
+        po.coopPermissionScreen = args_.coopPermission;
+        po.contentSalt = args_.contentSalt;
+        std::snprintf(po.coopShot, sizeof po.coopShot, "%s", args_.coopShot);
+        po.coopDownAt = args_.coopDownAt;
+        po.coopPauseAt = args_.coopPauseAt;
         if (args_.netsim[0] && !net::parseNetSim(args_.netsim, po.netsim)) {
             RF_ERR("bad --netsim '%s'", args_.netsim);
             return false;
@@ -378,7 +388,7 @@ bool App::init() {
            tier_.render.distortionShift == 0 ? "off" : (tier_.render.distortionShift == 3 ? "1/8" : "1/4"),
            tier_.render.aberration ? "on" : "off", tier_.particleDensity, tier_.glass ? "on" : "off", tier_.killPools,
            governorOn_ ? "on" : "off");
-    if (args_.screenshot[0] && args_.frames == 0 && !playPicture_ && !args_.netCaptureBar) args_.frames = 120;
+    if (args_.screenshot[0] && args_.frames == 0 && !playPicture_ && !args_.netCaptureBar && !args_.coopShot[0]) args_.frames = 120;
     overlayOn_ = args_.overlay;
     // M3: interactive play starts without the overlay (it would cover the score); F1 shows it.
     if (content_ == Content::Play && !playBench_ && !playPicture_) overlayOn_ = false;
@@ -884,6 +894,11 @@ void App::frame(u64 loopStartNs) {
     if (content_ == Content::Play && args_.netCaptureBar && play_.coop() && !netShotDone_ &&
         play_.runMusic() >= static_cast<double>(args_.netCaptureBar) * 384.0) {
         // M4: every peer takes its picture as its run reaches the bar (the same musical moment on each).
+        capture = true;
+        netShotDone_ = true;
+    }
+    if (content_ == Content::Play && args_.coopShot[0] && args_.screenshot[0] && !netShotDone_ && play_.coopShotNow()) {
+        // M4 stage B: --coop-shot, the co-op moment it names (a screen, the beacon, the revive, the shared pause).
         capture = true;
         netShotDone_ = true;
     }

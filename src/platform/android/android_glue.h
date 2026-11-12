@@ -23,6 +23,13 @@ float displayRefreshHz();
 // __system_property_get, e.g. "ro.product.model".
 void systemProperty(const char* name, char* out, size_t capacity);
 
+// M4 stage B (TECH_SPEC 8.3), through RaveformActivity (JNI: the lobby's screens only, never the run): the Wi-Fi
+// multicast lock while the join screen listens for rooms; the local network's permission on Android 17 for an app
+// that targets it (0 allowed or not needed, 1 to be asked, 2 refused, 3 the system's dialog is up) and its request.
+void setMulticastLock(bool on);
+int localNetworkState();
+void requestLocalNetwork();
+
 }  // namespace rf::android
 
 #endif
