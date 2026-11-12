@@ -132,9 +132,10 @@ except settings, local high scores and lifetime stats.
 
 ### 6.1 How upgrades arrive
 
-- **Trio.** At every Break, three orbs appear in a triangle 140 wu around each player, each showing an
-  icon and a two-to-four-word effect. Fly into one to take it; the others pop. If none is taken, a
-  random one homes in at the end of the Break. There is no pause and no menu.
+- **Trio.** At every Break, three orbs appear on a ring of 170 wu around each player, each showing an
+  icon, its name, a two-to-four-word effect and its stack pips. Fly into one to take it; the others pop.
+  The ring is the clock; if none is taken, a random one homes in at the end of the Break. There is no
+  pause and no menu. Layout: `design/screens.md`, "The Trio".
 - Trio options are drawn from Mods, new Riffs and Riff level-ups with weights. Guarantees: at least one
   option affects weapons; if the player has fewer than four Riffs and none was offered in the last two
   Trios, one is.

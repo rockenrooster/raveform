@@ -7,7 +7,7 @@ clear. Every control has the pressed state of `design/look.md` §6: filled disc 
 colour at 0.45, outline at 2.0 and thicker, label at 1.8.
 
 Screens are added here as their milestone comes up. So far: sync calibration (M2); title, settings,
-game over and pause (M3); co-op lobby (M4). Pictures: `design/previews/screens.png` (tiled) and
+the Trio, game over and pause (M3); co-op lobby (M4). Pictures: `design/previews/screens.png` (tiled) and
 `screen_title.png`, `screen_settings.png`, `screen_sync.png`, `screen_game_over.png`, `screen_pause.png`,
 `screen_lobby.png` at full size, drawn by `design/tools/screens.py`.
 
@@ -114,6 +114,35 @@ Rules:
   place), swap sides, button layout, gamepad mapping. LOOK holds effects (Auto / Low / Medium / High /
   Ultra), frame-rate target, reduce flashing, shake, vivid colour, colour-blind-safe palettes,
   high-contrast threats and UI scale, with the bot's run behind it so each change is seen at once.
+
+## The Trio (M3)
+
+Not a screen: the upgrade choice happens in the world, at the Break, with the run still going
+(GAME_DESIGN §6.1). Pictures: `design/previews/trio.png` (both cases), `screen_trio_break.png`,
+`screen_trio_fusion.png`, drawn by `design/tools/trio.py`. Sizes in world units (1.5 px at 2400×1080).
+
+| Element | Place | Behaviour |
+|---|---|---|
+| **Choice ring** | A circle of 170 wu around where the ship was when the Break began; it does not follow the ship | It is also the clock: the lit arc (accent ↔ white, 2 px at 1.3, a bright bead at its end) is the Break that is left; the spent part is white at 0.16. When it runs out, a random orb flies to the ship |
+| **Orbs** | Three on the ring: top, lower left, lower right | The upgrade's own icon in its frame (`design/icons.json`): Mods 38 wu, Riffs ×1.14. A thin white ring at 1.42 × that around it. They swell 6% on the beat |
+| Words | Always outside the ring: above the top orb, left of the left one, right of the right one | Name, cap 20 wu (30 px), white at 1.3. Effect under it, cap 11 wu, palette accent: two to four words, a number where there is one (`+1 SHOT LANE`, `LEVEL 3: SECOND RING`) |
+| Stack pips | Under the words | One dot per stack or level the upgrade can have: owned ones white, the one this pick adds gold with a ring, the rest empty outlines |
+| **Closing on one** | Within 110 wu of an orb, or flying at it | That orb answers: icon ×1.12, its ring in the player colour at 2.0 with a dashed outer ring, a pool of the player colour, a line of light from the ship to it, its words at 1.9. The other two do not change |
+| **Taking it** | Touching the orb | The orb folds into the ship in two beats' worth of sparks in its two colours, the icon flies to the band row of the HUD, the other two pop into sparks of their own colours, the ring closes. The pickup sound is the "upgrade taken" chord, on the next sixteenth |
+| Hint | Bottom centre, cap 14 px, white at 0.7 | `FLY INTO ONE`, on the first Trio of a run only |
+
+With a **Fusion** on offer the triangle turns point down (orbs at lower centre, upper left, upper
+right) and the Fusion sits above the ring at 230 wu: its icon at ×1.45 in the eight-point frame, a
+four-arm gold flare and a two-arm white one, its words in gold, and two thin gold lines running up to
+it from the ring. It is the only gold thing on the screen.
+
+Rules:
+
+- The fight steps back: the lattice rests at 0.07, enemies still alive are drawn at a fifth of their
+  light, nothing spawns inside the ring. Shards still fly in.
+- In co-op each player has their own ring and orbs in their own colour; another player's are drawn at
+  a third and cannot be taken.
+- Nothing here is a touch target. The sticks stay where they are.
 
 ## Game over (M3)
 
