@@ -566,7 +566,9 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     // its aim; zoom breathes with the crowd; the kick punches it a little (look.md §7).
     const Vec2 S = in.shipPos;
     {
-        Vec2 target = in.shipVel * kLookAheadS;
+        // The lead follows the course at cruising speed at most (a Dash does not swing the camera).
+        const float sp = length(in.shipVel);
+        Vec2 target = (sp > kPlayerSpeed ? in.shipVel * (kPlayerSpeed / sp) : in.shipVel) * kLookAheadS;
         if (in.shipFiring) target = target + in.shipAim * kAimBiasWu;
         const float k = 1.0f - std::exp(-in.dt / kLookAheadTau);
         lookAhead_ = lookAhead_ + (target - lookAhead_) * k;
@@ -1022,10 +1024,14 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     // The Nova: the inhale (sparks falling in, the screen dimming) and the front.
     float novaDim = 0.0f;
     {
+        // One ring each, as M1's Drop front: both move far more than the afterglow's blur in a frame (the
+        // front about 100 px), so at low load (swarm gain 1) the afterglow leaves soft copies behind them
+        // (docs/PROGRESS.md M3: a question for the lead; drawing them swept like shots filled the disc).
         if (t >= novaPressT_ && t < novaBlastT_ && novaBlastT_ > novaPressT_) {
-            novaDim = kNovaDim * smooth01((t - novaPressT_) / (novaBlastT_ - novaPressT_));
+            const float span = novaBlastT_ - novaPressT_;
+            novaDim = kNovaDim * smooth01((t - novaPressT_) / span);
             if (playerShown) {
-                const float u = (t - novaPressT_) / (novaBlastT_ - novaPressT_);
+                const float u = (t - novaPressT_) / span;
                 glyph(d.glyphs, gRing128_, false, S, 0.0f, 0.0f, kNovaInhaleRingWu * (1.0f - u), 1.2f * u, 1.0f, kGlyphRingA, player, light);
             }
         }

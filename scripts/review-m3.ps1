@@ -4,13 +4,14 @@
 #   strips of eight consecutive frames (scripted scenes, game/play.cpp): fire, kill_small, kill_medium,
 #   kill_large, shards, hit, nova, nova_front, dash, perfect_dash, warp, warp_land, sentry;
 #   single frames of bot play at 30 s, 2 min and 5 min, and of bench_stress.
-#   scripts\review-m3.ps1 [-Out captures\m3] [-Config debug|dev] [-SkipStrips] [-SkipFrames]
+#   scripts\review-m3.ps1 [-Out captures\m3] [-Config debug|dev] [-SkipStrips] [-SkipFrames] [-Only nova,fire]
 # Debug (the default) runs with validation; the script stops on the first run that is not clean.
 param(
     [string]$Out = 'captures\m3',
     [ValidateSet('debug', 'dev')][string]$Config = 'debug',
     [switch]$SkipStrips,
-    [switch]$SkipFrames
+    [switch]$SkipFrames,
+    [string[]]$Only = @()  # strips to re-render (default: all)
 )
 . "$PSScriptRoot\env.ps1"
 New-Item -ItemType Directory -Force $Out | Out-Null
@@ -34,6 +35,7 @@ $sheet = 'import sys; from PIL import Image; fs=[Image.open(p).convert("RGB") fo
 if (-not $SkipStrips) {
     $strips = @('fire', 'kill_small', 'kill_medium', 'kill_large', 'shards', 'hit', 'nova', 'nova_front', 'dash', 'perfect_dash',
                 'warp', 'warp_land', 'sentry')
+    if ($Only.Count) { $strips = @($strips | Where-Object { $Only -contains $_ }) }
     foreach ($s in $strips) {
         $png = Join-Path $Out "strip_$s.png"
         Invoke-Shot $png "--scenario play --picture $s --strip 8"

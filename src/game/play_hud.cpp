@@ -103,15 +103,19 @@ void TouchControls::layout(float w, float h, Vec2 insetMin, Vec2 insetMax, float
         dashR = std::fmax(dashR, minR);
         novaR = std::fmax(novaR, dashR * (kNovaRadius / kDashRadius));
     }
-    padR_ = kPadRadius * s_;
+    // Physical sizes larger than the 1080 layout's push the whole arrangement out from the corners, so
+    // the rings and buttons keep frame_mock.py's spacing and never overlap.
+    const float k = std::fmax(1.0f, std::fmax(stickR_ / (kStickRadius * s_), std::fmax(novaR / (kNovaRadius * s_), dashR / (kDashRadius * s_))));
+    const float u = s_ * k;
+    padR_ = kPadRadius * s_ * (stickR_ / (kStickRadius * s_));
     const float m = kMargin * s_;
     const float left = std::fmax(m, insetMin.x), right = std::fmax(m, insetMax.x);
     const float bottom = insetMax.y;
-    move_.rest = {left + 210.0f * s_, h - bottom - 250.0f * s_};
-    aim_.rest = {w - right - 210.0f * s_, h - bottom - 250.0f * s_};
-    nova_.centre = {w - right - 430.0f * s_, h - bottom - 330.0f * s_};
+    move_.rest = {left + 210.0f * u, h - bottom - 250.0f * u};
+    aim_.rest = {w - right - 210.0f * u, h - bottom - 250.0f * u};
+    nova_.centre = {w - right - 430.0f * u, h - bottom - 330.0f * u};
     nova_.radius = novaR;
-    dash_.centre = {w - right - 300.0f * s_, h - bottom - 520.0f * s_};
+    dash_.centre = {w - right - 300.0f * u, h - bottom - 520.0f * u};
     dash_.radius = dashR;
 }
 

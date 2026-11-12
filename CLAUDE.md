@@ -28,7 +28,7 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | GPU cost at the top clock | `scripts\bench-android.ps1 -Serial moto -Scenario bench_endgame -Seconds 15 -Warmup 4 -AppArgs '--tier low --gpu-burn 40' -Deploy` |
 | The M1 review set (stills + compare, glyph sheets, frame-600 pictures, both strips, `scenes.py light` lines) | `scripts\review-m1.ps1 [-Out captures\m1]` (writes `captures\m1\` unless `-Out`) |
 | Where a frame's light comes from (one class off at a time) | `scripts\light-breakdown.ps1 [-Frame 600] [-Out captures\light]` |
-| Unit tests (audio suite: queues, tempo map, sequencer timing, lead rule, variants, music data, no allocation) + loudness calibration check | `scripts\test.ps1` (exit 0 = all passed) |
+| Unit tests (audio suite: queues, tempo map, sequencer timing, lead rule, variants, music data, no allocation; loudness calibration check; M3 sim suite: grid, pools and handles, Chain and score, lead rule, Nova, species, no allocation; the determinism test) | `scripts\test.ps1` (exit 0 = all passed) |
 | Audio match against the prototype: every Track × variant, match table, onset check, listening files | `scripts\render-audio.ps1 [-SkipRef] [-Only track03_club] [-NoListening]` (writes `captures\m2\`, `match_table.md`) |
 | Prototype references (musicproto.py as a library; writes nothing under `design/`) | `python -I -B scripts\audio_ref.py captures\m2\ref [track03 [club]]` |
 | Loudness calibration (after any music data or DSP change; `test.ps1` fails while it is stale) | `scripts\calibrate-audio.ps1 [-Check]`, then rebuild |
@@ -36,13 +36,18 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | One-shots against the prototype's synthesis | `raveform_headless.exe --dump-samples captures\m2\samples`, then `python -I -B scripts\audio_samples.py captures\m2\samples` |
 | Audio scenes (desktop) | `scripts\run-desktop.ps1 -AppArgs '--scenario audio_test'` / `'--scenario sync'` |
 | Audio device jobs under the phone lock (deploys the last built APK) | `scripts\audio-device.ps1 -Run bench\|screenshot\|soak [-Seconds 60] [-Scenario bench_idle] [-AppArgs '--band full']` |
+| Play the game (M3; the default with no scenario) | `scripts\run-desktop.ps1 -Config dev` (`-AppArgs '--bot'`: the bot plays); on a phone `scripts\deploy-android.ps1 -Serial moto` |
+| Simulation, headless (determinism, 10-minute bot soak, stress) | `build\desktop-dev\raveform_headless.exe --sim determinism\|soak\|stress [--minutes M] [--seconds S] [--seed N] [--policy play\|reckless]` (exit 0 = pass; one `RFSIM` JSON line) |
+| M3 stress contract run (Moto) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_stress -Seconds 60 -Warmup 60 -AppArgs '--tier low' -Deploy` (`bench_play`: the bot plays the normal game, measured) |
+| The M3 review set (scripted strips, bot frames at 30 s / 2 / 5 min, stress) | `scripts\review-m3.ps1 [-Out captures\m3] [-Config debug\|dev] [-SkipStrips] [-SkipFrames]` |
 
 Desktop exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 benchmark aborted,
 5 screenshot failed. Device serials: Moto `ZY22BXMJG3`, OnePlus 12R `a0e622a5`, Galaxy Tab `R5GL362BEHX`.
 
 ## App arguments (desktop argv; Android: the `args` string intent extra)
 
-`--scenario bench_idle|bench_mid|bench_endgame|glyph_sheet|lifecycle_test` (`bench_mid` / `bench_endgame`:
+`--scenario play|bench_play|bench_stress|touch_test|bench_idle|bench_mid|bench_endgame|glyph_sheet|lifecycle_test` (the
+first three: the game, below; `bench_mid` / `bench_endgame`:
 the scripted M1 stages of `design/scenes.md`; `glyph_sheet --page 1|2|3`: a still), `--tier
 low|medium|high|ultra|auto` (effect tier, TECH_SPEC 5.4; without it pictures and tests use high, everything else
 the tier the first-launch probe chose for this GPU, cached in `SDL_GetPrefPath()/tier.txt`; `auto` measures
@@ -63,6 +68,22 @@ so they show their cost at the GPU's top clock),
 leave placement to the scheduler), `--cycles N`. Keys: F1 overlay, F12 screenshot, T tone hold, L next look, P next
 palette, K next tier, R reduce flashing, Esc / Back quit. Taps (decided when the last finger lifts): two fingers next look, three
 the overlay, four next palette. Raw launch: `adb -s <serial> shell "am start -n dev.raveform.game/.RaveformActivity --es args '--scenario bench_idle --seconds 60'"`.
+
+The game (M3 stage A, `game/play.h`, `src/sim/`): no `--scenario` (or `--scenario play`) starts the fight;
+`--scenario touch_test` is M0's touch scene (formerly the default). `bench_play` (the bot plays the normal
+game) and `bench_stress` (about 700 enemies and 1,500 enemy bullets around a bot-driven, invulnerable ship)
+are measured like the other benchmarks and add a `sim` object to the result (tick time per 60 Hz tick
+[p50, p95, max], entity counts, kills, deaths, pool overflows). `--bot` (the bot plays), `--seed N`,
+`--fast-forward S` (S seconds of play before the first frame, for pictures), `--picture <name>` with `--strip 8
+--screenshot <png>` (scripted review scenes: `fire, kill_small, kill_medium, kill_large, shards, hit, nova,
+nova_front, dash, perfect_dash, warp, warp_land, sentry`; the strip starts at the scripted moment). The game
+runs on the band's heard clock (Groove held, intensity from the threat on screen) and uses its Track's
+palette (Track 1: Ultraviolet) unless `--palette`; pictures run on the simulated clock without the band.
+Controls: WASD or arrows move, mouse aims with the left button held to fire, E or the right button Nova,
+Space Dash, Enter / E / Space / click retry after death; gamepad left stick, right stick (fires beyond 30%),
+RB Nova, LB Dash, A or Start retry; touch: floating sticks (left half moves, right half aims and fires),
+NOVA and DASH buttons, tap to retry. With the aim idle the auto-aim assist fires at the nearest enemy on the
+half-rate grid. The game starts with the overlay off (F1) and has no tap gestures.
 
 Audio (M2, `src/audio/audio_args.h`): `--scenario audio_test|sync` (the band on heard time with its
 controls; the sync calibration screen of `design/screens.md`), `--band off|play|staged|full|stress|metronome`
@@ -98,7 +119,12 @@ cannot read its clock): compare passes at the top clock with `--gpu-burn 40`.
 ## Conventions
 
 - C++20, no exceptions, no RTTI, `-Wall -Wextra -Werror` on our code. Layout per PLAN §4 (`src/core`,
-  `src/gfx`, `src/audio`, `src/platform`, `src/game`, `src/tools`).
+  `src/gfx`, `src/audio`, `src/platform`, `src/game`, `src/tools`, and since M3 `src/sim`: the simulation,
+  a static library without SDL, Vulkan or audio that the game, `raveform_headless` and the tests link).
+- The simulation is deterministic (TECH_SPEC 7.3): no wall clock, no unordered iteration, its own random
+  streams, no allocation after `World::init`; `World::hash()` digests the state and `scripts\test.ps1` runs
+  the determinism test. Gameplay numbers come from design data or the docs; numbers no document gives are
+  in `src/sim/tuning.h` (and the view's constants block in `src/game/play_view.cpp`), listed in PROGRESS.md.
 - No heap allocation in the steady-state frame: global `operator new` is counted and benchmarks report
   `heap_allocs` for the measured window (must stay 0). Fixed-size arrays, persistently mapped buffers.
 - Vulkan 1.1 core only (the Moto is 1.1.128 without debug_utils, sync2, dynamic rendering, timeline

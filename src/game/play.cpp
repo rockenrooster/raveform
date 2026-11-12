@@ -490,8 +490,10 @@ void Play::scriptInput(StickInput& in) {
     const float tpt = clock_.ticksPerSecond() * kDt;  // musical ticks per sim tick
     in.assist = false;
     if (is(p, "fire")) {
-        if (t >= 10) {
-            in.aim = Vec2{1.0f, 0.05f};
+        // A stream into the middle one of the five (they take 60 shots each), so the shots land.
+        const Enemies& e = w.enemies();
+        if (t >= 10 && e.count >= 3) {
+            in.aim = Vec2{e.x[2], e.y[2]} - controller_.pose().pos;
             in.aimActive = true;
         }
     } else if (is(p, "kill_small") || is(p, "kill_medium") || is(p, "kill_large")) {
