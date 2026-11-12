@@ -106,7 +106,12 @@ void World::flock(u32 i, const Species& s, float dt) {
         });
         Vec2 want{};
         const i32 tp = nearestPlayer(x, y);
-        if (tp >= 0) want = normalizeOr(players_[tp].pos - Vec2{x, y}, Vec2{}) * kShoalSeek;
+        if (tp >= 0) {
+            // C2: while a boss lives the school gives the fight room: it keeps out of kCrowdBossRoomWu of a ship.
+            const Vec2 to = players_[tp].pos - Vec2{x, y};
+            const float seek = boss_.active ? (lengthSq(to) < kCrowdBossRoomWu * kCrowdBossRoomWu ? -kShoalSeek : 0.0f) : kShoalSeek;
+            want = normalizeOr(to, Vec2{}) * seek;
+        }
         if (n) {
             const Vec2 c = centre * (1.0f / static_cast<float>(n));
             want = want + normalizeOr(c - Vec2{x, y}, Vec2{}) * kShoalCohesion;
@@ -116,7 +121,7 @@ void World::flock(u32 i, const Species& s, float dt) {
         if (lengthSq(want) > 1e-8f) e.a[i] = angleOf(want);
     }
     e.heading[i] = turnToward(e.heading[i], e.a[i], kShoalTurn * dt);
-    const Vec2 v = dirOf(e.heading[i]) * s.speed;
+    const Vec2 v = dirOf(e.heading[i]) * (s.speed * kShoalSpeedScale);
     e.vx[i] = v.x;
     e.vy[i] = v.y;
 }
@@ -154,14 +159,18 @@ void World::updateEnemies(float dt) {
         const Vec2 to = target - Vec2{x, y};
         const bool engaged = engagedBy(x, y);
         e.flags[i] = static_cast<u8>(engaged ? (e.flags[i] | kFlagEngaged) : (e.flags[i] & ~kFlagEngaged));
-        if (p0.alive && std::fabs(x - p0.pos.x) <= 800.0f && std::fabs(y - p0.pos.y) <= 360.0f) threatInView_ += s.threat;
+        if (p0.alive && std::fabs(x - p0.pos.x) <= kFrameHalfWWu && std::fabs(y - p0.pos.y) <= kFrameHalfHWu) threatInView_ += s.threat;
 
         switch (s.family) {
             case Family::Drifter: {
                 // Wander (a new turn rate each beat), leaning a little toward the nearest player.
                 if (beat) e.a[i] = randRange(e.rng[i], -fd.wanderTurn, fd.wanderTurn);
                 float h = e.heading[i] + e.a[i] * dt;
-                if (tp >= 0) h += clampf(wrapAngle(angleOf(to) - h), -1.0f, 1.0f) * kDrifterHomeTurn * dt;
+                if (tp >= 0) {
+                    // C2: while a boss lives drifters give the fight room (they turn away inside kCrowdBossRoomWu).
+                    const float home = boss_.active ? (lengthSq(to) < kCrowdBossRoomWu * kCrowdBossRoomWu ? -kDrifterHomeTurn : 0.0f) : kDrifterHomeTurn;
+                    h += clampf(wrapAngle(angleOf(to) - h), -1.0f, 1.0f) * home * dt;
+                }
                 e.heading[i] = h;
                 const Vec2 v = dirOf(h) * s.speed;
                 e.vx[i] = v.x;

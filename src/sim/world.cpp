@@ -42,7 +42,7 @@ void World::resetRun(u64 seed, double startTick, u32 players) {
     serial_ = 0;
     dipS_ = 0.0f;
     threatInView_ = 0.0f;
-    crowdNear_ = 0;
+    crowdInFrame_ = 0;
     crowdGoal_ = 0.0f;
     restartPending_ = false;
     m0_ = m1_ = startTick;
@@ -246,7 +246,9 @@ void World::fireShot(u32 p, float advanceS, double stepTick) {
         const float la = base + (static_cast<float>(lane) - 0.5f * static_cast<float>(lanes - 1)) * kSplitFanDeg * deg;
         for (u32 f = 0; f < fan && made < kMaxShotsPerStep; ++f, ++made) {
             const float a = la + (static_cast<float>(f) - 0.5f * static_cast<float>(fan - 1)) * kPrismFanDeg * deg;
-            spawnShotRaw(p, muzzle, dirOf(a), advanceS, damage, kShotPrimary, flags, kShotLifeS, l.mods[kPierce], l.mods[kRicochet]);
+            const u8 lane = prism ? shotLaneFlags(static_cast<i32>(f) - 2) : 0;
+            spawnShotRaw(p, muzzle, dirOf(a), advanceS, damage, kShotPrimary, static_cast<u8>(flags | lane), kShotLifeS, l.mods[kPierce],
+                         l.mods[kRicochet]);
         }
     }
     ++pl.shotsFired;
@@ -469,7 +471,8 @@ void World::collide() {
             // Prism (GAME_DESIGN 6.4): hits spawn mini-refractions.
             const float a = angleOf(dir), deg = kTau / 360.0f;
             for (float side : {-1.0f, 1.0f})
-                spawnShotRaw(owner, at, dirOf(a + side * kPrismMiniDeg * deg), 0.0f, kPrismMiniDamage, kShotMini, 0, kPrismMiniLifeS, 0, 0);
+                spawnShotRaw(owner, at, dirOf(a + side * kPrismMiniDeg * deg), 0.0f, kPrismMiniDamage, kShotMini,
+                             static_cast<u8>(s.flags[k] & kShotLaneMask), kPrismMiniLifeS, 0, 0);
         }
     }
 
@@ -592,7 +595,10 @@ void World::killEnemy(u32 i, u8 killer) {
     ev.f = e.heading[i];
     emit(ev);
     ++counters_.kills;
-    if (s.hue == 0 && director_.crowdLost < 100000u) ++director_.crowdLost;
+    if (s.hue == 0 && director_.crowdLost < 100000u) {
+        ++director_.crowdLost;
+        ++director_.crowdKills;
+    }
     if (killer < kMaxPlayers && players_[killer].present) {
         // Score = enemy value x Chain (GAME_DESIGN 5: the Chain is a multiplier from x1).
         PlayerState& pl = players_[killer];
@@ -852,6 +858,8 @@ u64 World::hash() const {
     val(director_.boostDue);
     val(director_.lastBar);
     val(director_.crowdLost);
+    val(director_.crowdKills);
+    val(director_.crowdDebt);
     val(phrase_.bar);
     val(phrase_.section);
     val(phrase_.sectionBar);

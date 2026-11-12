@@ -572,8 +572,22 @@ void testCrowd() {
     w->rules().godMode = true;
     double music = 0.0;
     const double perBar = kTicksPerBar / kTicksPerSimTick;
-    for (u32 t = 0; t < static_cast<u32>(6.0 * perBar); ++t) stepWorld(*w, music, Vec2{});
-    CHECK_MSG(w->crowdNear() >= 15 && w->crowdNear() <= 45, "near %u (goal %.0f)", w->crowdNear(), w->crowdGoal());
+    // M3 stage C2: the crowd arrives at the frame (species.json arrive), never within 260 wu of the ship and
+    // never beyond the stray frame (twice the frame).
+    u32 arrivals = 0, unfair = 0;
+    for (u32 t = 0; t < static_cast<u32>(6.0 * perBar); ++t) {
+        stepWorld(*w, music, Vec2{});
+        const Enemies& e = w->enemies();
+        for (u32 i = 0; i < e.count; ++i) {
+            if ((e.flags[i] & kFlagDead) || e.state[i] != kWarping || g_species->get(e.species[i]).hue != 0) continue;
+            ++arrivals;
+            const float dx = std::fabs(e.x[i]), dy = std::fabs(e.y[i]);
+            // (A formation scatters its pack up to 110 wu round its anchor.)
+            if (dx * dx + dy * dy < 259.0f * 259.0f || dx > 2.0f * tuning::kFrameHalfWWu + 110.0f || dy > 2.0f * tuning::kFrameHalfHWu + 110.0f) ++unfair;
+        }
+    }
+    CHECK_MSG(arrivals > 0 && unfair == 0, "%u of %u warping fodder samples too near or too far", unfair, arrivals);
+    CHECK_MSG(w->crowdInFrame() >= 15 && w->crowdInFrame() <= 45, "in the frame %u (goal %.0f)", w->crowdInFrame(), w->crowdGoal());
     u32 fodder = 0, threats = 0;
     for (u32 i = 0; i < w->enemies().count; ++i) {
         if (w->enemies().flags[i] & kFlagDead) continue;

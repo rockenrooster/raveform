@@ -20,6 +20,9 @@ constexpr float kAimRangeWu = 860.0f;
 // ship comes back within a working distance of it (the swarm's pull alone led it away for minutes).
 constexpr float kBossAimWu = 1000.0f;
 constexpr float kBossWorkFarWu = 750.0f;
+// M3 stage C2: with the crowd in the frame something is always within 250 wu; in a boss fight the bot shoots
+// a body only when it is this close (about to touch), else the boss.
+constexpr float kBossFodderWu = 140.0f;
 }  // namespace
 
 void Bot::reset(u64 seed, Policy policy) {
@@ -66,7 +69,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     const bool bossFight = boss.active && !boss.dying && musicTick >= boss.fightTick;
     Vec2 bossAimPoint{};
     bool openSector = false;
-    if (bossFight && lengthSq(pos - boss.pos) < kBossAimWu * kBossAimWu && (target < 0 || targetD > 250.0f * 250.0f)) {
+    if (bossFight && lengthSq(pos - boss.pos) < kBossAimWu * kBossAimWu && (target < 0 || targetD > kBossFodderWu * kBossFodderWu)) {
         const Vec2 rel = pos - boss.pos;
         const float myAngle = angleOf(rel);
         for (u32 k = 0; k < 6; ++k) {
@@ -272,7 +275,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     in.dash = dash && !dashLast_;
     dashLast_ = dash;
     const bool nova = careful && me.novas > 0 && !me.novaPending &&
-                      (close >= 7 || bulletsNear >= 10 || (me.cells == 0 && contactSoon && !dash));
+                      ((close >= 7 && me.novas >= 2) || bulletsNear >= 10 || (me.cells == 0 && contactSoon && !dash));
     in.nova = nova && !novaLast_;
     novaLast_ = nova;
     return in;

@@ -336,7 +336,8 @@ void Play::afterTick() {
         const Event& e = w.events()[k];
         switch (e.type) {
             case EventType::Death:
-                if (opt_.bot || opt_.kind != PlayOptions::Kind::Play) retryRequest_ = true;  // the bot taps retry
+                // The bot taps retry (also in the bot_ pictures, C2: the real careful bot's run goes on).
+                if (opt_.bot || opt_.kind != PlayOptions::Kind::Play || std::strncmp(opt_.picture, "bot_", 4) == 0) retryRequest_ = true;
                 if (bandDrives_) band_->playSfx(audio::Sfx::GameOver);
                 RF_LOG("play: the ship is lost (Track %u, bar %u, score %llu)", w.phrase().track, w.phrase().bar, static_cast<unsigned long long>(w.player(0).score));
                 if (flow_ && screen_ == Screen::Run) {

@@ -41,6 +41,7 @@ constexpr float kDashGhostS = 0.25f;
 // Edge chevrons (look.md §6 gives the height, the inset and the disc): their shape, chosen. A chevron is 0.4 of
 // its height deep; the boss's two sit 0.32 of the height apart; the disc's radius is 0.68 of the height; the
 // stroke's half width 0.055 of it, with the threat layer's dark rim.
+constexpr float kPrismLaneL = 0.80f, kPrismLaneStepDeg = 50.0f;  // GAME_DESIGN 7 (quoted): the rainbow's lanes
 constexpr float kChevronDepth = 0.4f, kChevronPairGap = 0.32f, kChevronDisc = 0.68f, kChevronStroke = 0.055f;
 
 Vec2 dir(float a) { return {std::cos(a), std::sin(a)}; }
@@ -53,6 +54,34 @@ float smooth01(float x) {
 Vec3 white() { return {1.0f, 1.0f, 1.0f}; }
 Vec2 lerp2(Vec2 a, Vec2 b, float t) { return a + (b - a) * t; }
 float lerpAngle(float a, float b, float t) { return a + wrapAngle(b - a) * t; }
+
+// Linear sRGB <-> OKLab (Ottosson's matrices), for Prism's rainbow (GAME_DESIGN 7, M3 stage C2).
+Vec3 toOklab(Vec3 c) {
+    const float l = std::cbrt(0.4122214708f * c.x + 0.5363325363f * c.y + 0.0514459929f * c.z);
+    const float m = std::cbrt(0.2119034982f * c.x + 0.6806995451f * c.y + 0.1073969566f * c.z);
+    const float s = std::cbrt(0.0883024619f * c.x + 0.2817188376f * c.y + 0.6299787005f * c.z);
+    return {0.2104542553f * l + 0.7936177850f * m - 0.0040720468f * s, 1.9779984951f * l - 2.4285922050f * m + 0.4505937099f * s,
+            0.0259040371f * l + 0.7827717662f * m - 0.8086757660f * s};
+}
+Vec3 fromOklab(float L, float A, float B) {
+    const float l_ = L + 0.3963377774f * A + 0.2158037573f * B, m_ = L - 0.1055613458f * A - 0.0638541728f * B,
+                s_ = L - 0.0894841775f * A - 1.2914855480f * B;
+    const float l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;
+    return {4.0767416621f * l - 3.3077115913f * m + 0.2309699292f * s, -1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s,
+            -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s};
+}
+// The most saturated colour of lightness L and hue h (radians) inside the sRGB gamut.
+Vec3 fullChroma(float L, float h) {
+    float lo = 0.0f, hi = 0.4f;
+    for (u32 k = 0; k < 24; ++k) {
+        const float c = 0.5f * (lo + hi);
+        const Vec3 v = fromOklab(L, c * std::cos(h), c * std::sin(h));
+        const bool in = v.x >= 0.0f && v.x <= 1.0f && v.y >= 0.0f && v.y <= 1.0f && v.z >= 0.0f && v.z <= 1.0f;
+        (in ? lo : hi) = c;
+    }
+    const Vec3 v = fromOklab(L, lo * std::cos(h), lo * std::sin(h));
+    return {clampf(v.x, 0.0f, 1.0f), clampf(v.y, 0.0f, 1.0f), clampf(v.z, 0.0f, 1.0f)};
+}
 }  // namespace
 
 struct PlayView::Pool {
@@ -1074,13 +1103,24 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         const Vec3 shotHead = W1 * look_->soft.shotHead.intensity[0];
         const Look::ShotStreak& ss = look_->shotStreak;
         const LookLine& pl = look_->lines.playerShot;
+        // Prism's fan is a rainbow (GAME_DESIGN 7, M3 stage C2): the centre lane in the player's colour, the
+        // others 50 and 100 degrees round the OKLCH hue wheel to either side at lightness 0.80 and full chroma,
+        // white cores (the capsule's head end and its sparkle); mini-refractions in their lane's hue.
+        if (!laneReady_) {
+            const Vec3 lab = toOklab(player);
+            const float h0 = std::atan2(lab.z, lab.y), deg = kTau / 360.0f;
+            for (i32 k = -2; k <= 2; ++k)
+                laneColour_[k + 2] = k == 0 ? player : fullChroma(kPrismLaneL, h0 + static_cast<float>(k) * kPrismLaneStepDeg * deg);
+            laneReady_ = true;
+        }
         for (u32 i = 0; i < sh.count; ++i) {
             if (sh.dead[i]) continue;
             const Vec2 head = lerp2(Vec2{sh.px[i], sh.py[i]}, Vec2{sh.x[i], sh.y[i]}, a);
             const float len = std::fmax(sh.speed[i] * ss.frameS + ss.overlapWu, ss.minWu);
             if (!visible(head, len + 4.0f) || !playerShown) continue;
             const Vec2 tail = head - Vec2{sh.dx[i], sh.dy[i]} * len;
-            d.scene.line(toScene(tail), toScene(head), 0.5f * pl.width * refPx_, player * pl.intensity, W1 * pl.intensity, 0);
+            const Vec3 body = shotHasLane(sh.flags[i]) ? laneColour_[shotLane(sh.flags[i]) + 2] : player;
+            d.scene.line(toScene(tail), toScene(head), 0.5f * pl.width * refPx_, body * pl.intensity, W1 * pl.intensity, 0);
             d.sparkles.glow(toScene(head), look_->soft.shotHead.radius[0] * refPx_, shotHead);
         }
     }

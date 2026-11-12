@@ -133,6 +133,8 @@ private:
 
     // Camera.
     Vec2 cam_, lookAhead_, bossLean_, centre_, shake_;
+    Vec3 laneColour_[5];       // Prism's rainbow, lanes -2..2 (computed once from the player's colour)
+    bool laneReady_ = false;
     float zoom_ = 1.0f, zoomBase_ = 1.0f, pxPerWu_ = 1.5f, refPx_ = 1.0f, viewW_ = 1600.0f, viewH_ = 720.0f;
     float shakeAmp_ = 0.0f;
     bool hasPrevView_ = false;

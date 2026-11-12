@@ -38,10 +38,14 @@ constexpr float kNovaViewHalfW = 941.0f, kNovaViewHalfH = 424.0f;
 
 // ---- Enemies (species.json gives speeds, health, radii and the motion keys) ----
 constexpr float kBulletLifeS = 4.0f;          // s: enemy bullets live this long (or until a wall)
-constexpr float kDrifterHomeTurn = 0.15f;     // rad/s: drifters' wander leans toward the nearest player
+constexpr float kDrifterHomeTurn = 1.0f;      // rad/s: drifters' wander leans toward the nearest player (C2: was 0.15)
 constexpr float kHoundSeparationWu = 26.0f;   // hounds keep this far apart (a pack, not a point)
 constexpr float kHoundBurstSpread = 0.12f;    // rad: hound_B's three shots fan this far apart
-constexpr float kShoalCohesion = 0.9f, kShoalAlignment = 1.1f, kShoalSeparation = 2.6f, kShoalSeek = 1.0f;
+constexpr float kShoalCohesion = 0.9f, kShoalAlignment = 1.1f, kShoalSeparation = 2.6f, kShoalSeek = 0.5f;  // C2: seek was 1.0
+constexpr float kShoalSpeedScale = 0.7f;      // C2: species.json's shoal speed x this (the -30% the lead allows)
+constexpr double kCrowdArrivingBars = 0.0;   // C2: crowd fodder counts as arriving until it lands plus this many bars
+constexpr float kCrowdDebtGain = 0.5f;      // C2: a bar's shortfall x this is owed on top of the next bars' orders (at most half the target)
+constexpr float kCrowdBossRoomWu = 450.0f;   // C2: while a boss lives drifters and shoals keep this far from a ship
 constexpr float kShoalTurn = 5.0f;            // rad/s
 constexpr float kRamEngageWu = 650.0f;        // a Ram starts its telegraph within this distance
 constexpr float kRamPathWu = 310.0f;          // drawn chevrons reach this far (620 wu/s x one beat at 120 BPM)
@@ -89,12 +93,15 @@ constexpr float kBossBudgetScale = 0.3f;     // kaleidos.md (quoted): 30%, fodde
 constexpr float kMegaWaveBars = 3.0f;        // the Drop's mega-wave spends 3 bars of Drop budget at once
 constexpr float kEndlessBudgetStep = 2.0f;   // per cycle past species.json's last budget (12/bar)
 constexpr u32 kDirectorAliveCap = 600;       // no new bodies while this many enemies live (perf contract)
-// The crowd's formations (GAME_DESIGN 8 names floods from one side, rings and corner swarms; the shares and
-// distances are chosen): a flood lands in clusters of up to 8 along a line 900 wu out, 220 wu apart.
+// A player's camera frame in the simulation (M3 stage C2: the crowd is counted in it, species.json
+// firstSlice.crowd): the reference view, 2400 x 1080 px at 1.5 px a wu and zoom 1 (look.md), centred on the ship.
+constexpr float kFrameHalfWWu = 800.0f, kFrameHalfHWu = 360.0f;
+// The crowd's formations (GAME_DESIGN 8 names floods along a frame edge, rings and corner swarms; where
+// they land is species.json's rrive; the shares and the spacing are chosen): a flood lands in clusters
+// of up to 8, at most 220 wu apart along the edge.
 constexpr float kCrowdFloodShare = 0.5f, kCrowdRingShare = 0.25f;
-constexpr float kCrowdFloodWu = 900.0f, kCrowdFloodSpacingWu = 220.0f;
-constexpr float kCrowdRingWu = 700.0f;
-constexpr float kCrowdCornerXWu = 760.0f, kCrowdCornerYWu = 330.0f;
+constexpr float kCrowdFloodSpacingWu = 220.0f;
+constexpr float kCrowdEdgeBase = 0.25f;      // C2: a flood's edge: this, plus the ship's heading toward it (0-1)
 constexpr float kAssistStep = 0.1f, kAssistMin = 0.8f, kAssistMax = 1.3f;  // GAME_DESIGN 8 (quoted)
 constexpr float kBoostEveryLoS = 20.0f, kBoostEveryHiS = 30.0f;            // GAME_DESIGN 6.1 (quoted)
 constexpr float kSpotlightWu = 560.0f;       // a debut's group lands this far from the ship

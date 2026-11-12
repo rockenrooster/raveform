@@ -7,10 +7,12 @@
 #   hud_build, hud_drop (Surge), hud_break; riff_orbitals, riff_pulse, riff_sentinel; boost_prism,
 #   boost_hyper, boost_halo, boost_magnet_storm; edge; Kaleidos: boss_bloom, boss_refraction, boss_spiral,
 #   boss_naked, boss_beam_tell, boss_beam, boss_iris, boss_pair_death (strip), boss_death (strip);
-#   track_change (Track 2's name card after the Break); bot_3, bot_6, bot_10, bot_15 (the bot's run at minutes
-#   3, 6, 10, 15, hits costing nothing).
+#   track_change (Track 2's name card after the Break); bot_3, bot_6, bot_10, bot_15 (the careful bot's real run
+#   at minutes 3, 6, 10, 15) and bot_3_nohits ... bot_15_nohits (one run, hits costing nothing).
 #   scripts\review-m3b.ps1 [-Out captures\m3b] [-Config debug|dev] [-Only trio,boss_beam]
 # The stage C set: -Out captures\m3c -Only bot_3,bot_6,bot_10,bot_15,hud_drop,edge,boost_prism,track_change,boss_death
+# The stage C2 set: -Out captures\m3c2 -Config dev -Only bot_3,bot_6,bot_10,bot_15,bot_3_nohits,bot_6_nohits,bot_10_nohits,
+#   bot_15_nohits,hud_drop,boost_prism
 # Debug (the default) runs with validation; the script stops on the first run that is not clean.
 param(
     [string]$Out = 'captures\m3b',
@@ -38,7 +40,7 @@ $sheet = 'import sys; from PIL import Image; fs=[Image.open(p).convert("RGB") fo
 $singles = @('screen_notice', 'screen_title', 'screen_settings_sound', 'screen_settings_controls', 'screen_settings_look', 'screen_pause',
              'screen_game_over', 'trio', 'trio_answer', 'hud_groove', 'hud_build', 'hud_drop', 'hud_break', 'riff_orbitals', 'riff_pulse',
              'riff_sentinel', 'boost_prism', 'boost_hyper', 'boost_halo', 'boost_magnet_storm', 'edge', 'boss_bloom', 'boss_refraction',
-             'boss_spiral', 'boss_naked', 'boss_beam_tell', 'boss_beam', 'boss_iris', 'track_change', 'bot_3', 'bot_6', 'bot_10', 'bot_15')
+             'boss_spiral', 'boss_naked', 'boss_beam_tell', 'boss_beam', 'boss_iris', 'track_change', 'bot_3', 'bot_6', 'bot_10', 'bot_15', 'bot_3_nohits', 'bot_6_nohits', 'bot_10_nohits', 'bot_15_nohits')
 $strips = @('trio_take', 'boss_pair_death', 'boss_death')
 if ($Only.Count) {
     $singles = @($singles | Where-Object { $Only -contains $_ })

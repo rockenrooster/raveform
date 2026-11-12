@@ -259,7 +259,10 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
     // Chain: under it, cap height 22, white -> gold -> amber, pulsing on pickup. A multiplier from x1;
     // shown from x2 up and hidden at x1 (lead, M3 stage B).
     if (st.chain >= 2) {
-        std::snprintf(text, sizeof text, "X%u", st.chain);
+        // GAME_DESIGN 5 (C2): with thousands separators, as the score (X12,369).
+        char digits[32];
+        groupDigits(digits, sizeof digits, st.chain);
+        std::snprintf(text, sizeof text, "X%s", digits);
         const float pulse = 1.0f + 0.6f * st.chainPulse;
         font.drawField(d.hud, {m, top + 96.0f * s}, 22.0f * s, 1.0f * s * (1.0f + 0.15f * st.chainPulse), col(white, 2.0f * pulse),
                        col(gold, 2.0f * pulse), col(amber, 2.0f * pulse), text);

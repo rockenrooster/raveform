@@ -354,7 +354,9 @@ void Play::screenTitle(Ui& ui) {
         char line[96], num[32];
         if (scores_.count) {
             groupDigits(num, sizeof num, scores_.entry[0].score);
-            std::snprintf(line, sizeof line, "BEST %s   TRACK %02u   X%u", num, scores_.entry[0].track, scores_.entry[0].bestChain);
+            char chain[32];
+            groupDigits(chain, sizeof chain, scores_.entry[0].bestChain);
+            std::snprintf(line, sizeof line, "BEST %s   TRACK %02u   X%s", num, scores_.entry[0].track, chain);
         } else {
             std::snprintf(line, sizeof line, "BEST -");
         }
@@ -376,7 +378,9 @@ void Play::screenPause(Ui& ui) {
         char num[32], line[128];
         groupDigits(num, sizeof num, p.score);
         const u32 secs = static_cast<u32>(runSeconds_);
-        std::snprintf(line, sizeof line, "%s   TRACK %u   %u:%02u   X%u", num, world_->phrase().track, secs / 60u, secs % 60u, p.chain);
+        char chain[32];
+        groupDigits(chain, sizeof chain, p.chain);
+        std::snprintf(line, sizeof line, "%s   TRACK %u   %u:%02u   X%s", num, world_->phrase().track, secs / 60u, secs % 60u, chain);
         ui.text({cx, 380.0f * s}, 20.0f * s, gold, 1.4f, line);
     }
     if (countIn_) {
@@ -459,7 +463,11 @@ void Play::screenGameOver(Ui& ui) {
         const u32 secs = static_cast<u32>(runSeconds_);
         std::snprintf(v[0], sizeof v[0], "%u:%02u", secs / 60u, secs % 60u);
         std::snprintf(v[1], sizeof v[1], "%u", runTrackMax_);
-        std::snprintf(v[2], sizeof v[2], "X%u", p.bestChain);
+        {
+            char chain[32];
+            groupDigits(chain, sizeof chain, p.bestChain);
+            std::snprintf(v[2], sizeof v[2], "X%s", chain);
+        }
         std::snprintf(v[3], sizeof v[3], "%u", p.kills);
         static const char* const kLabels[4] = {"TIME", "TRACK", "BEST CHAIN", "KILLS"};
         for (u32 k = 0; k < 4; ++k) {

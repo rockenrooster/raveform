@@ -73,6 +73,8 @@ struct DirectorState {
     bool boostDue = false;
     u32 boostsDropped = 0;
     u32 crowdLost = 0;         // fodder killed since the last bar line (the crowd replaces it)
+    float crowdDebt = 0.0f;    // C2: the frame's running shortfall against the target (owed on top of the gap)
+    u32 crowdKills = 0;        // C2: fodder killed since the last bar line (the debt never exceeds it)
     u32 lastBar = kNoBar;      // the last bar the director planned
 };
 

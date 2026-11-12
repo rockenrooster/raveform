@@ -229,75 +229,145 @@ void World::spendBudget(double landTick) {
     }
 }
 
-void World::spawnCrowd(u16 speciesIndex, u32 count, double landTick) {
-    // GAME_DESIGN 8: floods of 16-80 bodies from one side, rings and corner swarms, warping in outside
-    // the central third of the view (the fairness rules) and never within 260 wu of a ship.
-    const Vec2 c = players_[0].pos;
+void World::spawnCrowd(u16 speciesIndex, u32 count, double landTick, Vec2 c) {
+    // GAME_DESIGN 8 and species.json firstSlice.crowd.arrive (M3 stage C2): floods along one edge of the
+    // frame, floodOutsideWu outside it; rings on an ellipse ringFrameScale x the frame; swarms
+    // cornerOutsideWu outside its corners. Formations keep 260 wu from a ship and out of the Trio's ring.
+    const SpeciesTable::Crowd& cr = species_->crowd;
+    const float hw = kFrameHalfWWu, hh = kFrameHalfHWu;
+    const float limX = kArenaHalfW - 60.0f, limY = kArenaHalfH - 60.0f;
+    const auto inArena = [&](Vec2 p) { return Vec2{clampf(p.x, -limX, limX), clampf(p.y, -limY, limY)}; };
+    const u32 first = enemies_.count;  // what this call adds is arriving: counted on its way in
     const float r = rng_.uniform();
     if (r < kCrowdFloodShare) {
-        // A flood: clusters along a line just outside the view on one side, all coming in.
-        const float a = rng_.range(0.0f, kTau);
-        const Vec2 out = dirOf(a), side = perpOf(out);
+        // A flood: clusters of up to 8 along one edge (left, right, top, bottom), each its own distance out;
+        // an edge beyond the arena's wall gives way to the opposite one.
+        // The edge the ship is heading for is likelier (it flies into the flood); every edge stays possible.
+        u32 edge = 0;
+        {
+            const Vec2 v = players_[0].vel;
+            const float sp = length(v);
+            const Vec2 d = sp > 1.0f ? v * (1.0f / sp) : Vec2{};
+            const float w[4] = {kCrowdEdgeBase + std::fmax(-d.x, 0.0f), kCrowdEdgeBase + std::fmax(d.x, 0.0f), kCrowdEdgeBase + std::fmax(-d.y, 0.0f),
+                                kCrowdEdgeBase + std::fmax(d.y, 0.0f)};
+            float pick = rng_.range(0.0f, w[0] + w[1] + w[2] + w[3]);
+            while (edge < 3 && pick >= w[edge]) pick -= w[edge++];
+        }
+        const float out0 = cr.floodOutsideWu[0], out1 = cr.floodOutsideWu[1];
+        const auto edgeFits = [&](u32 k) {
+            switch (k) {
+                case 0: return c.x - hw - out0 > -limX;
+                case 1: return c.x + hw + out0 < limX;
+                case 2: return c.y - hh - out0 > -limY;
+                default: return c.y + hh + out0 < limY;
+            }
+        };
+        if (!edgeFits(edge)) edge ^= 1u;
+        const bool vertical = edge < 2;  // a left or right edge runs up and down
+        const float len = 2.0f * (vertical ? hh : hw);
         const u32 clusters = count < 8 ? 1u : (count + 7u) / 8u;
+        const float spacing = std::fmin(kCrowdFloodSpacingWu, len / static_cast<float>(clusters));
+        const float span = spacing * static_cast<float>(clusters - 1);
+        const float slack = 0.5f * (len - span);
+        const float mid = slack > 0.0f ? rng_.range(-slack, slack) : 0.0f;
+        const float sign = (edge & 1u) ? 1.0f : -1.0f;
         u32 left = count;
         for (u32 k = 0; k < clusters && left; ++k) {
             const u32 n = (left + (clusters - k) - 1) / (clusters - k);
-            const float along = (static_cast<float>(k) - 0.5f * static_cast<float>(clusters - 1)) * kCrowdFloodSpacingWu;
-            const Vec2 at = c + Vec2{out.x * kCrowdFloodWu, out.y * kCrowdFloodWu * kSpawnSquash * 1.6f} + side * along;
-            spawnFormation(speciesIndex, n, at, landTick);
+            const float along = mid + (static_cast<float>(k) - 0.5f * static_cast<float>(clusters - 1)) * spacing;
+            const float outside = rng_.range(out0, out1);
+            const Vec2 at = vertical ? Vec2{c.x + sign * (hw + outside), c.y + along} : Vec2{c.x + along, c.y + sign * (hh + outside)};
+            spawnFormation(speciesIndex, n, inArena(at), landTick);
             left -= n;
         }
     } else if (r < kCrowdFloodShare + kCrowdRingShare) {
-        // A ring around the ship.
+        // A ring: up to 12 groups on the ellipse ringFrameScale x the frame.
         const float phase = rng_.range(0.0f, kTau);
-        const u32 groups = count < 6 ? count : 6u;
+        const u32 groups = count < 12 ? count : 12u;
+        const float rx = cr.ringFrameScale * hw, ry = cr.ringFrameScale * hh;
         u32 left = count;
         for (u32 k = 0; k < groups && left; ++k) {
             const u32 n = (left + (groups - k) - 1) / (groups - k);
             const float a = phase + kTau * static_cast<float>(k) / static_cast<float>(groups);
-            spawnFormation(speciesIndex, n, c + Vec2{std::cos(a) * kCrowdRingWu, std::sin(a) * kCrowdRingWu * 0.5f}, landTick);
+            spawnFormation(speciesIndex, n, inArena(c + Vec2{std::cos(a) * rx, std::sin(a) * ry}), landTick);
             left -= n;
         }
     } else {
-        // Corner swarms.
+        // Corner swarms, cornerOutsideWu outside each corner of the frame.
         static const float kCx[4] = {-1.0f, 1.0f, -1.0f, 1.0f}, kCy[4] = {-1.0f, -1.0f, 1.0f, 1.0f};
+        const float ox = hw + cr.cornerOutsideWu, oy = hh + cr.cornerOutsideWu;
         u32 left = count;
         for (u32 k = 0; k < 4 && left; ++k) {
             const u32 n = (left + (4 - k) - 1) / (4 - k);
-            spawnFormation(speciesIndex, n, c + Vec2{kCx[k] * kCrowdCornerXWu, kCy[k] * kCrowdCornerYWu}, landTick);
+            spawnFormation(speciesIndex, n, inArena(c + Vec2{kCx[k] * ox, kCy[k] * oy}), landTick);
             left -= n;
         }
     }
+    for (u32 i = first; i < enemies_.count; ++i) enemies_.flags[i] |= kFlagArriving;
+}
+
+u32 World::crowdCount(Vec2 c) const {
+    // In and just around the frame (count.frameScale each way), and the crowd's fodder still on its way in
+    // (it lands outside the frame; counting it keeps the next bar from ordering it twice).
+    const SpeciesTable::Crowd& cr = species_->crowd;
+    const float cx = kFrameHalfWWu * cr.countFrameScale, cy = kFrameHalfHWu * cr.countFrameScale;
+    const float sx = kFrameHalfWWu * cr.strayFrameScale, sy = kFrameHalfHWu * cr.strayFrameScale;
+    const Enemies& e = enemies_;
+    u32 n = 0;
+    for (u32 i = 0; i < e.count; ++i) {
+        if (e.flags[i] & kFlagDead) continue;
+        const float dx = std::fabs(e.x[i] - c.x), dy = std::fabs(e.y[i] - c.y);
+        if ((dx <= cx && dy <= cy) || ((e.flags[i] & kFlagArriving) && dx <= sx && dy <= sy)) ++n;
+    }
+    return n;
 }
 
 void World::spendCrowd(double landTick, const Phrase& ph) {
-    // GAME_DESIGN 8, the crowd: count the enemies near the ships, close the gap to the population target
-    // over refillBars bars with fodder formations (species.json firstSlice.crowd), and replace the fodder
-    // killed since the last bar line on top (so a strong build meets the target, not a steady shortfall).
+    // GAME_DESIGN 8, the crowd (M3 stage C2): count the enemies in and just around each player's frame (and
+    // the crowd's fodder still warping in), order the neediest frame's whole gap as fodder formations at its
+    // edges (species.json firstSlice.crowd; its refillBars 2 held the frame near half its target in view with
+    // the bot killing 550 a minute), plus the kills not yet replaced on a beat and a running debt. The target
+    // holds for every frame.
     const SpeciesTable::Crowd& c = species_->crowd;
     const u32 lost = director_.crowdLost;
     director_.crowdLost = 0;
     const float target = crowdTarget(c, ph.track, ph.cycle ? ph.cycle : 1u) * crowdScale(c, ph);
     crowdGoal_ = target;
-    const Enemies& e = enemies_;
-    const float near2 = c.nearWu * c.nearWu;
-    u32 near = 0;
-    for (u32 i = 0; i < e.count; ++i) {
-        if (e.flags[i] & kFlagDead) continue;
-        for (u32 p = 0; p < playerCount_; ++p) {
-            if (!players_[p].alive) continue;
-            if (lengthSq(Vec2{e.x[i], e.y[i]} - players_[p].pos) <= near2) {
-                ++near;
-                break;
-            }
+    // Arrivals stop being on their way once they land (kCrowdArrivingBars after it) or reach a counted frame.
+    {
+        const float cx = kFrameHalfWWu * c.countFrameScale, cy = kFrameHalfHWu * c.countFrameScale;
+        Enemies& e = enemies_;
+        for (u32 i = 0; i < e.count; ++i) {
+            if (!(e.flags[i] & kFlagArriving) || e.state[i] == kWarping) continue;
+            bool in = m1_ - e.until[i] > kCrowdArrivingBars * kTicksPerBar;
+            for (u32 p = 0; p < playerCount_ && !in; ++p)
+                in = players_[p].alive && std::fabs(e.x[i] - players_[p].pos.x) <= cx && std::fabs(e.y[i] - players_[p].pos.y) <= cy;
+            if (in) e.flags[i] = static_cast<u8>(e.flags[i] & ~kFlagArriving);
         }
     }
-    crowdNear_ = near;
-    const float gap = target - static_cast<float>(near);
+    const u32 killed = director_.crowdKills;
+    director_.crowdKills = 0;
+    i32 needy = -1;
+    u32 counted = 0;
+    for (u32 p = 0; p < playerCount_; ++p) {
+        if (!players_[p].alive) continue;
+        const u32 n = crowdCount(players_[p].pos);
+        if (needy < 0 || n < counted) {
+            needy = static_cast<i32>(p);
+            counted = n;
+        }
+    }
+    if (needy < 0) return;
+    crowdInFrame_ = counted;
+    const float gap = target - static_cast<float>(counted);
+    // The bar-line count is the frame at its emptiest (the bar's kills drain it, its formations are still
+    // coming in): a running debt of the shortfall keeps the frame at its target on average while the players
+    // kill (C2; it never exceeds the last bar's kills, so an idle frame is not overfilled).
+    director_.crowdDebt = clampf(director_.crowdDebt * 0.5f + gap * kCrowdDebtGain, 0.0f, std::fmin(0.5f * target, static_cast<float>(killed)));
     if (gap < 1.0f) return;
-    u32 want = static_cast<u32>(std::ceil(gap / (c.refillBars > 1.0f ? c.refillBars : 1.0f))) + lost;
-    if (static_cast<float>(want) > gap) want = static_cast<u32>(std::ceil(gap));
+    u32 want = static_cast<u32>(std::ceil(gap + director_.crowdDebt)) + lost;
     if (want < c.formationMin && gap >= static_cast<float>(c.formationMin)) want = c.formationMin;
+    const Vec2 centre = players_[needy].pos;
     for (u32 formations = 0; formations < 8 && want; ++formations) {
         if (enemies_.count >= kDirectorAliveCap) return;
         const u32 room = kDirectorAliveCap - enemies_.count;
@@ -306,7 +376,7 @@ void World::spendCrowd(double landTick, const Phrase& ph) {
         u32 n = want < c.formationMax ? want : c.formationMax;
         if (n > room) n = room;
         const u32 before = counters_.spawned;
-        spawnCrowd(static_cast<u16>(sp), n, landTick);
+        spawnCrowd(static_cast<u16>(sp), n, landTick, centre);
         const u32 made = counters_.spawned - before;
         if (made == 0) return;
         want = want > made ? want - made : 0;
@@ -314,18 +384,18 @@ void World::spendCrowd(double landTick, const Phrase& ph) {
 }
 
 void World::strayFodder() {
-    // Fodder left beyond strayWu of every ship for strayBars bars dissolves without Shards (GAME_DESIGN 8);
-    // the crowd replaces it near the players.
+    // Fodder outside every player's frame grown by stray.frameScale for stray.bars bars dissolves without
+    // Shards (GAME_DESIGN 8, species.json firstSlice.crowd.stray); the crowd replaces it at the frame.
     const SpeciesTable::Crowd& c = species_->crowd;
     Enemies& e = enemies_;
-    const float far2 = c.strayWu * c.strayWu;
+    const float sx = kFrameHalfWWu * c.strayFrameScale, sy = kFrameHalfHWu * c.strayFrameScale;
     for (u32 i = 0; i < e.count; ++i) {
         if (e.flags[i] & kFlagDead) continue;
         const Species& s = species_->get(e.species[i]);
         if (s.hue != 0) continue;
         bool near = false;
         for (u32 p = 0; p < playerCount_ && !near; ++p)
-            near = players_[p].alive && lengthSq(Vec2{e.x[i], e.y[i]} - players_[p].pos) <= far2;
+            near = players_[p].alive && std::fabs(e.x[i] - players_[p].pos.x) <= sx && std::fabs(e.y[i] - players_[p].pos.y) <= sy;
         if (near) {
             e.far[i] = 0;
             continue;
@@ -344,7 +414,6 @@ void World::strayFodder() {
         emit(ev);
     }
 }
-
 void World::megaWave(double landTick) {
     // GAME_DESIGN 4.1: the Drop's mega-wave lands on its downbeat (it warps in over the Build's last two
     // beats): kMegaWaveBars bars of the Drop's budget at once, as formations.
@@ -499,22 +568,52 @@ void World::directorBar(double barTick, u32 bar) {
     spendBudget(land);
 }
 
+void World::replaceCrowd(double beatTick) {
+    // M3 stage C2: the crowd replaces its fodder as the players kill it, on the beat, a formation at a time
+    // (at least formationSize's minimum, so a few kills wait for more); the bar's count closes the gap.
+    const SpeciesTable::Crowd& c = species_->crowd;
+    if (director_.crowdLost < c.formationMin || crowdScale(c, phrase_) <= 0.0f) return;
+    i32 needy = -1;
+    u32 counted = 0;
+    for (u32 p = 0; p < playerCount_; ++p) {
+        if (!players_[p].alive) continue;
+        const u32 n = crowdCount(players_[p].pos);
+        if (needy < 0 || n < counted) {
+            needy = static_cast<i32>(p);
+            counted = n;
+        }
+    }
+    if (needy < 0 || enemies_.count >= kDirectorAliveCap) return;
+    const i32 sp = pickSpecies(1);
+    if (sp < 0) return;
+    u32 n = director_.crowdLost < c.formationMax ? director_.crowdLost : c.formationMax;
+    const u32 room = kDirectorAliveCap - enemies_.count;
+    if (n > room) n = room;
+    const u32 before = counters_.spawned;
+    spawnCrowd(static_cast<u16>(sp), n, beatTick + kWarpBeats * kTicksPerBeat, players_[needy].pos);
+    const u32 made = counters_.spawned - before;
+    director_.crowdLost = director_.crowdLost > made ? director_.crowdLost - made : 0u;
+}
+
 void World::directorBeat(double beatTick) {
-    // The third beat of a bar: what lands on the next downbeat warps in now (R4: two beats).
+    if (spawner_.mode == Spawner::Mode::Slice) replaceCrowd(beatTick);
     const u32 bar = barOf(beatTick + 1.0);
     const double inBar = beatTick - tickOfBar(bar);
-    if (std::fabs(inBar - 2.0 * kTicksPerBeat) > 1.0) return;
+    if (spawner_.mode != Spawner::Mode::Slice) return;
     const Phrase cur = phraseAt(director_, bar);
     const Phrase next = phraseAt(director_, bar + 1);
+    // M3 stage C2: the Groove's crowd lands on the third beat of the Break's last bar (ordered on its first),
+    // so it has come into the frame by the downbeat; a Groove does not begin empty.
+    if (std::fabs(inBar) < 1.0 && cur.section == Section::Break && next.section == Section::Groove)
+        spendCrowd(beatTick + kWarpBeats * kTicksPerBeat, next);
+    // The third beat of a bar: what lands on the next downbeat warps in now (R4: two beats).
+    if (std::fabs(inBar - 2.0 * kTicksPerBeat) > 1.0) return;
     const double land = tickOfBar(bar + 1);
-    if (spawner_.mode != Spawner::Mode::Slice) return;
-    if (cur.section == Section::Build && next.section == Section::Drop && !next.bossDrop) megaWave(land);
-    if (cur.section == Section::Break && next.section == Section::Groove) {
-        spotlight(land, next);
-        // The Groove's crowd warps in over the Break's last two beats, as the debuts do, so the Groove does
-        // not begin empty.
-        spendCrowd(land, next);
+    if (cur.section == Section::Build && next.section == Section::Drop && !next.bossDrop) {
+        megaWave(land);
+        spendCrowd(land, next);  // C2: the Drop's crowd lands on its downbeat, with the mega-wave
     }
+    if (cur.section == Section::Break && next.section == Section::Groove) spotlight(land, next);
 }
 
 void World::runDirector() {

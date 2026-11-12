@@ -114,7 +114,7 @@ enum EnemyState : u8 {
     kDash,         // a Ram's dash (one beat)
     kRest,         // a Ram's rest
 };
-enum EnemyFlag : u8 { kFlagDead = 1, kFlagEngaged = 2 };
+enum EnemyFlag : u8 { kFlagDead = 1, kFlagEngaged = 2, kFlagArriving = 4 };  // arriving: crowd fodder on its way into the frame
 
 struct Enemies {
     static constexpr u32 kCap = kMaxEnemies;
@@ -129,7 +129,7 @@ struct Enemies {
     u16 species[kCap];
     u16 group[kCap];                             // a Shoal's school
     u8 state[kCap], flags[kCap];
-    u8 far[kCap];                                // bars in a row beyond the crowd's strayWu of every ship
+    u8 far[kCap];                                // bars in a row outside every frame x the crowd's stray scale
     u32 handle[kCap];                            // generation << 16 | slot
     u32 serial[kCap];                            // spawn number (seeds the enemy's own random stream)
     u32 rng[kCap];
@@ -160,7 +160,12 @@ struct Shots {
     u8 pierce[kCap], bounces[kCap];  // Pierce and Ricochet left
     u8 kind[kCap], flags[kCap];      // ShotKind; ShotFlag
 };
-enum ShotFlag : u8 { kShotCrit = 1, kShotPrism = 2 };
+enum ShotFlag : u8 { kShotCrit = 1, kShotPrism = 2, kShotLaneMask = 7u << 2 };
+// M3 stage C2: a Prism shot's lane in its fan (-2..2, GAME_DESIGN 7: the rainbow), kept in flags bits 2-4 (0: none);
+// its mini-refractions carry it on.
+inline u8 shotLaneFlags(i32 lane) { return static_cast<u8>((lane + 3) << 2); }
+inline bool shotHasLane(u8 flags) { return (flags & kShotLaneMask) != 0; }
+inline i32 shotLane(u8 flags) { return static_cast<i32>((flags & kShotLaneMask) >> 2) - 3; }
 
 // Boosts lying in the arena (GAME_DESIGN 6.4), until collected or eight bars old.
 struct BoostPickups {
@@ -320,9 +325,9 @@ public:
     float timeScale() const { return dipS_ > 0.0f || phrase_.buildLastBar() ? 0.85f : 1.0f; }
     // Threat of the solid enemies inside the nominal view around player 0 (band intensity).
     float threatInView() const { return threatInView_; }
-    // The crowd (GAME_DESIGN 8): enemies within the crowd's nearWu of a ship at the last bar line, and the
-    // target the director was closing on then.
-    u32 crowdNear() const { return crowdNear_; }
+    // The crowd (GAME_DESIGN 8, M3 stage C2): the enemies counted in the neediest player's frame (grown by
+    // count.frameScale, with those still warping in) at the last bar line, and the target it closed on then.
+    u32 crowdInFrame() const { return crowdInFrame_; }
     float crowdGoal() const { return crowdGoal_; }
 
     // M3 stage B: the director, upgrades, Boosts, the boss.
@@ -405,7 +410,9 @@ private:
     void directorBeat(double beatTick);
     void spendBudget(double landTick);
     void spendCrowd(double landTick, const Phrase& ph);
-    void spawnCrowd(u16 species, u32 count, double landTick);
+    void spawnCrowd(u16 species, u32 count, double landTick, Vec2 frameCentre);
+    u32 crowdCount(Vec2 frameCentre) const;  // the crowd counted for a frame centred there
+    void replaceCrowd(double beatTick);
     void strayFodder();
     void megaWave(double landTick);
     void spotlight(double landTick, const Phrase& next);
@@ -452,7 +459,7 @@ private:
     float latencyTicks_ = 0.0f;
     float dipS_ = 0.0f;
     float threatInView_ = 0.0f;
-    u32 crowdNear_ = 0;
+    u32 crowdInFrame_ = 0;
     float crowdGoal_ = 0.0f;
     bool restartPending_ = false;
     double restartAt_ = 0.0;

@@ -192,15 +192,18 @@ bool SpeciesTable::load() {
         num("firstSlice.crowd.sectionScale.groove", c.groove);
         num("firstSlice.crowd.sectionScale.break", c.breakScale);
         num("firstSlice.crowd.sectionScale.bossDrop", c.bossDrop);
-        num("firstSlice.crowd.nearWu", c.nearWu);
+        num("firstSlice.crowd.count.frameScale", c.countFrameScale);
+        num("firstSlice.crowd.arrive.ringFrameScale", c.ringFrameScale);
+        num("firstSlice.crowd.arrive.cornerOutsideWu", c.cornerOutsideWu);
         num("firstSlice.crowd.refillBars", c.refillBars);
-        num("firstSlice.crowd.strayWu", c.strayWu);
+        num("firstSlice.crowd.stray.frameScale", c.strayFrameScale);
         float v[2] = {};
         if (doc.numbers("firstSlice.crowd.sectionScale.build", v, 2) == 2) { c.build[0] = v[0]; c.build[1] = v[1]; } else { got = false; }
         if (doc.numbers("firstSlice.crowd.sectionScale.drop", v, 2) == 2) { c.drop[0] = v[0]; c.drop[1] = v[1]; } else { got = false; }
         if (doc.numbers("firstSlice.crowd.formationSize", v, 2) == 2) { c.formationMin = static_cast<u32>(v[0]); c.formationMax = static_cast<u32>(v[1]); } else { got = false; }
+        if (doc.numbers("firstSlice.crowd.arrive.floodOutsideWu", v, 2) == 2) { c.floodOutsideWu[0] = v[0]; c.floodOutsideWu[1] = v[1]; } else { got = false; }
         float bars = static_cast<float>(c.strayBars);
-        num("firstSlice.crowd.strayBars", bars);
+        num("firstSlice.crowd.stray.bars", bars);
         c.strayBars = static_cast<u32>(bars);
         if (!got || !c.targetCycles[0] || !c.targetCycles[1] || !c.targetCycles[2]) {
             RF_ERR("species: firstSlice.crowd is incomplete");

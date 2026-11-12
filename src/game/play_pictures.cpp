@@ -3,6 +3,7 @@
 // Fixed 1/60 s steps and no band, like stage A's pictures.
 
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 #include "core/log.h"
@@ -51,12 +52,14 @@ bool Play::scriptSetupB() {
         // 121.06 s (each Build's last bar runs at 85%).
         if (is(p, "hud_drop")) scriptFastForwardS_ = 121.1f;
         if (is(p, "hud_break")) scriptFastForwardS_ = 40.25f;
-        if (is(p, "bot_3")) scriptFastForwardS_ = 180.0f;
-        if (is(p, "bot_6")) scriptFastForwardS_ = 360.0f;
-        if (is(p, "bot_10")) scriptFastForwardS_ = 600.0f;
-        if (is(p, "bot_15")) scriptFastForwardS_ = 900.0f;  // M3 stage C: Track 3, Reef
-        // M3 stage C: the bot's run at minute n is one run (hits cost nothing), so the Tracks come on time.
-        if (starts(p, "bot_") || is(p, "hud_drop")) w.rules().godMode = true;
+        // bot_<minutes>: the careful bot's real run at that minute (hits count, so it may have died and
+        // started again); bot_<minutes>_nohits: one run with hits costing nothing, so the Tracks come on time
+        // (minute 15 is Track 3, Reef). M3 stage C2.
+        if (starts(p, "bot_")) {
+            scriptFastForwardS_ = 60.0f * static_cast<float>(std::atoi(p + 4));
+            if (std::strstr(p, "_nohits")) w.rules().godMode = true;
+        }
+        if (is(p, "hud_drop")) w.rules().godMode = true;
         return true;
     }
     if (starts(p, "trio")) return true;

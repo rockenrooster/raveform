@@ -29,6 +29,7 @@
 #include "core/log.h"
 #include "sim/sim_runner.h"
 #include "sim/species.h"
+#include "sim/tuning.h"
 
 using namespace rf;
 using namespace rf::sim;
@@ -287,15 +288,16 @@ int runSoak(const SpeciesTable& species, float seconds, u64 seed, float bpm, boo
     return ok ? 0 : 1;
 }
 
-// The crowd and the difficulty over many seeds (M3 stage C): per Track and cycle the mean number of enemies
-// near the ship during Groove against the crowd's target, the Drop's peak, kills a minute, the first death
+// The crowd and the difficulty over many seeds (M3 stage C, C2): per Track and cycle the mean number of
+// enemies in view (the plain frame around the ship) during Groove against the crowd's target, the mean the
+// director counts (the frame x count.frameScale), the Drop's peak in view, kills a minute, the first death
 // and the Tracks reached.
 int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, Bot::Policy policy, bool god, bool trace) {
     const u32 ticks = static_cast<u32>(minutes * 3600.0f);
     auto* world = new (std::nothrow) World;
     if (!world) return 2;
     struct Cell {
-        double grooveSum = 0.0;
+        double grooveSum = 0.0, countedSum = 0.0, aliveSum = 0.0;
         u64 grooveTicks = 0;
         double dropPeakSum = 0.0;
         u32 dropRuns = 0;
@@ -307,8 +309,13 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     static u32 maxTrack[256];
     u64 kills = 0, deaths = 0, overflow = 0, allocs = 0;
     u32 nan = 0;
+    // What hit the ship (C2 tuning): a body of each family within reach, else a bullet or a beam.
+    u64 hitsBy[kFamilyCount + 1] = {}, hitsInBossFight = 0, hitsBySection[4] = {};
+    u64 bossWon = 0, bossLost = 0;
+    double bossWonTicks = 0.0;
     const SpeciesTable::Crowd& cr = species.crowd;
-    const float near2 = cr.nearWu * cr.nearWu;
+    const float hw = tuning::kFrameHalfWWu, hh = tuning::kFrameHalfHWu;
+    const float cw = hw * cr.countFrameScale, ch = hh * cr.countFrameScale;
     for (u32 s = 0; s < seeds && s < 256; ++s) {
         world->init(&species);
         SimRunner runner;
@@ -319,6 +326,14 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         bool sawDrop[4][5] = {};
         firstDeath[s] = minutes + 1.0f;
         maxTrack[s] = 1;
+        u32 lastHits = 0, lastBar = 0xFFFFFFFFu, killsAtBar = 0;
+        bool bossOn = false;
+        u32 bossFrom = 0;
+        // The camera as PlayView draws it (GAME_DESIGN 9): a lead along the ship's velocity (at most cruise
+        // speed x 0.25 s) and 60 wu along its aim while firing, eased over 0.25 s; 0.85x and a lean of 30% (at
+        // most 320 wu) toward the boss while it lives within 1,800 wu. In view is that camera's frame.
+        Vec2 lookAhead{}, lean{};
+        float zoom = 1.0f;
         const u64 a0 = heapAllocCountThisThread();
         for (u32 t = 0; t < ticks; ++t) {
             const u32 d0 = runner.deaths();
@@ -328,7 +343,71 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
             const Phrase& ph = w.phrase();
             if (ph.track > maxTrack[s]) maxTrack[s] = ph.track;
             const PlayerState& p = w.player(0);
+            {
+                // Boss fights: from its entrance to its death (won) or to the run's end (lost).
+                const bool on = w.boss().active && !w.boss().dying;
+                if (on && !bossOn) bossFrom = t;
+                if (!on && bossOn) {
+                    if (w.boss().dying) {
+                        ++bossWon;
+                        bossWonTicks += static_cast<double>(t - bossFrom);
+                    } else {
+                        ++bossLost;
+                    }
+                }
+                bossOn = on;
+            }
+            if (trace && w.boss().active && !w.boss().dying && t % 60u == 0u) {
+                const sim::BossState& b = w.boss();
+                const Enemies& e = w.enemies();
+                u32 near300 = 0, between = 0, bul = 0;
+                const Vec2 to = b.pos - p.pos;
+                const float L = length(to);
+                for (u32 i = 0; i < e.count; ++i) {
+                    if (e.flags[i] & kFlagDead) continue;
+                    const Vec2 d = Vec2{e.x[i], e.y[i]} - p.pos;
+                    near300 += lengthSq(d) < 300.0f * 300.0f ? 1u : 0u;
+                    if (L > 1.0f) {
+                        const float along = dot(d, to) / L;
+                        const float off = std::fabs(d.x * to.y - d.y * to.x) / L;
+                        between += (along > 0.0f && along < L - 150.0f && off < 40.0f) ? 1u : 0u;
+                    }
+                }
+                const Bullets& bb = w.bullets();
+                for (u32 k = 0; k < bb.count; ++k) bul += lengthSq(Vec2{bb.x[k], bb.y[k]} - p.pos) < 300.0f * 300.0f ? 1u : 0u;
+                std::printf("[boss] %6.1f s dist %4.0f near %3u in the line %2u bullets %3u cells %u novas %u pairs %u core %4.0f hits %u%s\n", t / 60.0f, L, near300, between, bul, p.cells,
+                            p.novas, static_cast<unsigned>(b.alive), b.coreHp, b.hits, p.alive ? "" : " DOWN");
+            }
+            if (p.hitsTaken < lastHits) lastHits = p.hitsTaken;  // a new run
+            if (p.hitsTaken > lastHits) {
+                lastHits = p.hitsTaken;
+                if (w.boss().active) ++hitsInBossFight;
+                ++hitsBySection[static_cast<u32>(w.phrase().section) & 3u];
+                const Enemies& e = w.enemies();
+                i32 best = -1;
+                float bestD = 1e30f;
+                for (u32 i = 0; i < e.count; ++i) {
+                    if (e.flags[i] & kFlagDead) continue;
+                    const float d = length(Vec2{e.x[i], e.y[i]} - p.pos) - e.radius[i];
+                    if (d < bestD) {
+                        bestD = d;
+                        best = static_cast<i32>(i);
+                    }
+                }
+                if (best >= 0 && bestD < 90.0f)
+                    ++hitsBy[static_cast<u32>(species.get(e.species[best]).family)];
+                else
+                    ++hitsBy[kFamilyCount];
+            }
             if (trace && t % 3600u == 3599u) {
+                u32 fod = 0, thr = 0, fodFar = 0, thrFar = 0;
+                for (u32 i = 0; i < w.enemies().count; ++i) {
+                    const Enemies& e = w.enemies();
+                    if (e.flags[i] & kFlagDead) continue;
+                    const bool far = std::fabs(e.x[i] - p.pos.x) > 2.0f * hw || std::fabs(e.y[i] - p.pos.y) > 2.0f * hh;
+                    if (species.get(e.species[i]).hue == 0) { ++fod; fodFar += far ? 1u : 0u; } else { ++thr; thrFar += far ? 1u : 0u; }
+                }
+                std::printf("[alive] fodder %u (%u beyond 2 frames), threats %u (%u beyond 2 frames)\n", fod, fodFar, thr, thrFar);
                 const sim::BossState& b = w.boss();
                 std::printf("[trace] min %3u  T%u c%u %s%s  alive %3u  kills %6u  ship (%6.0f %6.0f) %s  boss %s pairs %u core %.0f/%.0f hits %u%s\n",
                             t / 3600u + 1u, ph.track, ph.cycle, sectionLabel(ph.section), ph.bossDrop ? " boss" : "", w.enemies().count,
@@ -336,14 +415,46 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                             static_cast<unsigned>(b.alive), b.coreHp, b.coreMax, b.hits, b.dying ? " dying" : "");
             }
             if (!p.alive || w.restartPending()) continue;
-            u32 near = 0;
+            {
+                const float sp = length(p.vel);
+                Vec2 lead = (sp > kPlayerSpeed ? p.vel * (kPlayerSpeed / sp) : p.vel) * 0.25f;
+                if (p.fire) lead = lead + p.aim * 60.0f;
+                lookAhead = lookAhead + (lead - lookAhead) * (1.0f - std::exp(-kDt / 0.25f));
+                const sim::BossState& b = w.boss();
+                Vec2 leanTo{};
+                float zoomTo = 1.0f;
+                if (b.active && !b.dying && lengthSq(b.pos - p.pos) < 1800.0f * 1800.0f) {
+                    leanTo = (b.pos - p.pos) * 0.3f;
+                    const float l = length(leanTo);
+                    if (l > 320.0f) leanTo = leanTo * (320.0f / l);
+                    zoomTo = 0.85f;
+                }
+                lean = lean + (leanTo - lean) * (1.0f - std::exp(-kDt / 0.5f));
+                zoom += (zoomTo - zoom) * (1.0f - std::exp(-kDt / 2.0f));
+            }
+            const Vec2 cam = p.pos + lookAhead + lean;
+            const float vw = hw / zoom, vh = hh / zoom;
+            u32 near = 0, counted = 0;  // in the camera's frame (in view); in the frame the director counts
             const Enemies& e = w.enemies();
-            for (u32 i = 0; i < e.count; ++i)
-                if (!(e.flags[i] & kFlagDead) && lengthSq(Vec2{e.x[i], e.y[i]} - p.pos) <= near2) ++near;
+            for (u32 i = 0; i < e.count; ++i) {
+                if (e.flags[i] & kFlagDead) continue;
+                near += (std::fabs(e.x[i] - cam.x) <= vw && std::fabs(e.y[i] - cam.y) <= vh) ? 1u : 0u;
+                counted += (std::fabs(e.x[i] - p.pos.x) <= cw && std::fabs(e.y[i] - p.pos.y) <= ch) ? 1u : 0u;
+            }
+            if (trace && ph.bar != lastBar) {
+                // A line a bar while tracing: the director's count and goal, what is in view, alive, kills.
+                const u32 k = w.counters().kills - c0.kills;
+                std::printf("[bar] %4u T%u c%u %-6s goal %5.0f counted %4u (director %4u) in view %4u alive %4u kills %4u\n", ph.bar, ph.track,
+                            ph.cycle, sectionLabel(ph.section), w.crowdGoal(), counted, w.crowdInFrame(), near, e.count, k - killsAtBar);
+                killsAtBar = k;
+                lastBar = ph.bar;
+            }
             const u32 tr = ph.track < 4 ? ph.track : 4u, cy = ph.cycle < 5 ? ph.cycle : 4u;
             if (!cy) continue;
             if (ph.section == Section::Groove) {
                 cells[tr - 1][cy].grooveSum += near;
+                cells[tr - 1][cy].countedSum += counted;
+                cells[tr - 1][cy].aliveSum += e.count;
                 ++cells[tr - 1][cy].grooveTicks;
             } else if (ph.section == Section::Drop && !ph.bossDrop) {
                 sawDrop[tr - 1][cy] = true;
@@ -369,19 +480,32 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     runner.deaths(), seedShards);
     }
     std::printf("[sim] crowd (%s bot%s): %u seeds x %.0f min\n", policy == Bot::Policy::Reckless ? "careless" : "careful", god ? ", god mode" : "", seeds, minutes);
-    std::printf("[sim]   Track cycle  target  Groove mean  ratio  Drop peak (runs)  peak/target\n");
+    std::printf("[sim]   Track cycle  target  in view (Groove)  ratio  counted  alive  Drop peak in view (runs)  peak/target\n");
     for (u32 tr = 0; tr < 4; ++tr) {
         for (u32 cy = 1; cy <= cyclesOfTrack(tr + 1); ++cy) {
             const Cell& c = cells[tr][cy];
             if (tr == 3 && !c.grooveTicks) continue;  // the loop's first Track, when a run got there
             const float target = crowdTarget(cr, tr + 1, cy);
             const double mean = c.grooveTicks ? c.grooveSum / static_cast<double>(c.grooveTicks) : 0.0;
+            const double cm = c.grooveTicks ? c.countedSum / static_cast<double>(c.grooveTicks) : 0.0;
             const double pk = c.dropRuns ? c.dropPeakSum / c.dropRuns : 0.0;
-            std::printf("[sim]   %5u %5u  %6.0f  %11.1f  %5.2f  %9.1f (%2u)  %5.2f\n", tr + 1, cy, target, mean, target > 0 ? mean / target : 0.0, pk,
-                        c.dropRuns, target > 0 ? pk / target : 0.0);
-            logTagged("RFSIM", "{\"test\":\"crowd_cell\",\"track\":%u,\"cycle\":%u,\"target\":%.0f,\"groove_mean\":%.1f,\"drop_peak\":%.1f,\"drop_runs\":%u}",
-                      tr + 1, cy, target, mean, pk, c.dropRuns);
+            const double am = c.grooveTicks ? c.aliveSum / static_cast<double>(c.grooveTicks) : 0.0;
+            std::printf("[sim]   %5u %5u  %6.0f  %16.1f  %5.2f  %7.1f  %5.0f  %16.1f (%2u)  %5.2f\n", tr + 1, cy, target, mean, target > 0 ? mean / target : 0.0, cm,
+                        am, pk, c.dropRuns, target > 0 ? pk / target : 0.0);
+            logTagged("RFSIM", "{\"test\":\"crowd_cell\",\"track\":%u,\"cycle\":%u,\"target\":%.0f,\"in_view_mean\":%.1f,\"counted_mean\":%.1f,\"drop_peak_in_view\":%.1f,\"drop_runs\":%u}",
+                      tr + 1, cy, target, mean, cm, pk, c.dropRuns);
         }
+    }
+    {
+        static const char* const kFam[kFamilyCount] = {"drifter", "hound", "shoal", "ram", "carom", "sentry"};
+        std::printf("[sim]   hits by cause:");
+        for (u32 f = 0; f < kFamilyCount; ++f)
+            if (hitsBy[f]) std::printf(" %s %llu,", kFam[f], static_cast<unsigned long long>(hitsBy[f]));
+        std::printf(" bullets or beams %llu; boss fights won %llu (mean %.0f s), lost %llu; hits in boss fights %llu; by section G/B/D/Br %llu/%llu/%llu/%llu\n", static_cast<unsigned long long>(hitsBy[kFamilyCount]),
+                    static_cast<unsigned long long>(bossWon), bossWon ? bossWonTicks / static_cast<double>(bossWon) / 60.0 : 0.0,
+                    static_cast<unsigned long long>(bossLost), static_cast<unsigned long long>(hitsInBossFight), static_cast<unsigned long long>(hitsBySection[0]),
+                    static_cast<unsigned long long>(hitsBySection[1]), static_cast<unsigned long long>(hitsBySection[2]),
+                    static_cast<unsigned long long>(hitsBySection[3]));
     }
     float sorted[256];
     const u32 n = seeds < 256 ? seeds : 256;
