@@ -129,6 +129,7 @@ struct Enemies {
     u16 species[kCap];
     u16 group[kCap];                             // a Shoal's school
     u8 state[kCap], flags[kCap];
+    u8 far[kCap];                                // bars in a row beyond the crowd's strayWu of every ship
     u32 handle[kCap];                            // generation << 16 | slot
     u32 serial[kCap];                            // spawn number (seeds the enemy's own random stream)
     u32 rng[kCap];
@@ -319,6 +320,10 @@ public:
     float timeScale() const { return dipS_ > 0.0f || phrase_.buildLastBar() ? 0.85f : 1.0f; }
     // Threat of the solid enemies inside the nominal view around player 0 (band intensity).
     float threatInView() const { return threatInView_; }
+    // The crowd (GAME_DESIGN 8): enemies within the crowd's nearWu of a ship at the last bar line, and the
+    // target the director was closing on then.
+    u32 crowdNear() const { return crowdNear_; }
+    float crowdGoal() const { return crowdGoal_; }
 
     // M3 stage B: the director, upgrades, Boosts, the boss.
     const DirectorState& director() const { return director_; }
@@ -398,11 +403,14 @@ private:
     void runDirector();
     void directorBar(double barTick, u32 bar);
     void directorBeat(double beatTick);
-    void spendBudget(double landTick, bool fodderOnly);
+    void spendBudget(double landTick);
+    void spendCrowd(double landTick);
+    void spawnCrowd(u16 species, u32 count, double landTick);
+    void strayFodder();
     void megaWave(double landTick);
     void spotlight(double landTick, const Phrase& next);
     void dissolveFodder(float progress);
-    i32 pickSpecies(bool fodderOnly);
+    i32 pickSpecies(int kind);  // 0 any, 1 fodder (the crowd), 2 threats (hunters and specials)
     void spawnFormation(u16 species, u32 count, Vec2 anchor, double landTick);
     void spawnShape(u16 species, u32 count, double landTick);
     Vec2 spawnAnchor(Vec2 player);
@@ -444,6 +452,8 @@ private:
     float latencyTicks_ = 0.0f;
     float dipS_ = 0.0f;
     float threatInView_ = 0.0f;
+    u32 crowdNear_ = 0;
+    float crowdGoal_ = 0.0f;
     bool restartPending_ = false;
     double restartAt_ = 0.0;
     u8 scriptKillPairs_ = 0;

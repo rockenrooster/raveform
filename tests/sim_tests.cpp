@@ -483,14 +483,16 @@ void testDirectorCycle() {
     CHECK(phraseAt(d, 106 + 16).section == Section::Build && phraseAt(d, 106 + 24).section == Section::Drop &&
           phraseAt(d, 106 + 24).sectionBars == 16 && phraseAt(d, 106 + 40).section == Section::Break);
     CHECK(phraseAt(d, 106 + 96 + 24).bossDrop && phraseAt(d, 106 + 96 + 24).cycle == 3);
-    // The loop: First Light again, 4 BPM faster than Solar Wind.
-    CHECK(bpmOfTrack(3) == 130.0f && bpmOfTrack(4) == 134.0f && bpmOfTrack(40) == 174.0f);
-    CHECK(songOfTrack(3) == 0 && cyclesOfTrack(3) == 4 && songOfTrack(4) == 1);
-    // Budgets (species.json firstSlice), rising past the data; section scales (GAME_DESIGN 8).
+    // Track 3 is Reef (three Standard cycles at 132 BPM); then the loop over all three, 4 BPM a Track faster.
+    CHECK(bpmOfTrack(3) == 132.0f && bpmOfTrack(4) == 136.0f && bpmOfTrack(5) == 140.0f && bpmOfTrack(40) == 174.0f);
+    CHECK(songOfTrack(3) == 2 && cyclesOfTrack(3) == 3 && formOfTrack(3) == 1);
+    CHECK(songOfTrack(4) == 0 && cyclesOfTrack(4) == 4 && formOfTrack(4) == 0 && songOfTrack(5) == 1 && songOfTrack(6) == 2);
+    // Budgets (species.json firstSlice, threats only), rising past the data; section scales (GAME_DESIGN 8).
     const float(*b)[8] = g_species->budget;
     CHECK(baseBudget(b, g_species->budgetCycles, 1, 1) == 2.0f && baseBudget(b, g_species->budgetCycles, 1, 4) == 6.0f);
     CHECK(baseBudget(b, g_species->budgetCycles, 2, 3) == 12.0f);
-    CHECK(baseBudget(b, g_species->budgetCycles, 3, 1) == 14.0f && baseBudget(b, g_species->budgetCycles, 4, 1) == 22.0f);
+    CHECK(baseBudget(b, g_species->budgetCycles, 3, 1) == 14.0f && baseBudget(b, g_species->budgetCycles, 3, 3) == 18.0f);
+    CHECK(baseBudget(b, g_species->budgetCycles, 4, 1) == 20.0f);
     Phrase s;
     s.section = Section::Build;
     s.sectionBars = 4;
@@ -530,6 +532,64 @@ void testDirectorCycle() {
     CHECK(n >= 5 && order[0] == 0 && order[1] == 1 && order[2] == 2 && order[3] == 3 && order[4] == 0);
     CHECK_MSG(trioTick > 39 * 60 && trioTick < 41 * 60, "first Trio at tick %u", trioTick);
     CHECK(surgeRules);
+    delete w;
+}
+
+void testCrowd() {
+    g_test = "crowd";
+    // Targets (species.json firstSlice.crowd): by Track and cycle, then rising a step a Track up to the max.
+    const SpeciesTable::Crowd& c = g_species->crowd;
+    CHECK(crowdTarget(c, 1, 1) == 20.0f && crowdTarget(c, 1, 4) == 120.0f);
+    CHECK(crowdTarget(c, 2, 1) == 150.0f && crowdTarget(c, 3, 3) == 300.0f);
+    CHECK(crowdTarget(c, 4, 1) == 320.0f && crowdTarget(c, 30, 1) == 400.0f);
+    Phrase p;
+    p.section = Section::Groove;
+    CHECK(crowdScale(c, p) == 1.0f);
+    p.section = Section::Build;
+    p.sectionBars = 4;
+    p.sectionBar = 0;
+    CHECK(crowdScale(c, p) == 1.0f);
+    p.sectionBar = 3;
+    CHECK(std::fabs(crowdScale(c, p) - 1.3f) < 1e-5f);
+    p.section = Section::Drop;
+    p.sectionBars = 8;
+    p.sectionBar = 0;
+    CHECK(std::fabs(crowdScale(c, p) - 1.6f) < 1e-5f);
+    p.sectionBar = 7;
+    CHECK(std::fabs(crowdScale(c, p) - 1.2f) < 1e-5f);
+    p.bossDrop = true;
+    CHECK(std::fabs(crowdScale(c, p) - 0.5f) < 1e-5f);
+    p.section = Section::Break;
+    p.bossDrop = false;
+    CHECK(crowdScale(c, p) == 0.0f);
+
+    // In the world: an idle, invulnerable ship in Track 1's first Groove; the director brings the crowd to
+    // its target (20) over a few bars, the threats only from the budget.
+    auto* w = new (std::nothrow) World;
+    w->init(g_species);
+    w->spawner().mode = Spawner::Mode::Slice;
+    w->resetRun(9, 0.0, 1);
+    w->rules().godMode = true;
+    double music = 0.0;
+    const double perBar = kTicksPerBar / kTicksPerSimTick;
+    for (u32 t = 0; t < static_cast<u32>(6.0 * perBar); ++t) stepWorld(*w, music, Vec2{});
+    CHECK_MSG(w->crowdNear() >= 15 && w->crowdNear() <= 45, "near %u (goal %.0f)", w->crowdNear(), w->crowdGoal());
+    u32 fodder = 0, threats = 0;
+    for (u32 i = 0; i < w->enemies().count; ++i) {
+        if (w->enemies().flags[i] & kFlagDead) continue;
+        (g_species->get(w->enemies().species[i]).hue == 0 ? fodder : threats) += 1;
+    }
+    CHECK_MSG(fodder >= 10 && threats >= 1, "fodder %u, threats %u", fodder, threats);
+    // Stranded: the ship moves far away; the fodder left behind dissolves without Shards within a few bars.
+    const u32 shards0 = w->shards().count;
+    u32 dissolved = 0;
+    for (u32 t = 0; t < static_cast<u32>(6.0 * perBar); ++t) {
+        stepWorld(*w, music, Vec2{4200.0f, 2300.0f});
+        for (u32 k = 0; k < w->eventCount(); ++k)
+            if (w->events()[k].type == EventType::Kill && w->events()[k].c == 1) ++dissolved;
+    }
+    CHECK_MSG(dissolved >= fodder / 2, "dissolved %u of %u", dissolved, fodder);
+    CHECK(w->shards().count <= shards0);
     delete w;
 }
 
@@ -752,6 +812,7 @@ int main() {
     testDeterminismShort();
     testNoAllocations();
     testDirectorCycle();
+    testCrowd();
     testTrioRules();
     testUpgradeStacking();
     testBoss();

@@ -282,12 +282,121 @@ int runSoak(const SpeciesTable& species, float seconds, u64 seed, float bpm, boo
     return ok ? 0 : 1;
 }
 
+// The crowd and the difficulty over many seeds (M3 stage C): per Track and cycle the mean number of enemies
+// near the ship during Groove against the crowd's target, the Drop's peak, kills a minute, the first death
+// and the Tracks reached.
+int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, Bot::Policy policy) {
+    const u32 ticks = static_cast<u32>(minutes * 3600.0f);
+    auto* world = new (std::nothrow) World;
+    if (!world) return 2;
+    struct Cell {
+        double grooveSum = 0.0;
+        u64 grooveTicks = 0;
+        double dropPeakSum = 0.0;
+        u32 dropRuns = 0;
+    };
+    static Cell cells[4][5];
+    for (auto& row : cells)
+        for (Cell& c : row) c = Cell{};
+    static float firstDeath[256];
+    static u32 maxTrack[256];
+    u64 kills = 0, deaths = 0, overflow = 0, allocs = 0;
+    u32 nan = 0;
+    const SpeciesTable::Crowd& cr = species.crowd;
+    const float near2 = cr.nearWu * cr.nearWu;
+    for (u32 s = 0; s < seeds && s < 256; ++s) {
+        world->init(&species);
+        SimRunner runner;
+        runner.start(world, seed0 + s, Spawner::Mode::Slice, policy, 120.0f);
+        float peak[4][5] = {};
+        bool sawDrop[4][5] = {};
+        firstDeath[s] = minutes + 1.0f;
+        maxTrack[s] = 1;
+        const u64 a0 = heapAllocCountThisThread();
+        for (u32 t = 0; t < ticks; ++t) {
+            const u32 d0 = runner.deaths();
+            runner.step();
+            const World& w = *world;
+            if (runner.deaths() > d0 && firstDeath[s] > minutes) firstDeath[s] = static_cast<float>(t) / 3600.0f;
+            const Phrase& ph = w.phrase();
+            if (ph.track > maxTrack[s]) maxTrack[s] = ph.track;
+            const PlayerState& p = w.player(0);
+            if (!p.alive || w.restartPending()) continue;
+            u32 near = 0;
+            const Enemies& e = w.enemies();
+            for (u32 i = 0; i < e.count; ++i)
+                if (!(e.flags[i] & kFlagDead) && lengthSq(Vec2{e.x[i], e.y[i]} - p.pos) <= near2) ++near;
+            const u32 tr = ph.track < 4 ? ph.track : 4u, cy = ph.cycle < 5 ? ph.cycle : 4u;
+            if (!cy) continue;
+            if (ph.section == Section::Groove) {
+                cells[tr - 1][cy].grooveSum += near;
+                ++cells[tr - 1][cy].grooveTicks;
+            } else if (ph.section == Section::Drop && !ph.bossDrop) {
+                sawDrop[tr - 1][cy] = true;
+                if (static_cast<float>(near) > peak[tr - 1][cy]) peak[tr - 1][cy] = static_cast<float>(near);
+            }
+        }
+        allocs += heapAllocCountThisThread() - a0;
+        for (u32 tr = 0; tr < 4; ++tr)
+            for (u32 cy = 1; cy < 5; ++cy)
+                if (sawDrop[tr][cy]) {
+                    cells[tr][cy].dropPeakSum += peak[tr][cy];
+                    ++cells[tr][cy].dropRuns;
+                }
+        const WorldCounters& c = world->counters();
+        kills += c.kills;
+        deaths += runner.deaths();
+        overflow += c.enemiesDropped + c.bulletsDropped + c.shotsDropped + c.shardsDropped + c.eventsDropped;
+        if (!world->finite()) ++nan;
+        std::printf("[sim]   seed %llu: first death %.2f min, Track %u reached, %u kills, %u deaths, Shards dropped %u\n",
+                    static_cast<unsigned long long>(seed0 + s), firstDeath[s] > minutes ? -1.0 : firstDeath[s], maxTrack[s], c.kills,
+                    runner.deaths(), c.shardsDropped);
+    }
+    std::printf("[sim] crowd (%s bot): %u seeds x %.0f min\n", policy == Bot::Policy::Reckless ? "careless" : "careful", seeds, minutes);
+    std::printf("[sim]   Track cycle  target  Groove mean  ratio  Drop peak (runs)  peak/target\n");
+    for (u32 tr = 0; tr < 3; ++tr) {
+        for (u32 cy = 1; cy <= cyclesOfTrack(tr + 1); ++cy) {
+            const Cell& c = cells[tr][cy];
+            const float target = crowdTarget(cr, tr + 1, cy);
+            const double mean = c.grooveTicks ? c.grooveSum / static_cast<double>(c.grooveTicks) : 0.0;
+            const double pk = c.dropRuns ? c.dropPeakSum / c.dropRuns : 0.0;
+            std::printf("[sim]   %5u %5u  %6.0f  %11.1f  %5.2f  %9.1f (%2u)  %5.2f\n", tr + 1, cy, target, mean, target > 0 ? mean / target : 0.0, pk,
+                        c.dropRuns, target > 0 ? pk / target : 0.0);
+            logTagged("RFSIM", "{\"test\":\"crowd_cell\",\"track\":%u,\"cycle\":%u,\"target\":%.0f,\"groove_mean\":%.1f,\"drop_peak\":%.1f,\"drop_runs\":%u}",
+                      tr + 1, cy, target, mean, pk, c.dropRuns);
+        }
+    }
+    float sorted[256];
+    const u32 n = seeds < 256 ? seeds : 256;
+    for (u32 k = 0; k < n; ++k) sorted[k] = firstDeath[k];
+    std::sort(sorted, sorted + n);
+    const float median = n ? (n % 2 ? sorted[n / 2] : 0.5f * (sorted[n / 2 - 1] + sorted[n / 2])) : 0.0f;
+    u32 t2 = 0, t3 = 0;
+    for (u32 k = 0; k < n; ++k) {
+        t2 += maxTrack[k] >= 2 ? 1u : 0u;
+        t3 += maxTrack[k] >= 3 ? 1u : 0u;
+    }
+    std::printf("[sim]   first death: median %.2f min (%s); Track 2 reached in %u of %u runs, Track 3 in %u\n", median,
+                median > minutes ? "no death in most runs" : "minutes", t2, n, t3);
+    std::printf("[sim]   kills a minute %.0f, deaths a run %.1f; overflow %llu, NaN runs %u, heap allocations in the loops %llu\n",
+                static_cast<double>(kills) / (static_cast<double>(n) * minutes), static_cast<double>(deaths) / n,
+                static_cast<unsigned long long>(overflow), nan, static_cast<unsigned long long>(allocs));
+    logTagged("RFSIM", "{\"test\":\"crowd\",\"seeds\":%u,\"minutes\":%.0f,\"policy\":\"%s\",\"first_death_median\":%.2f,\"track2\":%u,\"track3\":%u,"
+                       "\"kills_per_min\":%.1f,\"overflow\":%llu,\"nan\":%u,\"allocs\":%llu}",
+              n, minutes, policy == Bot::Policy::Reckless ? "careless" : "careful", median, t2, t3,
+              static_cast<double>(kills) / (static_cast<double>(n) * minutes), static_cast<unsigned long long>(overflow), nan,
+              static_cast<unsigned long long>(allocs));
+    delete world;
+    return overflow == 0 && nan == 0 && allocs == 0 ? 0 : 1;
+}
+
 }  // namespace
 
 int simHeadlessMain(int argc, char** argv) {
     const char* mode = argc > 2 ? argv[2] : "";
     float minutes = -1.0f, seconds = -1.0f;
     u64 seed = 1;
+    u32 seeds = 20;
     Bot::Policy policy = Bot::Policy::Play;
     for (int i = 3; i < argc; ++i) {
         const char* a = argv[i];
@@ -303,6 +412,9 @@ int simHeadlessMain(int argc, char** argv) {
             ++i;
         } else if (std::strcmp(a, "--seed") == 0 && next) {
             seed = std::strtoull(next, nullptr, 10);
+            ++i;
+        } else if (std::strcmp(a, "--seeds") == 0 && next) {
+            seeds = static_cast<u32>(std::strtoul(next, nullptr, 10));
             ++i;
         } else {
             std::printf("[sim] unknown argument %s\n", a);
@@ -321,10 +433,12 @@ int simHeadlessMain(int argc, char** argv) {
         code = a ? a : b;
     } else if (std::strcmp(mode, "soak") == 0) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes : 10.0f) * 60.0f, seed, bpm, false, policy);
+    } else if (std::strcmp(mode, "crowd") == 0) {
+        code = runCrowd(*species, seeds, minutes > 0.0f ? minutes : 30.0f, seed, policy);
     } else if (std::strcmp(mode, "stress") == 0) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes * 60.0f : 120.0f), seed, bpm, true, policy);
     } else {
-        std::printf("usage: raveform_headless --sim determinism|soak|stress [--minutes M] [--seconds S] [--seed N] [--policy play|reckless]\n");
+        std::printf("usage: raveform_headless --sim determinism|soak|crowd|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless]\n");
     }
     delete species;
     return code;

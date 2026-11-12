@@ -12,6 +12,7 @@
 // endless rule (GAME_DESIGN 4.2, last row: +4 BPM per Track, capped at 174) with the budget still rising.
 
 #include "sim/sim_types.h"
+#include "sim/species.h"
 
 namespace rf::sim {
 
@@ -22,11 +23,14 @@ constexpr u32 kSectionBars[2][4] = {{8, 4, 8, 4}, {16, 8, 16, 8}};  // GAME_DESI
 constexpr u32 kTrackChangeBars = 8;  // the band's Track-change Break (conductor.json trackChange)
 constexpr u32 kNoBar = 0xFFFFFFFFu;
 
-// The song a run Track plays (0 First Light, 1 Solar Wind), its form, cycles and tempo.
-inline u8 songOfTrack(u32 track) { return static_cast<u8>((track + 1) % 2); }
-inline u32 formOfTrack(u32 track) { return songOfTrack(track); }  // First Light Short, Solar Wind Standard
+// The song a run Track plays (0 First Light, 1 Solar Wind, 2 Reef; then the loop over all three), its form,
+// cycles and tempo (2026-11-12: Reef is Track 3, three Standard cycles at 132 BPM).
+constexpr u32 kSongs = 3;
+inline u8 songOfTrack(u32 track) { return static_cast<u8>((track + kSongs - 1) % kSongs); }
+inline u32 formOfTrack(u32 track) { return songOfTrack(track) == 0 ? 0u : 1u; }  // First Light Short, the others Standard
 inline u32 cyclesOfTrack(u32 track) { return songOfTrack(track) == 0 ? 4u : 3u; }  // GAME_DESIGN 4.2
-float bpmOfTrack(u32 track);  // 120, 126, then +4 per Track up to 174 (GAME_DESIGN 4.2)
+float bpmOfTrack(u32 track);  // 120, 126, 132, then +4 per Track up to 174 (GAME_DESIGN 4.2)
+const char* songName(u32 song);  // "FIRST LIGHT", "SOLAR WIND", "REEF"
 
 struct Phrase {
     u32 bar = 0;               // bars since the run began
@@ -78,7 +82,12 @@ Phrase phraseAt(const DirectorState& d, u32 bar);
 float tempoAt(const DirectorState& d, double tick);
 // The Groove budget per bar of a Track's cycle (species.json firstSlice.threatBudgetPerBar; past its
 // last value it keeps rising, tuning::kEndlessBudgetStep per cycle).
-float baseBudget(const float budget[2][8], const u32 budgetCycles[2], u32 track, u32 cycle);
+float baseBudget(const float budget[3][8], const u32 budgetCycles[3], u32 track, u32 cycle);
+// The crowd (GAME_DESIGN 8): fodder alive near the ships the director keeps, by Track and cycle
+// (species.json firstSlice.crowd; past Track 3 it rises loopStepPerTrack a Track up to its max), and the
+// section's scale on it.
+float crowdTarget(const SpeciesTable::Crowd& c, u32 track, u32 cycle);
+float crowdScale(const SpeciesTable::Crowd& c, const Phrase& p);
 // The section's scale on that budget (GAME_DESIGN 8): Groove 1.0, Build 1.0 -> 1.6, Drop 2.0 -> 1.2,
 // Break 0; the boss's Drop 0.3 (kaleidos.md).
 float sectionScale(const Phrase& p);

@@ -158,7 +158,7 @@ void World::runSpawner() {
 
 // ---------------------------------------------------------------------------------------------- director
 
-i32 World::pickSpecies(bool fodderOnly) {
+i32 World::pickSpecies(int kind) {
     // What has debuted by this Track and cycle (all of it once the run loops); the newest debut is picked
     // twice as often.
     const Phrase& ph = phrase_;
@@ -176,7 +176,8 @@ i32 World::pickSpecies(bool fodderOnly) {
     for (u32 k = 0; k < species_->rosterCount; ++k) {
         const SpeciesTable::RosterEntry& r = species_->roster[k];
         if (!debuted(r)) continue;
-        if (fodderOnly && species_->get(r.species).hue != 0) continue;  // look.md 2: hue 1 = fodder
+        const bool fodder = species_->get(r.species).hue == 0;  // look.md 2: hue 1 = fodder
+        if ((kind == 1 && !fodder) || (kind == 2 && fodder)) continue;
         cand[n] = r.species;
         weight[n] = (t < 3 && static_cast<u32>(r.track) * 16 + r.cycle == newest) ? 2.0f : 1.0f;
         ++n;
@@ -193,20 +194,17 @@ i32 World::pickSpecies(bool fodderOnly) {
     return cand[k];
 }
 
-void World::spendBudget(double landTick, bool fodderOnly) {
+void World::spendBudget(double landTick) {
     DirectorState& d = director_;
-    // Pick formations until the bank cannot buy the next one; an unaffordable pick waits for a later bar
-    // (the bank saves up to kBankBars of budget), so Shoals and Sentries do arrive.
+    // The threat budget buys threats only (GAME_DESIGN 8, since 2026-11-12: hunters and specials); the
+    // fodder is the crowd's (spendCrowd). Pick formations until the bank cannot buy the next one; an
+    // unaffordable pick waits for a later bar (the bank saves up to kBankBars of budget).
     for (u32 formations = 0; formations < 12; ++formations) {
         if (enemies_.count >= kDirectorAliveCap) return;
-        if (d.pending < 0) d.pending = pickSpecies(fodderOnly);
+        if (d.pending < 0) d.pending = pickSpecies(2);
         if (d.pending < 0) return;
         const u16 species = static_cast<u16>(d.pending);
         const Species& s = species_->get(species);
-        if (fodderOnly && s.hue != 0) {
-            d.pending = -1;
-            continue;
-        }
         const FamilyData& fd = species_->family(s.family);
         u32 minCount = 1, maxCount = packMax(s.family);
         if (s.family == Family::Shoal) {
@@ -231,6 +229,119 @@ void World::spendBudget(double landTick, bool fodderOnly) {
     }
 }
 
+void World::spawnCrowd(u16 speciesIndex, u32 count, double landTick) {
+    // GAME_DESIGN 8: floods of 16-80 bodies from one side, rings and corner swarms, warping in outside
+    // the central third of the view (the fairness rules) and never within 260 wu of a ship.
+    const Vec2 c = players_[0].pos;
+    const float r = rng_.uniform();
+    if (r < kCrowdFloodShare) {
+        // A flood: clusters along a line just outside the view on one side, all coming in.
+        const float a = rng_.range(0.0f, kTau);
+        const Vec2 out = dirOf(a), side = perpOf(out);
+        const u32 clusters = count < 8 ? 1u : (count + 7u) / 8u;
+        u32 left = count;
+        for (u32 k = 0; k < clusters && left; ++k) {
+            const u32 n = (left + (clusters - k) - 1) / (clusters - k);
+            const float along = (static_cast<float>(k) - 0.5f * static_cast<float>(clusters - 1)) * kCrowdFloodSpacingWu;
+            const Vec2 at = c + Vec2{out.x * kCrowdFloodWu, out.y * kCrowdFloodWu * kSpawnSquash * 1.6f} + side * along;
+            spawnFormation(speciesIndex, n, at, landTick);
+            left -= n;
+        }
+    } else if (r < kCrowdFloodShare + kCrowdRingShare) {
+        // A ring around the ship.
+        const float phase = rng_.range(0.0f, kTau);
+        const u32 groups = count < 6 ? count : 6u;
+        u32 left = count;
+        for (u32 k = 0; k < groups && left; ++k) {
+            const u32 n = (left + (groups - k) - 1) / (groups - k);
+            const float a = phase + kTau * static_cast<float>(k) / static_cast<float>(groups);
+            spawnFormation(speciesIndex, n, c + Vec2{std::cos(a) * kCrowdRingWu, std::sin(a) * kCrowdRingWu * 0.5f}, landTick);
+            left -= n;
+        }
+    } else {
+        // Corner swarms.
+        static const float kCx[4] = {-1.0f, 1.0f, -1.0f, 1.0f}, kCy[4] = {-1.0f, -1.0f, 1.0f, 1.0f};
+        u32 left = count;
+        for (u32 k = 0; k < 4 && left; ++k) {
+            const u32 n = (left + (4 - k) - 1) / (4 - k);
+            spawnFormation(speciesIndex, n, c + Vec2{kCx[k] * kCrowdCornerXWu, kCy[k] * kCrowdCornerYWu}, landTick);
+            left -= n;
+        }
+    }
+}
+
+void World::spendCrowd(double landTick) {
+    // GAME_DESIGN 8, the crowd: count the enemies near the ships, close the gap to the population target
+    // over refillBars bars with fodder formations (species.json firstSlice.crowd).
+    const SpeciesTable::Crowd& c = species_->crowd;
+    const Phrase& ph = phrase_;
+    const float target = crowdTarget(c, ph.track, ph.cycle ? ph.cycle : 1u) * crowdScale(c, ph);
+    crowdGoal_ = target;
+    const Enemies& e = enemies_;
+    const float near2 = c.nearWu * c.nearWu;
+    u32 near = 0;
+    for (u32 i = 0; i < e.count; ++i) {
+        if (e.flags[i] & kFlagDead) continue;
+        for (u32 p = 0; p < playerCount_; ++p) {
+            if (!players_[p].alive) continue;
+            if (lengthSq(Vec2{e.x[i], e.y[i]} - players_[p].pos) <= near2) {
+                ++near;
+                break;
+            }
+        }
+    }
+    crowdNear_ = near;
+    const float gap = target - static_cast<float>(near);
+    if (gap < 1.0f) return;
+    u32 want = static_cast<u32>(std::ceil(gap / (c.refillBars > 1.0f ? c.refillBars : 1.0f)));
+    if (want < c.formationMin && gap >= static_cast<float>(c.formationMin)) want = c.formationMin;
+    for (u32 formations = 0; formations < 8 && want; ++formations) {
+        if (enemies_.count >= kDirectorAliveCap) return;
+        const u32 room = kDirectorAliveCap - enemies_.count;
+        const i32 sp = pickSpecies(1);
+        if (sp < 0) return;
+        u32 n = want < c.formationMax ? want : c.formationMax;
+        if (n > room) n = room;
+        const u32 before = counters_.spawned;
+        spawnCrowd(static_cast<u16>(sp), n, landTick);
+        const u32 made = counters_.spawned - before;
+        if (made == 0) return;
+        want = want > made ? want - made : 0;
+    }
+}
+
+void World::strayFodder() {
+    // Fodder left beyond strayWu of every ship for strayBars bars dissolves without Shards (GAME_DESIGN 8);
+    // the crowd replaces it near the players.
+    const SpeciesTable::Crowd& c = species_->crowd;
+    Enemies& e = enemies_;
+    const float far2 = c.strayWu * c.strayWu;
+    for (u32 i = 0; i < e.count; ++i) {
+        if (e.flags[i] & kFlagDead) continue;
+        const Species& s = species_->get(e.species[i]);
+        if (s.hue != 0) continue;
+        bool near = false;
+        for (u32 p = 0; p < playerCount_ && !near; ++p)
+            near = players_[p].alive && lengthSq(Vec2{e.x[i], e.y[i]} - players_[p].pos) <= far2;
+        if (near) {
+            e.far[i] = 0;
+            continue;
+        }
+        if (e.far[i] < 255) ++e.far[i];
+        if (e.far[i] < c.strayBars) continue;
+        e.flags[i] |= kFlagDead;
+        Event ev;
+        ev.type = EventType::Kill;
+        ev.species = e.species[i];
+        ev.a = s.killSize();
+        ev.b = 0xFF;
+        ev.c = 1;  // dissolved, no Shards
+        ev.x = e.x[i];
+        ev.y = e.y[i];
+        emit(ev);
+    }
+}
+
 void World::megaWave(double landTick) {
     // GAME_DESIGN 4.1: the Drop's mega-wave lands on its downbeat (it warps in over the Build's last two
     // beats): kMegaWaveBars bars of the Drop's budget at once, as formations.
@@ -240,7 +351,7 @@ void World::megaWave(double landTick) {
     float wave = kMegaWaveBars * base * kDropScaleStart * d.assist;
     for (u32 formations = 0; formations < 16 && wave > 0.0f; ++formations) {
         if (enemies_.count >= kDirectorAliveCap) return;
-        const i32 sp = pickSpecies(false);
+        const i32 sp = pickSpecies(2);  // threats (the crowd brings the Drop's fodder)
         if (sp < 0) return;
         const Species& s = species_->get(static_cast<u16>(sp));
         const FamilyData& fd = species_->family(s.family);
@@ -374,11 +485,15 @@ void World::directorBar(double barTick, u32 bar) {
         }
     }
     if (spawner_.mode != Spawner::Mode::Slice || !anyAlive) return;
+    const double land = barTick + kWarpBeats * kTicksPerBeat;
+    strayFodder();
+    spendCrowd(land);
+    // The threats: the budget by Track, cycle and section (none during the boss's Drop: kaleidos.md).
     const float base = baseBudget(species_->budget, species_->budgetCycles, ph.track, ph.cycle ? ph.cycle : 1u);
-    d.budgetPerBar = base * sectionScale(ph) * d.assist;
+    d.budgetPerBar = ph.bossDrop ? 0.0f : base * sectionScale(ph) * d.assist;
     if (d.budgetPerBar <= 0.0f) return;
     d.bank = std::fmin(d.bank + d.budgetPerBar, d.budgetPerBar * kBankBars);
-    spendBudget(barTick + kWarpBeats * kTicksPerBeat, ph.bossDrop);
+    spendBudget(land);
 }
 
 void World::directorBeat(double beatTick) {

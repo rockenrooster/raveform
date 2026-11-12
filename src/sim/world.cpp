@@ -42,6 +42,8 @@ void World::resetRun(u64 seed, double startTick, u32 players) {
     serial_ = 0;
     dipS_ = 0.0f;
     threatInView_ = 0.0f;
+    crowdNear_ = 0;
+    crowdGoal_ = 0.0f;
     restartPending_ = false;
     m0_ = m1_ = startTick;
     playerCount_ = players < 1 ? 1 : (players > kMaxPlayers ? kMaxPlayers : players);
@@ -655,6 +657,7 @@ i32 World::spawnEnemy(u16 speciesIndex, Vec2 pos, float heading, double landTick
     e.species[i] = speciesIndex;
     e.group[i] = 0;
     e.flags[i] = 0;
+    e.far[i] = 0;
     e.serial[i] = ++serial_;
     e.rng[i] = hash32(static_cast<u32>(seed_ ^ (seed_ >> 32)), serial_);
     if (landTick > m1_) {
@@ -736,6 +739,7 @@ void World::removeEnemyAt(u32 i) {
         e.group[i] = e.group[last];
         e.state[i] = e.state[last];
         e.flags[i] = e.flags[last];
+        e.far[i] = e.far[last];
         e.handle[i] = e.handle[last];
         e.serial[i] = e.serial[last];
         e.rng[i] = e.rng[last];
@@ -893,6 +897,7 @@ u64 World::hash() const {
     mix(e.group, n * sizeof(u16));
     mix(e.state, n);
     mix(e.flags, n);
+    mix(e.far, n);
     mix(e.handle, n * sizeof(u32));
     mix(e.serial, n * sizeof(u32));
     mix(e.rng, n * sizeof(u32));

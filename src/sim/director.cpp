@@ -20,9 +20,14 @@ const char* sectionLabel(Section s) {
 
 float bpmOfTrack(u32 track) {
     if (track <= 1) return kTrackBpm[0];
-    if (track == 2) return kTrackBpm[1];
-    const float b = kTrackBpm[1] + kEndlessBpmStep * static_cast<float>(track - 2);
+    if (track <= kSongs) return kTrackBpm[track - 1];
+    const float b = kTrackBpm[kSongs - 1] + kEndlessBpmStep * static_cast<float>(track - kSongs);
     return b < kEndlessBpmCap ? b : kEndlessBpmCap;
+}
+
+const char* songName(u32 song) {
+    static const char* const kNames[kSongs] = {"FIRST LIGHT", "SOLAR WIND", "REEF"};
+    return kNames[song % kSongs];
 }
 
 Phrase phraseAt(const DirectorState& d, u32 bar) {
@@ -96,20 +101,47 @@ float tempoAt(const DirectorState& d, double tick) {
     return phraseAt(d, bar).bpm;
 }
 
-float baseBudget(const float budget[2][8], const u32 budgetCycles[2], u32 track, u32 cycle) {
+float baseBudget(const float budget[3][8], const u32 budgetCycles[3], u32 track, u32 cycle) {
     if (cycle < 1) cycle = 1;
-    if (track <= 2 && track >= 1) {
+    if (track >= 1 && track <= kSongs) {
         const u32 t = track - 1;
         const u32 n = budgetCycles[t];
         if (n == 0) return 1.0f;
         return budget[t][(cycle <= n ? cycle : n) - 1];
     }
-    // Past the data (the endless loop): the last value, rising a step per cycle played since.
-    const float last = budgetCycles[1] ? budget[1][budgetCycles[1] - 1] : 1.0f;
+    // Past the data (the loop): Track 3's last value, rising a step per cycle played since.
+    const u32 n3 = budgetCycles[kSongs - 1];
+    const float last = n3 ? budget[kSongs - 1][n3 - 1] : 1.0f;
     u32 cyclesSince = 0;
-    for (u32 t = 3; t < track; ++t) cyclesSince += cyclesOfTrack(t);
+    for (u32 t = kSongs + 1; t < track; ++t) cyclesSince += cyclesOfTrack(t);
     cyclesSince += cycle;
     return last + kEndlessBudgetStep * static_cast<float>(cyclesSince);
+}
+
+float crowdTarget(const SpeciesTable::Crowd& c, u32 track, u32 cycle) {
+    if (cycle < 1) cycle = 1;
+    float v = 0.0f;
+    if (track >= 1 && track <= kSongs) {
+        const u32 t = track - 1;
+        const u32 n = c.targetCycles[t];
+        v = n ? c.target[t][(cycle <= n ? cycle : n) - 1] : 0.0f;
+    } else {
+        const u32 n3 = c.targetCycles[kSongs - 1];
+        v = (n3 ? c.target[kSongs - 1][n3 - 1] : 0.0f) + c.loopStep * static_cast<float>(track - kSongs);
+    }
+    return v < c.max ? v : c.max;
+}
+
+float crowdScale(const SpeciesTable::Crowd& c, const Phrase& p) {
+    const float n = static_cast<float>(p.sectionBars > 1 ? p.sectionBars - 1 : 1);
+    const float u = std::fmin(static_cast<float>(p.sectionBar) / n, 1.0f);
+    switch (p.section) {
+        case Section::Groove: return c.groove;
+        case Section::Build: return c.build[0] + (c.build[1] - c.build[0]) * u;
+        case Section::Drop: return p.bossDrop ? c.bossDrop : c.drop[0] + (c.drop[1] - c.drop[0]) * u;
+        case Section::Break: return c.breakScale;
+    }
+    return 1.0f;
 }
 
 float sectionScale(const Phrase& p) {

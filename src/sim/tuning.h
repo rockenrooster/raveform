@@ -89,11 +89,17 @@ constexpr float kBossBudgetScale = 0.3f;     // kaleidos.md (quoted): 30%, fodde
 constexpr float kMegaWaveBars = 3.0f;        // the Drop's mega-wave spends 3 bars of Drop budget at once
 constexpr float kEndlessBudgetStep = 2.0f;   // per cycle past species.json's last budget (12/bar)
 constexpr u32 kDirectorAliveCap = 600;       // no new bodies while this many enemies live (perf contract)
+// The crowd's formations (GAME_DESIGN 8 names floods from one side, rings and corner swarms; the shares and
+// distances are chosen): a flood lands in clusters of up to 8 along a line 900 wu out, 220 wu apart.
+constexpr float kCrowdFloodShare = 0.5f, kCrowdRingShare = 0.25f;
+constexpr float kCrowdFloodWu = 900.0f, kCrowdFloodSpacingWu = 220.0f;
+constexpr float kCrowdRingWu = 700.0f;
+constexpr float kCrowdCornerXWu = 760.0f, kCrowdCornerYWu = 330.0f;
 constexpr float kAssistStep = 0.1f, kAssistMin = 0.8f, kAssistMax = 1.3f;  // GAME_DESIGN 8 (quoted)
 constexpr float kBoostEveryLoS = 20.0f, kBoostEveryHiS = 30.0f;            // GAME_DESIGN 6.1 (quoted)
 constexpr float kSpotlightWu = 560.0f;       // a debut's group lands this far from the ship
 constexpr float kEndlessBpmStep = 4.0f, kEndlessBpmCap = 174.0f;           // GAME_DESIGN 4.2 (quoted)
-constexpr float kTrackBpm[2] = {120.0f, 126.0f};                           // GAME_DESIGN 4.2 (quoted)
+constexpr float kTrackBpm[3] = {120.0f, 126.0f, 132.0f};                   // GAME_DESIGN 4.2 (quoted)
 
 // ---- Trio (GAME_DESIGN 6.1, screens.md "The Trio": ring 170 wu, orbs 38 wu, Riffs x1.14 quoted) ----
 constexpr float kTrioRingWu = 170.0f;
@@ -137,7 +143,7 @@ constexpr u32 kHaloHits = 3;                  // GAME_DESIGN 6.4 (quoted)
 constexpr float kHaloInvulS = 0.6f;           // after a hit the Halo absorbed
 
 // ---- Kaleidos (kaleidos.md / kaleidos.json give the fight; the rest is chosen) ----
-constexpr float kBossTrackHealth = 1.5f;      // lead (stage B brief): Track 2's Kaleidos has 1.5x health
+constexpr float kBossTrackHealth[3] = {1.0f, 1.5f, 2.0f};  // the lead: 1.5x in Track 2, 2x in Track 3 (stage B, C briefs)
 constexpr float kBossEndlessHealth = 1.06f;   // GAME_DESIGN 8 (quoted, from Track 7): +6% per Track after 2
 constexpr float kBossPairScore = 500.0f;      // score per pair (x Chain)
 constexpr float kBossCoreScore = 2000.0f;     // score for the core (x Chain)

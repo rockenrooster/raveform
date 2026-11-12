@@ -104,10 +104,11 @@ void World::spawnBossNow(double enterTick, Vec2 pos) {
     s.enterTick = enterTick;
     s.fightTick = enterTick + kTicksPerBar;  // the entrance bar: facets streak in and lock together
     s.phaseTick = s.fightTick;
-    // Health: x (1 + 0.5 per extra player) as for every boss; Track 2's Kaleidos has 1.5x (the lead), and
-    // the loop adds 6% a Track after that.
+    // Health: x (1 + 0.5 per extra player) as for every boss; Track 2's Kaleidos has 1.5x and Track 3's 2x
+    // (the lead), and the loop adds 6% a Track after that.
     float scale = 1.0f + 0.5f * static_cast<float>(playerCount_ - 1);
-    if (director_.track >= 2) scale *= kBossTrackHealth * std::pow(kBossEndlessHealth, static_cast<float>(director_.track - 2));
+    const u32 tr = director_.track < 1 ? 1u : director_.track;
+    scale *= tr <= 3 ? kBossTrackHealth[tr - 1] : kBossTrackHealth[2] * std::pow(kBossEndlessHealth, static_cast<float>(tr - 3));
     s.pairMax = b.pairHealth * scale;
     s.coreMax = b.coreHealth * scale;
     for (float& h : s.pairHp) h = s.pairMax;

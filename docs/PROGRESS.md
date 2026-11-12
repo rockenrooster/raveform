@@ -1,5 +1,22 @@
 # RAVEFORM — Progress
 
+## Stage C, paused — 2026-11-12 (the account's usage limit; nothing of stage C is committed)
+
+- **Done, uncommitted** (builds; `test.ps1` fails 3 old director checks, so it was not committed):
+  `firstSlice.crowd` and Track 3's budget parsed (`species.*`); Reef is Track 3 (songs 0-2, 132 BPM, Standard,
+  loop +4 BPM; Kaleidos 1x / 1.5x / 2x, then +6% a Track; `director.*`, `tuning.h`, `world_boss.cpp`); the
+  threat budget buys hunters and specials only and the crowd closes the gap to the population target with
+  fodder floods, rings and corner swarms, fodder stranded beyond `strayWu` for `strayBars` dissolves without
+  Shards (`world_spawner.cpp`, `Enemies::far`); `--sim crowd --seeds N --minutes M [--policy]` prints the
+  target-against-measured table and the difficulty numbers (`sim_headless.cpp`).
+- **Half done:** nothing of the crowd has been run or tuned yet.
+- **Next:** update `testDirectorCycle` for Reef (bpm 132/136, song 2 with 3 cycles, `baseBudget(4,1) == 20`)
+  and add crowd tests; run `--sim crowd` (20+ seeds, both bots) and tune; then items 3-9 of the brief
+  (soft lights reaching zero inside their quad, the death flash and 50 ms hit-stop, 44/64 px chevrons on
+  discs, the boss camera, the Boost name under its orb, the effect-word table, the Track name card, haptic
+  strength, the pause low-pass, the growl an octave down); then the Moto minute-10 run, pictures to
+  `captures\m3c\`, docs, commit.
+
 ## Contract change
 
 - 2026-11-10: at the user's request the frame-rate contract moved from the 99th to the 95th percentile:

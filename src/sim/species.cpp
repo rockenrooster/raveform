@@ -171,13 +171,49 @@ bool SpeciesTable::load() {
     }
     budgetCycles[0] = doc.numbers("firstSlice.threatBudgetPerBar.track1", budget[0], 8);
     budgetCycles[1] = doc.numbers("firstSlice.threatBudgetPerBar.track2", budget[1], 8);
-    if (rosterCount == 0 || budgetCycles[0] == 0 || budgetCycles[1] == 0) {
+    budgetCycles[2] = doc.numbers("firstSlice.threatBudgetPerBar.track3", budget[2], 8);
+    // The crowd (firstSlice.crowd).
+    {
+        Crowd& c = crowd;
+        static const char* const kT[3] = {"track1", "track2", "track3"};
+        char path[96];
+        for (u32 t = 0; t < 3; ++t) {
+            std::snprintf(path, sizeof path, "firstSlice.crowd.aliveTarget.%s", kT[t]);
+            c.targetCycles[t] = doc.numbers(path, c.target[t], 8);
+        }
+        bool got = true;
+        const auto num = [&](const char* p, float& out) {
+            bool g = true;
+            out = static_cast<float>(doc.number(p, out, &g));
+            got = got && g;
+        };
+        num("firstSlice.crowd.loopStepPerTrack", c.loopStep);
+        num("firstSlice.crowd.max", c.max);
+        num("firstSlice.crowd.sectionScale.groove", c.groove);
+        num("firstSlice.crowd.sectionScale.break", c.breakScale);
+        num("firstSlice.crowd.sectionScale.bossDrop", c.bossDrop);
+        num("firstSlice.crowd.nearWu", c.nearWu);
+        num("firstSlice.crowd.refillBars", c.refillBars);
+        num("firstSlice.crowd.strayWu", c.strayWu);
+        float v[2] = {};
+        if (doc.numbers("firstSlice.crowd.sectionScale.build", v, 2) == 2) { c.build[0] = v[0]; c.build[1] = v[1]; } else { got = false; }
+        if (doc.numbers("firstSlice.crowd.sectionScale.drop", v, 2) == 2) { c.drop[0] = v[0]; c.drop[1] = v[1]; } else { got = false; }
+        if (doc.numbers("firstSlice.crowd.formationSize", v, 2) == 2) { c.formationMin = static_cast<u32>(v[0]); c.formationMax = static_cast<u32>(v[1]); } else { got = false; }
+        float bars = static_cast<float>(c.strayBars);
+        num("firstSlice.crowd.strayBars", bars);
+        c.strayBars = static_cast<u32>(bars);
+        if (!got || !c.targetCycles[0] || !c.targetCycles[1] || !c.targetCycles[2]) {
+            RF_ERR("species: firstSlice.crowd is incomplete");
+            ok = false;
+        }
+    }
+    if (rosterCount == 0 || budgetCycles[0] == 0 || budgetCycles[1] == 0 || budgetCycles[2] == 0) {
         RF_ERR("species: firstSlice roster or budgets missing");
         ok = false;
     }
     if (ok) {
-        RF_LOG("species: %u species from %u families, roster of %u, budgets %u + %u cycles", kCount, kFamilyCount,
-               rosterCount, budgetCycles[0], budgetCycles[1]);
+        RF_LOG("species: %u species from %u families, roster of %u, budgets %u + %u + %u cycles, crowd %.0f..%.0f", kCount, kFamilyCount,
+               rosterCount, budgetCycles[0], budgetCycles[1], budgetCycles[2], crowd.target[0][0], crowd.target[2][crowd.targetCycles[2] ? crowd.targetCycles[2] - 1 : 0]);
     }
     if (!boss.load()) ok = false;
     return ok;

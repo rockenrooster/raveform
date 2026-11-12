@@ -71,8 +71,20 @@ public:
     };
     RosterEntry roster[kMaxRoster];
     u32 rosterCount = 0;
-    float budget[2][8] = {};  // [track 1..2][cycle]
-    u32 budgetCycles[2] = {};
+    float budget[3][8] = {};  // [track 1..3][cycle]: threats only since 2026-11-12
+    u32 budgetCycles[3] = {};
+    // firstSlice.crowd (GAME_DESIGN 8, the crowd and the threats): the fodder population the director keeps
+    // near the ships, by Track and cycle, scaled by section.
+    struct Crowd {
+        float target[3][8] = {};
+        u32 targetCycles[3] = {};
+        float loopStep = 20.0f, max = 400.0f;
+        float groove = 1.0f, build[2] = {1.0f, 1.3f}, drop[2] = {1.6f, 1.2f}, breakScale = 0.0f, bossDrop = 0.5f;
+        float nearWu = 1500.0f, refillBars = 2.0f;
+        u32 formationMin = 16, formationMax = 80;
+        float strayWu = 2400.0f;
+        u32 strayBars = 4;
+    } crowd;
     // Track 1 runs Short cycles (24 bars), Track 2 Standard ones (48 bars) (species.json note, GAME_DESIGN 4).
     static constexpr u32 kCycleBars[2] = {24, 48};
 
