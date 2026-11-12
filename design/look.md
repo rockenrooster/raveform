@@ -372,6 +372,37 @@ HUD layout at 2400×1080 (scale with screen height; keep a 132 px side margin cl
 
 No world object spawns under the score, phrase bar or Nova stock.
 
+### Co-op (M4)
+
+Colour is the name. Nothing a player owns is ever drawn in another player's colour.
+
+| Thing | Rule |
+|---|---|
+| Ships | Each in its own colour set (`palettes.json` `constants.players[n]`: base, deep, light), two-tone hull, halo and trail as in §4. **The local ship alone** is on the priority layer with the dark rim. Other players' ships are in the scene at 0.7 of the ship's level, with their own pool of light on the lattice at half |
+| Shots, Riffs, Nova, Dash, kill pools | The owner's colours. Other players' shots at 0.6 of the shot level and 0.8 of its width, so your own stream reads as yours at a glance |
+| Shards, Boost orbs, Trios | Only your own are drawn in play, except the Trio (screens.md): another player's ring and orbs at a third |
+| A teammate off screen | A 44 px chevron in their colour, on the dark disc like the others |
+| HUD | screens.md: the team's score, each player's own under it in their colour, ranked |
+
+**Down.** The ship shatters with the large kill recipe in its own colour. What stays is the
+**beacon**: a dashed ring of radius 90 wu in the player's colour at 1.2, the hull inside it at a third
+of its size and 0.4, turning once every two bars, and a thin vertical flare 300 px tall at 0.8 that
+swells 20% on every beat, so it can be found across the frame. Off screen, its chevron carries a small
+ring at the tip and pulses on every beat.
+
+**Revive.** While a teammate stands in the ring it fills in as a solid arc, clockwise from twelve
+o'clock, over two beats; it empties twice as fast if they leave. A thin line in the downed player's
+colour joins the reviver to the centre. When it closes: the ring flashes white at 0.9 for 0.12 s, a
+shock ring runs from 90 to 260 wu in 0.2 s, the hull snaps to full size with one cell and eight
+sparks. The revived ship cannot be hurt for one bar and blinks on the eighths. At a Break every
+beacon revives on the first beat the same way, without the fill.
+
+**All down.** Time dips to 50% for one beat, the lattice drains to 0.07, then game over.
+
+**Sound.** The beacon is its player's lead holding the Track's root an octave down with an
+eighth-note tremolo, 12 dB under the leads, panned by where it is. The fill is two rising notes,
+root then fifth, on its two beats; the octave on the close.
+
 ---
 
 ## 7. Composite and post
