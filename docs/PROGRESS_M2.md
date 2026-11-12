@@ -11,8 +11,8 @@ the **shared** Moto One 5G Ace (`ZY22BXMJG3`), taken under the phone lock, at th
 | Offline match with the prototype, Track 1, Track 2, three variants | **Met** | Table below; `captures/m2/match_table.md`, `captures/m2/eng/*.match.json` |
 | Every onset within one sample of its grid position | **Met** (0 samples, ~1250 onsets per render) | `scripts/audio_check.py onsets`; unit test for the conductor through the Build's 85% bar |
 | True peak ≤ −1 dBFS, loudness −14 ± 2 LUFS | **Met** (TP −5.2 to −6.0; −14.00) | Same |
-| Moto: callback within 25% of the burst period at P95, every layer playing | **Met, narrowly**: P95 23.7% | `captures/bench/ZY22BXMJG3-bench_idle-20261111-180352.json` |
-| Moto: zero underruns over 10 minutes | See "Device" below (10-minute run) | |
+| Moto: callback within 25% of the burst period at P95, every layer playing | **Met**: P95 22.0% over 10 minutes (23.7% in a 30 s run) | `captures/bench/ZY22BXMJG3-bench_idle-20261111-180929.json` |
+| Moto: zero underruns over 10 minutes | **Met**: 0 underruns, 133,130 callbacks, every layer playing | Same file |
 | Moto: frame numbers with the full band show no cost | **Met** (0 missed on the panel, main thread +0.09 ms) | Two bench files below |
 | Calibration screen works on desktop and Moto, flash drawn from heard time with the edited offset | **Built, screenshots taken**; "flash and click coincide" needs the user | `captures/m2/desktop_sync.png`, `captures/m2/moto_sync.png` |
 | Desktop Debug: 0 validation messages with the audio scenes; 0 heap allocations in the steady frame and in the callback | **Met** | `run-desktop.ps1 -AppArgs '--scenario bench_idle --seconds 10 --warmup 2 --band full'`: validation 0, `heap_allocs` 0, other threads 0, `callback_heap_allocs` 0 |
@@ -109,7 +109,8 @@ columns: the largest absolute difference over the six bands / the eight sections
 | Run | Panel missed | CPU-side P95 / max ms | Main thread CPU P95 | Underruns | Engine time per callback P50 / P95 / max | Load P95 (time / callback length) | Callback cores | Result file |
 |---|---|---|---|---|---|---|---|---|
 | no band (`--band off`, 15 s) | 0% | 17.78 / 19.51 | 1.69 ms | 0 | – | – | – | `ZY22BXMJG3-bench_idle-20261111-175755.json` |
-| full band (`--band full`, 30 s) | 0% | 17.93 / 20.31 | 1.78 ms | 0 | 0.90 / 1.15 / 1.29 ms (CPU time P95 1.13) | **0.237** | big cores 6 and 7 | `ZY22BXMJG3-bench_idle-20261111-180352.json` |
+| full band (`--band full`, 30 s) | 0% | 17.93 / 20.31 | 1.78 ms | 0 | 0.90 / 1.15 / 1.29 ms (CPU time P95 1.13) | 0.237 | big cores 6 and 7 | `ZY22BXMJG3-bench_idle-20261111-180352.json` |
+| full band, **10 minutes** (35,936 frames, 133,130 callbacks) | 0% | 17.90 / 21.36 | 1.78 ms | **0** | 0.90 / 1.06 / 1.34 ms (P99 1.11; CPU time P95 1.03) | **0.220** (P99 0.265) | big cores 6 and 7 | `ZY22BXMJG3-bench_idle-20261111-180929.json` |
 
 - "Every layer playing" (`--band full`): the Drop held (the whole bed: kick, clap, hat 16ths, open hat,
   drop bass, shaker, pad), every Riff at level 2 (stab, pulse every beat, shaker), four players firing
@@ -208,8 +209,8 @@ auto, Enter/Esc/Back done; touch: drag the slider, − / + (hold repeats 4/s), A
 - The pad stem is 0.7 dB below the prototype's (mostly the start phases, above): inside the match.
 - The callback load at P95 (23.7%) leaves little margin under 25%; the next step would be processing
   lead voices in pairs or four at a time (they are latency-bound per sample).
-- Bake time on the Moto not measured separately (0.66 s on the desktop); the app starts the band
-  before the device opens.
+- Start-up: the one-shots bake in 1.74 s on the Moto (0.66 s on the desktop) before the device opens.
+  TECH_SPEC 6.5 caches the baked sounds on disk; not done yet (or bake on a worker during the logo).
 - 12R and tablet not attached: no numbers.
 - Settings screen (sound variant, haptics strength, volumes) comes later; variants switch on the next bar
   line from the key, the tap and `--sound`.
