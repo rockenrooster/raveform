@@ -118,7 +118,8 @@ and a single RETRY button.
 | Nova | Start with 2, capacity 3 (up to 6 with Mods). Rule R6. Clears bullets and non-boss enemies in view; heavy damage to bosses |
 | Dash | One charge, recharges in 4 beats. 220 wu in 0.12 s, invulnerable throughout. Perfect Dash refunds half the recharge and emits a small shock ring |
 
-**Scoring.** Score = enemy value × Chain. Every enemy death drops **Shards** for each player separately
+**Scoring.** Score = enemy value × Chain. The Chain is a multiplier: it starts at ×1 and never goes
+below it. Every enemy death drops **Shards** for each player separately
 (1–5 by tier, 20 for elites, 200 for bosses); each Shard collected adds +1 to that player's Chain.
 Shards drift toward a player within 90 wu and fade after four bars. Losing a Shield cell halves the
 Chain. Nothing else decays it.

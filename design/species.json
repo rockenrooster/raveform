@@ -1,5 +1,5 @@
 {
-  "note": "Starting balance for enemy species. A species' numbers are family base x tier multiplier x variant multiplier. Baseline to balance against: one player shot deals 1 damage; the primary weapon fires 8 shots per second at 120 BPM, so an un-upgraded player deals 8 damage per second in one lane. Speeds are world units per second (the ship moves at 520); radius is the collision and visual radius in world units before the glyph's own size factor. Tune with the bot simulation; these are first guesses, not measurements.",
+  "note": "Starting balance for enemy species. A species' numbers are family base x tier multiplier x variant multiplier. Baseline to balance against: one player shot deals 1 damage; the primary weapon fires 8 shots per second at 120 BPM, so an un-upgraded player deals 8 damage per second in one lane. Speeds are world units per second (the ship moves at 520); radius is the final collision and visual radius in world units: the glyph's own size factor is already in it. Tune with the bot simulation; these are first guesses, not measurements.",
   "tierMultipliers": {
     "health": [1, 2, 4, 8, 16],
     "speed": [1.0, 1.1, 1.2, 1.3, 1.4],

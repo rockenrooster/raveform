@@ -189,7 +189,8 @@
 
  "afterglow": {
   "note": "A soft tail on hot light only. The source is the bloom level of sigma 6 refPx (one eighth resolution), less the knee on its brightest channel: source x max(m - knee, 0) / m. history = max(source, history x e^(-dt/tau)), re-aimed by the camera; the picture gains strength x max(history x e^(-dt/tau) - source, 0). Line-sharp history is never used: it prints ghost outlines.",
-  "tauMs": 110, "strength": 0.7, "sourceSigmaRefPx": 6.0, "knee": 0.25,
+  "tauMs": 110, "strength": 0.7, "sourceSigmaRefPx": 6.0, "knee": 0.9,
+  "kneeNote": "v2.3: 0.9 (was 0.25). Only flashes clear it: kill flashes, the Nova front, beams, boss breaks. Shots, hulls and Shards leave nothing.",
   "gain": "swarm", "gainNote": "v2.2: the strength is multiplied by the light budget's swarm gain (look.md sections 3 and 7)."
  },
 
