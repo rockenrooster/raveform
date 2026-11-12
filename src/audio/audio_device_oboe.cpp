@@ -2,6 +2,7 @@
 #include <oboe/Oboe.h>
 
 #include <chrono>
+#include <cstring>
 #include <ctime>
 #include <memory>
 
@@ -24,12 +25,15 @@ public:
     CallbackMeter meter;
     std::atomic<bool> disconnected{false};
     std::atomic<bool> failed{false};
+    std::atomic<bool> muted{false};  // --silent (never by default on a phone)
 
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* stream, void* data, int32_t frames) override {
         flushDenormals();
         const auto t0 = std::chrono::steady_clock::now();
         fn(user, static_cast<float*>(data), static_cast<u32>(frames), static_cast<u32>(stream->getChannelCount()),
            static_cast<u32>(stream->getSampleRate()));
+        if (muted.load(std::memory_order_relaxed))
+            std::memset(data, 0, static_cast<size_t>(frames) * static_cast<size_t>(stream->getChannelCount()) * sizeof(float));
         const auto t1 = std::chrono::steady_clock::now();
         meter.record(static_cast<u64>(std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count()),
                      static_cast<u32>(frames));
@@ -106,6 +110,11 @@ struct AudioDevice::Impl {
         stream.reset();
     }
 };
+
+void AudioDevice::setMuted(bool on) {
+    if (!impl_) impl_ = new Impl();
+    impl_->callbacks->muted.store(on, std::memory_order_relaxed);
+}
 
 bool AudioDevice::open(AudioRenderFn fn, void* user) {
     if (!impl_) impl_ = new Impl();

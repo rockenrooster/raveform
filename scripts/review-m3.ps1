@@ -11,7 +11,8 @@ param(
     [ValidateSet('debug', 'dev')][string]$Config = 'debug',
     [switch]$SkipStrips,
     [switch]$SkipFrames,
-    [string[]]$Only = @()  # strips to re-render (default: all)
+    [string[]]$Only = @(),  # strips to re-render (default: all)
+    [switch]$Sound          # let the app be heard (default: --silent, the PC's runs are silent)
 )
 . "$PSScriptRoot\env.ps1"
 New-Item -ItemType Directory -Force $Out | Out-Null
@@ -21,7 +22,7 @@ if (-not (Test-Path $exe)) { throw "missing $exe - build first" }
 function Invoke-Shot([string]$Png, [string]$AppArgs, [int]$Frames = 0) {
     $log = [IO.Path]::ChangeExtension($Png, '.log')
     $full = [IO.Path]::GetFullPath($Png)
-    $argv = @($AppArgs -split '\s+' | Where-Object { $_ }) + @('--res', '2400x1080', '--no-overlay', '--screenshot', $full)
+    $argv = @($AppArgs -split '\s+' | Where-Object { $_ }) + @('--res', '2400x1080', '--no-overlay', '--screenshot', $full) + @(if ($Sound) { @() } else { @('--silent') })
     if ($Frames -gt 0) { $argv += @('--frames', "$Frames") }
     & $exe @argv *> $log
     if ($LASTEXITCODE -ne 0) { throw "run failed ($LASTEXITCODE) for $Png; see $log" }

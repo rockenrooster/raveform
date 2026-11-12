@@ -344,6 +344,12 @@ void Engine::applyCommand(const Command& c) {
                 phraseBars_ = c.c ? c.c : 1u;
             }
             break;
+        case CmdType::SetRate:
+            rateScale_ = c.x < 0.99f ? 0.99 : (c.x > 1.01f ? 1.01 : static_cast<double>(c.x));
+            break;
+        case CmdType::HoldBar:
+            holdFrames_ = c.x > 0.0f ? static_cast<double>(c.x < 4.0f ? c.x : 4.0f) * sr_ : 0.0;
+            break;
         case CmdType::SetBoss:
             bossNext_.mask = static_cast<u8>(c.a & 7u);
             bossNext_.sixteenths = (c.a & 16u) != 0;
@@ -838,6 +844,17 @@ void Engine::onTick(i64 tick) {
 }
 
 void Engine::planBar(i64 barTick) {
+    if (holdFrames_ > 0.0) {
+        // M4 re-seek (TECH_SPEC 8.2): the song holds on this bar line, then goes on from it (what rings, rings out).
+        const double f = tempo_.frameAt(static_cast<double>(barTick));
+        const double tpf = tempo_.last().ticksPerFrame;
+        tempo_.appendSegment({f, static_cast<double>(barTick), 0.0});
+        tempo_.appendSegment({f + holdFrames_, static_cast<double>(barTick), tpf});
+        emit(BeatKind::Tempo, static_cast<i64>(f), static_cast<double>(barTick), 1, 0, 0, 0.0f, 0, 0.0);
+        emit(BeatKind::Tempo, static_cast<i64>(f + holdFrames_), static_cast<double>(barTick), 1, 0, 0,
+             static_cast<float>(tpf * 60.0 * sr_ / static_cast<double>(kPpq)), 0, tpf);
+        holdFrames_ = 0.0;
+    }
     BarPlan& p = *plan_;
     p = BarPlan{};
     p.tick = barTick;
@@ -1084,6 +1101,7 @@ void Engine::planConductorBar(i64 barTick) {
                              static_cast<double>(sectionBars_ > 1 ? sectionBars_ - 1 : 1);
             want = rampFrom_ + (rampTo_ - rampFrom_) * u;
         }
+        want *= rateScale_;  // M4: a co-op client's rate correction (1 otherwise)
         if (std::fabs(want - cur) > 1e-15) {
             tempo_.changeAt(static_cast<double>(barTick), want);
             const TempoSegment& sgm = tempo_.last();

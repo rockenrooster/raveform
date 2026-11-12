@@ -28,7 +28,9 @@ public:
     void reset(double bpm, double sampleRate, double frame = 0.0, double tick = 0.0);
     // A new tempo from `tick` on (not before the newest segment's start).
     void changeAt(double tick, double ticksPerFrame);
-    void appendSegment(const TempoSegment& s);  // mirrors: the segment as published
+    // Mirrors: the segment as published. A segment on the last one's tick but at a later frame follows it (M4: the
+    // song held on that tick in between, a tempo of 0); otherwise one on or before the last's tick replaces it.
+    void appendSegment(const TempoSegment& s);
 
     double tickAt(double frame) const;
     double frameAt(double tick) const;  // exact (fractional) frame of a tick

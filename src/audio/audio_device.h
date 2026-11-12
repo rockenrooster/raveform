@@ -97,6 +97,10 @@ public:
     // Frames queued between the callback and the speaker as the backend sees them (buffer size); the
     // fallback latency estimate when no timestamp is available.
     u32 bufferedFrames() const;
+    // The master mute at the very end of the output path (--silent; the PC's runs are silent): everything renders
+    // and is measured as usual (the band, its limiter, the callback's timing), then the buffer handed to the device
+    // is zeroed. Any thread.
+    void setMuted(bool on);
 
 private:
     struct Impl;

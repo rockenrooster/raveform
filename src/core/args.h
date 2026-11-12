@@ -76,6 +76,19 @@ struct AppArgs {
     char picture[32] = {};     // --picture <name>: a scripted review scene (fire, kill_small, ..., sentry)
     bool paletteSet = false;   // --palette given (else the game uses its Track's palette)
     // M3 end
+    // M4 begin: co-op from the command line (stage A: no lobby screens)
+    u8 net = 0;                // 0 solo, 1 --host, 2 --join <ip>
+    char joinIp[48] = {};      // --join <ip>: the host's address
+    char bindIp[48] = {};      // --bind <ip>: the local address (host: listen on it; "" every address)
+    u32 port = 47778;          // --port N (TECH_SPEC 8.3: 47778)
+    u32 players = 2;           // --players N: the host's seats (itself included), 2-4
+    char netsim[96] = {};      // --netsim loss=..,jitter=..,delay=..,dup=..,reorder=.. (testing)
+    u32 loopbackBots = 0;      // --loopback-bots N: N bot clients in this process on the loopback network (host)
+    bool netOverlay = false;   // --net-overlay: open on the overlay's network page
+    u32 netCaptureBar = 0;     // --net-capture-bar B: with --screenshot, the picture as the run reaches bar B, then quit
+                               // (every peer at the same musical moment)
+    i32 netViewSeat = -1;      // --net-view-seat N: the camera on seat N's ship (pictures of one place on every peer)
+    // M4 end
     // M2 audio begin
     AudioArgs audio;           // --band, --track, --sound, ... (audio/audio_args.h)
     // M2 audio end

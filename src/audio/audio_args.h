@@ -6,6 +6,9 @@
 //                                           load tests (src/audio/band.cpp)
 //   --no-audio                              no band in any scenario (the device keeps M0's silent stream,
 //                                           as the M1 numbers were measured): for comparison
+//   --silent                                everything plays and is measured as usual, the output is zeroed at
+//                                           the device (after the limiter): the PC's runs (run-desktop.ps1 adds
+//                                           it unless -Sound)
 //   --track 1|2|3|track01|...               the Track (default 1; bench_*: the palette's Track, Reef = 3)
 //   --sound club|arcade|velvet              the sound variant (default club, variants.json "reference")
 //   --intensity X                           director intensity 0..1 (play)
@@ -21,6 +24,7 @@ namespace rf {
 struct AudioArgs {
     char band[12] = {};
     bool noAudio = false;
+    bool silent = false;
     char track[12] = {};
     char sound[12] = {};
     float intensity = -1.0f;

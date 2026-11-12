@@ -2,6 +2,7 @@
 #include <SDL3/SDL_audio.h>
 
 #include <chrono>
+#include <cstring>
 
 #include "audio/audio_device.h"
 #include "core/log.h"
@@ -22,6 +23,7 @@ struct AudioDevice::Impl {
     int deviceFrames = 0;
     std::atomic<u32> generation{0};
     std::atomic<u32> queuedFrames{0};  // what the stream still held when the device asked for more
+    std::atomic<bool> muted{false};    // --silent: zeroed after rendering, before the device
     float scratch[kChunkFrames * 2] = {};
 
     static void SDLCALL callback(void* userdata, SDL_AudioStream* s, int additional, int) {
@@ -37,6 +39,7 @@ struct AudioDevice::Impl {
         while (framesLeft > 0) {
             const u32 n = framesLeft < kChunkFrames ? framesLeft : kChunkFrames;
             self->fn(self->user, self->scratch, n, channels, static_cast<u32>(self->spec.freq));
+            if (self->muted.load(std::memory_order_relaxed)) std::memset(self->scratch, 0, n * channels * sizeof(float));
             SDL_PutAudioStreamData(s, self->scratch, static_cast<int>(n * channels * sizeof(float)));
             framesLeft -= n;
         }
@@ -45,6 +48,11 @@ struct AudioDevice::Impl {
                            total);
     }
 };
+
+void AudioDevice::setMuted(bool on) {
+    if (!impl_) impl_ = new Impl();
+    impl_->muted.store(on, std::memory_order_relaxed);
+}
 
 bool AudioDevice::open(AudioRenderFn fn, void* user) {
     if (!impl_) impl_ = new Impl();

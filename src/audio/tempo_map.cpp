@@ -20,7 +20,7 @@ void TempoMap::changeAt(double tick, double ticksPerFrame) {
 }
 
 void TempoMap::appendSegment(const TempoSegment& s) {
-    if (count_ && s.tick <= last().tick) {
+    if (count_ && s.tick <= last().tick && s.frame <= last().frame) {
         seg_[(head_ + count_ - 1) % kCapacity] = s;  // the same start: the newer tempo wins
         return;
     }

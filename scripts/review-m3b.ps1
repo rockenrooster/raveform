@@ -17,7 +17,8 @@
 param(
     [string]$Out = 'captures\m3b',
     [ValidateSet('debug', 'dev')][string]$Config = 'debug',
-    [string[]]$Only = @()
+    [string[]]$Only = @(),
+    [switch]$Sound  # let the app be heard (default: --silent, the PC's runs are silent)
 )
 . "$PSScriptRoot\env.ps1"
 New-Item -ItemType Directory -Force $Out | Out-Null
@@ -27,7 +28,7 @@ if (-not (Test-Path $exe)) { throw "missing $exe - build first" }
 function Invoke-Shot([string]$Png, [string]$AppArgs) {
     $log = [IO.Path]::ChangeExtension($Png, '.log')
     $full = [IO.Path]::GetFullPath($Png)
-    $argv = @($AppArgs -split '\s+' | Where-Object { $_ }) + @('--res', '2400x1080', '--no-overlay', '--screenshot', $full)
+    $argv = @($AppArgs -split '\s+' | Where-Object { $_ }) + @('--res', '2400x1080', '--no-overlay', '--screenshot', $full) + @(if ($Sound) { @() } else { @('--silent') })
     & $exe @argv *> $log
     if ($LASTEXITCODE -ne 0) { throw "run failed ($LASTEXITCODE) for $Png; see $log" }
     $v = Select-String -Path $log -Pattern 'validation messages: (\d+)' | Select-Object -Last 1

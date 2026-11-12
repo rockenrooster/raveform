@@ -293,7 +293,10 @@ void Band::drainEvents() {
             s.tick = e.tick;
             s.ticksPerFrame = e.x;
             s.frame = static_cast<double>(e.frame);
-            if (e.tick == 0.0) {
+            if (e.a == 1) {
+                // M4: a hold on a bar line (a re-seek): two segments at explicit frames.
+                (haveNextTempo_ ? nextTempo_ : tempo_).appendSegment(s);
+            } else if (e.tick == 0.0) {
                 nextTempo_ = TempoMap{};
                 nextTempo_.appendSegment(s);
                 nextSongStartFrame_ = s.frame;
@@ -615,6 +618,10 @@ void Band::setHold(bool hold) {
     hold_ = hold;
     post({.type = CmdType::HoldSection, .a = static_cast<u8>(hold ? 1 : 0)});
 }
+
+void Band::setRate(float scale) { post({.type = CmdType::SetRate, .x = scale}); }
+
+void Band::holdNextBar(float seconds) { post({.type = CmdType::HoldBar, .x = seconds}); }
 
 void Band::nextVariant() { setVariant((variant_ + 1) % (music_ ? music_->variantCount : 1)); }
 

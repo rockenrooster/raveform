@@ -22,12 +22,17 @@
 #include "game/tiers.h"
 #include "gfx/renderer.h"
 #include "gfx/vector_font.h"
+#include "net/session.h"
 #include "sim/bot.h"
 #include "sim/player_controller.h"
 #include "sim/species.h"
 #include "sim/world.h"
 
 namespace rf {
+
+namespace net {
+class LoopbackBots;
+}
 
 struct PlayOptions {
     enum class Kind : u8 { Play, BenchPlay, Stress };
@@ -41,6 +46,15 @@ struct PlayOptions {
     float pxPerMm = 0.0f;       // touch control sizes (0: scale with the screen height)
     bool autoplay = false;      // --autoplay: the screens as in play, the bot playing each run (taps start and retry)
     float recklessAfter = 0.0f; // --reckless-after S
+    // M4 stage A: co-op from the command line (no lobby screens; game/play_net.cpp).
+    u8 net = 0;                 // 0 solo, 1 host (--host), 2 client (--join <ip>)
+    char joinIp[48] = {};
+    char bindIp[48] = {};
+    u16 port = 47778;
+    u32 players = 2;            // the host's seats, itself included
+    net::NetSim netsim;         // --netsim (testing)
+    u32 loopbackBots = 0;       // --loopback-bots N: N bot clients in this process (host; the phone's co-op benchmark)
+    i32 netViewSeat = -1;       // --net-view-seat N (pictures): the camera on seat N's ship
 };
 
 class Play {
@@ -101,6 +115,17 @@ public:
     const ViewStats& viewStats() const { return view_.stats(); }
     const sim::World& world() const { return *world_; }
 
+    // M4 co-op (game/play_net.cpp).
+    bool coop() const { return session_ != nullptr; }
+    double runMusic() const { return music1_; }  // the run's musical position at the newest tick
+    const net::Session* session() const { return session_; }
+    u32 seat() const { return seat_; }
+    // The overlay's network page: up to `max` lines of `cap` characters.
+    u32 netOverlayLines(char (*lines)[96], u32 max) const;
+    // The in-process bot clients' worker frame time (the phone's co-op benchmark).
+    bool botTimes(float& p50, float& p95, float& max, u32& dropped) const;
+    void resetBotTimes();
+
     // Picture runs: true on the frames to capture; index() names them (0..strip-1); done() quits.
     bool captureNow() const { return captureNow_; }
     u32 captureIndex() const { return captureIndex_; }
@@ -160,6 +185,25 @@ private:
     void scriptInput(sim::StickInput& in);
     void scriptEvents();
     void pictureFrame();
+    // play_net.cpp (M4): co-op.
+    bool netInit();
+    void netFrame(float realDt);
+    void netTick(double m1, float bpm, bool firstOfFrame);
+    void netBandServo();
+    static float netTempoOf(void* self, double barTick);
+    net::Session* session_ = nullptr;
+    net::LoopbackBots* bots_ = nullptr;
+    net::SongClock netSongClock_;  // the host's song without a band
+    u32 seat_ = 0;
+    bool netSongStarted_ = false, netRunStarted_ = false;
+    i64 netSimHostUs_ = 0;      // host time at the end of the newest tick
+    double netHeard_ = 0.0;     // the run's music at this frame's host time (what the player hears, by the model)
+    double netBandOffset_ = 0.0;  // band song ticks minus run ticks (whole bars; conductBand)
+    float netRatePosted_ = 1.0f;
+    double netHoldUntil_ = -1.0;  // band ticks: a re-seek is under way until the band's song passes this
+    float netBandErrMs_ = 0.0f;   // the band's heard song against the model's (client)
+    u32 netSeeks_ = 0;
+    u32 netDropped_ = 0;
     // play_pictures.cpp (M3 stage B): true when the picture is one of stage B's.
     bool scriptSetupB();
     bool scriptInputB(sim::StickInput& in);

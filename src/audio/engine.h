@@ -87,6 +87,9 @@ enum class CmdType : u8 {
     SetBoss,       // M3, the boss's bar from the next bar line: a = pairs firing (bits 0-2) | 16 on sixteenths, b = beats
                    // that fire (bits 0-3), c = 1 gong on beat 1, 2 beam riser over the bar, 4 beam stab on beat 1, 8 on
     SetMuffle,     // M3 stage C (screens.md pause): the music bus's low-pass, x = cutoff in Hz (0: open), y = ramp in s
+    SetRate,       // M4 (TECH_SPEC 8.2): the song's tempo times x (a co-op client's gentle rate correction), from the next
+                   // bar line; the engine takes 0.99..1.01
+    HoldBar,       // M4 (TECH_SPEC 8.2 re-seek): the next bar line waits x seconds (the song holds there, then goes on)
 };
 
 struct Command {
@@ -227,6 +230,8 @@ private:
     TempoMap tempo_;
     i64 nextTick_ = 0;       // next grid candidate (2-tick resolution)
     double nominalTpf_ = 0.0;
+    double rateScale_ = 1.0;  // M4: a co-op client's rate correction (SetRate), taken on bar lines
+    double holdFrames_ = 0.0; // M4: the next bar line waits this long (HoldBar)
 
     // Musical state.
     Mode mode_ = Mode::Silent;

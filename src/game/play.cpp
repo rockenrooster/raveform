@@ -12,6 +12,7 @@
 #include "audio/music_data.h"
 #include "core/log.h"
 #include "core/time.h"
+#include "net/bots.h"
 #include "sim/tuning.h"
 
 namespace rf {
@@ -39,6 +40,8 @@ Vec2 deadZone(Vec2 v, float dz) {
 }  // namespace
 
 Play::~Play() {
+    delete bots_;     // M4: the bot clients' worker first (their worlds read the species table)
+    delete session_;
     delete world_;
     delete species_;
 }
@@ -86,8 +89,9 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
     for (u8 b = 0; b < kBoostCount; ++b) boostIcons_[b] = icons_.find(boostInfo(b).icon);
     view_.setIcons(&icons_, upgradeIcons_, boostIcons_);
     view_.setFont(&font);
-    // The screens around the run: interactive play only (benchmarks, pictures and --bot are the run alone).
-    flow_ = opt.kind == PlayOptions::Kind::Play && (!opt.bot || opt.autoplay) && !picture && !opt.fixedStep;
+    // The screens around the run: interactive play only (benchmarks, pictures and --bot are the run alone; M4
+    // stage A: co-op has no screens either).
+    flow_ = opt.kind == PlayOptions::Kind::Play && (!opt.bot || opt.autoplay) && !picture && !opt.fixedStep && !opt.net;
     if (flow_) {
         loadSettings(settings_);
         loadHighScores(scores_);
@@ -99,8 +103,10 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
     if (picture) scriptSetup();
     if (bandDrives_) band->setIntensity(tuning::kIntensityFloor);
 
+    // M4: co-op (the session takes the world over; the host starts the run once every seat is in).
+    if (opt.net && !picture && opt.kind != PlayOptions::Kind::Stress && !netInit()) return false;
     // --fast-forward: the game runs on the simulated clock without drawing (pictures at 2 and 5 minutes).
-    const float fastForward = std::fmax(opt.fastForwardS, scriptFastForwardS_);
+    const float fastForward = coop() ? 0.0f : std::fmax(opt.fastForwardS, scriptFastForwardS_);
     if (fastForward > 0.0f) {
         const u32 ticks = static_cast<u32>(fastForward * 60.0f);
         const bool drives = bandDrives_;
@@ -151,7 +157,7 @@ void Play::buildInput(StickInput& in) {
     }
     if (opt_.bot || opt_.autoplay || attract()) {
         // The bot plays (--bot, benchmarks, and the title's attract run).
-        in = bot_.think(*world_, 0, controller_, clock_.heardNow());
+        in = bot_.think(*world_, seat_, controller_, coop() ? netHeard_ : clock_.heardNow());
         return;
     }
     in.assist = settings_.autoAim || !flow_;
@@ -178,6 +184,10 @@ void Play::buildInput(StickInput& in) {
 
 void Play::frame(float realDt) {
     ++frameNo_;
+    if (coop()) {
+        netFrame(realDt);  // M4: the run on the host's song (game/play_net.cpp)
+        return;
+    }
     const bool fixed = opt_.fixedStep;
     frameDt_ = fixed ? kDt : (realDt > 0.1f ? 0.1f : realDt);
     const BeatView* bv = (bandDrives_ && band_) ? &band_->view() : nullptr;
@@ -349,7 +359,7 @@ void Play::afterTick() {
                 }
                 break;
             case EventType::Restart:
-                controller_.reset(w.player(0).pos);
+                controller_.reset(w.player(seat_).pos);
                 touch_.reset();
                 // A new run: its record starts (the set list's first Track).
                 runSeconds_ = 0.0f;
@@ -386,7 +396,7 @@ void Play::afterTick() {
             case EventType::WarpStart:
                 // One swell per landing beat, ending as the enemies become solid.
                 if (bandDrives_ && e.tick != lastWarpTick_) {
-                    const float pan = clampf((e.x - w.player(0).pos.x) / 800.0f, -1.0f, 1.0f) * 0.6f;
+                    const float pan = clampf((e.x - w.player(seat_).pos.x) / 800.0f, -1.0f, 1.0f) * 0.6f;
                     band_->warp(e.tick, pan);
                     lastWarpTick_ = e.tick;
                 }
@@ -423,6 +433,9 @@ void Play::afterTick() {
                 break;
             case EventType::HaloBlock:
                 if (bandDrives_) band_->playSfx(audio::Sfx::Shield);
+                break;
+            case EventType::Revive:
+                if (e.a == seat_) controller_.reset(w.player(seat_).pos);  // M4: back where the beacon was
                 break;
             case EventType::BossEnter:
                 RF_LOG("play: Kaleidos enters (Track %u, bar %u)", w.phrase().track, w.phrase().bar);
@@ -479,7 +492,7 @@ void Play::conductBand() {
     // and bar in it), a Track change, the boss's bar. The engine applies each on that bar line.
     if (!bandDrives_ || !clock_.fromBand()) return;
     const World& w = *world_;
-    const PlayerState& pl = w.player(0);
+    const PlayerState& pl = w.player(seat_);
     // The local player's upgrades: the lead's harmony, grid and drive, the Riffs' layers.
     {
         const Loadout& l = pl.loadout;
@@ -495,7 +508,7 @@ void Play::conductBand() {
         }
     }
     const double heard = band_->view().heardTick;  // the band's own (absolute) song ticks
-    const double offset = clock_.offset();          // the run's ticks = the band's - offset (whole bars)
+    const double offset = coop() ? netBandOffset_ : clock_.offset();  // the run's ticks = the band's - offset (whole bars)
     const double line = std::floor(heard / kTicksPerBar) * kTicksPerBar;
     if (heard - line < kPlanAtBar * kTicksPerBar) return;
     const double nextLine = line + kTicksPerBar;
@@ -516,8 +529,9 @@ void Play::conductBand() {
         overHeld_ = false;
         return;
     }
-    if (!pl.alive) {
-        // The run is over: the band holds a Break under the game-over screen until the next run.
+    if (!pl.alive && !coop()) {
+        // The run is over: the band holds a Break under the game-over screen until the next run (co-op: the run goes
+        // on while anyone stands; the host starts the next one).
         if (!overHeld_) {
             band_->setPhrase(audio::Section::Break, 0, kSectionBars[0][3]);
             band_->setHold(true);
@@ -585,7 +599,8 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     vi.time = tickEnd_ - (1.0 - static_cast<double>(alpha_)) * kDt;
     vi.dt = frameDt_;
     vi.music = musicPrev_ + (music1_ - musicPrev_) * static_cast<double>(alpha_);
-    vi.bpm = clock_.bpm();
+    const float bpmNow = coop() && session_->songValid() ? static_cast<float>(session_->tpsAt(session_->hostNow()) * 60.0 / 96.0) : clock_.bpm();
+    vi.bpm = bpmNow > 1.0f ? bpmNow : 120.0f;
     vi.beat = (bandDrives_ && band_ && clock_.fromBand()) ? &band_->view() : nullptr;
     const PlayerPose& pose = controller_.pose();
     vi.shipPos = pose.pos;
@@ -593,17 +608,29 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     vi.shipAim = pose.aim;
     vi.shipHeading = pose.heading;
     vi.shipFiring = pose.fire != 0;
+    if (coop() && opt_.netViewSeat >= 0 && opt_.netViewSeat < static_cast<i32>(kMaxPlayers) && w.player(static_cast<u32>(opt_.netViewSeat)).present) {
+        // M4 pictures: every peer's camera on one ship, so their views of one moment show the same place.
+        const PlayerState& o = w.player(static_cast<u32>(opt_.netViewSeat));
+        vi.camFixed = true;
+        vi.camPos = o.prevPos + (o.pos - o.prevPos) * alpha_;
+    }
     updatePalette(vi.music);
     view_.render(d, params, bg, W, H, vi);
 
     HudState hs;
-    const PlayerState& p = w.player(0);
+    const PlayerState& p = w.player(seat_);
     hs.score = p.score;
+    if (coop()) {
+        // GAME_DESIGN 10: the team's score is the sum of the players' (each keeps its own Chain).
+        hs.score = 0;
+        for (u32 q = 0; q < kMaxPlayers; ++q)
+            if (w.player(q).present) hs.score += w.player(q).score;
+    }
     hs.chain = p.chain;
     hs.chainPulse = view_.chainPulse(vi.time);
     hs.novas = p.novas;
     hs.novaCap = p.novaCap;
-    hs.dashCharge = controller_.dashCharge(clock_.heardNow());
+    hs.dashCharge = controller_.dashCharge(coop() ? netHeard_ : clock_.heardNow());
     hs.alive = p.alive;
     hs.retryPending = w.restartPending();
     hs.kick = view_.kick();
@@ -616,7 +643,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     hs.upgradeIcons = upgradeIcons_;
     hs.boostIcons = boostIcons_;
     hs.trackName = songName(w.phrase().song);
-    hs.bpm = clock_.bpm();
+    hs.bpm = vi.bpm;
     hs.runHud = runHud;
     hs.pausePressed = pausePressed_ || screen_ == Screen::Paused;
     const float now = static_cast<float>(vi.time);
@@ -805,7 +832,12 @@ void Play::uiPointer(Vec2 pos, bool down) {
 }
 
 bool Play::key(int k, bool down) {
-    const bool dead = !world_->player(0).alive;
+    const bool dead = !world_->player(seat_).alive;
+    if (coop() && k == SDLK_P) {
+        // M4: any player may pause; it holds for everyone on the next beat (GAME_DESIGN 10). P again resumes.
+        if (down) session_->requestPause(!session_->paused() && !session_->resuming());
+        return true;
+    }
     if (flow_) {
         // The screens: Enter / Space is the obvious control, Escape (Back) goes back or pauses.
         const bool primary = k == SDLK_RETURN || k == SDLK_KP_ENTER;
@@ -865,7 +897,7 @@ void Play::mouseButton(int button, bool down, Vec2 pos) {
     }
     if (button == SDL_BUTTON_LEFT) mouseFire_ = down;
     if (button == SDL_BUTTON_RIGHT) mouseNova_ = down;
-    if (!flow_ && down && !world_->player(0).alive) retryRequest_ = true;
+    if (!flow_ && down && !world_->player(seat_).alive) retryRequest_ = true;
 }
 
 void Play::mouseMove(Vec2 pos) {
@@ -892,7 +924,7 @@ void Play::touchDown(u64 id, Vec2 pos) {
             return;
         }
     }
-    if (!world_->player(0).alive) {
+    if (!world_->player(seat_).alive) {
         if (!flow_) retryRequest_ = true;  // "tap to retry" (benchmarks, --bot)
         return;
     }
@@ -929,7 +961,7 @@ void Play::padButton(int button, bool down) {
         case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: padDash_ = down; break;   // LB / L1
         case SDL_GAMEPAD_BUTTON_SOUTH:
         case SDL_GAMEPAD_BUTTON_START:
-            if (down && !world_->player(0).alive) retryRequest_ = true;
+            if (down && !world_->player(seat_).alive) retryRequest_ = true;
             break;
         default: break;
     }

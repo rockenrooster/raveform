@@ -81,19 +81,19 @@ void PlayView::sectionLook(const ViewInput& in) {
         sectionZoom_ += (zoom - sectionZoom_) * k;
     }
     // The Trio: the fight steps back (screens.md): the lattice rests, enemies at a fifth of their light.
-    const bool trio = w.trio(0).open;
+    const bool trio = w.trio(w.viewPlayer()).open;
     trioRest_ += ((trio ? 1.0f : 0.0f) - trioRest_) * (1.0f - std::exp(-in.dt / 0.2f));
     enemyLight_ = 1.0f - 0.8f * trioRest_;
 }
 
 void PlayView::eventB(const World& w, const Event& e, float t) {
-    const Vec3 player = palettes_->player[0], light = palettes_->playerLight[0];
+    const Vec3 player = palettes_->player[w.viewPlayer()], light = palettes_->playerLight[w.viewPlayer()];
     const Vec2 at{e.x, e.y};
     switch (e.type) {
         case EventType::Section:
             if (e.a == static_cast<u8>(Section::Drop)) {
                 // GAME_DESIGN 4.1: bloom burst, a shockwave from every player, the zoom snaps out.
-                const Vec2 p = w.player(0).pos;
+                const Vec2 p = w.player(w.viewPlayer()).pos;
                 addShockRings(p, 2, 900.0f, player, light, t, 0.45f);
                 if (!reduceFlashing_) novaPump_ = std::fmax(novaPump_, 0.5f);
                 lattice_.impulse(p, 600.0f, 400.0f);
@@ -219,10 +219,10 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
     const float t = static_cast<float>(in.time);
     const float a = in.alpha;
     const Vec3 W1 = whiteV();
-    const Vec3 player = palettes_->player[0], light = palettes_->playerLight[0], deep = palettes_->playerDeep[0];
+    const Vec3 player = palettes_->player[w.viewPlayer()], light = palettes_->playerLight[w.viewPlayer()], deep = palettes_->playerDeep[w.viewPlayer()];
     const Vec3 gold = palettes_->player[3];
     const Vec3 accent = palette_->accent;
-    const PlayerState& me = w.player(0);
+    const PlayerState& me = w.player(w.viewPlayer());
     const float swell = 1.0f + 0.06f * kick_;  // screens.md: orbs swell 6% on the beat
     (void)W;
     (void)H;
@@ -302,7 +302,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
     drawBoss(d, in);
 
     // ---- The Trio (screens.md): the ring is the clock; three orbs with icon, name, effect words, pips.
-    const TrioState& tr = w.trio(0);
+    const TrioState& tr = w.trio(w.viewPlayer());
     if (tr.open && me.alive && icons_ && font_) {
         const float span = static_cast<float>(tr.closeTick - tr.openTick);
         const float left = span > 1.0f ? clamp01(static_cast<float>((tr.closeTick - in.music) / span)) : 0.0f;

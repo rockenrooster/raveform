@@ -34,6 +34,9 @@ struct ViewInput {
     Vec2 shipPos, shipVel, shipAim{1.0f, 0.0f};
     float shipHeading = 0.0f;
     bool shipFiring = false;
+    // M4 pictures (--net-view-seat): the camera on this point (no look-ahead) instead of the local ship.
+    bool camFixed = false;
+    Vec2 camPos;
 };
 
 struct ViewStats {

@@ -9,9 +9,9 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 
 | Task | Command |
 |---|---|
-| Fetch pinned SDL / volk / Vulkan headers (no-op when present) | `scripts\fetch-deps.ps1` |
+| Fetch pinned SDL / volk / Vulkan headers / ENet 1.3.18 (no-op when present; tag and commit checked) | `scripts\fetch-deps.ps1` |
 | Build desktop (`debug` = Debug + validation, `dev` = RelWithDebInfo) | `scripts\build-desktop.ps1 [-Config debug\|dev] [-Clean]` |
-| Build and run desktop | `scripts\run-desktop.ps1 [-Config dev] [-NoBuild] [-AppArgs '<app args>']` |
+| Build and run desktop (silent unless `-Sound`: the app gets `--silent`) | `scripts\run-desktop.ps1 [-Config dev] [-NoBuild] [-AppArgs '<app args>'] [-Sound]` |
 | Desktop screenshot (+ review copy ≤ 1600 px) | `scripts\run-desktop.ps1 -Screenshot captures\x.png -Res 2400x1080 -Small` |
 | Desktop 60 s validation + timing run | `scripts\run-desktop.ps1 -AppArgs '--scenario bench_idle --seconds 60'` |
 | Desktop lifecycle test (surface release/restore + resizes) | `scripts\run-desktop.ps1 -AppArgs '--scenario lifecycle_test --cycles 20'` |
@@ -28,7 +28,7 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | GPU cost at the top clock | `scripts\bench-android.ps1 -Serial moto -Scenario bench_endgame -Seconds 15 -Warmup 4 -AppArgs '--tier low --gpu-burn 40' -Deploy` |
 | The M1 review set (stills + compare, glyph sheets, frame-600 pictures, both strips, `scenes.py light` lines) | `scripts\review-m1.ps1 [-Out captures\m1]` (writes `captures\m1\` unless `-Out`) |
 | Where a frame's light comes from (one class off at a time) | `scripts\light-breakdown.ps1 [-Frame 600] [-Out captures\light]` |
-| Unit tests (audio suite: queues, tempo map, sequencer timing, lead rule, variants, music data, no allocation; loudness calibration check; M3 sim suite: grid, pools and handles, Chain and score, lead rule, Nova, species, no allocation; the determinism test) | `scripts\test.ps1` (exit 0 = all passed) |
+| Unit tests (audio suite: queues, tempo map, sequencer timing, lead rule, variants, music data, no allocation; loudness calibration check; M3 sim suite: grid, pools and handles, Chain and score, lead rule, Nova, species, no allocation; the determinism test; M4 net suite: message round trips, the packet parsing fuzz, the wire and its condition simulator, clock and song sync, a loopback session; the 10-minute loopback soak clean and with 5% loss + 80 ms jitter and a pause) | `scripts\test.ps1` (exit 0 = all passed) |
 | Audio match against the prototype: every Track × variant, match table, onset check, listening files | `scripts\render-audio.ps1 [-SkipRef] [-Only track03_club] [-NoListening]` (writes `captures\m2\`, `match_table.md`) |
 | Prototype references (musicproto.py as a library; writes nothing under `design/`) | `python -I -B scripts\audio_ref.py captures\m2\ref [track03 [club]]` |
 | Loudness calibration (after any music data or DSP change; `test.ps1` fails while it is stale) | `scripts\calibrate-audio.ps1 [-Check]`, then rebuild |
@@ -47,6 +47,11 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | The densest part of the game, measured (Moto) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Warmup 5 -Seconds 120 -AppArgs '--fast-forward 640 --nohits' -Deploy` (Track 3, cycle 2) |
 | Bot, 30 simulated minutes with a minute table | `build\desktop-dev\raveform_headless.exe --sim soak --minutes 30 [--seed N] [--policy reckless]` |
 | The real game at minute 10, measured (Moto) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Warmup 600 -Seconds 120 -Deploy` |
+| M4 co-op soak: host + 3 bots on the in-process loopback network, simulated time (TECH_SPEC 8.4 numbers; exit 0 = pass, one `RFNET` JSON line) | `build\desktop-dev\raveform_headless.exe --net soak [--minutes 10] [--players 4] [--seed N] [--netsim loss=0.05,jitter=80[,delay=D,dup=P,reorder=P]] [--pause]` |
+| M4 co-op peers without a screen over real UDP (one process each; each prints an `RFNET` line) | `raveform_headless.exe --net host [--players 4] [--bind 127.0.0.1] [--port 47778] [--minutes 15] [--netsim ...]`, then per client `raveform_headless.exe --net join <ip> [--bind <ip>] [--same-clock --clock-offset-ms X --clock-ppm P] [--seed N] [--minutes 15]` (`--same-clock`: one PC, so the true song offset is measured) |
+| M4 co-op in the game (desktop; no lobby screens) | `scripts\run-desktop.ps1 -AppArgs '--host --players 2 [--bot] [--net-overlay]'` and `-AppArgs '--join <ip> [--bot]'`; bots in the host's process: `'--host --loopback-bots 3 --bot'` |
+| M4 co-op benchmark (Moto hosting three in-process bot clients) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Warmup 600 -Seconds 120 -AppArgs '--host --loopback-bots 3' -Deploy` (the result's `net` object: the session, the bots' worker frame time) |
+| M4 two peers' views of one moment (desktop, two windows) | `run-desktop.ps1 -NoBuild -Res 2400x1080 -Screenshot captures\m4\host.png -AppArgs '--host --players 2 --bot --net-capture-bar 40 --net-overlay'` and the same with `'--join 127.0.0.1 --bot ...'` (`-Screenshot captures\m4\client.png`) |
 
 Desktop exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 benchmark aborted,
 5 screenshot failed. Device serials: Moto `ZY22BXMJG3`, OnePlus 12R `a0e622a5`, Galaxy Tab `R5GL362BEHX`.
@@ -72,7 +77,12 @@ so they show their cost at the GPU's top clock),
 `--res WxH` (desktop window), `--validation` / `--no-validation`, `--tone` (hold the test tone),
 `--no-swappy` (plain FIFO), `--fps HZ` (Android target refresh; default = panel maximum), `--no-overlay`,
 `--affinity big|all` (Android: pin the main thread and the threads it starts to the non-little cores, or
-leave placement to the scheduler), `--cycles N`. Keys: F1 overlay, F12 screenshot, T tone hold, L next look, P next
+leave placement to the scheduler), `--cycles N`; M4 co-op (stage A, no lobby screens): `--host` (`--players N`
+seats 2-4, `--bind <ip>`, `--port N`), `--join <ip>`, `--loopback-bots N` (host: N bot clients in this process on
+the loopback network), `--netsim loss=..,jitter=..,delay=..,dup=..,reorder=..` (the condition simulator on what
+this device sends), `--net-overlay` (the overlay on its network page), `--net-capture-bar B` (with `--screenshot`:
+the picture as the run reaches bar B, the same musical moment on every peer, then quit). Keys: F1 overlay, F2 the
+overlay's network page (co-op), P pause for everyone (co-op), F12 screenshot, T tone hold, L next look, P next
 palette, K next tier, R reduce flashing, Esc / Back quit (in the game with its screens: pause and back; Enter is the screen's main control). Taps (decided when the last finger lifts): two fingers next look, three
 the overlay, four next palette. Raw launch: `adb -s <serial> shell "am start -n dev.raveform.game/.RaveformActivity --es args '--scenario bench_idle --seconds 60'"`.
 
@@ -170,6 +180,15 @@ cannot read its clock): compare passes at the top clock with `--gpu-burn 40`.
 - Only phone numbers count for performance; desktop timing is informational.
 - Git: `Invoke-RfGit` (Git for Windows + schannel). Commit only at working checkpoints, never push, never
   commit `design/` files you did not write. Build output, `captures/` and fetched `third_party/` are ignored.
+
+## PC runs are silent (user rule)
+
+Nothing run on this PC makes sound: the user is at the machine. `--silent` keeps everything running and measured
+(the band, its limiter, the callback's timing, the song clock) and zeroes the output at the device, after the
+limiter; `--no-audio` drops the band where a silent stream is enough. `scripts\run-desktop.ps1` and the review
+scripts pass `--silent` unless `-Sound` is given (the user's opt-in to listen); a desktop process started by hand
+gets `--silent` too. `raveform_headless` opens no audio device; offline renders write WAV files only. Phones are not
+covered: their runs keep their sound.
 
 ## PC CPU limit (user rule)
 

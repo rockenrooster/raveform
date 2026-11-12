@@ -106,6 +106,10 @@ public:
     float intensity() const { return intensity_; }
     void nextSection();
     void setHold(bool hold);
+    // M4 (TECH_SPEC 8.2): a co-op client's song follows the host's: its tempo times `scale` from the next bar line
+    // (the gentle rate correction), or a hold of `seconds` on the next bar line (the re-seek).
+    void setRate(float scale);
+    void holdNextBar(float seconds);
     bool hold() const { return hold_; }
     void nextVariant();
     void setVariant(u32 v);

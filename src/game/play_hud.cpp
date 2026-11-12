@@ -396,7 +396,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         circle(d.hud, c, r, (st.pausePressed ? 1.5f : 1.0f) * s, col(white, in), 28);
         for (float sx : {-6.0f, 6.0f}) d.hud.line(c + Vec2{sx * s, -9.0f * s}, c + Vec2{sx * s, 9.0f * s}, 1.6f * s, col(white, in), col(white, in), 0);
     }
-    const PlayerState& me = w.player(0);
+    const PlayerState& me = w.player(w.viewPlayer());
     // The band row (bottom centre): four Riff slots with five level pips each, then the Mods taken.
     const float rowY = H - bottom - 64.0f * s;
     const float slot = 104.0f * s;
@@ -473,7 +473,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
     }
     // The orb just taken flies to the band row.
     if (st.takenAge >= 0.0f && st.takenAge < 0.6f && st.icons) {
-        const TrioState& tr = w.trio(0);
+        const TrioState& tr = w.trio(w.viewPlayer());
         const u8 u = tr.lastTaken;
         if (u < kUpgradeCount) {
             Vec2 target{cx + 2.0f * slot, rowY};
@@ -581,7 +581,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
                        col(gold, 1.4f * fade), col(gold, 1.4f * fade), "NEW");
     }
     // The first Trio of a run: the hint.
-    const TrioState& tr = w.trio(0);
+    const TrioState& tr = w.trio(w.viewPlayer());
     if (tr.open && tr.opened == 1) {
         const float cap = 14.0f * s;
         const char* hint = "FLY INTO ONE";

@@ -159,6 +159,9 @@ private:
     bool minimized_ = false;
     bool backgrounded_ = false;
     bool overlayOn_ = true;
+    u32 overlayPage_ = 0;  // M4: 0 the main page, 1 the network's (co-op)
+    bool netShotDone_ = false;  // M4: --net-capture-bar's picture taken
+    u64 netPoolFallbacksAtMeasure_ = 0;  // M4: ENet's pool fallbacks when the benchmark's window began
     bool discontinuity_ = true;       // the next interval spans a pause: do not record it
     bool awaitingResumePresent_ = false;
     bool screenshotRequested_ = false;

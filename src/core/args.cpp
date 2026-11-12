@@ -146,6 +146,39 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             ok = copyString(a.picture, sizeof a.picture, next);
             usedNext = true;
         // M3 end
+        // M4 begin
+        } else if (is("--host")) {
+            a.net = 1;
+        } else if (is("--join") && next) {
+            a.net = 2;
+            ok = copyString(a.joinIp, sizeof a.joinIp, next);
+            usedNext = true;
+        } else if (is("--bind") && next) {
+            ok = copyString(a.bindIp, sizeof a.bindIp, next);
+            usedNext = true;
+        } else if (is("--port") && next) {
+            ok = parseUint(next, a.port) && a.port >= 1024 && a.port <= 65535;
+            usedNext = true;
+        } else if (is("--players") && next) {
+            ok = parseUint(next, a.players) && a.players >= 2 && a.players <= 4;
+            usedNext = true;
+        } else if (is("--netsim") && next) {
+            ok = copyString(a.netsim, sizeof a.netsim, next);
+            usedNext = true;
+        } else if (is("--loopback-bots") && next) {
+            ok = parseUint(next, a.loopbackBots) && a.loopbackBots <= 3;
+            usedNext = true;
+        } else if (is("--net-overlay")) {
+            a.netOverlay = true;
+        } else if (is("--net-capture-bar") && next) {
+            ok = parseUint(next, a.netCaptureBar) && a.netCaptureBar > 0;
+            usedNext = true;
+        } else if (is("--net-view-seat") && next) {
+            u32 v = 0;
+            ok = parseUint(next, v) && v < 4;
+            a.netViewSeat = static_cast<i32>(v);
+            usedNext = true;
+        // M4 end
         } else if (is("--strip") && next) {
             ok = parseUint(next, a.strip) && a.strip <= 64;
             usedNext = true;
@@ -202,12 +235,14 @@ void logArgs(const AppArgs& a) {
     RF_LOG("args: scenario='%s' seconds=%.1f warmup=%.1f frames=%u screenshot='%s' res=%dx%d "
            "validation=%d tone=%d swappy=%d fps=%.1f affinity=%s overlay=%d cycles=%u scene='%s' still=%d bloom=%d "
            "look=%s reduce_flashing=%d tier=%s cuts=%u palette=%s strip=%u page=%u governor=%d fixed_step=%d mute=0x%x "
-           "bot=%d seed=%llu fast_forward=%.1f picture='%s'",
+           "bot=%d seed=%llu fast_forward=%.1f picture='%s' net=%s%s players=%u port=%u bind='%s' netsim='%s' loopback_bots=%u",
            a.scenario, a.seconds, a.warmupSeconds, a.frames, a.screenshot, a.width, a.height, a.validation,
            a.tone ? 1 : 0, a.swappy ? 1 : 0, a.fps, a.fastCores ? "big" : "all", a.overlay ? 1 : 0, a.cycles,
            a.sceneFile, a.still ? 1 : 0, a.bloom ? 1 : 0, a.look, a.reduceFlashing ? 1 : 0,
            a.tier[0] ? a.tier : "(default)", a.cuts, a.palette, a.strip, a.page, a.governor, a.fixedStep ? 1 : 0, a.mute,
-           a.bot ? 1 : 0, static_cast<unsigned long long>(a.seed), a.fastForward, a.picture);
+           a.bot ? 1 : 0, static_cast<unsigned long long>(a.seed), a.fastForward, a.picture,
+           a.net == 1 ? "host" : (a.net == 2 ? "join " : "solo"), a.net == 2 ? a.joinIp : "", a.players, a.port, a.bindIp, a.netsim,
+           a.loopbackBots);
 }
 
 }  // namespace rf

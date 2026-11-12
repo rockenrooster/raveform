@@ -14,6 +14,7 @@
 #include "core/json.h"
 #include "core/log.h"
 #include "core/time.h"
+#include "net/wire.h"
 #include "platform/cpu_affinity.h"
 
 #if defined(__ANDROID__)
@@ -281,6 +282,18 @@ bool App::init() {
         po.fastForwardS = args_.fastForward;
         po.noHits = args_.noHits;
         std::snprintf(po.picture, sizeof po.picture, "%s", args_.picture);
+        // M4 stage A: co-op from the command line.
+        po.net = args_.net;
+        std::snprintf(po.joinIp, sizeof po.joinIp, "%s", args_.joinIp);
+        std::snprintf(po.bindIp, sizeof po.bindIp, "%s", args_.bindIp);
+        po.port = static_cast<u16>(args_.port);
+        po.players = args_.players;
+        po.loopbackBots = args_.loopbackBots;
+        po.netViewSeat = args_.netViewSeat;
+        if (args_.netsim[0] && !net::parseNetSim(args_.netsim, po.netsim)) {
+            RF_ERR("bad --netsim '%s'", args_.netsim);
+            return false;
+        }
 #if defined(__ANDROID__)
         // Touch controls in physical sizes (GAME_DESIGN 2): the display scale is Android's density, 1 dp =
         // 1/160 inch.
@@ -365,10 +378,15 @@ bool App::init() {
            tier_.render.distortionShift == 0 ? "off" : (tier_.render.distortionShift == 3 ? "1/8" : "1/4"),
            tier_.render.aberration ? "on" : "off", tier_.particleDensity, tier_.glass ? "on" : "off", tier_.killPools,
            governorOn_ ? "on" : "off");
-    if (args_.screenshot[0] && args_.frames == 0 && !playPicture_) args_.frames = 120;
+    if (args_.screenshot[0] && args_.frames == 0 && !playPicture_ && !args_.netCaptureBar) args_.frames = 120;
     overlayOn_ = args_.overlay;
     // M3: interactive play starts without the overlay (it would cover the score); F1 shows it.
     if (content_ == Content::Play && !playBench_ && !playPicture_) overlayOn_ = false;
+    // M4: the network page (F2 switches pages; --net-overlay opens on it).
+    if (args_.netOverlay && content_ == Content::Play && play_.coop()) {
+        overlayOn_ = true;
+        overlayPage_ = 1;
+    }
     refreshOverlay(startNs_);
     return true;
 }
@@ -468,6 +486,10 @@ void App::handleEvent(const SDL_Event& e) {
             } else if (e.key.key == SDLK_F1) {
                 overlayOn_ = !overlayOn_;
                 if (overlayOn_) refreshOverlay(nowNs());
+            } else if (e.key.key == SDLK_F2) {  // M4: the overlay's pages (the network's in co-op)
+                overlayPage_ = content_ == Content::Play && play_.coop() ? (overlayPage_ + 1) % 2 : 0;
+                overlayOn_ = true;
+                refreshOverlay(nowNs());
             } else if (e.key.key == SDLK_F12) {
                 screenshotRequested_ = true;
             } else if (e.key.key == SDLK_T) {
@@ -857,6 +879,12 @@ void App::frame(u64 loopStartNs) {
     const u64 firstShot = args_.frames > args_.strip ? args_.frames - (args_.strip ? args_.strip - 1 : 0) : 1;
     bool capture = screenshotRequested_ || (args_.screenshot[0] && args_.frames && frames_ + 1 >= firstShot);
     if (content_ == Content::Play && playPicture_) capture = screenshotRequested_ || (args_.screenshot[0] && play_.captureNow());  // M3
+    if (content_ == Content::Play && args_.netCaptureBar && play_.coop() && !netShotDone_ &&
+        play_.runMusic() >= static_cast<double>(args_.netCaptureBar) * 384.0) {
+        // M4: every peer takes its picture as its run reaches the bar (the same musical moment on each).
+        capture = true;
+        netShotDone_ = true;
+    }
     renderer_.endFrame(draw, params, capture);
     lastCapsules_ = renderer_.lastCapsuleCount();
     afterPresent(loopStartNs, nowNs(), capture);
@@ -1014,6 +1042,7 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
         }
         if (!renderer_.saveCapture(path) && !screenshotRequested_) exitCode_ = 5;
         screenshotRequested_ = false;
+        if (netShotDone_) quit_ = true;  // M4: --net-capture-bar
         if (content_ == Content::Play) {  // M3: what the picture holds
             const Play::Stats& ps = play_.stats();
             const ViewStats& vs = play_.viewStats();
@@ -1073,6 +1102,8 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
         }
         FramePacer& pacer = renderer_.pacer();
         if (ev == Bench::Event::MeasureStarted) {
+            if (content_ == Content::Play) play_.resetBotTimes();  // M4: the bot clients' worker, over the window
+            netPoolFallbacksAtMeasure_ = net::enetPoolStats().fallbacks;
             audio_.resetPeaks();
             band_.resetMeasurements();  // M2 audio
             underrunsAtMeasure_ = audio_.stats().underruns;
@@ -1163,6 +1194,16 @@ void App::refreshOverlay(u64 nowNs) {
     const float target = static_cast<float>(p.targetIntervalNs() * 1e-6);
 
     overlay_.clear();
+    if (overlayPage_ == 1 && content_ == Content::Play && play_.coop()) {
+        // M4: the network page (RTT, loss, bandwidth, corrections, position error, clock and song offsets).
+        overlay_.addLine(kTitle, "RAVEFORM M4 NETWORK  %s BUILD  FRAME %llu  (F2: BACK)", RF_BUILD_NAME, static_cast<unsigned long long>(frames_));
+        char lines[12][96];
+        const u32 n = play_.netOverlayLines(lines, 12);
+        for (u32 k = 0; k < n; ++k) overlay_.addLine(kText, "%s", lines[k]);
+        overlay_.addLine(kText, "INTERVAL P50 %.2f  P95 %.2f  MAX %.2f MS  SIM TICK %.2f MS", iv.p50, iv.p95, iv.max,
+                         play_.stats().ticksLastFrame ? play_.stats().tickMs[0] : 0.0f);
+        return;
+    }
     overlay_.addLine(kTitle, "RAVEFORM M3  %s BUILD  FRAME %llu", RF_BUILD_NAME, static_cast<unsigned long long>(frames_));
     {
         const GpuPassTimes& gt = renderer_.gpuTimes();
@@ -1479,7 +1520,36 @@ void App::reportBench() {
             j.str("section", sim::sectionLabel(pw.phrase().section));
             j.integer("run_bar", pw.phrase().bar);
             j.boolean("boss", pw.boss().active);
-            j.integer("upgrades", pw.player(0).loadout.taken);
+            j.integer("upgrades", pw.player(play_.seat()).loadout.taken);
+            j.endObject();
+        }
+        if (content_ == Content::Play && play_.coop()) {
+            // M4: the co-op session over the run (this device's side) and the in-process bot clients' worker.
+            const net::SessionStats& ns = play_.session()->stats();
+            j.beginObject("net");
+            j.str("role", play_.session()->host() ? "host" : "client");
+            j.integer("seats", play_.session()->seats());
+            j.integer("peers", ns.peers);
+            j.integer("disconnects", ns.disconnects);
+            j.num("up_kbps", ns.upKbps, 1);
+            j.num("down_kbps", ns.downKbps, 1);
+            j.num("rtt_ms", ns.rttMs, 1);
+            j.integer("corrections", ns.corrections);
+            j.integer("census_checks", ns.censusChecks);
+            j.integer("census_mismatches", ns.censusMismatches);
+            j.integer("max_datagram", ns.maxDatagram);
+            float p50 = 0.0f, p95 = 0.0f, mx = 0.0f;
+            u32 dropped = 0;
+            if (play_.botTimes(p50, p95, mx, dropped)) {
+                j.beginArray("bots_frame_ms");
+                j.num(nullptr, p50, 2);
+                j.num(nullptr, p95, 2);
+                j.num(nullptr, mx, 2);
+                j.endArray();
+                j.integer("bots_dropped", dropped);
+            }
+            const net::EnetPoolStats pool = net::enetPoolStats();
+            j.integer("enet_pool_fallbacks", static_cast<i64>(pool.fallbacks - netPoolFallbacksAtMeasure_));  // over the window
             j.endObject();
         }
         j.boolean("overlay", overlayOn_);
@@ -1544,6 +1614,7 @@ void App::reportBench() {
 
 // M2 audio begin
 bool App::openAudio() {
+    audio_.setMuted(args_.audio.silent);  // --silent: the PC's runs make no sound (zeroed at the device)
     if (band_.active()) return audio_.open(Band::render, &band_);
     return audio_.open(TestTone::render, &tone_);
 }

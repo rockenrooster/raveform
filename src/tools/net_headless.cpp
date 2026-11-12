@@ -376,6 +376,9 @@ int runPeer(const SpeciesTable& species, bool host, int argc, char** argv) {
     c.clockPpm = (v = arg(argc, argv, "--clock-ppm")) ? std::atof(v) : 0.0;
     const bool sameClock = flag(argc, argv, "--same-clock");
     const float minutes = (v = arg(argc, argv, "--minutes")) ? static_cast<float>(std::atof(v)) : 15.0f;
+    // --wait S (join): a host that is not there yet is tried again for up to S seconds (a phone still starting).
+    const float waitS = (v = arg(argc, argv, "--wait")) ? static_cast<float>(std::atof(v)) : 0.0f;
+    const i64 waitUntil = wireNowUs() + static_cast<i64>(waitS * 1e6f);
     auto* peer = new (std::nothrow) NetPeer;
     if (!peer || !peer->start(c, &species)) {
         std::printf("[net] could not %s (address in use, or no network)\n", host ? "host" : "join");
@@ -393,7 +396,15 @@ int runPeer(const SpeciesTable& species, bool host, int argc, char** argv) {
     double songSum2 = 0.0, songMax = 0.0;
     u64 songN = 0, allocs0 = 0;
     bool measuring = false;
-    EnetPoolStats pool0;
+    EnetPoolStats pool0, poolEnd;
+    bool ended = false;
+    i64 endAt = 0;
+    SessionStats st;
+    NetPeer::Stats ps;
+    WorldCounters wc;
+    WireStats ws;
+    u32 overflowEnd = 0;
+    double endMinutes = 0.0;
     for (;;) {
         const i64 now = wireNowUs();
         if (now < next) {
@@ -405,6 +416,11 @@ int runPeer(const SpeciesTable& species, bool host, int argc, char** argv) {
         peer->frame(now);
         Session& s = peer->session();
         if (s.state() == SessionState::Ended) {
+            if (!host && !runFrom && now < waitUntil) {
+                peer->stop();
+                if (!peer->start(c, &species)) break;
+                continue;
+            }
             std::printf("[net] the session ended: %s\n", s.endReason());
             break;
         }
@@ -417,7 +433,22 @@ int runPeer(const SpeciesTable& species, bool host, int argc, char** argv) {
             continue;
         }
         const i64 t = now - runFrom;
-        if (t >= static_cast<i64>(minutes * 60e6f)) break;
+        if (t >= static_cast<i64>(minutes * 60e6f)) {
+            // The measured window ends; the peer stays a few seconds more, so the others end theirs before it goes.
+            if (!ended) {
+                ended = true;
+                endAt = now + 4000000;
+                st = s.stats();
+                ps = peer->stats();
+                wc = peer->world().counters();
+                overflowEnd = overflowOf(peer->world()) + st.droppedOutgoing;
+                ws = s.link().wire();
+                poolEnd = enetPoolStats();
+                endMinutes = static_cast<double>(t) / 60e6;
+            }
+            if (now >= endAt) break;
+            continue;
+        }
         if (!measuring && t >= settleUs) {
             measuring = true;
             peer->session().resetScreenError();
@@ -446,25 +477,30 @@ int runPeer(const SpeciesTable& species, bool host, int argc, char** argv) {
                         st.censusChecks, st.censusMismatches, st.peers);
         }
     }
-    const SessionStats& st = peer->session().stats();
-    const u64 allocs = peer->stats().heapAllocs - allocs0;
-    const EnetPoolStats pool = enetPoolStats();
-    const u64 fallbacks = pool.fallbacks - pool0.fallbacks;
-    const WorldCounters& wc = peer->world().counters();
-    const u32 overflow = overflowOf(peer->world()) + st.droppedOutgoing;
-    const WireStats ws = peer->session().link().wire();
+    if (!ended) {  // the session ended early, or never ran
+        st = peer->session().stats();
+        ps = peer->stats();
+        wc = peer->world().counters();
+        overflowEnd = overflowOf(peer->world()) + st.droppedOutgoing;
+        ws = peer->session().link().wire();
+        poolEnd = enetPoolStats();
+        endMinutes = runFrom ? static_cast<double>(wireNowUs() - runFrom) / 60e6 : 0.0;
+    }
+    const u64 allocs = ps.heapAllocs - allocs0;
+    const u64 fallbacks = poolEnd.fallbacks - pool0.fallbacks;
+    const u32 overflow = overflowEnd;
     const float songRms = songN ? static_cast<float>(std::sqrt(songSum2 / static_cast<double>(songN))) : 0.0f;
     const float scrRms = st.screenErrN ? static_cast<float>(std::sqrt(st.screenErrSum2 / static_cast<double>(st.screenErrN))) : 0.0f;
     const float downMean = rep.seconds ? static_cast<float>(rep.downSum / rep.seconds) : 0.0f;
     const float upMean = rep.seconds ? static_cast<float>(rep.upSum / rep.seconds) : 0.0f;
     const bool clientOk = host || (rep.downMax <= kMaxDownKbps && rep.upMax <= kMaxUpKbps && wc.censusMismatches == 0 &&
                                    wc.censusChecks > 0 && scrRms < kMaxErrRmsWu && (!sameClock || songMax < kMaxSongOffsetMs));
-    const bool ok = runFrom && st.disconnects == 0 && peer->stats().dropped == 0 && overflow == 0 && ws.maxDatagram <= kMaxDatagramNoFrag &&
+    const bool ok = runFrom && st.disconnects == 0 && ps.dropped == 0 && overflow == 0 && ws.maxDatagram <= kMaxDatagramNoFrag &&
                     fallbacks == 0 && allocs == 0 && clientOk;
     std::printf("[net] %s: %.1f minutes run; disconnects %u, stalls %u; census %u/%u mismatches; corrections' error (all of them) "
                 "max %.1f wu\n",
-                host ? "host" : "client", runFrom ? static_cast<double>(wireNowUs() - runFrom) / 60e6 : 0.0, st.disconnects,
-                peer->stats().dropped, wc.censusChecks, wc.censusMismatches, rep.corrErrMax);
+                host ? "host" : "client", endMinutes, st.disconnects,
+                ps.dropped, wc.censusChecks, wc.censusMismatches, rep.corrErrMax);
     std::printf("[net]   down %.1f kbit/s worst second (mean %.1f), up %.1f (mean %.1f); largest datagram %u; overflow %u; pool fallbacks "
                 "%llu; heap allocations in the steady state %llu\n",
                 rep.downMax, downMean, rep.upMax, upMean, ws.maxDatagram, overflow, static_cast<unsigned long long>(fallbacks),
@@ -479,8 +515,8 @@ int runPeer(const SpeciesTable& species, bool host, int argc, char** argv) {
               "\"song_max_ms\":%.3f,\"down_kbps_max\":%.1f,\"up_kbps_max\":%.1f,\"down_kbps_mean\":%.1f,\"up_kbps_mean\":%.1f,"
               "\"corr_err_max_wu\":%.2f,\"max_datagram\":%u,\"overflow\":%u,\"pool_fallbacks\":%llu,\"heap_allocs\":%llu,\"kills\":%u,"
               "\"err_at_corr_rms_wu\":%.3f,\"err_at_corr_max_wu\":%.2f,\"pass\":%s}",
-              host ? "udp_host" : "udp_client", runFrom ? static_cast<double>(wireNowUs() - runFrom) / 60e6 : 0.0, st.disconnects,
-              peer->stats().dropped, wc.censusChecks, wc.censusMismatches, songRms, songMax, rep.downMax, rep.upMax, downMean, upMean,
+              host ? "udp_host" : "udp_client", endMinutes, st.disconnects,
+              ps.dropped, wc.censusChecks, wc.censusMismatches, songRms, songMax, rep.downMax, rep.upMax, downMean, upMean,
               rep.corrErrMax, ws.maxDatagram, overflow, static_cast<unsigned long long>(fallbacks), static_cast<unsigned long long>(allocs),
               wc.kills, scrRms, st.screenErrMax, ok ? "true" : "false");
     peer->stop();

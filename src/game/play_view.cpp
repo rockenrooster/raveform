@@ -368,7 +368,7 @@ void PlayView::onEvents(const World& w, double tickEnd) {
         }
         speciesGlyphsReady_ = true;
     }
-    const Vec3 player = palettes_->player[0], light = palettes_->playerLight[0], deep = palettes_->playerDeep[0];
+    const Vec3 player = palettes_->player[w.viewPlayer()], light = palettes_->playerLight[w.viewPlayer()], deep = palettes_->playerDeep[w.viewPlayer()];
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         const float t = static_cast<float>(tickEnd - e.age);
@@ -598,7 +598,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     now_ = in.time;
     refPx_ = H / 1080.0f;
     const Vec3 W1 = white();
-    const Vec3 player = palettes_->player[0], deep = palettes_->playerDeep[0], light = palettes_->playerLight[0];
+    const Vec3 player = palettes_->player[w.viewPlayer()], deep = palettes_->playerDeep[w.viewPlayer()], light = palettes_->playerLight[w.viewPlayer()];
     const Vec3 danger = palettes_->danger;
     const Vec3 accent = palette_->accent;
     const float a = in.alpha;
@@ -641,7 +641,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     centre_ = {0.5f * W, 0.5f * H};
     viewW_ = W / pxPerWu_;
     viewH_ = H / pxPerWu_;
-    cam_ = S + lookAhead_ + bossLean_;
+    cam_ = in.camFixed ? in.camPos : S + lookAhead_ + bossLean_;
     // The view may look up to 240 wu past a wall, no further.
     const float mx = kArenaHalfW + 240.0f - 0.5f * viewW_, my = kArenaHalfH + 240.0f - 0.5f * viewH_;
     if (mx > 0.0f) cam_.x = clampf(cam_.x, -mx, mx);
@@ -873,7 +873,8 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     const double steppedBars = std::floor(in.music / 48.0) * 48.0 / kTicksPerBar;  // ornaments step on the eighths
     for (u32 i = 0; i < e.count; ++i) {
         if (e.flags[i] & kFlagDead) continue;
-        const Vec2 pos = lerp2(Vec2{e.px[i], e.py[i]}, Vec2{e.x[i], e.y[i]}, a);
+        // M4: a co-op client draws a corrected enemy where it was, the offset decaying (ox, oy; 0 otherwise).
+        const Vec2 pos = lerp2(Vec2{e.px[i], e.py[i]}, Vec2{e.x[i], e.y[i]}, a) + Vec2{e.ox[i], e.oy[i]};
         const Species& s = table.get(e.species[i]);
         const int g = speciesGlyph_[e.species[i]];
         const GlyphDef& gd = glyphs_->def(static_cast<u32>(g));
@@ -973,7 +974,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     }
 
     // ---- The player: two-tone ship, halo (one arc per Shield cell), trail, pool, priority layer.
-    const PlayerState& me = w.player(0);
+    const PlayerState& me = w.player(w.viewPlayer());
     const float shipScale = kStandardEnemyWu * glyphs_->def(static_cast<u32>(gShip_)).size;
     const bool playerShown = shown(kMutePlayer);
     // Trail history (the view clock).
@@ -1053,6 +1054,39 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             d.threatCores.line(toScreen(S), toScreen(S), 1.3f * refPx_, W1, W1, kDisc);
         }
     }
+    // M4 co-op (GAME_DESIGN 10): the teammates' ships in their colours, and a downed player's beacon (a ring a
+    // teammate stands in for two beats to revive it; it fills as they do).
+    for (u32 q = 0; q < kMaxPlayers && playerShown; ++q) {
+        const PlayerState& pl = w.player(q);
+        if (!pl.present) continue;
+        const Vec3 c = palettes_->player[q], cd = palettes_->playerDeep[q], cl = palettes_->playerLight[q];
+        if (pl.down) {
+            const float pulse = 0.75f + 0.25f * kick_;
+            glyph(d.glyphs, gRing64_, false, pl.beacon, 0.0f, 0.0f, tuning::kReviveRingWu, look_->lines.playerHalo.intensity * 1.6f * pulse,
+                  0.5f * look_->lines.playerHalo.width, kGlyphRingA, c, cl);
+            const float fill = clampf(static_cast<float>(pl.reviveTicks / (tuning::kReviveBeats * kTicksPerBeat)), 0.0f, 1.0f);
+            if (fill > 0.0f)
+                glyph(d.glyphs, gRing64_, false, pl.beacon, 0.0f, 0.0f, tuning::kReviveRingWu * fill, look_->lines.playerHalo.intensity * 2.0f,
+                      0.5f * look_->lines.playerHalo.width, kGlyphFlat, W1, W1);
+            d.pools.glow(toScene(pl.beacon), look_->soft.playerPool.radius[0] * pxPerWu_, c * (look_->soft.playerPool.intensity[0] * pulse));
+            continue;
+        }
+        if (q == w.viewPlayer() || !pl.alive) continue;
+        const Vec2 P = lerp2(pl.prevPos, pl.pos, a);
+        if (!visible(P, 2.0f * shipScale)) {
+            edgeChevron(d, P, c, false, 1.0f);
+            continue;
+        }
+        const float h = lerpAngle(pl.prevHeading, pl.heading, a);
+        const LookLine& hull = look_->lines.playerHull;
+        glyph(d.glyphs, gShip_, false, P, h, h, shipScale, hull.intensity, 0.5f * hull.width, kGlyphPlayer, c, cd);
+        if (pl.cells > 0) {
+            const u32 cells = pl.cells > 6 ? 6u : pl.cells;
+            glyph(d.glyphs, gHalo_[cells], false, P, 0.3f * t, 0.3f * t, shipScale, look_->lines.playerHalo.intensity * 0.8f,
+                  0.5f * look_->lines.playerHalo.width, kGlyphRingA, c, cl);
+        }
+        d.pools.glow(toScene(P), look_->soft.playerPool.radius[0] * pxPerWu_, c * (look_->soft.playerPool.intensity[0] * 0.7f));
+    }
     // Dash: five fading ghost copies along the path; a Perfect Dash adds a four-point sparkle (look.md §5).
     {
         const float age = t - dash_.t;
@@ -1119,7 +1153,10 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             const float len = std::fmax(sh.speed[i] * ss.frameS + ss.overlapWu, ss.minWu);
             if (!visible(head, len + 4.0f) || !playerShown) continue;
             const Vec2 tail = head - Vec2{sh.dx[i], sh.dy[i]} * len;
-            const Vec3 body = shotHasLane(sh.flags[i]) ? laneColour_[shotLane(sh.flags[i]) + 2] : player;
+            // M4: a teammate's shots in its colour (Prism's lanes are the local player's).
+            const bool mine = sh.owner[i] == w.viewPlayer();
+            const Vec3 body = !mine && sh.owner[i] < kMaxPlayers ? palettes_->player[sh.owner[i]]
+                                                                 : (shotHasLane(sh.flags[i]) ? laneColour_[shotLane(sh.flags[i]) + 2] : player);
             d.scene.line(toScene(tail), toScene(head), 0.5f * pl.width * refPx_, body * pl.intensity, W1 * pl.intensity, 0);
             d.sparkles.glow(toScene(head), look_->soft.shotHead.radius[0] * refPx_, shotHead);
         }

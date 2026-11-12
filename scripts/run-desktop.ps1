@@ -2,6 +2,8 @@
 #   scripts\run-desktop.ps1                                   interactive, debug build (validation on)
 #   scripts\run-desktop.ps1 -AppArgs '--scenario bench_idle --seconds 58'
 #   scripts\run-desktop.ps1 -Screenshot captures\desktop.png -Res 2400x1080 -Small
+# Silent by default (the user's rule: runs on this PC make no sound): the app gets --silent (everything plays and
+# is measured, the output is zeroed at the device) unless -Sound.
 # Exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 bench aborted, 5 screenshot failed.
 param(
     [ValidateSet('debug', 'dev')][string]$Config = 'debug',
@@ -10,7 +12,8 @@ param(
     [string]$Screenshot = '',  # PNG path (relative to the current directory)
     [int]$Frames = 0,          # with -Screenshot: frame to capture (default 120)
     [string]$Res = '',         # window size, e.g. 2400x1080
-    [switch]$Small             # also write <name>.small.png, at most 1600 px wide
+    [switch]$Small,            # also write <name>.small.png, at most 1600 px wide
+    [switch]$Sound             # let the app be heard (default: --silent)
 )
 . "$PSScriptRoot\env.ps1"
 
@@ -20,6 +23,7 @@ if (-not (Test-Path $exe)) { throw "missing $exe - build first" }
 
 $argv = @()
 if ($AppArgs) { $argv += @($AppArgs -split '\s+' | Where-Object { $_ }) }
+if (-not $Sound -and $argv -notcontains '--silent') { $argv += @('--silent') }
 if ($Res) { $argv += @('--res', $Res) }
 $shot = $null
 if ($Screenshot) {

@@ -233,6 +233,7 @@ set_target_properties(rf_enet PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # The co-op network (TECH_SPEC 8): transport, protocol, time and song sync, replication, headless peers. No
 # SDL, Vulkan or audio: the game, raveform_headless and the tests link it.
 add_library(raveform_net STATIC
+  src/net/bots.cpp
   src/net/link.cpp
   src/net/peer.cpp
   src/net/protocol.cpp
@@ -322,6 +323,9 @@ target_sources(raveform_core PRIVATE
   src/game/play_view_b.cpp
   src/game/screens.cpp
   src/game/settings.cpp)
+# M4: co-op in the game (the network library; the game hosts or joins from the command line).
+target_link_libraries(raveform_core PUBLIC raveform_net)
+target_sources(raveform_core PRIVATE src/game/play_net.cpp)
 if(NOT ANDROID)
   # The band without a window: offline renders, the loudness calibration, the unit tests.
   set(RF_HEADLESS_CORE src/core/json_doc.cpp src/core/log.cpp src/core/alloc_counter.cpp)
