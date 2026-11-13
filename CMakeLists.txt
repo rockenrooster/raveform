@@ -152,6 +152,7 @@ add_custom_command(OUTPUT ${RF_GEN}/audio_loudness_calibration.json.inc
 list(APPEND RF_AUDIO_GENERATED ${RF_GEN}/audio_loudness_calibration.json.inc)
 add_library(raveform_audio STATIC
   src/audio/bake.cpp
+  src/audio/content_sound.cpp
   src/audio/engine.cpp
   src/audio/fft.cpp
   src/audio/music_data.cpp

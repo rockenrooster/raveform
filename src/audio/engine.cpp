@@ -202,6 +202,10 @@ struct Engine::Player {
     float distance = 0.0f;
     bool beacon = false;  // M4: down, its beacon sounding (look.md 6)
     float beaconPan = 0.0f;
+    // M5 (cues.h): every Mod's stacks (the first slice's five above are kept in step), the Boosts active, the Fusions.
+    u8 mod[kModCount] = {};
+    u16 boosts = 0;
+    u8 fusions = 0;
 };
 
 struct Engine::BarPlan {
@@ -469,13 +473,40 @@ void Engine::applyCommand(const Command& c) {
                 p->pierce = c.mods[2];
                 p->overcharge = c.mods[3];
                 p->crit = c.mods[4];
+                p->mod[static_cast<u32>(Mod::Split)] = c.mods[0];
+                p->mod[static_cast<u32>(Mod::DoubleTime)] = c.mods[1];
+                p->mod[static_cast<u32>(Mod::Pierce)] = c.mods[2];
+                p->mod[static_cast<u32>(Mod::Overcharge)] = c.mods[3];
+                p->mod[static_cast<u32>(Mod::OnBeatCrit)] = c.mods[4];
             }
             break;
         case CmdType::SetBoost:
-            if (p) {
-                if (c.b == 0) p->prism = c.c != 0;
-                if (c.b == 1) p->hyper = c.c != 0;
+            if (p && c.b < kBoostCount) {
+                if (c.b == static_cast<u8>(Boost::Prism)) p->prism = c.c != 0;
+                if (c.b == static_cast<u8>(Boost::Hyper)) p->hyper = c.c != 0;
+                p->boosts = static_cast<u16>(c.c ? (p->boosts | (1u << c.b)) : (p->boosts & ~(1u << c.b)));
             }
+            break;
+        case CmdType::SetModStacks:
+            if (p) {
+                for (u32 k = 0; k < c.c && k < 8 && c.b + k < kModCount; ++k) p->mod[c.b + k] = c.mods[k];
+                p->split = p->mod[static_cast<u32>(Mod::Split)];
+                p->doubleTime = p->mod[static_cast<u32>(Mod::DoubleTime)];
+                p->pierce = p->mod[static_cast<u32>(Mod::Pierce)];
+                p->overcharge = p->mod[static_cast<u32>(Mod::Overcharge)];
+                p->crit = p->mod[static_cast<u32>(Mod::OnBeatCrit)];
+            }
+            break;
+        case CmdType::SetFusions:
+            if (p) p->fusions = c.b;
+            break;
+        case CmdType::Cue:
+        case CmdType::Recipe:
+        case CmdType::VoiceStart:
+        case CmdType::VoiceSet:
+        case CmdType::VoiceStop:
+        case CmdType::LowPassBed:
+            applyContentCommand(c);
             break;
         case CmdType::SetDistance:
             if (p) p->distance = c.x;

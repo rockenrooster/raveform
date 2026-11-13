@@ -11,6 +11,7 @@
 #include <atomic>
 
 #include "audio/bake.h"
+#include "audio/cues.h"
 #include "audio/dsp.h"
 #include "audio/music_data.h"
 #include "audio/reverb.h"
@@ -31,7 +32,7 @@ enum class Mode : u8 {
 };
 
 enum class Timbre : u8 { P1Saw, P2Square, P3Bell, P4Stab, Count };
-enum class Riff : u8 { Orbitals, PulseRing, Sentinel, Count };
+// Riff, Mod, Boost, Fusion, Cue, Recipe: audio/cues.h (M5).
 enum class Form : u8 { Short, Standard };  // 8/4/8/4 or 12/4/16/4 bars (GAME_DESIGN 4.1, play test 2)
 
 // What the band played, stamped in song time: `frame` is the write frame the sound starts on. The main
@@ -101,14 +102,23 @@ enum class CmdType : u8 {
                    // eighth-note tremolo, 12 dB under the leads; y = pan
     SetHostOnly,   // M4 co-op, the SOUND setting "music from host only": a = 1: the bed and the other players' leads
                    // are silent on this device (its own lead and the effects stay)
+    // M5 (audio/cues.h): the whole loadout, the game's events, the fights' recipes.
+    SetModStacks,  // a = player, b = the first Mod, c = how many (<= 8), stacks in `mods`
+    SetFusions,    // a = player, b = Fusion bits
+    Cue,           // a = Cue, b = player, c = count (<= 255), x = value, y = pan; timing Next32 or AtTick
+    Recipe,        // a = Recipe, c = MIDI (255: the default), x = gain, y = pan, z = p1, level = p2; timing Now / Next32 / AtTick
+    VoiceStart,    // a = voice slot, b = Recipe, c = MIDI (255: the default), x = gain, y = pan, z = param
+    VoiceSet,      // a = voice slot, x = param, y = gain (< 0: unchanged)
+    VoiceStop,     // a = voice slot, x = release in seconds
+    LowPassBed,    // x = cutoff in Hz, y = seconds (then the bus opens again over 150 ms)
 };
 
 struct Command {
     CmdType type = CmdType::Reset;
     Timing when = Timing::Now;
     u8 a = 0, b = 0, c = 0;
-    u8 mods[5] = {};
-    float x = 0.0f, y = 0.0f, level = 1.0f;
+    u8 mods[8] = {};
+    float x = 0.0f, y = 0.0f, level = 1.0f, z = 0.0f;
     double tick = 0.0;
 };
 
@@ -193,6 +203,7 @@ private:
 
     // Commands and planning.
     void applyCommand(const Command& c);
+    void applyContentCommand(const Command& c);  // M5: cues, recipes, held voices, the timed low-pass (content_sound.cpp)
     void startMode(Mode m, u32 track, bool loop);
     void applyParams();
     void onTick(i64 tick);

@@ -590,7 +590,7 @@ void Band::setLoadout(const u8 mods[5], const u8 riffs[3], bool prism, bool hype
     Command c{.type = CmdType::SetMods, .a = 0};
     for (u32 k = 0; k < 5; ++k) c.mods[k] = mods[k];
     post(c);
-    for (u32 r = 0; r < static_cast<u32>(Riff::Count); ++r) {
+    for (u32 r = 0; r < 3; ++r) {  // the first slice's three Riffs (M5: setLoadout(slot, PlayerLoadout) for all twelve)
         riffs_[r] = riffs[r];
         post({.type = CmdType::SetRiff, .a = 0, .b = static_cast<u8>(r), .c = riffs[r]});
     }
@@ -633,7 +633,7 @@ void Band::setPlayerLoadout(u8 slot, const u8 mods[5], const u8 riffs[3], bool p
     Command c{.type = CmdType::SetMods, .a = slot};
     for (u32 k = 0; k < 5; ++k) c.mods[k] = mods[k];
     post(c);
-    for (u32 r = 0; r < static_cast<u32>(Riff::Count); ++r) post({.type = CmdType::SetRiff, .a = slot, .b = static_cast<u8>(r), .c = riffs[r]});
+    for (u32 r = 0; r < 3; ++r) post({.type = CmdType::SetRiff, .a = slot, .b = static_cast<u8>(r), .c = riffs[r]});
     post({.type = CmdType::SetBoost, .a = slot, .b = 0, .c = static_cast<u8>(prism ? 1 : 0)});
     post({.type = CmdType::SetBoost, .a = slot, .b = 1, .c = static_cast<u8>(hyper ? 1 : 0)});
 }
@@ -643,6 +643,62 @@ void Band::setBeacon(u8 slot, bool on, float pan) {
 }
 
 void Band::setHostOnly(bool on) { post({.type = CmdType::SetHostOnly, .a = static_cast<u8>(on ? 1 : 0)}); }
+
+// ---------------------------------------------------------------- M5: the content's sound (audio/cues.h)
+
+void Band::setLoadout(u8 slot, const PlayerLoadout& l) {
+    if (!active_ || slot >= kMaxPlayers) return;
+    PlayerLoadout& was = loadouts_[slot];
+    const bool all = !loadoutSent_[slot];
+    loadoutSent_[slot] = true;
+    for (u32 first = 0; first < kModCount; first += 8) {
+        const u32 n = kModCount - first < 8 ? kModCount - first : 8;
+        if (!all && std::memcmp(was.mods + first, l.mods + first, n) == 0) continue;
+        Command c{.type = CmdType::SetModStacks, .a = slot, .b = static_cast<u8>(first), .c = static_cast<u8>(n)};
+        for (u32 k = 0; k < n; ++k) c.mods[k] = l.mods[first + k];
+        post(c);
+    }
+    for (u32 r = 0; r < kRiffCount; ++r)
+        if (all || was.riffs[r] != l.riffs[r]) post({.type = CmdType::SetRiff, .a = slot, .b = static_cast<u8>(r), .c = l.riffs[r]});
+    for (u32 b = 0; b < kBoostCount; ++b) {
+        const bool on = (l.boosts >> b) & 1u;
+        if (all || on != (((was.boosts >> b) & 1u) != 0))
+            post({.type = CmdType::SetBoost, .a = slot, .b = static_cast<u8>(b), .c = static_cast<u8>(on ? 1 : 0)});
+    }
+    if (all || was.fusions != l.fusions) post({.type = CmdType::SetFusions, .a = slot, .b = l.fusions});
+    if (slot == 0) {
+        for (u32 r = 0; r < kRiffCount; ++r) riffs_[r] = l.riffs[r];
+        localDoubleTime_ = l.mods[static_cast<u32>(Mod::DoubleTime)];
+        localHyper_ = (l.boosts >> static_cast<u32>(Boost::Hyper)) & 1u;
+    }
+    was = l;
+}
+
+void Band::cue(Cue c, u32 count, float value, float pan, double tick, u8 slot) {
+    if (!count) return;
+    Command k{.type = CmdType::Cue, .when = tick >= 0.0 ? Timing::AtTick : Timing::Next32, .a = static_cast<u8>(c), .b = slot,
+              .c = static_cast<u8>(count < 255 ? count : 255), .x = value, .y = pan};
+    k.tick = tick;
+    post(k);
+}
+
+void Band::playRecipe(Recipe r, i32 midi, float gain, float pan, double tick, float p1, float p2) {
+    Command k{.type = CmdType::Recipe, .when = tick >= 0.0 ? Timing::AtTick : Timing::Next32, .a = static_cast<u8>(r),
+              .c = static_cast<u8>(midi >= 0 && midi < 255 ? midi : 255), .x = gain, .y = pan, .level = p2, .z = p1};
+    k.tick = tick;
+    post(k);
+}
+
+void Band::startVoice(u8 voice, Recipe r, i32 midi, float gain, float pan, float param) {
+    post({.type = CmdType::VoiceStart, .a = voice, .b = static_cast<u8>(r), .c = static_cast<u8>(midi >= 0 && midi < 255 ? midi : 255),
+          .x = gain, .y = pan, .z = param});
+}
+
+void Band::setVoice(u8 voice, float param, float gain) { post({.type = CmdType::VoiceSet, .a = voice, .x = param, .y = gain}); }
+
+void Band::stopVoice(u8 voice, float releaseSeconds) { post({.type = CmdType::VoiceStop, .a = voice, .x = releaseSeconds}); }
+
+void Band::lowPassBed(float hz, float seconds) { post({.type = CmdType::LowPassBed, .x = hz, .y = seconds}); }
 
 u32 Band::scope(float* out, u32 n) const {
     const u32 head = scopeHead_.load(std::memory_order_acquire);
