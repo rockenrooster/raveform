@@ -62,8 +62,12 @@ struct BeatView {
         const double s = (heardFrame - lastFrame[static_cast<u32>(k)]) / rate;
         return s < 0.0 ? 0.0f : static_cast<float>(s);
     }
-    // e^(-since / decay): 1 on the event, falling.
+    // e^(-since / decay): 1 on the event, falling. M5: envelope(Kick) follows the kicks the Track's pattern plays,
+    // which on Afterglow, Mirage and Last Light are not on every beat (the pump of look.md §7 is the kick's, as the
+    // sidechain is); anything meant "on the beat" takes beat() (or beatPhase), which is the song clock's.
     float envelope(audio::BeatKind k, float decaySeconds) const;
+    // M5: 1 on every heard beat of the song clock, e^(-t / decay) after it, whether or not a kick plays there.
+    float beat(float decaySeconds) const { return envelope(audio::BeatKind::Beat, decaySeconds); }
 };
 
 // What the run asks of the band where no switch (--band, --track, --no-audio) says otherwise.
@@ -152,6 +156,23 @@ public:
     void setPlayerDistance(u8 slot, float wu);
     void setPlayerLoadout(u8 slot, const u8 mods[5], const u8 riffs[3], bool prism, bool hyper);
     void setBeacon(u8 slot, bool on, float pan);  // look.md 6: a downed player's beacon
+    // M5 (audio/cues.h, design/music/sound_m5.json). The whole loadout of a player (slot 0: this device's): every Mod's
+    // stacks, Riff levels, the Boosts active and the Fusions owned; post it whenever it changes (only what changed is
+    // sent on). It supersedes setLoadout(mods[5], riffs[3], ...) and setPlayerLoadout, which stay for the first slice.
+    void setLoadout(u8 slot, const audio::PlayerLoadout& l);
+    // A game event with a sound, as it happens (Cue lists what each means). Placed on the next 1/32 step, or on `tick`
+    // (song ticks, >= 0); value and pan as the Cue says.
+    void cue(audio::Cue c, u32 count = 1, float value = 0.0f, float pan = 0.0f, double tick = -1.0, u8 slot = 0);
+    // A recipe as a one-shot: now (tick < 0: on the next 1/32 step) or on `tick`; midi -1 = its default; p1, p2 per Recipe.
+    void playRecipe(audio::Recipe r, i32 midi = -1, float gain = 1.0f, float pan = 0.0f, double tick = -1.0, float p1 = 0.0f,
+                    float p2 = 0.0f);
+    // A held recipe (Drone, PadVoice, Crackle; any recipe sustains while held) in voice slot 0..kRecipeVoices-1, which
+    // the game owns: start, change its parameter (Drone: cutoff Hz; Crackle: bursts a second) or gain, stop.
+    void startVoice(u8 voice, audio::Recipe r, i32 midi = -1, float gain = 1.0f, float pan = 0.0f, float param = 0.0f);
+    void setVoice(u8 voice, float param, float gain = -1.0f);
+    void stopVoice(u8 voice, float releaseSeconds = 0.1f);
+    // recipes.low_pass_bed: the music bus low-passed at `hz` for `seconds` ("stunned", "dazed", "open"), then open again.
+    void lowPassBed(float hz, float seconds);
     void setHostOnly(bool on);                    // the SOUND setting "music from host only" (a co-op client)
     // M3 stage C (screens.md pause): the music behind a low-pass of about 600 Hz, ramped over 150 ms.
     void setMuffle(bool on);
@@ -173,7 +194,8 @@ public:
     bool saveSync();         // DONE: written to the app's preferences
     bool bluetooth() const { return bluetooth_; }
 
-    // Haptics: a light tick on heard kicks (and clicks), heavy on the Drop. Rate-limited.
+    // Haptics: a light tick on heard kicks (the Track's own, ghost kicks below half velocity skipped) and on the sync
+    // screen's clicks, heavy on the Drop. Rate-limited.
     void setHaptics(bool on) { haptics_ = on; }
     void setHapticStrong(bool strong) { hapticStrong_ = strong; }  // the STRONG setting (M3 stage C)
     void hapticPreview();  // one medium tick at the current strength (the settings screen)
@@ -284,6 +306,8 @@ private:
     std::atomic<float> meter_{0.0f};
     u8 localDoubleTime_ = 0;  // the local player's Double-Time stacks and Hyper (the lead rule's grid)
     bool localHyper_ = false;
+    audio::PlayerLoadout loadouts_[audio::kMaxPlayers];  // M5: what was last sent per player (only changes are posted)
+    bool loadoutSent_[audio::kMaxPlayers] = {};
     struct FireEdge {
         i64 ns;
         u8 mode;  // 0 off, 1 every step, 2 every other step
@@ -305,6 +329,9 @@ private:
     // Main-thread cost of update(), per frame.
     float updateUs_[512] = {};
     u32 updateCount_ = 0;
+    // M5 (--audio-profile): the engine's time per stage, written by the audio thread, read once at the end of a run.
+    audio::EngineProfile profile_, profileStart_;
+    bool profiling_ = false;
 };
 
 }  // namespace rf

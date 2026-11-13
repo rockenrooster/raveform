@@ -82,6 +82,12 @@ bool loadPalettes(Palettes& out) {
         RF_ERR("palettes: none found");
         ok = false;
     }
+    u32 listed = 0;
+    for (const JsonValue* e = doc.firstChild(list); e; e = doc.nextSibling(e)) ++listed;
+    if (listed > Palettes::kMax) {
+        RF_ERR("palettes: design/palettes.json lists %u, Palettes holds %u", listed, Palettes::kMax);
+        ok = false;
+    }
     if (ok) RF_LOG("palettes: %u (%s ... %s)", out.count, out.list[0].id, out.list[out.count - 1].id);
     return ok;
 }

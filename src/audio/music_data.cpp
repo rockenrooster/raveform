@@ -30,6 +30,28 @@ const char kTrack02Json[] =
 const char kTrack03Json[] =
 #include "music_track03.json.inc"
     ;
+// M5: the rest of the set list.
+const char kTrack04Json[] =
+#include "music_track04.json.inc"
+    ;
+const char kTrack05Json[] =
+#include "music_track05.json.inc"
+    ;
+const char kTrack06Json[] =
+#include "music_track06.json.inc"
+    ;
+const char kTrack07Json[] =
+#include "music_track07.json.inc"
+    ;
+const char kTrack08Json[] =
+#include "music_track08.json.inc"
+    ;
+const char kTrack09Json[] =
+#include "music_track09.json.inc"
+    ;
+const char kTrack10Json[] =
+#include "music_track10.json.inc"
+    ;
 const char kCalibrationJson[] =
 #include "audio_loudness_calibration.json.inc"
     ;
@@ -39,7 +61,10 @@ struct TrackSource {
     const char* file;
 };
 const TrackSource kTrackSources[] = {
-    {kTrack01Json, "track01.json"}, {kTrack02Json, "track02.json"}, {kTrack03Json, "track03.json"}};
+    {kTrack01Json, "track01.json"}, {kTrack02Json, "track02.json"}, {kTrack03Json, "track03.json"}, {kTrack04Json, "track04.json"},
+    {kTrack05Json, "track05.json"}, {kTrack06Json, "track06.json"}, {kTrack07Json, "track07.json"}, {kTrack08Json, "track08.json"},
+    {kTrack09Json, "track09.json"}, {kTrack10Json, "track10.json"}};
+static_assert(sizeof kTrackSources / sizeof kTrackSources[0] <= kMaxTracks, "more Tracks embedded than MusicData holds");
 
 u64 fnv1a(u64 h, const char* s, size_t n) {
     for (size_t i = 0; i < n; ++i) {

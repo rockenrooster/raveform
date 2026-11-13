@@ -1,6 +1,9 @@
 // Unit tests for the band (M2): the lock-free queues, the tempo map, sequencer timing (onsets on the grid,
 // identical output whatever the device's burst sizes), the lead rule, variant changes on the bar line,
 // the music data and allocation-free rendering. Run by scripts/test.ps1. Exit code: failures (0 = pass).
+// M5: the ten Tracks of the set list: every Track's forms and lead, the nine Track changes from 120 to 174 BPM
+// driven as the game's director drives them, and the Tracks without a kick on every beat (Afterglow, Mirage,
+// Last Light): beats and bars from the clock, the sidechain from the pattern's kicks, the Build and the fills.
 
 #include <atomic>
 #include <cmath>
@@ -14,6 +17,7 @@
 #include "audio/music_data.h"
 #include "audio/spsc.h"
 #include "audio/tempo_map.h"
+#include "content/palette.h"
 #include "core/alloc_counter.h"
 
 using namespace rf;
@@ -206,6 +210,83 @@ void freeCapture(Capture& c) {
     std::free(c.events);
 }
 
+// M5: an engine driven the way the main thread drives it: rendered in bursts, its events drained after each burst
+// into a log, the tempo map mirrored from the Tempo events (Band::drainEvents) and every onset checked against the
+// mirror as it arrives (old segments leave the mirror's 64 as the song goes on). Optionally the sidechain envelope
+// frame by frame (bursts of one block).
+struct Session {
+    Engine e;
+    BeatEvent* log = nullptr;
+    u32 count = 0, cap = 0;
+    TempoMap mirror;
+    bool mirrored = false;
+    u64 frame = 0, allocs = 0;
+    u32 onsets = 0, offGrid = 0;
+    float* duck = nullptr;  // per frame (record = true)
+    u64 duckCap = 0;
+    bool ok = false;
+
+    explicit Session(u32 logCap = 200000, u64 duckFrames = 0) : cap(logCap), duckCap(duckFrames) {
+        log = static_cast<BeatEvent*>(std::calloc(logCap, sizeof(BeatEvent)));
+        if (duckFrames) duck = static_cast<float*>(std::calloc(duckFrames, sizeof(float)));
+        ok = log && (!duckFrames || duck) && e.init(*g_music, *g_bank, kRate);
+    }
+    ~Session() {
+        std::free(log);
+        std::free(duck);
+    }
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
+    void post(const Command& c) { e.post(c); }
+
+    // Renders `frames`; onEvent(ev) sees each drained event (after the mirror took it).
+    template <typename F>
+    void run(u64 frames, u32 burst, F&& onEvent) {
+        static float buf[2 * 1024];
+        const u64 end = frame + frames;
+        while (frame < end) {
+            u32 n = burst;
+            if (frame + n > end) n = static_cast<u32>(end - frame);
+            const u64 a0 = heapAllocCountThisThread();
+            e.render(buf, n, 2);
+            allocs += heapAllocCountThisThread() - a0;
+            if (duck && n == kBlock && e.duckBlockFrames() == kBlock && frame + kBlock <= duckCap)
+                std::memcpy(duck + frame, e.duckBlock(), sizeof(float) * kBlock);
+            frame += n;
+            BeatEvent ev;
+            while (e.popEvent(ev)) {
+                if (ev.kind == BeatKind::Tempo) {
+                    TempoSegment s{static_cast<double>(ev.frame), ev.tick, ev.x};
+                    if (ev.a == 1) {
+                        mirror.appendSegment(s);
+                    } else if (ev.tick == 0.0) {
+                        mirror = TempoMap{};
+                        mirror.appendSegment(s);
+                        mirrored = true;
+                    } else {
+                        mirror.changeAt(ev.tick, ev.x);
+                    }
+                } else if (ev.tick >= 0.0 && mirrored) {
+                    ++onsets;
+                    if (ev.frame != mirror.gridFrame(ev.tick)) ++offGrid;
+                }
+                if (count < cap) log[count++] = ev;
+                onEvent(ev);
+            }
+        }
+    }
+    void run(u64 frames, u32 burst = 256) {
+        run(frames, burst, [](const BeatEvent&) {});
+    }
+};
+
+double barFrames(u32 track) { return 240.0 / g_music->tracks[track].bpm * kRate; }
+u32 patternHits(u32 track, Pat p) {
+    u32 n = 0;
+    for (float v : g_music->tracks[track].pattern[static_cast<u32>(p)]) n += v > 0.0f;
+    return n;
+}
+
 void testStagedBurstIndependence() {
     // Each Track's song rendered in bursts of 192 and in random bursts: identical samples and events.
     const u64 frames = static_cast<u64>(kRate) * 20;
@@ -223,8 +304,15 @@ void testStagedBurstIndependence() {
             e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Staged), static_cast<u8>(t), 0));
             runEngine(e, b, frames, 0);
         }
-        u64 diff = 0;
-        for (u64 i = 0; i < frames * 2; ++i) diff += a.out[i] != b.out[i];
+        u64 diff = 0, first = ~0ull;
+        float worst = 0.0f;
+        for (u64 i = 0; i < frames * 2; ++i) {
+            if (a.out[i] == b.out[i]) continue;
+            ++diff;
+            if (first == ~0ull) first = i / 2;
+            worst = std::fmax(worst, std::fabs(a.out[i] - b.out[i]));
+        }
+        if (diff) std::printf("  %s: first difference at frame %llu, largest %.3g\n", g_music->tracks[t].id, first, worst);
         CHECK_MSG(diff == 0, "%s: %llu samples differ between burst patterns", g_music->tracks[t].id,
                   static_cast<unsigned long long>(diff));
         CHECK(a.eventCount == b.eventCount && a.eventCount > 100);
@@ -249,82 +337,99 @@ void testStagedBurstIndependence() {
     }
 }
 
-// The conductor through a whole Short cycle (with the Build's 85% bar): every onset sits on the grid of
-// the tempo map mirrored from the Tempo events, as the main thread sees it.
-void testConductorGrid() {
-    Engine e;
-    CHECK(e.init(*g_music, *g_bank, kRate));
-    e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
-    e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
-    e.post(cmd(CmdType::SetFire, 0, 1));
-    Capture c;
-    const u64 frames = static_cast<u64>(kRate) * 50;  // 24 bars at 120 BPM and a little more
-    runEngine(e, c, frames, 0, 3);
-    TempoMap mirror;
-    bool haveMirror = false;
-    u32 checked = 0, off = 0, tempos = 0, leads = 0, sections = 0;
-    for (u32 i = 0; i < c.eventCount; ++i) {
-        const BeatEvent& ev = c.events[i];
-        if (ev.kind == BeatKind::Tempo) {
-            if (ev.tick == 0.0) {
-                mirror = TempoMap{};
-                mirror.appendSegment({static_cast<double>(ev.frame), 0.0, ev.x});
-                haveMirror = true;
-            } else {
-                mirror.changeAt(ev.tick, ev.x);  // the main thread's mirror: exact start frames
-            }
-            ++tempos;
-            continue;
+// The conductor through a whole phrase cycle of every Track (M5: all ten; the Build's 85% bar in each): the form
+// (Track 1 Short 8 / 4 / 8 / 4, the others Standard 12 / 4 / 16 / 4), the tempo dip and its return, a lead note on
+// every grid step, and every onset on the grid of the tempo map mirrored from the Tempo events, as the main thread
+// sees it. Random bursts; no allocation, no voice stolen.
+void testConductorForms() {
+    for (u32 t = 0; t < g_music->trackCount; ++t) {
+        const char* id = g_music->tracks[t].id;
+        auto* s = new Session;
+        CHECK(s->ok);
+        s->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
+        s->post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+        s->post(cmd(CmdType::SetFire, 0, 1));
+        const bool shortForm = t == 0;
+        const u32 want[4] = {shortForm ? 8u : 12u, 4u, shortForm ? 8u : 16u, 4u};
+        const u32 cycle = want[0] + want[1] + want[2] + want[3];
+        const double bpm = g_music->tracks[t].bpm;
+        // The cycle (the Build's last bar at 85%) and two bars of the next Groove.
+        const u64 frames = static_cast<u64>((cycle + 2) * barFrames(t) + barFrames(t) / 0.85);
+        u32 sections = 0, leads = 0, tempos = 0;
+        bool formOk = true, tempoOk = true;
+        Random rng(t + 11);
+        u64 end = s->frame + frames;
+        while (s->frame < end) {
+            const u32 burst = 1 + rng.below(1000);
+            s->run(burst < end - s->frame ? burst : end - s->frame, burst, [&](const BeatEvent& ev) {
+                if (ev.kind == BeatKind::Section) {
+                    const u32 k = sections++;
+                    if (k < 5 && (ev.a != k % 4 || ev.b != want[k % 4])) formOk = false;
+                }
+                if (ev.kind == BeatKind::Lead) ++leads;
+                if (ev.kind == BeatKind::Tempo && ev.tick > 0.0) {
+                    ++tempos;
+                    // The dip on the Build's last bar, then back on the Drop's downbeat.
+                    const double ratio = ev.value / bpm;
+                    if (std::fabs(ratio - 0.85) > 1e-4 && std::fabs(ratio - 1.0) > 1e-4) tempoOk = false;
+                }
+            });
         }
-        if (ev.kind == BeatKind::Lead) ++leads;
-        if (ev.kind == BeatKind::Section) ++sections;
-        if (ev.tick < 0.0 || !haveMirror) continue;
-        ++checked;
-        if (ev.frame != mirror.gridFrame(ev.tick)) ++off;
+        CHECK_MSG(formOk && sections >= 5, "%s: the cycle's sections or lengths differ (%u sections)", id, sections);
+        CHECK_MSG(tempoOk && tempos == 2, "%s: %u tempo changes in the cycle (the dip and the return)", id, tempos);
+        // A note on every 1/16 (the Groove, Build to its half-bar stop, Drop's Surge in two gears, the Break's echo).
+        CHECK_MSG(leads > 16 * cycle / 2, "%s: %u lead notes", id, leads);
+        CHECK_MSG(s->onsets > 500 && s->offGrid == 0, "%s: %u of %u conductor onsets off the grid", id, s->offGrid, s->onsets);
+        CHECK_MSG(s->allocs == 0, "%s: %llu allocations", id, static_cast<unsigned long long>(s->allocs));
+        CHECK_MSG(s->e.stats().steals.load() == 0, "%s: %u voices stolen", id, s->e.stats().steals.load());
+        delete s;
     }
-    CHECK_MSG(tempos >= 3, "tempo segments %u (the start, the dip, the return)", tempos);
-    CHECK_MSG(sections >= 4, "sections %u", sections);
-    CHECK_MSG(checked > 500 && off == 0, "%u of %u conductor onsets off the grid", off, checked);
-    CHECK(leads > 100);
-    CHECK(c.allocs == 0);
-    freeCapture(c);
 }
 
-// The lead rule on the audio side: a note on every write-grid step while fire is held, none without.
+// The lead rule on the audio side: a note on every write-grid step while fire is held, none without (M5: on every
+// Track, 120 to 174 BPM), each note the arpeggio's for its step.
 void testLeadFollowsFire() {
-    Engine e;
-    CHECK(e.init(*g_music, *g_bank, kRate));
-    e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
-    e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 0.0f));
-    Capture c;
-    // Bar 0 without fire; then fire held for bars 1-2; then released.
-    const u64 bar = 2 * kRate;  // 120 BPM
-    c.out = static_cast<float*>(std::calloc(bar * 4 * 2, sizeof(float)));
-    c.events = static_cast<BeatEvent*>(std::calloc(20000, sizeof(BeatEvent)));
-    const auto renderTo = [&](u64 from, u64 to) {
-        for (u64 f = from; f < to; f += 64) {
-            e.render(c.out + f * 2, 64, 2);
-            BeatEvent ev;
-            while (e.popEvent(ev)) c.events[c.eventCount++] = ev;
-        }
-    };
-    renderTo(0, bar);
-    e.post(cmd(CmdType::SetFire, 0, 1));
-    renderTo(bar, bar * 3);
-    e.post(cmd(CmdType::SetFire, 0, 0));
-    renderTo(bar * 3, bar * 4);
-    u32 perBar[4] = {};
-    for (u32 i = 0; i < c.eventCount; ++i)
-        if (c.events[i].kind == BeatKind::Lead) {
-            const u32 b = static_cast<u32>(c.events[i].tick / 384.0);
-            if (b < 4) ++perBar[b];
-        }
-    // Fire arrives with the first callback after the post: within the first step of bar 1.
-    CHECK_MSG(perBar[0] == 0, "bar 0: %u notes", perBar[0]);
-    CHECK_MSG(perBar[1] >= 15 && perBar[1] <= 16, "bar 1: %u notes", perBar[1]);
-    CHECK_MSG(perBar[2] == 16, "bar 2: %u notes", perBar[2]);
-    CHECK_MSG(perBar[3] <= 1, "bar 3: %u notes", perBar[3]);
-    freeCapture(c);
+    for (u32 t = 0; t < g_music->trackCount; ++t) {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
+        e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 0.0f));
+        Capture c;
+        // Bar 0 without fire; then fire held for bars 1-2; then released.
+        const u64 bar = static_cast<u64>(barFrames(t));
+        c.out = static_cast<float*>(std::calloc((bar + 64) * 4 * 2, sizeof(float)));
+        c.events = static_cast<BeatEvent*>(std::calloc(20000, sizeof(BeatEvent)));
+        u64 at = 0;
+        const auto renderTo = [&](u64 to) {
+            for (; at < to; at += 64) {
+                e.render(c.out + at * 2, 64, 2);
+                BeatEvent ev;
+                while (e.popEvent(ev)) c.events[c.eventCount++] = ev;
+            }
+        };
+        renderTo(bar);
+        e.post(cmd(CmdType::SetFire, 0, 1));
+        renderTo(bar * 3);
+        e.post(cmd(CmdType::SetFire, 0, 0));
+        renderTo(bar * 4);
+        u32 perBar[4] = {};
+        bool notesOk = true;
+        const Track& tr = g_music->tracks[t];
+        for (u32 i = 0; i < c.eventCount; ++i)
+            if (c.events[i].kind == BeatKind::Lead) {
+                const u32 b = static_cast<u32>(c.events[i].tick / 384.0);
+                if (b < 4) ++perBar[b];
+                const u32 st = static_cast<u32>(std::fmod(c.events[i].tick, 384.0) / 24.0);
+                if (c.events[i].a != tr.chordAtBar(b).arp[st]) notesOk = false;
+            }
+        // Fire arrives with the first callback after the post: within the first step of bar 1.
+        CHECK_MSG(perBar[0] == 0, "%s bar 0: %u notes", tr.id, perBar[0]);
+        CHECK_MSG(perBar[1] >= 15 && perBar[1] <= 16, "%s bar 1: %u notes", tr.id, perBar[1]);
+        CHECK_MSG(perBar[2] == 16, "%s bar 2: %u notes", tr.id, perBar[2]);
+        CHECK_MSG(perBar[3] <= 1, "%s bar 3: %u notes", tr.id, perBar[3]);
+        CHECK_MSG(notesOk, "%s: a lead note is not its step's arpeggio note", tr.id);
+        freeCapture(c);
+    }
 }
 
 // M3: the auto-aim assist's half-rate grid (SetFire b = 2): a note on every other step, on the even ones
@@ -459,8 +564,13 @@ void testNoAllocations() {
             }
         }
     };
-    for (Mode m : {Mode::Conductor, Mode::Staged, Mode::Metronome, Mode::Script, Mode::Silent}) {
-        e.post(cmd(CmdType::SetMode, static_cast<u8>(m), 1, 1));
+    u32 k = 0;
+    for (Mode m : {Mode::Conductor, Mode::Staged, Mode::Metronome, Mode::Script, Mode::Silent, Mode::Conductor, Mode::Staged}) {
+        // M5: on Tracks 2, 7, 10, 3, 9, 6 and 1 (half time, broken kick and two-step among them), a Track change in each.
+        static const u8 kTracks[] = {1, 6, 9, 2, 8, 5, 0};
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(m), kTracks[k], 1));
+        e.post(cmd(CmdType::SetTrack, static_cast<u8>((kTracks[k] + 1) % g_music->trackCount)));
+        ++k;
         e.post(cmd(CmdType::SetFire, 0, 1));
         e.post(cmd(CmdType::SetPlayers, 4, 0));
         for (u8 p = 0; p < 4; ++p) e.post(cmd(CmdType::SetFire, p, 1));
@@ -469,8 +579,8 @@ void testNoAllocations() {
         e.post(cmd(CmdType::Shard, 0, 0, 0, 1.0f));
         e.post(cmd(CmdType::Nova, 0, 0, 0, 1.0f));
         e.post(cmd(CmdType::Sfx, static_cast<u8>(Sfx::Hit), 0, 0, 1.0f));
-        e.post(cmd(CmdType::SetVariant, 2));
-        run(600);
+        e.post(cmd(CmdType::SetVariant, static_cast<u8>(k % 3)));
+        run(1500);
     }
     CHECK_MSG(allocs == 0, "%llu allocations while rendering", static_cast<unsigned long long>(allocs));
 }
@@ -479,10 +589,38 @@ void testNoAllocations() {
 
 void testMusicData() {
     const MusicData& m = *g_music;
-    CHECK(m.trackCount == 3);
+    CHECK(m.trackCount == 10);
     CHECK(m.variantCount == 3);
+    // M5: the set list, 120 to 174 BPM in steps of six; each Track by id and by number; every Track x variant
+    // calibrated; each arrangement the same 24 staged bars.
+    for (u32 t = 0; t < m.trackCount; ++t) {
+        char id[16], num[4];
+        std::snprintf(id, sizeof id, "track%02u", t + 1);
+        std::snprintf(num, sizeof num, "%u", t + 1);
+        CHECK_MSG(std::strcmp(m.tracks[t].id, id) == 0 && m.trackIndex(id) == static_cast<i32>(t) && m.trackIndex(num) == static_cast<i32>(t),
+                  "Track %u is '%s'", t + 1, m.tracks[t].id);
+        CHECK_MSG(m.tracks[t].bpm == 120.0f + 6.0f * static_cast<float>(t), "%s at %.1f BPM", id, m.tracks[t].bpm);
+        CHECK_MSG(m.tracks[t].arrangementBars == 24 && m.tracks[t].progressionCount == 4, "%s: arrangement %u bars", id,
+                  m.tracks[t].arrangementBars);
+        for (u32 v = 0; v < m.variantCount; ++v) CHECK_MSG(m.calibration.have[t][v], "%s/%s not calibrated", id, m.variants[v].id);
+    }
+    CHECK(m.trackIndex("11") == -1 && m.trackIndex("track11") == -1);
+    // The overrides the later Tracks carry: duck (Afterglow's pad, Arcadia's bass), the half-time / broken / two-step
+    // kicks, Mirage's C over B flat, Last Light's long room.
+    const i32 club = m.variantIndex("club"), velvet = m.variantIndex("velvet");
+    CHECK(m.sound[6][club].duck[static_cast<u32>(Bus::Pad)] == 0.7f && m.sound[6][velvet].duck[static_cast<u32>(Bus::Pad)] == 0.7f);
+    CHECK(m.sound[6][club].duck[static_cast<u32>(Bus::Bass)] == 0.80f);  // patches.json
+    CHECK(m.sound[7][club].duck[static_cast<u32>(Bus::Bass)] == 0.45f && m.sound[7][club].mix.pad == 0.35f);
+    CHECK(m.sound[6][club].mix.clap == 0.9f && m.sound[6][club].kickHz == 51.9f && m.sound[6][club].reverb.rt60 == 2.2f);
+    CHECK(m.sound[9][club].reverb.rt60 == 2.4f && m.sound[9][velvet].reverb.rt60 == 2.4f);  // the Track wins over Velvet
+    CHECK(m.sound[8][club].lead.length == 0.42f && m.sound[8][club].kickHz == 46.25f);
+    CHECK(patternHits(6, Pat::Kick) == 2 && m.tracks[6].pattern[static_cast<u32>(Pat::Kick)][10] > 0.0f);
+    CHECK(patternHits(8, Pat::Kick) == 3 && m.tracks[8].pattern[static_cast<u32>(Pat::Kick)][6] > 0.0f);
+    CHECK(patternHits(9, Pat::Kick) == 3 && std::fabs(m.tracks[9].pattern[static_cast<u32>(Pat::Kick)][13] - 3.0f / 9.0f) < 1e-6f);
+    CHECK(m.tracks[8].chords[m.tracks[8].progression[1]].bass == 46);
+    CHECK(m.tracks[6].longestBassSteps == 5.0f);
     CHECK(std::strcmp(m.variants[m.defaultVariant].id, "club") == 0);
-    const i32 t2 = m.trackIndex("track02"), arcade = m.variantIndex("arcade"), club = m.variantIndex("club");
+    const i32 t2 = m.trackIndex("track02"), arcade = m.variantIndex("arcade");
     CHECK(t2 == 1 && arcade >= 0 && club >= 0);
     CHECK(m.trackIndex("track03") == 2 && m.trackIndex("3") == 2);
     // Order of application: patches.json, then the variant, then the Track.
@@ -512,6 +650,345 @@ void testMusicData() {
     CHECK(r.bedCount == 7 && r.hysteresis == 0.05f);
     CHECK(r.breakSparseSteps[1] == 6);
     CHECK(m.calibrationCurrent);
+}
+
+// ---------------------------------------------------------------- M5: the set list
+
+// Afterglow (half time: kick 0 and 10), Mirage (broken: 0, 6, 10) and Last Light (two-step: 0, 10, ghost 13): in a
+// held Drop, a Beat event on every beat and a Bar on every bar line, on the clock's grid, whether a kick plays there
+// or not; Kick events exactly on the pattern's kicks (velocity in x); the sidechain envelope, frame by frame, rising to
+// 1 on each of those kicks and nowhere else (the beats without a kick only carry the last kick's decay); the Nova's
+// blast on the beat asked for.
+void testKicklessBeats() {
+    for (u32 t : {6u, 8u, 9u}) {
+        const Track& tr = g_music->tracks[t];
+        const float* kick = tr.pattern[static_cast<u32>(Pat::Kick)];
+        const u32 bars = 6;
+        const u64 frames = static_cast<u64>(bars * barFrames(t)) / kBlock * kBlock;
+        auto* s = new Session(200000, frames);
+        CHECK(s->ok);
+        s->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
+        s->post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+        s->post(cmd(CmdType::SetSection, static_cast<u8>(Section::Drop)));
+        s->post(cmd(CmdType::HoldSection, 1));
+        Command nova = cmd(CmdType::Nova, 0, 0, 0, 1.0f);
+        nova.when = Timing::AtTick;
+        nova.tick = 5.0 * kTicksPerBar + 2.0 * kPpq;  // bar 5, beat 3 (no kick there on any of the three)
+        s->run(static_cast<u64>(4.5 * barFrames(t)) / kBlock * kBlock, kBlock);
+        s->post(nova);
+        s->run(frames - s->frame, kBlock);
+        // From bar 1 on (the held Drop): beats, bars, kicks.
+        u32 beats = 0, barLines = 0, kicks = 0, kickOffPattern = 0, kickVelocityOff = 0, beatsWithoutKick = 0, beatsOffClock = 0;
+        i64 kickFrames[64];
+        u32 nk = 0;
+        double blast = -1.0;
+        for (u32 i = 0; i < s->count; ++i) {
+            const BeatEvent& ev = s->log[i];
+            if (ev.kind == BeatKind::Sfx && ev.a == static_cast<u8>(Sfx::NovaBlast)) blast = ev.tick;
+            if (ev.tick < kTicksPerBar) continue;
+            const u32 st = static_cast<u32>(std::fmod(ev.tick, static_cast<double>(kTicksPerBar)) / kTicksPerStep);
+            if (ev.kind == BeatKind::Beat) {
+                ++beats;
+                if (std::fmod(ev.tick, static_cast<double>(kPpq)) != 0.0 || ev.frame != s->mirror.gridFrame(ev.tick)) ++beatsOffClock;
+                if (kick[st] <= 0.0f) ++beatsWithoutKick;
+            }
+            if (ev.kind == BeatKind::Bar && std::fmod(ev.tick, static_cast<double>(kTicksPerBar)) == 0.0) ++barLines;
+            if (ev.kind == BeatKind::Kick) {
+                ++kicks;
+                if (std::fmod(ev.tick, static_cast<double>(kTicksPerStep)) != 0.0 || kick[st] <= 0.0f) ++kickOffPattern;
+                if (std::fabs(ev.x - kick[st]) > 1e-6) ++kickVelocityOff;
+                if (nk < countOf(kickFrames)) kickFrames[nk++] = ev.frame;
+            }
+        }
+        const u32 heardBars = bars - 1;  // bars 1-5 (bar 0 is the first Groove bar before the Drop)
+        CHECK_MSG(beats == 4 * heardBars && beatsOffClock == 0, "%s: %u beats (%u off the clock's grid) in %u bars", tr.id, beats,
+                  beatsOffClock, heardBars);
+        CHECK_MSG(barLines == heardBars, "%s: %u bar lines", tr.id, barLines);
+        CHECK_MSG(kicks == heardBars * patternHits(t, Pat::Kick) && kickOffPattern == 0 && kickVelocityOff == 0,
+                  "%s: %u kicks (%u off the pattern, %u with another velocity)", tr.id, kicks, kickOffPattern, kickVelocityOff);
+        CHECK_MSG(beatsWithoutKick == 3 * heardBars, "%s: %u beats without a kick", tr.id, beatsWithoutKick);
+        CHECK_MSG(blast == nova.tick, "%s: the Nova's blast on tick %.1f", tr.id, blast);
+        // The sidechain, frame by frame: e^(-age / tau) from the newest kick for 0.6 s, 0 beyond; 1 only on kicks.
+        const double tauN = static_cast<double>(g_music->sound[t][g_music->defaultVariant].sidechainTau) * kRate;
+        const i64 duckLen = static_cast<i64>(framesFor(0.6, kRate));
+        u32 duckOff = 0, onesOffKick = 0;
+        u32 k = 0;
+        const i64 from = static_cast<i64>(barFrames(t)) + 64;  // the Drop: every kick from the pattern
+        for (i64 f = from; f < static_cast<i64>(frames); ++f) {
+            while (k + 1 < nk && kickFrames[k + 1] <= f) ++k;
+            const i64 age = (nk && kickFrames[k] <= f) ? f - kickFrames[k] : -1;
+            const double want = (age >= 0 && age < duckLen) ? std::exp(-static_cast<double>(age) / tauN) : 0.0;
+            if (std::fabs(s->duck[f] - want) > 1e-5) ++duckOff;
+            if (s->duck[f] >= 0.9999f && age != 0) ++onesOffKick;
+        }
+        CHECK_MSG(duckOff == 0 && onesOffKick == 0, "%s: the sidechain differs from the kicks' envelope on %u frames (%u full on no kick)",
+                  tr.id, duckOff, onesOffKick);
+        // At a beat with no kick the envelope is only the last kick's decay (the beat does not trigger it).
+        CHECK_MSG(s->offGrid == 0 && s->allocs == 0, "%s: %u onsets off the grid, %llu allocations", tr.id, s->offGrid,
+                  static_cast<unsigned long long>(s->allocs));
+        delete s;
+    }
+}
+
+// The same three Tracks through an eight-bar Groove phrase, its Build and into the Drop (Standard form, intensity
+// 1): the fill on the phrase's last bar (the clap's pick-up on step 15, more hats in the second half) whatever the
+// kick does; the Build's snare roll on the clock (quarters, eighths, sixteenths, thirty-seconds to the last bar's
+// half), its riser from the Build's first bar at its stretch (4 / (3 + 1 / 0.85)), the kick silent in the last bar
+// and the sidechain released there, the swell ending on the Drop's downbeat, the impact on it.
+void testKicklessBuild() {
+    for (u32 t : {6u, 8u, 9u}) {
+        const Track& tr = g_music->tracks[t];
+        auto* s = new Session;
+        CHECK(s->ok);
+        s->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
+        s->post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+        bool posted = false;
+        // Groove bars 0-7, the Build from bar 8 (12 - 4 bars early), the Drop from bar 12.
+        s->run(static_cast<u64>(15.5 * barFrames(t)), 256, [&](const BeatEvent& ev) {
+            if (ev.kind == BeatKind::Bar && ev.index == 7 && !posted) {
+                s->post(cmd(CmdType::SetSection, static_cast<u8>(Section::Build)));
+                posted = true;
+            }
+        });
+        const double buildTick = 8.0 * kTicksPerBar, dropTick = 12.0 * kTicksPerBar;
+        u32 fillClap = 0, fillHats = 0, plainHats = 0, snares[4] = {}, kicksLast = 0, impacts = 0;
+        double riserTick = -1.0, riserRate = 0.0;
+        i64 swellEnd = -1;
+        bool snareOffGrid = false;
+        for (u32 i = 0; i < s->count; ++i) {
+            const BeatEvent& ev = s->log[i];
+            const i32 bar = ev.tick >= 0.0 ? static_cast<i32>(ev.tick / kTicksPerBar) : -1;
+            const u32 st = ev.tick >= 0.0 ? static_cast<u32>(std::fmod(ev.tick, static_cast<double>(kTicksPerBar)) / kTicksPerStep) : 0;
+            if (ev.kind == BeatKind::Clap && bar == 7 && st == 15) ++fillClap;
+            if (ev.kind == BeatKind::Hat && st >= 8 && (bar == 7 || bar == 6)) (bar == 7 ? fillHats : plainHats) += 1;
+            if (ev.kind == BeatKind::Snare && bar >= 8 && bar < 12) {
+                ++snares[bar - 8];
+                if (std::fmod(ev.tick, 12.0) != 0.0) snareOffGrid = true;
+            }
+            if (ev.kind == BeatKind::Kick && bar == 11) ++kicksLast;
+            if (ev.kind == BeatKind::Riser) {
+                riserTick = ev.tick;
+                riserRate = ev.x;
+            }
+            if (ev.kind == BeatKind::Swell && ev.frame > static_cast<i64>(8 * barFrames(t))) {
+                const i32 id = g_bank->swellHalfBar(t);
+                swellEnd = ev.frame + (id >= 0 ? static_cast<i64>(g_bank->sample(id).frames) : 0);
+            }
+            if (ev.kind == BeatKind::Impact && ev.tick == dropTick) ++impacts;
+        }
+        CHECK_MSG(fillClap == 1, "%s: the fill's pick-up clap %u", tr.id, fillClap);
+        CHECK_MSG(fillHats > plainHats, "%s: fill bar hats %u, plain bar %u (second halves)", tr.id, fillHats, plainHats);
+        CHECK_MSG(snares[0] == 4 && snares[1] == 8 && snares[2] == 16 && snares[3] == 16 && !snareOffGrid,
+                  "%s: snare roll %u / %u / %u / %u", tr.id, snares[0], snares[1], snares[2], snares[3]);
+        const double wantRate = 4.0 / (3.0 + 1.0 / 0.85);
+        CHECK_MSG(riserTick == buildTick && std::fabs(riserRate - wantRate) < 1e-6, "%s: riser at tick %.0f, rate %.6f", tr.id, riserTick, riserRate);
+        CHECK_MSG(kicksLast == 0, "%s: %u kicks in the Build's last bar", tr.id, kicksLast);
+        CHECK_MSG(swellEnd == s->mirror.gridFrame(dropTick), "%s: the swell ends on frame %lld, the Drop starts on %lld", tr.id,
+                  static_cast<long long>(swellEnd), static_cast<long long>(s->mirror.gridFrame(dropTick)));
+        CHECK_MSG(impacts == 1, "%s: %u impacts on the Drop's downbeat", tr.id, impacts);
+        CHECK_MSG(s->offGrid == 0 && s->onsets > 300 && s->allocs == 0, "%s: %u of %u onsets off the grid", tr.id, s->offGrid, s->onsets);
+        delete s;
+    }
+}
+
+// The whole set list in one song, driven bar by bar the way the game's director drives the band (SetPhrase for the
+// next bar while the bar before plays; SetTrack with the first bar of the Track-change Break): Track 1's Groove,
+// then for each of the nine changes an eight-bar Break, a Build and two Drop bars. At every boundary: the Break
+// starts on the bar asked for and is eight bars; the tempo ramps bar by bar from the old Track's to the new one's
+// (the main thread's mirror agrees); the Track (key, kit, sound) changes on the Break's fifth bar; the Build runs at
+// the new tempo with its 85% bar, its riser from the new Track (baked at that tempo, played at the stretch alone);
+// the Drop lands at the new tempo. Every onset on the mirrored grid, no allocation, no voice stolen, no event lost.
+void testSetListTrackChanges() {
+    const u32 n = g_music->trackCount;
+    struct PlanBar {
+        u8 track, section, bar, bars;
+        bool change;
+    };
+    static PlanBar plan[256];
+    u32 planBars = 0;
+    const auto add = [&](u32 track, Section sec, u32 bars, bool change) {
+        for (u32 b = 0; b < bars; ++b) plan[planBars++] = {static_cast<u8>(track), static_cast<u8>(sec), static_cast<u8>(b), static_cast<u8>(bars), change && b == 0};
+    };
+    add(0, Section::Groove, 2, false);
+    u32 breakStart[kMaxTracks] = {};
+    for (u32 t = 1; t < n; ++t) {
+        breakStart[t] = planBars;
+        add(t, Section::Break, 8, true);
+        add(t, Section::Build, 4, false);
+        add(t, Section::Drop, 2, false);
+    }
+    double seconds = 0.0;  // a Break bar at the slower (old) tempo, the rest at their own; the 85% bars in the slack
+    for (u32 i = 0; i < planBars; ++i) {
+        const u32 t = plan[i].section == static_cast<u8>(Section::Break) ? plan[i].track - 1u : plan[i].track;
+        seconds += 240.0 / g_music->tracks[t].bpm;
+    }
+    auto* s = new Session(400000);
+    CHECK(s->ok);
+    s->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
+    s->post(cmd(CmdType::SetForm, static_cast<u8>(Form::Short)));
+    s->post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+    s->post(cmd(CmdType::SetFire, 0, 1));
+    for (u8 k = 0; k < static_cast<u8>(Riff::Count); ++k) s->post(cmd(CmdType::SetRiff, 0, k, 1));
+    // Per song bar: its tempo as planned (Tempo events) and the section that began.
+    static double bpmAt[256];
+    static i32 trackChangeBar[kMaxTracks];
+    for (u32 i = 0; i < 256; ++i) bpmAt[i] = -1.0;
+    for (i32& b : trackChangeBar) b = -1;
+    double riserRate[kMaxTracks] = {};
+    i32 riserBar[kMaxTracks];
+    for (i32& b : riserBar) b = -1;
+    u32 sectionErrors = 0;
+    u32 track = 0;
+    double curBpm = g_music->tracks[0].bpm;
+    s->run(static_cast<u64>((seconds + 4.0) * kRate), 256, [&](const BeatEvent& ev) {
+        const i32 bar = static_cast<i32>(ev.tick / kTicksPerBar);
+        if (ev.kind == BeatKind::Tempo) {
+            curBpm = ev.value;
+            if (bar >= 0 && bar < 256) bpmAt[bar] = ev.value;
+        }
+        if (ev.kind == BeatKind::Track && ev.a < kMaxTracks) {
+            trackChangeBar[ev.a] = bar;
+            track = ev.a;
+        }
+        if (ev.kind == BeatKind::Riser && track < kMaxTracks) {
+            riserRate[track] = ev.x;
+            riserBar[track] = bar;
+        }
+        if (ev.kind == BeatKind::Section && bar > 0 && static_cast<u32>(bar) < planBars) {  // bar 0: the song's own start
+            const PlanBar& p = plan[bar];
+            if (ev.a != p.section || p.bar != 0 || ev.b != p.bars) ++sectionErrors;
+        }
+        if (ev.kind != BeatKind::Bar) return;
+        if (bar >= 0 && bar < 256 && bpmAt[bar] < 0.0) bpmAt[bar] = curBpm;  // no Tempo event: the tempo goes on
+        const u32 next = static_cast<u32>(bar + 1);
+        if (next >= planBars) return;
+        const PlanBar& p = plan[next];
+        if (p.change) s->post(cmd(CmdType::SetTrack, p.track, 0));
+        s->post(cmd(CmdType::SetPhrase, p.section, p.bar, p.bars));
+    });
+    CHECK_MSG(sectionErrors == 0, "%u sections differ from the plan", sectionErrors);
+    for (u32 t = 1; t < n; ++t) {
+        const char* id = g_music->tracks[t].id;
+        const double from = g_music->tracks[t - 1].bpm, to = g_music->tracks[t].bpm;
+        const u32 b0 = breakStart[t];
+        CHECK_MSG(trackChangeBar[t] == static_cast<i32>(b0 + 4), "%s: the key changed on bar %d (Break from %u)", id, trackChangeBar[t], b0);
+        bool ramp = true;
+        for (u32 k = 0; k < 8; ++k) {
+            const double want = from + (to - from) * k / 7.0;
+            if (std::fabs(bpmAt[b0 + k] - want) > 1e-3) ramp = false;
+        }
+        CHECK_MSG(ramp, "%s: the Break's tempo %.3f %.3f ... %.3f, want %.1f to %.1f", id, bpmAt[b0], bpmAt[b0 + 1], bpmAt[b0 + 7], from, to);
+        const u32 build = b0 + 8, drop = b0 + 12;
+        CHECK_MSG(std::fabs(bpmAt[build] - to) < 1e-3 && std::fabs(bpmAt[build + 3] - 0.85 * to) < 1e-3 && std::fabs(bpmAt[drop] - to) < 1e-3,
+                  "%s: Build %.3f, its last bar %.3f, Drop %.3f BPM", id, bpmAt[build], bpmAt[build + 3], bpmAt[drop]);
+        CHECK_MSG(riserBar[t] == static_cast<i32>(build) && std::fabs(riserRate[t] - 4.0 / (3.0 + 1.0 / 0.85)) < 1e-6,
+                  "%s: riser on bar %d at rate %.6f", id, riserBar[t], riserRate[t]);
+        // The riser the Build plays is the new Track's, baked four bars at its tempo.
+        const i32 rid = g_bank->riser(t, 4);
+        CHECK_MSG(rid >= 0 && g_bank->sample(rid).frames == framesFor(4 * 240.0 / to, kRate), "%s: riser %d", id, rid);
+    }
+    CHECK_MSG(std::fabs(s->mirror.bpmAt(static_cast<double>(s->frame), kRate) - g_music->tracks[n - 1].bpm) < 1e-6,
+              "the main thread's mirror ends at %.4f BPM", s->mirror.bpmAt(static_cast<double>(s->frame), kRate));
+    CHECK_MSG(s->e.stats().track.load() == n - 1, "the set list ends on Track %u", s->e.stats().track.load() + 1);
+    CHECK_MSG(s->onsets > 5000 && s->offGrid == 0, "%u of %u onsets off the mirrored grid", s->offGrid, s->onsets);
+    CHECK_MSG(s->allocs == 0 && s->e.stats().steals.load() == 0 && s->e.eventsDropped() == 0, "allocations %llu, steals %u, events dropped %u",
+              static_cast<unsigned long long>(s->allocs), s->e.stats().steals.load(), s->e.eventsDropped());
+    delete s;
+}
+
+// The load test (--band full: the Drop held, four players on the 1/16-triplet grid with a Split harmony, every Riff at
+// level 2, kills) on every Track: no voice stolen, no allocation; the peak voice count stays inside the pools.
+void testFullBandEveryTrack() {
+    for (u32 t = 0; t < g_music->trackCount; ++t) {
+        auto* s = new Session(100000);
+        CHECK(s->ok);
+        s->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
+        s->post(cmd(CmdType::SetPlayers, 4, 0));
+        s->post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+        s->post(cmd(CmdType::SetSection, static_cast<u8>(Section::Drop)));
+        s->post(cmd(CmdType::HoldSection, 1));
+        for (u8 p = 0; p < 4; ++p) {
+            s->post(cmd(CmdType::SetFire, p, 1));
+            s->post(cmd(CmdType::SetTimbre, p, p));
+            for (u8 k = 0; k < 3; ++k) s->post(cmd(CmdType::SetRiff, p, k, 2));
+            Command m = cmd(CmdType::SetMods, p);
+            m.mods[0] = 1;
+            m.mods[1] = 1;
+            s->post(m);
+        }
+        for (u32 f = 0; f < 60 * 8; ++f) {  // eight seconds, effects every 1/60 s as Band::update feeds them
+            s->post(cmd(CmdType::Kill, 0, 3));
+            if (f % 4 == 0) {
+                s->post(cmd(CmdType::Kill, 1, 1));
+                s->post(cmd(CmdType::Shard, 0, 0, 0, 1.0f));
+            }
+            if (f % 30 == 0) s->post(cmd(CmdType::Kill, 2, 1));
+            s->run(kRate / 60, 240);
+        }
+        const u32 peak = s->e.stats().voicesPeak.load();
+        CHECK_MSG(s->e.stats().steals.load() == 0 && s->allocs == 0 && s->offGrid == 0,
+                  "%s: steals %u, allocations %llu, onsets off the grid %u", g_music->tracks[t].id, s->e.stats().steals.load(),
+                  static_cast<unsigned long long>(s->allocs), s->offGrid);
+        std::printf("  full band %s: voices peak %u\n", g_music->tracks[t].id, peak);
+        delete s;
+    }
+}
+
+// The Shard run of every Track stays in its scale (M5: a major pentatonic on Afterglow, Arcadia and Mirage).
+void testShardScales() {
+    for (u32 t = 0; t < g_music->trackCount; ++t) {
+        const Track& tr = g_music->tracks[t];
+        const i32 tonic = tr.chords[tr.progression[0]].bass % 12;
+        const u8* sc = g_bank->shardScale(t);
+        u32 outside = 0;
+        for (u32 i = 0; i < 10; ++i) {
+            const i32 pc = ((sc[i] - tonic) % 12 + 12) % 12;
+            bool in = false;
+            for (u32 d = 0; d < tr.scaleCount; ++d) in = in || tr.scale[d] == pc;
+            if (!in) ++outside;
+            if (i && sc[i] <= sc[i - 1]) ++outside;  // rising
+        }
+        CHECK_MSG(outside == 0, "%s: %u Shard notes outside its scale (or not rising)", tr.id, outside);
+    }
+}
+
+// M5 (the lead's rule: effects are part of the music): the effects written in A minor move to each Track's root and take
+// their major third on Afterglow, Arcadia and Mirage; the Elite's fifth only moves.
+void testEffectsInKey() {
+    const double wantShift[10] = {0, -4, 5, -5, -2, 3, 4, -2, 1, 0};
+    for (u32 t = 0; t < g_music->trackCount; ++t) {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), static_cast<u8>(t), 0));
+        for (Sfx s : {Sfx::Boost, Sfx::Upgrade, Sfx::GameOver, Sfx::Elite}) e.post(cmd(CmdType::Sfx, static_cast<u8>(s), 0, 0, 1.0f));
+        Capture c;
+        runEngine(e, c, 4800, 480);
+        const bool major = t == 6 || t == 7 || t == 8;
+        u32 seen = 0, wrong = 0;
+        for (u32 i = 0; i < c.eventCount; ++i) {
+            const BeatEvent& ev = c.events[i];
+            if (ev.kind != BeatKind::Sfx) continue;
+            ++seen;
+            const bool hasMajor = ev.a != static_cast<u8>(Sfx::Elite);
+            if (std::fabs(ev.x - std::exp2(wantShift[t] / 12.0)) > 1e-5 || (ev.b == 1) != (major && hasMajor)) ++wrong;
+        }
+        CHECK_MSG(seen == 4 && wrong == 0, "%s: %u of %u effects not in the Track's key", g_music->tracks[t].id, wrong, seen);
+        freeCapture(c);
+    }
+}
+
+// All ten palettes load, one for each Track of the set list (design/palettes.json "track").
+void testPalettes() {
+    auto* p = new Palettes;
+    CHECK(loadPalettes(*p));
+    CHECK_MSG(p->count == 10, "%u palettes", p->count);
+    for (u32 t = 1; t <= g_music->trackCount; ++t) {
+        u32 found = 0;
+        for (u32 i = 0; i < p->count; ++i) found += p->list[i].track == t;
+        CHECK_MSG(found == 1, "Track %u has %u palettes", t, found);
+    }
+    CHECK(p->find("lastlight") && p->find("lastlight")->track == 10 && p->find("afterglow") && p->find("mirage"));
+    delete p;
 }
 
 struct Test {
@@ -592,15 +1069,22 @@ int main() {
         {"tempo map constant", testTempoConstant},
         {"tempo map changes", testTempoChange},
         {"music data", testMusicData},
+        {"palettes: ten, one for each Track (M5)", testPalettes},
         {"staged: burst independence, grid, no allocation", testStagedBurstIndependence},
-        {"conductor: grid through the Build dip", testConductorGrid},
-        {"lead follows fire", testLeadFollowsFire},
+        {"conductor: every Track's form, grid through the Build dip", testConductorForms},
+        {"lead follows fire, every Track", testLeadFollowsFire},
         {"lead at half rate, Nova on the game's beat (M3)", testLeadHalfRateAndNovaTick},
         {"variant on the bar line", testVariantOnBarLine},
         {"track change through the Break", testTrackChange},
         {"no allocations in any mode", testNoAllocations},
         {"pause low-pass on the music (M3 stage C)", testPauseMuffle},
         {"effect playback rate (M3 stage C)", testSfxRate},
+        {"no kick on the beat: beats from the clock, sidechain from the kicks (M5: Tracks 7, 9, 10)", testKicklessBeats},
+        {"no kick on the beat: fill, Build, riser, swell (M5: Tracks 7, 9, 10)", testKicklessBuild},
+        {"the set list: nine Track changes, 120 to 174 BPM (M5)", testSetListTrackChanges},
+        {"the full band on every Track (M5)", testFullBandEveryTrack},
+        {"Shard runs in each Track's scale (M5)", testShardScales},
+        {"A-minor effects in each Track's key (M5)", testEffectsInKey},
     };
     for (const Test& t : tests) {
         g_test = t.name;

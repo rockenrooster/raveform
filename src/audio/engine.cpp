@@ -12,6 +12,10 @@ namespace {
 
 constexpr u32 kLeadVoices = 64;
 constexpr u32 kLeadPerPlayer = 12;  // per player (a 1/32 line and its harmony, or four lines at 1/16)
+// M5 (cost): a teammate's lead, mixed at 0.35 or less (conductor.json lead.others), holds at most this many: at 174 BPM
+// every player reached 12 in the full band (48 lead voices against 33 at 120 BPM); the notes it cuts short are past
+// 0.23 s, more than 20 dB under the local lead's onsets.
+constexpr u32 kLeadPerOther = 8;
 constexpr u32 kLeadFadeOut = 240;   // frames: a replaced note fades instead of clicking
 constexpr u32 kBassVoices = 4;
 constexpr u32 kStabVoices = 8;
@@ -19,6 +23,8 @@ constexpr u32 kPadVoices = 4;
 constexpr u32 kSampleVoices = 96;
 constexpr u32 kPendingMax = 64;
 constexpr i64 kGrid = 2;  // sequencer scan resolution in ticks (every grid in use is a multiple)
+static_assert(kLeadVoices <= 128 && kSampleVoices <= 128 && kBassVoices <= 128 && kStabVoices <= 128 && kPadVoices <= 128,
+              "Engine::Order holds 128 voices a pool");
 
 // musicproto._render: numbers that live in the prototype's code rather than in the JSON.
 constexpr double kSectionRampS = 0.03;  // section gains change 30 ms either side of the bar line
@@ -74,7 +80,8 @@ inline i64 floorDiv(i64 a, i64 b) { return a >= 0 ? a / b : -((-a + b - 1) / b);
 }  // namespace
 
 const char* EngineProfile::name(u32 s) {
-    static const char* const kNames[] = {"lead", "bass", "stab", "pad", "samples", "bus fx", "delay", "reverb", "sfx reverb", "master"};
+    static const char* const kNames[] = {"lead saw", "lead square", "lead bell", "lead stab", "bass",   "stab",      "pad",
+                                         "samples",  "bus fx",      "delay",     "reverb",    "sfx reverb", "master"};
     return s < countOf(kNames) ? kNames[s] : "?";
 }
 
@@ -90,6 +97,8 @@ const char* beatKindName(BeatKind k) {
 
 struct Engine::LeadVoice {
     bool active = false;
+    i64 start = 0;  // M5: the frame it starts on, and its allocation number (the order it is summed in)
+    u32 seq = 0;
     Timbre timbre = Timbre::P1Saw;
     u8 player = 0;
     u32 delay = 0, age = 0, length = 0, fade = 240;
@@ -102,6 +111,12 @@ struct Engine::LeadVoice {
     // Control-rate cache: the coefficients at the next knot become the current knot's.
     u32 knot = ~0u;
     SvfCoefs cNext{};
+    // M5 (cost): the knot interval the last segment rendered in, with its coefficients and where its envelopes stood, so a
+    // segment that goes on in the same interval (the next block) takes them up instead of computing them again
+    // (bit for bit the same values: each is the interval's exact start times the same per-sample steps).
+    SvfCoefs cCur{};
+    u32 runKnot = ~0u;
+    float decRun = 0.0f, modRun = 0.0f;
     SawOsc saw[4];
     SquareOsc sq[2];
     SvfLowpass svf;
@@ -109,6 +124,8 @@ struct Engine::LeadVoice {
 
 struct Engine::BassVoice {
     bool active = false;
+    i64 start = 0;
+    u32 seq = 0;
     u32 delay = 0, age = 0, length = 0, gate = 0, fade = 240;
     float vel = 0.0f, k = 1.0f, fcStart = 0.0f, fcEnd = 0.0f, fcTauN = 1.0f, attackN = 1.0f, decayN = 1.0f,
           releaseN = 1.0f, sqMix = 0.5f, sub = 0.0f, drive = 1.0f, gain = 1.0f;
@@ -120,6 +137,8 @@ struct Engine::BassVoice {
 
 struct Engine::StabVoice {
     bool active = false;
+    i64 start = 0;
+    u32 seq = 0;
     u32 delay = 0, age = 0, length = 0, fade = 240;
     u32 oscCount = 0;
     float vel = 0.0f, gl = 0.0f, gr = 0.0f, k = 1.0f, fcStart = 0.0f, fcEnd = 0.0f, fcTauN = 1.0f, attackN = 1.0f,
@@ -130,16 +149,25 @@ struct Engine::StabVoice {
 
 struct Engine::PadVoice {
     bool active = false;
+    i64 start = 0;
+    u32 seq = 0;
     u32 delay = 0, age = 0, length = 0, hold = 0, fade = 480;
     u32 oscCount = 0;  // per channel
     float level = 0.0f, gain = 0.0f, bright = 1.0f, k = 1.0f, fcBase = 0.0f, fcLfo = 0.0f, lfoW = 0.0f, attackN = 1.0f,
           releaseN = 1.0f, norm = 1.0f;
     SawOsc saw[2][12];
     SvfLowpass svf[2];
+    // M5 (cost), per channel: the knot interval's coefficients and the next knot's, and where the release stood, taken up
+    // by a segment that goes on in the same interval (as the lead's).
+    u32 knot[2] = {~0u, ~0u};
+    SvfCoefs cCur[2] = {}, cNext[2] = {};
+    float relRun[2] = {};
 };
 
 struct Engine::SampleVoice {
     bool active = false;
+    i64 start = 0;
+    u32 seq = 0;
     const float* data = nullptr;
     u32 frames = 0;
     u8 channels = 1;
@@ -174,6 +202,10 @@ struct Engine::Player {
     float distance = 0.0f;
     bool beacon = false;  // M4: down, its beacon sounding (look.md 6)
     float beaconPan = 0.0f;
+    // M5 (cues.h): every Mod's stacks (the first slice's five above are kept in step), the Boosts active, the Fusions.
+    u8 mod[kModCount] = {};
+    u16 boosts = 0;
+    u8 fusions = 0;
 };
 
 struct Engine::BarPlan {
@@ -201,15 +233,51 @@ struct Engine::BarPlan {
     bool leadStopsHalf = false;      // Build's last bar: the lead stops after beat 2
 };
 
+namespace {
+// The order voices start in (and are summed in): start frame, then allocation number.
 template <typename V>
-V* Engine::allocVoice(V* pool, u32 count) {
-    V* oldest = &pool[0];
-    for (u32 i = 0; i < count; ++i) {
+bool startsBefore(const V& a, const V& b) {
+    return a.start < b.start || (a.start == b.start && a.seq < b.seq);
+}
+}  // namespace
+
+template <typename V>
+V* Engine::allocVoice(V* pool, u32 count, Order& order) {
+    for (u32 i = 0; i < count; ++i)
         if (!pool[i].active) return &pool[i];
-        if (pool[i].age > oldest->age) oldest = &pool[i];
-    }
+    // Full: the voice that started first gives way (by start frame, not by age, which depends on the callbacks).
+    V* oldest = &pool[0];
+    for (u32 i = 1; i < count; ++i)
+        if (startsBefore(pool[i], *oldest)) oldest = &pool[i];
     stats_.steals.fetch_add(1, std::memory_order_relaxed);
+    const u8 slot = static_cast<u8>(oldest - pool);
+    u32 w = 0;
+    for (u32 k = 0; k < order.n; ++k)
+        if (order.idx[k] != slot) order.idx[w++] = order.idx[k];
+    order.n = w;
     return oldest;
+}
+
+template <typename V>
+void Engine::placeVoice(V* pool, Order& order, V* v, i64 frame) {
+    if (!v->active || order.n >= countOf(order.idx)) return;
+    v->start = frame > frame_ ? frame : frame_;
+    v->seq = ++voiceSeq_;
+    const u8 slot = static_cast<u8>(v - pool);
+    u32 p = order.n++;
+    while (p > 0 && startsBefore(*v, pool[order.idx[p - 1]])) {
+        order.idx[p] = order.idx[p - 1];
+        --p;
+    }
+    order.idx[p] = slot;
+}
+
+template <typename V>
+void Engine::compactOrder(Order& order, const V* pool) {
+    u32 w = 0;
+    for (u32 k = 0; k < order.n; ++k)
+        if (pool[order.idx[k]].active) order.idx[w++] = order.idx[k];
+    order.n = w;
 }
 
 Engine::~Engine() {
@@ -288,6 +356,17 @@ void Engine::applyParams() {
     while (delayRepeats_ && static_cast<u64>(delayRepeats_) * delayD_ > delayMask_) --delayRepeats_;
     for (u32 k = 1; k <= delayRepeats_; ++k) delayTap_[k - 1] = sp_->delay.mix * std::pow(sp_->delay.feedback, static_cast<float>(k - 1));
     outGainTarget_ = std::pow(10.0f, music_->outputGainDb(track_, variant_) / 20.0f);
+    // M5: the key the A-minor effects move to: the Track's root (the first chord's bass) within -6..+5 semitones of A,
+    // major where the scale has no minor third.
+    {
+        const i32 root = tr_->progressionCount ? tr_->chords[tr_->progression[0]].bass % 12 : 9;
+        i32 shift = ((root - 9) % 12 + 12) % 12;
+        if (shift > 5) shift -= 12;
+        keyRate_ = static_cast<float>(std::exp2(shift / 12.0));
+        bool minorThird = tr_->scaleCount == 0;
+        for (u32 i = 0; i < tr_->scaleCount; ++i) minorThird = minorThird || tr_->scale[i] == 3;
+        keyMajor_ = !minorThird;
+    }
     stats_.track.store(static_cast<u8>(track_), std::memory_order_relaxed);
     stats_.variant.store(static_cast<u8>(variant_), std::memory_order_relaxed);
 }
@@ -327,6 +406,7 @@ void Engine::startMode(Mode m, u32 track, bool loop) {
     nextTrackAtBar_ = -1;
     ramping_ = false;
     gainHead_ = gainCount_ = 0;
+    gainPredictedF_ = -1.0;
     for (bool& b : bedOn_) b = false;
     if (!formSet_) form_ = track_ == 0 ? Form::Short : Form::Standard;
     stats_.mode.store(static_cast<u8>(m), std::memory_order_relaxed);
@@ -404,13 +484,40 @@ void Engine::applyCommand(const Command& c) {
                 p->pierce = c.mods[2];
                 p->overcharge = c.mods[3];
                 p->crit = c.mods[4];
+                p->mod[static_cast<u32>(Mod::Split)] = c.mods[0];
+                p->mod[static_cast<u32>(Mod::DoubleTime)] = c.mods[1];
+                p->mod[static_cast<u32>(Mod::Pierce)] = c.mods[2];
+                p->mod[static_cast<u32>(Mod::Overcharge)] = c.mods[3];
+                p->mod[static_cast<u32>(Mod::OnBeatCrit)] = c.mods[4];
             }
             break;
         case CmdType::SetBoost:
-            if (p) {
-                if (c.b == 0) p->prism = c.c != 0;
-                if (c.b == 1) p->hyper = c.c != 0;
+            if (p && c.b < kBoostCount) {
+                if (c.b == static_cast<u8>(Boost::Prism)) p->prism = c.c != 0;
+                if (c.b == static_cast<u8>(Boost::Hyper)) p->hyper = c.c != 0;
+                p->boosts = static_cast<u16>(c.c ? (p->boosts | (1u << c.b)) : (p->boosts & ~(1u << c.b)));
             }
+            break;
+        case CmdType::SetModStacks:
+            if (p) {
+                for (u32 k = 0; k < c.c && k < 8 && c.b + k < kModCount; ++k) p->mod[c.b + k] = c.mods[k];
+                p->split = p->mod[static_cast<u32>(Mod::Split)];
+                p->doubleTime = p->mod[static_cast<u32>(Mod::DoubleTime)];
+                p->pierce = p->mod[static_cast<u32>(Mod::Pierce)];
+                p->overcharge = p->mod[static_cast<u32>(Mod::Overcharge)];
+                p->crit = p->mod[static_cast<u32>(Mod::OnBeatCrit)];
+            }
+            break;
+        case CmdType::SetFusions:
+            if (p) p->fusions = c.b;
+            break;
+        case CmdType::Cue:
+        case CmdType::Recipe:
+        case CmdType::VoiceStart:
+        case CmdType::VoiceSet:
+        case CmdType::VoiceStop:
+        case CmdType::LowPassBed:
+            applyContentCommand(c);
             break;
         case CmdType::SetDistance:
             if (p) p->distance = c.x;
@@ -553,6 +660,7 @@ void Engine::applyCommand(const Command& c) {
             for (u32 i = 0; i < kStabVoices; ++i) stab_[i].active = false;
             for (u32 i = 0; i < kPadVoices; ++i) pad_[i].active = false;
             for (u32 i = 0; i < kSampleVoices; ++i) smp_[i].active = false;
+            for (Order& o : order_) o.n = 0;
             pendingCount_ = 0;
             std::memset(delayLine_, 0, sizeof(float) * (delayMask_ + 1));
             reverb_.clear();
@@ -580,7 +688,7 @@ void Engine::emit(BeatKind k, i64 frame, double tick, u8 a, u8 b, u8 c, float va
 void Engine::playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate) {
     if (id < 0) return;
     const Sample& s = bank_->sample(id);
-    SampleVoice* v = allocVoice(smp_, kSampleVoices);
+    SampleVoice* v = allocVoice(smp_, kSampleVoices, order_[PoolSample]);
     v->active = true;
     v->data = s.data;
     v->frames = s.frames;
@@ -595,15 +703,18 @@ void Engine::playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float
     } else {
         panGains(pan, gain, v->gl, v->gr);
     }
+    placeVoice(smp_, order_[PoolSample], v, frame);
 }
 
-void Engine::playKick(float gain, i64 frame, double tick) {
+void Engine::playKick(float gain, float velocity, i64 frame, double tick) {
+    // Every kick the pattern really has, and only those, sets the sidechain (musicproto: kick_times). M5: a kick is
+    // not a beat (Afterglow, Mirage and Last Light have none on some beats); the beat is the clock's (onTick).
     playSample(bank_->kit(track_, variant_).kick, Bus::Drums, frame, gain, 0.0f);
     if (frame > lastKick_) {
         prevKick_ = lastKick_;
         lastKick_ = frame;
     }
-    emit(BeatKind::Kick, frame, tick, 0, 0, 0, gain);
+    emit(BeatKind::Kick, frame, tick, 0, 0, 0, gain, 0, velocity);
 }
 
 void Engine::playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, double tick, float rateMul) {
@@ -619,10 +730,19 @@ void Engine::playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, doubl
         const i32 baked = id >= 0 ? bank_->sample(id).midi : -1;
         if (midi >= 0 && baked >= 0 && baked != midi && std::abs(midi - baked) <= 7)
             rate *= static_cast<float>(std::exp2((midi - baked) / 12.0));
+        // M5: the effects written in A minor (sfxproto) follow the Track's key: moved to its root (by a playback rate,
+        // at most six semitones), with the major-third variant on the major and lydian Tracks.
+        if (midi < 0 && (kind == Sfx::Boost || kind == Sfx::Upgrade || kind == Sfx::GameOver || kind == Sfx::Elite ||
+                         kind == Sfx::PerfectDash || kind == Sfx::Shield)) {
+            if (keyMajor_ && bank_->sfxMajor(kind) >= 0) id = bank_->sfxMajor(kind);
+            rate *= keyRate_;
+        }
     }
     if (id < 0) return;
     playSample(id, Bus::Sfx, frame, gain, pan, rate);
-    emit(BeatKind::Sfx, frame, tick, static_cast<u8>(kind), 0, 0, gain, 0, midi >= 0 ? midiHz(midi) : 0.0);
+    // x: a pitched effect's frequency, else its playback rate (M5: the key's); b = 1: the major-third variant.
+    emit(BeatKind::Sfx, frame, tick, static_cast<u8>(kind), static_cast<u8>(id == bank_->sfxMajor(kind) ? 1 : 0), 0, gain, 0,
+         midi >= 0 ? midiHz(midi) : static_cast<double>(rate));
     // sfxproto: hits and blasts duck the music (depth, time constant), nothing else does.
     float depth = 0.0f, tau = 0.0f;
     if (kind == Sfx::Hit) {
@@ -651,20 +771,23 @@ void Engine::playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, doubl
 void Engine::playLead(u8 player, Timbre timbre, float midi, float vel, float gain, float pan, i64 frame, float lengthScale,
                       float drive) {
     // Each player's lead holds at most kLeadPerPlayer notes (the prototype's notes overlap: about three
-    // at 1/16, six at 1/32). Past that, the player's oldest note fades out over a few milliseconds.
+    // at 1/16, six at 1/32). Past that, the player's oldest note fades out over a few milliseconds, from the new
+    // note's frame (M5: decided at that frame, not at the block being planned, so the callbacks cannot change it).
+    const i64 at = frame > frame_ ? frame : frame_;
     u32 mine = 0;
     LeadVoice* oldest = nullptr;
     for (u32 i = 0; i < kLeadVoices; ++i) {
         LeadVoice& o = lead_[i];
-        if (!o.active || o.player != player || o.length <= o.age + kLeadFadeOut) continue;
+        if (!o.active || o.player != player || static_cast<i64>(o.length) <= at - o.start + kLeadFadeOut) continue;
         ++mine;
-        if (!oldest || o.age > oldest->age) oldest = &o;
+        if (!oldest || startsBefore(o, *oldest)) oldest = &o;
     }
-    if (mine >= kLeadPerPlayer && oldest) {
-        oldest->length = oldest->age + kLeadFadeOut;
+    const u32 cap = (player < kMaxPlayers && player != localPlayer_) ? kLeadPerOther : kLeadPerPlayer;
+    if (mine >= cap && oldest && at - oldest->start >= static_cast<i64>(oldest->age)) {
+        oldest->length = static_cast<u32>(at - oldest->start) + kLeadFadeOut;
         oldest->fade = kLeadFadeOut;
     }
-    LeadVoice* v = allocVoice(lead_, kLeadVoices);
+    LeadVoice* v = allocVoice(lead_, kLeadVoices, order_[PoolLead]);
     *v = LeadVoice{};
     const float sr = static_cast<float>(sr_);
     const double hz = midiHz(midi);
@@ -686,6 +809,7 @@ void Engine::playLead(u8 player, Timbre timbre, float midi, float vel, float gai
             v->saw[0].dt = static_cast<float>(hz / sr_);
             v->saw[1].dt = static_cast<float>(hz * det / sr_);
             v->sq[0].dt = static_cast<float>(hz * 0.5 / sr_);
+            v->sq[1].phase = 0.5f;  // M5: the sub square's second edge, half a cycle on (LeadRun)
             v->sub = lp.sub;
             v->pre = 0.5f;
             v->k = 1.0f / lp.q;
@@ -702,6 +826,7 @@ void Engine::playLead(u8 player, Timbre timbre, float midi, float vel, float gai
         case Timbre::P2Square: {
             v->sq[0].dt = static_cast<float>(hz / sr_);
             v->sq[1].dt = static_cast<float>(hz * std::pow(2.0, kP2Detune / 1200.0) / sr_);
+            v->saw[0].phase = v->saw[1].phase = 0.5f;  // M5: both squares' second edges, half a cycle on (LeadRun)
             v->pre = kP2Pre;
             v->k = 1.0f / kP2Q;
             v->fcStart = kP2FcBase + kP2FcSweep;
@@ -746,10 +871,11 @@ void Engine::playLead(u8 player, Timbre timbre, float midi, float vel, float gai
         default: v->active = false; break;
     }
     v->decMul = std::exp(-1.0f / v->decayN);
+    placeVoice(lead_, order_[PoolLead], v, frame);
 }
 
 void Engine::playBass(float midi, float vel, float steps, i64 frame) {
-    BassVoice* v = allocVoice(bass_, kBassVoices);
+    BassVoice* v = allocVoice(bass_, kBassVoices, order_[PoolBass]);
     *v = BassVoice{};
     const BassPatch& p = sp_->bass;
     const float sr = static_cast<float>(sr_);
@@ -775,10 +901,11 @@ void Engine::playBass(float midi, float vel, float steps, i64 frame) {
     v->saw.dt = static_cast<float>(hz / sr_);
     v->sq.dt = static_cast<float>(hz / sr_);
     v->subDt = static_cast<float>(hz * 0.5 / sr_);
+    placeVoice(bass_, order_[PoolBass], v, frame);
 }
 
 void Engine::playStab(const Chord& chord, float vel, float pan, i64 frame) {
-    StabVoice* v = allocVoice(stab_, kStabVoices);
+    StabVoice* v = allocVoice(stab_, kStabVoices, order_[PoolStab]);
     *v = StabVoice{};
     const StabPatch& p = sp_->stab;
     const float sr = static_cast<float>(sr_);
@@ -803,10 +930,11 @@ void Engine::playStab(const Chord& chord, float vel, float pan, i64 frame) {
     }
     v->oscCount = notes * 2;
     v->norm = notes ? 1.0f / (2.0f * notes) : 0.0f;
+    placeVoice(stab_, order_[PoolStab], v, frame);
 }
 
 void Engine::playPad(const Chord& chord, float level, float bright, i64 frame) {
-    PadVoice* v = allocVoice(pad_, kPadVoices);
+    PadVoice* v = allocVoice(pad_, kPadVoices, order_[PoolPad]);
     *v = PadVoice{};
     const PadPatch& p = sp_->pad;
     const float sr = static_cast<float>(sr_);
@@ -844,6 +972,7 @@ void Engine::playPad(const Chord& chord, float level, float bright, i64 frame) {
     }
     v->oscCount = notes * 2;
     v->norm = notes ? 1.0f / (2.0f * notes) : 0.0f;
+    placeVoice(pad_, order_[PoolPad], v, frame);
 }
 
 // ---------------------------------------------------------------- sequencer
@@ -1004,6 +1133,13 @@ void Engine::planStagedBar(i64 barTick) {
         const double endF = tempo_.frameAt(endTick);
         addSectionGain(startF + kSectionRampS * sr_, sg[0]);
         addSectionGain(endF - kSectionRampS * sr_, sg[1]);
+        // M5: and the next part's first point now (np.interp ramps across the bar line from this part's last point to
+        // it): added only when the next part is planned, the 30 ms before its downbeat held the old gain, and how much of
+        // the ramp a block saw depended on where the callbacks fell (found on Tracks 6-10, whose 20 s tests reach a Drop).
+        if (part + 1 < t.partCount || loop_) {
+            const u32 np = (part + 1) % t.partCount;
+            addSectionGain(endF + kSectionRampS * sr_, sp_->sectionGain[static_cast<u32>(t.parts[np].section)][0]);
+        }
         const auto pend = [&](i32 id, double tick, float gain, BeatKind kind) {
             if (id < 0 || pendingCount_ >= kPendingMax) return;
             Pending& q = pending_[pendingCount_++];
@@ -1153,6 +1289,12 @@ void Engine::planConductorBar(i64 barTick) {
     // Section gain and the section's one-shots.
     const float* sg = s.sectionGain[static_cast<u32>(section_)];
     const double startF = tempo_.frameAt(static_cast<double>(barTick));
+    if (!sectionStart && gainPredictedF_ >= 0.0) {
+        // The section went on after all (held, or the director said so): the point planned for the next one keeps this
+        // one's gain instead.
+        addSectionGain(gainPredictedF_, sg[1]);
+    }
+    gainPredictedF_ = -1.0;
     if (sectionStart) {
         if (!first && before != section_) addSectionGain(startF - kSectionRampS * sr_, s.sectionGain[static_cast<u32>(before)][1]);
         addSectionGain(startF + kSectionRampS * sr_, sg[0]);
@@ -1165,9 +1307,15 @@ void Engine::planConductorBar(i64 barTick) {
         emit(BeatKind::Section, frameOf(static_cast<double>(barTick)), static_cast<double>(barTick), static_cast<u8>(section_),
              static_cast<u8>(sectionBars_), 0, 0.0f, p.index);
     }
-    if (last && section_ != Section::Build) {
+    if (last) {
         const double endF = tempo_.frameAt(static_cast<double>(barTick + kTicksPerBar));
-        addSectionGain(endF - kSectionRampS * sr_, sg[1]);
+        if (section_ != Section::Build) addSectionGain(endF - kSectionRampS * sr_, sg[1]);
+        // M5: the next section's first point now, so the ramp across the bar line is whole and the same whatever the
+        // callbacks (the cycle's next section, or the Track change's Break; a director that chooses otherwise replaces
+        // it on the bar line).
+        const Section next = (pendingTrack_ >= 0 && !ramping_) ? Section::Break : static_cast<Section>((static_cast<u32>(section_) + 1) % 4);
+        gainPredictedF_ = endF + kSectionRampS * sr_;
+        addSectionGain(gainPredictedF_, s.sectionGain[static_cast<u32>(next)][0]);
     }
     const auto pend = [&](i32 id, double tick, float gain, BeatKind kind, float rate = 1.0f) {
         if (id < 0 || pendingCount_ >= kPendingMax) return;
@@ -1181,13 +1329,16 @@ void Engine::planConductorBar(i64 barTick) {
         q.kind = kind;
         q.rate = rate;
     };
+    // The risers are baked at the Track's own tempo; a run that plays the Track at another (bpmOverride_) plays
+    // them faster or slower by the ratio, so they still span their bars (M5: risers at each tempo).
+    const double tempoRatio = trackBpm() / static_cast<double>(tr_->bpm);
     if (sectionStart && section_ == Section::Build) {
         // The riser spans the whole Build: stretched to cover the last bar's dip (and to another Build
         // length when the form was changed from the Track's own).
         const i32 id = bank_->riser(track_, sectionBars_);
         const double baked = id >= 0 ? static_cast<double>(bank_->sample(id).tag) : static_cast<double>(sectionBars_);
         const double actual = (sectionBars_ - 1) + 1.0 / r.buildLastBarSpeed;
-        pend(id, static_cast<double>(barTick), s.mix.riser, BeatKind::Riser, static_cast<float>(baked / actual));
+        pend(id, static_cast<double>(barTick), s.mix.riser, BeatKind::Riser, static_cast<float>(baked / actual * tempoRatio));
     }
     // The swells end exactly on the next downbeat (the Build's last bar is stretched by the dip).
     const auto endingOnDownbeat = [&](i32 id, float gain) {
@@ -1208,7 +1359,7 @@ void Engine::planConductorBar(i64 barTick) {
         if (boss_.flags & 2u) {
             const i32 id = bank_->riser(track_, 4);
             const double baked = id >= 0 ? static_cast<double>(bank_->sample(id).tag) : 4.0;
-            pend(id, static_cast<double>(barTick), s.mix.riser * 0.7f, BeatKind::Sfx, static_cast<float>(baked));
+            pend(id, static_cast<double>(barTick), s.mix.riser * 0.7f, BeatKind::Sfx, static_cast<float>(baked * tempoRatio));
         }
     }
 
@@ -1325,7 +1476,7 @@ void Engine::stagedStep(i64 tick, i64 inBar) {
     if (inBar % kTicksPerStep == 0) {
         const u32 st = static_cast<u32>(inBar / kTicksPerStep);
         const auto vel = [&](Pat pat) { return p.pat[static_cast<u32>(pat)] > 0.0f ? t.pattern[static_cast<u32>(pat)][st] : 0.0f; };
-        if (float v = vel(Pat::Kick); v > 0.0f) playKick(s.mix.kick * v, f, tk);
+        if (float v = vel(Pat::Kick); v > 0.0f) playKick(s.mix.kick * v, v, f, tk);
         if (float v = vel(Pat::Clap); v > 0.0f) {
             playSample(bank_->clap(), Bus::Clap, f, s.mix.clap * v, kPanClap);
             emit(BeatKind::Clap, f, tk, 0, 0, 0, v);
@@ -1429,7 +1580,7 @@ void Engine::conductorStep(i64 tick, i64 inBar) {
         const u32 st = static_cast<u32>(inBar / kTicksPerStep);
         const auto on = [&](Pat pat) { return p.pat[static_cast<u32>(pat)] > 0.0f; };
         if (on(Pat::Kick) && t.pattern[static_cast<u32>(Pat::Kick)][st] > 0.0f)
-            playKick(s.mix.kick * t.pattern[static_cast<u32>(Pat::Kick)][st], f, tk);
+            playKick(s.mix.kick * t.pattern[static_cast<u32>(Pat::Kick)][st], t.pattern[static_cast<u32>(Pat::Kick)][st], f, tk);
         if (on(Pat::Clap)) {
             float v = t.pattern[static_cast<u32>(Pat::Clap)][st];
             if (p.fill && st == music_->conductor.fillPickupStep && v <= 0.0f) v = 3.0f / 9.0f;  // the fill's pick-up
@@ -1615,10 +1766,13 @@ void Engine::flushKills(i64 tick) {
 }
 
 void Engine::firePending(i64 frameEnd) {
-    for (u32 i = 0; i < pendingCount_;) {
-        Pending& q = pending_[i];
+    // In the order they were planned (M5: the list keeps its order, so effects due on the same frame always start
+    // in the same order, whichever callback they fall in).
+    u32 keep = 0;
+    for (u32 i = 0; i < pendingCount_; ++i) {
+        const Pending q = pending_[i];
         if (q.frame >= frameEnd) {
-            ++i;
+            pending_[keep++] = q;
             continue;
         }
         const i64 f = q.frame < frame_ ? frame_ : q.frame;
@@ -1626,12 +1780,12 @@ void Engine::firePending(i64 frameEnd) {
             playLead(static_cast<u8>(q.lead), q.timbre, q.note, kLeadNoteVel, q.gain, q.pan, f);
         } else if (q.sample >= 0) {
             playSample(q.sample, q.bus, f, q.gain, q.pan, q.rate);
-            emit(q.kind, f, q.tick, 0, 0, 0, q.gain);
+            emit(q.kind, f, q.tick, 0, 0, 0, q.gain, 0, q.rate);
         } else if (q.sfx != Sfx::Count) {
             playSfx(q.sfx, q.midi, q.gain, q.pan, f, q.tick, q.rate);
         }
-        pending_[i] = pending_[--pendingCount_];
     }
+    pendingCount_ = keep;
 }
 
 // ---------------------------------------------------------------- rendering
@@ -1661,111 +1815,212 @@ void Engine::render(float* out, u32 frames, u32 channels) {
     peak_ = 0.0f;
 }
 
-// One lead voice for `cnt` samples from its current age. Control-rate values at fixed ages (knots every
-// 32 samples), so the result does not depend on how callbacks split the time. The attack ramp and the
-// tail fade only touch the first and last few knots: the rest takes the plain loop.
+// One lead voice's rendering state. Control-rate values at fixed ages (knots every 32 samples), so the result does not
+// depend on how callbacks split the time. The attack ramp and the tail fade only touch the first and last few knots:
+// the rest takes the plain path. The hot state lives in the struct (locals of the caller): the outputs are float
+// pointers, so the compiler could not otherwise keep oscillator phases and filter state in registers.
 template <Timbre T>
-void Engine::renderLead(LeadVoice& v, float* __restrict L, float* __restrict R, u32 cnt, float sr) {
-    constexpr u32 kKnot = 32;
-    constexpr float kInvKnot = 1.0f / kKnot;
-    const float decMul = v.decMul;
-    const float invAtt = v.attackN > 0.0f ? 1.0f / v.attackN : 0.0f;
-    const u32 attEnd = static_cast<u32>(v.attackN) + 1;
-    const u32 fadeStart = v.length - v.fade;
-    const float invFade = v.fade > 1 ? 1.0f / static_cast<float>(v.fade - 1) : 0.0f;
-    const float gl = v.gl * v.vel, gr = v.gr * v.vel;
-    const auto fcAt = [&v](float a) { return (v.fcEnd + (v.fcStart - v.fcEnd) * std::exp(-a / v.fcTauN)) * v.kt; };
-    for (u32 i = 0; i < cnt;) {
-        const u32 a = v.age + i, phase = a % kKnot, k0 = a - phase;
-        const u32 len = kKnot - phase < cnt - i ? kKnot - phase : cnt - i;
-        const bool plain = a >= attEnd && a + len <= fadeStart;  // no attack ramp, no tail fade
-        float dec = std::exp(-static_cast<float>(k0) / v.decayN);
-        for (u32 j = 0; j < phase; ++j) dec *= decMul;
-        float* l = L + i;
-        float* r = R + i;
+struct Engine::LeadRun {
+    static constexpr u32 kKnot = 32;
+    static constexpr float kInvKnot = 1.0f / kKnot;
+    LeadVoice& v;
+    const float decMul, invAtt, invFade, gl, gr, pre, sub, drive;
+    const u32 attEnd, fadeStart;
+    const bool driven;
+    // The segment (a run of samples inside one knot interval).
+    u32 phase = 0, kIndex = 0, a = 0;
+    bool plain = true;
+    float dec = 0.0f, mod = 0.0f, modMul = 0.0f;
+    float c0a1 = 0.0f, c0a2 = 0.0f, c0a3 = 0.0f, d1 = 0.0f, d2 = 0.0f, d3 = 0.0f;
+    SawOsc s0, s1, s2, s3;
+    SquareOsc q0, q1;
+    SvfLowpass f;
+    // M5 (cost): every PolyBLEP the timbre needs a sample, in one vector: P1 the two saws and the square's two edges
+    // (its phase and the phase half a cycle on), P2 both squares' edges, P4 the four saws.
+    f4 ph = 0.5f, dt4 = 0.0f, inv4 = 0.0f;
+
+    explicit LeadRun(LeadVoice& voice)
+        : v(voice),
+          decMul(voice.decMul),
+          invAtt(voice.attackN > 0.0f ? 1.0f / voice.attackN : 0.0f),
+          invFade(voice.fade > 1 ? 1.0f / static_cast<float>(voice.fade - 1) : 0.0f),
+          gl(voice.gl * voice.vel),
+          gr(voice.gr * voice.vel),
+          pre(voice.pre),
+          sub(voice.sub),
+          drive(voice.drive),
+          attEnd(static_cast<u32>(voice.attackN) + 1),
+          fadeStart(voice.length - voice.fade),
+          driven(voice.drive > 0.0f),
+          s0(voice.saw[0]),
+          s1(voice.saw[1]),
+          s2(voice.saw[2]),
+          s3(voice.saw[3]),
+          q0(voice.sq[0]),
+          q1(voice.sq[1]),
+          f(voice.svf) {
+        // The squares' second edge runs as a phase of its own (started half a cycle on by playLead), kept in an
+        // oscillator slot the timbre does not use, so it does not depend on where the blocks fell.
+        if constexpr (T == Timbre::P1Saw) {
+            ph = f4{s0.phase, s1.phase, q0.phase, q1.phase};
+            dt4 = f4{s0.dt, s1.dt, q0.dt, q0.dt};
+        } else if constexpr (T == Timbre::P2Square) {
+            ph = f4{q0.phase, s0.phase, q1.phase, s1.phase};
+            dt4 = f4{q0.dt, q0.dt, q1.dt, q1.dt};
+        } else if constexpr (T == Timbre::P4Stab) {
+            ph = f4{s0.phase, s1.phase, s2.phase, s3.phase};
+            dt4 = f4{s0.dt, s1.dt, s2.dt, s3.dt};
+        }
+        inv4 = invDt4(dt4);
+    }
+
+    float fcAt(float age) const { return (v.fcEnd + (v.fcStart - v.fcEnd) * std::exp(-age / v.fcTauN)) * v.kt; }
+
+    // A segment of `len` samples from the voice's age `age` (inside one knot interval).
+    void begin(u32 age, u32 len, float sr) {
+        a = age;
+        phase = age % kKnot;
+        const u32 k0 = age - phase;
+        kIndex = k0 / kKnot;
+        plain = age >= attEnd && age + len <= fadeStart;  // no attack ramp, no tail fade
+        const bool goesOn = kIndex == v.runKnot;  // the last segment rendered the start of this interval
+        dec = v.decRun;
+        if (!goesOn) {
+            dec = std::exp(-static_cast<float>(k0) / v.decayN);
+            for (u32 j = 0; j < phase; ++j) dec *= decMul;
+        }
         if constexpr (T == Timbre::P3Bell) {
             // sfxproto.bell(hz, 0.36, 2.0, 2.4): FM, the index decaying with 0.15 s.
-            const float modMul = std::exp(-1.0f / v.fcTauN);
-            float mod = kP3Index * std::exp(-static_cast<float>(k0) / v.fcTauN);
-            for (u32 j = 0; j < phase; ++j) mod *= modMul;
-            for (u32 j = 0; j < len; ++j) {
-                const float m = std::sin(2.0f * kPiF * v.saw[1].phase) * mod;
-                float y = std::sin(2.0f * kPiF * v.saw[0].phase + m) * dec;
-                if (!plain) {
-                    const u32 aj = a + j;
-                    if (aj < attEnd) y *= std::fmin(1.0f, static_cast<float>(aj) * invAtt);
-                    if (aj >= fadeStart) y *= 1.0f - static_cast<float>(aj - fadeStart) * invFade;
-                }
-                v.saw[0].phase += v.saw[0].dt;
-                v.saw[0].phase -= std::floor(v.saw[0].phase);
-                v.saw[1].phase += v.saw[1].dt;
-                v.saw[1].phase -= std::floor(v.saw[1].phase);
-                dec *= decMul;
-                mod *= modMul;
-                l[j] += y * gl;
-                r[j] += y * gr;
+            modMul = std::exp(-1.0f / v.fcTauN);
+            mod = v.modRun;
+            if (!goesOn) {
+                mod = kP3Index * std::exp(-static_cast<float>(k0) / v.fcTauN);
+                for (u32 j = 0; j < phase; ++j) mod *= modMul;
             }
         } else {
-            // Filter coefficients exact at the knots, linear in between (no division per sample). The
-            // next knot's coefficients are kept for the following interval.
-            const u32 kIndex = k0 / kKnot;
+            // Filter coefficients exact at the knots, linear in between (no division per sample). The next knot's
+            // coefficients are kept for the following interval; this interval's for its next segment.
             SvfCoefs c0;
-            if (v.knot != ~0u && kIndex == v.knot + 1) {
-                c0 = v.cNext;
+            if (kIndex == v.knot) {
+                c0 = v.cCur;
             } else {
-                c0 = svfCoefs(svfG(fcAt(static_cast<float>(k0)), sr), v.k);
-            }
-            if (kIndex != v.knot) {
+                c0 = (v.knot != ~0u && kIndex == v.knot + 1) ? v.cNext : svfCoefs(svfG(fcAt(static_cast<float>(k0)), sr), v.k);
                 v.cNext = svfCoefs(svfG(fcAt(static_cast<float>(k0 + kKnot)), sr), v.k);
                 v.knot = kIndex;
-            } else {
-                c0 = svfCoefs(svfG(fcAt(static_cast<float>(k0)), sr), v.k);
+                v.cCur = c0;
             }
             const SvfCoefs c1 = v.cNext;
-            const float d1 = (c1.a1 - c0.a1) * kInvKnot, d2 = (c1.a2 - c0.a2) * kInvKnot, d3 = (c1.a3 - c0.a3) * kInvKnot;
-            const bool driven = v.drive > 0.0f;
-            // The hot state in locals: the outputs are float pointers, so the compiler could not otherwise
-            // keep oscillator phases and filter state in registers.
-            SawOsc s0 = v.saw[0], s1 = v.saw[1], s2 = v.saw[2], s3 = v.saw[3];
-            SquareOsc q0 = v.sq[0], q1 = v.sq[1];
-            SvfLowpass f = v.svf;
-            const float pre = v.pre, sub = v.sub;
-            for (u32 j = 0; j < len; ++j) {
-                float x;
-                if constexpr (T == Timbre::P1Saw) {
-                    x = s0.next() + s1.next() + sub * q0.next();
-                } else if constexpr (T == Timbre::P2Square) {
-                    x = q0.next() + q1.next();
-                } else {
-                    x = (s0.next() + s1.next() + s2.next()) * (1.0f / 3.0f) + kP4Oct * s3.next();
-                }
-                const float p = static_cast<float>(phase + j);
-                float y = f.tick(x * pre, c0.a1 + d1 * p, c0.a2 + d2 * p, c0.a3 + d3 * p);
-                if (driven) y = std::tanh(v.drive * y);
-                y *= dec;
-                if (!plain) {
-                    const u32 aj = a + j;
-                    if (aj < attEnd) y *= std::fmin(1.0f, static_cast<float>(aj) * invAtt);
-                    if (aj >= fadeStart) y *= 1.0f - static_cast<float>(aj - fadeStart) * invFade;
-                }
-                dec *= decMul;
-                l[j] += y * gl;
-                r[j] += y * gr;
-            }
-            v.saw[0] = s0;
-            v.saw[1] = s1;
-            v.saw[2] = s2;
-            v.saw[3] = s3;
-            v.sq[0] = q0;
-            v.sq[1] = q1;
-            v.svf = f;
+            c0a1 = c0.a1;
+            c0a2 = c0.a2;
+            c0a3 = c0.a3;
+            d1 = (c1.a1 - c0.a1) * kInvKnot;
+            d2 = (c1.a2 - c0.a2) * kInvKnot;
+            d3 = (c1.a3 - c0.a3) * kInvKnot;
         }
+    }
+
+    // Sample j of the segment, enveloped (before the pan gains).
+    inline __attribute__((always_inline)) float next(u32 j) {
+        if constexpr (T == Timbre::P3Bell) {
+            constexpr float kInvTau = 1.0f / (2.0f * kPiF);
+            const float m = sinTurns(s1.phase) * mod;
+            float y = sinTurns(s0.phase + m * kInvTau) * dec;
+            if (!plain) {
+                const u32 aj = a + j;
+                if (aj < attEnd) y *= std::fmin(1.0f, static_cast<float>(aj) * invAtt);
+                if (aj >= fadeStart) y *= 1.0f - static_cast<float>(aj - fadeStart) * invFade;
+            }
+            s0.phase += s0.dt;
+            s0.phase -= std::floor(s0.phase);
+            s1.phase += s1.dt;
+            s1.phase -= std::floor(s1.phase);
+            dec *= decMul;
+            mod *= modMul;
+            return y;
+        } else {
+            const f4 t = ph;
+            const f4 b = polyBlep4(t, dt4, inv4);
+            advance4(ph, dt4);
+            float x;
+            if constexpr (T == Timbre::P1Saw) {
+                const f4 saw = 2.0f * t - 1.0f - b;
+                x = saw.x + saw.y + sub * ((t.z < 0.5f ? 1.0f : -1.0f) + b.z - b.w);
+            } else if constexpr (T == Timbre::P2Square) {
+                x = ((t.x < 0.5f ? 1.0f : -1.0f) + b.x - b.y) + ((t.z < 0.5f ? 1.0f : -1.0f) + b.z - b.w);
+            } else {
+                const f4 saw = 2.0f * t - 1.0f - b;
+                x = (saw.x + saw.y + saw.z) * (1.0f / 3.0f) + kP4Oct * saw.w;
+            }
+            const float p = static_cast<float>(phase + j);
+            float y = f.tick(x * pre, c0a1 + d1 * p, c0a2 + d2 * p, c0a3 + d3 * p);
+            if (driven) y = std::tanh(drive * y);
+            y *= dec;
+            if (!plain) {
+                const u32 aj = a + j;
+                if (aj < attEnd) y *= std::fmin(1.0f, static_cast<float>(aj) * invAtt);
+                if (aj >= fadeStart) y *= 1.0f - static_cast<float>(aj - fadeStart) * invFade;
+            }
+            dec *= decMul;
+            return y;
+        }
+    }
+
+    void end() {
+        v.decRun = dec;
+        v.runKnot = kIndex;
+        if constexpr (T == Timbre::P3Bell) v.modRun = mod;
+    }
+    void store() {
+        if constexpr (T == Timbre::P1Saw) {
+            s0.phase = ph.x;
+            s1.phase = ph.y;
+            q0.phase = ph.z;
+            q1.phase = ph.w;
+        } else if constexpr (T == Timbre::P2Square) {
+            q0.phase = ph.x;
+            s0.phase = ph.y;
+            q1.phase = ph.z;
+            s1.phase = ph.w;
+        } else if constexpr (T == Timbre::P4Stab) {
+            s0.phase = ph.x;
+            s1.phase = ph.y;
+            s2.phase = ph.z;
+            s3.phase = ph.w;
+        }
+        v.saw[0] = s0;
+        v.saw[1] = s1;
+        v.saw[2] = s2;
+        v.saw[3] = s3;
+        v.sq[0] = q0;
+        v.sq[1] = q1;
+        v.svf = f;
+    }
+};
+
+template <Timbre T>
+void Engine::renderLead(LeadVoice& v, float* __restrict L, float* __restrict R, u32 cnt, float sr) {
+    LeadRun<T> run(v);
+    const float gl = run.gl, gr = run.gr;
+    for (u32 i = 0; i < cnt;) {
+        const u32 a = v.age + i, phase = a % LeadRun<T>::kKnot;
+        const u32 len = LeadRun<T>::kKnot - phase < cnt - i ? LeadRun<T>::kKnot - phase : cnt - i;
+        run.begin(a, len, sr);
+        float* l = L + i;
+        float* r = R + i;
+        for (u32 j = 0; j < len; ++j) {
+            const float y = run.next(j);
+            l[j] += y * gl;
+            r[j] += y * gr;
+        }
+        run.end();
         i += len;
     }
+    run.store();
 }
+
 void Engine::renderBlock(float* out, u32 n, u32 channels) {
     const float sr = static_cast<float>(sr_);
-    auto stamp = std::chrono::steady_clock::now();
+    auto stamp = profile_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const auto mark = [&](u32 stage) {
         if (!profile_) return;
         const auto now = std::chrono::steady_clock::now();
@@ -1774,6 +2029,7 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
     };
     std::memset(bus_, 0, sizeof bus_);
     std::memset(wet_, 0, sizeof wet_);
+    duckFrames_ = 0;
     u32 active = 0;
 
     // Voices. Control-rate values (filter coefficients, envelope anchors) are taken at fixed ages of each
@@ -1781,9 +2037,15 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
     // not depend on how the device splits time into callbacks (tested: random bursts render identically).
     constexpr u32 kKnot = 32;
     constexpr float kInvKnot = 1.0f / kKnot;
-    // Lead voices.
-    for (u32 vi = 0; vi < kLeadVoices; ++vi) {
-        LeadVoice& v = lead_[vi];
+    // Lead voices (each pool in the order its voices start: M5, the sums do not depend on the slots).
+    const auto leadTime = [&](Timbre t, std::chrono::steady_clock::time_point from) {
+        if (!profile_) return;
+        profile_->ns[EngineProfile::Lead + static_cast<u32>(t)] +=
+            static_cast<u64>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - from).count());
+    };
+    const Order& leadOrder = order_[PoolLead];
+    for (u32 vk = 0; vk < leadOrder.n; ++vk) {
+        LeadVoice& v = lead_[leadOrder.idx[vk]];
         if (!v.active) continue;
         ++active;
         if (v.delay >= n) {
@@ -1797,18 +2059,22 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         const Bus target = mode_ == Mode::Script ? Bus::Sfx : Bus::Lead;
         float* L = bus_[static_cast<u32>(target)][0] + i0;
         float* R = bus_[static_cast<u32>(target)][1] + i0;
+        const auto tv = profile_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         switch (v.timbre) {
             case Timbre::P1Saw: renderLead<Timbre::P1Saw>(v, L, R, cnt, sr); break;
             case Timbre::P2Square: renderLead<Timbre::P2Square>(v, L, R, cnt, sr); break;
             case Timbre::P3Bell: renderLead<Timbre::P3Bell>(v, L, R, cnt, sr); break;
             default: renderLead<Timbre::P4Stab>(v, L, R, cnt, sr); break;
         }
+        leadTime(v.timbre, tv);
         v.age += cnt;
         if (v.age >= v.length) v.active = false;
-    }    mark(EngineProfile::Lead);
+    }
+    compactOrder(order_[PoolLead], lead_);
+    if (profile_) stamp = std::chrono::steady_clock::now();  // the lead was timed voice by voice
     // Bass.
-    for (u32 vi = 0; vi < kBassVoices; ++vi) {
-        BassVoice& v = bass_[vi];
+    for (u32 vk = 0; vk < order_[PoolBass].n; ++vk) {
+        BassVoice& v = bass_[order_[PoolBass].idx[vk]];
         if (!v.active) continue;
         ++active;
         if (v.delay >= n) {
@@ -1847,7 +2113,7 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
                 const u32 aj = a + j;
                 const float x = (1.0f - v.sqMix) * saw.next() + v.sqMix * sq.next();
                 float y = f.tick(x, c0.a1 + d1 * static_cast<float>(phase + j), c0.a2 + d2 * static_cast<float>(phase + j), c0.a3 + d3 * static_cast<float>(phase + j));
-                y += v.sub * std::sin(2.0f * kPiF * subPhase);
+                y += v.sub * sinTurns(subPhase);  // M5 (cost): not a libm sinf a sample
                 subPhase += v.subDt;
                 subPhase -= std::floor(subPhase);
                 const float att = aj < attEnd ? static_cast<float>(aj) * invAtt : 1.0f;
@@ -1867,11 +2133,12 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         v.age += cnt;
         if (v.age >= v.length) v.active = false;
     }
+    compactOrder(order_[PoolBass], bass_);
 
     mark(EngineProfile::Bass);
     // Stabs.
-    for (u32 vi = 0; vi < kStabVoices; ++vi) {
-        StabVoice& v = stab_[vi];
+    for (u32 vk = 0; vk < order_[PoolStab].n; ++vk) {
+        StabVoice& v = stab_[order_[PoolStab].idx[vk]];
         if (!v.active) continue;
         ++active;
         if (v.delay >= n) {
@@ -1921,11 +2188,12 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         v.age += cnt;
         if (v.age >= v.length) v.active = false;
     }
+    compactOrder(order_[PoolStab], stab_);
 
     mark(EngineProfile::Stab);
     // Pads.
-    for (u32 vi = 0; vi < kPadVoices; ++vi) {
-        PadVoice& v = pad_[vi];
+    for (u32 vk = 0; vk < order_[PoolPad].n; ++vk) {
+        PadVoice& v = pad_[order_[PoolPad].idx[vk]];
         if (!v.active) continue;
         ++active;
         if (v.delay >= n) {
@@ -1948,22 +2216,48 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
                 return svfCoefs(svfG((v.fcBase + v.fcLfo * lfo) * v.bright, sr), v.k);
             };
             SawOsc* osc = v.saw[ch];
+            // M5 (cost): the channel's saws four at a time (a lane past the last saw stands still at phase 0.5, dt 0,
+            // which reads 0).
+            const u32 nosc = v.oscCount;
+            const u32 nvec = (nosc + 3) / 4;
+            f4 ph[3], dt[3], inv[3];
+            for (u32 q = 0; q < 3; ++q) {
+                ph[q] = 0.5f;
+                dt[q] = 0.0f;
+            }
+            for (u32 o = 0; o < nosc && o < 12; ++o) {
+                ph[o / 4][o % 4] = osc[o].phase;
+                dt[o / 4][o % 4] = osc[o].dt;
+            }
+            for (u32 q = 0; q < nvec; ++q) inv[q] = invDt4(dt[q]);
+            SvfLowpass f = v.svf[ch];
             for (u32 i = 0; i < cnt;) {
                 const u32 a = v.age + i, phase = a % kKnot, k0 = a - phase;
                 const u32 len = kKnot - phase < cnt - i ? kKnot - phase : cnt - i;
-                const SvfCoefs c0 = coefs(k0), c1 = coefs(k0 + kKnot);
+                const u32 kIndex = k0 / kKnot;
+                const bool goesOn = kIndex == v.knot[ch];  // this interval's start was rendered by the last segment
+                if (!goesOn) {
+                    v.cCur[ch] = (v.knot[ch] != ~0u && kIndex == v.knot[ch] + 1) ? v.cNext[ch] : coefs(k0);
+                    v.cNext[ch] = coefs(k0 + kKnot);
+                    v.knot[ch] = kIndex;
+                }
+                const SvfCoefs c0 = v.cCur[ch], c1 = v.cNext[ch];
                 const float d1 = (c1.a1 - c0.a1) * kInvKnot, d2 = (c1.a2 - c0.a2) * kInvKnot, d3 = (c1.a3 - c0.a3) * kInvKnot;
-                float rel = k0 > v.hold ? std::exp(-static_cast<float>(k0 - v.hold) / v.releaseN) : 1.0f;
-                for (u32 j = 0; j < phase; ++j)
-                    if (k0 + j >= v.hold) rel *= relMul;
-                SawOsc bank[12];
-                const u32 nosc = v.oscCount;
-                for (u32 o = 0; o < nosc; ++o) bank[o] = osc[o];
-                SvfLowpass f = v.svf[ch];
+                float rel = v.relRun[ch];
+                if (!goesOn) {
+                    rel = k0 > v.hold ? std::exp(-static_cast<float>(k0 - v.hold) / v.releaseN) : 1.0f;
+                    for (u32 j = 0; j < phase; ++j)
+                        if (k0 + j >= v.hold) rel *= relMul;
+                }
                 for (u32 j = 0; j < len; ++j) {
                     const u32 aj = a + j;
-                    float x = 0.0f;
-                    for (u32 o = 0; o < nosc; ++o) x += bank[o].next();
+                    f4 acc = 0.0f;
+                    for (u32 q = 0; q < nvec; ++q) {
+                        const f4 t = ph[q];
+                        acc += 2.0f * t - 1.0f - polyBlep4(t, dt[q], inv[q]);
+                        advance4(ph[q], dt[q]);
+                    }
+                    const float x = (acc.x + acc.y) + (acc.z + acc.w);
                     float y = f.tick(x * v.norm, c0.a1 + d1 * static_cast<float>(phase + j), c0.a2 + d2 * static_cast<float>(phase + j), c0.a3 + d3 * static_cast<float>(phase + j));
                     float s = aj < attEnd ? static_cast<float>(aj) * invAtt : 1.0f;
                     if (aj >= fadeStart) s *= 1.0f - static_cast<float>(aj - fadeStart) * invFade;
@@ -1971,18 +2265,20 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
                     if (aj >= v.hold) rel *= relMul;
                     out[i + j] += y;
                 }
-                for (u32 o = 0; o < nosc; ++o) osc[o] = bank[o];
-                v.svf[ch] = f;
+                v.relRun[ch] = rel;
                 i += len;
             }
+            for (u32 o = 0; o < nosc && o < 12; ++o) osc[o].phase = ph[o / 4][o % 4];
+            v.svf[ch] = f;
         }
         v.age += cnt;
         if (v.age >= v.length) v.active = false;
     }
+    compactOrder(order_[PoolPad], pad_);
     mark(EngineProfile::Pad);
     // Samples.
-    for (u32 vi = 0; vi < kSampleVoices; ++vi) {
-        SampleVoice& v = smp_[vi];
+    for (u32 vk = 0; vk < order_[PoolSample].n; ++vk) {
+        SampleVoice& v = smp_[order_[PoolSample].idx[vk]];
         if (!v.active) continue;
         ++active;
         if (v.delay >= n) {
@@ -2035,6 +2331,7 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
             }
         }
     }
+    compactOrder(order_[PoolSample], smp_);
     mark(EngineProfile::Samples);
     stats_.voices.store(active, std::memory_order_relaxed);
     if (active > stats_.voicesPeak.load(std::memory_order_relaxed)) stats_.voicesPeak.store(active, std::memory_order_relaxed);
@@ -2059,9 +2356,10 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         float* x = bus_[static_cast<u32>(Bus::Pad)][ch];
         for (u32 i = 0; i < n; ++i) x[i] = padHp_[ch].tick(x[i]);
     }
-    // Sidechain from the kick: e^(-t / tau) for 0.6 s after each kick, depth per bus.
+    // Sidechain from the kick: e^(-t / tau) for 0.6 s after each kick the pattern plays (not each beat), depth per bus.
     {
-        float duck[kBlock];
+        float* duck = duck_;
+        duckFrames_ = n;
         const double tauN = static_cast<double>(sp_->sidechainTau) * sr_;
         for (u32 i = 0; i < n; ++i) {
             const i64 x = frame_ + i;

@@ -18,7 +18,7 @@ struct Palette {
 };
 
 struct Palettes {
-    static constexpr u32 kMax = 8;
+    static constexpr u32 kMax = 12;  // M5: ten Tracks, ten palettes (and room for two more)
     Palette list[kMax];
     u32 count = 0;
     Vec3 danger, pickup, white{1.0f, 1.0f, 1.0f};

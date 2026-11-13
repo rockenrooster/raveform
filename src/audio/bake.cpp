@@ -408,11 +408,11 @@ float* sfxShard(double hz, double sr, u32& n) {
     return x;
 }
 
-float* sfxBoost(double sr, u32& n) {
+float* sfxBoost(double sr, u32& n, bool major = false) {
     n = framesFor(1.1, sr);
     float* x = alloc(n);
     if (!x) return nullptr;
-    const int notes[] = {69, 76, 81, 84};
+    const int notes[] = {69, 76, 81, major ? 85 : 84};  // M5: the top note a major third on the major Tracks
     for (int k = 0; k < 4; ++k)
         addBell(x, n, framesFor(k * 0.055, sr), midiHz(notes[k]), 0.55, 3.5, 4.0, sr, static_cast<float>(0.8 + 0.07 * k));
     addBell(x, n, framesFor(0.24, sr), midiHz(100), 0.5, 2.0, 1.5, sr, 0.25f);
@@ -420,11 +420,11 @@ float* sfxBoost(double sr, u32& n) {
     return x;
 }
 
-float* sfxUpgrade(double sr, u32& n) {
+float* sfxUpgrade(double sr, u32& n, bool major = false) {
     n = framesFor(1.3, sr);
     float* x = alloc(n);
     if (!x) return nullptr;
-    const int chord[] = {57, 60, 64, 67, 71};
+    const int chord[] = {57, major ? 61 : 60, 64, major ? 68 : 67, 71};  // M5: Amaj9 on the major Tracks (both minor thirds raised)
     for (int m : chord) {
         addSaw(x, n, midiHz(m), sr, 0.1f);
         addSaw(x, n, midiHz(m) * std::pow(2.0, 8.0 / 1200.0), sr, 0.1f);
@@ -434,7 +434,7 @@ float* sfxUpgrade(double sr, u32& n) {
         const double t = i / sr;
         x[i] = static_cast<float>(x[i] * (t / 0.08 < 1.0 ? t / 0.08 : 1.0) * std::exp(-t / 0.45));
     }
-    const int bells[] = {76, 79, 83, 88};
+    const int bells[] = {76, major ? 80 : 79, 83, 88};
     for (int k = 0; k < 4; ++k) addBell(x, n, framesFor(0.10 + k * 0.07, sr), midiHz(bells[k]), 0.6, 3.5, 4.0, sr, 0.5f);
     normPeak(x, n);
     fadeOut(x, n, 0.05, sr);
@@ -632,11 +632,11 @@ float* sfxTwoNote(double a, double b, double da, double db, bool soft, double sr
     return x;
 }
 
-float* sfxGameOver(double sr, u32& n) {
+float* sfxGameOver(double sr, u32& n, bool major = false) {
     n = framesFor(2.6, sr);
     float* x = alloc(n);
     if (!x) return nullptr;
-    const int notes[] = {81, 76, 72, 69, 64, 57};
+    const int notes[] = {81, 76, major ? 73 : 72, 69, 64, 57};
     for (int k = 0; k < 6; ++k)
         addBell(x, n, framesFor(k * 0.13, sr), midiHz(notes[k]), 0.9, 2.0, 2.5, sr, static_cast<float>(1.0 - 0.08 * k));
     const u32 nb = framesFor(1.4, sr), at = framesFor(0.78, sr);
@@ -798,16 +798,22 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate) {
             const i32 id = put(r, 2, -1, static_cast<u16>(lengths[i]));
             risers_[riserCount_++] = {t, lengths[i], id};
         }
-        // Shard scale: minor pentatonic from the tonic (the first chord's bass) three octaves up.
-        static const u8 kPenta[] = {0, 3, 5, 7, 10};
+        // Shard scale: a pentatonic from the tonic (the first chord's bass) three octaves up, inside the Track's scale
+        // (sfxproto's run is Track 1's A minor pentatonic): minor where the scale has a minor third (aeolian, dorian,
+        // phrygian), else major (M5: Afterglow and Arcadia are major, Mirage lydian; the minor one put a minor third and
+        // seventh over them).
+        static const u8 kMinorPenta[] = {0, 3, 5, 7, 10}, kMajorPenta[] = {0, 2, 4, 7, 9};
+        bool minorThird = tr.scaleCount == 0;
+        for (u32 i = 0; i < tr.scaleCount; ++i) minorThird = minorThird || tr.scale[i] == 3;
+        const u8* penta = minorThird ? kMinorPenta : kMajorPenta;
         const u8 tonic = static_cast<u8>(tr.chords[tr.progression[0]].bass + 36);
-        for (u32 i = 0; i < 10; ++i) shardScale_[t][i] = static_cast<u8>(tonic + 12 * (i / 5) + kPenta[i % 5]);
+        for (u32 i = 0; i < 10; ++i) shardScale_[t][i] = static_cast<u8>(tonic + 12 * (i / 5) + penta[i % 5]);
     }
 
     // Pitched effects: every note the Tracks' chords ask for.
     const auto bakePitched = [&](Sfx kind, auto&& notesOf, auto&& make) {
         sfxFirst_[static_cast<u32>(kind)] = static_cast<i32>(count_);
-        i16 done[64];
+        i16 done[128];  // M5: the notes of ten Tracks
         u32 nd = 0;
         for (u32 t = 0; t < music.trackCount; ++t) {
             i16 notes[32];
@@ -873,6 +879,15 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate) {
     single(Sfx::UiBack, sfxTwoNote(1760.0, 1318.5, 0.04, 0.09, false, sr, n));
     single(Sfx::Shield, sfxTwoNote(659.3, 880.0, 0.07, 0.16, true, sr, n));
     single(Sfx::GameOver, sfxGameOver(sr, n));
+    // M5: the effects written in A minor have a major-third variant for the major and lydian Tracks; the engine
+    // transposes either to the Track's root (keyedSfx).
+    for (u32 k = 0; k < kSfxCount; ++k) sfxMajor_[k] = -1;
+    std::snprintf(label, sizeof label, "boost_major");
+    sfxMajor_[static_cast<u32>(Sfx::Boost)] = put(sfxBoost(sr, n, true));
+    std::snprintf(label, sizeof label, "upgrade_major");
+    sfxMajor_[static_cast<u32>(Sfx::Upgrade)] = put(sfxUpgrade(sr, n, true));
+    std::snprintf(label, sizeof label, "game_over_major");
+    sfxMajor_[static_cast<u32>(Sfx::GameOver)] = put(sfxGameOver(sr, n, true));
     // Nova inhale: from the press to the next beat, 1..8 thirty-seconds of each Track's tempo.
     sfxFirst_[static_cast<u32>(Sfx::NovaInhale)] = static_cast<i32>(count_);
     for (u32 t = 0; t < music.trackCount; ++t) {
@@ -897,7 +912,7 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate) {
 
 namespace {
 constexpr u32 kCacheMagic = 0x42534652u;  // "RFSB"
-constexpr u32 kCacheVersion = 1;
+constexpr u32 kCacheVersion = 3;  // M5: tables sized for ten Tracks; the major-third effects
 template <typename T>
 bool put(FILE* f, const T& v) { return std::fwrite(&v, sizeof v, 1, f) == 1; }
 template <typename T>
@@ -918,7 +933,7 @@ bool SampleBank::saveCache(const char* path, u64 key) const {
     }
     ok = ok && put(f, kits_) && put(f, clap_) && put(f, snare_) && put(f, shaker_) && put(f, pulse_) && put(f, impact_) && put(f, risers_) &&
          put(f, riserCount_) && put(f, swellHalf_) && put(f, swellBar_) && put(f, sfxFirst_) && put(f, sfxCount_) && put(f, inhale_) &&
-         put(f, shardScale_) && put(f, kCacheMagic);
+         put(f, shardScale_) && put(f, sfxMajor_) && put(f, kCacheMagic);
     ok = (std::fclose(f) == 0) && ok;
     if (!ok) {
         std::remove(tmp);
@@ -950,7 +965,7 @@ bool SampleBank::loadCache(const char* path, u64 key) {
     u32 tail = 0;
     ok = ok && get(f, kits_) && get(f, clap_) && get(f, snare_) && get(f, shaker_) && get(f, pulse_) && get(f, impact_) && get(f, risers_) &&
          get(f, riserCount_) && get(f, swellHalf_) && get(f, swellBar_) && get(f, sfxFirst_) && get(f, sfxCount_) && get(f, inhale_) &&
-         get(f, shardScale_) && get(f, tail) && tail == kCacheMagic;
+         get(f, shardScale_) && get(f, sfxMajor_) && get(f, tail) && tail == kCacheMagic;
     std::fclose(f);
     if (!ok) {
         release();
