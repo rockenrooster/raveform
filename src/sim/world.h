@@ -533,6 +533,9 @@ public:
     u8 shootBoss(Vec2 a, Vec2 b, float damage);
     // Pictures: kill these pairs (bits 0-2) and, with core, the core, inside the next tick (so its events are
     // seen like a kill in play).
+    // Tests and pictures (M4 stage B, --coop-down-at): player p takes a hit inside the next tick, as from a bullet (Auto
+    // Nova, the Halo Boost and a level-up Trio's shelter do not stop it).
+    void hitNextTick(u32 p) { scriptHits_ = static_cast<u8>(scriptHits_ | (1u << (p & 3u))); }
     void killBossNextTick(u8 pairs, bool core) {
         scriptKillPairs_ = pairs;
         scriptKillCore_ = core;
@@ -735,6 +738,7 @@ private:
     bool restartPending_ = false;
     double restartAt_ = 0.0;
     u8 scriptKillPairs_ = 0;
+    u8 scriptHits_ = 0;
     bool scriptKillCore_ = false;
     bool restarted_ = false;  // this tick began a new run
     u32 serial_ = 0;

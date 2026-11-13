@@ -103,6 +103,16 @@ void Link::close() {
     host_ = nullptr;
 }
 
+void Link::abandon() {
+    if (holding_) {
+        enet_packet_destroy(static_cast<ENetPacket*>(holding_));
+        holding_ = nullptr;
+    }
+    if (!host_) return;
+    enet_host_destroy(H(host_));  // (resets its peers without sending anything)
+    host_ = nullptr;
+}
+
 bool Link::poll(Event& out) {
     out = Event{};
     if (holding_) {

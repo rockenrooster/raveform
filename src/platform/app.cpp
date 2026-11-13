@@ -297,10 +297,12 @@ bool App::init() {
         po.coopStart = args_.coopStart;
         std::snprintf(po.coopName, sizeof po.coopName, "%s", args_.coopName);
         po.coopPermissionScreen = args_.coopPermission;
+        po.coopDemoRooms = args_.coopDemoRooms;
         po.contentSalt = args_.contentSalt;
         std::snprintf(po.coopShot, sizeof po.coopShot, "%s", args_.coopShot);
         po.coopDownAt = args_.coopDownAt;
         po.coopPauseAt = args_.coopPauseAt;
+        po.coopQuitAt = args_.coopQuitAt;
         if (args_.netsim[0] && !net::parseNetSim(args_.netsim, po.netsim)) {
             RF_ERR("bad --netsim '%s'", args_.netsim);
             return false;
@@ -469,6 +471,7 @@ void App::handleEvent(const SDL_Event& e) {
             case SDL_EVENT_MOUSE_MOTION:
                 if (e.motion.which != SDL_TOUCH_MOUSEID) play_.mouseMove(windowToLogical(e.motion.x, e.motion.y));
                 return;
+            case SDL_EVENT_TEXT_INPUT: play_.textInput(e.text.text); return;
             case SDL_EVENT_GAMEPAD_ADDED: openGamepad(e.gdevice.which); return;
             case SDL_EVENT_GAMEPAD_REMOVED:
                 if (SDL_Gamepad* pad = SDL_GetGamepadFromID(e.gdevice.which)) SDL_CloseGamepad(pad);
@@ -827,6 +830,18 @@ void App::frame(u64 loopStartNs) {
         // M3: the fight (game/play.h). It advances on the band's heard clock (or the simulated one).
         play_.setLayout(w, h, insetMin_, insetMax_);
         play_.frame(dt);
+        if (play_.wantsTextInput() != textInputOn_) {
+            // M4 stage B: the join screen's address is typed on the system keyboard (Android's soft keyboard).
+            textInputOn_ = play_.wantsTextInput();
+            if (textInputOn_) {
+                const SDL_PropertiesID props = SDL_CreateProperties();
+                SDL_SetNumberProperty(props, SDL_PROP_TEXTINPUT_TYPE_NUMBER, SDL_TEXTINPUT_TYPE_NUMBER);
+                SDL_StartTextInputWithProperties(window_, props);
+                SDL_DestroyProperties(props);
+            } else {
+                SDL_StopTextInput(window_);
+            }
+        }
         play_.render(draw, params, background_, *variant_, w, h, insetMin_, insetMax_);
         if (!firstPlayFrameLogged_) {
             // M3 stage B (start-up): how long from the process's start to the first frame of the game.
@@ -897,6 +912,9 @@ void App::frame(u64 loopStartNs) {
         // M4: every peer takes its picture as its run reaches the bar (the same musical moment on each).
         capture = true;
         netShotDone_ = true;
+        char trace[768];
+        play_.latticeTrace(trace, sizeof trace);
+        RF_LOG("view: %s", trace);
     }
     if (content_ == Content::Play && args_.coopShot[0] && args_.screenshot[0] && !netShotDone_ && play_.coopShotNow()) {
         // M4 stage B: --coop-shot, the co-op moment it names (a screen, the beacon, the revive, the shared pause).

@@ -60,6 +60,13 @@ public:
     void step(float dt);
     // Writes the visible segments; returns how many.
     u32 draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle& style);
+    // M4 stage B (a measure for the lead): the heat of the nodes in the middle third of the last frame drawn, split by
+    // what made it: the springs (the impulses: kills, hits, Novas, the Drop's wave) or the kick ripples.
+    struct HeatStats {
+        u32 nodes = 0, warm = 0, hot = 0;
+        float fromSprings = 0.0f, fromRipples = 0.0f;
+    };
+    const HeatStats& heatStats() const { return heat_; }
 
 private:
     u32 slot(int i, int j) const {
@@ -68,6 +75,7 @@ private:
         return static_cast<u32>(rj * cols_ + ci);
     }
 
+    HeatStats heat_;
     float spacing_ = 20.0f;
     int cols_ = 0, rows_ = 0;
     int i0_ = 0, j0_ = 0;  // world index of the window's first column and row

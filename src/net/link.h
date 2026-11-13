@@ -45,6 +45,8 @@ public:
     // `bindIp`: the local address to send from ("" = the OS's choice).
     bool connect(const char* ip, u16 port, WireKind kind, const NetSim& sim, u32 hello, const char* bindIp = "");
     void close();
+    // Tests: the link goes without a word to its peers, as when the process is killed (they time it out).
+    void abandon();
     bool open() const { return host_ != nullptr; }
 
     // Pumps the wire and services ENet without waiting: the next event, or false when there is none. A

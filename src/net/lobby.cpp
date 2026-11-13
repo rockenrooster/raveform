@@ -232,12 +232,17 @@ void BeaconBrowser::poll(i64 nowUs) {
         }
         b.address = from;
         b.seenUs = nowUs;
+        // One room, however many times it is heard (screens.md): a host on several networks sends its beacon to each,
+        // and a joiner on more than one of them hears it from each of its addresses. A room is its code, game port and
+        // name; it keeps the address it was first heard from, or the one its code was made from (the host's own).
         u32 at = count_;
         for (u32 k = 0; k < count_; ++k)
-            if (rooms_[k].address == from && rooms_[k].port == b.port) at = k;
+            if (rooms_[k].code == b.code && rooms_[k].port == b.port && std::strcmp(rooms_[k].name, b.name) == 0) at = k;
         if (at == count_) {
             if (count_ == kMaxRooms) continue;
             ++count_;
+        } else if ((rooms_[at].address & 0xFFFFu) == b.code && (from & 0xFFFFu) != b.code) {
+            b.address = rooms_[at].address;
         }
         rooms_[at] = b;
     }

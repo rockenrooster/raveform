@@ -98,6 +98,8 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     endReason_ = "";
     for (auto& n : names_) std::memset(n, 0, sizeof n);
     lobbySeats_ = lobbyReady_ = 0;
+    startUs_ = 0;
+    leaveQueued_ = 0;
     roomCode_ = 0;
     lobbyDirty_ = readySent_ = false;
     for (BedEntry& e : bed_) e = BedEntry{};
@@ -156,6 +158,12 @@ void Session::receive(i64 localUs) {
     localNow_ = localUs;
     if (!startUs_) startUs_ = localUs;
     hostNow_ = host() ? localUs : clock_.hostNowUs(localUs);
+    if (!host() && state_ == SessionState::Connecting && localUs - startUs_ > kConnectTimeoutUs) {
+        // M4 stage B: nobody answered at that address (a room code or an address typed wrong, a host gone): the join
+        // screen says so after a few seconds instead of ENet's 5 to 30.
+        state_ = SessionState::Ended;
+        endReason_ = "no answer";
+    }
 }
 
 i64 Session::nowLocal() const { return clockFn_ ? clockFn_(clockUser_) : localNow_; }
@@ -217,13 +225,22 @@ void Session::handleDisconnect(u32 peer) {
     std::memset(names_[s], 0, sizeof names_[s]);
     lobbyDirty_ = true;
     poses_[s] = PoseRing{};
-    // Its player leaves the run, here and for the others.
+    // Its player leaves the run on every device on the same tick, two beats from now (M4 stage B: the enemies that
+    // followed it choose again at the same moment everywhere, so no copy drifts from the host's): the event first, in
+    // the reliable stream's order, then the seats (a client's onSeats does not leave it again).
+    MsgPlayerEvent m;
+    m.run = world_->runId();
+    m.player = static_cast<u8>(s);
+    m.kind = kPeLeave;
+    m.tick = world_->music() + 2.0 * sim::kTicksPerBeat;
     NetOp op;
     op.kind = NetOp::Player;
-    op.player = static_cast<u8>(s);
+    op.player = m.player;
     op.a = kPeLeave;
-    op.run = world_->runId();
+    op.run = m.run;
+    op.tick = m.tick;
     pushOp(op);
+    if (state_ == SessionState::Running) relayEvent(m, static_cast<u32>(s));
     reliable([&](PacketWriter& w) { return w.putSeats(seatMask_); });
 }
 
@@ -438,6 +455,7 @@ void Session::onPlayerEvent(const MsgPlayerEvent& m) {
     op.y2 = m.y2;
     op.tick = m.tick;
     pushOp(op);
+    if (!host() && m.kind == kPeLeave) leaveQueued_ = static_cast<u8>(leaveQueued_ | (1u << (m.player & 3u)));
     if (host()) relayEvent(m, static_cast<u32>(from_));
 }
 
@@ -470,9 +488,11 @@ void Session::onPause(const MsgPause& m) {
 
 void Session::onSeats(u8 mask) {
     if (host()) return;
-    // A seat that emptied: its player leaves the run.
+    // A seat that emptied: its player leaves the run (at once, unless the host's timed leave came first).
     for (u32 s = 0; s < seats_; ++s) {
         if (!(seatMask_ & (1u << s)) || (mask & (1u << s)) || s == seat_) continue;
+        poses_[s] = PoseRing{};
+        if ((leaveQueued_ >> s) & 1u) continue;
         NetOp op;
         op.kind = NetOp::Player;
         op.player = static_cast<u8>(s);

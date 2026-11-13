@@ -10,6 +10,7 @@
 
 #include "audio/band.h"
 #include "content/icons.h"
+#include "core/log.h"
 #include "game/play.h"
 #include "game/play_hud.h"
 
@@ -61,12 +62,55 @@ void Ui::begin(FrameDraw& d, const VectorFont& font, const Look& look, const Loo
     p_ = p;
     player_ = player;
     accent_ = accent;
+    boxCount_ = 0;
+    quiet_ = 0;
+    screen_ = "";
 }
 
 void Ui::end() {
     if (p_.released || !p_.down) {
         active_ = 0;
         dragging_ = 0;
+    }
+    checkLayout();
+}
+
+void Ui::keep(Vec2 a, Vec2 b, bool control, const char* label) {
+    if (quiet_ || boxCount_ >= kBoxes) return;
+    Box& k = boxes_[boxCount_++];
+    k.a = a;
+    k.b = b;
+    k.control = control;
+    std::snprintf(k.label, sizeof k.label, "%s", label ? label : "");
+}
+
+void Ui::checkLayout() {
+    // screens.md: at least 24 px (at 1080 lines) between two controls, and between a control and a line of text. A line
+    // wholly inside a control is its label. Each pair is reported once (by its labels and the screen).
+    const float need = kControlGapPx * s_ - 0.5f;
+    for (u32 i = 0; i < boxCount_; ++i) {
+        for (u32 j = i + 1; j < boxCount_; ++j) {
+            const Box& p = boxes_[i];
+            const Box& q = boxes_[j];
+            if (!p.control && !q.control) continue;
+            const auto within = [](const Box& in, const Box& out) {
+                return in.a.x >= out.a.x - 0.5f && in.b.x <= out.b.x + 0.5f && in.a.y >= out.a.y - 0.5f && in.b.y <= out.b.y + 0.5f;
+            };
+            if ((!p.control && within(p, q)) || (!q.control && within(q, p))) continue;
+            const float gx = std::fmax(q.a.x - p.b.x, p.a.x - q.b.x), gy = std::fmax(q.a.y - p.b.y, p.a.y - q.b.y);
+            const float gap = std::fmax(gx, gy);
+            if (gap >= need) continue;
+            u32 h = 2166136261u;
+            for (const char* t : {screen_, p.label, q.label})
+                for (const char* c = t; *c; ++c) h = (h ^ static_cast<u8>(*c)) * 16777619u;
+            bool seen = false;
+            for (u32 k = 0; k < reportedCount_; ++k) seen = seen || reported_[k] == h;
+            if (seen) continue;
+            if (reportedCount_ < 64) reported_[reportedCount_++] = h;
+            ++layoutWarnings_;
+            RF_WARN("ui: %s: '%s' and '%s' are %.0f px apart (controls keep %.0f px clear)", screen_[0] ? screen_ : "screen", p.label, q.label,
+                    static_cast<double>(gap / s_), static_cast<double>(kControlGapPx));
+        }
     }
 }
 
@@ -77,6 +121,7 @@ float Ui::measure(float cap, const char* t) const { return font_->measure(TextSt
 float Ui::text(Vec2 at, float cap, Vec3 c, float i, const char* t, float align, float halfWidth) {
     const float w = measure(cap, t);
     const Vec3 k = col(c, i);
+    keep({at.x - align * w, at.y - cap}, {at.x + (1.0f - align) * w, at.y}, false, t);
     // The font's origin is the top of the caps; t is the baseline.
     font_->drawField(d_->hud, {at.x - align * w, at.y - cap}, cap, halfWidth > 0.0f ? halfWidth : std::fmax(0.045f * cap, 0.55f * s_), k, k, k, t);
     return w;
@@ -85,6 +130,7 @@ float Ui::text(Vec2 at, float cap, Vec3 c, float i, const char* t, float align, 
 void Ui::tube(Vec2 at, float cap, Vec3 top, Vec3 mid, Vec3 bottom, float i, const char* t, float align) {
     const float w = measure(cap, t);
     const Vec2 o{at.x - align * w, at.y - cap};
+    keep(o, {o.x + w, at.y}, false, t);
     font_->drawField(d_->hud, o, cap, 0.03f * cap, col(top, i), col(mid, i), col(bottom, i), t);
     const Vec3 wc = col(Vec3{1.0f, 1.0f, 1.0f}, i * 0.8f);
     font_->drawField(d_->hud, o, cap, 0.0075f * cap, wc, wc, wc, t);
@@ -121,6 +167,13 @@ void Ui::roundRect(Vec2 a, Vec2 b, float r, float hw, Vec3 c, float i) {
 }
 
 bool Ui::area(u32 id, Vec2 a, Vec2 b, bool& pressed) {
+    char name[16];
+    std::snprintf(name, sizeof name, "area %u", id);
+    keep(a, b, true, name);
+    return hit(id, a, b, pressed);
+}
+
+bool Ui::hit(u32 id, Vec2 a, Vec2 b, bool& pressed) {
     const bool in = inside(a, b);
     if (p_.pressed && in) active_ = id;
     pressed = active_ == id && p_.down && in;
@@ -130,10 +183,12 @@ bool Ui::area(u32 id, Vec2 a, Vec2 b, bool& pressed) {
 bool Ui::pill(u32 id, Vec2 c, Vec2 size, const char* label, float cap, bool primary, bool enabled, bool selected, Vec3 colour) {
     const Vec2 a = c - size * 0.5f, b = c + size * 0.5f;
     bool pressed = false;
-    const bool hit = enabled && area(id, a, b, pressed);
+    keep(a, b, true, label);
+    const bool tapped = enabled && hit(id, a, b, pressed);
     const Vec3 tone = primary ? player_ : (colour.x + colour.y + colour.z > 0.0f ? colour : Vec3{1.0f, 1.0f, 1.0f});
     const float r = 0.5f * size.y;
-    if (pressed || selected || primary) {
+    // screens.md: a control that cannot be used yet is drawn disabled (outline at 0.3, label at 0.4), unfilled.
+    if (enabled && (pressed || selected || primary)) {
         // Glass: a capsule as tall as the pill (primary controls are always filled in their colour).
         const float level = pressed ? 0.45f : (primary ? 0.30f : 0.20f);
         const Vec3 g = col(tone, level);
@@ -142,18 +197,24 @@ bool Ui::pill(u32 id, Vec2 c, Vec2 size, const char* label, float cap, bool prim
     }
     const float outline = !enabled ? 0.3f : (pressed ? 2.0f : (selected ? 1.6f : 0.9f));
     roundRect(a, b, r, (pressed ? 1.5f : 1.0f) * s_, tone, outline);
-    text({c.x, c.y + 0.5f * cap}, cap, Vec3{1.0f, 1.0f, 1.0f}, !enabled ? 0.35f : (pressed ? 1.8f : 1.1f), label);
-    return hit;
+    ++quiet_;
+    text({c.x, c.y + 0.5f * cap}, cap, Vec3{1.0f, 1.0f, 1.0f}, !enabled ? 0.4f : (pressed ? 1.8f : 1.1f), label);
+    --quiet_;
+    return tapped;
 }
 
 u32 Ui::segmented(u32 id, Vec2 c, float width, float height, const char* const* labels, u32 n, u32 current, float cap) {
     const float gap = 10.0f * s_;
     const float w = (width - gap * static_cast<float>(n - 1)) / static_cast<float>(n);
     u32 out = current;
+    // One control of n segments (its pills are not controls of their own for the layout rule).
+    keep({c.x - 0.5f * width, c.y - 0.5f * height}, {c.x + 0.5f * width, c.y + 0.5f * height}, true, labels[0]);
+    ++quiet_;
     for (u32 k = 0; k < n; ++k) {
         const Vec2 pc{c.x - 0.5f * width + w * (static_cast<float>(k) + 0.5f) + gap * static_cast<float>(k), c.y};
         if (pill(id * 16u + k, pc, {w, height}, labels[k], cap, false, true, k == current, player_)) out = k;
     }
+    --quiet_;
     return out;
 }
 
@@ -162,7 +223,10 @@ float Ui::fader(u32 id, Vec2 left, float width, float value, float meter, const 
     const float h = 36.0f * s_;
     const Vec2 a{left.x, left.y - h}, b{left.x + width, left.y + h};
     bool pressed = false;
-    area(id, a, b, pressed);
+    // The fader with its label above and its value at the right is one control.
+    keep({a.x, a.y - 16.0f * s_}, {b.x + 24.0f * s_ + measure(22.0f * s_, "100"), b.y}, true, label);
+    ++quiet_;
+    hit(id, a, b, pressed);
     if (p_.pressed && inside(a, b)) dragging_ = id;
     if (dragging_ == id && p_.down) value = clamp01((p_.pos.x - left.x) / width);
     const u32 bars = 40;
@@ -189,6 +253,7 @@ float Ui::fader(u32 id, Vec2 left, float width, float value, float meter, const 
     char v[16];
     std::snprintf(v, sizeof v, "%d", static_cast<int>(std::lround(value * 100.0f)));
     text({left.x + width + 24.0f * s_, left.y + 11.0f * s_}, 22.0f * s_, Vec3{1.0f, 1.0f, 1.0f}, 1.2f, v, 0.0f);
+    --quiet_;
     return value;
 }
 
@@ -197,6 +262,9 @@ float Ui::fader(u32 id, Vec2 left, float width, float value, float meter, const 
 void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& variant, float W, float H, Vec2 insetMin, Vec2 insetMax) {
     // (M4: the primary controls carry this device's player colour, P1's in solo.)
     ui_.begin(d, *font_, *look_, variant, W, H, insetMin, insetMax, uiPtr_, palettes_->player[seat_ < kMaxPlayers ? seat_ : 0], palette_->accent);
+    static const char* const kNames[] = {"notice", "title", "run", "pause", "game over", "settings", "co-op join", "co-op lobby", "local network"};
+    ui_.setScreenName(static_cast<u32>(screen_) < 9 ? kNames[static_cast<u32>(screen_)] : "screen");
+    if (screen_ == Screen::Settings) ui_.setScreenName(settingsTab_ == 0 ? "settings: sound" : (settingsTab_ == 1 ? "settings: controls" : "settings: look"));
     switch (screen_) {
         case Screen::Notice:
             params.exposurePump *= 0.33f;
@@ -212,7 +280,8 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
             else screenPause(ui_);
             break;
         case Screen::GameOver:
-            params.exposurePump *= 0.45f;
+            // screens.md: in co-op the run behind the game over is dimmed to a fifth, as in the pause.
+            params.exposurePump *= coop() ? 0.2f : 0.45f;
             if (coop()) screenGameOverCoop(ui_);
             else screenGameOver(ui_);
             break;
@@ -455,7 +524,6 @@ void Play::screenGameOver(Ui& ui) {
     const float s = ui.s(), W = ui.W(), H = ui.H(), cx = 0.5f * W;
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const Vec3 gold = palettes_->player[3], amber = palettes_->playerDeep[3];
-    const float m = std::fmax(132.0f * s, ui.insetMin().x);
     ui.text({cx, 150.0f * s}, 44.0f * s, palette_->accent, 1.6f, "RUN OVER");
     // The score counts up over one bar.
     {
@@ -498,11 +566,29 @@ void Play::screenGameOver(Ui& ui) {
             ui.text({x, 556.0f * s}, 40.0f * s, white, 1.5f, v[k]);
         }
     }
+    drawSetList(ui, 660.0f * s);
+    drawBand(ui, 740.0f * s);
+    const float right = W - std::fmax(132.0f * s, ui.insetMax().x);
+    if (ui.pill(40, {right - 300.0f * s, H - 240.0f * s}, {600.0f * s, 140.0f * s}, "RETRY", 52.0f * s, true) || keyPrimary_) {
+        screen_ = Screen::Run;
+        restartRun();
+    }
+    // (24 px under RETRY: screens.md, controls never touch)
+    if (ui.pill(41, {right - 165.0f * s, H - 96.0f * s}, {330.0f * s, 90.0f * s}, "HOME", 28.0f * s, false) || keyBack_) toTitle();
+    keyPrimary_ = keyBack_ = false;
+}
+
+void Play::drawSetList(Ui& ui, float y) {
+    // screens.md "Game over": the set list, the run drawn as the song it was.
+    const float s = ui.s(), W = ui.W();
+    const Vec3 white{1.0f, 1.0f, 1.0f};
+    const Vec3 gold = palettes_->player[3];
+    const float m = std::fmax(132.0f * s, ui.insetMin().x);
     // The set list: the run as the song it was. One segment per Track, as long as the time spent in it,
     // in the Track's colour with its name; a white star where a boss fell, a gold tick per upgrade, a
     // danger cross per hit. (Its ten-second medley is not played.)
     {
-        const float x0 = m, x1 = W - std::fmax(132.0f * s, ui.insetMax().x), y = 660.0f * s;
+        const float x0 = m, x1 = W - std::fmax(132.0f * s, ui.insetMax().x);
         const float total = std::fmax(runSeconds_, 1.0f);
         const auto xAt = [&](float t) { return x0 + (x1 - x0) * clamp01(t / total); };
         u32 segStart = 0;
@@ -536,15 +622,23 @@ void Play::screenGameOver(Ui& ui) {
             } else if (mk.kind == 2) {
                 ui.draw().hud.line({x, y - 14.0f * s}, {x, y - 4.0f * s}, 1.1f * s, ui.col(gold, 1.8f), ui.col(gold, 1.8f), 0);
             } else if (mk.kind == 3) {
-                const Vec3 c = ui.col(palettes_->danger, 1.6f);
+                // M4 stage B (screens.md): in co-op each player's crosses are in their colour.
+                const Vec3 c = coop() ? ui.col(palettes_->player[mk.a < kMaxPlayers ? mk.a : 0], 1.8f) : ui.col(palettes_->danger, 1.6f);
                 ui.draw().hud.line({x - 5.0f * s, y + 6.0f * s}, {x + 5.0f * s, y + 16.0f * s}, 0.9f * s, c, c, 0);
                 ui.draw().hud.line({x + 5.0f * s, y + 6.0f * s}, {x - 5.0f * s, y + 16.0f * s}, 0.9f * s, c, c, 0);
             }
         }
     }
+}
+
+void Play::drawBand(Ui& ui, float y) {
+    // screens.md "Game over": your band, under the set list.
+    const float s = ui.s();
+    const Vec3 white{1.0f, 1.0f, 1.0f};
+    const float m = std::fmax(132.0f * s, ui.insetMin().x);
     // Your band: the Riffs and the most-stacked Mods the run ended with.
     {
-        const PlayerState& p = world_->player(0);
+        const PlayerState& p = world_->player(coop() ? seat_ : 0);
         u8 list[8];
         u32 n = 0;
         for (u8 u = kOrbitals; u < kUpgradeCount && n < 8; ++u)
@@ -554,18 +648,11 @@ void Play::screenGameOver(Ui& ui) {
                 if (p.loadout.mods[u] == pass) list[n++] = u;
         const UiColour ctx{&ui};
         for (u32 k = 0; k < n; ++k) {
-            const Vec2 c{m + 40.0f * s + static_cast<float>(k) * 90.0f * s, 800.0f * s};
+            const Vec2 c{m + 40.0f * s + static_cast<float>(k) * 90.0f * s, y + 60.0f * s};
             icons_.drawHud(ui.draw().hud, upgradeIcons_[list[k]], c, 30.0f * s, 1.0f, uiColourFn, &ctx);
         }
-        if (n) ui.text({m, 740.0f * s}, 12.0f * s, white, 0.8f, "YOUR BAND", 0.0f);
+        if (n) ui.text({m, y}, 12.0f * s, white, 0.8f, "YOUR BAND", 0.0f);
     }
-    const float right = W - std::fmax(132.0f * s, ui.insetMax().x);
-    if (ui.pill(40, {right - 300.0f * s, H - 240.0f * s}, {600.0f * s, 140.0f * s}, "RETRY", 52.0f * s, true) || keyPrimary_) {
-        screen_ = Screen::Run;
-        restartRun();
-    }
-    if (ui.pill(41, {right - 165.0f * s, H - 110.0f * s}, {330.0f * s, 90.0f * s}, "HOME", 28.0f * s, false) || keyBack_) toTitle();
-    keyPrimary_ = keyBack_ = false;
 }
 
 void Play::screenSettings(Ui& ui) {
@@ -574,12 +661,12 @@ void Play::screenSettings(Ui& ui) {
     ui.text({cx, 100.0f * s}, 44.0f * s, palette_->accent, 1.6f, "SETTINGS");
     static const char* const kTabs[3] = {"SOUND", "CONTROLS", "LOOK"};
     for (u32 k = 0; k < 3; ++k)
-        if (ui.pill(50 + k, {cx + (static_cast<float>(k) - 1.0f) * 420.0f * s, 168.0f * s + 42.0f * s}, {360.0f * s, 84.0f * s}, kTabs[k],
+        if (ui.pill(50 + k, {cx + (static_cast<float>(k) - 1.0f) * 420.0f * s, 154.0f * s + 42.0f * s}, {360.0f * s, 84.0f * s}, kTabs[k],
                     30.0f * s, false, true, settingsTab_ == k, palettes_->player[0]))
             settingsTab_ = static_cast<u8>(k);
     bool changed = false;
     if (settingsTab_ == 0) {
-        ui.text({cx, 280.0f * s}, 13.0f * s, white, 0.7f, "THE SAME MUSIC, THREE WAYS. TAP ONE: IT CHANGES ON THE NEXT BAR");
+        ui.text({cx, 276.0f * s}, 13.0f * s, white, 0.7f, "THE SAME MUSIC, THREE WAYS. TAP ONE: IT CHANGES ON THE NEXT BAR");
         // Sound cards: Club (amber -> magenta), Arcade (cyan -> lime), Velvet (violet -> azure), each with its
         // signature line drawn from the live master bus, shaped per card.
         static const char* const kNames[3] = {"CLUB", "ARCADE", "VELVET"};
@@ -634,7 +721,7 @@ void Play::screenSettings(Ui& ui) {
         // Faders: MASTER, MUSIC, EFFECTS, with the live level as a meter.
         const float meter = band_ ? clamp01(band_->meter()) : 0.0f;
         const float fw = 460.0f * s;
-        const float fy = 700.0f * s;
+        const float fy = 690.0f * s;  // (screens.md: the faders at y 690)
         float* v[3] = {&settings_.master, &settings_.music, &settings_.effects};
         static const char* const kF[3] = {"MASTER", "MUSIC", "EFFECTS"};
         for (u32 k = 0; k < 3; ++k) {
@@ -650,13 +737,13 @@ void Play::screenSettings(Ui& ui) {
         if (ui.pill(80, {m + 180.0f * s, H - 140.0f * s}, {360.0f * s, 100.0f * s}, "SYNC", 30.0f * s, false)) syncRequest_ = true;
         char off[32];
         std::snprintf(off, sizeof off, band_ && band_->syncOffsetTouched() ? "%+.0f MS" : "AUTOMATIC", band_ ? band_->syncOffsetMs() : 0.0f);
-        ui.text({m + 180.0f * s, H - 56.0f * s}, 14.0f * s, palettes_->player[3], 1.3f, off);
+        ui.text({m + 180.0f * s, H - 50.0f * s}, 14.0f * s, palettes_->player[3], 1.3f, off);
         // M4 (GAME_DESIGN 12): in co-op the music can come from the host's phone alone (a client keeps its own lead).
         {
             static const char* const kOnOff[2] = {"OFF", "ON"};
             const float hx = cx + 700.0f * s;
-            ui.text({hx, 782.0f * s}, 13.0f * s, white, 0.8f, "CO-OP: MUSIC FROM THE HOST'S PHONE ONLY");
-            const u32 ho = ui.segmented(12, {hx, 828.0f * s}, 320.0f * s, 56.0f * s, kOnOff, 2, settings_.musicHostOnly ? 1u : 0u, 20.0f * s);
+            ui.text({hx, 772.0f * s}, 13.0f * s, white, 0.8f, "CO-OP: MUSIC FROM THE HOST'S PHONE ONLY");
+            const u32 ho = ui.segmented(12, {hx, 824.0f * s}, 320.0f * s, 56.0f * s, kOnOff, 2, settings_.musicHostOnly ? 1u : 0u, 20.0f * s);
             if ((ho != 0) != settings_.musicHostOnly) {
                 settings_.musicHostOnly = ho != 0;
                 changed = true;

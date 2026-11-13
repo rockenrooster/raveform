@@ -54,8 +54,31 @@ public:
     // A tappable rectangle (cards); `pressed` says whether it is held now.
     bool area(u32 id, Vec2 a, Vec2 b, bool& pressed);
 
+    // M4 stage B (screens.md, "Rules for every screen"): controls never touch: at least 24 px between any two, and
+    // between a control and a line of text. Every control and every line drawn between begin() and end() is kept
+    // (a control's own label and the lines inside a control are not lines of their own); end() reports a pair that
+    // breaks the rule once, as a warning naming the screen (the review scripts look for it).
+    void setScreenName(const char* name) { screen_ = name; }
+    static constexpr float kControlGapPx = 24.0f;
+    u32 layoutWarnings() const { return layoutWarnings_; }
+
 private:
+    bool hit(u32 id, Vec2 a, Vec2 b, bool& pressed);
+    void keep(Vec2 a, Vec2 b, bool control, const char* label);
+    void checkLayout();
     bool inside(Vec2 a, Vec2 b) const { return p_.pos.x >= a.x && p_.pos.x <= b.x && p_.pos.y >= a.y && p_.pos.y <= b.y; }
+    struct Box {
+        Vec2 a, b;
+        bool control;
+        char label[24];
+    };
+    static constexpr u32 kBoxes = 96;
+    Box boxes_[kBoxes];
+    u32 boxCount_ = 0;
+    u32 quiet_ = 0;  // > 0: drawing inside a control (its label, a segmented row's pills): nothing kept
+    const char* screen_ = "";
+    u32 reported_[64] = {};
+    u32 reportedCount_ = 0, layoutWarnings_ = 0;
     FrameDraw* d_ = nullptr;
     const VectorFont* font_ = nullptr;
     const Look* look_ = nullptr;

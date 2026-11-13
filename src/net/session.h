@@ -68,6 +68,8 @@ struct SessionStats {
     double totalUpBytes = 0.0, totalDownBytes = 0.0;    // since start, with headers
 };
 
+constexpr i64 kConnectTimeoutUs = 6000000;  // M4 stage B: a join nobody answers ends after 6 s ("no answer")
+
 class Session : public PacketSink {
 public:
     Session() = default;
@@ -135,6 +137,7 @@ public:
         stats_.screenErrMax = 0.0f;
     }
     const Link& link() const { return link_; }
+    Link& linkMut() { return link_; }  // (tests: a peer that dies)
     // Ground truth for tests: the clock and song as this client steers them.
     const ClockSync& clock() const { return clock_; }
 
@@ -205,6 +208,7 @@ private:
     i32 from_ = -1;  // seat of the packet being parsed (host)
     u32 fromPeer_ = 0;  // ENet peer of the packet being parsed
     i64 localNow_ = 0, hostNow_ = 0, lastJoinUs_ = 0, startUs_ = 0;
+    u8 leaveQueued_ = 0;  // client: seats whose timed leave came from the host (onSeats leaves them to it)
     ClockFn clockFn_ = nullptr;
     void* clockUser_ = nullptr;
 

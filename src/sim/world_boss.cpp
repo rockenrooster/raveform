@@ -113,7 +113,7 @@ void World::spawnBossNow(double enterTick, Vec2 pos) {
     s.phaseTick = s.fightTick;
     // Health: x (1 + 0.5 per extra player) as for every boss; Track 2's Kaleidos has 1.5x and Track 3's 2x
     // (the lead), and the loop adds 6% a Track after that.
-    float scale = 1.0f + kCoopBossHealthPerPlayer * static_cast<float>(playerCount_ - 1);
+    float scale = 1.0f + kCoopBossHealthPerPlayer * static_cast<float>(presentCount() - 1);  // (M4 stage B: those still in the run)
     const u32 tr = director_.track < 1 ? 1u : director_.track;
     scale *= tr <= 3 ? kBossTrackHealth[tr - 1] : kBossTrackHealth[2] * std::pow(kBossEndlessHealth, static_cast<float>(tr - 3));
     // GAME_DESIGN 8 (play test 1, second pass): the first boss of a run, Track 1's, is the teacher: 0.7 of its health.

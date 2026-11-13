@@ -39,6 +39,19 @@ struct ViewInput {
     Vec2 camPos;
     // M4 stage B: the lobby draws no ship (the run has not begun; screens.md's lobby shows the ships in the seats).
     bool noShips = false;
+    // M4 stage B (screens.md "Game over"): the co-op game over draws no beacon and no beacon flare.
+    bool noBeacons = false;
+    // M4 stage B (screens.md "Co-op (M4)"): the co-op setup screens: the lattice and the background only (what the run
+    // left behind, its sparks and rings, is not drawn either; the world behind them stands still).
+    bool backgroundOnly = false;
+};
+
+// M4 stage B (screens.md "Co-op (M4)", "In the run"): the HUD's blocks that edge chevrons keep 20 px clear of (screen
+// pixels, top left origin): the score block, the phrase bar, the Nova stock, the pause ring.
+struct HudKeepOut {
+    static constexpr u32 kMax = 6;
+    Vec2 a[kMax], b[kMax];
+    u32 count = 0;
 };
 
 struct ViewStats {
@@ -60,6 +73,8 @@ public:
     void setReduceFlashing(bool on) { reduceFlashing_ = on; }
     void setPalette(const Palette& p) { palette_ = &p; }
     void setMute(u32 bits) { mute_ = bits; }
+    // M4 stage B: the HUD's blocks this frame (edge chevrons keep clear of them).
+    void setHudKeepOut(const HudKeepOut& k) { keepOut_ = k; }
     // M3 stage B: the upgrade icons and the font for the Trio's words.
     void setIcons(const IconSet* icons, const i32* upgradeIcons, const i32* boostIcons);
     void setFont(const VectorFont* font) { font_ = font; }
@@ -69,6 +84,10 @@ public:
     void onEvents(const sim::World& w, double tickEnd);
     void render(FrameDraw& d, FrameParams& params, Background& bg, float W, float H, const ViewInput& in);
     const ViewStats& stats() const { return stats_; }
+    // M4 stage B (the lead's question on frame_client): what pushed the lattice in the last second, by source, inside
+    // this frame (impulses are what heats it), with the crowd gain and the kick ripples now. One line of text.
+    enum ImpulseKind : u8 { kImpKill, kImpHit, kImpShipDown, kImpDeath, kImpNova, kImpDash, kImpDropWave, kImpKinds };
+    void latticeTrace(char* out, u32 capacity) const;
 
     // The camera of the last rendered frame (logical pixels).
     Vec2 toScreen(Vec2 w) const { return (w - cam_) * pxPerWu_ + centre_; }
@@ -79,6 +98,7 @@ public:
     float snare() const { return snare_; }
 
 private:
+    HudKeepOut keepOut_;
     struct Pool;
     struct Ember;
     struct Shatter;
@@ -111,7 +131,8 @@ private:
     void flare(CapsuleBatch& out, Vec2 at, float angle, float lengthWu, u32 arms, Vec3 colour, float halfWidthRef);
     void telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight);
     void envelopes(const ViewInput& in);
-    bool shown(u32 bit) const { return (mute_ & bit) == 0; }
+    bool shown(u32 bit) const { return ((mute_ | frameMute_) & bit) == 0; }
+    u32 frameMute_ = 0;  // this frame's extra mute (ViewInput::backgroundOnly)
     // M3 stage B (play_view_b.cpp).
     void sectionLook(const ViewInput& in);
     void eventB(const sim::World& w, const sim::Event& e, float t);
@@ -122,6 +143,9 @@ private:
     // tip: 1 a small ring at its tip (a downed teammate, M4), 2 a plus (a Cell while its player is on the last cell, play
     // test 2).
     void edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, float swell, u8 tip = 0);
+    // Where an edge chevron's disc of radius r stands for the direction `dsc` from the screen's centre: on the edge
+    // box, slid along the edge to the nearest place 20 px clear of the HUD's blocks (screens.md).
+    Vec2 edgePlace(Vec2 dsc, float hx, float hy, float r) const;
     // Play test 2 (look.md 5, "The build on the shots"): the shots, their heads by the build (play_view_shots.cpp); the
     // colours it needs (Prism's lanes from the local player's colour, Overcharge's heads), computed once.
     void drawShots(FrameDraw& d, const ViewInput& in, float a);
@@ -162,6 +186,17 @@ private:
     float prevScale_ = 1.0f;
     Vec2 prevOffset_;
     float crowdGain_ = 1.0f, swarmGain_ = 1.0f;
+    // The lattice's impulses of the last moments (the trace above): when, where, how hard, from what.
+    struct ImpulseNote {
+        float t = -100.0f, amp = 0.0f, radius = 0.0f;
+        Vec2 at;
+        u8 kind = 0;
+    };
+    static constexpr u32 kImpulseNotes = 512;
+    ImpulseNote impulses_[kImpulseNotes];
+    u32 impulseHead_ = 0;
+    float lastViewT_ = 0.0f, lastBeatAmt_ = 0.0f;
+    void push(u8 kind, Vec2 at, float amp, float radius, float t);
 
     // Beat envelopes (look.md §7).
     float kick_ = 0.0f, snare_ = 0.0f, hat_ = 0.0f, bass_ = 0.0f;

@@ -161,6 +161,7 @@ private:
     bool overlayOn_ = true;
     u32 overlayPage_ = 0;  // M4: 0 the main page, 1 the network's (co-op)
     bool netShotDone_ = false;  // M4: --net-capture-bar's picture taken
+    bool textInputOn_ = false;  // M4 stage B: the system keyboard is up (the join screen's address)
     u64 netPoolFallbacksAtMeasure_ = 0;  // M4: ENet's pool fallbacks when the benchmark's window began
     bool discontinuity_ = true;       // the next interval spans a pause: do not record it
     bool awaitingResumePresent_ = false;

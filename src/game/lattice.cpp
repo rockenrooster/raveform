@@ -149,11 +149,13 @@ u32 Lattice::draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle
     const float cos20 = std::cos(20.0f * kPi / 180.0f);
 
     // Pass 1: every node's drawn position, colour and width.
+    heat_ = HeatStats{};
     for (int j = j0_; j < j0_ + rows_; ++j) {
         for (int i = i0_; i < i0_ + cols_; ++i) {
             const u32 s = slot(i, j);
             Vec2 p = Vec2{static_cast<float>(i) * spacing_, static_cast<float>(j) * spacing_} + d_[s];
             float heat = length(d_[s]);
+            const float springs = heat;
             const Vec2 fromPlayer = p - view.player;
             const float dist = length(fromPlayer);
             if (dist > 1e-3f) {
@@ -167,6 +169,13 @@ u32 Lattice::draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle
                 }
             }
             px_[s] = (p - view.camera) * view.pxPerWu + view.screenCentre;
+            if (px_[s].x >= view.widthPx / 3.0f && px_[s].x <= 2.0f * view.widthPx / 3.0f && px_[s].y >= 0.0f && px_[s].y <= view.heightPx) {
+                ++heat_.nodes;
+                heat_.fromSprings += springs;
+                heat_.fromRipples += heat - springs;
+                if (heat >= st.warmFromWu) ++heat_.warm;
+                if (heat >= st.hotFromWu) ++heat_.hot;
+            }
             Vec3 rest = st.grid;
             if (st.tint) {
                 const float t = clampf(dist / st.tintRadiusWu, 0.0f, 1.0f) * 2.0f;

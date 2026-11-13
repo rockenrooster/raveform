@@ -13,6 +13,7 @@
 #include "core/log.h"
 #include "core/time.h"
 #include "net/bots.h"
+#include "net/lobby.h"
 #include "sim/tuning.h"
 
 namespace rf {
@@ -199,6 +200,14 @@ void Play::frame(float realDt) {
         if (coop()) return;  // a session began: the next frame runs it
     }
     if (flow_ && opt_.coopShot[0]) coopScreenShot();
+    if (flow_ && (screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission)) {
+        // M4 stage B (screens.md "Co-op (M4)"): nothing of a run behind the co-op setup screens. The world was emptied
+        // as they opened and stands still; the band plays on.
+        stats_.ticksLastFrame = 0;
+        alpha_ = 1.0f;
+        bandFrame();
+        return;
+    }
     const BeatView* bv = (bandDrives_ && band_) ? &band_->view() : nullptr;
     // M3 stage B: pause freezes the run; the count-in ends on the resume point (game/screens.cpp).
     if (countIn_) {
@@ -678,7 +687,50 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         vi.camFixed = true;
         vi.camPos = o.prevPos + (o.pos - o.prevPos) * alpha_;
     }
-    vi.noShips = flow_ && screen_ == Screen::CoopLobby;
+    // M4 stage B (screens.md "Co-op (M4)"): nothing of a run behind the co-op setup screens (the world there is
+    // empty and still), and no beacon behind the co-op game over.
+    vi.noShips = flow_ && (screen_ == Screen::CoopLobby || screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission);
+    vi.noBeacons = coop() && coopOver_;
+    vi.backgroundOnly = flow_ && !coop() && (screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission);
+    {
+        // The HUD's blocks this frame: edge chevrons slide 20 px clear of them (screens.md "In the run").
+        const float s = H / 1080.0f;
+        const float m = std::fmax(132.0f * s, insetMin.x), mr = std::fmax(132.0f * s, insetMax.x), top = insetMin.y;
+        HudKeepOut k;
+        const bool runHud = !flow_ || screen_ == Screen::Run || screen_ == Screen::Paused;
+        if (runHud) {
+            const PlayerState& me = w.player(seat_);
+            u64 score = me.score;
+            u32 ranks = 0;
+            if (coop()) {
+                score = 0;
+                for (u32 q = 0; q < kMaxPlayers; ++q)
+                    if (w.player(q).present) {
+                        score += w.player(q).score;
+                        ++ranks;
+                    }
+            }
+            char num[32];
+            std::snprintf(num, sizeof num, "%llu,,,", static_cast<unsigned long long>(score));  // (room for the separators)
+            const float scoreW = font_->measure(TextStyle{34.0f * s}, num);
+            const float bottom = ranks > 1 ? top + (160.0f + 26.0f * static_cast<float>(ranks - 1) + 13.0f) * s : top + 144.0f * s;
+            k.a[k.count] = {0.0f, 0.0f};
+            k.b[k.count++] = {m + std::fmax(scoreW, 290.0f * s), bottom};
+            // The Track line and the phrase bar with its "DROP IN n".
+            k.a[k.count] = {0.5f * W - 280.0f * s, 0.0f};
+            k.b[k.count++] = {0.5f * W + 380.0f * s, top + 70.0f * s};
+            // The Nova stock and the Dash bar under it.
+            const float novas = static_cast<float>(me.novaCap > 0 ? me.novaCap - 1 : 0);
+            k.a[k.count] = {W - mr - 150.0f * s - 50.0f * s * novas - 16.0f * s, 0.0f};
+            k.b[k.count++] = {W - mr - 40.0f * s, top + 122.0f * s};
+            // The pause ring.
+            float r = 0.0f;
+            const Vec2 pc = pauseButtonCentre(W, H, insetMin, insetMax, r);
+            k.a[k.count] = pc - Vec2{r, r};
+            k.b[k.count++] = pc + Vec2{r, r};
+        }
+        view_.setHudKeepOut(k);
+    }
     updatePalette(vi.music);
     view_.render(d, params, bg, W, H, vi);
 
@@ -930,6 +982,34 @@ bool Play::key(int k, bool down) {
         // M4: any player may pause; it holds for everyone on the next beat (GAME_DESIGN 10). P again resumes.
         if (down) session_->requestPause(!session_->paused() && !session_->resuming());
         return true;
+    }
+    if (flow_ && screen_ == Screen::CoopJoin && !session_) {
+        // M4 stage B: the join screen takes a room code from a keyboard too (its sixteen symbols; P is one of them, so
+        // only Escape and Back go back); the address mode's digits come as text (textInput). Backspace deletes.
+        if (down) {
+            if (k == SDLK_ESCAPE || k == SDLK_AC_BACK) keyBack_ = true;
+            else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) keyPrimary_ = true;
+            else if (k == SDLK_BACKSPACE) {
+                if (typingIp_) {
+                    const size_t len = std::strlen(ipTyped_);
+                    if (len) ipTyped_[len - 1] = 0;
+                } else if (codeLen_) {
+                    codeTyped_[--codeLen_] = 0;
+                }
+            } else if (!typingIp_ && codeLen_ < 4) {
+                char c = 0;
+                if (k >= static_cast<int>(SDLK_A) && k <= static_cast<int>(SDLK_Z)) c = static_cast<char>('A' + (k - static_cast<int>(SDLK_A)));
+                if (k >= static_cast<int>(SDLK_0) && k <= static_cast<int>(SDLK_9)) c = static_cast<char>('0' + (k - static_cast<int>(SDLK_0)));
+                for (u32 i = 0; c && i < 16; ++i)
+                    if (net::kRoomAlphabet[i] == c) {
+                        codeTyped_[codeLen_++] = c;
+                        codeTyped_[codeLen_] = 0;
+                        if (band_) band_->playSfx(audio::Sfx::UiTick);
+                        break;
+                    }
+            }
+        }
+        return k != SDLK_F1;
     }
     if (flow_) {
         // The screens: Enter / Space is the obvious control, Escape (Back) goes back or pauses.

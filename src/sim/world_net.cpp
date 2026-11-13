@@ -141,6 +141,11 @@ void World::applyNetOps() {
             continue;
         }
         if (ahead < 0) continue;
+        if (op.kind == NetOp::Player && op.a == kPeLeave && op.tick > m1_) {
+            // M4 stage B: a player leaves on its tick, the same on every device.
+            netOps_[keep++] = op;
+            continue;
+        }
         applyNetOp(op);
     }
     netOpCount_ = keep;

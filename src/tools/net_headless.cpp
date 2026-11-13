@@ -107,7 +107,7 @@ void secondly(NetPeer& p, PeerReport& r, i64 when, i64& last) {
 
 // ---------------------------------------------------------------------------------------------- soak
 
-int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSim& sim, u64 seed, bool pause) {
+int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSim& sim, u64 seed, bool pause, float dropAtS) {
     if (players < 2) players = 2;
     if (players > kMaxPlayers) players = kMaxPlayers;
     wireUseSimClock(true);
@@ -164,11 +164,21 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     u32 pauseState = 0;  // 0 none, 1 asked, 2 resume asked, 3 done
     i64 pauseAskAt = 0;
     const double wall0 = static_cast<double>(std::chrono::steady_clock::now().time_since_epoch().count());
+    // --drop-at S (M4 stage B): the last client's process "dies" S s into the run (its link goes without a word, the
+    // host times it out); the others play on. The on-screen error is reported for each 10 s around it.
+    const u32 dropPeer = players - 1;
+    bool dropped = false;
+    i64 windowFrom = 0;
+    double winSum2 = 0.0;
+    u64 winN = 0;
+    float winMax = 0.0f;
     for (;;) {
         G += 1000;
         wireSetSimTimeUs(G);
-        for (u32 k = 0; k < players; ++k) wirePump(peers[k].session().link().socket());
+        for (u32 k = 0; k < players; ++k)
+            if (!(dropped && k == dropPeer)) wirePump(peers[k].session().link().socket());
         for (u32 k = 0; k < players; ++k) {
+            if (dropped && k == dropPeer) continue;
             if (G < nextFrame[k]) continue;
             peers[k].frame(G);
             jitterRng ^= jitterRng << 13;
@@ -178,7 +188,7 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
             nextFrame[k] = static_cast<i64>(nominal[k]) + static_cast<i64>(jitterRng % 1001u) - 500;  // vsync +-0.5 ms
         }
         bool all = true;
-        for (u32 k = 0; k < players; ++k) all = all && peers[k].session().running();
+        for (u32 k = 0; k < players; ++k) all = all && (dropped || peers[k].session().running());
         if (all && !runFrom && peers[0].world().runId() > 0 && peers[0].music() > peers[0].world().tickOfBar(0) + 1.0) runFrom = G;
         if (!runFrom) {
             if (G > 2000000000ll + 30000000ll) {
@@ -189,13 +199,32 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
         }
         const i64 t = G - runFrom;
         if (t >= runUs) break;
+        if (dropAtS > 0.0f && !dropped && t >= static_cast<i64>(dropAtS * 1e6f)) {
+            dropped = true;
+            peers[dropPeer].session().linkMut().abandon();
+            std::printf("[net] %5.1f s: peer %u's process dies (its link goes without a word)\n", static_cast<double>(t) * 1e-6, dropPeer);
+        }
+        if (dropAtS > 0.0f && measuring && t - windowFrom >= 10000000) {
+            const SessionStats& s1 = peers[1].session().stats();
+            u32 present = 0;
+            for (u32 q = 0; q < kMaxPlayers; ++q) present += peers[0].world().player(q).present ? 1u : 0u;
+            std::printf("[net] %5.0f s: on-screen error (true, against the host) RMS %.2f wu, max %.1f (%llu samples); client 1's "
+                        "corrections' error %.1f wu RMS (last second); players present on the host %u\n",
+                        static_cast<double>(t) * 1e-6, winN ? std::sqrt(winSum2 / static_cast<double>(winN)) : 0.0, static_cast<double>(winMax),
+                        static_cast<unsigned long long>(winN), static_cast<double>(s1.errRmsWu), present);
+            windowFrom = t;
+            winSum2 = 0.0;
+            winN = 0;
+            winMax = 0.0f;
+        }
         if (!measuring && t >= settleUs) {
             measuring = true;
             allocs0 = heapAllocCountThisThread();
             pool0 = enetPoolStats();
             for (u32 k = 1; k < players; ++k) peers[k].session().resetScreenError();
         }
-        for (u32 k = 1; k < players; ++k) secondly(peers[k], rep[k], G, lastSecond[k]);
+        for (u32 k = 1; k < players; ++k)
+            if (!(dropped && k == dropPeer)) secondly(peers[k], rep[k], G, lastSecond[k]);
         // The pause, once (GAME_DESIGN 10: any player may pause; it holds for everyone on the next beat).
         if (pause) {
             if (pauseState == 0 && t > 180000000) {
@@ -223,6 +252,7 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
         const double hs = peers[0].songNow(G);
         const double tps = peers[0].session().tpsAt(peers[0].localUs(G));
         for (u32 k = 1; k < players; ++k) {
+            if (dropped && k == dropPeer) continue;
             const double ms = (peers[k].songNow(G) - hs) / tps * 1000.0;
             songSum2 += ms * ms;
             ++songN;
@@ -232,6 +262,7 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
         if ((G / 100000) % 3 != 0) continue;
         const World& hw = peers[0].world();
         for (u32 k = 1; k < players; ++k) {
+            if (dropped && k == dropPeer) continue;
             const World& cw = peers[k].world();
             if (cw.runId() != hw.runId()) continue;
             const PlayerState& me = cw.player(peers[k].session().seat());
@@ -251,6 +282,9 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                 }
                 const float err = length(drawn - Vec2{he.x[j], he.y[j]});
                 hist->add(err);
+                winSum2 += static_cast<double>(err) * err;
+                ++winN;
+                if (err > winMax) winMax = err;
             }
         }
     }
@@ -264,10 +298,13 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     double scrSum2 = 0.0;
     u64 scrN = 0;
     float scrMax = 0.0f;
+    u32 expectedDrops = 0;
     for (u32 k = 0; k < players; ++k) {
         const NetPeer& p = peers[k];
         const SessionStats& s = p.session().stats();
+        if (dropped && k == dropPeer) continue;  // (the process that died)
         disconnects += s.disconnects + (p.session().state() == SessionState::Ended ? 1u : 0u);
+        if (dropped && k == 0) expectedDrops = s.disconnects;  // the host's: the one that died
         stalls += p.stats().dropped;
         overflow += overflowOf(p.world()) + s.droppedOutgoing;
         if (overflowOf(p.world()) + s.droppedOutgoing) {
@@ -309,7 +346,12 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     const bool pauseOk = !pause || (pausedSeen && pauseState == 3);
     bool pauseSame = true;
     for (u32 k = 1; k < players && pause; ++k) pauseSame = pauseSame && std::fabs(pauseTicks[k] - pauseTicks[0]) < 0.5;
-    const bool ok = disconnects == 0 && stalls == 0 && mismatches == 0 && census > 0 && errRms < kMaxErrRmsWu &&
+    if (dropped) {
+        std::printf("[net]   the host timed out the dead peer: %s (%u disconnects seen by the host)\n", expectedDrops == 1 ? "yes" : "NO",
+                    expectedDrops);
+        disconnects -= expectedDrops;
+    }
+    const bool ok = (!dropped || expectedDrops == 1) && disconnects == 0 && stalls == 0 && mismatches == 0 && census > 0 && errRms < kMaxErrRmsWu &&
                     songMax < kMaxSongOffsetMs && downMax <= kMaxDownKbps && upMax <= kMaxUpKbps && maxDg <= kMaxDatagramNoFrag &&
                     overflow == 0 && queueFull == 0 && poolFallbacks == 0 && allocs == 0 && pauseOk && pauseSame;
     std::printf("[net] soak: %u peers on the loopback network, %.1f simulated minutes in %.1f s; conditions: delay %.0f ms, "
@@ -342,7 +384,8 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
               players, minutes, sim.loss, sim.jitterMs, disconnects, stalls, census, mismatches, errRms, errP95, hist->max, songRms, songMax,
               downMax, upMax, downMean, upMean, maxDg, overflow, static_cast<unsigned long long>(poolFallbacks),
               static_cast<unsigned long long>(allocs), hc.kills, predicted, undone, scrRms, scrMax, ok ? "true" : "false");
-    for (u32 k = 0; k < players; ++k) peers[k].stop();
+    for (u32 k = 0; k < players; ++k)
+        if (!(dropped && k == dropPeer)) peers[k].stop();
     delete[] peers;
     delete hist;
     wireUseSimClock(false);
@@ -395,6 +438,8 @@ int runPeer(const SpeciesTable& species, bool host, int argc, char** argv) {
     PeerReport rep;
     double songSum2 = 0.0, songMax = 0.0;
     u64 songN = 0, allocs0 = 0;
+    u64 lineScrN = 0;
+    double lineScrSum2 = 0.0;
     bool measuring = false;
     EnetPoolStats pool0, poolEnd;
     bool ended = false;
@@ -470,11 +515,18 @@ int runPeer(const SpeciesTable& species, bool host, int argc, char** argv) {
         if (now - lastLine > 10000000) {
             lastLine = now;
             const SessionStats& st = s.stats();
+            // "err": every correction of the last second (off screen too); "scr": the enemies on this screen as each
+            // correction landed since the last line (M4 stage B: what a player could see).
+            const double scrN = static_cast<double>(st.screenErrN - lineScrN), scrRms = scrN > 0.0 ? std::sqrt((st.screenErrSum2 - lineScrSum2) / scrN) : 0.0;
+            lineScrN = st.screenErrN;
+            lineScrSum2 = st.screenErrSum2;
             std::printf("[net] %5.0f s  Track %u bar %4u  enemies %4u  rtt %.0f ms  loss %.1f%%  down %.1f up %.1f kbit/s  corr %.0f/s err "
-                        "%.1f wu  clock %.2f ms (rtt %.1f)  census %u/%u  peers %u\n",
+                        "%.1f wu  scr %.1f wu (%.0f)  clock %.2f ms (rtt %.1f)  census %u/%u  peers %u  players %u\n",
                         static_cast<double>(t) * 1e-6, peer->world().phrase().track, peer->world().phrase().bar, peer->world().enemies().count,
-                        st.rttMs, st.loss * 100.0f, st.downKbps, st.upKbps, st.correctionsPerS, st.errRmsWu, st.clockOffsetMs, st.clockRttMs,
-                        st.censusChecks, st.censusMismatches, st.peers);
+                        st.rttMs, st.loss * 100.0f, st.downKbps, st.upKbps, st.correctionsPerS, st.errRmsWu, scrRms, scrN, st.clockOffsetMs,
+                        st.clockRttMs, st.censusChecks, st.censusMismatches, st.peers,
+                        static_cast<u32>(peer->world().player(0).present) + peer->world().player(1).present + peer->world().player(2).present +
+                            peer->world().player(3).present);
         }
     }
     if (!ended) {  // the session ended early, or never ran
@@ -543,7 +595,8 @@ int netHeadlessMain(int argc, char** argv) {
             delete species;
             return 2;
         }
-        code = runSoak(*species, minutes, players, sim, seed, flag(argc, argv, "--pause"));
+        const float dropAt = (v = arg(argc, argv, "--drop-at")) ? static_cast<float>(std::atof(v)) : 0.0f;
+        code = runSoak(*species, minutes, players, sim, seed, flag(argc, argv, "--pause"), dropAt);
     } else if (std::strcmp(mode, "host") == 0 || std::strcmp(mode, "join") == 0) {
         code = runPeer(*species, std::strcmp(mode, "host") == 0, argc, argv);
     } else {

@@ -54,6 +54,13 @@ void Play::openCoop() {
 #else
     const int state = 0;
 #endif
+    if (!session_ && screen_ != Screen::CoopJoin && screen_ != Screen::NetPermission) {
+        // screens.md "Co-op (M4)": nothing of a run behind the setup screens: the attract run ends here (the world empty
+        // and still until the lobby's run or the title's next attract run).
+        world_->resetRun(opt_.seed, music1_, 1);
+        view_.resetEffects();
+        controller_.reset(world_->player(0).pos);
+    }
     if ((state == 1 || state == 2 || opt_.coopPermissionScreen) && !permissionAsked_) {
         screen_ = Screen::NetPermission;
         return;
@@ -210,8 +217,9 @@ void Play::leaveCoop(const char* message) {
     if (message && *message) {
         std::snprintf(coopMessage_, sizeof coopMessage_, "%s", message);
         coopMessageT_ = 0.0f;
-        RF_LOG("net: back to the title: %s", message);
+        RF_LOG("net: the session is over: %s", message);
     }
+    coopSeated_ = false;
     screen_ = Screen::Title;
     applySettings();
 }
@@ -227,10 +235,15 @@ void Play::coopFlow() {
     // The screens follow the session (game/play_net.cpp runs it).
     net::Session& s = *session_;
     coopMessageT_ += frameDt_;
+    if (s.state() == net::SessionState::Lobby || s.state() == net::SessionState::Running) coopSeated_ = true;
     if (s.state() == net::SessionState::Ended) {
         char msg[96];
         const char* why = s.endReason();
-        if (std::strcmp(why, "the host left") == 0 || std::strcmp(why, "the host is gone") == 0)
+        const bool gone = std::strcmp(why, "the host left") == 0 || std::strcmp(why, "the host is gone") == 0 || std::strcmp(why, "no answer") == 0;
+        if (gone && !coopSeated_)
+            // Never seated: nobody answered at that address (screens.md's join messages).
+            std::snprintf(msg, sizeof msg, "%s", coopJoinBy_ == 1 ? "NO ROOM WITH THAT CODE" : (coopJoinBy_ == 2 ? "NO ROOM AT THAT ADDRESS" : "THAT ROOM IS GONE"));
+        else if (gone)
             std::snprintf(msg, sizeof msg, "%s", netRunStarted_ ? "THE HOST LEFT: THE RUN IS OVER. YOUR SCORE IS KEPT" : "THE HOST CLOSED THE ROOM");
         else if (std::strcmp(why, "another version of the game") == 0)
             std::snprintf(msg, sizeof msg, "THAT ROOM RUNS ANOTHER VERSION OF RAVEFORM: UPDATE BOTH PHONES");
@@ -242,10 +255,9 @@ void Play::coopFlow() {
             std::snprintf(msg, sizeof msg, "THAT ROOM'S RUN HAS STARTED: JOIN WHEN IT IS BACK IN ITS LOBBY");
         else
             std::snprintf(msg, sizeof msg, "THE CONNECTION WAS LOST");
-        const bool wasRun = netRunStarted_;
         RF_LOG("net: the session ended (%s)", why);
         leaveCoop(msg);
-        if (!wasRun) openCoop();  // a refusal or a lost lobby: back to the join screen, the message on it
+        openCoop();  // back to the join screen, the message on it (screens.md: the join screen's message line)
         return;
     }
     // The run began (the lobby gives way); a new one after all were down (the host's RETRY) comes as a Restart.
@@ -312,6 +324,7 @@ void Play::coopAutoStep() {
             RF_LOG("net: --coop join:list: joining the room heard from %u.%u.%u.%u", b.address >> 24, (b.address >> 16) & 255u,
                    (b.address >> 8) & 255u, b.address & 255u);
             coopAutoDone_ = true;
+            coopJoinBy_ = 0;
             joinRoom(b.address, b.port);
             return;
         }
@@ -331,6 +344,7 @@ void Play::coopAutoStep() {
         }
         if (coopAutoT_ < 2.5f) return;
         coopAutoDone_ = true;
+        coopJoinBy_ = 1;
         const net::BeaconInfo* b = browser_ ? browser_->byCode(low) : nullptr;
         const u32 own = net::preferredLocalIPv4();
         if (b) joinRoom(b->address, b->port);
@@ -338,8 +352,13 @@ void Play::coopAutoStep() {
         else RF_WARN("net: --coop join:%s: no network address of this device", target);
         return;
     }
+    if (std::strcmp(opt_.coopShot, "address") == 0) {
+        coopAutoDone_ = true;  // (the picture types it: coopScreenShot)
+        return;
+    }
     const u32 ip = parseAddress(target);
     coopAutoDone_ = true;
+    coopJoinBy_ = 2;
     if (ip) joinRoom(ip, net::kGamePort);
     else RF_WARN("net: --coop join:%s is neither a room code nor an address", target);
 }
@@ -354,19 +373,28 @@ void Play::coopTestStep() {
             // This device's ship goes down as in play: a bullet where it is takes its last cell (a hit: a cross on the set
             // list), the next one, once it can be hurt again, downs it (the world takes both as any hit).
             PlayerState& pl = w.playerMut(seat_);
-            if (!pl.alive) {
+            if (!pl.alive || pl.down) {
                 coopDowned_ = true;
             } else {
-                if (pl.cells > 1) pl.cells = 1;
-                pl.novas = 0;  // (Auto Nova would fire one instead)
+                // First a hit on the last cell, then (the cells kept at none, so Regen or a Cell cannot refill it) the hit
+                // that downs it once it can be hurt again. Each is a hit inside the tick, as from a bullet.
+                if (coopHitOnce_) pl.cells = 0;
+                else if (pl.cells > 1) pl.cells = 1;
                 if (!pl.invulnerable()) {
-                    if (pl.cells == 0) {
+                    if (coopHitOnce_) {
                         RF_LOG("net: --coop-down-at %.1f s: this ship is downed", static_cast<double>(opt_.coopDownAt));
                         coopDowned_ = true;
                     }
-                    w.spawnBullet(pl.pos, Vec2{}, 0.0f);
+                    w.hitNextTick(seat_);
+                    coopHitOnce_ = true;
                 }
             }
+        }
+        if (opt_.coopQuitAt >= 0.0f && runSeconds_ >= opt_.coopQuitAt) {
+            RF_LOG("net: --coop-quit-at %.1f s: this device leaves the room", static_cast<double>(opt_.coopQuitAt));
+            opt_.coopQuitAt = -1.0f;
+            leaveCoop("");
+            return;
         }
         if (opt_.coopPauseAt >= 0.0f && !coopPaused_ && runSeconds_ >= opt_.coopPauseAt) {
             coopPause(true);
@@ -412,12 +440,32 @@ void Play::coopTestStep() {
         }
         beaconDownS_ = down ? beaconDownS_ + frameDt_ : 0.0f;
     }
+    if (is("beacon_off")) {
+        // A downed teammate's beacon off this screen (its chevron with the ring at the tip), half a second after it went
+        // down, before anyone reaches it.
+        const PlayerState& me = w.player(seat_);
+        bool down = false;
+        for (u32 q = 0; q < kMaxPlayers; ++q) {
+            const PlayerState& pl = w.player(q);
+            if (q == seat_ || !pl.present || !pl.down || pl.reviveTicks > 0.0) continue;
+            down = true;
+            if (beaconDownS_ > 0.5f && me.alive &&
+                (std::fabs(pl.beacon.x - me.pos.x) > 1.15f * tuning::kFrameHalfWWu || std::fabs(pl.beacon.y - me.pos.y) > 1.15f * tuning::kFrameHalfHWu))
+                coopShotReady_ = true;
+        }
+        beaconDownS_ = down ? beaconDownS_ + frameDt_ : 0.0f;
+    }
+    if (is("pause_menu")) {
+        // The shared pause, a second and a half after it held (before anyone resumes).
+        shotWaitS_ = s.paused() && !s.resuming() && screen_ == Screen::Paused ? shotWaitS_ + frameDt_ : 0.0f;
+        if (shotWaitS_ > 1.5f) coopShotReady_ = true;
+    }
     if (is("pause") && s.resuming()) {
         // Two beats into the shared count-in.
         const double left = s.resumeSong() - s.songAt(s.hostNow());
         if (left < 2.0 * kTicksPerBeat) coopShotReady_ = true;
     }
-    if (is("over") && screen_ == Screen::GameOver && overS_ > 2.6f) coopShotReady_ = true;
+    if ((is("over") || is("over_client")) && screen_ == Screen::GameOver && overS_ > 2.6f) coopShotReady_ = true;
     if (is("hud") && netRunStarted_ && runSeconds_ > 30.0f) coopShotReady_ = true;
 }
 
@@ -437,6 +485,17 @@ void Play::coopScreenShot() {
     if (is("code") && screen_ == Screen::CoopJoin && codeLen_ == 4 && coopShotT_ > 0.5f) coopShotReady_ = true;
     if (is("permission") && screen_ == Screen::NetPermission && coopShotT_ > 1.0f) coopShotReady_ = true;
     if (is("message") && screen_ == Screen::CoopJoin && coopMessage_[0] && coopMessageT_ > 1.0f) coopShotReady_ = true;
+    if (is("address") && screen_ == Screen::CoopJoin) {
+        // The address typed on the keyboard (a key every tenth of a second), then the picture.
+        typingIp_ = true;
+        const u32 want = static_cast<u32>(coopShotT_ / 0.1f), len = static_cast<u32>(std::strlen(ipTyped_));
+        const u32 total = static_cast<u32>(std::strlen(opt_.coopTarget));
+        if (len < want && len < total && len + 1 < sizeof ipTyped_) {
+            ipTyped_[len] = opt_.coopTarget[len];
+            ipTyped_[len + 1] = '\0';
+        }
+        if (len >= total && coopShotT_ > 0.1f * static_cast<float>(total) + 0.6f) coopShotReady_ = true;
+    }
 }
 
 void Play::coopBed() {
@@ -513,7 +572,7 @@ void Play::coopBand() {
             }
         }
         // The beacon: its player's lead holding the Track's root an octave down, panned by where it is.
-        const bool on = pl.present && pl.down;
+        const bool on = pl.present && pl.down && !coopOver_;  // (the game over has no beacons)
         const float pan = clampf((pl.beacon.x - me.pos.x) / 800.0f, -1.0f, 1.0f) * 0.6f;
         if (slot < count && (on != bandBeacon_[slot] || (on && std::fabs(pan - bandBeaconPan_[slot]) > 0.1f))) {
             band_->setBeacon(slot, on, pan);

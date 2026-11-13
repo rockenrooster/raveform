@@ -199,7 +199,13 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             ok = copyString(a.coopName, sizeof a.coopName, next);
             usedNext = true;
         } else if (is("--coop-permission-screen")) {
-            a.coopPermission = true;
+            a.coopPermission = 1;
+            if (next && std::strcmp(next, "refused") == 0) {
+                a.coopPermission = 2;  // the screen as it is after a refusal (pictures)
+                usedNext = true;
+            }
+        } else if (is("--coop-demo-rooms")) {
+            a.coopDemoRooms = true;
         } else if (is("--net-content-salt") && next) {
             ok = parseUint(next, a.contentSalt);
             usedNext = true;
@@ -208,6 +214,9 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             usedNext = true;
         } else if (is("--coop-down-at") && next) {
             ok = parseFloat(next, a.coopDownAt) && a.coopDownAt >= 0.0f;
+            usedNext = true;
+        } else if (is("--coop-quit-at") && next) {
+            ok = parseFloat(next, a.coopQuitAt) && a.coopQuitAt >= 0.0f;
             usedNext = true;
         } else if (is("--coop-pause-at") && next) {
             ok = parseFloat(next, a.coopPauseAt) && a.coopPauseAt >= 0.0f;

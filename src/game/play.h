@@ -61,12 +61,14 @@ struct PlayOptions {
     u32 coopStart = 0;          // --coop-start [N]: the host starts once N are seated and ready, and goes again 3 s
                                 //   after all are down
     char coopName[16] = {};     // --coop-name: the name shown on the seat
-    bool coopPermissionScreen = false;  // --coop-permission-screen: show the local-network rationale (pictures)
+    u8 coopPermissionScreen = 0;  // --coop-permission-screen [refused]: show the local-network rationale (pictures; 2 as refused)
+    bool coopDemoRooms = false;   // --coop-demo-rooms: three made-up rooms join the list (the join screen's layout picture)
     u32 contentSalt = 0;        // --net-content-salt N: another content hash (the mismatch message's test)
     char coopShot[16] = {};     // --coop-shot lobby|lobby2..4|join|code|permission|message|beacon|revive|pause|over|hud:
                                 //   with --screenshot, the picture when that moment comes, then quit
     float coopDownAt = -1.0f;   // --coop-down-at S: this device's ship is downed S seconds into the run (tests, pictures)
     float coopPauseAt = -1.0f;  // --coop-pause-at S: this device pauses for everyone S s into the run, resumes 3 s later
+    float coopQuitAt = -1.0f;   // --coop-quit-at S: this device leaves the room S s into the run (tests, pictures, device runs)
 };
 
 class Play {
@@ -125,6 +127,7 @@ public:
     };
     const Stats& stats() const { return stats_; }
     const ViewStats& viewStats() const { return view_.stats(); }
+    void latticeTrace(char* out, u32 capacity) const { view_.latticeTrace(out, capacity); }
     const sim::World& world() const { return *world_; }
 
     // M4 co-op (game/play_net.cpp).
@@ -178,6 +181,8 @@ private:
     void screenPause(Ui& ui);
     void screenGameOver(Ui& ui);
     void screenSettings(Ui& ui);
+    void drawSetList(Ui& ui, float y);  // the game over's set list (solo and co-op)
+    void drawBand(Ui& ui, float y);     // the game over's "YOUR BAND"
     // play.cpp: the flow.
     void startRun();
     void restartRun();
@@ -229,6 +234,8 @@ private:
     bool coopAutoDone_ = false;
     float coopAutoT_ = 0.0f, coopShotT_ = 0.0f;
     float beaconDownS_ = 0.0f;  // --coop-shot beacon: how long a teammate has been down (its shatter gone after a second)
+    float shotWaitS_ = 0.0f;    // --coop-shot pause_menu: how long the pause has held
+    bool coopHitOnce_ = false;  // --coop-down-at: the first of its two hits has been asked for
     u8 presentLogged_ = 0;      // the seats present in the run as last logged (a teammate leaving is logged)
     bool coopShotReady_ = false, coopDowned_ = false, coopPaused_ = false, coopResumed_ = false;
     // The band's view of the co-op mix (what was last posted; slot 0 is this device's player).
@@ -254,6 +261,13 @@ private:
     bool coopRunShown_ = false;     // the run started (the lobby gave way to it)
     bool coopOver_ = false;         // all down: the game over is up
     bool permissionAsked_ = false;
+    u8 coopJoinBy_ = 0;            // how the last join began: 0 from the list, 1 by a room code, 2 by an address
+    bool coopSeated_ = false;      // the session reached the lobby (a refusal or no answer before that is a join message)
+    // The join screen's address, typed on the system keyboard (screens.md: TYPE AN ADDRESS).
+public:
+    bool wantsTextInput() const { return flow_ && screen_ == Screen::CoopJoin && typingIp_ && !session_; }
+    void textInput(const char* utf8);
+private:
     float seatTapT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};
     void netFrame(float realDt);
     void netTick(double m1, float bpm, bool firstOfFrame);
@@ -272,6 +286,8 @@ private:
     float netBandErrMs_ = 0.0f;   // the band's heard song against the model's (client)
     u32 netSeeks_ = 0;
     u32 netDropped_ = 0;
+    u64 logScrN_ = 0;          // the on-screen error's sums at the last 20 s log line
+    double logScrSum2_ = 0.0;
     // play_pictures.cpp (M3 stage B): true when the picture is one of stage B's.
     bool scriptSetupB();
     bool scriptInputB(sim::StickInput& in);

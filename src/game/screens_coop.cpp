@@ -55,6 +55,42 @@ void shipGlyph(Ui& ui, Vec2 c, float r, float a, Vec3 colour, Vec3 light, float 
     ui.draw().hud.line(rr, nose, 1.4f * s, lc, lc, 0);
 }
 
+// A number with its thousands separators (screens.md: everywhere).
+void thousands(char* out, size_t cap, u64 v) {
+    char raw[32];
+    std::snprintf(raw, sizeof raw, "%llu", static_cast<unsigned long long>(v));
+    const size_t n = std::strlen(raw);
+    size_t o = 0;
+    for (size_t i = 0; i < n && o + 2 < cap; ++i) {
+        if (i > 0 && (n - i) % 3 == 0) out[o++] = ',';
+        out[o++] = raw[i];
+    }
+    out[o] = '\0';
+}
+
+// A dashed capsule outline (the join list's "looking for rooms" row).
+void dashedCapsule(Ui& ui, Vec2 a, Vec2 b, float hw, Vec3 colour, float i) {
+    const Vec3 k = ui.col(colour, i);
+    const float r = 0.5f * (b.y - a.y), cy = 0.5f * (a.y + b.y);
+    const float dash = 22.0f * ui.s(), step = 2.0f * dash;
+    for (float x = a.x + r; x < b.x - r; x += step) {
+        const float x1 = std::fmin(x + dash, b.x - r);
+        ui.draw().hud.line({x, a.y}, {x1, a.y}, hw, k, k, 0);
+        ui.draw().hud.line({x, b.y}, {x1, b.y}, hw, k, k, 0);
+    }
+    // The round ends: dashes of the same length along the half circles, each in short pieces.
+    const u32 dashes = static_cast<u32>(0.5f * kTwoPi * r / step + 0.5f) > 0 ? static_cast<u32>(0.5f * kTwoPi * r / step + 0.5f) : 1u;
+    for (u32 side = 0; side < 2; ++side) {
+        const Vec2 c{side ? b.x - r : a.x + r, cy};
+        const float from = (side ? -0.25f : 0.25f) * kTwoPi, span = 0.5f * kTwoPi / static_cast<float>(dashes);
+        for (u32 j = 0; j < dashes; ++j)
+            for (u32 q = 0; q < 4; ++q) {
+                const float a0 = from + span * (static_cast<float>(j) + 0.25f + 0.125f * static_cast<float>(q));
+                ui.draw().hud.line(c + polarC(a0, r), c + polarC(a0 + 0.125f * span, r), hw, k, k, 0);
+            }
+    }
+}
+
 // A dashed ring (an open seat).
 void dashedRing(Ui& ui, Vec2 c, float r, float hw, Vec3 colour, float i, u32 dashes) {
     const Vec3 k = ui.col(colour, i);
@@ -67,10 +103,29 @@ void dashedRing(Ui& ui, Vec2 c, float r, float hw, Vec3 colour, float i, u32 das
 
 // ---------------------------------------------------------------------------------------------- join
 
+void Play::textInput(const char* utf8) {
+    // The host's address on the system keyboard (screens.md: TYPE AN ADDRESS): digits and dots; a comma, a space or a
+    // dash is taken as a dot (number keyboards differ in which they offer).
+    if (!wantsTextInput() || !utf8) return;
+    for (const char* c = utf8; *c; ++c) {
+        char ch = *c;
+        if (ch == ',' || ch == ' ' || ch == '-') ch = '.';
+        if (!((ch >= '0' && ch <= '9') || ch == '.')) continue;
+        const size_t len = std::strlen(ipTyped_);
+        if (len + 1 >= sizeof ipTyped_) break;
+        ipTyped_[len] = ch;
+        ipTyped_[len + 1] = '\0';
+        if (band_) band_->playSfx(audio::Sfx::UiTick);
+    }
+}
+
 void Play::screenCoopJoin(Ui& ui) {
+    // screens.md "Co-op (M4)", Join: the rooms heard on the network on the left (one row a room), the message line and
+    // HOST A ROOM under them, BACK at the bottom left; the room code and its sixteen-key pad on the right, DEL and JOIN
+    // under it, TYPE AN ADDRESS under them (the system keyboard).
     const float s = ui.s(), W = ui.W(), H = ui.H(), cx = 0.5f * W;
     const Vec3 white{1.0f, 1.0f, 1.0f};
-    const Vec3 gold = palettes_->player[3];
+    const Vec3 gold = palettes_->player[3], amber = palettes_->playerDeep[3];
     const float m = std::fmax(132.0f * s, ui.insetMin().x);
     const float right = W - std::fmax(132.0f * s, ui.insetMax().x);
     if (browser_) browser_->poll(net::wireNowUs());
@@ -78,76 +133,116 @@ void Play::screenCoopJoin(Ui& ui) {
     ui.text({cx, 116.0f * s}, 60.0f * s, palette_->accent, 1.4f, "CO-OP");
     ui.text({cx, 170.0f * s}, 13.0f * s, white, 0.7f, "SAME WI-FI, OR JOIN ONE PHONE'S HOTSPOT");
 
-    // Left: the rooms heard on this network (the last 3 s of beacons), one row each; tap to join.
-    const float lx0 = m, lx1 = cx - 60.0f * s;
-    ui.text({lx0, 262.0f * s}, 16.0f * s, white, 0.8f, "ROOMS ON THIS NETWORK", 0.0f);
-    const u32 rooms = browser_ ? browser_->count() : 0;
-    for (u32 k = 0; k < rooms && k < 5; ++k) {
-        const net::BeaconInfo& b = browser_->room(k);
+    // Left: the rooms heard in the last 3 s, one row each (however many times each was heard), up to four.
+    const float lx0 = m, lx1 = cx - 60.0f * s, lcx = 0.5f * (lx0 + lx1), rowW = lx1 - lx0, rowH = 90.0f * s;
+    ui.text({lx0, 196.0f * s}, 16.0f * s, white, 0.8f, "ROOMS ON THIS NETWORK", 0.0f);
+    net::BeaconInfo shown[4];
+    u32 rooms = 0;
+    for (u32 k = 0; browser_ && k < browser_->count() && rooms < 4; ++k) shown[rooms++] = browser_->room(k);
+    if (opt_.coopDemoRooms) {
+        // --coop-demo-rooms (the layout's picture only): made-up rooms after the ones heard.
+        static const char* const kNames[3] = {"TABLET", "LIVING ROOM", "OP12R"};
+        static const u16 kCodes[3] = {0x4A3C, 0x9D17, 0xC205};
+        static const u8 kPlayers[3] = {2, 4, 3};
+        static const u8 kStates[3] = {net::kBeaconLobby, net::kBeaconLobby, net::kBeaconRunning};
+        for (u32 k = 0; k < 3 && rooms < 4; ++k) {
+            net::BeaconInfo& b = shown[rooms++];
+            b = net::BeaconInfo{};
+            b.code = kCodes[k];
+            b.players = kPlayers[k];
+            b.seats = 4;
+            b.state = kStates[k];
+            b.compatible = true;
+            b.port = net::kGamePort;
+            std::snprintf(b.name, sizeof b.name, "%s", kNames[k]);
+        }
+    }
+    for (u32 k = 0; k < rooms; ++k) {
+        const net::BeaconInfo& b = shown[k];
+        const Vec2 c{lcx, (265.0f + 114.0f * static_cast<float>(k)) * s};  // (rows 24 px apart: controls never touch)
+        const Vec2 a = c - Vec2{0.5f * rowW, 0.5f * rowH}, bb = c + Vec2{0.5f * rowW, 0.5f * rowH};
+        const bool full = b.players >= b.seats, running = b.state == net::kBeaconRunning;
+        const bool can = b.compatible && !running && !full && !session_ && b.address != 0;
+        bool pressed = false;
+        const bool tapped = ui.area(110 + k, a, bb, pressed) && can;
+        pressed = pressed && can;
+        const Vec3 tone = palettes_->player[0];  // the host's colour (the host is P1)
+        if (pressed) {
+            const Vec3 g = ui.col(tone, 0.45f);
+            ui.draw().hud.line({a.x + 0.5f * rowH, c.y}, {bb.x - 0.5f * rowH, c.y}, 0.5f * rowH, g, g, 0);
+            ui.draw().pools.glow(c, 0.55f * rowW, tone * 0.25f);
+        }
+        ui.roundRect(a, bb, 0.5f * rowH, (pressed ? 1.5f : 1.0f) * s, tone, !can ? 0.3f : (pressed ? 2.0f : 0.9f));
+        const float li = can ? (pressed ? 1.8f : 1.1f) : 0.4f;
         char code[5];
         net::roomCodeEncode(b.code, code);
-        char label[64];
-        const bool full = b.players >= b.seats, running = b.state == net::kBeaconRunning;
-        std::snprintf(label, sizeof label, "%s   %s   %u/%u%s", code, b.name[0] ? b.name : "HOST", b.players, b.seats,
-                      !b.compatible ? "   OTHER VERSION" : (running ? "   PLAYING" : (full ? "   FULL" : "")));
-        const float y = (330.0f + 112.0f * static_cast<float>(k)) * s;
-        const bool can = b.compatible && !running && !full && !session_;
-        if (ui.pill(110 + k, {0.5f * (lx0 + lx1), y}, {lx1 - lx0, 92.0f * s}, label, 24.0f * s, false, can, false, palettes_->player[1])) {
+        const float tx = a.x + 40.0f * s, base = c.y + 13.0f * s;
+        const float cw = ui.text({tx, base}, 26.0f * s, gold, can ? 1.5f : 0.5f, code, 0.0f);
+        ui.text({tx + cw + 48.0f * s, base}, 26.0f * s, white, li, b.name[0] ? b.name : "HOST", 0.0f);
+        char seats[24];
+        std::snprintf(seats, sizeof seats, "%u/%u", b.players, b.seats);
+        const char* tag = !b.compatible ? "OTHER VERSION" : (running ? "PLAYING" : (full ? "FULL" : ""));
+        const float sw = ui.measure(26.0f * s, seats);
+        float tagW = 0.0f;
+        if (tag[0]) tagW = ui.text({bb.x - 40.0f * s, base}, 20.0f * s, white, 0.6f, tag, 1.0f) + 36.0f * s;
+        ui.text({bb.x - 40.0f * s - tagW - sw, base}, 26.0f * s, white, li, seats, 0.0f);
+        if (tapped) {
             if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+            coopJoinBy_ = 0;
+            keyPrimary_ = keyBack_ = false;
             joinRoom(b.address, b.port);
             return;
         }
     }
     if (!rooms) {
+        // One dashed row: LOOKING FOR ROOMS, three dots filling on the beat.
+        const Vec2 c{lcx, 265.0f * s};
+        dashedCapsule(ui, c - Vec2{0.5f * rowW, 0.5f * rowH}, c + Vec2{0.5f * rowW, 0.5f * rowH}, 1.0f * s, white, 0.35f);
         const bool listening = browser_ && browser_->open();
-        ui.text({0.5f * (lx0 + lx1), 360.0f * s}, 14.0f * s, white, 0.5f, listening ? "LISTENING FOR ROOMS..." : "CANNOT LISTEN FOR ROOMS: TYPE THE CODE OR ADDRESS");
+        const char* what = listening ? "LOOKING FOR ROOMS" : "CANNOT LISTEN FOR ROOMS: TYPE THE CODE OR AN ADDRESS";
+        const float tw = ui.text({c.x, c.y + 8.0f * s}, 18.0f * s, white, 0.6f, what);
+        if (listening) {
+            const double beats = band_ && band_->view().running ? band_->view().heardTick / kTicksPerBeat : music1_ / kTicksPerBeat;
+            const u32 lit = static_cast<u32>(std::fmod(beats, 4.0));
+            for (u32 d = 0; d < 3; ++d)
+                ui.dot({c.x + 0.5f * tw + (20.0f + 16.0f * static_cast<float>(d)) * s, c.y + 4.0f * s}, 3.0f * s, white, d < lit ? 1.2f : 0.25f);
+        }
     }
 
-    // Right: the room code (four of sixteen symbols) or an address, typed on the pad.
+    // Right: the room code (four of sixteen symbols) or an address.
     const float px = 0.5f * (cx + 60.0f * s + right);
-    ui.text({px, 262.0f * s}, 16.0f * s, white, 0.8f, typingIp_ ? "THE HOST'S ADDRESS" : "ROOM CODE");
+    ui.text({px, 196.0f * s}, 16.0f * s, white, 0.8f, typingIp_ ? "THE HOST'S ADDRESS" : "ROOM CODE");
     {
-        char shown[24];
+        char shownCode[24];
         if (typingIp_) {
-            std::snprintf(shown, sizeof shown, "%s_", ipTyped_);
+            std::snprintf(shownCode, sizeof shownCode, "%s_", ipTyped_);
         } else {
-            for (u32 k = 0; k < 4; ++k) shown[k] = k < codeLen_ ? codeTyped_[k] : '-';
-            shown[4] = '\0';
+            for (u32 k = 0; k < 4; ++k) shownCode[k] = k < codeLen_ ? codeTyped_[k] : '-';
+            shownCode[4] = '\0';
         }
-        const float cap = (typingIp_ ? 60.0f : 90.0f) * s;
-        ui.tube({px, (typingIp_ ? 352.0f : 372.0f) * s}, cap, gold, white, gold, 1.5f, shown);
+        ui.tube({px, 296.0f * s}, (typingIp_ ? 56.0f : 80.0f) * s, gold, white, gold, 1.5f, shownCode);
     }
-    const float key = 112.0f * s, gap = 14.0f * s;
-    const float top = 430.0f * s;
-    bool join = false;
+    const float key = 112.0f * s, pitch = key + Ui::kControlGapPx * s;
     if (!typingIp_) {
-        // Sixteen keys (4 x 4): the code's alphabet (net/lobby.h: no 0 O 1 I L 2 Z 5 S 8 B U V).
+        // Sixteen keys, four rows of 112 px discs: the code's alphabet (net/lobby.h).
         for (u32 k = 0; k < 16; ++k) {
             const u32 col = k % 4, row = k / 4;
-            const Vec2 c{px + (static_cast<float>(col) - 1.5f) * (key + gap), top + (static_cast<float>(row) + 0.5f) * (0.82f * key + gap)};
+            const Vec2 c{px + (static_cast<float>(col) - 1.5f) * pitch, (376.0f + 136.0f * static_cast<float>(row)) * s};
             const char lab[2] = {net::kRoomAlphabet[k], 0};
-            if (ui.pill(130 + k, c, {key, 0.82f * key}, lab, 40.0f * s, false) && codeLen_ < 4) {
+            if (ui.pill(130 + k, c, {key, key}, lab, 40.0f * s, false) && codeLen_ < 4) {
                 codeTyped_[codeLen_++] = net::kRoomAlphabet[k];
                 codeTyped_[codeLen_] = '\0';
                 if (band_) band_->playSfx(audio::Sfx::UiTick);
             }
         }
     } else {
-        // Twelve keys: the digits, the dot and (in the last row) DEL and JOIN.
-        static const char* const kKeys[11] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0"};
-        for (u32 k = 0; k < 11; ++k) {
-            const u32 col = k % 3, row = k / 3;
-            const Vec2 c{px + (static_cast<float>(col) - 1.0f) * (key + gap), top + (static_cast<float>(row) + 0.5f) * (0.82f * key + gap)};
-            const u32 len = static_cast<u32>(std::strlen(ipTyped_));
-            if (ui.pill(150 + k, c, {key, 0.82f * key}, kKeys[k], 40.0f * s, false) && len + 1 < sizeof ipTyped_) {
-                ipTyped_[len] = kKeys[k][0];
-                ipTyped_[len + 1] = '\0';
-                if (band_) band_->playSfx(audio::Sfx::UiTick);
-            }
-        }
+        ui.text({px, 420.0f * s}, 18.0f * s, white, 0.8f, "TYPE IT ON THE KEYBOARD: FOUR NUMBERS WITH DOTS");
+        ui.text({px, 460.0f * s}, 14.0f * s, white, 0.5f, "THE HOST'S PHONE SHOWS IT UNDER ITS WI-FI SETTINGS");
     }
-    const float rowY = top + 4.0f * (0.82f * key + gap) + 0.5f * 0.82f * key;
-    if (ui.pill(170, {px - 1.0f * (key + gap), rowY}, {1.6f * key, 0.82f * key}, "DEL", 30.0f * s, false)) {
+    const float rowY = 904.0f * s;
+    bool join = false;
+    const bool hasText = typingIp_ ? ipTyped_[0] != '\0' : codeLen_ > 0;
+    if (ui.pill(170, {px - 110.0f * s, rowY}, {180.0f * s, 80.0f * s}, "DEL", 30.0f * s, false, hasText)) {
         if (typingIp_) {
             const u32 len = static_cast<u32>(std::strlen(ipTyped_));
             if (len) ipTyped_[len - 1] = '\0';
@@ -157,15 +252,18 @@ void Play::screenCoopJoin(Ui& ui) {
         if (band_) band_->playSfx(audio::Sfx::UiBack);
     }
     const bool ready = typingIp_ ? parseIPv4(ipTyped_) != 0 : codeLen_ == 4;
-    if (ui.pill(171, {px + 1.0f * (key + gap), rowY}, {1.6f * key, 0.82f * key}, "JOIN", 30.0f * s, true, ready)) join = true;
-    if (ui.pill(172, {px, rowY + 0.82f * key + gap}, {3.4f * key, 0.6f * key}, typingIp_ ? "TYPE A ROOM CODE" : "TYPE AN ADDRESS", 18.0f * s,
-                false, true, false, Vec3{0.6f, 0.6f, 0.6f})) {
+    if (ui.pill(171, {px + 110.0f * s, rowY}, {180.0f * s, 80.0f * s}, "JOIN", 30.0f * s, true, ready) || (keyPrimary_ && ready)) join = true;
+    if (ui.pill(172, {px, 1003.0f * s}, {380.0f * s, 70.0f * s}, typingIp_ ? "TYPE A ROOM CODE" : "TYPE AN ADDRESS", 20.0f * s, false, true, false,
+                Vec3{0.6f, 0.6f, 0.6f})) {
         typingIp_ = !typingIp_;
         if (band_) band_->playSfx(audio::Sfx::UiTick);
     }
     if (join && ready) {
         if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+        keyPrimary_ = keyBack_ = false;
         if (typingIp_) {
+            coopJoinBy_ = 2;
+            typingIp_ = false;  // (the keyboard closes)
             joinRoom(parseIPv4(ipTyped_), net::kGamePort);
         } else {
             u16 low = 0;
@@ -173,6 +271,7 @@ void Play::screenCoopJoin(Ui& ui) {
                 // A host heard on the network has that code: its address. Else this device's own /16 in front.
                 const net::BeaconInfo* b = browser_ ? browser_->byCode(low) : nullptr;
                 const u32 own = net::preferredLocalIPv4();
+                coopJoinBy_ = 1;
                 if (b) {
                     joinRoom(b->address, b->port);
                 } else if (own) {
@@ -186,15 +285,16 @@ void Play::screenCoopJoin(Ui& ui) {
         return;
     }
 
-    // A message (a refusal, a lost connection), then HOST A ROOM and BACK.
-    if (coopMessage_[0] && coopMessageT_ < 12.0f)
-        ui.text({0.5f * (lx0 + lx1), H - 250.0f * s}, 16.0f * s, palettes_->danger, 1.5f, coopMessage_, 0.5f);
-    if (ui.pill(180, {0.5f * (lx0 + lx1), H - 150.0f * s}, {600.0f * s, 130.0f * s}, "HOST A ROOM", 44.0f * s, true) && !session_) {
+    // The message line (amber: the danger colour is for what can kill you), HOST A ROOM, BACK.
+    if (coopMessage_[0] && coopMessageT_ < 12.0f) ui.text({lcx, 712.0f * s}, 16.0f * s, amber, 1.6f, coopMessage_);
+    if (ui.pill(180, {lcx, 850.0f * s}, {600.0f * s, 130.0f * s}, "HOST A ROOM", 44.0f * s, true, !session_) && !session_) {
         if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+        keyPrimary_ = keyBack_ = false;
         hostRoom();
         return;
     }
-    if (ui.pill(181, {m + 150.0f * s, H - 56.0f * s}, {300.0f * s, 80.0f * s}, "BACK", 24.0f * s, false) || keyBack_) {
+    if (ui.pill(181, {m + 150.0f * s, H - 90.0f * s}, {300.0f * s, 90.0f * s}, "BACK", 24.0f * s, false) || keyBack_) {
+        typingIp_ = false;
         leaveCoop("");
         if (band_) band_->playSfx(audio::Sfx::UiBack);
     }
@@ -204,11 +304,10 @@ void Play::screenCoopJoin(Ui& ui) {
 // ---------------------------------------------------------------------------------------------- lobby
 
 void Play::screenCoopLobby(Ui& ui) {
-    const float s = ui.s(), W = ui.W(), H = ui.H(), cx = 0.5f * W;
+    const float s = ui.s(), W = ui.W(), cx = 0.5f * W;
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const Vec3 gold = palettes_->player[3];
     const float m = std::fmax(132.0f * s, ui.insetMin().x);
-    (void)H;
     coopMessageT_ += frameDt_;
     ui.text({cx, 116.0f * s}, 60.0f * s, palette_->accent, 1.4f, "CO-OP");
     if (!session_) {
@@ -217,7 +316,7 @@ void Play::screenCoopLobby(Ui& ui) {
     }
     net::Session& se = *session_;
     const bool connecting = se.state() == net::SessionState::Connecting;
-    ui.text({cx, 192.0f * s}, 16.0f * s, white, 0.8f, connecting ? "JOINING..." : "ROOM CODE");
+    ui.text({cx, 190.0f * s}, 14.0f * s, white, 0.8f, connecting ? "JOINING..." : "ROOM CODE");
     {
         char code[5];
         net::roomCodeEncode(se.roomCode(), code);
@@ -263,7 +362,16 @@ void Play::screenCoopLobby(Ui& ui) {
             ui.draw().pools.glow(c, 240.0f * s, colour * (0.10f + 0.15f * pulse));
         }
         shipGlyph(ui, c, 44.0f * s, -0.25f * kTwoPi, colour, light, ready ? 1.0f : 0.35f);  // pointing up
-        if (ready) ui.ring(c, 58.0f * s, 0.7f * s, colour, 1.2f, 48);
+        if (ready) {
+            // The ship's halo: two arcs (as screens.py draws the lobby's ships).
+            for (u32 h = 0; h < 2; ++h)
+                for (u32 j = 0; j < 14; ++j) {
+                    const float a0 = (0.08f + 0.5f * static_cast<float>(h)) * kTwoPi + 0.3f * kTwoPi * static_cast<float>(j) / 14.0f;
+                    const float a1 = a0 + 0.3f * kTwoPi / 14.0f;
+                    const Vec3 hc = ui.col(h ? light : colour, 1.3f);
+                    ui.draw().hud.line(c + polarC(a0, 60.0f * s), c + polarC(a1, 60.0f * s), 0.8f * s, hc, hc, 0);
+                }
+        }
         char name[40];
         const char* given = se.seatName(k);
         if (given[0] && std::strcmp(given, "PLAYER") != 0 && std::strcmp(given, "HOST") != 0 && !(given[0] == 'P' && given[1] >= '1' && given[1] <= '4' && !given[2]))
@@ -271,7 +379,8 @@ void Play::screenCoopLobby(Ui& ui) {
         else
             std::snprintf(name, sizeof name, "P%u%s", k + 1, k == 0 ? "  HOST" : "");
         ui.text({c.x, c.y + 174.0f * s}, 18.0f * s, colour, 1.4f, name);
-        ui.text({c.x, c.y + 203.0f * s}, 13.0f * s, ready ? white : palette_->accent, ready ? 1.0f : 0.6f, ready ? (mine ? "READY - TAP TO HEAR YOUR LEAD" : "READY") : "JOINING");
+        ui.text({c.x, c.y + 203.0f * s}, 13.0f * s, ready ? white : palette_->accent, ready ? 1.0f : 0.6f, ready ? "READY" : "JOINING");
+        if (mine) ui.text({c.x, c.y + 228.0f * s}, 12.0f * s, white, 0.6f, "TAP TO HEAR YOUR LEAD");
         if (tapped && band_) {
             // Your own lead (its fixed timbre): root, fifth, octave on the next sixteenths.
             const double heard = band_->view().heardTick;
@@ -282,7 +391,8 @@ void Play::screenCoopLobby(Ui& ui) {
     }
     ui.text({cx, 880.0f * s}, 12.0f * s, palette_->accent, 0.9f, "EACH PHONE IS AN INSTRUMENT: SET THEM DOWN TOGETHER AND THE ROOM IS THE BAND");
 
-    // START (the host, when every seated player is ready and at least two are seated); the others wait for it.
+    // START (the host; disabled until every seated player is ready and at least two are seated); the others see
+    // WAITING FOR HOST in its place.
     if (se.host()) {
         const bool can = se.canStart();
         if (ui.pill(220, {cx, 970.0f * s}, {600.0f * s, 130.0f * s}, "START", 48.0f * s, true, can) || (keyPrimary_ && can)) {
@@ -291,7 +401,8 @@ void Play::screenCoopLobby(Ui& ui) {
         if (!can) {
             u32 seated = 0;
             for (u32 k = 0; k < kMaxPlayers; ++k) seated += (seats >> k) & 1u;
-            ui.text({cx, 1050.0f * s}, 12.0f * s, white, 0.5f, seated < 2 ? "WAITING FOR A SECOND PLAYER" : "WAITING FOR EVERYONE TO BE READY");
+            ui.text({cx + 330.0f * s, 976.0f * s}, 13.0f * s, white, 0.5f, seated < 2 ? "WAITING FOR A SECOND PLAYER" : "WAITING FOR EVERYONE TO BE READY",
+                    0.0f);
         }
     } else {
         ui.text({cx, 985.0f * s}, 24.0f * s, white, 0.8f, connecting ? "CONNECTING" : "WAITING FOR HOST");
@@ -312,16 +423,16 @@ void Play::screenPauseCoop(Ui& ui) {
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const Vec3 gold = palettes_->player[3];
     ui.tube({cx, 300.0f * s}, 96.0f * s, white, palette_->accent, palette_->hue[2], 1.5f, "PAUSED");
-    ui.text({cx, 340.0f * s}, 14.0f * s, palette_->accent, 1.1f, "FOR EVERYONE IN THE ROOM");
+    ui.text({cx, 344.0f * s}, 16.0f * s, palette_->accent, 1.1f, "FOR EVERYONE IN THE ROOM");
     {
         u64 team = 0;
         for (u32 q = 0; q < kMaxPlayers; ++q)
             if (world_->player(q).present) team += world_->player(q).score;
         char num[32], line[128];
-        std::snprintf(num, sizeof num, "%llu", static_cast<unsigned long long>(team));
+        thousands(num, sizeof num, team);
         const u32 secs = static_cast<u32>(runSeconds_);
         std::snprintf(line, sizeof line, "TEAM %s   TRACK %u   %u:%02u", num, world_->phrase().track, secs / 60u, secs % 60u);
-        ui.text({cx, 400.0f * s}, 20.0f * s, gold, 1.4f, line);
+        ui.text({cx, 404.0f * s}, 20.0f * s, gold, 1.4f, line);
     }
     net::Session* se = session_;
     if (se && se->resuming()) {
@@ -366,13 +477,13 @@ void Play::screenPauseCoop(Ui& ui) {
 }
 
 void Play::screenGameOverCoop(Ui& ui) {
-    // screens.md "Game over": in co-op the score is the team's, each player's own under it in their colour, ranked,
-    // and the set list carries each player's crosses in their colour. The host's RETRY starts the next run for
-    // everyone; the others wait for it. HOME leaves the room.
+    // screens.md "Game over", in co-op: the team's score, the line TEAM / TIME / TRACK under it, the players as a table
+    // (rank, name, score, Chain, kills; names left, numbers right, each row in its player's colour, centred as a whole),
+    // the set list with each player's crosses in their colour, the host's RETRY (the others see it disabled with
+    // WAITING FOR HOST under it), HOME for everyone. The run behind is dimmed to a fifth and draws no beacon.
     const float s = ui.s(), W = ui.W(), H = ui.H(), cx = 0.5f * W;
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const Vec3 gold = palettes_->player[3], amber = palettes_->playerDeep[3];
-    const float m = std::fmax(132.0f * s, ui.insetMin().x);
     const World& w = *world_;
     ui.text({cx, 130.0f * s}, 44.0f * s, palette_->accent, 1.6f, "RUN OVER");
     u64 team = 0;
@@ -393,69 +504,75 @@ void Play::screenGameOverCoop(Ui& ui) {
     {
         const float bars = overS_ * (static_cast<float>(w.bpm()) / 60.0f) / 4.0f;
         const float u = bars < 0.0f ? 0.0f : (bars > 1.0f ? 1.0f : bars);
-        const u64 shown = static_cast<u64>(static_cast<double>(team) * (1.0 - (1.0 - u) * (1.0 - u)));
+        const u64 shownScore = static_cast<u64>(static_cast<double>(team) * (1.0 - (1.0 - u) * (1.0 - u)));
         char num[32];
-        {
-            char raw[32];
-            std::snprintf(raw, sizeof raw, "%llu", static_cast<unsigned long long>(shown));
-            const size_t len = std::strlen(raw);
-            size_t o = 0;
-            for (size_t i = 0; i < len && o + 2 < sizeof num; ++i) {
-                num[o++] = raw[i];
-                const size_t rest = len - 1 - i;
-                if (rest && rest % 3 == 0) num[o++] = ',';
-            }
-            num[o] = 0;
-        }
+        thousands(num, sizeof num, shownScore);
         const float cap = 120.0f * s;
         const float wd = ui.measure(cap, num);
         ui.font().drawField(ui.draw().hud, {cx - 0.5f * wd, 300.0f * s - cap}, cap, 4.0f * s, ui.col(white, 1.6f), ui.col(gold, 1.6f), ui.col(amber, 1.6f), num);
-        ui.text({cx, 336.0f * s}, 14.0f * s, palette_->accent, 1.1f, "TEAM");
     }
-    // The ranking: each player's own score, in their colour (yours marked).
-    for (u32 k = 0; k < n; ++k) {
-        const u32 q = order[k];
-        const PlayerState& pl = w.player(q);
-        char line[96];
-        std::snprintf(line, sizeof line, "%u   P%u%s   %llu   X%u   %u KILLS", k + 1, q + 1, q == seat_ ? " (YOU)" : "", static_cast<unsigned long long>(pl.score),
-                      pl.bestChain, pl.kills);
-        ui.text({cx, (400.0f + 40.0f * static_cast<float>(k)) * s}, 26.0f * s, palettes_->player[q], q == seat_ ? 1.8f : 1.2f, line);
-    }
-    // The set list: the run as the song it was; a white star where a boss fell, a gold tick per upgrade (yours), a
-    // cross per hit in the colour of the player it hit.
+    // The line under the score: TEAM, then TIME and TRACK with their values (labels in the accent, values white).
     {
-        const float x0 = m, x1 = W - std::fmax(132.0f * s, ui.insetMax().x), y = 640.0f * s;
-        const float total = runSeconds_ > 1.0f ? runSeconds_ : 1.0f;
-        const auto xAt = [&](float t) { return x0 + (x1 - x0) * (t / total < 0.0f ? 0.0f : (t / total > 1.0f ? 1.0f : t / total)); };
-        ui.draw().hud.line({x0, y}, {x1, y}, 4.0f * s, ui.col(palette_->accent, 1.0f), ui.col(palette_->accent, 1.0f), 0);
-        for (u32 k = 0; k < markCount_; ++k) {
-            const Mark& mk = marks_[k];
-            const float x = xAt(mk.t);
-            if (mk.kind == 1) {
-                for (u32 a = 0; a < 4; ++a) {
-                    const Vec2 dv = polarC(kTwoPi * static_cast<float>(a) / 8.0f, 14.0f * s);
-                    ui.draw().hud.line(Vec2{x, y - 22.0f * s} - dv, Vec2{x, y - 22.0f * s} + dv, 0.9f * s, ui.col(white, 2.0f), ui.col(white, 2.0f), 0);
-                }
-            } else if (mk.kind == 2) {
-                ui.draw().hud.line({x, y - 14.0f * s}, {x, y - 4.0f * s}, 1.1f * s, ui.col(gold, 1.8f), ui.col(gold, 1.8f), 0);
-            } else if (mk.kind == 3) {
-                const Vec3 c = ui.col(palettes_->player[mk.a < kMaxPlayers ? mk.a : 0], 1.8f);
-                ui.draw().hud.line({x - 5.0f * s, y + 6.0f * s}, {x + 5.0f * s, y + 16.0f * s}, 0.9f * s, c, c, 0);
-                ui.draw().hud.line({x + 5.0f * s, y + 6.0f * s}, {x - 5.0f * s, y + 16.0f * s}, 0.9f * s, c, c, 0);
-            }
+        const u32 secs = static_cast<u32>(runSeconds_);
+        char t[16], tr[8];
+        std::snprintf(t, sizeof t, "%u:%02u", secs / 60u, secs % 60u);
+        std::snprintf(tr, sizeof tr, "%u", runTrackMax_);
+        const float cap = 14.0f * s, sp = 0.6f * cap, gap = 2.4f * cap;
+        const char* parts[5] = {"TEAM", "TIME", t, "TRACK", tr};
+        const bool label[5] = {true, true, false, true, false};
+        float total = 0.0f;
+        for (u32 k = 0; k < 5; ++k) total += ui.measure(cap, parts[k]) + (k == 4 ? 0.0f : (k == 1 || k == 3 ? sp : gap));
+        float x = cx - 0.5f * total;
+        for (u32 k = 0; k < 5; ++k) {
+            x += ui.text({x, 342.0f * s}, cap, label[k] ? palette_->accent : white, label[k] ? 1.2f : 1.4f, parts[k], 0.0f);
+            x += k == 4 ? 0.0f : (k == 1 || k == 3 ? sp : gap);
         }
-        ui.text({x0, y + 48.0f * s}, 11.0f * s, white, 0.6f, "STAR = BOSS BEATEN   GOLD = YOUR UPGRADES   CROSSES = HITS, IN THE COLOUR OF WHO TOOK THEM", 0.0f);
     }
+    // The players: a table, centred as a whole.
+    {
+        const float cap = 22.0f * s, colGap = 56.0f * s;
+        char cells[kMaxPlayers][5][32];
+        float widths[5] = {};
+        static const char* const kHead[5] = {"", "", "SCORE", "CHAIN", "KILLS"};
+        for (u32 c = 0; c < 5; ++c) widths[c] = ui.measure(12.0f * s, kHead[c]);
+        for (u32 k = 0; k < n; ++k) {
+            const PlayerState& pl = w.player(order[k]);
+            std::snprintf(cells[k][0], 32, "%u", k + 1);
+            std::snprintf(cells[k][1], 32, "P%u%s", order[k] + 1u, order[k] == seat_ ? " (YOU)" : "");
+            thousands(cells[k][2], 32, pl.score);
+            char chain[24];
+            thousands(chain, sizeof chain, pl.bestChain);
+            std::snprintf(cells[k][3], 32, "X%s", chain);
+            thousands(cells[k][4], 32, pl.kills);
+            for (u32 c = 0; c < 5; ++c) widths[c] = std::fmax(widths[c], ui.measure(cap, cells[k][c]));
+        }
+        float total = 0.0f;
+        for (u32 c = 0; c < 5; ++c) total += widths[c] + (c < 4 ? colGap : 0.0f);
+        float x[5];
+        x[0] = cx - 0.5f * total;
+        for (u32 c = 1; c < 5; ++c) x[c] = x[c - 1] + widths[c - 1] + colGap;
+        // The header (cap 12, accent) over the number columns, right-aligned like them.
+        for (u32 c = 2; c < 5; ++c) ui.text({x[c] + widths[c], 384.0f * s}, 12.0f * s, palette_->accent, 1.0f, kHead[c], 1.0f);
+        for (u32 k = 0; k < n; ++k) {
+            const u32 q = order[k];
+            const float y = (420.0f + 38.0f * static_cast<float>(k)) * s;
+            const float lvl = q == seat_ ? 1.8f : 1.2f;
+            const Vec3 pc = palettes_->player[q];
+            ui.text({x[0] + widths[0], y}, cap, pc, lvl, cells[k][0], 1.0f);
+            ui.text({x[1], y}, cap, pc, lvl, cells[k][1], 0.0f);
+            for (u32 c = 2; c < 5; ++c) ui.text({x[c] + widths[c], y}, cap, pc, lvl, cells[k][c], 1.0f);
+        }
+    }
+    drawSetList(ui, 640.0f * s);
+    drawBand(ui, 720.0f * s);
     const float right = W - std::fmax(132.0f * s, ui.insetMax().x);
-    if (session_ && session_->host()) {
-        if (ui.pill(40, {right - 300.0f * s, H - 240.0f * s}, {600.0f * s, 140.0f * s}, "RETRY", 52.0f * s, true) || keyPrimary_) {
-            session_->requestRetry();
-            if (band_) band_->playSfx(audio::Sfx::UiConfirm);
-        }
-    } else {
-        ui.text({right - 300.0f * s, H - 225.0f * s}, 24.0f * s, white, 0.8f, "WAITING FOR THE HOST");
+    const bool host = session_ && session_->host();
+    if (ui.pill(40, {right - 300.0f * s, H - 270.0f * s}, {600.0f * s, 140.0f * s}, "RETRY", 52.0f * s, true, host) || (keyPrimary_ && host)) {
+        session_->requestRetry();
+        if (band_) band_->playSfx(audio::Sfx::UiConfirm);
     }
-    if (ui.pill(41, {right - 165.0f * s, H - 110.0f * s}, {330.0f * s, 90.0f * s}, "HOME", 28.0f * s, false) || keyBack_) {
+    if (!host) ui.text({right - 300.0f * s, H - 162.0f * s}, 14.0f * s, white, 0.8f, "WAITING FOR HOST");
+    if (ui.pill(41, {right - 165.0f * s, H - 90.0f * s}, {330.0f * s, 90.0f * s}, "HOME", 28.0f * s, false) || keyBack_) {
         leaveCoop("");
         if (band_) band_->playSfx(audio::Sfx::UiBack);
     }
@@ -465,42 +582,39 @@ void Play::screenGameOverCoop(Ui& ui) {
 // ---------------------------------------------------------------------------------------------- local network
 
 void Play::screenNetPermission(Ui& ui) {
-    // TECH_SPEC 8.3 (Android 17, target SDK 37): one plain screen says why before the system asks; a refusal says what
-    // co-op cannot do without it, and how to allow it later.
+    // screens.md "Local network notice" (Android 17, an app that targets it): one plain screen says why before the
+    // system asks; after a refusal its last line says what is lost and CONTINUE asks again.
     const float s = ui.s(), W = ui.W(), H = ui.H(), cx = 0.5f * W;
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const float m = std::fmax(132.0f * s, ui.insetMin().x);
 #if defined(__ANDROID__)
     const int state = android::localNetworkState();  // 0 allowed, 1 to ask, 2 refused, 3 asking
 #else
-    const int state = permissionAsked_ ? 0 : 1;
+    const int state = permissionAsked_ ? 0 : (opt_.coopPermissionScreen == 2 ? 2 : 1);
 #endif
     if (state == 0 && permissionAsked_) {
         openCoop();
         return;
     }
-    ui.text({cx, 200.0f * s}, 44.0f * s, palette_->accent, 1.6f, "LOCAL NETWORK");
-    if (state == 2) {
-        static const char* const kNo[] = {"WITHOUT THE LOCAL NETWORK, CO-OP CANNOT FIND OR JOIN THE PHONES NEAR YOU.",
-                                          "YOU CAN STILL PLAY ALONE. TO ALLOW IT LATER: SETTINGS, APPS, RAVEFORM,",
-                                          "PERMISSIONS, NEARBY DEVICES."};
-        for (u32 k = 0; k < 3; ++k) ui.text({cx, (400.0f + 52.0f * static_cast<float>(k)) * s}, 20.0f * s, white, 1.1f, kNo[k]);
-    } else {
-        static const char* const kWhy[] = {"TO PLAY TOGETHER, RAVEFORM TALKS TO THE OTHER PHONES ON YOUR WI-FI OR HOTSPOT:",
-                                           "IT LISTENS FOR THEIR ROOMS AND SENDS THE GAME TO THEM. NOTHING LEAVES YOUR NETWORK.",
-                                           "ANDROID WILL ASK YOU NEXT."};
-        for (u32 k = 0; k < 3; ++k) ui.text({cx, (400.0f + 52.0f * static_cast<float>(k)) * s}, 20.0f * s, white, 1.1f, kWhy[k]);
-        if (state != 3 && (ui.pill(300, {cx, 720.0f * s}, {600.0f * s, 130.0f * s}, "CONTINUE", 44.0f * s, true) || keyPrimary_)) {
-            permissionAsked_ = true;
-            if (band_) band_->playSfx(audio::Sfx::UiConfirm);
-#if defined(__ANDROID__)
-            android::requestLocalNetwork();
-#endif
-        }
+    ui.text({cx, 200.0f * s}, 60.0f * s, palette_->accent, 1.6f, "LOCAL NETWORK");
+    static const char* const kWhy[3] = {"TO PLAY TOGETHER, RAVEFORM TALKS TO THE OTHER PHONES ON YOUR WI-FI OR HOTSPOT:",
+                                        "IT LISTENS FOR THEIR ROOMS AND SENDS THE GAME TO THEM. NOTHING LEAVES YOUR NETWORK.",
+                                        "ANDROID WILL ASK YOU NEXT."};
+    for (u32 k = 0; k < 3; ++k) {
+        const char* line = k == 2 && state == 2 ? "RAVEFORM CANNOT SEE OTHER PHONES WITHOUT IT. YOU CAN ALLOW IT IN ANDROID'S SETTINGS." : kWhy[k];
+        ui.text({cx, (400.0f + 50.0f * static_cast<float>(k)) * s}, 18.0f * s, white, 1.2f, line);
     }
-    if (ui.pill(301, {m + 170.0f * s, H - 110.0f * s}, {300.0f * s, 90.0f * s}, "BACK", 24.0f * s, false) || keyBack_) {
-        screen_ = Screen::Title;
+    if (ui.pill(300, {cx, 720.0f * s}, {600.0f * s, 130.0f * s}, "CONTINUE", 44.0f * s, true, state != 3) || (keyPrimary_ && state != 3)) {
+        permissionAsked_ = true;
+        if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+#if defined(__ANDROID__)
+        android::requestLocalNetwork();
+#endif
+    }
+    if (ui.pill(301, {m + 150.0f * s, H - 90.0f * s}, {300.0f * s, 90.0f * s}, "BACK", 24.0f * s, false) || keyBack_) {
         if (band_) band_->playSfx(audio::Sfx::UiBack);
+        permissionAsked_ = false;
+        leaveCoop("");  // the title and its attract run again
     }
     keyPrimary_ = keyBack_ = false;
 }

@@ -49,10 +49,12 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | The densest part of the game, measured (Moto) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Warmup 5 -Seconds 120 -AppArgs '--fast-forward 640 --nohits' -Deploy` (since play test 2 the loop's Track 5, the densest measured; Track 3, cycle 2 is at `--fast-forward 450`) |
 | Bot, 30 simulated minutes with a minute table | `build\desktop-dev\raveform_headless.exe --sim soak --minutes 30 [--seed N] [--policy reckless]` |
 | The real game at minute 10, measured (Moto) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Warmup 600 -Seconds 120 -Deploy` |
-| M4 co-op soak: host + 3 bots on the in-process loopback network, simulated time (TECH_SPEC 8.4 numbers; exit 0 = pass, one `RFNET` JSON line) | `build\desktop-dev\raveform_headless.exe --net soak [--minutes 10] [--players 4] [--seed N] [--netsim loss=0.05,jitter=80[,delay=D,dup=P,reorder=P]] [--pause]` |
+| M4 co-op soak: host + 3 bots on the in-process loopback network, simulated time (TECH_SPEC 8.4 numbers; exit 0 = pass, one `RFNET` JSON line) | `build\desktop-dev\raveform_headless.exe --net soak [--minutes 10] [--players 4] [--seed N] [--netsim loss=0.05,jitter=80[,delay=D,dup=P,reorder=P]] [--pause] [--drop-at S]` (`--drop-at S`: the last client's process dies S s into the run, without a word; the true on-screen error is printed for each 10 s around it) |
 | M4 co-op peers without a screen over real UDP (one process each; each prints an `RFNET` line) | `raveform_headless.exe --net host [--players 4] [--bind 127.0.0.1] [--port 47778] [--minutes 15] [--netsim ...]`, then per client `raveform_headless.exe --net join <ip> [--bind <ip>] [--same-clock --clock-offset-ms X --clock-ppm P] [--seed N] [--minutes 15]` (`--same-clock`: one PC, so the true song offset is measured) |
 | M4 co-op in the game (desktop; no lobby screens) | `scripts\run-desktop.ps1 -AppArgs '--host --players 2 [--bot] [--net-overlay]'` and `-AppArgs '--join <ip> [--bot]'`; bots in the host's process: `'--host --loopback-bots 3 --bot'` |
 | M4 co-op benchmark (Moto hosting three in-process bot clients) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Warmup 600 -Seconds 120 -AppArgs '--host --loopback-bots 3' -Deploy` (the result's `net` object: the session, the bots' worker frame time) |
+| M4 stage B review set (every co-op screen and moment of `design/screens.md` "Co-op (M4)": the local network notice and its refusal, the join screen empty / with rooms / a code / an address, the refusals, the lobby from the host / a joiner / four seats, one moment from the host and a client, beacon on and off screen, revive, co-op HUD, shared pause and count-in, co-op game over from host and client, the host leaving; 2400x1080 with `.small.png`; exit 1 on validation messages or controls closer than 24 px) | `scripts\review-m4b.ps1 [-Out captures\m4b] [-Config debug\|dev] [-Only lobby_host,hud]` |
+| M4 stage B device checks (the phone and this PC on one Wi-Fi; lock name `m4b`; our APK deployed first): discovery and joining both ways (list, code, address), a client drop and the host quitting; the 15-minute runs | `scripts\coop-device.ps1 -Run discovery_pc_host\|discovery_moto_host\|long_pc_host\|long_moto_host [-Serial moto] [-Minutes 15] [-Impaired]` (`-Impaired`: 5% loss and 80 ms jitter on every peer; results in `captures\m4b\device\`) |
 | M4 two peers' views of one moment (desktop, two windows started together) | `run-desktop.ps1 -NoBuild -Res 2400x1080 -Screenshot captures\m4\host.png -AppArgs '--host --players 2 --bind 127.0.0.1 --bot --net-capture-bar 40 [--net-overlay] [--net-view-seat 0]'` and `-Screenshot captures\m4\client.png -AppArgs '--join 127.0.0.1 --bind 127.0.0.1 --bot --net-capture-bar 40 ...'` (`--net-view-seat 0`: both cameras on the host's ship) |
 
 Desktop exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 benchmark aborted,
@@ -79,11 +81,21 @@ so they show their cost at the GPU's top clock),
 `--res WxH` (desktop window), `--validation` / `--no-validation`, `--tone` (hold the test tone),
 `--no-swappy` (plain FIFO), `--fps HZ` (Android target refresh; default = panel maximum), `--no-overlay`,
 `--affinity big|all` (Android: pin the main thread and the threads it starts to the non-little cores, or
-leave placement to the scheduler), `--cycles N`; M4 co-op (stage A, no lobby screens): `--host` (`--players N`
+leave placement to the scheduler), `--cycles N`; M4 co-op (stage A, without the lobby): `--host` (`--players N`
 seats 2-4, `--bind <ip>`, `--port N`), `--join <ip>`, `--loopback-bots N` (host: N bot clients in this process on
 the loopback network), `--netsim loss=..,jitter=..,delay=..,dup=..,reorder=..` (the condition simulator on what
 this device sends), `--net-overlay` (the overlay on its network page), `--net-view-seat N` (pictures: the camera on seat N's ship), `--net-capture-bar B` (with `--screenshot`:
-the picture as the run reaches bar B, the same musical moment on every peer, then quit). Keys: F1 overlay, F2 the
+the picture as the run reaches bar B, the same musical moment on every peer, then quit; it also logs `view: lattice impulses ...`,
+what pushed the lattice in the last second and the crowd gain). M4 stage B, the co-op screens from the command line (the title's
+CO-OP does the same by taps): `--coop host` (host a room at once) or `--coop join[:<code>|:<ip>|:list]` (the join screen, then
+type the code on the pad, join the address, or take the first room heard), `--coop-name NAME` (the seat's name), `--coop-start
+[N]` (the host starts once N, default 2, are seated and ready, and retries 3 s after all are down), `--coop-down-at S`,
+`--coop-pause-at S` (pause for everyone S s into the run, resume 3 s later), `--coop-quit-at S` (leave the room S s into the run;
+the host: the run ends for all), `--coop-permission-screen [refused]` (the local network notice on the desktop), `--coop-demo-rooms`
+(three made-up rooms join the list: the layout's picture), `--net-content-salt N` (another content hash: the refusal's test),
+`--coop-shot permission|join|code|address|message|lobby|lobby2..4|beacon|beacon_off|revive|hud|pause_menu|pause|over|over_client`
+(with `--screenshot`: the picture at that moment, then quit). On the join screen a keyboard types the code; the address is typed
+on the system keyboard (SDL text input, a number keyboard on Android). Keys: F1 overlay, F2 the
 overlay's network page (co-op), P pause for everyone (co-op), F12 screenshot, T tone hold, L next look, P next
 palette, K next tier, R reduce flashing, Esc / Back quit (in the game with its screens: pause and back; Enter is the screen's main control). Taps (decided when the last finger lifts): two fingers next look, three
 the overlay, four next palette. Raw launch: `adb -s <serial> shell "am start -n dev.raveform.game/.RaveformActivity --es args '--scenario bench_idle --seconds 60'"`.

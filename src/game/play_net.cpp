@@ -192,12 +192,18 @@ void Play::netFrame(float realDt) {
     stats_.ticks = w.tickCount();
     if (s.state() == net::SessionState::Ended && frameNo_ % 600 == 0) RF_WARN("net: the session ended: %s", s.endReason());
     if (frameNo_ % 1200 == 0 && s.state() == net::SessionState::Running) {
-        // Every 20 s (60 Hz): the link and, on a client, how its band sits against the host's song.
+        // Every 20 s (60 Hz): the link and, on a client, how its band sits against the host's song. M4 stage B: "all
+        // corrections" is the last second's corrections wherever their enemies are (off screen too: it swings with what
+        // the host chose to send); "on screen" is the enemies on this screen as each correction landed, over the 20 s.
         const net::SessionStats& st = s.stats();
-        RF_LOG("net: frame %llu: rtt %.1f ms, loss %.1f%%, up %.1f / down %.1f kbit/s, %.0f corrections/s (error %.1f wu RMS), song %+.2f ms, "
-               "band %+.1f ms (rate %.4f, %u re-seeks), census %u/%u, %u frames dropped time",
+        const double scrN = static_cast<double>(st.screenErrN - logScrN_);
+        const double scrRms = scrN > 0.0 ? std::sqrt((st.screenErrSum2 - logScrSum2_) / scrN) : 0.0;
+        logScrN_ = st.screenErrN;
+        logScrSum2_ = st.screenErrSum2;
+        RF_LOG("net: frame %llu: rtt %.1f ms, loss %.1f%%, up %.1f / down %.1f kbit/s, %.0f corrections/s (all corrections %.1f wu RMS, on screen "
+               "%.1f wu RMS over %.0f), song %+.2f ms, band %+.1f ms (rate %.4f, %u re-seeks), census %u/%u, %u frames dropped time",
                static_cast<unsigned long long>(frameNo_), st.rttMs, st.loss * 100.0f, st.upKbps, st.downKbps, st.correctionsPerS, st.errRmsWu,
-               st.songOffsetMs, netBandErrMs_, netRatePosted_, netSeeks_, st.censusChecks, st.censusMismatches, netDropped_);
+               scrRms, scrN, st.songOffsetMs, netBandErrMs_, netRatePosted_, netSeeks_, st.censusChecks, st.censusMismatches, netDropped_);
     }
 }
 

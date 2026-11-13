@@ -94,11 +94,13 @@ struct AppArgs {
     u32 coopStart = 0;         // --coop-start [N]: the host starts once N players (default 2) are seated and ready, and
                                //   goes again 3 s after all are down
     char coopName[16] = {};    // --coop-name NAME: the name on the seat
-    bool coopPermission = false;  // --coop-permission-screen: show the local network's screen (pictures)
+    u8 coopPermission = 0;     // --coop-permission-screen [refused]: show the local network's screen (pictures); 2: as refused
+    bool coopDemoRooms = false;  // --coop-demo-rooms: the join list also shows three made-up rooms (the layout's picture)
     u32 contentSalt = 0;       // --net-content-salt N: another content hash (the mismatch message's test)
     char coopShot[16] = {};    // --coop-shot <moment>: with --screenshot, the picture at that co-op moment, then quit
     float coopDownAt = -1.0f;  // --coop-down-at S: this device's ship goes down S s into the run (tests, pictures)
     float coopPauseAt = -1.0f; // --coop-pause-at S: this device pauses for everyone S s into the run, resumes 3 s later
+    float coopQuitAt = -1.0f;  // --coop-quit-at S: this device leaves the room S s into the run (the host: the run ends for all)
     // M4 end
     // M2 audio begin
     AudioArgs audio;           // --band, --track, --sound, ... (audio/audio_args.h)

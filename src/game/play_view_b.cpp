@@ -104,7 +104,7 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
                     if (!pq.present || !pq.alive || (q != w.viewPlayer() && w.playerCount() < 2)) continue;
                     if (w.playerCount() < 2 && q != w.viewPlayer()) continue;
                     addShockRings(pq.pos, 2, 900.0f, palettes_->player[q], palettes_->playerLight[q], t, 0.45f);
-                    lattice_.impulse(pq.pos, 600.0f, 400.0f);
+                    push(kImpDropWave, pq.pos, 600.0f, 400.0f, t);
                 }
                 if (!reduceFlashing_) novaPump_ = std::fmax(novaPump_, 0.5f);
             }

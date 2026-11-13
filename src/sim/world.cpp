@@ -150,6 +150,18 @@ void World::tick(const TickInput& in) {
     updateCells(dt);
     moveProjectiles(dt);
     collide();
+    if (scriptHits_) {
+        // (tests, pictures: a hit asked for from outside the tick lands inside it, so its events go out like any)
+        for (u32 p = 0; p < playerCount_; ++p) {
+            PlayerState& pl = players_[p];
+            if (!((scriptHits_ >> p) & 1u) || !pl.present || !pl.alive || pl.down) continue;
+            const bool autoNova = rules_.autoNova;
+            rules_.autoNova = false;
+            hitPlayer(p, pl.pos);
+            rules_.autoNova = autoNova;
+        }
+        scriptHits_ = 0;
+    }
     bossContact();
     if (role_ == NetRole::Client) updatePredictions();
     if (role_ == NetRole::Host) finishNetLog();

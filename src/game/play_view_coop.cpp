@@ -66,6 +66,7 @@ void PlayView::drawCoop(FrameDraw& d, const ViewInput& in) {
 
         if (pl.down) {
             mateTrailCount_[q] = 0;
+            if (in.noBeacons) continue;  // screens.md: the co-op game over draws no beacon (every ship is down)
             const Vec2 B = pl.beacon;
             if (!visible(B, ringR + 40.0f)) {
                 // Off screen: its chevron carries a small ring at the tip and pulses on every beat.

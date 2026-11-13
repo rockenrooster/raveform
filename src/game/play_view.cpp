@@ -389,7 +389,7 @@ void PlayView::killRecipe(Vec2 at, u8 size, u8 hue, float heading, int g, float 
         }
     }
     if (x.rings) addShockRings(at, x.rings, x.ringToWu, palette_->hue[hue], palette_->partner[hue], t);
-    lattice_.impulse(at, x.gridImpulse * crowdGain_, size == 0 ? 60.0f : (size == 1 ? 90.0f : 130.0f));
+    push(kImpKill, at, x.gridImpulse * crowdGain_, size == 0 ? 60.0f : (size == 1 ? 90.0f : 130.0f), t);
     if (x.shakeRefPx > shakeAmp_) shakeAmp_ = x.shakeRefPx;
     if (size == 2) {
         shatterGlyph(g, at, heading, radius, mix(palette_->hue[hue], white(), 0.5f), 80.0f, 200.0f, t);
@@ -509,7 +509,7 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 // The lost arc, the last of the halo it was (play test 2: the halo glyphs are ornament, which shatterGlyph skips).
                 if (left < 8) shatterArcs(at, left + 1u, left, left + 1u, mix(player, white(), 0.3f) * 2.0f, t);
                 addShockRings(at, 1, kPanicRadiusWu, player, light, t, kPanicRingS);
-                lattice_.impulse(at, 260.0f, 120.0f);
+                push(kImpHit, at, 260.0f, 120.0f, t);
                 if (mine && kHitShakeRefPx > shakeAmp_) shakeAmp_ = kHitShakeRefPx;
                 break;
             }
@@ -532,7 +532,7 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 const LookSoftLight& kp = look_->soft.killPoolLarge;
                 addPool(at, kp.radius[0], kp.radius[1], player, kp.intensity[0], kp.intensity[1], x.lifeS[1], true, 0, false, true, t);
                 if (x.rings) addShockRings(at, x.rings, x.ringToWu, player, light, t);
-                lattice_.impulse(at, x.gridImpulse, 130.0f);
+                push(kImpShipDown, at, x.gridImpulse, 130.0f, t);
                 if (mine && x.shakeRefPx > shakeAmp_) shakeAmp_ = x.shakeRefPx;
                 break;
             }
@@ -570,7 +570,7 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                              260.0f, t);
                 addPool(at, 60.0f, 220.0f, player, 0.6f, 0.0f, 0.8f, false, 0, false, false, t);
                 addShockRings(at, 3, 260.0f, player, light, t);
-                lattice_.impulse(at, 420.0f, 200.0f);
+                push(kImpDeath, at, 420.0f, 200.0f, t);
                 if (kDeathShakeRefPx > shakeAmp_) shakeAmp_ = kDeathShakeRefPx;
                 break;
             }
@@ -605,7 +605,7 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 sparkRequest(r);
                 const LookDistortionSource& n = look_->distortion.nova;
                 addDistortion(at, n.toWu > 0.0f ? n.toWu : tuning::kNovaFrontWu, n.lifeS, n.refPx, n.widthRefPx, t);
-                for (int i = 0; i < 2; ++i) lattice_.impulse(at, 420.0f, 260.0f);
+                for (int i = 0; i < 2; ++i) push(kImpNova, at, 420.0f, 260.0f, t);
                 if (mine && kNovaShakeRefPx > shakeAmp_) shakeAmp_ = kNovaShakeRefPx;
                 break;
             }
@@ -617,7 +617,7 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 ds.heading = angleOf(ds.to - ds.from);
                 ds.perfect = e.b != 0;
                 if (ds.perfect) addShockRings(ds.to, 1, 90.0f, player, light, t);
-                lattice_.impulse(ds.to, 120.0f, 70.0f);
+                push(kImpDash, ds.to, 120.0f, 70.0f, t);
                 break;
             }
             case EventType::Restart: resetEffects(); break;
@@ -723,6 +723,7 @@ void PlayView::envelopes(const ViewInput& in) {
 // ---------------------------------------------------------------------------------------------- render
 
 void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W, float H, const ViewInput& in) {
+    frameMute_ = in.backgroundOnly ? ~(kMuteBackground | kMuteGrid | kMuteVignette | kMuteAberration) : 0u;
     const World& w = *in.world;
     const float t = static_cast<float>(in.time);
     now_ = in.time;
@@ -736,6 +737,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     const float barS = 384.0f / tps;
     envelopes(in);
     const float beatAmt = beatAmount();
+    lastBeatAmt_ = beatAmt;
     if (!speciesGlyphsReady_) onEvents(w, in.time);  // builds the species -> glyph table (no events yet)
 
     // ---- Camera (GAME_DESIGN 9): follows the ship with look-ahead along its velocity and a lean toward
@@ -1405,7 +1407,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     params.accent = accent;
     params.enemySwell = 1.0f + look_->enemy.kickSwell * pump;
     params.particleTime = t;
-    params.particleMaxLife = 2.0f;
+    params.particleMaxLife = in.backgroundOnly ? 0.0f : 2.0f;  // (M4 stage B: no spark behind the co-op setup screens)
     params.dimAt = S;
     params.dimRadius = 120.0f;  // GAME_DESIGN 11.3: particles within 120 wu of the local player at half
     params.dimFactor = 0.5f;
@@ -1454,6 +1456,90 @@ void PlayView::buildColours(Vec3 player) {
     buildReady_ = true;
 }
 
+void PlayView::push(u8 kind, Vec2 at, float amp, float radius, float t) {
+    lattice_.impulse(at, amp, radius);
+    ImpulseNote& n = impulses_[impulseHead_];
+    impulseHead_ = (impulseHead_ + 1) % kImpulseNotes;
+    n.t = t;
+    n.amp = amp;
+    n.radius = radius;
+    n.at = at;
+    n.kind = kind;
+    lastViewT_ = t;
+}
+
+void PlayView::latticeTrace(char* out, u32 capacity) const {
+    static const char* const kNames[kImpKinds] = {"kills", "hits", "ship down", "ship lost", "Novas", "Dashes", "the Drop's wave"};
+    float sum[kImpKinds] = {};
+    u32 count[kImpKinds] = {};
+    float newest = lastViewT_;
+    for (const ImpulseNote& n : impulses_) newest = std::fmax(newest, n.t);
+    for (const ImpulseNote& n : impulses_) {
+        if (newest - n.t > 1.0f || !visible(n.at, n.radius)) continue;
+        sum[n.kind] += n.amp;
+        ++count[n.kind];
+    }
+    u32 o = static_cast<u32>(std::snprintf(out, capacity, "lattice impulses in this frame over the last second:"));
+    for (u32 k = 0; k < kImpKinds && o < capacity; ++k)
+        o += static_cast<u32>(std::snprintf(out + o, capacity - o, " %s %u (sum %.0f)%s", kNames[k], count[k], static_cast<double>(sum[k]),
+                                            k + 1 < kImpKinds ? "," : ""));
+    const Lattice::HeatStats& h = lattice_.heatStats();
+    const float n = h.nodes ? static_cast<float>(h.nodes) : 1.0f;
+    if (o < capacity)
+        o += static_cast<u32>(std::snprintf(out + o, capacity - o,
+                                            "; the middle third's lattice: %u nodes, %.0f%% warm, %.0f%% hot, mean heat %.1f wu from the springs (the "
+                                            "impulses) and %.1f wu from the kick ripples",
+                                            h.nodes, static_cast<double>(100.0f * static_cast<float>(h.warm) / n),
+                                            static_cast<double>(100.0f * static_cast<float>(h.hot) / n), static_cast<double>(h.fromSprings / n),
+                                            static_cast<double>(h.fromRipples / n)));
+    if (o < capacity)
+        std::snprintf(out + o, capacity - o, "; crowd gain %.2f, swarm gain %.2f, the beat's amount %.2f", static_cast<double>(crowdGain_),
+                      static_cast<double>(swarmGain_), static_cast<double>(lastBeatAmt_));
+}
+
+Vec2 PlayView::edgePlace(Vec2 dsc, float hx, float hy, float r) const {
+    // The point on the box (half sizes hx, hy around the centre) toward dsc; then, if its disc comes within 20 px of a
+    // HUD block, the nearest free point along the box's edge either way (screens.md "In the run"). The edge is walked as
+    // a perimeter coordinate: 0 at the top left corner, clockwise.
+    const float k = std::fmin(hx / std::fmax(std::fabs(dsc.x), 1e-3f), hy / std::fmax(std::fabs(dsc.y), 1e-3f));
+    const Vec2 p0 = dsc * k;
+    if (!keepOut_.count) return p0;
+    const float clear = 20.0f * refPx_ + r;
+    const auto free = [&](Vec2 p) {
+        const Vec2 sp = centre_ + p;
+        for (u32 i = 0; i < keepOut_.count; ++i) {
+            const float dx = std::fmax(std::fmax(keepOut_.a[i].x - sp.x, sp.x - keepOut_.b[i].x), 0.0f);
+            const float dy = std::fmax(std::fmax(keepOut_.a[i].y - sp.y, sp.y - keepOut_.b[i].y), 0.0f);
+            if (dx * dx + dy * dy < clear * clear) return false;
+        }
+        return true;
+    };
+    if (free(p0)) return p0;
+    const float wTop = 2.0f * hx, hSide = 2.0f * hy, perim = 2.0f * (wTop + hSide);
+    const auto at = [&](float u) {
+        u = std::fmod(u, perim);
+        if (u < 0.0f) u += perim;
+        if (u < wTop) return Vec2{-hx + u, -hy};
+        u -= wTop;
+        if (u < hSide) return Vec2{hx, -hy + u};
+        u -= hSide;
+        if (u < wTop) return Vec2{hx - u, hy};
+        u -= wTop;
+        return Vec2{-hx, hy - u};
+    };
+    float u0 = 0.0f;
+    if (std::fabs(p0.y + hy) < 0.5f) u0 = p0.x + hx;
+    else if (std::fabs(p0.x - hx) < 0.5f) u0 = wTop + p0.y + hy;
+    else if (std::fabs(p0.y - hy) < 0.5f) u0 = wTop + hSide + hx - p0.x;
+    else u0 = 2.0f * wTop + hSide + hy - p0.y;
+    const float step = 4.0f * refPx_;
+    for (float d = step; d < 0.5f * perim; d += step) {
+        if (free(at(u0 - d))) return at(u0 - d);
+        if (free(at(u0 + d))) return at(u0 + d);
+    }
+    return p0;
+}
+
 void PlayView::edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, float swell, u8 tipMark) {
     const Look::EdgeIndicator& ei = look_->edge;
     const float h = (boss ? ei.bossChevron : ei.chevron) * refPx_;
@@ -1464,8 +1550,7 @@ void PlayView::edgeChevron(FrameDraw& d, Vec2 world, Vec3 colour, bool boss, flo
     const float inset = ei.inset * refPx_ + disc;
     const float hx = 0.5f * W - inset, hy = 0.5f * H - inset;
     if (hx <= 0.0f || hy <= 0.0f) return;
-    const float k = std::fmin(hx / std::fmax(std::fabs(dsc.x), 1e-3f), hy / std::fmax(std::fabs(dsc.y), 1e-3f));
-    const Vec2 c = centre_ + dsc * k;
+    const Vec2 c = centre_ + edgePlace(dsc, hx, hy, disc);
     const float ang = angleOf(dsc), cs = std::cos(ang), sn = std::sin(ang);
     d.threatRims.line(c, c, disc, Vec3{}, Vec3{}, kDisc | capsuleOpacity(ei.discAlpha));
     const float s = h * swell;
