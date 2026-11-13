@@ -112,7 +112,13 @@ mode (four minor, two modal, two major, one lydian, and the first theme again at
 pattern (four-on-the-floor, 3-3-2 toms, half time, a broken kick, a two-step break) and what the
 lead does (broken chords, a three-note cell, a pedal point, a mallet, a harp). All ten are written
 (`design/music/track01.json` to `track10.json`, `design/music/README.md`); Tracks 7 to 10 still need
-their palettes, bosses and rosters. How many of the ten one run plays before the encore is open: it is the user's call (asked 2026-11-12).
+their palettes, bosses and rosters.
+
+**A run plays all ten, in order** (the user's call, 2026-11-12; the alternative offered was five
+drawn for each run). That is about 29 minutes of music before the encore: 72 bars at 120, then nine
+Tracks of 108 bars at 126 to 174, each a little shorter than the last. The loop of section 8 begins
+after the last Track the game has — after Track 3 in the build of 2026-11-12, after Track 10 when the
+set list is complete — so nothing in the loop may be counted from a fixed Track number.
 
 ### 4.3 What ends a run
 
@@ -472,6 +478,16 @@ phases; it fits inside the entity caps.
   ten to twenty minutes is too long is the user's to say at the next play test. If it is, the
   lever is the clock itself (the loop's Tracks play two cycles instead of three, so the halo
   burns down a third sooner), not more damage.
+- **The ten-Track run** (2026-11-12). The numbers above were measured on a pass of three Tracks.
+  With all ten in a run the encore begins at Track 11, about half an hour in, and half an hour
+  without danger would be flat: from Track 4 on the first pass has to climb. Targets to tune toward
+  as the Tracks arrive (bots, 20 seeds, hits counting): the careful bot finishes the ten in at least
+  seven runs of ten and its median first death is in the encore; the careless bot's median first
+  death is between Tracks 6 and 9, and no more than one of its runs in five ends before Track 4.
+  The first three Tracks stay as tuned. Levers for Tracks 4 to 10, in this order: what each Track's
+  own families, mini-boss and boss ask of the player; the threat budget and the crowd target
+  (`design/species.json`, a step a Track as Tracks 1 to 3 have); enemy tiers. Not enemy health alone,
+  and never the refills: Cells, Regen and the Breaks stay generous until the encore takes them away.
 - **Co-op.** Budget × (1 + 0.6 × (players − 1)); elite, mini-boss and boss health × (1 + 0.5 × (players − 1)).
 
 Tune with the offline simulation: bot players run 30 minutes headless and the tool charts budget,
@@ -606,7 +622,7 @@ Local high scores: top 10 for solo and for each co-op player count. Lifetime sta
 | | Species | Families | Mods | Riffs | Boosts | Fusions | Tracks | Mini-bosses | Bosses | Structures / events |
 |---|---|---|---|---|---|---|---|---|---|---|
 | M3 slice | 12 | 6 | 8 | 3 | 4 | 0 | 2 | 0 | 1 | walls only |
-| M5 batch 1 | 80 | 10 | 16 | 6 | 8 | 2 | 3 | 4 | 3 | 3 / 3 |
+| M5 batch 1 | 80 | 11 | 16 | 6 | 8 | 2 | 3 | 4 | 3 | 3 / 3 |
 | M5 batch 2 | 160 | 14 | 26 | 9 | 12 | 5 | 5 | 8 | 5 | 5 / 6 |
 | M5 batch 3 | 240+ | 16 | 36 | 12 | 16 | 8 | 6 | 12 | 6 | 6 / 8 |
 | M5 batch 4 | 240+ | 16 | 36 | 12 | 16 | 8 | 10 + the loop | 12 | 10 | 6 / 8 |
