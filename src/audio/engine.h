@@ -356,6 +356,8 @@ private:
     } gainPts_[64];
     u32 gainHead_ = 0, gainCount_ = 0;
     double gainPredictedF_ = -1.0;  // M5: the next section's first gain point, planned on the last bar (-1: none)
+    float keyRate_ = 1.0f;          // M5: the A-minor effects moved to the Track's root (a playback rate) ...
+    bool keyMajor_ = false;         // ... with their major third on the major and lydian Tracks
     float outGain_ = 1.0f, outGainTarget_ = 1.0f;
     float musicGain_ = 1.0f, sfxGain_ = 1.0f;
     // M4 co-op, "music from host only": the bed's gain (every music bus but the lead), ramped toward 0 or 1.

@@ -952,6 +952,31 @@ void testShardScales() {
     }
 }
 
+// M5 (the lead's rule: effects are part of the music): the effects written in A minor move to each Track's root and take
+// their major third on Afterglow, Arcadia and Mirage; the Elite's fifth only moves.
+void testEffectsInKey() {
+    const double wantShift[10] = {0, -4, 5, -5, -2, 3, 4, -2, 1, 0};
+    for (u32 t = 0; t < g_music->trackCount; ++t) {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), static_cast<u8>(t), 0));
+        for (Sfx s : {Sfx::Boost, Sfx::Upgrade, Sfx::GameOver, Sfx::Elite}) e.post(cmd(CmdType::Sfx, static_cast<u8>(s), 0, 0, 1.0f));
+        Capture c;
+        runEngine(e, c, 4800, 480);
+        const bool major = t == 6 || t == 7 || t == 8;
+        u32 seen = 0, wrong = 0;
+        for (u32 i = 0; i < c.eventCount; ++i) {
+            const BeatEvent& ev = c.events[i];
+            if (ev.kind != BeatKind::Sfx) continue;
+            ++seen;
+            const bool hasMajor = ev.a != static_cast<u8>(Sfx::Elite);
+            if (std::fabs(ev.x - std::exp2(wantShift[t] / 12.0)) > 1e-5 || (ev.b == 1) != (major && hasMajor)) ++wrong;
+        }
+        CHECK_MSG(seen == 4 && wrong == 0, "%s: %u of %u effects not in the Track's key", g_music->tracks[t].id, wrong, seen);
+        freeCapture(c);
+    }
+}
+
 // All ten palettes load, one for each Track of the set list (design/palettes.json "track").
 void testPalettes() {
     auto* p = new Palettes;
@@ -1059,6 +1084,7 @@ int main() {
         {"the set list: nine Track changes, 120 to 174 BPM (M5)", testSetListTrackChanges},
         {"the full band on every Track (M5)", testFullBandEveryTrack},
         {"Shard runs in each Track's scale (M5)", testShardScales},
+        {"A-minor effects in each Track's key (M5)", testEffectsInKey},
     };
     for (const Test& t : tests) {
         g_test = t.name;

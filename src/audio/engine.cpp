@@ -356,6 +356,17 @@ void Engine::applyParams() {
     while (delayRepeats_ && static_cast<u64>(delayRepeats_) * delayD_ > delayMask_) --delayRepeats_;
     for (u32 k = 1; k <= delayRepeats_; ++k) delayTap_[k - 1] = sp_->delay.mix * std::pow(sp_->delay.feedback, static_cast<float>(k - 1));
     outGainTarget_ = std::pow(10.0f, music_->outputGainDb(track_, variant_) / 20.0f);
+    // M5: the key the A-minor effects move to: the Track's root (the first chord's bass) within -6..+5 semitones of A,
+    // major where the scale has no minor third.
+    {
+        const i32 root = tr_->progressionCount ? tr_->chords[tr_->progression[0]].bass % 12 : 9;
+        i32 shift = ((root - 9) % 12 + 12) % 12;
+        if (shift > 5) shift -= 12;
+        keyRate_ = static_cast<float>(std::exp2(shift / 12.0));
+        bool minorThird = tr_->scaleCount == 0;
+        for (u32 i = 0; i < tr_->scaleCount; ++i) minorThird = minorThird || tr_->scale[i] == 3;
+        keyMajor_ = !minorThird;
+    }
     stats_.track.store(static_cast<u8>(track_), std::memory_order_relaxed);
     stats_.variant.store(static_cast<u8>(variant_), std::memory_order_relaxed);
 }
@@ -719,10 +730,19 @@ void Engine::playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, doubl
         const i32 baked = id >= 0 ? bank_->sample(id).midi : -1;
         if (midi >= 0 && baked >= 0 && baked != midi && std::abs(midi - baked) <= 7)
             rate *= static_cast<float>(std::exp2((midi - baked) / 12.0));
+        // M5: the effects written in A minor (sfxproto) follow the Track's key: moved to its root (by a playback rate,
+        // at most six semitones), with the major-third variant on the major and lydian Tracks.
+        if (midi < 0 && (kind == Sfx::Boost || kind == Sfx::Upgrade || kind == Sfx::GameOver || kind == Sfx::Elite ||
+                         kind == Sfx::PerfectDash || kind == Sfx::Shield)) {
+            if (keyMajor_ && bank_->sfxMajor(kind) >= 0) id = bank_->sfxMajor(kind);
+            rate *= keyRate_;
+        }
     }
     if (id < 0) return;
     playSample(id, Bus::Sfx, frame, gain, pan, rate);
-    emit(BeatKind::Sfx, frame, tick, static_cast<u8>(kind), 0, 0, gain, 0, midi >= 0 ? midiHz(midi) : 0.0);
+    // x: a pitched effect's frequency, else its playback rate (M5: the key's); b = 1: the major-third variant.
+    emit(BeatKind::Sfx, frame, tick, static_cast<u8>(kind), static_cast<u8>(id == bank_->sfxMajor(kind) ? 1 : 0), 0, gain, 0,
+         midi >= 0 ? midiHz(midi) : static_cast<double>(rate));
     // sfxproto: hits and blasts duck the music (depth, time constant), nothing else does.
     float depth = 0.0f, tau = 0.0f;
     if (kind == Sfx::Hit) {
