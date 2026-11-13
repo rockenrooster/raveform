@@ -266,6 +266,28 @@ host's Track and by fight, seeds 1 and 2, in wu RMS (limit 12 for the whole run)
   The Well itself agrees (its place 0-3 wu RMS from the host's). 25-minute soaks, the Horizon fight's error: impaired
   seed 1 79.9 -> 76.7 (lanes) -> **7.1** (phase); clean seed 2 52.3 (lanes fixed, phase not) -> **9.8**; impaired
   seed 2 96.9 -> **9.4** (lanes; its phase changes did not fall apart). `captures\m4net\part5c` .. `part5f`.
+- After the Horizon fixes, the boss claims merged and main 17a36f7 merged (`captures\m4net\part5g\`, same seeds,
+  40 minutes; the runs take other courses, so fight by fight they move both ways):
+
+  | | clean s1 | clean s2 | impaired s1 | impaired s2 |
+  |---|---|---|---|---|
+  | Track 4 / 5 / 6 | 5.0 / 4.5 / 5.3 | 8.6 / 4.8 / 5.9 | 9.1 / 9.5 / 10.0 | 9.4 / 7.0 / 10.0 |
+  | loop, Tracks 7-11 | 5.9-14.1 | 6.3-15.4 | 13.6-21.7 | 7.5-17.9 |
+  | Feedback / Polyrhythm / Event Horizon | 7.4 / 6.2 / 11.9 | 8.7 / 6.7 / 7.0 | 9.0 / 9.0 / 25.6 | 15.2 / 10.1 / 30.1 |
+  | Moth Queen / Blink Star / Sentry Array | 11.7 / 6.1 / 5.8 | 15.3 / 8.2 / 6.9 | 24.4 / 18.4 / 14.6 | 15.4 / 14.8 / 8.3 |
+  | whole run (RMS; at correction) | 6.50; 8.64 | 6.98; 8.68 | 11.7; 15.3 FAIL | 9.42; 16.2 FAIL |
+  | worst second down / up | 230 / **68.1** | 229 / **72.1** | 231 / **79.8** | 222 / **70.9** |
+
+  Brood Mother is still never drawn by these seeds. Event Horizon under the impaired profile is down from 78-82 to
+  26-30 (lanes 16-29, the rest 36-38: its pulled crowd under 80 ms of jitter); clean 7-12. Moth Queen is the worst
+  fight left (impaired 15-24).
+- **The uplink in the loop** still fails over 40 minutes: 61-80 kbit/s in the loop's densest seconds (Tracks 9-11,
+  past 25 minutes of play), 30-36 of it reliable payload: 1,100-1,400 claims a second after merging (one an enemy),
+  two in three carrying a damage. Grouping the claims by damage was tried (the damage then changes on one item in
+  three) and made no measurable difference to the worst seconds; it was taken out. Left: claims at 15 Hz (more hits
+  merge per enemy; kills confirmed 33 ms later), acknowledgements only with the 30 Hz pose (about 8 kbit/s of the
+  ~21 kbit/s of ENet and IP overhead), or a ruling on the loop's density. The 10-minute soaks (Tracks 1-4) stay
+  under 52 on every seed.
 - **Feedback** (the lead's first): no mechanism of its own shows. Its error is the crowd's in a dense fight (17% of
   the impaired seed 2 samples): Shoals 19.1 and family 4 20.1 wu RMS, a copy following another player 60.8 (9% of the
   squared error), knocked bodies 25.8 (7%); its own states never differ. Clean 8.7-9.7, impaired 13.3-17.3.
