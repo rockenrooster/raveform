@@ -35,7 +35,8 @@ enum class SoundPlay : u8 {
 // (audio::chordNote, resolved by the band at the tick it plays).
 // ArpCount (Event Horizon's count): the meal's next note of the arpeggio (chord tones up the scale: 0 2 4 6 steps) an
 // octave down, cue b = the meal.
-enum class NoteRule : u8 { None, Midi, RunDegree, WallTone, ArpCount };
+// KeyRoot (Polyrhythm's drums): the Track's root (its first chord's bass) in MIDI octave octave, plus the cue's f semitones.
+enum class NoteRule : u8 { None, Midi, RunDegree, WallTone, ArpCount, KeyRoot };
 
 struct FightSound {
     sim::BossCue cue;
@@ -49,6 +50,7 @@ struct FightSound {
     NoteRule note = NoteRule::None;  // (pitched rows: Midi)
     u8 id2 = 0;                      // Pair's second recipe
     float glideSemis = 0.0f, glideAfter = 0.0f, glideOver = 0.0f;  // PadVoice's glide (beats)
+    i8 octave = 4;                   // KeyRoot's octave
 };
 
 // The table, one row per sim::BossCue (in its order).

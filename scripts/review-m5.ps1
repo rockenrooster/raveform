@@ -71,8 +71,9 @@ $sets = @{
         strips = @()
     }
     'part4' = @{
-        singles = @('hz_accretion', 'hz_starved', 'hz_fed', 'hz_tidal', 'hz_collapse', 'hz_jets', 'hz_death')
-        strips = @('hz_strip')
+        singles = @('hz_accretion', 'hz_starved', 'hz_fed', 'hz_tidal', 'hz_collapse', 'hz_jets', 'hz_death', 'pr_one', 'pr_rings', 'pr_hemiola',
+                    'pr_burn', 'pr_solo', 'pr_death')
+        strips = @('hz_strip', 'pr_strip')
     }
 }
 if (-not $sets.ContainsKey($Part)) { throw "no review set '$Part' (part1, part2, part3, part4)" }

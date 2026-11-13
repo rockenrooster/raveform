@@ -435,6 +435,7 @@ bool SpeciesTable::load() {
     if (!longwave.load()) ok = false;
     if (!choir.load()) ok = false;
     if (!horizon.load()) ok = false;  // M5 part 4
+    if (!poly.load()) ok = false;
     if (!minis.load()) ok = false;
     crowd.miniDrop = minis.crowdScale;
     return ok;

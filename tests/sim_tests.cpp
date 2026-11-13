@@ -1882,6 +1882,120 @@ void testHorizon() {
     delete w;
 }
 
+// M5 part 4: Polyrhythm (polyrhythm.md): the pulses, the walls and their gaps, the One, the faces, a wall's hit, Hemiola's
+// turn and burning link, the Solo, the death's late break.
+const PolyRing* newestRing(const World& w, u8 rotor) {
+    const PolyRing* best = nullptr;
+    for (const PolyRing& r : w.boss().pr.rings)
+        if (r.tick >= 0.0 && r.rotor == rotor && (!best || r.tick > best->tick)) best = &r;
+    return best;
+}
+
+void testPolyrhythm() {
+    g_test = "polyrhythm";
+    const PolyData& d = g_species->poly;
+    CHECK(d.health[0] == 1400.0f && d.health[1] == 1400.0f && d.sides[0] == 3 && d.sides[1] == 4 && d.pulses[0] == 3 && d.pulses[1] == 4);
+    CHECK(d.arcDeg[0] == 80.0f && d.arcDeg[1] == 60.0f && d.turnDeg[0] == 40.0f && d.turnDeg[1] == 22.5f && d.span == 720.0f);
+    CHECK(d.ringSpeed == 260.0f && d.wallLife == 2.6f && d.wallThickness == 10.0f && d.dmgSolo == 1.25f && d.zoom == 0.75f && d.linkTicks == 12);
+    CHECK(bossOfSong(4) == BossKind::Polyrhythm && bossHomeTrack(BossKind::Polyrhythm) == 5 && fightBuilt(BossKind::Polyrhythm));
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    const Vec2 ship{0.0f, 420.0f};
+    stepWorld(*w, music, ship);
+    w->spawnBossNow(kTicksPerBar, Vec2{}, BossKind::Polyrhythm);
+    const BossState& s = w->boss();
+    CHECK(s.kind == BossKind::Polyrhythm && s.alive == 3u && s.fightTick == 3.0 * kTicksPerBar);
+    // The One: both fire, a face of each looking at the other: Three's gap on the link (+x), Four's too (-x).
+    u32 three = 0, four = 0, one = 0;
+    while (music + kTicksPerSimTick <= 3.0 * kTicksPerBar + 5.0) {
+        stepWorld(*w, music, ship);
+        three += cuesIn(*w, BossCue::PrThree);
+        four += cuesIn(*w, BossCue::PrFour);
+        one += cuesIn(*w, BossCue::PrOne);
+    }
+    CHECK_MSG(three == 1 && four == 1 && one == 1, "%u %u %u", three, four, one);
+    const PolyRing* r3 = newestRing(*w, 0);
+    const PolyRing* r4 = newestRing(*w, 1);
+    CHECK(r3 && r4 && r3->sides == 3 && r4->sides == 4);
+    if (r3 && r4) {
+        const float link = w->polyLinkAngle(r3->tick);
+        CHECK_MSG(std::fabs(wrapAngle(r3->face0 - link)) < 1e-3f && std::fabs(wrapAngle(r4->face0 - link - kPi)) < 1e-3f, "%.3f %.3f %.3f", r3->face0, r4->face0, link);
+        CHECK(!w->polyWallAt(*r3, link) && w->polyWallAt(*r3, link + kPi / 3.0f) && !w->polyWallAt(*r3, link + kPi / 3.0f + 0.75f));
+        CHECK(!w->polyWallAt(*r4, link + kPi) && w->polyWallAt(*r4, link + kPi / 4.0f));
+    }
+    // A bar: Three three times, Four four times, the One once.
+    three = four = one = 0;
+    while (music + kTicksPerSimTick <= 4.0 * kTicksPerBar + 5.0) {
+        stepWorld(*w, music, ship);
+        three += cuesIn(*w, BossCue::PrThree);
+        four += cuesIn(*w, BossCue::PrFour);
+        one += cuesIn(*w, BossCue::PrOne);
+    }
+    CHECK_MSG(three == 3 && four == 4 && one == 1, "%u %u %u", three, four, one);
+    // Between pulses Three turns 40 degrees (its gaps step round).
+    CHECK(std::fabs(wrapAngle(w->polyFace(0, 4.0 * kTicksPerBar + kTicksPerBar / 3.0) - w->polyLinkAngle(4.0 * kTicksPerBar + kTicksPerBar / 3.0) - 40.0f * kTau / 360.0f)) < 1e-3f);
+    // Only the faces can be hurt.
+    CHECK(w->bossDamageScale(2, 0, w->music(), Vec2{1.0f, 0.0f}) == 1.0f && w->bossDamageScale(1, 0, w->music(), Vec2{1.0f, 0.0f}) == 0.0f);
+    // A wall hits; it is erased where it hit.
+    {
+        w->rules().godMode = false;
+        const PolyRing* r = nullptr;  // (an older ring, well clear of the rotor's body)
+        for (const PolyRing& q : s.pr.rings)
+            if (q.rotor == 1 && w->polyRingAlive(q, w->music()) && w->polyRingRadius(q, w->music()) > 250.0f && (!r || q.tick > r->tick)) r = &q;
+        CHECK(r != nullptr);
+        if (r) {
+            const double next = w->music() + kTicksPerSimTick;
+            const float a = r->face0 + kPi / 4.0f;
+            const Vec2 on = r->at + dirOf(a) * w->polyRingRadius(*r, next);
+            const u8 cells = w->player(0).cells;
+            stepWorld(*w, music, on);
+            CHECK_MSG(w->player(0).cells + 1 == cells || !w->player(0).alive, "cells %u -> %u", cells, w->player(0).cells);
+            CHECK(!w->polyWallAt(*r, a) && w->polyWallAt(*r, a + 0.5f));
+        }
+        w->rules().godMode = true;
+    }
+    // Hemiola from the bar line after their joint health falls to 60%: the turn reverses every second bar, Four's walls fly
+    // at 300, the link shows its dashes for a bar and burns on beats 3 and 4 of the next.
+    w->bossHealthNow(0.55f);
+    stepWorld(*w, music, ship);
+    const double h0 = (std::floor(w->music() / kTicksPerBar) + 1.0) * kTicksPerBar;
+    CHECK(s.pr.phase == 1 && s.pr.hemiolaBar0 == static_cast<i64>(h0 / kTicksPerBar));
+    CHECK(w->polyLinkBurn(h0 + 10.0) == 1 && w->polyLinkBurn(h0 + kTicksPerBar + 10.0) == 1 && w->polyLinkBurn(h0 + kTicksPerBar + 2.0 * kTicksPerBeat + 10.0) == 2 &&
+          w->polyLinkBurn(h0 + 2.0 * kTicksPerBar - 10.0) == 2 && w->polyLinkBurn(h0 + 2.0 * kTicksPerBar + 10.0) == 1);
+    {
+        const double mid = h0 + kTicksPerBar + kTicksPerBar / 3.0;  // the second bar: turning back
+        CHECK(std::fabs(wrapAngle(w->polyFace(0, mid) - w->polyLinkAngle(mid) + 40.0f * kTau / 360.0f)) < 1e-3f);
+    }
+    runTo(*w, music, h0 + kTicksPerBar / 4.0 + 5.0, ship);
+    {
+        const PolyRing* r = newestRing(*w, 1);
+        CHECK(r && r->speed == 300.0f);
+    }
+    // Solo: Four dead; Three plays both counts (its own ring and Four's, turning the other way, gaps together on the One)
+    // and takes x 1.25.
+    w->killBossNextTick(0x2u, false);
+    stepWorld(*w, music, ship);
+    CHECK(s.pr.phase == 2 && s.alive == 1u && s.pr.firstDead == 1);
+    CHECK(w->bossDamageScale(2, 0, w->music(), Vec2{1.0f, 0.0f}) == d.dmgSolo);
+    {
+        const double line = (std::floor(w->music() / kTicksPerBar) + 1.0) * kTicksPerBar;
+        runTo(*w, music, line + 5.0, ship);
+        const PolyRing* own = newestRing(*w, 0);
+        const PolyRing* other = newestRing(*w, 1);
+        CHECK(own && other && own->tick == line && other->tick == line && other->sides == 4 && length(other->at - s.body[0]) < 30.0f);
+        if (own && other) CHECK(std::fabs(wrapAngle(own->face0 - other->face0)) < 1e-3f);
+    }
+    // The death: the boss break and the Shards on the One that ends the Track.
+    w->killBossNextTick(0x1u, false);
+    stepWorld(*w, music, ship);
+    CHECK(s.dying && s.payoutTick > w->music());
+    const u32 shards0 = w->shards().count;
+    runTo(*w, music, s.payoutTick + 5.0, ship);
+    CHECK_MSG(w->shards().count >= shards0 + 240u, "%u -> %u", shards0, w->shards().count);  // polyrhythm.md: 240 Shards
+    delete w;
+}
+
 void testMinibosses() {
     g_test = "minibosses";
     const MiniData& md = g_species->minis;
@@ -2649,6 +2763,7 @@ int main() {
     testLongwave();
     testChoir();
     testHorizon();
+    testPolyrhythm();
     testMinibosses();
     testFamiliesM5();
     testUpgradesM5();

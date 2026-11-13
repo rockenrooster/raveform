@@ -768,6 +768,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         if (w.boss().kind == sim::BossKind::Longwave) fightZoom = w.species().longwave.zoom;
         if (w.boss().kind == sim::BossKind::Choir) fightZoom = w.species().choir.zoom;
         if (w.boss().kind == sim::BossKind::EventHorizon) fightZoom = w.species().horizon.zoom;  // M5 part 4 (horizon.json camera)
+        if (w.boss().kind == sim::BossKind::Polyrhythm) fightZoom = w.species().poly.zoom;
     }
     if (w.boss().active && !w.boss().dying && w.boss().kind != sim::BossKind::Longwave) {
         const Vec2 off = lerp2(w.boss().prevPos, w.boss().pos, a) - S;

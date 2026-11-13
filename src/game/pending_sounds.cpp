@@ -86,6 +86,17 @@ const FightSound kRows[] = {
      rc(Recipe::RevCymbal), false, 0.7f, 1, 0},
     {BossCue::HzWave, "horizon.md", "the tidal wave rides in on the riser's last half-beat", nullptr, SoundPlay::Recipe, rc(Recipe::Whoosh), false,
      0.6f, 0.5f, 0},
+    // ---- Polyrhythm (polyrhythm.md "Sound")
+    {BossCue::PrThree, "polyrhythm.md", "Three is the tom, tuned to the Track's root, on twelfths 0, 4 and 8; it rises a semitone for every "
+                                          "quarter of its health lost (Solo: the survivor's pitch)",
+     nullptr, SoundPlay::Recipe, rc(Recipe::Tom), false, 0.7f, 0, 0, NoteRule::KeyRoot, 0, 0.0f, 0.0f, 0.0f, 3},
+    {BossCue::PrFour, "polyrhythm.md", "Four is the rim, tuned to the flat second, on twelfths 0, 3, 6 and 9; it rises a semitone for every "
+                                         "quarter of its health lost",
+     nullptr, SoundPlay::Recipe, rc(Recipe::RimShot), false, 0.6f, 0, 0, NoteRule::KeyRoot, 0, 0.0f, 0.0f, 0.0f, 5},
+    {BossCue::PrOne, "polyrhythm.md", "the One is both and the gong", nullptr, SoundPlay::Recipe, rc(Recipe::Gong), false, 0.6f, 0, 0},
+    {BossCue::PrLinkTick, "polyrhythm.md", "the link burning: the telegraph tick on each beat of the telegraph bar", nullptr, SoundPlay::Sfx,
+     sx(Sfx::Tick), false, 0.6f, 0, 0},
+    {BossCue::PrLinkBurn, "polyrhythm.md", "the impact on beat 3", nullptr, SoundPlay::Recipe, rc(Recipe::Impact), false, 0.8f, 0, 0},
 };
 static_assert(sizeof(kRows) / sizeof(kRows[0]) == static_cast<u32>(BossCue::Count), "one row per BossCue, in its order");
 }  // namespace
@@ -109,6 +120,13 @@ void playFightCue(Band& band, FightVoices& voices, const sim::Event& e, double t
         for (i32 k = 0; k < 8; ++k)
             if (kSemis[k] == static_cast<i32>(std::lround(e.f))) degree = k;
         midi = audio::chordNote(degree, 3);
+    } else if (r.note == NoteRule::KeyRoot) {
+        // The Track's root: its first chord's bass, in the row's octave.
+        const audio::MusicData& md = band.music();
+        const u32 tr = band.track() < md.trackCount ? band.track() : 0u;
+        const audio::Track& T = md.tracks[tr];
+        const i32 root = T.chordCount ? static_cast<i32>(T.chords[T.progressionCount ? T.progression[0] : 0].bass % 12u) : 0;
+        midi = 12 * (r.octave + 1) + root + static_cast<i32>(std::lround(e.f));
     } else if (r.note == NoteRule::ArpCount) {
         midi = audio::chordNote(static_cast<i32>(e.b % 4u) * 2, 3);  // root, third, fifth, seventh up the scale, an octave down
     } else if (r.note == NoteRule::WallTone) {

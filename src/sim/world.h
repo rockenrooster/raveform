@@ -671,6 +671,17 @@ public:
     float horizonPullAt(Vec2 at, float max) const;
     bool horizonOn() const;
     bool horizonJetHits(Vec2 at, Vec2& from) const;
+    // Polyrhythm (world_polyrhythm.cpp): the link's direction (Three to Four), a rotor's place and the direction of one of
+    // its faces at a moment, a ring's radius, whether a point is on a wall, the link's burn (0 none, 1 its dashes, 2 burning).
+    float polyLinkAngle(double t) const;
+    Vec2 polyRotor(u32 k) const;
+    float polyFace(u32 k, double t) const;
+    float polySecondFace(double t) const;  // Solo: the survivor's second ring (the dead rotor's count, turning the other way)
+    float polyRingRadius(const PolyRing& r, double t) const;
+    bool polyRingAlive(const PolyRing& r, double t) const;
+    bool polyWallAt(const PolyRing& r, float angle) const;  // a wall (not a gap, not erased) in that direction
+    bool polyWallHit(Vec2 at, Vec2& from) const;
+    u8 polyLinkBurn(double t) const;
     u8 choirHeld(u32 k, double t, float* angle) const;
     float choirRingAngle(double t) const;
     // The Voices that sing on the eighth at song time t (this bar's caller and groups; the next bar's caller as it will move
@@ -691,8 +702,9 @@ public:
     // Benchmarks (M5, --fight <id>:<phase>:hold): every live part back to full health and the core to at least coreShare,
     // so the fight stays in its phase while it is measured.
     void bossRefill(float coreShare) {
+        const float part = boss_.kind == BossKind::Polyrhythm ? coreShare : 1.0f;  // (Polyrhythm's health is its rotors')
         for (u32 k = 0; k < kBossParts; ++k)
-            if (boss_.alive & (1u << k)) boss_.partHp[k] = boss_.partMax;
+            if (boss_.alive & (1u << k)) boss_.partHp[k] = boss_.partMax * part;
         if (boss_.coreHp < boss_.coreMax * coreShare) boss_.coreHp = boss_.coreMax * coreShare;
     }
     // Pictures (M5): an open Trio takes its first orb now (so it does not cover the moment).
@@ -725,6 +737,9 @@ public:
     // the host's verdict would.
     void bossHealthNow(float share) {
         boss_.coreHp = boss_.coreMax * share;
+        if (boss_.kind == BossKind::Polyrhythm)  // (no core: each rotor to that share of its own)
+            for (u32 k = 0; k < 2; ++k)
+                if (boss_.alive & (1u << k)) boss_.partHp[k] = boss_.partMax * share;
         if (isMiniBoss(boss_.kind) && role_ != NetRole::Client) miniHealthSteps();
     }
 
@@ -983,6 +998,14 @@ private:
     void wellShots(float dt);
     bool wellSwallow(u32 i, u32 k);
     void bossPayout();  // a boss's Shards and Cells (world_boss.cpp)
+    // world_polyrhythm.cpp (M5 part 4)
+    void enterPoly(Vec2 centre);
+    void updatePoly(float dt);
+    float polyScale(u8 part, u8 index) const;
+    void polyPartDied(u8 index, Event& ev);
+    void polyFire(u32 rotor, double t, bool second);
+    void polyErase(Vec2 at, float radius);
+    void polyEraseHit(Vec2 at);
     // world_horizon.cpp (M5 part 4)
     void enterHorizon(Vec2 centre);
     float horizonScale() const;

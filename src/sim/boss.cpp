@@ -27,6 +27,12 @@ const char kMinibossesJson[] =
 const char kHorizonJson[] =
 #include "horizon.json.inc"
     ;
+const char kPolyJson[] =
+#include "polyrhythm.json.inc"
+    ;
+[[maybe_unused]] const char kFeedbackJson[] =
+#include "feedback.json.inc"
+    ;
 
 double stepTicks(const char* s) {
     if (std::strcmp(s, "1/8") == 0) return 48.0;
@@ -455,6 +461,61 @@ bool HorizonData::load() {
     starPoints = static_cast<u32>(pts);
     num("parts.core.star.outer", starOuter);
     num("parts.core.star.inner", starInner);
+    return ok;
+}
+
+bool PolyData::load() {
+    // design/bosses/polyrhythm.json (M5 part 4); the prose's numbers are in boss_prose.h.
+    JsonDoc doc;
+    if (!doc.parse(kPolyJson, sizeof kPolyJson - 1, "design/bosses/polyrhythm.json")) return false;
+    bool ok = true;
+    const auto num = [&](const char* path, float& out) {
+        bool got = true;
+        const double v = doc.number(path, out, &got);
+        if (!got) {
+            RF_ERR("polyrhythm: '%s' is missing", path);
+            ok = false;
+        }
+        out = static_cast<float>(v);
+    };
+    const auto whole = [&](const char* path, u32& out) {
+        float v = static_cast<float>(out);
+        num(path, v);
+        out = static_cast<u32>(v);
+    };
+    num("numbers.health.three", health[0]);
+    num("numbers.health.four", health[1]);
+    num("numbers.rotorRadius", rotorRadius);
+    num("numbers.span", span);
+    const char* const rotor[2] = {"three", "four"};
+    char p[64];
+    for (u32 k = 0; k < 2; ++k) {
+        std::snprintf(p, sizeof p, "numbers.%s.sides", rotor[k]);
+        whole(p, sides[k]);
+        std::snprintf(p, sizeof p, "numbers.%s.pulses", rotor[k]);
+        whole(p, pulses[k]);
+        std::snprintf(p, sizeof p, "numbers.%s.arcDeg", rotor[k]);
+        num(p, arcDeg[k]);
+        std::snprintf(p, sizeof p, "numbers.%s.turnDeg", rotor[k]);
+        num(p, turnDeg[k]);
+    }
+    num("numbers.ringSpeed", ringSpeed);
+    num("numbers.wallLifeSeconds", wallLife);
+    num("numbers.wallThickness", wallThickness);
+    num("numbers.damageScale.face", dmgFace);
+    num("numbers.damageScale.corner", dmgCorner);
+    num("numbers.phases.2.damageScale", dmgSolo);
+    whole("numbers.phases.1.linkBeam.telegraphBars", burnTelegraphBars);
+    whole("numbers.phases.1.linkBeam.burnBeats", burnBeats);
+    num("numbers.camera.zoom", zoom);
+    num("parts.rotor.innerScale", innerScale);
+    num("parts.rotor.cornerNodeRadius", cornerNodeRadius);
+    num("parts.rotor.faceBar.lengthFraction", faceBarFraction);
+    num("parts.rotor.faceBar.inset", faceBarInset);
+    whole("parts.link.ticks", linkTicks);
+    num("parts.link.tickLength", tickLength);
+    num("parts.link.oneTickLength", oneTickLength);
+    num("parts.link.widthRefPx", linkWidthPx);
     return ok;
 }
 

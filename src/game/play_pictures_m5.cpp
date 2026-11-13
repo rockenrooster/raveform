@@ -27,6 +27,7 @@ enum class Moment : u8 {
     Lock, Rush, Stun,                                           // Battering Ram
     Bounce, Hot, Split,                                         // Carom King
     HzLanes, HzStarved, HzFed, HzWave, HzJetsShown, HzJets,     // Event Horizon (M5 part 4)
+    PrOne, PrRings, PrBurnShown, PrBurn, PrSolo,                // Polyrhythm
 };
 
 struct Pic {
@@ -84,6 +85,13 @@ const Pic kPics[] = {
     {"hz_jets", "horizon", 2, Moment::HzJets, false},
     {"hz_death", "horizon", 1, Moment::Death, false},
     {"hz_strip", "horizon", 1, Moment::HzFed, true},
+    {"pr_one", "polyrhythm", 0, Moment::PrOne, false},
+    {"pr_rings", "polyrhythm", 0, Moment::PrRings, false},
+    {"pr_hemiola", "polyrhythm", 1, Moment::PrBurnShown, false},
+    {"pr_burn", "polyrhythm", 1, Moment::PrBurn, false},
+    {"pr_solo", "polyrhythm", 2, Moment::PrSolo, false},
+    {"pr_death", "polyrhythm", 2, Moment::Death, false},
+    {"pr_strip", "polyrhythm", 0, Moment::PrOne, true},
 };
 constexpr u32 kPicCount = sizeof(kPics) / sizeof(kPics[0]);
 
@@ -145,6 +153,11 @@ void Play::applyFightPhase() {
         }
         case BossKind::CaromKing: w.bossHealthNow(1.0f - 0.25f * static_cast<float>(ph < 3 ? ph : 3) - 0.01f); break;
         case BossKind::EventHorizon: w.bossHealthNow(horizonShare(ph)); break;  // Tidal below 66%, Collapse below 33%
+        case BossKind::Polyrhythm:
+            // Hemiola: both at half; Solo: Four dead.
+            if (ph == 1) w.bossHealthNow(0.5f);
+            if (ph >= 2) w.killBossNextTick(0x2u, false);
+            break;
         default: w.bossHealthNow(0.49f); break;
     }
 }
@@ -156,6 +169,7 @@ void Play::holdFight() {
     float share = 1.0f;
     if (b.kind == BossKind::CaromKing) share = 1.0f - 0.25f * static_cast<float>(fightPhase_ < 3 ? fightPhase_ : 3) - 0.01f;
     else if (b.kind == BossKind::EventHorizon) share = horizonShare(fightPhase_);
+    else if (b.kind == BossKind::Polyrhythm) share = fightPhase_ == 1 ? 0.5f : 1.0f;
     else if (isMiniBoss(b.kind) && fightPhase_) share = 0.49f;
     w.bossRefill(share);
 }
@@ -310,6 +324,8 @@ bool Play::scriptSetupM5() {
     const Pic& pic = kPics[m5Pic_];
     world_->rules().godMode = true;
     if (!setupFight(pic.fight, pic.phase)) return true;
+    // Part 4: the Track 5 build kills a rotor in seconds; the fight holds its health until the moment (not for its death).
+    if (fightKind_ == BossKind::Polyrhythm && pic.moment != Moment::Death) opt_.fightHold = true;
     if (pic.strip) stripStride_ = 4;
     return true;
 }
@@ -519,7 +535,7 @@ bool Play::scriptInputM5(StickInput& in) {
     if (pic.moment == Moment::Death) {
         // The death: killed on a beat after a bar of the fight, captured as it plays out.
         if (b.active && !b.dying && inBeat < 2.0) w.killBossNextTick(0, true);
-        const double after = b.kind == BossKind::Choir ? 0.6 : (b.kind == BossKind::Longwave ? 0.45 : (b.kind == BossKind::EventHorizon ? 0.5 : 0.08));
+        const double after = b.kind == BossKind::Choir ? 0.6 : (b.kind == BossKind::Longwave ? 0.45 : (b.kind == BossKind::EventHorizon ? 0.5 : (b.kind == BossKind::Polyrhythm ? 0.4 : 0.08)));
         go = b.dying && music >= b.deathTick + after * kTicksPerBar;
     } else if (b.active && !b.dying) {
         switch (pic.moment) {
@@ -569,6 +585,12 @@ bool Play::scriptInputM5(StickInput& in) {
             case Moment::HzWave: go = music - b.hz.waveTick > 1.2 * kTicksPerBeat && music - b.hz.waveTick < 1.4 * kTicksPerBeat && seen(b.pos); break;  // (~340 wu out)
             case Moment::HzJetsShown: go = b.hz.phase == 2 && music > fightPhaseAt_ + kTicksPerBar && inBar > 2.5 * kTicksPerBeat && seen(b.pos); break;
             case Moment::HzJets: go = music >= b.hz.jetFrom + 20.0 && music < b.hz.jetUntil && seen(b.pos); break;
+            // Polyrhythm: the One (its rings' gaps on the link), the rings at work, the link's dashes, the burn, the Solo.
+            case Moment::PrOne: go = music > b.fightTick + 2.0 * kTicksPerBar && inBar > (pic.strip ? 0.0 : 0.22 * kTicksPerBar) && inBar < 0.3 * kTicksPerBar; break;
+            case Moment::PrRings: go = music > b.fightTick + 3.0 * kTicksPerBar && inBar > 0.7 * kTicksPerBar && inBar < 0.75 * kTicksPerBar; break;
+            case Moment::PrBurnShown: go = w.polyLinkBurn(music) == 1 && music > fightPhaseAt_ + 2.0 * kTicksPerBar && inBar > 0.6 * kTicksPerBar; break;
+            case Moment::PrBurn: go = w.polyLinkBurn(music) == 2 && w.polyLinkBurn(music - 20.0) == 2; break;
+            case Moment::PrSolo: go = b.pr.phase == 2 && music > fightPhaseAt_ + kTicksPerBar && inBar > 0.2 * kTicksPerBar && inBar < 0.3 * kTicksPerBar; break;
             default: break;
         }
     }

@@ -147,7 +147,13 @@ private:
     void drawPen(FrameDraw& d, const ViewInput& in);
     // M5 part 4 (play_view_m5b.cpp): Event Horizon, Polyrhythm, Feedback and mini-bosses batch 2.
     void drawHorizon(FrameDraw& d, const ViewInput& in);
-    void horizonFlash(Vec2 at, float t);
+    void drawPoly(FrameDraw& d, const ViewInput& in);
+    void fightBreak(Vec2 at, float t);  // a boss break played late (Event Horizon's flash, Polyrhythm's break on the One)
+    void polyWalls(FrameDraw& d, const ViewInput& in);
+    const Palette* polyHueFor_ = nullptr;
+    Vec3 polyHue_[2];              // Three (the palette's cyan, or its nearest), Four (its amber)
+    double polySpark_ = -1.0;      // the last twelfth the dying playhead fired its sparks on
+    double polyBurst_ = -1.0;      // the first dead rotor's burst (on the One after it died)
     double hzBeat_ = -1.0;      // the last beat the lattice was pulled into the Well
     float hzEatAt_ = -1e9f;     // the last body eaten (view time): its cell flashes white
     void eventFight(const sim::World& w, const sim::Event& e, float t);

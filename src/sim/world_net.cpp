@@ -724,7 +724,8 @@ void World::netBossState(const float* partHp, u32 parts, float coreHp, Vec2 pos)
         case BossKind::Kaleidos: b.pos = pos; break;
         case BossKind::Longwave: b.lw.anchor = pos; break;
         case BossKind::Choir: b.ch.centre = pos; break;
-        case BossKind::EventHorizon: b.pos = pos; break;
+        case BossKind::EventHorizon:
+        case BossKind::Polyrhythm: b.pos = pos; break;  // (the pivot; the Solo survivor)
         case BossKind::AlphaHound:
         case BossKind::BatteringRam: b.body[0] = pos; break;
         default: break;  // the Hive's Queen and the Carom King follow their song-time paths
@@ -738,6 +739,7 @@ u32 World::bossPartCount() const {
         case BossKind::Choir: return ChoirData::kVoices;
         case BossKind::CaromKing: return 3;
         case BossKind::EventHorizon: return 1;  // M5 part 4: the meal (not a health)
+        case BossKind::Polyrhythm: return 2;    // Three, Four
         default: return 0;
     }
 }
@@ -747,7 +749,8 @@ Vec2 World::bossSyncPoint() const {
         case BossKind::Longwave: return boss_.lw.anchor;
         case BossKind::Choir: return boss_.ch.centre;
         case BossKind::Kaleidos:
-        case BossKind::EventHorizon: return boss_.pos;
+        case BossKind::EventHorizon:
+        case BossKind::Polyrhythm: return boss_.pos;
         default: return boss_.body[0];
     }
 }

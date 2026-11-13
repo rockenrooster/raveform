@@ -155,6 +155,7 @@ float World::bossHealthScale(BossKind kind) const {
     if (kind == BossKind::Longwave) scale *= kLongwaveHealthTune;
     if (kind == BossKind::Choir) scale *= kChoirHealthTune;
     if (kind == BossKind::EventHorizon) scale *= kHorizonHealthTune;
+    if (kind == BossKind::Polyrhythm) scale *= kPolyHealthTune;
     return scale;
 }
 
@@ -185,6 +186,7 @@ void World::spawnBossNow(double enterTick, Vec2 pos, BossKind kind, Vec2 penAt) 
         case BossKind::Longwave: enterLongwave(pos); break;
         case BossKind::Choir: enterChoir(pos); break;
         case BossKind::EventHorizon: enterHorizon(pos); break;  // M5 part 4
+        case BossKind::Polyrhythm: enterPoly(pos); break;
         default: enterMini(pos, penAt); break;
     }
     if (isMiniBoss(kind)) director_.miniSpawned = true;
@@ -235,6 +237,25 @@ u32 World::bossParts(BossPart* out, u32 cap) const {
         case BossKind::EventHorizon:
             if (m1_ >= s.fightTick) add(s.pos, species_->horizon.horizonRadius, 3, 0);  // the disc
             break;
+        case BossKind::Polyrhythm: {
+            // Each rotor: its faces (the glass and the gold bar: the only place it can be hurt), its body and its corners
+            // (they shed shots).
+            const PolyData& d = species_->poly;
+            for (u32 k = 0; k < 2; ++k) {
+                if (!(s.alive & (1u << k))) continue;
+                const u32 sides = d.sides[k] ? d.sides[k] : 3u;
+                const float apothem = d.rotorRadius * std::cos(kPi / static_cast<float>(sides));
+                const float faceHalf = d.rotorRadius * std::sin(kPi / static_cast<float>(sides));
+                const float f0 = s.bodyAng[k];
+                for (u32 j = 0; j < sides; ++j) {
+                    const float fa = f0 + kTau * static_cast<float>(j) / static_cast<float>(sides);
+                    add(s.body[k] + dirOf(fa) * (apothem + 4.0f), faceHalf * d.faceBarFraction, 2, static_cast<u8>(k));
+                    add(s.body[k] + dirOf(fa + kPi / static_cast<float>(sides)) * d.rotorRadius, 2.5f * d.cornerNodeRadius, 1, static_cast<u8>(k));
+                }
+                add(s.body[k], apothem, 1, static_cast<u8>(k));
+            }
+            break;
+        }
         default: return miniParts(out, cap);
     }
     return n;
@@ -337,6 +358,7 @@ float World::bossDamageScale(u8 part, u8 index, double tick, Vec2 dir) const {
         case BossKind::Longwave: return longwaveScale(part, index, tick);
         case BossKind::Choir: return choirScale(part, index, tick);
         case BossKind::EventHorizon: return horizonScale();
+        case BossKind::Polyrhythm: return polyScale(part, index);
         default: return miniScale(part, index, tick, dir);
     }
 }
@@ -435,11 +457,14 @@ void World::bossNova(u32 p) {
     }
     BossPart parts[kBossBodies + 4];
     const u32 n = bossParts(parts, kBossBodies + 4);
+    u32 struck = 0;  // (a part with several circles, Polyrhythm's faces, takes the blast once)
     for (u32 k = 0; k < n && s.active && !s.dying; ++k) {
         const BossPart& q = parts[k];
         if (q.part == 1) continue;
         if (std::fabs(q.pos.x - pl.pos.x) > kNovaViewHalfW || std::fabs(q.pos.y - pl.pos.y) > kNovaViewHalfH) continue;
         if (q.part == 2 && !(s.alive & (1u << q.index))) continue;
+        if (q.part == 2 && q.index < 32 && (struck & (1u << q.index))) continue;
+        if (q.part == 2 && q.index < 32) struck |= 1u << q.index;
         const float scale = bossDamageScale(q.part, q.index, m1_, normalizeOr(q.pos - pl.pos, Vec2{1.0f, 0.0f}));
         if (scale <= 0.0f) continue;
         damageBossFinal(q.part, q.index, kBossNovaDamage * kBossNovaShareM5, static_cast<u8>(p), q.pos, Vec2{1.0f, 0.0f}, -1.0f);
@@ -495,11 +520,12 @@ void World::killBossPart(u8 index, u8 owner) {
         }
         case BossKind::Longwave: longwavePartDied(index, ev); break;
         case BossKind::Choir: choirPartDied(index, ev); break;
+        case BossKind::Polyrhythm: polyPartDied(index, ev); break;
         default: miniPartDied(index, owner, ev); break;
     }
     emit(ev);
-    // The Choir has no core: its last Voice is its death.
-    if (s.kind == BossKind::Choir && s.alive == 0 && role_ != NetRole::Client) killBoss(owner);
+    // The Choir has no core: its last Voice is its death (Polyrhythm: its second rotor).
+    if ((s.kind == BossKind::Choir || s.kind == BossKind::Polyrhythm) && s.alive == 0 && role_ != NetRole::Client) killBoss(owner);
 }
 
 void World::killBoss(u8 owner) {
@@ -531,8 +557,14 @@ void World::killBoss(u8 owner) {
         for (u32 i = 0; i < bullets_.count; ++i) bullets_.dead[i] = 1;
         s.deathBars = s.kind == BossKind::Choir ? 2.0 : (s.kind == BossKind::Longwave ? 1.75 : (s.kind == BossKind::EventHorizon ? 1.25 : 1.0));
         // Event Horizon implodes for a bar and a beat of black first; everything it ate comes back with the flash.
-        if (s.kind == BossKind::EventHorizon) s.hz.payoutTick = m1_ + kTicksPerBar + kTicksPerBeat;
-        else bossPayout();
+        if (s.kind == BossKind::EventHorizon) s.payoutTick = m1_ + kTicksPerBar + kTicksPerBeat;
+        else if (s.kind == BossKind::Polyrhythm) {
+            // The playhead runs a last bar of sparks; the boss break and the Shards on the One that ends the Track.
+            s.payoutTick = tickOfBar(endBar);
+            s.deathBars = (s.payoutTick - m1_) / kTicksPerBar + 0.25;
+        } else {
+            bossPayout();
+        }
         // The Track ends: its Track-change Break begins on that bar line.
         d.changeBar = endBar;
     }
@@ -558,7 +590,10 @@ void World::killBoss(u8 owner) {
 void World::bossPayout() {
     // A boss's Shards and Cells for this device's players.
     const BossState& s = boss_;
-    const u32 shards = s.kind == BossKind::Choir ? prose::kChoirShards : (s.kind == BossKind::EventHorizon ? prose::kHzShards : kBossShards);
+    u32 shards = kBossShards;
+    if (s.kind == BossKind::Choir) shards = prose::kChoirShards;
+    if (s.kind == BossKind::EventHorizon) shards = prose::kHzShards;
+    if (s.kind == BossKind::Polyrhythm) shards = prose::kPrShards;
     for (u32 p = 0; p < playerCount_; ++p) {
         if (!players_[p].present || !isLocal(p)) continue;
         for (u32 k = 0; k < shards; ++k)
@@ -612,6 +647,10 @@ void World::bossGeom(u8 geom, Vec2 a, Vec2 b, double tick, bool host) {
     MiniState& m = s.mini;
     switch (geom) {
         case kGeomHorizonBar: horizonBar(tick, a.x > 0.5f, static_cast<u32>(a.y)); break;  // M5 part 4
+        case kGeomPolyHemiola:
+            s.pr.phase = s.pr.phase < 1 ? 1 : s.pr.phase;
+            s.pr.hemiolaBar0 = static_cast<i64>(a.x);
+            break;
         case kGeomHive0:
         case kGeomHive1: {
             const u32 h = geom - kGeomHive0;
@@ -714,6 +753,16 @@ bool World::bossBeamsHit(Vec2 at, Vec2& from) const {
         case BossKind::BatteringRam:
             from = boss_.body[0];
             return ramWakeHit(at);
+        case BossKind::Polyrhythm: {
+            // The walls, and the link while it burns.
+            if (polyWallHit(at, from)) return true;
+            if (polyLinkBurn(m1_) != 2) return false;
+            const Vec2 a = boss_.body[0], d = boss_.body[1] - boss_.body[0];
+            const float l2 = lengthSq(d);
+            const float u = l2 > 1e-6f ? clampf(dot(at - a, d) / l2, 0.0f, 1.0f) : 0.0f;
+            from = a + d * u;
+            return lengthSq(at - from) <= (kPrLinkBurnHalfWu + kPlayerHitRadius) * (kPrLinkBurnHalfWu + kPlayerHitRadius);
+        }
         default: return false;
     }
 }
@@ -753,6 +802,7 @@ void World::bossContact() {
             }
             bool beam = false;
             if (!hit) hit = beam = bossBeamsHit(pl.pos, from);
+            if (hit && beam && s.kind == BossKind::Polyrhythm) polyEraseHit(pl.pos);  // (a wall is erased where it hit)
             if (hit) bossHitPlayer(p, from, beam);
         }
         return;
@@ -803,8 +853,8 @@ void World::updateBoss(float dt) {
         s.bodyPrevAng[k] = s.bodyAng[k];
     }
     if (s.dying) {
-        if (s.kind == BossKind::EventHorizon && s.hz.payoutTick >= 0.0 && m1_ >= s.hz.payoutTick) {
-            s.hz.payoutTick = -1.0;
+        if (s.payoutTick >= 0.0 && m1_ >= s.payoutTick) {
+            s.payoutTick = -1.0;
             bossPayout();
         }
         if (m1_ >= s.deathTick + s.deathBars * kTicksPerBar) s.active = false;
@@ -825,6 +875,7 @@ void World::updateBoss(float dt) {
             updateHorizon(dt);
             s.partHp[0] = static_cast<float>(s.hz.meal);  // (the heartbeat carries the meal: bossPartCount)
             return;
+        case BossKind::Polyrhythm: updatePoly(dt); return;
         case BossKind::Kaleidos: break;
         default: updateMini(dt); return;
     }

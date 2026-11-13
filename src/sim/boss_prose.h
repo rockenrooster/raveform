@@ -89,4 +89,14 @@ constexpr float kHzAxisTurnDeg = 45.0f;       // jets: "the axis turns 45 degree
 constexpr u32 kHzShardsPerBody = 5;           // "five uncollected Shards that fall in count as one body"
 constexpr float kHzLatticeImpulse = 400.0f;   // Look: "a standing impulse of 400 at the horizon"
 
+// ---- Polyrhythm (design/bosses/polyrhythm.md, polyrhythm.json's prose; M5 part 4)
+constexpr float kPrHemiolaShare = 0.6f;       // phases: "60% and below" of their joint health
+constexpr float kPrFourHemiolaSpeed = 300.0f; // Hemiola: "Four's walls fly at 300"
+constexpr float kPrPivotSpeed = 50.0f;        // "the pivot follows the players' centre at 50 wu/s"
+constexpr double kPrLinkTurnBars = 8.0;       // "the link turns once every 8 bars"
+constexpr float kPrSoloWalk = 70.0f;          // Solo: "walks toward the nearest player at 70 wu/s"
+constexpr u32 kPrShards = 240;                // Reward: "240 Shards per player"
+constexpr float kPrLatticeImpulse = 160.0f;   // Look: "an impulse of 160 under each rotor on each of its pulses"
+constexpr float kPrWallThinS = 0.5f;          // Look: walls "thinning to 2 px in their last half second"
+
 }  // namespace rf::sim::prose

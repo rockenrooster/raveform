@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <utility>
 
+#include "core/args.h"
 #include "game/play_view.h"
 #include "sim/boss_prose.h"
 #include "sim/tuning.h"
@@ -23,9 +24,9 @@ float clamp01(float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
 
 // ---------------------------------------------------------------------------------------------- Event Horizon
 
-void PlayView::horizonFlash(Vec2 at, float t) {
-    // The death's payoff (horizon.md Look): the clamped white flash on the downbeat, three rings, 400 sparks in the Track's
-    // hues, the 30 px distortion ring.
+void PlayView::fightBreak(Vec2 at, float t) {
+    // A boss break played late (horizon.md, polyrhythm.md Look): the clamped white flash on the downbeat, three rings, 400
+    // sparks in the Track's hues, the 30 px distortion ring.
     addPool(at, 60.0f, 420.0f, whiteV(), reduceFlashing_ ? 0.45f : 0.9f, 0.0f, 0.12f, false, 1, false, false, t);
     addShockRings(at, 3, 1100.0f, palette_->hue[0], palette_->hue[1], t, 0.6f);
     for (u32 k = 0; k < 2; ++k) {
@@ -66,7 +67,7 @@ void PlayView::drawHorizon(FrameDraw& d, const ViewInput& in) {
         spinExtra = 3.0f * u * u;
         if (deathShown_ == 0 && t >= s.deathTick + kTicksPerBar + kTicksPerBeat) {
             deathShown_ = 1;
-            horizonFlash(c, now);
+            fightBreak(c, now);
         }
         if (scale <= 0.0f) return;
     }
@@ -230,6 +231,237 @@ void PlayView::drawHorizon(FrameDraw& d, const ViewInput& in) {
                 d.threatCores.line(toScreen(p0), toScreen(p1), bw, mix(danger, W1, 0.3f), mix(danger, W1, 0.3f), 0);
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------- Polyrhythm
+
+namespace {
+// The OKLCH hue (degrees) of a linear sRGB colour.
+float hueOf(Vec3 c) {
+    const float l = std::cbrt(0.4122214708f * c.x + 0.5363325363f * c.y + 0.0514459929f * c.z);
+    const float m = std::cbrt(0.2119034982f * c.x + 0.6806995451f * c.y + 0.1073969566f * c.z);
+    const float s = std::cbrt(0.0883024619f * c.x + 0.2817188376f * c.y + 0.6299787005f * c.z);
+    const float a = 1.9779984951f * l - 2.4285922050f * m + 0.4505937099f * s;
+    const float b = 0.0259040371f * l + 0.7827717662f * m - 0.8086757660f * s;
+    const float h = std::atan2(b, a) * 360.0f / kTau;
+    return h < 0.0f ? h + 360.0f : h;
+}
+float hueDist(float a, float b) {
+    float d = std::fabs(a - b);
+    return d > 180.0f ? 360.0f - d : d;
+}
+}  // namespace
+
+void PlayView::polyWalls(FrameDraw& d, const ViewInput& in) {
+    // The walls: arcs in the danger colour on the priority layer, 3 px with the threat rim, thinning to 2 px in their last
+    // half second; the gaps (and what a hit or a Nova erased) plainly empty.
+    const World& w = *in.world;
+    const BossState& s = w.boss();
+    const PolyData& P = w.species().poly;
+    const Vec3 danger = palettes_->danger;
+    const double t = in.music;
+    const float tps = std::fmax(in.bpm, 60.0f) * static_cast<float>(kTicksPerBeat) / 60.0f;
+    for (const PolyRing& r : s.pr.rings) {
+        if (!w.polyRingAlive(r, t)) continue;
+        const float rad = w.polyRingRadius(r, t);
+        const float age = static_cast<float>((t - r.tick) / tps);
+        const float px = (P.wallLife - age < prose::kPrWallThinS ? 2.0f : 3.0f) * 0.5f * refPx_;
+        const u32 n = r.sides ? r.sides : 3u;
+        const float half = 0.5f * r.arcDeg * kTau / 360.0f;
+        const u32 segs = static_cast<u32>(std::ceil(r.arcDeg / 6.0f));
+        for (u32 j = 0; j < n; ++j) {
+            const float corner = r.face0 + kPi / static_cast<float>(n) + kTau * static_cast<float>(j) / static_cast<float>(n);
+            for (u32 q = 0; q < segs; ++q) {
+                const float a0 = corner - half + 2.0f * half * static_cast<float>(q) / segs, a1 = corner - half + 2.0f * half * static_cast<float>(q + 1) / segs;
+                if (!w.polyWallAt(r, 0.5f * (a0 + a1))) continue;  // erased there
+                const Vec2 p0 = r.at + dirv(a0) * rad, p1 = r.at + dirv(a1) * rad;
+                if (!visible(p0, 30.0f) && !visible(p1, 30.0f)) continue;
+                if (shown(kMuteBullet)) d.scene.line(toScene(p0), toScene(p1), px * 1.4f, danger * 0.9f, danger * 0.9f, 0);
+                if (!shown(kMutePriority)) continue;
+                d.threatRims.line(toScreen(p0), toScreen(p1), px + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
+                d.threatCores.line(toScreen(p0), toScreen(p1), px, danger, danger, 0);
+            }
+        }
+    }
+}
+
+void PlayView::drawPoly(FrameDraw& d, const ViewInput& in) {
+    const World& w = *in.world;
+    const BossState& s = w.boss();
+    const PolyData& P = w.species().poly;
+    const PolyState& pr = s.pr;
+    const double t = in.music;
+    const float now = static_cast<float>(in.time);
+    const Vec3 W1 = whiteV();
+    const Vec3 gold = palettes_->player[3];
+    const Vec3 danger = palettes_->danger;
+    if (polyHueFor_ != palette_) {
+        // Three: the palette's cyan (its colour nearest 200 degrees); Four: its amber (nearest 70).
+        polyHueFor_ = palette_;
+        const Vec3 cand[7] = {palette_->accent, palette_->hue[0], palette_->hue[1], palette_->hue[2], palette_->partner[0], palette_->partner[1], palette_->partner[2]};
+        float best[2] = {1e9f, 1e9f};
+        for (const Vec3& c : cand) {
+            const float h = hueOf(c);
+            if (hueDist(h, 200.0f) < best[0]) {
+                best[0] = hueDist(h, 200.0f);
+                polyHue_[0] = c;
+            }
+            if (hueDist(h, 70.0f) < best[1]) {
+                best[1] = hueDist(h, 70.0f);
+                polyHue_[1] = c;
+            }
+        }
+    }
+    const float a = in.alpha;
+    const float hw = 0.6f * refPx_;
+    const Vec2 rot[2] = {lerpv(s.bodyPrev[0], s.body[0], a), lerpv(s.bodyPrev[1], s.body[1], a)};
+    if (!s.dying && !visible(lerpv(s.prevPos, s.pos, a), 0.5f * P.span + 200.0f)) fightChevron(d, in, lerpv(s.prevPos, s.pos, a), polyHue_[0]);
+    polyWalls(d, in);
+    const double bar = kTicksPerBar;
+    const double inBar = t - std::floor(t / bar) * bar;
+    // The rotors: a polygon with a smaller one turning the other way inside, a node on each corner (it glints in the danger
+    // colour the twelfth before it fires), a pane of glass with a gold bar behind it on each face.
+    for (u32 k = 0; k < 2; ++k) {
+        const bool alive = (s.alive & (1u << k)) && !s.dying;
+        const double land = s.enterTick + (k == 0 ? 0.0 : 2.0 * kTicksPerBeat);  // Three on beat 1, Four on beat 3
+        float level = clamp01(static_cast<float>((t - land) / (0.5 * kTicksPerBeat)));
+        float spin = 0.0f;
+        if (!alive) {
+            // The first to die spins down over a bar and bursts on the One; the second goes with the boss's break.
+            const bool first = pr.firstDead == k;
+            const double burst = first ? (std::floor(pr.firstDeathTick / bar) + 1.0) * bar : (s.payoutTick >= 0.0 ? s.payoutTick : s.deathTick + bar);
+            if (first && t >= burst) {
+                if (polyBurst_ != burst) {
+                    polyBurst_ = burst;
+                    addShockRings(rot[k], 2, 600.0f, polyHue_[k], W1, now, 0.5f);
+                    SparkReq r{};
+                    r.at = rot[k];
+                    r.count = 160;
+                    r.kind = 1;
+                    r.a = polyHue_[k];
+                    r.b = W1;
+                    r.t0 = now;
+                    sparkRequest(r);
+                    push(kImpBoss, rot[k], 300.0f, 260.0f, now);
+                }
+                continue;
+            }
+            if (!first && !s.dying) continue;
+            const double since = first ? t - pr.firstDeathTick : t - s.deathTick;
+            const float u = clamp01(static_cast<float>(since / std::fmax(burst - (first ? pr.firstDeathTick : s.deathTick), 1.0)));
+            level *= 1.0f - 0.6f * u;
+            spin = 4.0f * u * u;
+        }
+        if (level <= 0.0f || !visible(rot[k], P.rotorRadius + 40.0f)) continue;
+        const Vec2 c = rot[k];
+        const u32 n = P.sides[k] ? P.sides[k] : 3u;
+        const float face = w.polyFace(k, t) + spin;
+        const float toOther = w.polyLinkAngle(t) + (k == 0 ? 0.0f : kPi);
+        const Vec3 hue = polyHue_[k];
+        const double pulse = bar / static_cast<double>(P.pulses[k] ? P.pulses[k] : 1u);
+        const bool glint = alive && t >= s.fightTick - bar / 12.0 && pulse - std::fmod(inBar, pulse) < bar / 12.0;
+        const auto corner = [&](float f0, float r, u32 j) {
+            return c + dirv(f0 + kPi / static_cast<float>(n) + kTau * static_cast<float>(j) / static_cast<float>(n)) * r;
+        };
+        const float inner = 2.0f * toOther - face;  // the inner copy turns the other way
+        for (u32 j = 0; j < n; ++j) {
+            const Vec2 p0 = corner(face, P.rotorRadius, j), p1 = corner(face, P.rotorRadius, j + 1);
+            d.scene.line(toScene(p0), toScene(p1), hw * 2.4f, hue * (2.4f * level), hue * (2.4f * level), 0);
+            d.scene.line(toScene(p0), toScene(p1), hw * 0.9f, W1 * (1.3f * level), W1 * (1.3f * level), 0);
+            const Vec2 q0 = corner(inner, P.rotorRadius * P.innerScale, j), q1 = corner(inner, P.rotorRadius * P.innerScale, j + 1);
+            d.scene.line(toScene(q0), toScene(q1), hw * 1.6f, hue * (1.8f * level), hue * (1.8f * level), 0);
+            // The corner's node.
+            d.sparkles.glow(toScene(p0), P.cornerNodeRadius * pxPerWu_ * 1.4f, glint ? danger * 2.6f : W1 * (1.4f * level));
+            // The face: a pane of glass, the gold bar behind it (inset), the weak point.
+            const Vec2 mid = (p0 + p1) * 0.5f;
+            const Vec2 inward = normalizeOr(c - mid, Vec2{1.0f, 0.0f});
+            const Vec2 along = (p1 - p0) * (0.5f * P.faceBarFraction);
+            const Vec2 bc = mid + inward * P.faceBarInset;
+            if (alive) {
+                const Vec3 gl = hue * (0.09f * level);
+                d.glass.tri(toScene(p0), gl, toScene(p1), gl, toScene(bc), gl);
+                d.scene.line(toScene(bc - along), toScene(bc + along), hw * 1.5f, gold * (2.2f * level), gold * (2.2f * level), 0);
+            }
+        }
+        d.pools.glow(toScene(c), P.rotorRadius * 2.2f * pxPerWu_, hue * (0.08f * level));
+    }
+    // The link: a white line from Three to Four ruled into twelve (Three's ticks its colour, Four's its colour, tick 0 gold);
+    // the playhead runs along it once a bar; the next tick to fire glows a beat ahead. It draws itself over the entrance's
+    // second bar, tick by tick.
+    if (s.alive == 3u || (s.dying && pr.firstDead == 0xFF)) {
+        const Vec2 A = rot[0], B = rot[1];
+        const Vec2 dv = normalizeOr(B - A, Vec2{1.0f, 0.0f}), nv = perpOf(dv);
+        const float drawn = clamp01(static_cast<float>((t - (s.enterTick + bar)) / bar));
+        const u32 ticksShown = static_cast<u32>(std::floor(drawn * static_cast<float>(P.linkTicks) + 0.999f));
+        const u8 burn = w.polyLinkBurn(t);
+        const Vec2 L1 = lerpv(A, B, drawn);
+        if (drawn > 0.0f) {
+            if (burn == 2) {
+                const float bw = tuning::kPrLinkBurnHalfWu * pxPerWu_;
+                d.scene.line(toScene(A), toScene(B), bw, danger * 3.0f, danger * 3.0f, 0);
+                d.scene.line(toScene(A), toScene(B), bw * 0.35f, W1 * 2.5f, W1 * 2.5f, 0);
+                d.threatRims.line(toScreen(A), toScreen(B), bw + 2.0f * refPx_, Vec3{}, Vec3{}, 0);
+                d.threatCores.line(toScreen(A), toScreen(B), bw, mix(danger, W1, 0.3f), mix(danger, W1, 0.3f), 0);
+            } else {
+                // On the One a white flare runs the link.
+                const float one = inBar < bar / 12.0 && t >= s.fightTick ? 1.0f - static_cast<float>(inBar / (bar / 12.0)) : 0.0f;
+                d.scene.line(toScene(A), toScene(L1), 0.5f * P.linkWidthPx * refPx_, W1 * (1.4f + 2.0f * one), W1 * (1.4f + 2.0f * one), 0);
+                if (burn == 1)
+                    for (float u = 0.0f; u < 1.0f; u += 0.1f) telegraphLine(d, lerpv(A, B, u), lerpv(A, B, u + 0.05f), 1.0f);
+            }
+        }
+        for (u32 j = 0; j < P.linkTicks && j < ticksShown; ++j) {
+            const Vec2 p = lerpv(A, B, static_cast<float>(j) / static_cast<float>(P.linkTicks));
+            const bool three = j % (P.linkTicks / (P.pulses[0] ? P.pulses[0] : 3u)) == 0, four = j % (P.linkTicks / (P.pulses[1] ? P.pulses[1] : 4u)) == 0;
+            if (!three && !four) {
+                d.scene.line(toScene(p - nv * (0.25f * P.tickLength)), toScene(p + nv * (0.25f * P.tickLength)), hw * 0.7f, W1 * 0.6f, W1 * 0.6f, 0);
+                continue;
+            }
+            Vec3 col = j == 0 ? gold : (three && four ? W1 : (three ? polyHue_[0] : polyHue_[1]));
+            const double at = static_cast<double>(j) * bar / static_cast<double>(P.linkTicks);
+            double ahead = at - inBar;
+            if (ahead < 0.0) ahead += bar;
+            const float glow = ahead < kTicksPerBeat ? 1.0f - static_cast<float>(ahead / kTicksPerBeat) : 0.0f;
+            const float len = 0.5f * (j == 0 ? P.oneTickLength : P.tickLength);
+            d.scene.line(toScene(p - nv * len), toScene(p + nv * len), hw * 1.2f, col * (1.6f + 1.6f * glow), col * (1.6f + 1.6f * glow), 0);
+            if (glow > 0.0f) d.sparkles.glow(toScene(p), 10.0f * refPx_, col * (1.4f * glow));
+        }
+        if (drawn >= 1.0f) {
+            // The playhead.
+            const Vec2 ph = lerpv(A, B, static_cast<float>(inBar / bar));
+            d.sparkles.glow(toScene(ph), 9.0f * refPx_, W1 * 2.0f);
+            d.scene.line(toScene(ph - nv * 14.0f), toScene(ph + nv * 14.0f), hw, W1 * 2.2f, W1 * 2.2f, 0);
+            // The One: two faint rails mark the aisle through both sets of rings, for a beat.
+            if (inBar < kTicksPerBeat && t >= s.fightTick && !s.dying) {
+                const float f = 1.0f - static_cast<float>(inBar / kTicksPerBeat);
+                const float reach = P.rotorRadius + P.ringSpeed * P.wallLife;
+                for (float sg : {1.0f, -1.0f}) {
+                    const Vec2 o = nv * (sg * 0.5f * P.rotorRadius);
+                    d.scene.line(toScene(A - dv * reach + o), toScene(B + dv * reach + o), hw * 0.6f, W1 * (0.35f * f), W1 * (0.35f * f), 0);
+                }
+            }
+            // The death: the playhead's last bar fires a ring of sparks on every tick, then the boss break on the One.
+            if (s.dying) {
+                const double tw = std::floor(t / (bar / 12.0));
+                if (tw != polySpark_) {
+                    polySpark_ = tw;
+                    SparkReq r{};
+                    r.at = ph;
+                    r.count = 24;
+                    r.kind = 1;
+                    r.a = polyHue_[static_cast<u32>(tw) % 2u];
+                    r.b = W1;
+                    r.t0 = now;
+                    sparkRequest(r);
+                }
+            }
+        }
+    }
+    if (s.dying && deathShown_ == 0 && s.payoutTick < 0.0 && t >= s.deathTick) {
+        // (the break: when the Shards come, on the One)
+        deathShown_ = 1;
+        fightBreak((rot[0] + rot[1]) * 0.5f, now);
     }
 }
 

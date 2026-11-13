@@ -37,7 +37,7 @@ inline BossKind bossOfSong(u32 song) {
     return k[song % 6u];
 }
 // The fights built so far (--fight takes these; a run's set list ends before the first Track without its fights).
-inline bool fightBuilt(BossKind k) { return k <= BossKind::CaromKing || k == BossKind::EventHorizon; }
+inline bool fightBuilt(BossKind k) { return k <= BossKind::CaromKing || k == BossKind::EventHorizon || k == BossKind::Polyrhythm; }
 // A fight's home Track (1-based): a boss's own; a mini-boss's the Track whose middle Drop draws it (minibosses.json
 // common.pick).
 inline u32 bossHomeTrack(BossKind k) {
@@ -67,6 +67,9 @@ enum class BossCue : u8 {
     // M5 part 4, Event Horizon: a body eaten (b = the meal so far), a fed bar line (b, f = the meal), a starved one, the
     // tidal wave.
     HzEat, HzFed, HzStarved, HzWave,
+    // Polyrhythm: Three's pulse (the tom) and Four's (the rim), f = semitones above their note (a quarter of health lost:
+    // one), b = the rotor; the One (the gong); the link's telegraph tick and its burn (the impact).
+    PrThree, PrFour, PrOne, PrLinkTick, PrLinkBurn,
     Count
 };
 
@@ -198,6 +201,23 @@ struct HorizonData {
     bool load();
 };
 
+// Polyrhythm (design/bosses/polyrhythm.json; M5 part 4): two rotors, Three (index 0) and Four (1), joined by the link.
+struct PolyData {
+    float health[2] = {1400, 1400};
+    float rotorRadius = 92, span = 720;
+    u32 sides[2] = {3, 4}, pulses[2] = {3, 4};
+    float arcDeg[2] = {80, 60}, turnDeg[2] = {40, 22.5f};
+    float ringSpeed = 260, wallLife = 2.6f, wallThickness = 10;
+    float dmgFace = 1, dmgCorner = 0, dmgSolo = 1.25f;
+    u32 burnTelegraphBars = 1, burnBeats = 2;
+    float zoom = 0.75f;
+    // The look (parts.*).
+    float innerScale = 0.5f, cornerNodeRadius = 9, faceBarFraction = 0.5f, faceBarInset = 14;
+    u32 linkTicks = 12;
+    float tickLength = 22, oneTickLength = 44, linkWidthPx = 2;
+    bool load();
+};
+
 struct ChoirData {
     static constexpr u32 kVoices = 8;
     static constexpr u32 kMaxPts = 16;
@@ -303,7 +323,27 @@ struct HorizonState {
     float axis = 0.0f;         // phase 3: the jets' axis
     double jetFrom = -1e9, jetUntil = -1e9;
     u32 laneSerial = 0;        // the lane the next body walks in
-    double payoutTick = -1.0;  // dying: its Shards come back with the flash, a bar and a beat after it implodes
+};
+
+// Polyrhythm's rings: each pulse's walls, a function of when and where it was fired; a hit or a Nova erases sectors.
+struct PolyRing {
+    double tick = -1.0;  // fired (musical tick); < 0: free
+    Vec2 at;             // the rotor's centre then
+    float face0 = 0.0f;  // a face's direction then (the gaps sit in front of the faces)
+    float speed = 260.0f;
+    float arcDeg = 80.0f;
+    u64 erased = 0;      // 64 sectors of the circle (from angle 0, counter-clockwise) erased
+    u8 sides = 3;        // its corners (3 or 4)
+    u8 rotor = 0;        // who fired it (0 Three, 1 Four; a Solo survivor's second ring: the dead one's)
+};
+struct PolyState {
+    static constexpr u32 kRings = 28;
+    PolyRing rings[kRings];
+    u8 phase = 0;               // 0 three against four, 1 Hemiola, 2 Solo
+    i64 hemiolaBar0 = 0;        // the bar Hemiola began (its turns reverse every bar; the link burns every second)
+    float linkAngle0 = 0.0f;    // the link's direction (Three to Four) at the fight's start
+    u8 firstDead = 0xFF;        // the rotor that died first, and when (its spin-down and burst on the One)
+    double firstDeathTick = -1.0;
 };
 
 struct ChoirState {
@@ -394,8 +434,10 @@ struct BossState {
     ChoirState ch;
     MiniState mini;
     HorizonState hz;  // M5 part 4
+    PolyState pr;     // M5 part 4
+    double payoutTick = -1.0;  // dying: its Shards and Cells come at this tick (Event Horizon's flash, Polyrhythm's break)
     float scale = 1.0f;        // health scale it entered with (players, Track, loop)
-    double geomTick[8] = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0};  // the moment of each BossGeom decision applied
+    double geomTick[12] = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0};  // each BossGeom decision's moment
 };
 
 // A count scaled by a lever (play test 1), rounded, never below `least` (an exact count at scale 1).
@@ -405,7 +447,13 @@ u32 bossScaledCount(u32 n, float scale, u32 least);
 // device's fight follows the host's.
 constexpr u8 kBossStepBase = 0x40;
 constexpr u8 kBossGeomBase = 0x50;
-enum BossGeom : u8 { kGeomHive0 = 0, kGeomHive1, kGeomSpear0, kGeomSpear1, kGeomAlphaLock, kGeomRamLock, kGeomLunge, kGeomHorizonBar, kGeomCount };
+enum BossGeom : u8 {
+    kGeomHive0 = 0, kGeomHive1, kGeomSpear0, kGeomSpear1, kGeomAlphaLock, kGeomRamLock, kGeomLunge,
+    kGeomHorizonBar,   // M5 part 4: Event Horizon's bar line (a: fed, meal)
+    kGeomPolyHemiola,  // M5 part 4: Polyrhythm's Hemiola begins (a.x: its first bar)
+    kGeomCount
+};
+static_assert(kGeomCount <= 12, "BossState::geomTick holds twelve");
 
 // A part of a boss as the hits see it (Longwave, the Choir and the mini-bosses; Kaleidos keeps its arms).
 struct BossPart {

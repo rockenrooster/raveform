@@ -372,6 +372,8 @@ void World::updateNovas() {
             ev.tick = pl.novaBlastTick;
             emit(ev);
             // GAME_DESIGN 5: heavy damage to bosses (in view). Co-op: the Nova's owner deals it (a client claims it).
+            // M5 part 4 (polyrhythm.md): a Nova erases every wall its front touches (on every device: it follows the Nova).
+            if (boss_.active && !boss_.dying && boss_.kind == BossKind::Polyrhythm) polyErase(pl.pos, kNovaFrontWu);
             bossNova(p);
         } else if (!pl.novaPending && pl.novaInvulS > 0.0f) {
             pl.novaInvulS -= kDt;

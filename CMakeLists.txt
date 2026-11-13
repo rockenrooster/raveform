@@ -199,6 +199,20 @@ add_custom_command(OUTPUT ${RF_GEN}/horizon.json.inc
   COMMENT "embed horizon.json"
   JOB_POOL rf_jobs
   VERBATIM)
+add_custom_command(OUTPUT ${RF_GEN}/polyrhythm.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/polyrhythm.json -DOUT=${RF_GEN}/polyrhythm.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/bosses/polyrhythm.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed polyrhythm.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
+add_custom_command(OUTPUT ${RF_GEN}/feedback.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/feedback.json -DOUT=${RF_GEN}/feedback.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/bosses/feedback.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed feedback.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
 add_custom_command(OUTPUT ${RF_GEN}/choir.json.inc
   COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/choir.json -DOUT=${RF_GEN}/choir.json.inc
           -P ${RF_ROOT}/cmake/EmbedText.cmake
@@ -232,6 +246,7 @@ add_library(raveform_sim STATIC
   src/sim/world_longwave.cpp
   src/sim/world_miniboss.cpp
   src/sim/world_net.cpp
+  src/sim/world_polyrhythm.cpp
   src/sim/world_spawner.cpp
   src/sim/world_upgrades.cpp
   src/sim/world_upgrades_m5.cpp
@@ -240,6 +255,8 @@ add_library(raveform_sim STATIC
   ${RF_GEN}/longwave.json.inc
   ${RF_GEN}/choir.json.inc
   ${RF_GEN}/horizon.json.inc
+  ${RF_GEN}/polyrhythm.json.inc
+  ${RF_GEN}/feedback.json.inc
   ${RF_GEN}/minibosses.json.inc)
 target_include_directories(raveform_sim PUBLIC ${RF_ROOT}/src ${RF_GEN})
 target_compile_options(raveform_sim PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti> -fno-math-errno)

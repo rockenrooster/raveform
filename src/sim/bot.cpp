@@ -382,6 +382,70 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                 }
                 break;
             }
+            case BossKind::Polyrhythm: {
+                // Ride a gap of the nearer rotor at a working distance (its face is open down the gap); step through the
+                // other's rings by their gaps, and dash a wall that cannot be dodged; off the link while it burns.
+                const PolyData& P = w.species().poly;
+                u32 k = 0;
+                float best = 1e30f;
+                for (u32 j = 0; j < 2; ++j) {
+                    if (!(boss.alive & (1u << j))) continue;
+                    const float d2 = lengthSq(boss.body[j] - pos);
+                    if (d2 < best) {
+                        best = d2;
+                        k = j;
+                    }
+                }
+                const double soon = musicTick + 0.3 * w.ticksPerSecond();
+                const u32 n = P.sides[k] ? P.sides[k] : 3u;
+                const float myA = angleOf(pos - boss.body[k]);
+                float gapA = w.polyFace(k, soon), gapD = 10.0f;
+                for (u32 j = 0; j < n; ++j) {
+                    const float fa = w.polyFace(k, soon) + kTau * static_cast<float>(j) / static_cast<float>(n);
+                    const float dd = std::fabs(wrapAngle(fa - myA));
+                    if (dd < gapD) {
+                        gapD = dd;
+                        gapA = fa;
+                    }
+                }
+                const Vec2 goal = boss.body[k] + dirOf(gapA) * 330.0f;
+                const Vec2 to = goal - pos;
+                const float l = length(to);
+                if (l > 20.0f) force = force + to * (std::fmin(l / 200.0f, 1.5f) / l);
+                // The walls coming: sideways toward the nearest gap of that ring; a dash when one is about to hit.
+                for (const PolyRing& r : boss.pr.rings) {
+                    if (!w.polyRingAlive(r, musicTick)) continue;
+                    const float rad = w.polyRingRadius(r, musicTick);
+                    const Vec2 rel = pos - r.at;
+                    const float dist = length(rel);
+                    const float ahead = (dist - rad) / std::fmax(r.speed, 1.0f);  // seconds until it reaches me
+                    if (ahead < -0.05f || ahead > 0.6f) continue;
+                    const float ang = angleOf(rel);
+                    if (!w.polyWallAt(r, ang)) continue;
+                    const u32 rn = r.sides ? r.sides : 3u;
+                    float gd = 10.0f, ga = ang;
+                    for (u32 j = 0; j < rn; ++j) {
+                        const float fa = r.face0 + kTau * static_cast<float>(j) / static_cast<float>(rn);
+                        const float dd = wrapAngle(fa - ang);
+                        if (std::fabs(dd) < std::fabs(gd)) {
+                            gd = dd;
+                            ga = fa;
+                        }
+                    }
+                    (void)ga;
+                    const Vec2 tang = perpOf(normalizeOr(rel, Vec2{1.0f, 0.0f})) * (gd >= 0.0f ? 1.0f : -1.0f);
+                    force = force + tang * (3.0f * (0.6f - std::fmax(ahead, 0.0f)) / 0.6f);
+                    if (ahead < 0.12f) {
+                        contactSoon = true;
+                        escape = escape + normalizeOr(rel, Vec2{1.0f, 0.0f}) * -1.0f;  // through it (the Dash's i-frames)
+                    }
+                }
+                if (boss.alive == 3u && w.polyLinkBurn(musicTick + kTicksPerBeat) != 0) {
+                    const Vec2 dv = normalizeOr(boss.body[1] - boss.body[0], Vec2{1.0f, 0.0f});
+                    offLine(boss.body[0] - dv * 60.0f, dv, 110.0f);
+                }
+                break;
+            }
             case BossKind::AlphaHound:
                 if (m.state == 1 || m.state == 2) offLine(boss.body[0], m.lockDir, 140.0f);
                 break;
