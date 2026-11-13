@@ -198,6 +198,7 @@ struct Engine::SampleVoice {
     double pos = 0.0;
     float rate = 1.0f;
     float gl = 0.0f, gr = 0.0f;
+    float drive = 0.0f;  // M5 (the driven kick): > 0: tanh(drive x) / tanh(drive), a mono voice at its own rate
 };
 
 struct Engine::Pending {
@@ -689,8 +690,12 @@ void Engine::emit(BeatKind k, i64 frame, double tick, u8 a, u8 b, u8 c, float va
     events_.push(e);
 }
 
-void Engine::playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate, double from) {
-    if (id < 0) return;
+void Engine::driveSample(SampleVoice* v, float drive) {
+    if (v && drive > 0.0f) v->drive = drive;
+}
+
+Engine::SampleVoice* Engine::playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate, double from) {
+    if (id < 0) return nullptr;
     const Sample& s = bank_->sample(id);
     SampleVoice* v = allocVoice(smp_, kSampleVoices, order_[PoolSample]);
     v->active = true;
@@ -702,12 +707,14 @@ void Engine::playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float
     v->age = 0;
     v->pos = from;  // M5: a start inside the sample (the reversed cymbal ends on its tick)
     v->rate = rate;
+    v->drive = 0.0f;
     if (s.channels == 2) {
         v->gl = v->gr = gain;
     } else {
         panGains(pan, gain, v->gl, v->gr);
     }
     placeVoice(smp_, order_[PoolSample], v, frame);
+    return v;
 }
 
 void Engine::playKick(float gain, float velocity, i64 frame, double tick) {
@@ -2491,6 +2498,14 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
                 for (u32 i = 0; i < cnt; ++i) {
                     L[i0 + i] += d[2 * i] * v.gl;
                     R[i0 + i] += d[2 * i + 1] * v.gr;
+                }
+            } else if (v.drive > 0.0f) {  // M5: the driven kick
+                const float* d = v.data + pos;
+                const float k = v.drive, norm = 1.0f / fastTanh(k);
+                for (u32 i = 0; i < cnt; ++i) {
+                    const float s = fastTanh(k * d[i]) * norm;
+                    L[i0 + i] += s * v.gl;
+                    R[i0 + i] += s * v.gr;
                 }
             } else {
                 const float* d = v.data + pos;

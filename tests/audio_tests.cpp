@@ -1770,6 +1770,101 @@ void testFusions() {
     }
 }
 
+// The content engineer's eight (cues.h, appended): notes named against the chord at the tick they play (scale steps,
+// semitones, chord tones, from the chord's own notes: Aurora's B major has D#), a held pad note gliding an octave, the
+// impact pitched, the driven kick louder than the kick.
+void testChordNotesAndNewRecipes() {
+    {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 3, 0));  // Aurora: Em, Am, C, B
+        e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 0.0f));
+        const auto at = [&](Recipe r, i32 midi, double tick) {
+            Command k = cmd(CmdType::Recipe, static_cast<u8>(r), 0, 255, 1.0f);
+            encodeNote(k, midi);
+            k.when = Timing::AtTick;
+            k.tick = tick;
+            e.post(k);
+        };
+        Capture warm;
+        runEngine(e, warm, 512, 256);  // bar 0 planned
+        freeCapture(warm);
+        // Posted during bar 0 for bar 3 (B major: B, D#, F#, no seventh: the scale's A) and bar 0 (E minor).
+        for (i32 k = 0; k < 4; ++k) at(Recipe::RimShot, chordNote(k, 5, NoteFrom::ChordTone), 3.0 * 384.0 + 96.0 * k);
+        at(Recipe::RimShot, chordNote(2, 4), 96.0);                      // two scale steps over E4: G4
+        at(Recipe::RimShot, chordNote(-1, 4), 120.0);                    // one down: D4
+        at(Recipe::RimShot, chordNote(7, 3, NoteFrom::Semitones), 144.0);  // a fifth over E3: B3
+        Capture c;
+        runEngine(e, c, static_cast<u64>(barFrames(3) * 4.5), 256);
+        i32 got[7] = {-1, -1, -1, -1, -1, -1, -1};
+        u32 n = 0;
+        for (u32 i = 0; i < c.eventCount && n < 7; ++i)
+            if (c.events[i].kind == BeatKind::Sfx && c.events[i].a == 64 + static_cast<u8>(Recipe::RimShot)) got[n++] = static_cast<i32>(std::lround(c.events[i].x));
+        const i32 want[7] = {83, 87, 90, 93, 67, 62, 59};
+        u32 wrong = 0;
+        for (u32 i = 0; i < 7; ++i) wrong += got[i] != want[i];
+        CHECK_MSG(n == 7 && wrong == 0, "chord notes: %d %d %d %d %d %d %d", got[0], got[1], got[2], got[3], got[4], got[5], got[6]);
+        freeCapture(c);
+    }
+    // A pad voice from A4, gliding up an octave over half a second (Script: dry, alone).
+    {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), 0, 0));
+        Command s = cmd(CmdType::VoiceStart, 2, static_cast<u8>(Recipe::PadVoice), 69, 1.0f);
+        s.z = 0.02f;
+        e.post(s);
+        Capture a, b;
+        runEngine(e, a, kRate, 256);
+        Command g = cmd(CmdType::VoiceSet, 2, 0, 0, 0.0f);
+        g.y = -1.0f;
+        encodeNote(g, 81);
+        g.z = 0.5f;
+        e.post(g);
+        runEngine(e, b, kRate, 256);
+        const auto at = [](const Capture& x, u64 from, double hz) {  // Goertzel power over 0.25 s
+            const double w = 2.0 * kPiD * hz / kRate, k = 2.0 * std::cos(w);
+            double s1 = 0.0, s2 = 0.0;
+            for (u64 i = from; i < from + kRate / 4; ++i) {
+                const double s0 = x.out[2 * i] + k * s1 - s2;
+                s2 = s1;
+                s1 = s0;
+            }
+            return s1 * s1 + s2 * s2 - k * s1 * s2;
+        };
+        const double before = at(a, kRate / 2, 440.0) / (at(a, kRate / 2, 880.0) + 1e-12), after = at(b, kRate * 3 / 4 - kRate / 4, 880.0) / (at(b, kRate / 2, 440.0) + 1e-12);
+        CHECK_MSG(before > 10.0 && after > 10.0, "pad glide: 440/880 before %.1f, 880/440 after %.1f", before, after);
+        freeCapture(a);
+        freeCapture(b);
+    }
+    // The impact a fifth up rings 2^(-7/12) as long; the driven kick is louder than the kick.
+    const auto ring = [](Recipe r, float p1, double& rms) {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), 0, 0));
+        Command k = cmd(CmdType::Recipe, static_cast<u8>(r), 0, 255, 1.0f);
+        k.z = p1;
+        e.post(k);
+        Capture c;
+        runEngine(e, c, kRate * 3, 256);
+        u64 last = 0;
+        double s = 0.0;
+        for (u64 i = 0; i < c.frames; ++i) {
+            if (std::fabs(c.out[2 * i]) > 1e-4f) last = i;
+            s += static_cast<double>(c.out[2 * i]) * c.out[2 * i];
+        }
+        rms = s;
+        freeCapture(c);
+        return static_cast<double>(last);
+    };
+    double r0 = 0.0, r7 = 0.0, k1 = 0.0, k3 = 0.0;
+    const double plain = ring(Recipe::Impact, 0.0f, r0), fifth = ring(Recipe::Impact, 7.0f, r7);
+    CHECK_MSG(std::fabs(fifth / plain - std::exp2(-7.0 / 12.0)) < 0.05, "the impact a fifth up rings %.3f as long", fifth / plain);
+    ring(Recipe::DrivenKick, 0.01f, k1);
+    ring(Recipe::DrivenKick, 3.0f, k3);
+    CHECK_MSG(k3 > 1.3 * k1, "the driven kick: %.3f x the energy of the kick", k3 / k1);
+}
+
 // Everything owned at once (the four players of --band max, no cues): the same render in random bursts as in fixed ones,
 // no allocation; with the game's events every 1/60 s: no voice stolen, no allocation, on every Track's tempo extreme.
 void testUpgradesWorstCase() {
@@ -1923,6 +2018,7 @@ int main() {
         {"the Boosts' layers (M5)", testBoostsPatterned},
         {"the Fusions replace their ingredients (M5)", testFusions},
         {"the upgrades' worst case: bursts, allocations, steals (M5)", testUpgradesWorstCase},
+        {"notes against the chord, the pad's glide, the eight new recipes (M5)", testChordNotesAndNewRecipes},
     };
     for (const Test& t : tests) {
         g_test = t.name;

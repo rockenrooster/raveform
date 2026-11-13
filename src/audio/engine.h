@@ -130,7 +130,10 @@ enum class CmdType : u8 {
     Cue,           // a = Cue, b = player, c = count (<= 255), x = value, y = pan; timing Next32 or AtTick
     Recipe,        // a = Recipe, c = MIDI (255: the default), x = gain, y = pan, z = p1, level = p2; timing Now / Next32 / AtTick
     VoiceStart,    // a = voice slot, b = Recipe, c = MIDI (255: the default), x = gain, y = pan, z = param
-    VoiceSet,      // a = voice slot, x = param, y = gain (< 0: unchanged)
+    VoiceSet,      // a = voice slot, x = param, y = gain (< 0: unchanged); M5: c = a note to glide to (0 or 255: none),
+                   // z = the glide in seconds
+                   // (M5: c = 254 in Recipe, VoiceStart and VoiceSet: a chordNote(), its from / octave / amount + 128 in
+                   // mods[0..2]: encodeNote)
     VoiceStop,     // a = voice slot, x = release in seconds
     LowPassBed,    // x = cutoff in Hz, y = seconds (then the bus opens again over 150 ms)
 };
@@ -143,6 +146,19 @@ struct Command {
     float x = 0.0f, y = 0.0f, level = 1.0f, z = 0.0f;
     double tick = 0.0;
 };
+
+// M5: a recipe command's note (Recipe, VoiceStart, VoiceSet): c = the MIDI note, 255 none (the recipe's default), 254 a
+// chordNote() with its parts in mods[0..2].
+inline void encodeNote(Command& c, i32 midi) {
+    if (midi >= kChordNote) {
+        c.c = 254;
+        c.mods[0] = static_cast<u8>((midi >> 12) & 15);
+        c.mods[1] = static_cast<u8>((midi >> 8) & 15);
+        c.mods[2] = static_cast<u8>(midi & 255);
+    } else {
+        c.c = static_cast<u8>(midi >= 0 && midi < 254 ? midi : 255);
+    }
+}
 
 // Live numbers for overlays and benchmarks (written by the audio thread, read anywhere).
 struct EngineStats {
@@ -320,7 +336,10 @@ private:
     i64 frameOf(double tick) const { return tempo_.gridFrame(tick); }
     void emit(BeatKind k, i64 frame, double tick, u8 a = 0, u8 b = 0, u8 c = 0, float value = 0.0f, u32 index = 0,
               double x = 0.0);
-    void playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate = 1.0f, double from = 0.0);
+    SampleVoice* playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate = 1.0f, double from = 0.0);
+    void driveSample(SampleVoice* v, float drive);  // M5 (the driven kick): the voice through tanh(drive x), its peak kept
+    i32 resolveNote(const Command& c, double tick) const;  // M5: a command's note (encodeNote) at a tick (< 0: now); -1: none
+    const Chord& chordAtTick(double tick) const;           // M5: the chord that plays on a tick (this bar's or a later one's)
     // cullAt (M5, >= 0): a note that starts later (Fractal's, Fork's) makes room under its player's cap at this frame (now),
     // so the notes it cuts short do not sound on until it starts.
     LeadVoice* playLead(u8 player, Timbre timbre, float midi, float vel, float gain, float pan, i64 frame, float lengthScale = 1.0f,

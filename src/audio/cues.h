@@ -100,9 +100,31 @@ enum class Recipe : u8 {
     Crackle,    // voice: 5 ms bursts of 2-6 kHz noise; setVoice param = bursts a second
     Whoosh,     // noise through a band-pass sweeping 400 Hz -> 3 kHz over p1 beats (default 1); p2 = 1: and back
     Roll,       // the Build's snare roll over p1 beats (default 4), ending on the tick given (without one: p1 beats on)
+    // Appended 2026-11-13 (the content engineer's eight: longwave.md, choir.md, minibosses.md).
+    RubberString,  // the bass patch with twice its decay, a note held p1 sixteenths (default 1); `midi` default: the chord's
+                   // bass an octave up (longwave.md's run: chordNote(degree, 3) up the scale)
+    Impact,        // the Drop's impact (crash and sine) as a one-shot, p1 semitones up (the whip: 7); a `midi` instead puts
+                   // its sine's settling pitch (38 Hz) on that note
+    Hat,           // the Track's closed hat, on the tick given (the game's own grid); p1 = 1: its open hat
+    TomRoll,       // a tom roll over p1 beats (default 2) ending on the tick given: quarters, eighths, sixteenths, then
+                   // thirty-seconds, rising from 0.35 to 1 and from `midi` (default the chord's root, octave 3) up p2
+                   // semitones (default 12)
+    DrivenKick,    // the Track's kick through more drive: tanh(p1 x kick) (p1 default 3), its peak kept
+    RimShot,       // a rim shot at a note (Carom King's walls: chordNote(0..3, 5, NoteFrom::ChordTone))
     Count
 };
 constexpr u32 kRecipeCount = static_cast<u32>(Recipe::Count);
 constexpr u32 kRecipeVoices = 16;  // held voices the game addresses by slot (0..15): startVoice / setVoice / stopVoice
+
+// Appended 2026-11-13: a note named against the chord, resolved by the band at the tick it plays (the game does not know
+// the chord). Pass what chordNote() returns wherever a recipe takes `midi` (playRecipe, startVoice, setVoice): `amount`
+// scale steps of the Track's scale, or semitones, or chord tones (0 root, 1 third, 2 fifth, 3 seventh, 4 octave, 5 the
+// third an octave up ...; found in the chord's own notes, else the scale's) above the chord's root in `octave` (MIDI
+// octaves: 4 holds 60..71). Scale steps and semitones may be negative (down).
+enum class NoteFrom : u8 { ScaleSteps, Semitones, ChordTone };
+constexpr i32 kChordNote = 0x10000;  // a `midi` at or above this is a chordNote()
+constexpr i32 chordNote(i32 amount, i32 octave = 4, NoteFrom from = NoteFrom::ScaleSteps) {
+    return kChordNote | (static_cast<i32>(from) << 12) | ((octave & 15) << 8) | ((amount + 128) & 255);
+}
 
 }  // namespace rf::audio

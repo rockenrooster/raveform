@@ -706,18 +706,24 @@ void Band::cue(Cue c, u32 count, float value, float pan, double tick, u8 slot) {
 }
 
 void Band::playRecipe(Recipe r, i32 midi, float gain, float pan, double tick, float p1, float p2) {
-    Command k{.type = CmdType::Recipe, .when = tick >= 0.0 ? Timing::AtTick : Timing::Next32, .a = static_cast<u8>(r),
-              .c = static_cast<u8>(midi >= 0 && midi < 255 ? midi : 255), .x = gain, .y = pan, .level = p2, .z = p1};
+    Command k{.type = CmdType::Recipe, .when = tick >= 0.0 ? Timing::AtTick : Timing::Next32, .a = static_cast<u8>(r), .x = gain, .y = pan,
+              .level = p2, .z = p1};
+    encodeNote(k, midi);
     k.tick = tick;
     post(k);
 }
 
 void Band::startVoice(u8 voice, Recipe r, i32 midi, float gain, float pan, float param) {
-    post({.type = CmdType::VoiceStart, .a = voice, .b = static_cast<u8>(r), .c = static_cast<u8>(midi >= 0 && midi < 255 ? midi : 255),
-          .x = gain, .y = pan, .z = param});
+    Command k{.type = CmdType::VoiceStart, .a = voice, .b = static_cast<u8>(r), .x = gain, .y = pan, .z = param};
+    encodeNote(k, midi);
+    post(k);
 }
 
-void Band::setVoice(u8 voice, float param, float gain) { post({.type = CmdType::VoiceSet, .a = voice, .x = param, .y = gain}); }
+void Band::setVoice(u8 voice, float param, float gain, i32 midi, float glideSeconds) {
+    Command k{.type = CmdType::VoiceSet, .a = voice, .x = param, .y = gain, .z = glideSeconds};
+    encodeNote(k, midi);
+    post(k);
+}
 
 void Band::stopVoice(u8 voice, float releaseSeconds) { post({.type = CmdType::VoiceStop, .a = voice, .x = releaseSeconds}); }
 

@@ -820,6 +820,29 @@ float* recWhoosh(int mode, double sr, u32& n) {
     return x;
 }
 
+// M5 (appended): rim shot: a short wooden click at a note: a sine at the note (25 ms) and one at 2.45 x it (12 ms) over a
+// 1.5 ms click of 2.5-6 kHz noise, through a light tanh (Carom King's walls).
+float* recRimShot(double hz, double sr, u32& n) {
+    n = framesFor(0.12, sr);
+    float* x = alloc(n);
+    float* click = alloc(n);
+    if (!x || !click || !noise(click, n, 52, SpectralShape::bandpass(2500.0, 6000.0), sr)) {
+        std::free(x);
+        std::free(click);
+        return nullptr;
+    }
+    for (u32 i = 0; i < n; ++i) {
+        const double t = i / sr;
+        const double v = std::sin(kTau * hz * t) * std::exp(-t / 0.025) + 0.5 * std::sin(kTau * hz * 2.45 * t) * std::exp(-t / 0.012) +
+                         0.6 * click[i] * std::exp(-t / 0.0015);
+        x[i] = static_cast<float>(std::tanh(1.6 * v));
+    }
+    std::free(click);
+    normPeak(x, n);
+    fadeOut(x, n, 0.004, sr);
+    return x;
+}
+
 }  // namespace
 
 i32 SampleBank::recipe(Recipe r, i32 midi, u16 tag) const {
@@ -1135,6 +1158,7 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) 
     recipeOnce(Recipe::Whoosh, recWhoosh(0, sr, n), 1, -1, 0);
     recipeOnce(Recipe::Whoosh, recWhoosh(1, sr, n), 1, -1, 1);
     recipeOnce(Recipe::Whoosh, recWhoosh(2, sr, n), 1, -1, 2);  // M5: the Comet's return alone
+    recipeGrid(Recipe::RimShot, 48, 96, [&](double hz) { return recRimShot(hz, sr, n); });  // M5, appended
     // Nova inhale: from the press to the next beat, 1..8 thirty-seconds of each Track's tempo.
     sfxFirst_[static_cast<u32>(Sfx::NovaInhale)] = static_cast<i32>(count_);
     for (u32 t = 0; t < music.trackCount; ++t) {
@@ -1188,7 +1212,8 @@ bool SampleBank::complete() const {
 
 namespace {
 constexpr u32 kCacheMagic = 0x42534652u;  // "RFSB"
-constexpr u32 kCacheVersion = 6;  // M5: tables sized for ten Tracks; the major-third effects; the recipes; (6) the upgrades' one-shots
+constexpr u32 kCacheVersion = 7;  // M5: tables sized for ten Tracks; the major-third effects; the recipes; (6) the upgrades'
+                                  // one-shots; (7) the rim shot
 template <typename T>
 bool put(FILE* f, const T& v) { return std::fwrite(&v, sizeof v, 1, f) == 1; }
 template <typename T>
