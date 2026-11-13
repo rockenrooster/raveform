@@ -702,9 +702,10 @@ bool World::bossBeamsHit(Vec2 at, Vec2& from) const {
     }
 }
 
-void World::bossHitPlayer(u32 p, Vec2 from) {
+void World::bossHitPlayer(u32 p, Vec2 from, bool beam) {
     if (haloBlocks(p, from)) return;
     ++boss_.hitsTaken;
+    ++(beam ? boss_.hitsBeam : boss_.hitsBody);
     hitPlayer(p, from);
 }
 
@@ -723,14 +724,20 @@ void World::bossContact() {
             Vec2 from = s.pos;
             for (u32 k = 0; k < n && !hit; ++k) {
                 if (parts[k].part == 1 && s.kind == BossKind::Hive) continue;  // the decoy is light
+                if (s.kind == BossKind::Choir) {
+                    // choir.json numbers.contact.hoodHurts: a silent hood is flown through unharmed (the lead, 94706dc).
+                    const ChoirData::HoodHurts h = species_->choir.hoodHurts;
+                    if (h == ChoirData::HoodHurts::Never || (h == ChoirData::HoodHurts::Singing && !choirSinging(parts[k].index, m1_))) continue;
+                }
                 const float r = parts[k].radius * kContactShrink + kPlayerHitRadius;
                 if (lengthSq(pl.pos - parts[k].pos) <= r * r) {
                     hit = true;
                     from = parts[k].pos;
                 }
             }
-            if (!hit) hit = bossBeamsHit(pl.pos, from);
-            if (hit) bossHitPlayer(p, from);
+            bool beam = false;
+            if (!hit) hit = beam = bossBeamsHit(pl.pos, from);
+            if (hit) bossHitPlayer(p, from, beam);
         }
         return;
     }

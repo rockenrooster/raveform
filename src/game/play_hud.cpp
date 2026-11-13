@@ -604,32 +604,59 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
     const BossState& boss = w.boss();
     if (boss.active && !boss.dying) {
         const Vec3 amber = palettes.playerDeep[3];
+        const bool mini = isMiniBoss(boss.kind);
+        const char* name = bossName(boss.kind);
         const float bars = static_cast<float>((st.music - boss.enterTick) / kTicksPerBar);
-        if (bars < 2.0f) {
-            const float fade = clampf(bars * 4.0f, 0.0f, 1.0f) * clampf((2.0f - bars) * 2.0f, 0.0f, 1.0f);
-            const float cap = 72.0f * s;
-            const char* name = "KALEIDOS";
-            font.drawField(d.hud, {cx - 0.5f * textW(font, cap, name), 0.30f * H}, cap, 3.0f * s, col(white, 2.0f * fade), col(gold, 2.0f * fade),
-                           col(amber, 2.0f * fade), name);
+        // The name card: a boss's for two bars; a mini-boss's, small, for one (minibosses.md).
+        const float cardBars = mini ? 1.0f : 2.0f;
+        if (bars < cardBars) {
+            const float fade = clampf(bars * 4.0f, 0.0f, 1.0f) * clampf((cardBars - bars) * (mini ? 4.0f : 2.0f), 0.0f, 1.0f);
+            const float cap = (mini ? 40.0f : 72.0f) * s;
+            font.drawField(d.hud, {cx - 0.5f * textW(font, cap, name), 0.30f * H}, cap, (mini ? 1.8f : 3.0f) * s, col(white, 2.0f * fade),
+                           col(gold, 2.0f * fade), col(amber, 2.0f * fade), name);
             char sub[48];
-            std::snprintf(sub, sizeof sub, "BOSS OF %s", st.trackName);
-            const float c2 = 14.0f * s;
+            if (mini) std::snprintf(sub, sizeof sub, "MINI-BOSS");
+            else std::snprintf(sub, sizeof sub, "BOSS OF %s", st.trackName);
+            const float c2 = (mini ? 12.0f : 14.0f) * s;
             // (Under the name: the origin is the top of the caps; the stage B card drew it across the name.)
             font.drawField(d.hud, {cx - 0.5f * textW(font, c2, sub), 0.30f * H + cap + 18.0f * s}, c2, 0.6f * s, col(gold, 1.2f * fade),
                            col(gold, 1.2f * fade), col(gold, 1.2f * fade), sub);
         }
+        // The health bar under the phrase bar with its name; a mini-boss's half the height (minibosses.md).
         const float y = top + 96.0f * s, bw = 300.0f * s, x0 = cx - 0.5f * bw;
         const float cap = 11.0f * s;
-        font.drawField(d.hud, {x0 - textW(font, cap, "KALEIDOS") - 16.0f * s, y + 0.5f * cap}, cap, 0.55f * s, col(gold, 1.4f), col(gold, 1.4f),
-                       col(gold, 1.4f), "KALEIDOS");
-        const float f = boss.coreMax > 0.0f ? clampf(boss.coreHp / boss.coreMax, 0.0f, 1.0f) : 0.0f;
-        d.hud.line({x0, y}, {x0 + bw, y}, 1.0f * s, col(white, 0.18f), col(white, 0.18f), 0);
-        if (f > 0.0f) d.hud.line({x0, y}, {x0 + bw * f, y}, 2.0f * s, col(gold, 1.8f), col(amber, 1.8f), 0);
-        for (u32 p = 0; p < 3; ++p) {
-            const float pf = boss.partMax > 0.0f ? clampf(boss.partHp[p] / boss.partMax, 0.0f, 1.0f) : 0.0f;
-            const float px = x0 + bw + 20.0f * s + static_cast<float>(p) * 30.0f * s;
-            d.hud.line({px, y}, {px + 22.0f * s, y}, 0.8f * s, col(palette.hue[p], 0.3f), col(palette.hue[p], 0.3f), 0);
-            if (pf > 0.0f) d.hud.line({px, y}, {px + 22.0f * s * pf, y}, 1.8f * s, col(palette.hue[p], 1.6f), col(palette.hue[p], 1.6f), 0);
+        font.drawField(d.hud, {x0 - textW(font, cap, name) - 16.0f * s, y + 0.5f * cap}, cap, 0.55f * s, col(gold, 1.4f), col(gold, 1.4f),
+                       col(gold, 1.4f), name);
+        float hp = boss.coreHp, max = boss.coreMax;
+        const u32 parts = boss.kind == BossKind::Longwave ? w.species().longwave.segments
+                                                           : (boss.kind == BossKind::Choir ? ChoirData::kVoices : (boss.kind == BossKind::Kaleidos ? 3u : 0u));
+        if (boss.kind == BossKind::Longwave || boss.kind == BossKind::Choir) {
+            // The whole: every part's health and the head's (the Choir has no core).
+            for (u32 k = 0; k < parts; ++k) hp += (boss.alive & (1u << k)) ? boss.partHp[k] : 0.0f;
+            max += boss.partMax * static_cast<float>(parts);
+        }
+        const float f = max > 0.0f ? clampf(hp / max, 0.0f, 1.0f) : 0.0f;
+        const float thick = mini ? 1.0f : 2.0f;
+        d.hud.line({x0, y}, {x0 + bw, y}, 0.5f * thick * s, col(white, 0.18f), col(white, 0.18f), 0);
+        if (f > 0.0f) d.hud.line({x0, y}, {x0 + bw * f, y}, thick * s, col(gold, 1.8f), col(amber, 1.8f), 0);
+        if (boss.kind == BossKind::Kaleidos) {
+            for (u32 p = 0; p < 3; ++p) {
+                const float pf = boss.partMax > 0.0f ? clampf(boss.partHp[p] / boss.partMax, 0.0f, 1.0f) : 0.0f;
+                const float px = x0 + bw + 20.0f * s + static_cast<float>(p) * 30.0f * s;
+                d.hud.line({px, y}, {px + 22.0f * s, y}, 0.8f * s, col(palette.hue[p], 0.3f), col(palette.hue[p], 0.3f), 0);
+                if (pf > 0.0f) d.hud.line({px, y}, {px + 22.0f * s * pf, y}, 1.8f * s, col(palette.hue[p], 1.6f), col(palette.hue[p], 1.6f), 0);
+            }
+        } else if (boss.kind == BossKind::Choir || boss.kind == BossKind::Longwave) {
+            // A pip for each Voice / segment still standing, after the bar (the Choir's in pearl, Longwave's in its hues).
+            const float step = (boss.kind == BossKind::Choir ? 16.0f : 6.0f) * s, len = (boss.kind == BossKind::Choir ? 11.0f : 3.5f) * s;
+            for (u32 k = 0; k < parts; ++k) {
+                const float px = x0 + bw + 20.0f * s + static_cast<float>(k) * step;
+                const Vec3 c = boss.kind == BossKind::Choir ? mix(white, palette.hue[k % 3], 0.25f) : palette.hue[k * 3 / (parts + 1)];
+                const bool live = boss.alive & (1u << k);
+                const float pf = live && boss.partMax > 0.0f ? clampf(boss.partHp[k] / boss.partMax, 0.0f, 1.0f) : 0.0f;
+                d.hud.line({px, y}, {px + len, y}, 0.8f * s, col(c, 0.25f), col(c, 0.25f), 0);
+                if (pf > 0.0f) d.hud.line({px, y}, {px + len * pf, y}, 1.8f * s, col(c, 1.5f), col(c, 1.5f), 0);
+            }
         }
     }
     // A debut's name (GAME_DESIGN 8: the spotlight, with its name on screen).

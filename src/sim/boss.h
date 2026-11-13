@@ -173,6 +173,9 @@ struct ChoirData {
     float voiceRadius = 66, voiceHealth = 260;
     u8 midi[kVoices] = {62, 64, 65, 67, 69, 71, 72, 74};
     float dmgSinging = 1, dmgSilent = 0, dmgLast = 1.5f;
+    // numbers.contact.hoodHurts (2026-11-13): a hood hurts by touch only while it sings (its mouth open), always, or never.
+    enum class HoodHurts : u8 { Singing, Always, Never };
+    HoodHurts hoodHurts = HoodHurts::Singing;
     float ringRadius = 380, ringFugue = 300, shrinkBars = 2;
     float zoom = 0.75f;
     float bulletSpeed = 220, bulletLife = 5;
@@ -319,6 +322,7 @@ struct BossState {
     u8 lastBeamBar = 0xFF;
     u32 hits = 0;              // shots that landed (diagnostics)
     u32 hitsTaken = 0;         // hits the players took from it (diagnostics)
+    u32 hitsBody = 0, hitsBeam = 0;  // ... of which from its bodies, and from its beams / cage / wake (the rest: bullets)
     // Bodies (M5): positions and headings of the head / Queen / King (index 0) and the parts (1 + k), this tick and the
     // last (the view interpolates). Longwave: 1 + segment index; Choir: 1 + Voice; Carom King: 1 + Prince.
     Vec2 body[kBossBodies], bodyPrev[kBossBodies];

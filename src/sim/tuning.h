@@ -256,12 +256,13 @@ constexpr float kRamTurnRate = 4.0f;          // rad/s: Battering Ram turns to f
 constexpr float kRamWallFanDeg = 160.0f;      // the wall's 16 bullets fan this wide from the point of impact, inward
 constexpr float kRamWakeWu = 22.0f;           // the wake's half-width (contact)
 constexpr float kHiveDartSpeed = 900.0f;      // wu/s: a Hive dart (and the Queen) moves to its place at most this fast
+
 // The pages leave the health to the bot ("tune the segment health with the bot once it can surf", "tune the Voice health
 // with the bot", minibosses.md "25 to 35 seconds of fire ... tune with the bot"): the careful bot's time to kill each at its
 // home Track (8 seeds) brought into the page's window by these factors on the page's health (docs/PROGRESS.md, M5 part 1).
-constexpr float kLongwaveHealthTune = 1.6f;   // 52 s at 1 -> the page's 70-100 s
-constexpr float kChoirHealthTune = 4.0f;      // 33 s at 1 -> the page's 80-110 s
-constexpr float kMiniHealthTune[4] = {6.5f, 7.5f, 2.7f, 6.0f};  // Alpha Hound 9 s, The Hive 6, Battering Ram 16, Carom King 5 at 1 -> 25-35 s
+constexpr float kLongwaveHealthTune = 1.4f;  // the page's 70-100 s (docs/PROGRESS.md, M5 part 1)
+constexpr float kChoirHealthTune = 4.5f;      // the page's 80-110 s
+constexpr float kMiniHealthTune[4] = {6.5f, 5.0f, 2.0f, 4.8f};  // Alpha Hound, The Hive, Battering Ram, Carom King: 25-35 s
 
 // ======================================================================================================
 // M4 STAGE A: co-op (GAME_DESIGN 10, TECH_SPEC 8). Quoted numbers are marked; the rest are chosen where the

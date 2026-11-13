@@ -748,7 +748,15 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     const Vec2 S = in.shipPos;
     Vec2 leanTarget{};
     bool bossNear = false;
+    // M5: Longwave and the Choir pull the camera back to their page's zoom for the whole fight (longwave.md, choir.md
+    // "Camera": 0.75, below look.json's zoomMin; the pages win), eased like every zoom; Longwave without the lean (its head
+    // swims a path 3,000 wu wide).
+    float fightZoom = 0.0f;
     if (w.boss().active && !w.boss().dying) {
+        if (w.boss().kind == sim::BossKind::Longwave) fightZoom = w.species().longwave.zoom;
+        if (w.boss().kind == sim::BossKind::Choir) fightZoom = w.species().choir.zoom;
+    }
+    if (w.boss().active && !w.boss().dying && w.boss().kind != sim::BossKind::Longwave) {
         const Vec2 off = lerp2(w.boss().prevPos, w.boss().pos, a) - S;
         if (lengthSq(off) < kBossCamWu * kBossCamWu) {
             bossNear = true;
@@ -765,10 +773,10 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         const float k = 1.0f - std::exp(-in.dt / kLookAheadTau);
         lookAhead_ = lookAhead_ + (target - lookAhead_) * k;
         const float busy = clampf((stats_.load - kZoomLoadLo) / (kZoomLoadHi - kZoomLoadLo), 0.0f, 1.0f);
-        const float zt = bossNear ? kBossZoom : kZoomCalm + (kZoomBusy - kZoomCalm) * busy;
+        const float zt = fightZoom > 0.0f ? fightZoom : (bossNear ? kBossZoom : kZoomCalm + (kZoomBusy - kZoomCalm) * busy);
         bossLean_ = bossLean_ + (leanTarget - bossLean_) * (1.0f - std::exp(-in.dt / kBossLeanTau));
         zoomBase_ += (zt - zoomBase_) * (1.0f - std::exp(-in.dt / kZoomTau));
-        zoomBase_ = clampf(zoomBase_, look_->zoomMin, look_->zoomMax);
+        zoomBase_ = clampf(zoomBase_, fightZoom > 0.0f ? std::fmin(look_->zoomMin, fightZoom) : std::fmin(look_->zoomMin, zoomBase_), look_->zoomMax);
     }
     sectionLook(in);
     zoom_ = zoomBase_ * sectionZoom_ * (1.0f + look_->zoomKick * beatAmt * kick_);

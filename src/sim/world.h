@@ -749,7 +749,7 @@ private:
     float bossHealthScale(BossKind kind) const;
     float bossBulletDensity() const;
     void bossNova(u32 p);
-    void bossHitPlayer(u32 p, Vec2 from);
+    void bossHitPlayer(u32 p, Vec2 from, bool beam = false);
     bool bossBeamsHit(Vec2 at, Vec2& from) const;
     void bossStep(u8 step, u8 owner);
     // A decision that reads where the players stand, made at musical tick `tick`: the host's is applied and sent; a client

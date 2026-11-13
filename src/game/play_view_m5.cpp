@@ -333,7 +333,8 @@ void PlayView::drawChoir(FrameDraw& d, const ViewInput& in) {
         const bool singing = !s.dying && w.choirSinging(k, t);
         const bool breath = !singing && (next & (1u << k));
         const Vec3 hue = choirHue_[k];
-        const float outline = s.dying ? 1.6f : 1.0f;
+        // choir.md (94706dc): a silent hood is drawn at 0.6 of its level (it does not hurt); a singing one at full.
+        const float outline = s.dying ? 1.6f : (singing || C.hoodHurts == ChoirData::HoodHurts::Always ? 1.0f : 0.6f);
         // The hood: a pointed polyline, closed by the lips.
         for (u32 j = 0; j + 1 < C.hoodCount; ++j) {
             const Vec2 p0 = p + rot(Vec2{C.hood[j][0], C.hood[j][1]}, c, sn), p1 = p + rot(Vec2{C.hood[j + 1][0], C.hood[j + 1][1]}, c, sn);

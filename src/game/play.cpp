@@ -1,4 +1,5 @@
 #include "game/play.h"
+#include "game/pending_sounds.h"
 
 #include <SDL3/SDL_gamepad.h>
 #include <SDL3/SDL_keycode.h>
@@ -681,43 +682,12 @@ void Play::conductBand() {
 }
 
 void Play::bossCue(const sim::Event& e) {
-    // M5 part 1: the fights' sounds as their pages give them (longwave.md, choir.md, minibosses.md "Sound"). The engine has
-    // no boss voices yet (the rubber-string run, the Choir's pad voices, the toms, the gong, the rim shots: the sound brief
-    // for the audio engineer); until it has, each cue plays the nearest effect the band has, on its own tick, panned to
-    // where it happens. docs/PROGRESS.md (M5 part 1) lists the mapping and what each cue should become.
+    // M5: a fight's sound, as its page gives it, through the one table of pending sounds (game/pending_sounds.cpp): until the
+    // engine has the page's voices, each cue plays the nearest effect the band has, on its own tick, panned to where it is.
     const World& w = *world_;
     const double offset = coop() ? netBandOffset_ : clock_.offset();
-    const double tick = e.tick + offset;
     const float pan = clampf((e.x - w.player(seat_).pos.x) / 900.0f, -1.0f, 1.0f) * 0.7f;
-    using audio::Sfx;
-    switch (static_cast<BossCue>(e.a)) {
-        case BossCue::LwRun: band_->leadNote(0, static_cast<u8>(e.b % 3u), 0.45f, pan, tick, 3); break;  // a scale running up
-        case BossCue::LwTrough: band_->sfxAt(Sfx::Tick, tick, 0.45f, pan); break;                       // the telegraph tick
-        case BossCue::LwJaw: band_->sfxAt(Sfx::Elite, tick, 0.6f, pan); break;                          // the elite-arrives patch
-        case BossCue::LwLunge: band_->sfxAt(Sfx::Dash, tick, 0.9f, pan); break;
-        case BossCue::LwWhip: band_->sfxAt(Sfx::KillLarge, tick, 0.8f, pan); break;                     // the impact
-        case BossCue::ChVoice: band_->leadNote(0, static_cast<u8>(e.b % 3u), 0.5f, pan, tick, static_cast<u8>(e.b % 4u)); break;
-        case BossCue::ChDeath: band_->sfxAt(Sfx::KillMedium, tick, 0.8f, pan); break;
-        case BossCue::ChCageTick: band_->sfxAt(Sfx::Tick, tick, 0.6f, pan); break;
-        case BossCue::ChCageBurn: band_->sfxAt(Sfx::KillLarge, tick, 0.7f, pan); break;
-        case BossCue::ChHeld: band_->leadNote(0, 3, 0.6f, pan, tick, static_cast<u8>(e.b % 4u)); break;
-        case BossCue::AlHowl: band_->sfxAt(Sfx::Elite, tick, 0.7f, pan); break;
-        case BossCue::AlCharge: band_->sfxAt(Sfx::Spawn, tick, 0.7f, pan); break;
-        case BossCue::AlLunge: band_->sfxAt(Sfx::Dash, tick, 0.9f, pan); break;
-        case BossCue::HvShape: band_->sfxAt(Sfx::Spawn, tick, 0.6f, pan); break;
-        case BossCue::HvRing:
-        case BossCue::HvSpear:
-        case BossCue::HvWall: band_->sfxAt(Sfx::Tick, tick, 0.5f, pan); break;
-        case BossCue::RmLock: band_->sfxAt(Sfx::Tick, tick, 0.6f, pan); break;
-        case BossCue::RmCharge: band_->sfxAt(Sfx::Dash, tick, 1.0f, pan); break;
-        case BossCue::RmWall: band_->sfxAt(Sfx::KillLarge, tick, 1.0f, pan); break;  // the gong
-        case BossCue::RmStun: band_->setMuffle(e.b != 0); break;                      // the bed low-passed while it is stunned
-        case BossCue::CkBounce: band_->sfxAt(Sfx::EnemyShot, tick, e.b ? 0.35f : 0.6f, pan); break;  // the rim shot
-        case BossCue::MiniEnter: band_->sfxAt(Sfx::Elite, tick, 0.9f, pan); break;
-        case BossCue::MiniDeath:
-        case BossCue::MiniGone: band_->setMuffle(false); break;
-        default: break;
-    }
+    playFightCue(*band_, e, e.tick + offset, pan);
 }
 
 // ---------------------------------------------------------------------------------------------- render

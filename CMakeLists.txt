@@ -354,6 +354,7 @@ target_sources(raveform_core PRIVATE
   src/game/play_view.cpp
   src/game/play_view_b.cpp
   src/game/play_view_m5.cpp
+  src/game/pending_sounds.cpp
   src/game/play_view_shots.cpp
   src/game/screens.cpp
   src/game/settings.cpp)

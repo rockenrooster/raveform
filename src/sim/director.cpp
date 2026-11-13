@@ -157,7 +157,11 @@ float crowdScale(const SpeciesTable::Crowd& c, const Phrase& p) {
     switch (p.section) {
         case Section::Groove: return c.groove;
         case Section::Build: return c.build[0] + (c.build[1] - c.build[0]) * u;
-        case Section::Drop: return p.bossDrop ? c.bossDrop : (c.drop[0] + (c.drop[1] - c.drop[0]) * u) * (p.miniDrop ? c.miniDrop : 1.0f);
+        case Section::Drop:
+            // The boss's Drop: species.json's share (Kaleidos; the Choir's page: "the crowd drops to half"), Longwave's page
+            // its own ("the director's budget drops to 30% and only fodder families spawn").
+            if (p.bossDrop) return bossOfSong(p.song) == BossKind::Longwave ? prose::kLwCrowdShare : c.bossDrop;
+            return (c.drop[0] + (c.drop[1] - c.drop[0]) * u) * (p.miniDrop ? c.miniDrop : 1.0f);
         case Section::Break: return c.breakScale;
     }
     return 1.0f;

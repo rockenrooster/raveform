@@ -19,6 +19,8 @@ constexpr float kLwWallKeepWu = 1100.0f;     // path.anchor: "kept at least 1100
 constexpr double kLwEntranceBars = 2.0;      // entrance: "the body follows it onto the figure of eight over two bars"
 constexpr double kLwJawBeats = 1.0;          // jaw.open: "the whole of beat 1 of every bar"
 constexpr double kLwLungeJawBeats = 2.0;     // phases[2].lunge.note: "its jaw stays open for two beats"
+constexpr float kLwCrowdShare = 0.3f;        // longwave.md Numbers: "the director's budget drops to 30% and only fodder
+                                             // families spawn" (the crowd's share of its Track's target in the fight)
 
 // ---- The Choir (choir.md, choir.json) ----
 constexpr float kChFanCallDeg = 11.0f;       // phases[0].call.pattern: "a fan at the nearest player, 11 degrees apart"

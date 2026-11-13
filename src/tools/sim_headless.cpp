@@ -317,7 +317,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     // M5 part 1: every fight by its kind: fights, won, lost (the run ended in it), warped out (a mini-boss's hold ran out),
     // the time to kill by Track, the hits the ship took in it.
     struct FightStat {
-        u32 fights = 0, won = 0, lost = 0, gone = 0, hits = 0;
+        u32 fights = 0, won = 0, lost = 0, gone = 0, hits = 0, hitsBody = 0, hitsBeam = 0;
         double wonSecs[16] = {};
         u32 wonAt[16] = {};
     };
@@ -347,7 +347,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         maxTrack[s] = 1;
         u32 lastHits = 0, lastBar = 0xFFFFFFFFu, killsAtBar = 0;
         bool bossOn = false;
-        u32 bossFrom = 0, bossTrack = 1, bossHits0 = 0;
+        u32 bossFrom = 0, bossTrack = 1, bossHits0 = 0, fightHits = 0, fightBody = 0, fightBeam = 0;
         BossKind bossKind = BossKind::Kaleidos;
         // The camera as PlayView draws it (GAME_DESIGN 9, play test 1): a lead along the ship's velocity (at most
         // cruise speed x 0.125 s) and 30 wu along its aim while firing, eased over 0.25 s; 0.85x and a lean of 30% (at
@@ -395,11 +395,20 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     bossHits0 = p.hitsTaken;
                     ++fightStat[static_cast<u32>(bossKind)].fights;
                 }
+                if (on) {
+                    // (Kept while it lasts: a run that ends in the fight starts again with all of them at 0.)
+                    fightHits = p.hitsTaken >= bossHits0 ? p.hitsTaken - bossHits0 : fightHits;
+                    fightBody = w.boss().hitsBody;
+                    fightBeam = w.boss().hitsBeam;
+                }
                 if (!on && bossOn) {
                     FightStat& f = fightStat[static_cast<u32>(bossKind)];
                     bool gone = false;
                     for (u32 k = 0; k < w.eventCount(); ++k) gone = gone || w.events()[k].type == EventType::BossGone;
-                    f.hits += p.hitsTaken >= bossHits0 ? p.hitsTaken - bossHits0 : p.hitsTaken;
+                    f.hits += fightHits;
+                    f.hitsBody += fightBody;
+                    f.hitsBeam += fightBeam;
+                    fightHits = fightBody = fightBeam = 0;
                     if (w.boss().dying) {
                         ++f.won;
                         const u32 tr = bossTrack < 16 ? bossTrack : 15u;
@@ -436,8 +445,15 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 }
                 const Bullets& bb = w.bullets();
                 for (u32 k = 0; k < bb.count; ++k) bul += lengthSq(Vec2{bb.x[k], bb.y[k]} - p.pos) < 300.0f * 300.0f ? 1u : 0u;
-                std::printf("[boss] %6.1f s dist %4.0f near %3u in the line %2u bullets %3u cells %u novas %u pairs %u core %4.0f hits %u%s\n", t / 60.0f, L, near300, between, bul, p.cells,
-                            p.novas, static_cast<unsigned>(b.alive), b.coreHp, b.hits, p.alive ? "" : " DOWN");
+                // M5: the nearest of its parts, its phase and what hit the ship (bodies, beams).
+                BossPart parts[kBossBodies + 4];
+                const u32 pn = w.bossParts(parts, kBossBodies + 4);
+                float nearPart = 1e9f;
+                for (u32 k = 0; k < pn; ++k) nearPart = std::fmin(nearPart, length(parts[k].pos - p.pos) - parts[k].radius);
+                std::printf("[boss] %6.1f s %s ph %u dist %4.0f part %4.0f near %3u in the line %2u bullets %3u cells %u novas %u parts %x core %4.0f hits %u "
+                            "taken body %u beam %u%s\n",
+                            t / 60.0f, bossId(b.kind), b.phase, L, pn ? nearPart : -1.0f, near300, between, bul, p.cells, p.novas, static_cast<unsigned>(b.alive),
+                            b.coreHp, b.hits, b.hitsBody, b.hitsBeam, p.alive ? "" : " DOWN");
             }
             if (p.hitsTaken < lastHits) lastHits = p.hitsTaken;  // a new run
             if (p.hitsTaken > lastHits) {
@@ -459,6 +475,16 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     ++hitsBy[static_cast<u32>(species.get(e.species[best]).family)];
                 else
                     ++hitsBy[kFamilyCount];
+                if (trace && w.boss().active && !w.boss().dying) {
+                    const sim::BossState& b = w.boss();
+                    BossPart parts[kBossBodies + 4];
+                    const u32 pn = w.bossParts(parts, kBossBodies + 4);
+                    float nearPart = 1e9f;
+                    for (u32 k = 0; k < pn; ++k) nearPart = std::fmin(nearPart, length(parts[k].pos - p.pos) - parts[k].radius);
+                    std::printf("[hit]  %6.1f s %s ph %u, beat %.2f of the bar: nearest part %.0f wu, taken body %u beam %u, ship (%.0f, %.0f) moving %.0f wu/s\n",
+                                t / 60.0f, bossId(b.kind), b.phase, std::fmod(w.music(), kTicksPerBar) / kTicksPerBeat, pn ? nearPart : -1.0f, b.hitsBody,
+                                b.hitsBeam, p.pos.x, p.pos.y, length(p.vel));
+                }
             }
             if (trace && t % 3600u == 3599u) {
                 u32 fod = 0, thr = 0, fodFar = 0, thrFar = 0;
@@ -484,12 +510,15 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 const sim::BossState& b = w.boss();
                 Vec2 leanTo{};
                 float zoomTo = 1.0f;
-                if (b.active && !b.dying && lengthSq(b.pos - p.pos) < 1800.0f * 1800.0f) {
+                if (b.active && !b.dying && b.kind != BossKind::Longwave && lengthSq(b.pos - p.pos) < 1800.0f * 1800.0f) {
                     leanTo = (b.pos - p.pos) * 0.3f;
                     const float l = length(leanTo);
                     if (l > 320.0f) leanTo = leanTo * (320.0f / l);
                     zoomTo = 0.85f;
                 }
+                // M5: Longwave and the Choir hold their page's zoom for the whole fight (PlayView).
+                if (b.active && !b.dying && b.kind == BossKind::Longwave) zoomTo = species.longwave.zoom;
+                if (b.active && !b.dying && b.kind == BossKind::Choir) zoomTo = species.choir.zoom;
                 lean = lean + (leanTo - lean) * (1.0f - std::exp(-kDt / 0.5f));
                 zoom += (zoomTo - zoom) * (1.0f - std::exp(-kDt / 2.0f));
             }
@@ -611,12 +640,14 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 static_cast<double>(kills) / (static_cast<double>(n) * minutes), static_cast<double>(deaths) / n,
                 static_cast<unsigned long long>(overflow), nan, static_cast<unsigned long long>(allocs));
     // M5 part 1: every fight by its kind (seconds to kill by the Track it came in).
-    std::printf("[sim]   fights (kind: fought, won, lost, warped out, hits taken a fight; seconds to kill by Track):\n");
+    std::printf("[sim]   fights (kind: fought, won, lost, warped out, hits taken a fight [bullets / bodies / beams]; seconds to kill by Track):\n");
     for (u32 k = 0; k < kBossKinds; ++k) {
         const FightStat& f = fightStat[k];
         if (!f.fights) continue;
-        std::printf("[sim]     %-13s %3u %3u %3u %3u  %5.2f ", bossId(static_cast<BossKind>(k)), f.fights, f.won, f.lost, f.gone,
-                    f.fights ? static_cast<double>(f.hits) / f.fights : 0.0);
+        const double nf = static_cast<double>(f.fights);
+        const u32 bullets = f.hits >= f.hitsBody + f.hitsBeam ? f.hits - f.hitsBody - f.hitsBeam : 0u;
+        std::printf("[sim]     %-13s %3u %3u %3u %3u  %5.2f [%.2f / %.2f / %.2f] ", bossId(static_cast<BossKind>(k)), f.fights, f.won, f.lost,
+                    f.gone, static_cast<double>(f.hits) / nf, bullets / nf, f.hitsBody / nf, f.hitsBeam / nf);
         for (u32 tr = 1; tr < 16; ++tr)
             if (f.wonAt[tr]) std::printf(" T%u %.0f s (%u)", tr, f.wonSecs[tr] / f.wonAt[tr], f.wonAt[tr]);
         std::printf("\n");

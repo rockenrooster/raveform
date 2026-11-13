@@ -423,6 +423,23 @@ bool ChoirData::load() {
     num("numbers.damageScale.singing", dmgSinging);
     num("numbers.damageScale.silent", dmgSilent);
     num("numbers.damageScale.lastVoice", dmgLast);
+    {
+        // numbers.contact.hoodHurts (the lead's ruling, 94706dc): "only while it sings", "always" or "never".
+        char hurts[48] = {};
+        if (!doc.text("numbers.contact.hoodHurts", hurts, sizeof hurts)) {
+            RF_ERR("choir: 'numbers.contact.hoodHurts' is missing");
+            ok = false;
+        } else if (std::strstr(hurts, "sings")) {
+            hoodHurts = HoodHurts::Singing;
+        } else if (std::strstr(hurts, "never")) {
+            hoodHurts = HoodHurts::Never;
+        } else if (std::strstr(hurts, "always")) {
+            hoodHurts = HoodHurts::Always;
+        } else {
+            RF_ERR("choir: 'numbers.contact.hoodHurts' is '%s' (only while it sings, always, never)", hurts);
+            ok = false;
+        }
+    }
     num("numbers.ring.radius", ringRadius);
     num("numbers.ring.radiusFugue", ringFugue);
     num("numbers.ring.shrinkBars", shrinkBars);

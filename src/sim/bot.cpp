@@ -238,11 +238,25 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     // M5: the other fights: keep off their bodies, out of every line they have shown, inside the Choir's Round when its cage
     // shows, and beside Longwave's crest.
     if (boss.active && !boss.dying && careful && !kaleidos) {
+        // The bodies, where they are and where they will be in a fifth and two fifths of a second against the ship's own
+        // course (Longwave's swing and the Voices' moves are fast); one about to touch is dashed away from, like a body.
         for (u32 k = 0; k < partCount; ++k) {
+            if (boss.kind == BossKind::Hive && parts[k].part == 1) continue;  // the decoy is light
+            const u32 bi = parts[k].part == 3 ? 0u : (boss.kind == BossKind::Hive ? 1u : 1u + parts[k].index);
+            const Vec2 vel = bi < kBossBodies ? (boss.body[bi] - boss.bodyPrev[bi]) * (1.0f / kDt) : Vec2{};
+            const float keep = parts[k].radius + 130.0f;
+            for (u32 j = 0; j < 3; ++j) {
+                const float ahead = 0.2f * static_cast<float>(j);
+                const Vec2 d = pos - parts[k].pos + (pose.vel - vel) * ahead;
+                const float dist = length(d);
+                if (dist < keep && dist > 1e-3f) force = force + d * ((j == 0 ? 3.0f : 2.0f) * (keep - dist) / keep / dist);
+            }
             const Vec2 d = pos - parts[k].pos;
             const float dist = length(d);
-            const float keep = parts[k].radius + 110.0f;
-            if (dist < keep && dist > 1e-3f) force = force + d * (2.5f * (keep - dist) / keep / dist);
+            if (dist < parts[k].radius + 50.0f && dist > 1e-3f) {
+                contactSoon = true;
+                escape = escape + d * (1.0f / dist);
+            }
         }
         const auto offLine = [&](Vec2 from, Vec2 dir, float width) {
             const Vec2 rel = pos - from;
@@ -282,11 +296,33 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                 break;
             }
             case BossKind::Choir: {
+                // Inside the Round, near its centre: every Voice in reach and none in the way (choir.md: the Round surrounds
+                // the players). Outside it (a wall, the crowd), back in through the gap between the two nearest Voices.
                 const Vec2 c = boss.ch.centre;
                 const float dc = length(pos - c);
                 const bool cage = w.choirCage(musicTick + kTicksPerBeat) != 0;
-                const float want = cage ? 120.0f : 180.0f;
-                if (boss.ch.phase < 3 && dc > want) force = force + (c - pos) * ((cage ? 1.8f : 0.8f) * std::fmin((dc - want) / 150.0f, 1.0f) / dc);
+                const float want = cage ? 110.0f : 150.0f;
+                if (boss.ch.phase < 3 && dc > want) {
+                    Vec2 goal = c;
+                    if (dc > boss.ch.radius - 40.0f) {
+                        // The gap: the middle of the two live Voices nearest the line to the centre.
+                        const float a = angleOf(pos - c);
+                        float best = 10.0f;
+                        for (u32 k = 0; k < ChoirData::kVoices; ++k) {
+                            const u32 n = (k + 1) % ChoirData::kVoices;
+                            if (!(boss.alive & (1u << k)) && !(boss.alive & (1u << n))) continue;
+                            const Vec2 mid = (boss.body[1 + k] + boss.body[1 + n]) * 0.5f;
+                            const float da = std::fabs(wrapAngle(angleOf(mid - c) - a));
+                            if (da < best) {
+                                best = da;
+                                goal = c + normalizeOr(mid - c, Vec2{1.0f, 0.0f}) * (boss.ch.radius - 120.0f);
+                            }
+                        }
+                    }
+                    const Vec2 to = goal - pos;
+                    const float l = length(to);
+                    if (l > 1e-3f) force = force + to * ((cage ? 2.2f : 1.6f) * std::fmin((dc - want) / 120.0f, 1.0f) / l);
+                }
                 for (u32 k = 0; k < ChoirData::kVoices; ++k) {
                     float a = 0.0f;
                     if (w.choirHeld(k, musicTick + kTicksPerBeat, &a) == 0) continue;
@@ -426,6 +462,18 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     // A slow wander so an empty arena still gets crossed.
     wander_ += rng_.range(-0.35f, 0.35f);
     force = force + dirOf(wander_) * 0.25f;
+    // M5, the Choir (Unison to Fugue): inside the Round, nothing (the crowd, Shards, a dodge) takes the ship out across the
+    // ring of Voices; the outward part of the pull fades out before the ring.
+    if (careful && boss.active && !boss.dying && boss.kind == BossKind::Choir && boss.ch.phase < 3) {
+        const Vec2 rel = pos - boss.ch.centre;
+        const float dc = length(rel);
+        const float room = boss.ch.radius - w.species().choir.voiceRadius - 60.0f - dc;
+        if (dc > 1e-3f && room < 140.0f && dc < boss.ch.radius - 30.0f) {
+            const Vec2 out = rel * (1.0f / dc);
+            const float outward = dot(force, out);
+            if (outward > 0.0f) force = force - out * (outward * (room <= 0.0f ? 1.3f : std::fmin(1.0f, 1.0f - room / 140.0f)));
+        }
+    }
     if (holding) force = force * 0.25f + holdPull;
     const float f = length(force);
     in.move = f > 0.05f ? force * (std::fmin(f, 1.0f) / f) : Vec2{};
