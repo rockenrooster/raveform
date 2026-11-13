@@ -137,6 +137,11 @@ bool flag(int argc, char** argv, const char* name) {
 
 // --remote-poses interp|predict: where every peer of this process takes a remote player for a tick (net/session.h).
 RemotePoses g_remotePoses = SessionConfig{}.remotePoses;
+// --net-tune down=..,famN=..: the host's correction budget and family weights (experiments, net/session.h).
+const char* g_tune = nullptr;
+void tune(SessionConfig& c) {
+    if (g_tune) parseNetTune(g_tune, c);
+}
 
 u32 overflowOf(const World& w) {
     const WorldCounters& c = w.counters();
@@ -192,6 +197,7 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
         c.session.sim = sim;
         c.session.sim.seed = sim.seed * 7919u + k * 104729u + 1u;
         c.session.remotePoses = g_remotePoses;
+        tune(c.session);
         c.session.seed = seed;
         c.botSeed = seed * 31 + k;
         c.clockOffsetUs = kOffsets[k];
@@ -548,6 +554,7 @@ int runPeer(const SpeciesTable& species, bool host, int argc, char** argv) {
     PeerConfig c;
     c.session.role = host ? NetRole::Host : NetRole::Client;
     c.session.remotePoses = g_remotePoses;
+    tune(c.session);
     const char* v = nullptr;
     c.session.seats = (v = arg(argc, argv, "--players")) ? static_cast<u32>(std::atoi(v)) : 4u;
     c.session.port = (v = arg(argc, argv, "--port")) ? static_cast<u16>(std::atoi(v)) : kGamePort;
@@ -765,6 +772,14 @@ int netHeadlessMain(int argc, char** argv) {
     auto* species = new (std::nothrow) SpeciesTable;
     if (!species || !species->load()) return 2;
     int code = 2;
+    if ((g_tune = arg(argc, argv, "--net-tune"))) {
+        SessionConfig probe;
+        if (!parseNetTune(g_tune, probe)) {
+            std::printf("[net] bad --net-tune '%s' (down=B,famN=W,...)\n", g_tune);
+            delete species;
+            return 2;
+        }
+    }
     if (const char* rp = arg(argc, argv, "--remote-poses")) {
         if (std::strcmp(rp, "predict") == 0) g_remotePoses = RemotePoses::Predict;
         else if (std::strcmp(rp, "interp") == 0) g_remotePoses = RemotePoses::Interpolate;

@@ -45,7 +45,13 @@ struct SessionConfig {
     bool autoRestart = true;
     bool beacon = false;
     RemotePoses remotePoses = RemotePoses::Interpolate;
+    // Host: the corrections' share of each client's downlink (bytes a second, every byte to the client counted) and how
+    // fast each enemy family gains priority (experiments: raveform_headless --net-tune).
+    float downBytesPerS = 20000.0f;
+    float familyWeight[16] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 };
+// "down=20000,fam2=3,..." onto a config (raveform_headless --net-tune); false on a malformed spec.
+bool parseNetTune(const char* spec, SessionConfig& c);
 
 // What the net overlay and the soak report show (per second where it says so).
 struct SessionStats {

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "sim/species.h"
@@ -34,7 +35,7 @@ constexpr double kBar = 384.0, kBeat = 96.0;
 // burst (a wave's spawns, a Break's dissolve) on top of a full second, and for jitter bunching arrivals. (Play test 1,
 // second pass: 184 -> 160 kbit/s; the stronger build's runs reach the denser Tracks and kill faster, and its bursts
 // reached 264 kbit/s.)
-constexpr float kDownBytesPerS = 20000.0f, kDownBurstBytes = 1500.0f, kDatagramOverhead = 40.0f;
+constexpr float kDownBurstBytes = 1500.0f, kDatagramOverhead = 40.0f;  // (the rate: SessionConfig::downBytesPerS, 20,000)
 // The accumulator knows only the host's copies: a client asks (5 Hz, with its pose) for the enemies on its screen
 // that no correction has reached for this long, and the host sends those (and their schools) next.
 constexpr i64 kAttentionEveryUs = 200000;
@@ -55,6 +56,34 @@ float lerpAngle(float a, float b, float t) {
 
 u64 contentHash() {
     return (static_cast<u64>(kProtocolVersion) * 0x9E3779B97F4A7C15ull) ^ speciesDataDigest() ^ (bossDataDigest() << 1);
+}
+
+bool parseNetTune(const char* spec, SessionConfig& c) {
+    // "key=value,key=value": down (bytes a second), famN (family N's priority weight).
+    const char* p = spec;
+    while (p && *p) {
+        char key[16] = {};
+        u32 k = 0;
+        while (*p && *p != '=' && k + 1 < sizeof key) key[k++] = *p++;
+        if (*p != '=') return false;
+        ++p;
+        char* end = nullptr;
+        const float v = std::strtof(p, &end);
+        if (end == p || !(v >= 0.0f) || v > 1e6f) return false;
+        p = end;
+        if (std::strcmp(key, "down") == 0) {
+            c.downBytesPerS = v;
+        } else if (std::strncmp(key, "fam", 3) == 0) {
+            const int f = std::atoi(key + 3);
+            if (f < 0 || f > 15) return false;
+            c.familyWeight[f] = v;
+        } else {
+            return false;
+        }
+        if (*p == ',') ++p;
+        else if (*p) return false;
+    }
+    return true;
 }
 
 float NetDiagBin::rms() const { return n ? static_cast<float>(std::sqrt(sum2 / static_cast<double>(n))) : 0.0f; }
@@ -1402,7 +1431,7 @@ void Session::refillBudgets(i64 localUs) {
         if (seat > 0) downBudget_[seat] += pending_[p] - wire;
         pending_[p] = 0.0f;
     }
-    for (float& b : downBudget_) b = std::fmin(b + kDownBytesPerS * (dt > 0.1f ? 0.1f : dt), kDownBurstBytes);
+    for (float& b : downBudget_) b = std::fmin(b + cfg_.downBytesPerS * (dt > 0.1f ? 0.1f : dt), kDownBurstBytes);
 }
 
 void Session::relayEvent(const MsgPlayerEvent& m, u32 exceptSeat) {
@@ -1444,6 +1473,7 @@ void Session::updatePriorities(float dt) {
             } else if (e.state[i] == kMoving && w.music() - e.until[i] >= 0.0 && w.music() - e.until[i] < landedRecently) {
                 wgt += 4.0f;
             }
+            wgt *= cfg_.familyWeight[static_cast<u32>(w.species().get(e.species[i]).family) & 15u];
             const float sp = std::fabs(e.vx[i]) + std::fabs(e.vy[i]) + std::fabs(e.kx[i]) + std::fabs(e.ky[i]);
             prio_[s][slot] += wgt * (1.0f + sp * (1.0f / 300.0f)) * dt;
         }

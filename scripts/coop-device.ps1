@@ -40,9 +40,11 @@ Assert-RfDevice $Serial
 $OutFull = [IO.Path]::GetFullPath((Join-Path (Get-Location) $Out))
 New-Item -ItemType Directory -Force $OutFull | Out-Null
 $lock = Join-Path $(if ($LockRoot) { $LockRoot } else { $RF_ROOT }) "captures\locks\$Serial.lock"
-$headless = Join-Path $RF_ROOT 'build\desktop-dev\raveform_headless.exe'
-$game = Join-Path $RF_ROOT 'build\desktop-dev\raveform.exe'
 $stamp = Get-Date -Format 'HHmmss'
+# The PC peers run a private copy of the headless tool, so the build can go on while a run lasts.
+$headless = Join-Path $env:TEMP "rf-coop-$stamp-raveform_headless.exe"
+Copy-Item (Join-Path $RF_ROOT 'build\desktop-dev\raveform_headless.exe') $headless -Force
+$game = Join-Path $RF_ROOT 'build\desktop-dev\raveform.exe'
 $tag = "${stamp}_$Run$(if ($Impaired) { '_impaired' })"
 $netsim = if ($Impaired) { 'loss=0.05,jitter=80' } else { '' }
 
@@ -194,4 +196,6 @@ try {
     Stop-RfApp $Serial
     Remove-Item -Force $lock -ErrorAction SilentlyContinue
     'phone unlocked'
+    foreach ($p in $pcs) { if (-not $p.HasExited) { $p.WaitForExit(5000) | Out-Null } }
+    Remove-Item -Force $headless -ErrorAction SilentlyContinue
 }

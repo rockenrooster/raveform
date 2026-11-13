@@ -7,7 +7,9 @@ param(
     [double]$Minutes = 10,
     [switch]$Impaired,
     [string[]]$Extra = @(),
-    [string]$Out = 'captures\m4net\seeds\run'
+    [string]$Out = 'captures\m4net\seeds\run',
+    # -Low: the soaks run at idle priority (a device run's real-time PC bots on the same cores go first).
+    [switch]$Low
 )
 . "$PSScriptRoot\env.ps1"
 $exe = Join-Path $RF_ROOT 'build\desktop-dev\raveform_headless.exe'
@@ -18,7 +20,9 @@ foreach ($s in $Seeds) {
     $a = @('--net', 'soak', '--minutes', "$Minutes", '--seed', "$s") + $Extra
     if ($Impaired) { $a += @('--pause', '--netsim', 'loss=0.05,jitter=80') }
     while (@($running | Where-Object { -not $_.HasExited }).Count -ge $RF_JOBS) { Start-Sleep -Milliseconds 200 }
-    $running += Start-Process -FilePath $exe -ArgumentList $a -RedirectStandardOutput "$OutFull\seed$s.txt" -RedirectStandardError "$OutFull\seed$s.err" -PassThru -WindowStyle Hidden
+    $p = Start-Process -FilePath $exe -ArgumentList $a -RedirectStandardOutput "$OutFull\seed$s.txt" -RedirectStandardError "$OutFull\seed$s.err" -PassThru -WindowStyle Hidden
+    if ($Low) { try { $p.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::Idle } catch {} }
+    $running += $p
 }
 foreach ($p in $running) { $p.WaitForExit() }
 $rows = foreach ($s in $Seeds) {
