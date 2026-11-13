@@ -1,9 +1,11 @@
 #pragma once
 // Command-line switches of the band (M2), parsed by core/args.cpp through parseAudioArg().
-//   --band off|play|staged|full|stress|metronome  what the band plays (default: play in audio_test,
+//   --band off|play|staged|full|stress|max|metronome  what the band plays (default: play in audio_test,
 //                                           metronome in sync, full in bench_* unless pictures are taken
 //                                           (--screenshot, --fixed-step), else off); full / stress: the
-//                                           load tests (src/audio/band.cpp)
+//                                           load tests (src/audio/band.cpp); max (M5): the upgrades' worst case,
+//                                           every Riff, the heaviest Mods and a Boost for four players
+//                                           (engine.h maxLoadSetup)
 //   --no-audio                              no band in any scenario (the device keeps M0's silent stream,
 //                                           as the M1 numbers were measured): for comparison
 //   --silent                                everything plays and is measured as usual, the output is zeroed at

@@ -77,10 +77,11 @@ bool Band::init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice
         if (eq(args.band, "off")) return true;
         if (eq(args.band, "play")) mode = Mode::Conductor;
         if (eq(args.band, "staged")) mode = Mode::Staged;
-        if (eq(args.band, "full") || eq(args.band, "stress")) {
+        if (eq(args.band, "full") || eq(args.band, "stress") || eq(args.band, "max")) {
             mode = Mode::Conductor;
             full = true;
             stress = eq(args.band, "stress");
+            maxLoad_ = eq(args.band, "max");
         }
         if (eq(args.band, "metronome")) mode = Mode::Metronome;
     } else if (audioTest) {
@@ -155,7 +156,16 @@ bool Band::init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice
     active_ = true;
     sendInitialState(args, bench && !game_ ? defaults.benchTrack : 0);
     if (game_ && !args.section[0]) holdSection(Section::Groove);
-    if (full) {
+    if (full && maxLoad_) {
+        // M5, the worst case: every Riff at level 5 among four players, the heaviest Mods at their caps, a Boost each
+        // (maxLoadSetup), the effects and the upgrades' cues fed every frame (maxLoadFrame).
+        Command setup[64];
+        const u32 n = maxLoadSetup(setup, countOf(setup));
+        for (u32 i = 0; i < n; ++i) post(setup[i]);
+        fire_ = true;
+        intensity_ = 1.0f;
+        fullLoad_ = true;
+    } else if (full) {
         // The load test, every layer playing: the Drop held (the whole bed), every Riff at level 2, four
         // players firing on the 1/16-triplet grid (Double-Time) with one Split harmony each, and the
         // effects fed every frame. --band stress doubles the harmony (Split x2): the extreme case.
@@ -177,7 +187,7 @@ bool Band::init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice
         fullLoad_ = true;
         stressLoad_ = stress;
     }
-    RF_LOG("audio: band %s, track %s, sound %s, sync offset %.0f ms%s, haptics %s", full ? (stress ? "stress (load test)" : "full (load test)") : (game_ ? "game (Groove held)" : (mode == Mode::Conductor ? "play" : (mode == Mode::Staged ? "staged" : "metronome"))),
+    RF_LOG("audio: band %s, track %s, sound %s, sync offset %.0f ms%s, haptics %s", full ? (maxLoad_ ? "max (the upgrades' worst case)" : (stress ? "stress (load test)" : "full (load test)")) : (game_ ? "game (Groove held)" : (mode == Mode::Conductor ? "play" : (mode == Mode::Staged ? "staged" : "metronome"))),
            trackName(), variantName(), syncOffsetMs_, syncTouched_ ? "" : " (automatic)", haptics_ ? "on" : "off");
     return true;
 }
@@ -399,9 +409,8 @@ void Band::computeShots(i64 nowNs, i64 displayLeadNs) {
     // gear (first half of the Drop: one step along, then two) move it along the grid list, capped at the
     // last; Hyper halves it.
     const ConductorRules& r = music_->conductor;
-    const bool surge = view_.section == Section::Drop && view_.sectionBar < view_.sectionBars / 2;
-    u32 idx = localDoubleTime_ + (surge ? r.surgeSteps[view_.sectionBar < view_.sectionBars / 4 ? 0 : 1] : 0u);
-    if (idx > 2) idx = 2;
+    // M5: the engine's own rule (Afterparty holds the Surge's second gear longer, a step further: leadGridIndex).
+    const u32 idx = leadGridIndex(r.surgeSteps, localDoubleTime_, localAfterparty_, view_.section, view_.sectionBar, view_.sectionBars);
     i64 grid = static_cast<i64>(r.gridTicks[idx]);
     if (localHyper_ && grid % 2 == 0) grid /= 2;
     const double capNs = (view_.latencyMs < kLeadRuleCapMs ? view_.latencyMs : kLeadRuleCapMs) * 1e6;
@@ -517,7 +526,11 @@ void Band::update(i64 displayLeadNs) {
     view_.bar = tick >= 0.0 ? static_cast<u32>(tick / static_cast<double>(kTicksPerBar)) : 0u;
     releaseHeard();
     computeShots(t0, displayLeadNs);
-    if (fullLoad_) {
+    if (fullLoad_ && maxLoad_) {
+        Command feed[40];
+        const u32 n = maxLoadFrame(fullFrame_++, feed, countOf(feed));
+        for (u32 i = 0; i < n; ++i) post(feed[i]);
+    } else if (fullLoad_) {
         // The load test also keeps the effects busy: kills on most frames, Shard runs, large kills.
         ++fullFrame_;
         post({.type = CmdType::Kill, .a = 0, .b = 3});
@@ -678,6 +691,7 @@ void Band::setLoadout(u8 slot, const PlayerLoadout& l) {
     if (slot == 0) {
         for (u32 r = 0; r < kRiffCount; ++r) riffs_[r] = l.riffs[r];
         localDoubleTime_ = l.mods[static_cast<u32>(Mod::DoubleTime)];
+        localAfterparty_ = l.mods[static_cast<u32>(Mod::Afterparty)];
         localHyper_ = (l.boosts >> static_cast<u32>(Boost::Hyper)) & 1u;
     }
     was = l;
@@ -906,7 +920,7 @@ void Band::writeJson(JsonWriter& j) const {
     if (!active_) return;
     const Report r = report();
     j.beginObject("audio_engine");
-    j.str("mode", mode_ == Mode::Conductor ? (fullLoad_ ? (stressLoad_ ? "stress" : "full") : "play") : (mode_ == Mode::Staged ? "staged" : "metronome"));
+    j.str("mode", mode_ == Mode::Conductor ? (fullLoad_ ? (maxLoad_ ? "max" : (stressLoad_ ? "stress" : "full")) : "play") : (mode_ == Mode::Staged ? "staged" : "metronome"));
     j.str("track", music_->tracks[track_].id);
     j.str("sound", music_->variants[variant_].id);
     j.integer("callbacks", r.callbacks);

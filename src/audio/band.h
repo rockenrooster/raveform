@@ -306,6 +306,7 @@ private:
     std::atomic<u32> scopeHead_{0};
     std::atomic<float> meter_{0.0f};
     u8 localDoubleTime_ = 0;  // the local player's Double-Time stacks and Hyper (the lead rule's grid)
+    u8 localAfterparty_ = 0;  // M5: and Afterparty's stacks
     bool localHyper_ = false;
     audio::PlayerLoadout loadouts_[audio::kMaxPlayers];  // M5: what was last sent per player (only changes are posted)
     bool loadoutSent_[audio::kMaxPlayers] = {};
@@ -318,6 +319,7 @@ private:
     // The load test (--band full) also feeds the effects every frame.
     bool fullLoad_ = false;
     bool stressLoad_ = false;
+    bool maxLoad_ = false;  // M5: --band max, the upgrades' worst case (engine.h maxLoadSetup)
     u32 fullFrame_ = 0;
 
     // Haptics.

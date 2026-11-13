@@ -492,6 +492,21 @@ void fullStep(Render& r, u32 track, u32 frameIndex) {
     }
 }
 
+// M5: the upgrades' worst case (--band max on a device): the full band with every Riff at level 5 among four players, the
+// heaviest Mods and a Boost each, the effects and the upgrades' cues every 1/60 s (engine.h maxLoadSetup / maxLoadFrame).
+void maxStep(Render& r, u32 track, u32 frameIndex) {
+    Engine& e = *r.engine;
+    if (frameIndex == 0) {
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(track), 0));
+        Command setup[64];
+        const u32 n = maxLoadSetup(setup, 64);
+        for (u32 i = 0; i < n; ++i) e.post(setup[i]);
+    }
+    Command feed[40];
+    const u32 n = maxLoadFrame(frameIndex, feed, 40);
+    for (u32 i = 0; i < n; ++i) e.post(feed[i]);
+}
+
 // The Surge listening test: the conductor with the local player firing throughout, the Groove bed full.
 // Groove 4 bars, Build 4, Drop 8 with Surge as conductor.json has it (one grid step: 1/16 -> 1/16
 // triplet); then the same sixteen bars with Surge moved two steps (1/32, the staged arrangement's
@@ -561,7 +576,8 @@ void medleyStep(Render& r, const MedleyBar* plan, u32 planBars, u32 frameIndex) 
         e.post(cmd(CmdType::SetPlayers, 1, 0));
         e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
         e.post(cmd(CmdType::SetFire, 0, 1));
-        for (u8 k = 0; k < static_cast<u8>(Riff::Count); ++k) e.post(cmd(CmdType::SetRiff, 0, k, 1));
+        // The first slice's three Riffs, as above (M5: Riff::Count is twelve now; the medley keeps its sound).
+        for (u8 k = 0; k < 3; ++k) e.post(cmd(CmdType::SetRiff, 0, k, 1));
     }
     if (r.lastBar < 0 || r.lastBar == r.scriptedBar) return;
     r.scriptedBar = r.lastBar;
@@ -613,7 +629,8 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
     double seconds = opt.seconds;
     const bool staged = eq(opt.render, "staged");
     const bool mock = eq(opt.render, "mock"), sfx = eq(opt.render, "sfx"), leads = eq(opt.render, "leads"),
-               full = eq(opt.render, "full"), surge = eq(opt.render, "surge"), medley = eq(opt.render, "medley");
+               full = eq(opt.render, "full"), surge = eq(opt.render, "surge"), medley = eq(opt.render, "medley"),
+               maxLoad = eq(opt.render, "max");
     const bool sheetRecipes = eq(opt.render, "recipes"), sheetCues = eq(opt.render, "cues");  // M5 listening sheets
     static SheetStep sheet[256];
     u32 sheetSteps = 0;
@@ -624,7 +641,7 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
     }
     if (staged && seconds <= 0.0f) seconds = static_cast<float>(tr.arrangementBars * barS + 2.5);  // musicproto.Mixer length
     if (mock && seconds <= 0.0f) seconds = static_cast<float>(26.0 * barS + 2.5);
-    if (full && seconds <= 0.0f) seconds = 60.0f;
+    if ((full || maxLoad) && seconds <= 0.0f) seconds = 60.0f;
     static MedleyBar plan[kMedleyMaxBars];
     u32 planBars = 0;
     constexpr double kMedleyTailS = 2.5, kMedleyFadeS = 2.0;
@@ -712,6 +729,7 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
         while (r.done < r.frames) {
             if (mock) mockStep(r, music, frameIndex, rng);
             if (full) fullStep(r, t, frameIndex);
+            if (maxLoad) maxStep(r, t, frameIndex);
             if (surge) surgeStep(r, t, frameIndex);
             if (medley) {
                 medleyStep(r, plan, planBars, frameIndex);
@@ -789,9 +807,9 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
     if (peakOut) *peakOut = peak;
     const EngineStats& st = engine.stats();
     std::printf("render %s %s/%s: %.2f s of audio in %.2f s (%.1fx real time), lufs %.2f, peak %.2f dBFS, events %llu "
-                "(dropped %u), voices peak %u, steals %u, heap allocations while rendering %llu\n",
+                "(dropped %u), voices peak %u (lead %u), steals %u, heap allocations while rendering %llu\n",
                 opt.render, tr.id, music.variants[v].id, seconds, elapsed, seconds / elapsed, lufs, 20.0 * std::log10(peak + 1e-12),
-                static_cast<unsigned long long>(r.eventCount), engine.eventsDropped(), st.voicesPeak.load(), st.steals.load(),
+                static_cast<unsigned long long>(r.eventCount), engine.eventsDropped(), st.voicesPeak.load(), st.leadPeak.load(), st.steals.load(),
                 static_cast<unsigned long long>(allocs));
     if (opt.out) {
         if (!writeWav(opt.out, r.out, r.frames, 2, kRate, opt.pcm16)) {
