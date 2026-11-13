@@ -25,10 +25,9 @@ void configurePeer(ENetPeer* p) {
 // few losses in a row into seconds of a stalled reliable stream (at 5% loss each way about one command in 10,000
 // fails four times: 0.24 + 0.47 + 0.95 + 1.9 s). Here a resend waits one round-trip timeout (ENet's own first one,
 // from the current estimate), never more, while the peer is heard from (it sends 30 times a second). A peer silent
-// for longer than kLinkSilentMs is gone or cut off: a resend then waits at least as long as the silence has lasted, so a
-// link to a dead peer does not resend everything unacknowledged every 50 ms until ENet's timeout (5 s at least) ends it
-// (M4: a client whose host vanished sent 300-764 kbit/s in its last second, docs/PROGRESS_m4_net.md). Heard again, the
-// cap applies at the next flush. "Heard" is our own count of what arrived (Link::poll): ENet's lastReceiveTime moves only
+// for longer than kLinkSilentMs is gone or cut off: ENet's backoff then applies, so a link to a dead peer does not resend
+// everything unacknowledged every 50 ms until ENet's timeout (5 s at least) ends it (M4: a client whose host vanished
+// sent 300-764 kbit/s in its last second, docs/PROGRESS_m4_net.md). Heard again, the cap applies at the next flush. "Heard" is our own count of what arrived (Link::poll): ENet's lastReceiveTime moves only
 // with acknowledgements, so a peer that is sending plenty but has nothing of ours to acknowledge looked silent.
 void capResendTimeouts(ENetHost* h, const u32* heard) {
     for (size_t k = 0; k < h->peerCount; ++k) {
@@ -43,11 +42,9 @@ void capResendTimeouts(ENetHost* h, const u32* heard) {
         for (ENetListIterator it = enet_list_begin(&p.sentReliableCommands); it != enet_list_end(&p.sentReliableCommands);
              it = enet_list_next(it)) {
             ENetOutgoingCommand* c = reinterpret_cast<ENetOutgoingCommand*>(it);
-            if (gone) {
-                if (c->roundTripTimeout < silent) c->roundTripTimeout = silent;
-            } else if (c->roundTripTimeout > cap) {
-                c->roundTripTimeout = cap;
-            }
+            // Gone: ENet's own backoff (each resend waits twice as long), which also brings its timeout to an end (a
+            // resend timeout held at the silence's length moved the deadline on forever: the link never ended).
+            if (!gone && c->roundTripTimeout > cap) c->roundTripTimeout = cap;
             const enet_uint32 due = c->sentTime + c->roundTripTimeout;
             if (!have || static_cast<int>(due - next) < 0) {  // earlier (wrapping milliseconds)
                 next = due;
