@@ -26,6 +26,10 @@ constexpr i64 kExtrapMaxUs = 100000;
 constexpr i64 kPredictMaxUs = 150000;
 constexpr float kPoseSmoothS = 0.1f;
 constexpr float kPoseSnapWu = 120.0f;
+// A direct link is predicted while its poses' smoothed age stays under kFreshAgeMs and its spread under kFreshDevMs (a
+// LAN: 8-11 ms, a few ms of spread, the Moto's Wi-Fi too; the soak's 80 ms of jitter: 26-213 ms); past them it is interpolated, and predicted
+// again once under the lower pair (docs/PROGRESS_m4_net.md, round 2).
+constexpr float kFreshAgeMs = 50.0f, kFreshDevMs = 15.0f, kFreshAgeBackMs = 35.0f, kFreshDevBackMs = 10.0f;
 // A pose stamped further than this from the receiver's host time (ahead of it, behind it) is not used (onPose).
 constexpr i64 kPoseStampAheadUs = 1000000, kPoseStampBehindUs = 5000000;
 constexpr u32 kCorrPerPacket = 32;      // 32 x 30 bytes + headers: under 1,000 bytes a packet (the limit is 1,200)
@@ -138,6 +142,7 @@ void mergeDiag(NetDiag& into, const NetDiag& d) {
         into.extrapolated[s] += d.extrapolated[s];
         into.extrapSumMs[s] += d.extrapSumMs[s];
         into.extrapMaxMs[s] = std::fmax(into.extrapMaxMs[s], d.extrapMaxMs[s]);
+        into.interpolatedDirect[s] += d.interpolatedDirect[s];
     }
     bin(into.songResidualMs, d.songResidualMs);
     into.songResidualMaxMs = std::fmax(into.songResidualMaxMs, d.songResidualMaxMs);
@@ -219,7 +224,7 @@ u32 formatDiagPoses(const NetDiag& d, u32 seats, u32 self, char* out, u32 size) 
         }
         put(std::snprintf(out + w, size - w,
                           " | seat %u: %u new of %u heard (misstamped %u, relayed %u), gap max %.0f ms, >66 %u, >100 %u, age %.0f/%.0f/%.0f ms, "
-                          "past newest %.1f%% (mean %.0f, max %.0f ms)",
+                          "past newest %.1f%% (mean %.0f, max %.0f ms), direct link interpolated %u ticks",
                           s, d.poses[s], d.posesHeard[s], d.posesMisstamped[s], d.posesRelayed[s], static_cast<double>(d.poseGapMaxMs[s]),
                           d.poseGapsOver66[s],
                           d.poseGapsOver100[s],
@@ -227,7 +232,7 @@ u32 formatDiagPoses(const NetDiag& d, u32 seats, u32 self, char* out, u32 size) 
                           static_cast<double>(d.poseAgeMaxMs[s]),
                           d.fills[s] ? 100.0 * static_cast<double>(d.extrapolated[s]) / static_cast<double>(d.fills[s]) : 0.0,
                           d.extrapolated[s] ? d.extrapSumMs[s] / static_cast<double>(d.extrapolated[s]) : 0.0,
-                          static_cast<double>(d.extrapMaxMs[s])));
+                          static_cast<double>(d.extrapMaxMs[s]), d.interpolatedDirect[s]));
     }
     put(std::snprintf(out + w, size - w, " | song anchors %.2f ms rms, max %.2f (%llu) | correction packets %u, gap max %.0f ms",
                       static_cast<double>(d.songResidualMs.rms()), static_cast<double>(d.songResidualMaxMs),
@@ -258,6 +263,10 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     havePrev_ = false;
     for (PoseRing& r : poses_) r = PoseRing{};
     for (RemoteTrack& t : track_) t = RemoteTrack{};
+    for (u32 s = 0; s < kMaxPlayers; ++s) {
+        poseAgeEma_[s] = poseAgeDev_[s] = 0.0f;
+        linkFresh_[s] = true;
+    }
     for (i32& s : peerSeat_) s = -1;
     for (i32& p : seatPeer_) p = -1;
     for (bool& w : welcomed_) w = false;
@@ -784,6 +793,11 @@ void Session::onPose(const MsgPose& m) {
         }
         poseArrivedUs_[p] = local;
         const float age = static_cast<float>(static_cast<double>(hostNow - m.stampUs) * 1e-3);
+        // The link's freshness (RemotePoses::Direct): the age smoothed over about ten poses, and its spread.
+        poseAgeEma_[p] += (age - poseAgeEma_[p]) * 0.1f;
+        poseAgeDev_[p] += (std::fabs(age - poseAgeEma_[p]) - poseAgeDev_[p]) * 0.1f;
+        linkFresh_[p] = linkFresh_[p] ? (poseAgeEma_[p] < kFreshAgeMs && poseAgeDev_[p] < kFreshDevMs)
+                                      : (poseAgeEma_[p] < kFreshAgeBackMs && poseAgeDev_[p] < kFreshDevBackMs);
         ++diag_.poses[p];
         diag_.poseAgeSumMs[p] += age;
         if (age < diag_.poseAgeMinMs[p]) diag_.poseAgeMinMs[p] = age;
@@ -1153,7 +1167,9 @@ void Session::fillRemote(TickInput& in, i64 hostUs) {
     // new pose moves that estimate, the ship keeps its place through an offset that decays over kPoseSmoothS.
     for (u32 s = 0; s < seats_ && s < kMaxPlayers; ++s) {
         if (s == seat_) continue;
-        const bool predict = cfg_.remotePoses == RemotePoses::Predict || (cfg_.remotePoses == RemotePoses::Direct && (host() || s == 0));
+        // A direct link (the host's of each client, a client's of the host) is predicted while it is fresh (linkFresh_).
+        const bool direct = cfg_.remotePoses == RemotePoses::Direct && (host() || s == 0);
+        const bool predict = cfg_.remotePoses == RemotePoses::Predict || (direct && linkFresh_[s]);
         const i64 at = predict ? hostUs : hostUs - kInterpUs;
         const i64 reach = predict ? kPredictMaxUs : kExtrapMaxUs;
         PlayerPose& p = in.players[s];
@@ -1198,16 +1214,23 @@ void Session::fillRemote(TickInput& in, i64 hostUs) {
         } else {
             st = b->cur;
         }
-        if (predict) {
+        if (predict || direct) {
             RemoteTrack& t = track_[s];
             const MsgPose& n = r.s[(r.head + r.count - 1) % kPoseRing];
             if (!t.valid) {
                 t.off = Vec2{};
-                t.lastAt = at;
+                t.lastAt = hostUs;
             } else {
-                if (at > t.lastAt) t.off = t.off * std::exp(-static_cast<float>(static_cast<double>(at - t.lastAt) * 1e-6) / kPoseSmoothS);
-                t.lastAt = at;
-                if (n.stampUs != t.stamp) {
+                const i64 since = hostUs - t.lastAt;
+                if (since > 0) t.off = t.off * std::exp(-static_cast<float>(static_cast<double>(since) * 1e-6) / kPoseSmoothS);
+                t.lastAt = hostUs;
+                if (t.predicted != predict) {
+                    // The link changed mode (66 ms between the two estimates): the ship keeps its place, carried on by its
+                    // velocity, and the difference is spread over kPoseSmoothS like a pose's jump.
+                    const float dt = since > 0 ? static_cast<float>(static_cast<double>(since) * 1e-6) : 0.0f;
+                    const Vec2 diff = (t.out + Vec2{st.vx, st.vy} * dt) - Vec2{st.x, st.y};
+                    t.off = lengthSq(diff) > kPoseSnapWu * kPoseSnapWu ? Vec2{} : diff;
+                } else if (predict && n.stampUs != t.stamp) {
                     // What the newest pose before this one said about this moment, against what this one says.
                     const i64 ahead = at - t.stamp < 0 ? 0 : (at - t.stamp < reach ? at - t.stamp : reach);
                     const float dt = static_cast<float>(static_cast<double>(ahead) * 1e-6);
@@ -1221,6 +1244,9 @@ void Session::fillRemote(TickInput& in, i64 hostUs) {
             t.vel = Vec2{n.cur.vx, n.cur.vy};
             st.x += t.off.x;
             st.y += t.off.y;
+            t.out = Vec2{st.x, st.y};
+            t.predicted = predict;
+            if (direct && !predict) ++diag_.interpolatedDirect[s];
         }
         p.present = true;
         p.pos = Vec2{st.x, st.y};

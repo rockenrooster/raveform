@@ -125,6 +125,7 @@ struct NetDiag {
     double poseAgeSumMs[4] = {};
     float poseAgeMinMs[4] = {1e9f, 1e9f, 1e9f, 1e9f}, poseAgeMaxMs[4] = {-1e9f, -1e9f, -1e9f, -1e9f};
     u32 fills[4] = {}, extrapolated[4] = {};
+    u32 interpolatedDirect[4] = {};  // ticks a direct link was interpolated (fallen back: its poses too old or too uneven)
     double extrapSumMs[4] = {};
     float extrapMaxMs[4] = {};
     // The host's song anchors: each against the model it replaces, at its own host time (ms of song).
@@ -330,9 +331,15 @@ private:
     // Predicted remote players: the newest pose each estimate came from and the offset that spreads a new pose's jump.
     struct RemoteTrack {
         bool valid = false;
+        bool predicted = false;  // the mode of the last estimate (a direct link falls back to interpolation by itself)
         i64 stamp = 0, lastAt = 0;
         Vec2 pos, vel, off;
+        Vec2 out;                // the place given last (estimate + offset)
     } track_[sim::kMaxPlayers];
+    // A direct link's poses: their age on arrival (ms), smoothed, and its spread; past the thresholds the link is
+    // interpolated instead of predicted (RemotePoses::Direct), back below them predicted again.
+    float poseAgeEma_[sim::kMaxPlayers] = {}, poseAgeDev_[sim::kMaxPlayers] = {};
+    bool linkFresh_[sim::kMaxPlayers] = {true, true, true, true};
 
     // Outgoing.
     PacketWriter rel_;      // reliable, being filled

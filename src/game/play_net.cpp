@@ -28,6 +28,14 @@ constexpr i64 kTickUs = 16667;            // 1/60 s of host time
 constexpr float kRateGainPerMs = 0.0003f; // the band's rate correction: 0.03% for each millisecond it is off ...
 constexpr float kRateMax = 0.003f;        // ... at most 0.3% (TECH_SPEC 8.2)
 constexpr float kReseekMs = 60.0f;        // farther off than this, the band re-seeks on a bar line (a stall)
+// Diagnostics of the player shots on this screen (netFrame; one Play a process), logged every 20 s.
+struct ShotDiag {
+    double lastDrawnUs = 0.0;
+    u32 frames = 0, framesOff = 0;
+    u64 shotSteps[2] = {}, bentSteps[2] = {};  // 0 this device's own player's shots, 1 the remote players'
+    u32 maxLive[2] = {};
+};
+ShotDiag g_shotDiag;
 }  // namespace
 
 float Play::netTempoOf(void* self, double barTick) {
@@ -181,6 +189,33 @@ void Play::netFrame(float realDt) {
     bandFrame();
     s.send(localUs, controller_.pose());
 
+    {
+        // Diagnostics (the lead's question on jumpy player shots; docs/PROGRESS_m4_net.md): this frame's drawn time against
+        // the panel's period (every shot moves by it), and each live player shot's last tick against a straight step at its
+        // speed (Wave, Helix and Seek bend it), split by owner: this device's own player and the remote ones.
+        ShotDiag& g = g_shotDiag;
+        const double drawnUs = static_cast<double>(netSimHostUs_) + static_cast<double>(alpha_) * static_cast<double>(kTickUs);
+        if (netRunStarted_ && g.lastDrawnUs > 0.0) {
+            const double step = drawnUs - g.lastDrawnUs;
+            ++g.frames;
+            if (std::fabs(step - 16666.7) > 0.25 * 16666.7) ++g.framesOff;
+        }
+        g.lastDrawnUs = netRunStarted_ ? drawnUs : 0.0;
+        const Shots& sh = w.shots();
+        u32 live[2] = {};
+        for (u32 i = 0; i < sh.count; ++i) {
+            if (sh.dead[i]) continue;
+            const u32 cls = w.isLocal(sh.owner[i]) ? 0u : 1u;
+            ++live[cls];
+            const float want = sh.speed[i] * kDt;
+            if (want < 1.0f) continue;
+            const float bent = length(Vec2{sh.x[i] - sh.px[i], sh.y[i] - sh.py[i]} - Vec2{sh.dx[i], sh.dy[i]} * want);
+            ++g.shotSteps[cls];
+            if (bent > 0.25f * want) ++g.bentSteps[cls];
+        }
+        for (u32 k = 0; k < 2; ++k)
+            if (live[k] > g.maxLive[k]) g.maxLive[k] = live[k];
+    }
     const PlayerState& p = w.player(seat_);
     stats_.enemies = w.enemies().count;
     stats_.bullets = w.bullets().count;
@@ -220,6 +255,16 @@ void Play::netFrame(float realDt) {
             RF_LOG("net: diag %s", line);
         }
         s.resetDiag();
+        ShotDiag& g = g_shotDiag;
+        RF_LOG("net: diag shots: frames whose drawn step is off the panel's period by more than a quarter %u of %u; the last tick's step "
+               "bent more than a quarter from straight: own %llu of %llu, remote %llu of %llu; most alive own %u, remote %u (pool %u); "
+               "shots refused by the pool %u in all",
+               g.framesOff, g.frames, static_cast<unsigned long long>(g.bentSteps[0]), static_cast<unsigned long long>(g.shotSteps[0]),
+               static_cast<unsigned long long>(g.bentSteps[1]), static_cast<unsigned long long>(g.shotSteps[1]), g.maxLive[0], g.maxLive[1],
+               Shots::kCap, c.shotsDropped);
+        const double keep = g.lastDrawnUs;
+        g = ShotDiag{};
+        g.lastDrawnUs = keep;
     }
 }
 

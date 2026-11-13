@@ -72,6 +72,7 @@ struct TrueDiag {
     NetDiagBin all, byFamily[16], byState[16], targetDiffers, stateDiffers, knocked, frozenDiffers, byAge[6], bySize[5], called;
     NetDiagBin shoalAge[6], otherAge[6];  // the age bins for Shoals (darts included) and for every other family
     NetDiagBin simPos;                    // the simulated position against the host's (without the drawn offset)
+    NetDiagBin byTrack[16], byBoss[32];   // the host's Track then; the fight then (a boss or a mini-boss, by kind)
     NetDiagBin byTarget[4];  // the host's copy follows: 0 this client's player, 1 the host's, 2 another client's, 3 none
     NetDiagBin perp;
     double tauSum = 0.0, tau2Sum = 0.0;
@@ -110,6 +111,15 @@ struct TrueDiag {
             std::snprintf(name, sizeof name, "%u", k);
             b(name, byFamily[k]);
         }
+        std::printf("\n[net]     Track (the host's):");
+        for (u32 k = 0; k < 16; ++k) {
+            if (!byTrack[k].n) continue;
+            std::snprintf(name, sizeof name, "%u", k);
+            b(name, byTrack[k]);
+        }
+        std::printf("\n[net]     fight:");
+        for (u32 k = 0; k < 32; ++k)
+            if (byBoss[k].n) b(bossId(static_cast<BossKind>(k)), byBoss[k]);
         std::printf("\n[net]     state:");
         for (u32 k = 0; k < 16; ++k) {
             std::snprintf(name, sizeof name, "%u", k);
@@ -496,6 +506,8 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                 {
                     TrueDiag& g = *tdiag;
                     g.all.add(err);
+                    g.byTrack[hw.phrase().track & 15u].add(err);
+                    if (hw.boss().active) g.byBoss[static_cast<u32>(hw.boss().kind) & 31u].add(err);
                     g.simPos.add(length(Vec2{ce.x[i] + (ce.vx[i] + ce.kx[i]) * dx, ce.y[i] + (ce.vy[i] + ce.ky[i]) * dx} - Vec2{he.x[j], he.y[j]}));
                     g.byFamily[static_cast<u32>(cw.species().get(ce.species[i]).family) & 15u].add(err);
                     g.byState[ce.state[i] & 15u].add(err);
