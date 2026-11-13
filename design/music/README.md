@@ -150,6 +150,11 @@ rest). It is written in `conductor.json`'s own schema and is a separate file onl
 engineer builds it. The sound of each boss, mini-boss, structure, event and trait is on its own
 page, in the words of that file's `recipes`.
 
+**Accepted by ear** (the user, 2026-11-13, after the engine's four listening sheets for Riffs, Mods,
+Boosts and Fusions: "all upgrade sounds are good"). They are as the engine rendered them at
+`m5-audio` 3a048c7; what they sound like does not change without a reason the user can hear. The
+fights' recipes and the game-event cues have sheets too and have not been listened to yet.
+
 Rules that hold for all of it: an upgrade is audible within a bar of being picked; whatever a kill,
 a hit or a bounce triggers is aggregated like kills (one sound of a kind on a 1/32 step, its gain
 following the count); a Fusion replaces its ingredients' sounds; nothing but hits and blasts ducks
