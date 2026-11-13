@@ -1,8 +1,9 @@
 """Mini-bosses. Batch 1: Alpha Hound, The Hive, Battering Ram, Carom King.
 Batch 2: Moth Queen, Brood Mother, Blink Star, Sentry Array.
+Batch 3: Twin Tether, Weaver Prime, Deep Well, Mirror Mimic.
 
-Writes design/bosses/minibosses.json (numbers) and design/previews/minibosses_1.png and
-minibosses_2.png (four panels each).
+Writes design/bosses/minibosses.json (numbers) and design/previews/minibosses_1.png,
+minibosses_2.png and minibosses_3.png (four panels each).
 Run: . .\\scripts\\env.ps1; python -I design\\tools\\minibosses.py
 """
 
@@ -24,9 +25,9 @@ PEN_SIDE = 1400.0
 
 COMMON = dict(
     arrives="on the downbeat of the middle cycle's Drop from Track 2 on, in place of the mega-wave; a small name card holds for one bar",
-    pick="the run's seed draws one whose family the run has already met, never the one met in the Track before. Batch 1: Track 2 draws from Alpha Hound and The Hive, Track 3 from Battering Ram and Carom King. Batch 2: Track 4 draws from Moth Queen and Brood Mother, Track 5 from Blink Star and Sentry Array",
+    pick="the run's seed draws one whose family the run has already met, never the one met in the Track before. Batch 1: Track 2 draws from Alpha Hound and The Hive, Track 3 from Battering Ram and Carom King. Batch 2: Track 4 draws from Moth Queen and Brood Mother, Track 5 from Blink Star and Sentry Array. Batch 3: Track 6 is always Mirror Mimic (the rehearsal for Feedback), Track 7 draws from Twin Tether and Weaver Prime, Track 8 from Deep Well and whichever of those two Track 7 did not draw. Track 9 draws any mini-boss the run has not met and gives it one elite trait (Armored, Swift or Regenerating), Track 10 the same with two. In the loop: any, with as many of those traits as the loop has gone round, to three",
     drop="the Drop holds while the mini-boss lives, for at most 8 bars past its 16; then it warps out and leaves nothing",
-    healthByTrack={"2": 600, "3": 1100, "4": 1700, "5": 2400, "6": 3200, "loopFactorPerTrack": 1.25,
+    healthByTrack={"2": 600, "3": 1100, "4": 1700, "5": 2400, "6": 3200, "7": 4100, "8": 5100, "9": 6200, "10": 7400, "loopFactorPerTrack": 1.25,
                    "note": "times the mini-boss's own healthFactor; in co-op x (1 + 0.5 x (players - 1)), as GAME_DESIGN 8 has it. Sized for 25 to 35 seconds of fire with the build of that Track's middle cycle: tune with the bot"},
     crowd={"sectionScale": 0.75, "note": "fodder only, on top of what the mini-boss calls itself"},
     reward={"boostOrbs": 1, "shards": 60, "note": "for each player; the kill also scores 25 times a tier-5 body of its family"},
@@ -162,12 +163,74 @@ MINIBOSSES = [
         sound="the hand is a woodblock on every beat, panned to where it points and one step up the scale for each step round, an octave a turn; the volleys are closed hats; a turret's death is a tom and a gap in the scale; the turn back is a reverse cymbal into its bar line",
         cap="eight turrets, at most 200 bullets",
     ),
+    # ---------------------------------------------------------------- batch 3
+    dict(
+        id="mirror_mimic", name="Mirror Mimic", family="mimic", glyph="mimic_5", radius=60.0, healthFactor=0.9, pen=False,
+        idea="it stands where you would be on the far side of the mirror and it shoots when you shoot: fire in phrases",
+        move="its place is the nearest player's place turned half round the mirror point, a small white ring where the players' centre was when it arrived; it moves as the player moves, at once. Touching the mirror point is touching the Mimic",
+        pattern=[
+            "while the player fires, it fires: on every step the player's lead sounds, one bullet leaves it along the player's aim turned half round, 400 wu/s. Aim at it and its fire comes straight back down the line",
+            "while the player holds fire, it holds fire. A player who fires for two beats and steps aside for two is never where the answer lands",
+            "it copies the player's Dash one beat late: the same length, turned half round",
+        ],
+        weakPoint="caught in the copy: for the beat of its late Dash and the beat after, it cannot fire and takes damage x 2. At other times x 1",
+        half="a second image: one Mimic mirrors through the point, the other across the line through the point that lies level with the frame. Both fire when the player fires; both copy the Dash",
+        death="the mirror breaks: glass, and every bullet of its last volley falls as Shards",
+        sound="its fire is the player's lead upside down: each lead note answered a thirty-second later by the note as far below the chord's root as the lead's is above, at 0.4. Its Dash is the Dash's sweep reversed. Death is glass",
+        cap="two bodies, at most 60 bullets",
+    ),
+    dict(
+        id="twin_tether", name="Twin Tether", family="tether", glyph="tether_5", radius=56.0, healthFactor=1.2, pen=False,
+        idea="two bodies and the rope between them: dash through the rope and it goes slack",
+        move="two nodes 520 wu apart turn about their middle, one turn every two bars, and the middle follows the nearest player at 60 wu/s. The beam between them is lethal and sweeps everything inside their circle once a bar",
+        pattern=[
+            "the beam never stops: a player keeps ahead of it, or goes through it. A Dash is invulnerable, and a Dash through the beam cuts a strand",
+            "a cut strand: the beam goes dark for one beat and both nodes take x 2 for that beat. A Perfect Dash through it (on a beat) makes it two beats",
+            "each node has half the health. They take x 1 at other times, from any side",
+        ],
+        weakPoint="slack: for one beat after any player dashes through the beam (two after a Perfect Dash), both nodes take damage x 2 and the beam is off",
+        half="one node dead: the survivor swings what is left as a flail, a beam 420 wu long turning once a bar about itself. A Dash through it still cuts",
+        death="the rope snaps: its two halves whip outward once, as light only, and fall as Shards",
+        sound="the beam is a drone whose filter opens as it comes round to the nearest player, so it is heard coming; a cut strand is a zap and the drone falls silent for its beat (silence is safe); each node is a tom as it passes twelve o'clock",
+        cap="two nodes and one beam",
+    ),
+    dict(
+        id="weaver_prime", name="Weaver Prime", family="weaver", glyph="weaver_5", radius=54.0, healthFactor=1.0, pen=False,
+        idea="it draws a cage round you, a lap a bar, and ties a knot on every One: that is when it stands still",
+        move="it circles the nearest player leaving a lethal trail that lasts two bars: each lap takes three beats, starts and ends at the same point, and is 50 wu tighter than the last (300, 250, 200, 150)",
+        pattern=[
+            "beat 1 of every bar: the knot. It stands still for the beat where the lap began, tying the trail's end to its start",
+            "beats 2 to 4: the next lap, 50 wu inside the last. The cage's centre is where the player stood at the first knot; it does not follow",
+            "after the fourth lap, on the next bar line, the cage goes off: every trail segment alive bursts 40 wu wide. The middle of the last lap is clear; near the trail is not. Then a new cage, round wherever the player is",
+            "a Dash crosses a trail unharmed",
+        ],
+        weakPoint="the knot: for the beat it stands still on every One, damage x 2. On its laps it takes x 1 and moves at about 1,000 wu/s",
+        half="warp and weft: a second Weaver draws the other way round, a lap of its own between the first one's laps, its knot on beat 3",
+        death="the cage unravels from the knot outward in one beat and falls as Shards",
+        sound="each lap is a saw glide rising over its three beats, a step higher each lap; the knot is a woodblock and a bell on the One; the cage going off is a crackle swelling into the chord's stab",
+        cap="two bodies, 160 trail segments (drawn and counted as beams)",
+    ),
+    dict(
+        id="deep_well", name="Deep Well", family="well", glyph="well_5", radius=70.0, healthFactor=0.8, pen=False,
+        idea="what you fire into it comes back on the One: so give it more than it can hold",
+        move="drifts toward the nearest player at 30 wu/s; shots within 400 wu bend into it and ships within 300 wu are drawn in at up to 120 wu/s",
+        pattern=[
+            "it swallows every player shot that reaches it and takes no harm. Its four rings light from the inside out as the bar's fill rises",
+            "on every One it gives back what the last bar fed it: a ring of bullets, one for every 3 damage swallowed, at most 48, 220 wu/s",
+            "its stomach holds 5% of the Track's mini-boss health in one bar. Fed more than that inside a bar, it chokes: no ring on the next One, and for that whole bar its rings are gold and it cannot swallow",
+        ],
+        weakPoint="choked: for the bar after it is overfed it takes real damage, x 2. That is the only time it can be hurt",
+        half="it holds half as much again, drifts at 90 wu/s, and gives the bar back as two rings, on beats 1 and 3",
+        death="it bursts: a ring of Shards, one for everything it swallowed in the fight, to 300",
+        sound="each swallowed shot is a soft low thup, a step higher for each ring lit, so the fill can be heard; choking is the gong with the bed low-passed for the bar; a ring given back is a reversed cymbal into the One and a stab",
+        cap="one body, 96 bullets (two rings alive)",
+    ),
 ]
 
 
 def build():
     return {
-        "note": "Generated by design/tools/minibosses.py. World units. Rules common to every mini-boss, then one entry each. Batches 1 and 2 of 3 (GAME_DESIGN 7.5 and 13).",
+        "note": "Generated by design/tools/minibosses.py. World units. Rules common to every mini-boss, then one entry each. All twelve: batches 1, 2 and 3 (GAME_DESIGN 7.5 and 13).",
         "common": COMMON,
         "minibosses": MINIBOSSES,
     }
@@ -507,12 +570,118 @@ def preview_2(path):
     cv.render(bloom=0.95).save(path, optimize=True)
 
 
+def preview_3(path):
+    """Batch 3: Mirror Mimic in Zenith (Track 6), Twin Tether and Weaver Prime in Afterglow (Track 7), Deep Well in Arcadia (Track 8)."""
+    a = Art()
+    W, H = 2400, 1080
+    PW, PH = W // 2, H // 2
+    cv = ld.Canvas(W, H)
+    zenith, glow_, arcadia = a.palette("zenith"), a.palette("afterglow"), a.palette("arcadia")
+    cv.radial_bg(glow_["bg0"] * 0.5, glow_["bg1"] * 0.45, cx=0.5, cy=0.5)
+    cv.nebula([(600, 270, 620, zenith["accent"], 0.010), (1800, 270, 620, glow_["accent"], 0.012),
+               (600, 810, 620, glow_["accent"], 0.012), (1800, 810, 620, arcadia["accent"], 0.012)])
+    cv.lines([(PW, 20, PW, H - 20), (20, PH, W - 20, PH)], a.white, 0.35, 1.2)
+    k = Kit(cv, a, PW, PH)
+    circle = lambda x, y, r, n=64: ld.transform(ld.polygon(n, 1.0, 0.0), x, y, r)   # noqa: E731
+
+    # ---- 1: Mirror Mimic (Zenith): the player fires at it; its fire comes back down the line ----
+    x0, y0, u = 0, 0, 0.62
+    k.grid(x0, y0, zenith, 60 * u * 1.5)
+    col, par = zenith["enemies"][1]
+    mx, my = x0 + 600, y0 + 258                                   # the mirror point
+    sx, sy = mx - 300, my + 120
+    ex, ey = 2 * mx - sx, 2 * my - sy
+    cv.lines(circle(mx, my, 16, 24), a.white, 1.6, 1.6)
+    ln = math.hypot(ex - sx, ey - sy)
+    cv.lines([(sx + (ex - sx) * d / ln, sy + (ey - sy) * d / ln, sx + (ex - sx) * (d + 6) / ln, sy + (ey - sy) * (d + 6) / ln) for d in np.arange(40, ln - 40, 18)], a.white, 0.4, 1.2)
+    aim = math.atan2(ey - sy, ex - sx)
+    k.ship(sx, sy, 1.25, aim)
+    for d in (50, 100, 150):
+        k.shot(sx + math.cos(aim) * d, sy + math.sin(aim) * d, aim)
+    k.body("mimic_5", ex, ey, 60 * u * 1.2, aim + PI, col, par)
+    for d in (70, 125, 180, 235):                                 # its answer, coming back down the line
+        bx, by = ex - math.cos(aim) * d, ey - math.sin(aim) * d
+        cv.threat([(bx, by, bx + math.cos(aim) * 16, by + math.sin(aim) * 16)], a.danger * 0.75 + a.white * 0.25, 2.2, 1.4)
+    k.note("MIRROR", mx - 36, my - 44, 10, a.white, 0.9)
+    k.title(x0, y0, "MIRROR MIMIC", "IT STANDS WHERE YOU WOULD BE ACROSS THE MIRROR AND FIRES WHEN YOU FIRE", "IT COPIES YOUR DASH A BEAT LATE AND IS CAUGHT IN THE COPY: X2", col)
+
+    # ---- 2: Twin Tether (Afterglow): the beam sweeping, a Dash through it ----------------------
+    x0, y0, u = PW, 0, 0.62
+    k.grid(x0, y0, glow_, 60 * u * 1.5)
+    col, par = glow_["enemies"][1]
+    cx, cy = x0 + 620, y0 + 255
+    ang, half = math.radians(-28.0), 260 * u
+    n0 = (cx + math.cos(ang) * half, cy + math.sin(ang) * half)
+    n1 = (cx - math.cos(ang) * half, cy - math.sin(ang) * half)
+    cv.lines(circle(cx, cy, half, 72)[::2], col, 0.35, 1.2)                           # the circle the nodes turn on
+    cv.lines(ld.transform(ld.arc(1.0, ang + 0.25, ang + 0.9, 12), cx, cy, half + 26), a.white, 0.9, 1.4)   # which way it turns
+    cv.threat([(n0[0], n0[1], n1[0], n1[1])], a.danger * 0.75 + a.white * 0.25, 3.2, 1.6)
+    cv.lines([(n0[0], n0[1], n1[0], n1[1])], a.danger, 2.4, 3.0)
+    for (nx, ny) in (n0, n1):
+        k.body("tether_5", nx, ny, 56 * u * 1.1, ang, col, par, 2.6)
+    px, py = cx - 60, cy + 95                                       # the ship, dashing up through the beam
+    for i, g in enumerate((0.25, 0.4, 0.6)):                        # Dash ghosts behind it
+        gx, gy = px + 22 * (2 - i) - 12, py + 40 * (2 - i) - 28
+        hull = [(q[0], -q[1], q[2], -q[3]) for q in a.glyphs["ship"]["segments"]]
+        cv.lines(ld.transform(hull, gx, gy, 14 * 1.25, math.radians(-118)), a.p1, 2.8 * g, 2.0)
+    k.ship(px - 40, py - 112, 1.25, math.radians(-118))
+    cv.flare(px - 12, py - 60, 50, a.white, 1.6, 1.2, 4, PI / 4)
+    k.title(x0, y0, "TWIN TETHER", "THE BEAM SWEEPS THE CIRCLE ONCE A BAR. A DASH GOES THROUGH IT", "A DASH THROUGH THE BEAM CUTS A STRAND: DARK FOR A BEAT, BOTH NODES X2", col)
+
+    # ---- 3: Weaver Prime (Afterglow): two laps drawn, the knot on the One ----------------------
+    x0, y0, u = 0, PH, 0.62
+    k.grid(x0, y0, glow_, 60 * u * 1.5)
+    col, par = glow_["enemies"][0]
+    cx, cy = x0 + 600, y0 + 250
+    for lap, r in enumerate((300, 250)):
+        ring = [(cx + math.cos(-PI / 2 + t) * r * u, cy + math.sin(-PI / 2 + t) * r * u) for t in np.linspace(0, 2 * PI, 60)]
+        cv.threat(ld.polyline(ring), a.danger * 0.75 + a.white * 0.25, 2.0, 1.3)
+        cv.lines(ld.polyline(ring), a.danger, 1.4 if lap == 0 else 2.2, 2.4)
+    cv.threat([(cx, cy - 300 * u, cx, cy - 250 * u)], a.danger * 0.75 + a.white * 0.25, 2.0, 1.3)   # lap to lap
+    kx, ky = cx, cy - 250 * u
+    k.body("weaver_5", kx, ky, 54 * u * 1.15, 0.3, col, par)
+    cv.discs([(kx, ky, 6)], a.gold * 0.7 + a.white * 0.3, 2.6)
+    cv.glow(kx, ky, 60, a.gold, 0.45)
+    cv.lines(circle(cx, cy, 200 * u, 64)[::3], a.white, 0.45, 1.2)                    # the lap to come
+    aim = -PI / 2
+    k.ship(cx, cy + 20, 1.25, aim)
+    for d in (44, 84):
+        k.shot(cx + math.cos(aim) * d, cy + 20 + math.sin(aim) * d, aim)
+    k.title(x0, y0, "WEAVER PRIME", "A LAP A BAR, EACH ONE TIGHTER. AFTER FOUR THE CAGE GOES OFF", "IT TIES A KNOT ON EVERY ONE AND STANDS STILL FOR THE BEAT: X2", col)
+
+    # ---- 4: Deep Well (Arcadia): shots bending in, three rings lit, last bar's ring going out ---
+    x0, y0, u = PW, PH, 0.62
+    k.grid(x0, y0, arcadia, 60 * u * 1.5)
+    col, par = arcadia["enemies"][2]
+    wx, wy = x0 + 700, y0 + 250
+    k.body("well_5", wx, wy, 70 * u * 1.2, 0.0, col, par, 2.2)
+    for i, r in enumerate((16, 30, 44)):                                               # three of its four rings lit
+        cv.lines(circle(wx, wy, r, 32), a.gold * 0.5 + a.white * 0.5, 2.6, 2.0)
+    sx, sy = x0 + 300, y0 + 330
+    k.ship(sx, sy, 1.25, math.atan2(wy - sy, wx - sx) - 0.25)
+    for lane in (-0.42, -0.25, -0.08):                                                 # shots curving into it
+        a0 = math.atan2(wy - sy, wx - sx) + lane
+        pts = []
+        for t in np.linspace(0.08, 1.0, 14):
+            bx = sx + math.cos(a0) * 420 * t
+            by = sy + math.sin(a0) * 420 * t
+            pull = t * t
+            pts.append((bx + (wx - bx) * pull * 0.9, by + (wy - by) * pull * 0.9))
+        cv.lines(ld.polyline(pts), ld.f_linear(pts[0][0], pts[0][1], pts[-1][0], pts[-1][1], [a.p1, a.white]), 2.6, 1.8)
+    for j in range(22):                                                                # what it gave back on the last One
+        an = j * 2 * PI / 22 + 0.1
+        k.bullet(wx + math.cos(an) * 205, wy + math.sin(an) * 205, 6.0)
+    k.title(x0, y0, "DEEP WELL", "IT SWALLOWS YOUR SHOTS AND GIVES THEM BACK AS A RING ON THE ONE", "FEED IT MORE THAN IT HOLDS IN ONE BAR AND IT CHOKES: X2, NO RING", col)
+
+    cv.render(bloom=0.95).save(path, optimize=True)
+
+
 def main():
     data = build()
     os.makedirs(os.path.join(DESIGN, "bosses"), exist_ok=True)
     with open(os.path.join(DESIGN, "bosses", "minibosses.json"), "w", encoding="utf-8") as f:
         json.dump(data, f, indent=1)
-    for name, draw in (("minibosses_1.png", preview), ("minibosses_2.png", preview_2)):
+    for name, draw in (("minibosses_1.png", preview), ("minibosses_2.png", preview_2), ("minibosses_3.png", preview_3)):
         if len(sys.argv) > 1 and sys.argv[1] not in name:
             continue
         out = os.path.join(DESIGN, "previews", name)

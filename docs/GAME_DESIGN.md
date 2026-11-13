@@ -370,6 +370,9 @@ danger hue and from the colours of the players present. Names are generated: `HO
 
 ### 7.5 Mini-bosses (12)
 
+All twelve are designed in full in `design/bosses/minibosses.md` (rules common to all, which Track
+draws which, health by Track, and each fight); the table below is the one-line version.
+
 | Mini-boss | Family | Signature |
 |---|---|---|
 | Alpha Hound | Hounds | Calls packs that charge in waves on each bar |

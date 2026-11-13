@@ -1,12 +1,13 @@
-# MINI-BOSSES — batches 1 and 2
+# MINI-BOSSES — all twelve
 
-Eight of the twelve in GAME_DESIGN 7.5. Batch 1: **Alpha Hound**, **The Hive**, **Battering Ram**
-and **Carom King**. Batch 2: **Moth Queen**, **Brood Mother**, **Blink Star** and **Sentry Array**.
+The twelve of GAME_DESIGN 7.5. Batch 1: **Alpha Hound**, **The Hive**, **Battering Ram** and
+**Carom King**. Batch 2: **Moth Queen**, **Brood Mother**, **Blink Star** and **Sentry Array**.
+Batch 3: **Mirror Mimic**, **Twin Tether**, **Weaver Prime** and **Deep Well**.
 A mini-boss is one idea, taught in under a minute. It is its family grown large: whatever the
 player already knows about Hounds is true of the Alpha, and what the Alpha adds is the fight.
 
 Data: `design/bosses/minibosses.json` (rules common to all, then one entry each — load it, do not
-retype it). Pictures: `design/previews/minibosses_1.png`, `minibosses_2.png`. Tool:
+retype it). Pictures: `design/previews/minibosses_1.png`, `minibosses_2.png`, `minibosses_3.png`. Tool:
 `design/tools/minibosses.py`.
 
 ---
@@ -18,10 +19,15 @@ retype it). Pictures: `design/previews/minibosses_1.png`, `minibosses_2.png`. To
 - **Which.** The run's seed draws one whose family the run has already met, never the one met in
   the Track before. In batch 1, Track 2 draws from Alpha Hound and The Hive, Track 3 from Battering
   Ram and Carom King. In batch 2, Track 4 draws from Moth Queen and Brood Mother, Track 5 from
-  Blink Star and Sentry Array.
+  Blink Star and Sentry Array. In batch 3, Track 6 is always Mirror Mimic (the rehearsal for
+  Feedback), Track 7 draws from Twin Tether and Weaver Prime, and Track 8 from Deep Well and
+  whichever of those two Track 7 did not draw. Track 9 draws any mini-boss the run has not met and
+  gives it one elite trait (Armored, Swift or Regenerating); Track 10 the same with two. A run
+  therefore meets nine of the twelve, and not the same nine each time.
 - **How long.** The Drop holds while it lives, for at most 8 bars past its 16. Then it warps out
   and leaves nothing.
-- **Health** by Track: 600 · 1,100 · 1,700 · 2,400 · 3,200 for Tracks 2 to 6, × 1.25 for each Track
+- **Health** by Track: 600 · 1,100 · 1,700 · 2,400 · 3,200 for Tracks 2 to 6 and 4,100 · 5,100 ·
+  6,200 · 7,400 for Tracks 7 to 10, × 1.25 for each Track
   of the loop, × the mini-boss's own factor, × (1 + 0.5 per extra player). That is 25 to 35 seconds
   of fire with the build of that Track's middle cycle. Tune with the bot.
 - **Crowd.** Three quarters of the Drop's crowd, fodder only, on top of what the mini-boss calls.
@@ -196,6 +202,86 @@ the Array is small enough to see whole, it has one rule, and the rule is a clock
 
 ---
 
-## Still to design (batch 3)
+# Batch 3
 
-Twin Tether, Weaver Prime, Deep Well, Mirror Mimic.
+Batch 1 was four verbs and batch 2 four ways of being surrounded. In batch 3 the space itself is
+the weapon — a mirror, a rope, a cage, a throat — and each fight is won with something the player
+has had since the first minute and may never have used on purpose: holding fire, the Dash, standing
+still, firing everything at once.
+
+## Mirror Mimic (Mimics)
+
+*It stands where you would be on the far side of the mirror and it shoots when you shoot: fire in phrases.*
+
+| | |
+|---|---|
+| Body | `mimic_5`, radius 60. Health factor 0.9 |
+| Moves | Its place is the nearest player's place turned half round the mirror point, a small white ring where the players' centre was when it arrived; it moves as the player moves, at once. Touching the mirror point is touching the Mimic |
+| Pattern | While the player fires, it fires: on every step the player's lead sounds, one bullet leaves it along the player's aim turned half round, 400 wu/s. Aim at it and its fire comes straight back down the line |
+|  | While the player holds fire, it holds fire. A player who fires for two beats and steps aside for two is never where the answer lands |
+|  | It copies the player's Dash one beat late: the same length, turned half round |
+| **× 2** | Caught in the copy: for the beat of its late Dash and the beat after, it cannot fire and takes damage x 2. At other times x 1 |
+| Half health | A second image: one Mimic mirrors through the point, the other across the line through the point that lies level with the frame. Both fire when the player fires; both copy the Dash |
+| Death | The mirror breaks: glass, and every bullet of its last volley falls as Shards |
+| Sound | Its fire is the player's lead upside down: each lead note answered a thirty-second later by the note as far below the chord's root as the lead's is above, at 0.4. Its Dash is the Dash's sweep reversed. Death is glass |
+| Cap | Two bodies, at most 60 bullets |
+
+It is harmless to a player who does not fire and deadly to one who never stops: the first fight that asks for silence. Feedback, the boss of the same Track, plays the same idea back a bar late.
+
+## Twin Tether (Tethers)
+
+*Two bodies and the rope between them: dash through the rope and it goes slack.*
+
+| | |
+|---|---|
+| Body | `tether_5`, radius 56. Health factor 1.2 |
+| Moves | Two nodes 520 wu apart turn about their middle, one turn every two bars, and the middle follows the nearest player at 60 wu/s. The beam between them is lethal and sweeps everything inside their circle once a bar |
+| Pattern | The beam never stops: a player keeps ahead of it, or goes through it. A Dash is invulnerable, and a Dash through the beam cuts a strand |
+|  | A cut strand: the beam goes dark for one beat and both nodes take x 2 for that beat. A Perfect Dash through it (on a beat) makes it two beats |
+|  | Each node has half the health. They take x 1 at other times, from any side |
+| **× 2** | Slack: for one beat after any player dashes through the beam (two after a Perfect Dash), both nodes take damage x 2 and the beam is off |
+| Half health | One node dead: the survivor swings what is left as a flail, a beam 420 wu long turning once a bar about itself. A Dash through it still cuts |
+| Death | The rope snaps: its two halves whip outward once, as light only, and fall as Shards |
+| Sound | The beam is a drone whose filter opens as it comes round to the nearest player, so it is heard coming; a cut strand is a zap and the drone falls silent for its beat (silence is safe); each node is a tom as it passes twelve o'clock |
+| Cap | Two nodes and one beam |
+
+Nothing in the game requires a Perfect Dash (rule R7), and nothing here does: any Dash cuts, and a player who never dashes can keep ahead of the beam and win slowly.
+
+## Weaver Prime (Weavers)
+
+*It draws a cage round you, a lap a bar, and ties a knot on every One: that is when it stands still.*
+
+| | |
+|---|---|
+| Body | `weaver_5`, radius 54 |
+| Moves | It circles the nearest player leaving a lethal trail that lasts two bars: each lap takes three beats, starts and ends at the same point, and is 50 wu tighter than the last (300, 250, 200, 150) |
+| Pattern | Beat 1 of every bar: the knot. It stands still for the beat where the lap began, tying the trail's end to its start |
+|  | Beats 2 to 4: the next lap, 50 wu inside the last. The cage's centre is where the player stood at the first knot; it does not follow |
+|  | After the fourth lap, on the next bar line, the cage goes off: every trail segment alive bursts 40 wu wide. The middle of the last lap is clear; near the trail is not. Then a new cage, round wherever the player is |
+|  | A Dash crosses a trail unharmed |
+| **× 2** | The knot: for the beat it stands still on every One, damage x 2. On its laps it takes x 1 and moves at about 1,000 wu/s |
+| Half health | Warp and weft: a second Weaver draws the other way round, a lap of its own between the first one's laps, its knot on beat 3 |
+| Death | The cage unravels from the knot outward in one beat and falls as Shards |
+| Sound | Each lap is a saw glide rising over its three beats, a step higher each lap; the knot is a woodblock and a bell on the One; the cage going off is a crackle swelling into the chord's stab |
+| Cap | Two bodies, 160 trail segments (drawn and counted as beams) |
+
+The cage is drawn where the player stood, not where they are: leaving it early is always allowed, and the knot can be shot from outside.
+
+## Deep Well (Wells)
+
+*What you fire into it comes back on the One: so give it more than it can hold.*
+
+| | |
+|---|---|
+| Body | `well_5`, radius 70. Health factor 0.8 |
+| Moves | Drifts toward the nearest player at 30 wu/s; shots within 400 wu bend into it and ships within 300 wu are drawn in at up to 120 wu/s |
+| Pattern | It swallows every player shot that reaches it and takes no harm. Its four rings light from the inside out as the bar's fill rises |
+|  | On every One it gives back what the last bar fed it: a ring of bullets, one for every 3 damage swallowed, at most 48, 220 wu/s |
+|  | Its stomach holds 5% of the Track's mini-boss health in one bar. Fed more than that inside a bar, it chokes: no ring on the next One, and for that whole bar its rings are gold and it cannot swallow |
+| **× 2** | Choked: for the bar after it is overfed it takes real damage, x 2. That is the only time it can be hurt |
+| Half health | It holds half as much again, drifts at 90 wu/s, and gives the bar back as two rings, on beats 1 and 3 |
+| Death | It bursts: a ring of Shards, one for everything it swallowed in the fight, to 300 |
+| Sound | Each swallowed shot is a soft low thup, a step higher for each ring lit, so the fill can be heard; choking is the gong with the bed low-passed for the bar; a ring given back is a reversed cymbal into the One and a stab |
+| Cap | One body, 96 bullets (two rings alive) |
+
+The stronger the build, the easier it chokes: the one fight where a player who has stacked damage is rewarded for standing and pouring it in.
