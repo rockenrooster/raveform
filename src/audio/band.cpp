@@ -121,9 +121,12 @@ bool Band::init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice
         prefPath(cache, sizeof cache, "baked_audio.bin");
         const u64 key = music_->hash ^ (static_cast<u64>(rate_) * 0x9E3779B97F4A7C15ull);
         if (!bank_->loadCache(cache, key)) {
-            // M5 (start-up, PLAN: cold start to playing within 5 s): the risers of Tracks 2-10 are baked on a worker
-            // while Track 1 plays (its first Build is half a minute in, the next Track's minutes), then cached.
-            if (!bank_->bake(*music_, rate_, true)) return false;
+            // M5 (start-up, PLAN: cold start to playing within 5 s): the drum kits and risers of the Tracks the run does not
+            // start in are baked on a worker while it plays (the first Build is half a minute in, the next Track minutes
+            // away), then cached.
+            i32 first = args.track[0] ? music_->trackIndex(args.track) : -1;
+            if (first < 0) first = bench && !game_ && defaults.benchTrack > 0 ? static_cast<i32>(defaults.benchTrack) - 1 : 0;
+            if (!bank_->bake(*music_, rate_, true, static_cast<u32>(first < static_cast<i32>(music_->trackCount) ? first : 0))) return false;
             std::snprintf(cachePath_, sizeof cachePath_, "%s", cache);
             cacheKey_ = key;
             bakeThread_ = std::thread([this] {

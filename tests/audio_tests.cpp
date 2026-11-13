@@ -1035,14 +1035,27 @@ void testDeferredRisers() {
     auto* b = new SampleBank;
     CHECK(b->bake(*g_music, kRate, true));
     CHECK(b->riser(0, 4) >= 0 && b->riser(1, 4) < 0 && b->riser(9, 4) < 0 && !b->complete());
+    // M5: and the later Tracks' drum kits (the first Track's at once).
+    CHECK(b->kit(0, 0).kick >= 0 && b->kit(1, 0).kick < 0 && b->kit(9, 2).hat < 0);
     CHECK(b->bakeDeferred(*g_music, kRate) && b->complete());
     bool same = true;
     for (u32 t = 0; t < g_music->trackCount; ++t) {
         const Sample& x = b->sample(b->riser(t, 4));
         const Sample& y = g_bank->sample(g_bank->riser(t, 4));
         same = same && x.frames == y.frames && std::memcmp(x.data, y.data, sizeof(float) * x.frames * 2) == 0;
+        for (u32 v = 0; v < g_music->variantCount; ++v)
+            for (const i32* ids : {&b->kit(t, v).kick, &b->kit(t, v).hat, &b->kit(t, v).ohat}) {
+                const i32 other = ids == &b->kit(t, v).kick ? g_bank->kit(t, v).kick : (ids == &b->kit(t, v).hat ? g_bank->kit(t, v).hat : g_bank->kit(t, v).ohat);
+                const Sample& kx = b->sample(*ids);
+                const Sample& ky = g_bank->sample(other);
+                same = same && kx.frames == ky.frames && kx.frames && std::memcmp(kx.data, ky.data, sizeof(float) * kx.frames) == 0;
+            }
     }
-    CHECK_MSG(same, "a riser baked behind the game differs from the one baked at start");
+    CHECK_MSG(same, "a riser or a drum kit baked behind the game differs from the one baked at start");
+    // A run that starts in another Track bakes that one at once.
+    auto* c = new SampleBank;
+    CHECK(c->bake(*g_music, kRate, true, 9) && c->kit(9, 0).kick >= 0 && c->riser(9, 4) >= 0 && c->kit(0, 0).kick < 0);
+    delete c;
     delete b;
 }
 

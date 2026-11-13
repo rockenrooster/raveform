@@ -948,7 +948,7 @@ i32 SampleBank::inhale(u32 track, u32 steps32) const {
     return inhale_[track][steps32];
 }
 
-bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) {
+bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers, u32 firstTrack) {
     release();
     const auto t0 = std::chrono::steady_clock::now();
     const double sr = sampleRate;
@@ -961,10 +961,29 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) 
         return id;
     };
 
+    // M5 (start-up): where the bake's time goes, logged at the end.
+    double sectionMs[6] = {};
+    auto lap = std::chrono::steady_clock::now();
+    const auto section = [&](u32 k) {
+        const auto now = std::chrono::steady_clock::now();
+        sectionMs[k] += std::chrono::duration<double, std::milli>(now - lap).count();
+        lap = now;
+    };
+    for (auto& k : kitReady_) k.store(true, std::memory_order_relaxed);
     for (u32 t = 0; t < music.trackCount; ++t) {
+        // M5 (start-up): the later Tracks' kits (half the bake on the Moto) get their slots now and their sounds behind the
+        // game, like their risers (bakeDeferred); kit() gives no sound until they are there.
+        const bool later = deferRisers && t != firstTrack && count_ + 3 * music.variantCount <= kMaxSamples;
         for (u32 v = 0; v < music.variantCount; ++v) {
             const SoundParams& p = music.sound[t][v];
             DrumKit& kit = kits_[t][v];
+            if (later) {
+                kit.kick = static_cast<i32>(count_++);
+                kit.hat = static_cast<i32>(count_++);
+                kit.ohat = static_cast<i32>(count_++);
+                for (const i32 id : {kit.kick, kit.hat, kit.ohat}) samples_[id] = Sample{};
+                continue;
+            }
             std::snprintf(label, sizeof label, "kick_%u_%u", t, v);
             kit.kick = put(makeKick(p, sr, n));
             std::snprintf(label, sizeof label, "hat_%u_%u", t, v);
@@ -972,7 +991,9 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) 
             std::snprintf(label, sizeof label, "ohat_%u_%u", t, v);
             kit.ohat = put(makeHat(p.hat.openDecay, 22, sr, n));
         }
+        kitReady_[t].store(!later, std::memory_order_release);
     }
+    section(0);
     std::snprintf(label, sizeof label, "clap");
     clap_ = put(makeClap(sr, n));
     std::snprintf(label, sizeof label, "snare");
@@ -983,6 +1004,7 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) 
     pulse_ = put(makePulse(sr, n));
     std::snprintf(label, sizeof label, "impact");
     impact_ = put(makeImpact(sr, n));
+    section(0);
 
     for (u32 t = 0; t < music.trackCount; ++t) {
         const Track& tr = music.tracks[t];
@@ -1005,7 +1027,7 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) 
         want(4);
         for (u32 i = 0; i < nl && riserCount_ < countOf(risers_); ++i) {
             std::snprintf(label, sizeof label, "riser_%u_%u", t, lengths[i]);
-            if (deferRisers && t > 0 && count_ < kMaxSamples) {
+            if (deferRisers && t != firstTrack && count_ < kMaxSamples) {
                 // M5 (start-up): the slot now, the sound later (bakeDeferred, on a worker while Track 1 plays).
                 Sample& s = samples_[count_];
                 s = Sample{};
@@ -1033,6 +1055,7 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) 
         for (u32 i = 0; i < 10; ++i) shardScale_[t][i] = static_cast<u8>(tonic + 12 * (i / 5) + penta[i % 5]);
     }
 
+    section(1);
     // Pitched effects: every note the Tracks' chords ask for.
     const auto bakePitched = [&](Sfx kind, auto&& notesOf, auto&& make) {
         sfxFirst_[static_cast<u32>(kind)] = static_cast<i32>(count_);
@@ -1083,6 +1106,7 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) 
                 },
                 [&](double hz) { return sfxSpawn(hz, sr, n); });
 
+    section(2);
     const auto single = [&](Sfx kind, float* data) {
         std::snprintf(label, sizeof label, "%s", sfxName(kind));
         sfxFirst_[static_cast<u32>(kind)] = put(data);
@@ -1114,6 +1138,7 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) 
     std::snprintf(label, sizeof label, "game_over_major");
     sfxMajor_[static_cast<u32>(Sfx::GameOver)] = put(sfxGameOver(sr, n, true));
 
+    section(3);
     // M5: the recipes (sound_m5.json). Pitched ones on a grid of notes three semitones apart (the engine plays the
     // nearest at a rate, at most 1.5 semitones off), the rest once; Chirp is the Shard's, Roll the snare's, and the
     // held voices (Drone, PadVoice, Crackle) and SawGlide are synthesised live.
@@ -1159,6 +1184,7 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) 
     recipeOnce(Recipe::Whoosh, recWhoosh(1, sr, n), 1, -1, 1);
     recipeOnce(Recipe::Whoosh, recWhoosh(2, sr, n), 1, -1, 2);  // M5: the Comet's return alone
     recipeGrid(Recipe::RimShot, 48, 96, [&](double hz) { return recRimShot(hz, sr, n); });  // M5, appended
+    section(4);
     // Nova inhale: from the press to the next beat, 1..8 thirty-seconds of each Track's tempo.
     sfxFirst_[static_cast<u32>(Sfx::NovaInhale)] = static_cast<i32>(count_);
     for (u32 t = 0; t < music.trackCount; ++t) {
@@ -1175,13 +1201,45 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) 
         RF_ERR("audio: baking the one-shots failed (out of memory or too many samples)");
         return false;
     }
-    RF_LOG("audio: baked %u one-shots (%.1f MB) in %.0f ms", count_, bytes_ / 1048576.0, bakeSeconds_ * 1000.0);
+    section(5);
+    RF_LOG("audio: baked %u one-shots (%.1f MB) in %.0f ms (kits and drums %.0f, swells and risers %.0f, pitched effects %.0f, "
+           "the other effects %.0f, recipes %.0f, inhales %.0f)",
+           count_, bytes_ / 1048576.0, bakeSeconds_ * 1000.0, sectionMs[0], sectionMs[1], sectionMs[2], sectionMs[3], sectionMs[4], sectionMs[5]);
     return true;
 }
 
 bool SampleBank::bakeDeferred(const MusicData& music, u32 sampleRate) {
     const auto t0 = std::chrono::steady_clock::now();
     bool ok = true;
+    // M5: the later Tracks' drum kits first (a Track change is minutes away, a --track run plays at once), then the risers.
+    for (u32 t = 0; t < music.trackCount; ++t) {
+        if (kitReady_[t].load(std::memory_order_acquire)) continue;
+        for (u32 v = 0; v < music.variantCount; ++v) {
+            const SoundParams& p = music.sound[t][v];
+            const DrumKit& kit = kits_[t][v];
+            const struct {
+                i32 id;
+                const char* what;
+            } parts[3] = {{kit.kick, "kick"}, {kit.hat, "hat"}, {kit.ohat, "ohat"}};
+            for (const auto& part : parts) {
+                u32 n = 0;
+                float* data = part.id == kit.kick ? makeKick(p, sampleRate, n)
+                                                  : makeHat(part.id == kit.hat ? p.hat.closedDecay : p.hat.openDecay, part.id == kit.hat ? 21 : 22,
+                                                            sampleRate, n);
+                if (!data) {
+                    ok = false;
+                    continue;
+                }
+                Sample& s = samples_[part.id];
+                s.data = data;
+                s.frames = n;
+                s.channels = 1;
+                std::snprintf(s.name, sizeof s.name, "%s_%u_%u", part.what, t, v);
+                bytes_ += static_cast<u64>(n) * sizeof(float);
+            }
+        }
+        kitReady_[t].store(true, std::memory_order_release);  // the audio thread may take them from now on
+    }
     for (u32 i = 0; i < riserCount_; ++i) {
         if (riserReady_[i].load(std::memory_order_acquire)) continue;
         const RiserRef& rr = risers_[i];
@@ -1197,7 +1255,7 @@ bool SampleBank::bakeDeferred(const MusicData& music, u32 sampleRate) {
         bytes_ += static_cast<u64>(n) * 2 * sizeof(float);
         riserReady_[i].store(true, std::memory_order_release);  // the audio thread may take it from now on
     }
-    RF_LOG("audio: baked the later Tracks' risers in %.0f ms (behind the game)",
+    RF_LOG("audio: baked the later Tracks' drum kits and risers in %.0f ms (behind the game)",
            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
     return ok;
 }
@@ -1205,6 +1263,8 @@ bool SampleBank::bakeDeferred(const MusicData& music, u32 sampleRate) {
 bool SampleBank::complete() const {
     for (u32 i = 0; i < riserCount_; ++i)
         if (!riserReady_[i].load(std::memory_order_acquire)) return false;
+    for (const auto& k : kitReady_)
+        if (!k.load(std::memory_order_acquire)) return false;
     return true;
 }
 
@@ -1276,7 +1336,8 @@ bool SampleBank::loadCache(const char* path, u64 key) {
     count_ = count;
     bytes_ = bytes;
     for (u32 i = 0; i < riserCount_; ++i) riserReady_[i].store(true, std::memory_order_release);
-    bakeSeconds_ = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    for (auto& k : kitReady_) k.store(true, std::memory_order_release);
+    bakeSeconds_ =std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     RF_LOG("audio: %u one-shots (%.1f MB) from the cache in %.0f ms", count_, bytes_ / 1048576.0, bakeSeconds_ * 1000.0);
     return true;
 }
