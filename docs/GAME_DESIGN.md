@@ -593,9 +593,13 @@ Local high scores: top 10 for solo and for each co-op player count. Lifetime sta
 | | Species | Families | Mods | Riffs | Boosts | Fusions | Tracks | Mini-bosses | Bosses | Structures / events |
 |---|---|---|---|---|---|---|---|---|---|---|
 | M3 slice | 12 | 6 | 8 | 3 | 4 | 0 | 2 | 0 | 1 | walls only |
-| M5 batch 1 | 80 | 10 | 16 | 6 | 8 | 2 | 3 | 4 | 2 | 3 / 3 |
+| M5 batch 1 | 80 | 10 | 16 | 6 | 8 | 2 | 3 | 4 | 3 | 3 / 3 |
 | M5 batch 2 | 160 | 14 | 26 | 9 | 12 | 5 | 5 | 8 | 4 | 5 / 6 |
 | M5 batch 3 | 240+ | 16 | 36 | 12 | 16 | 8 | 6 + endless | 12 | 6 | 6 / 8 |
+
+Batch 1 has three bosses, not two, so that each of its three Tracks ends in its own (the user's
+note of 2026-11-12: more variety in Tracks, bosses and mini-bosses). In every batch the bosses,
+mini-bosses and Tracks are built first.
 
 Quality bar for every batch: each new thing is recognisable in a contact-sheet screenshot, audible in
 an offline render, survives the bot harness, and does not move the benchmark numbers.

@@ -376,6 +376,14 @@ Build in batches of roughly 40 species each: the full genome system, 240+ specie
 palette, hazards) plus the endless remix rule; arena structures and events; director tuning with
 offline simulation charts.
 
+Order inside M5 (the user after playing the co-op build of 2026-11-12: it is fun, and it needs more
+variety in Tracks, bosses and mini-bosses). What a player notices first comes first: every batch
+opens with its bosses, its mini-bosses and its new Tracks, and is handed over to be played as soon
+as those work; species, upgrades and structures fill in behind them. Batch 1 gives each of the three
+Tracks its own boss (Kaleidos, Longwave, The Choir) and the first four mini-bosses. Batch 2 adds
+Tracks 4 and 5 with Event Horizon, Polyrhythm and four more mini-bosses. Batch 3 adds Track 6,
+Feedback, the last four mini-bosses and the endless remix. Counts: GAME_DESIGN §13.
+
 Exit per batch:
 - [ ] Contact-sheet screenshot shows every new species has a distinct, readable silhouette.
 - [ ] Bot harness spawns and kills every species; no perf regression on either device.
