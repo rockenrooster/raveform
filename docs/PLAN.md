@@ -372,7 +372,7 @@ User checkpoint: a real co-op session in one room. Impression of the phones' mus
 Read: GAME_DESIGN §6–9, §13.
 
 Build in batches of roughly 40 species each: the full genome system, 240+ species, 12 elite traits,
-12 mini-bosses, 6 bosses; Mods to 36, Riffs to 12, Boosts to 16, Fusions to 8; Tracks to 6 (theme,
+12 mini-bosses, 6 bosses; Mods to 36, Riffs to 12, Boosts to 16, Fusions to 8; Tracks to 10 (theme,
 palette, hazards) plus the endless remix rule; arena structures and events; director tuning with
 offline simulation charts.
 
@@ -382,7 +382,8 @@ opens with its bosses, its mini-bosses and its new Tracks, and is handed over to
 as those work; species, upgrades and structures fill in behind them. Batch 1 gives each of the three
 Tracks its own boss (Kaleidos, Longwave, The Choir) and the first four mini-bosses. Batch 2 adds
 Tracks 4 and 5 with Event Horizon, Polyrhythm and four more mini-bosses. Batch 3 adds Track 6,
-Feedback, the last four mini-bosses and the endless remix. Counts: GAME_DESIGN §13.
+Feedback and the last four mini-bosses. Batch 4 (added when the user asked for ten Tracks) adds
+Tracks 7 to 10 with four new bosses. Counts: GAME_DESIGN §13.
 
 Exit per batch:
 - [ ] Contact-sheet screenshot shows every new species has a distinct, readable silhouette.

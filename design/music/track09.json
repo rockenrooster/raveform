@@ -1,0 +1,57 @@
+{
+  "id": "track09",
+  "name": "Mirage",
+  "bpm": 168,
+  "key": "Bb lydian",
+  "scale": [0, 2, 4, 6, 7, 9, 11],
+  "note": "Same format as track01.json. Character: floating. B flat major 7 with its sharp eleventh, C over the same B flat in the bass, G minor 7, F add 9: the bass does not move for two bars, then the fourth bar lands on F and the ear hears home. The lead is a harp: five notes up through stacked thirds, three down, soft and long with a lot of echo. The kick is broken (one, the and of two, the and of three), so the beat leans forward instead of marching.",
+  "progression": ["Bb", "C", "Gm", "F"],
+  "chords": {
+    "Bb":  {"bass": 46, "pad": [53, 57, 62, 64], "stab": [69, 74, 77],
+            "arp": [65, 69, 72, 76, 81, 76, 72, 69, 65, 69, 72, 76, 81, 84, 81, 76]},
+    "C":   {"bass": 46, "pad": [55, 60, 64, 67], "stab": [72, 76, 79],
+            "arp": [67, 72, 76, 79, 84, 79, 76, 72, 67, 72, 76, 79, 84, 86, 84, 79]},
+    "Gm":  {"bass": 43, "pad": [53, 58, 62, 65], "stab": [70, 74, 77],
+            "arp": [65, 70, 74, 77, 82, 77, 74, 70, 65, 70, 74, 77, 82, 86, 82, 77]},
+    "F":   {"bass": 41, "pad": [53, 57, 60, 67], "stab": [69, 72, 77],
+            "arp": [65, 69, 72, 77, 81, 77, 72, 69, 65, 69, 72, 77, 81, 84, 81, 76]}
+  },
+  "patterns": {
+    "kick":    "9.....9...9.....",
+    "clap":    "....9.......9...",
+    "hat_off": "..7...7...7...7.",
+    "hat_16":  "4.644.644.644.64",
+    "ohat":    "..8...8...8...8.",
+    "shaker":  "3545354535453545",
+    "stab":    "...8.....7...8..",
+    "pulse":   "9.........7....."
+  },
+  "bass": {
+    "groove":     [[0, 0, 0.9, 2.5], [3, 0, 0.7, 1.0], [6, 0, 0.85, 2.0], [10, 0, 0.85, 2.5], [14, 12, 0.7, 1.0]],
+    "groove_alt": [[0, 0, 0.9, 2.5], [3, 0, 0.7, 1.0], [6, 0, 0.85, 2.0], [10, 0, 0.85, 2.0], [13, 7, 0.7, 1.0], [14, 12, 0.7, 1.0]],
+    "drop":       [[0, 0, 0.9, 1.5], [3, 12, 0.75, 1.0], [6, 0, 0.9, 1.5], [8, 7, 0.7, 1.0], [10, 0, 0.9, 1.5], [13, 12, 0.75, 1.0], [14, 7, 0.75, 1.0]],
+    "format": "[step, semitone offset from the chord's bass note, velocity, length in steps]"
+  },
+  "mix": {"lead": 0.31, "pad": 0.62, "stab": 0.55, "bass": 0.62},
+  "send": {"lead": 0.34, "stab": 0.4, "pad": 0.4},
+  "patch": {
+    "kick_hz": 46.25,
+    "kick": {"decay": 0.1},
+    "lead": {"fc_start": 2800.0, "fc_end": 700.0, "q": 1.6, "decay": 0.22, "length": 0.42, "detune_cents": 6.0, "sub": 0.1},
+    "bass": {"square_mix": 0.3, "sub": 0.42, "fc_start": 1500.0, "fc_end": 320.0, "decay": 0.3},
+    "stab": {"detune_cents": 10.0, "fc_start": 3000.0, "decay": 0.18, "length": 0.4},
+    "pad": {"fc_base": 1400.0, "fc_lfo": 900.0, "lfo_hz": 0.09},
+    "delay": {"steps": 3.0, "feedback": 0.46, "mix": 0.28, "repeats": 8},
+    "reverb": {"rt60": 2.3}
+  },
+  "arrangement": [
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove"}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 0.6}},
+    {"section": "build", "bars": 4, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "pad": 0.8, "stab": 1}},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": "double", "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0}},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0}},
+    {"section": "break", "bars": 4, "layers": {"hat_off": 0.5, "lead": "sparse", "pad": 0.9}}
+  ]
+}

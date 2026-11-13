@@ -72,6 +72,35 @@ PALETTES = [
          accent=dict(L=0.97, h=90, c=0.04),
          enemies=[dict(L=0.95, h=95, c=0.06), dict(L=0.70, h=258, cf=0.97), dict(L=0.66, h=288, cf=0.97),
                   dict(L=0.88, h=165, cf=0.95), dict(L=0.84, h=228, cf=0.95)]),
+    # Tracks 7 to 10 (2026-11-12, when the set list grew to ten).
+    # Afterglow: dusk. Peach-gold and lavender on plum; the first major key gets the warmest sky.
+    dict(id="afterglow", name="Afterglow", track=7,
+         bg0=dict(L=0.10, h=320, c=0.035), bg1=dict(L=0.18, h=340, c=0.060),
+         grid=dict(L=0.44, h=310, c=0.09), gridHot=dict(L=0.88, h=310, c=0.06),
+         accent=dict(L=0.88, h=75, cf=0.9),
+         enemies=[dict(L=0.84, h=72, cf=0.97), dict(L=0.72, h=300, cf=0.97), dict(L=0.72, h=250, cf=0.95),
+                  dict(L=0.86, h=168, cf=0.95), dict(L=0.90, h=110, cf=0.95)]),
+    # Arcadia: the arcade. Saturated primaries on near-black, a green grid.
+    dict(id="arcadia", name="Arcadia", track=8,
+         bg0=dict(L=0.07, h=270, c=0.015), bg1=dict(L=0.14, h=265, c=0.035),
+         grid=dict(L=0.45, h=145, c=0.12), gridHot=dict(L=0.90, h=145, c=0.07),
+         accent=dict(L=0.90, h=100, cf=0.95),
+         enemies=[dict(L=0.86, h=145, cf=0.97), dict(L=0.70, h=250, cf=0.97), dict(L=0.72, h=320, cf=0.95),
+                  dict(L=0.92, h=95, cf=0.95), dict(L=0.86, h=190, cf=0.95)]),
+    # Mirage: turquoise and sand over deep teal; the grid is the sand.
+    dict(id="mirage", name="Mirage", track=9,
+         bg0=dict(L=0.10, h=215, c=0.030), bg1=dict(L=0.19, h=195, c=0.055),
+         grid=dict(L=0.46, h=80, c=0.07), gridHot=dict(L=0.90, h=85, c=0.06),
+         accent=dict(L=0.86, h=180, cf=0.9),
+         enemies=[dict(L=0.86, h=180, cf=0.97), dict(L=0.88, h=80, cf=0.95), dict(L=0.70, h=285, cf=0.97),
+                  dict(L=0.78, h=235, cf=0.95), dict(L=0.88, h=150, cf=0.95)]),
+    # Last Light: Ultraviolet's violets again, with gold in them and a warm horizon: the first Track at dawn.
+    dict(id="lastlight", name="Last Light", track=10,
+         bg0=dict(L=0.09, h=280, c=0.040), bg1=dict(L=0.19, h=60, c=0.050),
+         grid=dict(L=0.44, h=275, c=0.11), gridHot=dict(L=0.90, h=80, c=0.06),
+         accent=dict(L=0.92, h=90, cf=0.9),
+         enemies=[dict(L=0.70, h=290, cf=0.97), dict(L=0.90, h=85, cf=0.95), dict(L=0.72, h=250, cf=0.97),
+                  dict(L=0.74, h=325, cf=0.95), dict(L=0.86, h=165, cf=0.95)]),
 ]
 
 MIN_HUE_GAP_DANGER = 30.0
@@ -311,7 +340,7 @@ def main():
     font = ld.load_font(os.path.join(DESIGN, "vector_font.txt"))
     from PIL import Image
     pw, ph, sh = 800, 450, 64
-    sheet = Image.new("RGB", (pw * 2, (ph + sh) * 3), (0, 0, 0))
+    sheet = Image.new("RGB", (pw * 2, (ph + sh) * ((len(data["palettes"]) + 1) // 2)), (0, 0, 0))
     for i, pal in enumerate(data["palettes"]):
         col, row = i % 2, i // 2
         sheet.paste(draw_panel(data, pal, font, pw, ph, seed=11 + i), (col * pw, row * (ph + sh)))

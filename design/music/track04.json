@@ -1,0 +1,59 @@
+{
+  "id": "track04",
+  "name": "Aurora",
+  "bpm": 138,
+  "key": "E minor",
+  "scale": [0, 2, 3, 5, 7, 8, 10],
+  "note": "Same format as track01.json. Character: trance, wide and bright. Em, Am, C, B: the B is major, its D sharp the one note outside the scale, and it pulls every fourth bar home. The lead is a pedal-point figure: the melody is on the even sixteenths (E G F# G, E G A G) and a high pedal note answers on the odd ones, so a player who holds fire hears a tune with a shimmer over it. The pedal moves B, A, C, B across the four chords. The bass gallops on the last two sixteenths of every beat.",
+  "progression": ["Em", "Am", "C", "B"],
+  "chords": {
+    "Em": {"bass": 40, "pad": [52, 59, 64, 67], "stab": [71, 76, 79],
+           "arp": [76, 83, 79, 83, 78, 83, 79, 83, 76, 83, 79, 83, 81, 83, 79, 78]},
+    "Am": {"bass": 45, "pad": [52, 57, 60, 64], "stab": [72, 76, 81],
+           "arp": [72, 81, 76, 81, 74, 81, 76, 81, 72, 81, 76, 81, 79, 81, 76, 74]},
+    "C":  {"bass": 48, "pad": [52, 55, 60, 64], "stab": [72, 76, 79],
+           "arp": [76, 84, 79, 84, 78, 84, 79, 84, 76, 84, 79, 84, 83, 84, 79, 76]},
+    "B":  {"bass": 47, "pad": [51, 54, 59, 63], "stab": [71, 75, 78],
+           "arp": [75, 83, 78, 83, 81, 83, 78, 83, 75, 83, 78, 83, 81, 83, 78, 75]}
+  },
+  "patterns": {
+    "kick":    "9...9...9...9...",
+    "clap":    "....9.......9...",
+    "hat_off": "..8...8...8...8.",
+    "hat_16":  "4274427442744274",
+    "ohat":    "..8...8...8...8.",
+    "shaker":  "3545354535453545",
+    "stab":    "..9...9...9...9.",
+    "pulse":   "9.......9......."
+  },
+  "bass": {
+    "groove":     [[2, 0, 0.9, 0.9], [3, 0, 0.72, 0.8], [6, 0, 0.9, 0.9], [7, 0, 0.72, 0.8],
+                   [10, 0, 0.9, 0.9], [11, 0, 0.72, 0.8], [14, 0, 0.9, 0.9], [15, 0, 0.72, 0.8]],
+    "groove_alt": [[2, 0, 0.9, 0.9], [3, 0, 0.72, 0.8], [6, 0, 0.9, 0.9], [7, 0, 0.72, 0.8],
+                   [10, 0, 0.9, 0.9], [11, 0, 0.72, 0.8], [14, 0, 0.9, 0.9], [15, 7, 0.7, 0.8]],
+    "drop":       [[2, 0, 0.9, 0.8], [3, 12, 0.78, 0.8], [6, 0, 0.9, 0.8], [7, 12, 0.78, 0.8],
+                   [10, 0, 0.9, 0.8], [11, 12, 0.78, 0.8], [14, 0, 0.9, 0.8], [15, 12, 0.78, 0.8]],
+    "format": "[step, semitone offset from the chord's bass note, velocity, length in steps]"
+  },
+  "mix": {"lead": 0.34, "pad": 0.58, "stab": 0.70},
+  "send": {"lead": 0.28, "stab": 0.36, "pad": 0.36},
+  "patch": {
+    "kick_hz": 41.2,
+    "lead": {"fc_start": 4600.0, "fc_end": 800.0, "q": 2.4, "decay": 0.14, "detune_cents": 9.0},
+    "bass": {"square_mix": 0.45, "fc_start": 2000.0, "fc_end": 380.0, "decay": 0.16},
+    "stab": {"detune_cents": 12.0, "fc_start": 3800.0, "decay": 0.12, "length": 0.28},
+    "pad": {"fc_base": 1200.0, "fc_lfo": 800.0, "lfo_hz": 0.10},
+    "delay": {"steps": 3.0, "feedback": 0.40, "mix": 0.24, "repeats": 7},
+    "reverb": {"rt60": 1.9}
+  },
+  "arrangement": [
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove"}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 0.6}},
+    {"section": "build", "bars": 4, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "pad": 0.8, "stab": 1}},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": "double", "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0}},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0}},
+    {"section": "break", "bars": 4, "layers": {"hat_off": 0.5, "lead": "sparse", "pad": 0.9}}
+  ]
+}

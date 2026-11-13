@@ -96,10 +96,23 @@ next Track's Break, during which tempo, key and palette cross-fade.
 | 1 First Light | 120 | A minor: i–VI–III–VII | Warm four-on-the-floor | Ultraviolet (violet, cyan, magenta on indigo) | Drifters, Hounds, Shoal, Rams | Kaleidos |
 | 2 Solar Wind | 126 | F minor: i–VII–VI–VII | Driving off-beat bass | Solar (amber, gold, teal on black-teal) | Flankers, Skitters, Caroms, Sentries | Longwave |
 | 3 Reef | 132 | D dorian: i–IV vamp | Rolling techno | Reef (aqua, lime, coral on deep blue) | Moths, Brood, Blinks | The Choir |
-| 4 Aurora | 138 | E minor: i–iv–VI–V | Trance arps | Aurora (green, violet, ice on night blue) | Wyrms, Tethers | Event Horizon |
-| 5 Furnace | 144 | G phrygian: i–♭II vamp | Hard, percussive | Furnace (amber, white, cyan on charcoal) | Weavers, Wells | Polyrhythm |
-| 6 Zenith | 150 | C minor: i–VI–III–VII | Peak time | Zenith (white, gold, electric blue) | Mimics | Feedback |
-| 7+ Endless | +4 per Track, cap 174 | Recombined, transposed | Remix | Recombined | Elite traits stack | Bosses return with traits |
+| 4 Aurora | 138 | E minor: i–iv–VI–V (the V major) | Trance: a tune under a high pedal note, galloping bass | Aurora (green, violet, ice on night blue) | Wyrms, Tethers | Event Horizon |
+| 5 Furnace | 144 | G phrygian: i7–♭IImaj7 vamp | Tribal and warm: toms, bass and lead in 3-3-2, a mallet lead | Furnace (amber, white, cyan on charcoal) | Weavers, Wells | Polyrhythm |
+| 6 Zenith | 150 | C dorian: i–III–VII–IV | The peak-time anthem; chords in 3-3-4-3-3 | Zenith (white, gold, electric blue) | Mimics | Feedback |
+| 7 Afterglow | 156 | D♭ major: I–V–vi–IV | The first major key; half-time drums under big soft chords | to design | Elites carry two traits | to design |
+| 8 Arcadia | 162 | G major: I–vi–IV–V | The arcade: square-wave octave bass, broken chords, dry | to design | — | to design |
+| 9 Mirage | 168 | B♭ lydian: I–II–vi–V over a held bass | Floating: a harp lead, a broken kick | to design | — | to design |
+| 10 Last Light | 174 | A minor: First Light's chords and lead, note for note | Liquid drum and bass; the run comes home | to design | — | to design |
+| The loop | as the Tracks | — | The encore (section 8) | — | Elite traits stack | Bosses return under the loop's ramps |
+
+**Ten Tracks** (the user, 2026-11-12: "I want 10 tracks total, don't be afraid to experiment with
+different themes, but they should all be very pleasing to the ear"). The tempo climbs six beats a
+minute a Track, from 120 to 174. The themes are chosen to differ in what the ear notices first: the
+mode (four minor, two modal, two major, one lydian, and the first theme again at the end), the drum
+pattern (four-on-the-floor, 3-3-2 toms, half time, a broken kick, a two-step break) and what the
+lead does (broken chords, a three-note cell, a pedal point, a mallet, a harp). All ten are written
+(`design/music/track01.json` to `track10.json`, `design/music/README.md`); Tracks 7 to 10 still need
+their palettes, bosses and rosters. How many of the ten one run plays before the encore is open: it is the user's call (asked 2026-11-12).
 
 ### 4.3 What ends a run
 
@@ -594,8 +607,9 @@ Local high scores: top 10 for solo and for each co-op player count. Lifetime sta
 |---|---|---|---|---|---|---|---|---|---|---|
 | M3 slice | 12 | 6 | 8 | 3 | 4 | 0 | 2 | 0 | 1 | walls only |
 | M5 batch 1 | 80 | 10 | 16 | 6 | 8 | 2 | 3 | 4 | 3 | 3 / 3 |
-| M5 batch 2 | 160 | 14 | 26 | 9 | 12 | 5 | 5 | 8 | 4 | 5 / 6 |
-| M5 batch 3 | 240+ | 16 | 36 | 12 | 16 | 8 | 6 + endless | 12 | 6 | 6 / 8 |
+| M5 batch 2 | 160 | 14 | 26 | 9 | 12 | 5 | 5 | 8 | 5 | 5 / 6 |
+| M5 batch 3 | 240+ | 16 | 36 | 12 | 16 | 8 | 6 | 12 | 6 | 6 / 8 |
+| M5 batch 4 | 240+ | 16 | 36 | 12 | 16 | 8 | 10 + the loop | 12 | 10 | 6 / 8 |
 
 Batch 1 has three bosses, not two, so that each of its three Tracks ends in its own (the user's
 note of 2026-11-12: more variety in Tracks, bosses and mini-bosses). In every batch the bosses,

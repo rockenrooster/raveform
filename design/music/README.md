@@ -31,23 +31,72 @@ Questions for the listener (the composer cannot hear this):
 4. Kick and bass on a phone speaker: present, or missing?
 5. Anything harsh, muddy or annoying?
 
-## Tracks so far
+## The set list — ten Tracks
 
-| File | Track | Tempo, key | Character |
-|---|---|---|---|
-| `track01.json` | First Light | 120 BPM, A minor, i–VI–III–VII | Warm four-on-the-floor, off-beat bass, up-down chord arps |
-| `track02.json` | Solar Wind | 126 BPM, F minor, i–VII–VI–VII | Driving: bouncing octave bass, syncopated stabs, brighter and snappier lead, eighth-note delay |
-| `track03.json` | Reef | 132 BPM, D dorian, i–IV vamp (Dm9 – G6) | Rolling techno, hypnotic and liquid: the bass rolls on the three sixteenths between the kicks; the lead is a three-note cell that turns against the beat and meets it again at the bar line, with a quarter-note echo; dub chord stabs into a longer room |
+The tempo climbs six beats a minute a Track. Each Track differs from its neighbours in the three
+things an ear notices first: the mode, the drum pattern and what the lead does.
 
-A Track can carry `mix`, `send` and `patch` overrides (Tracks 2 and 3 do): that is how each Track gets
-its own character from the same voices. `patch.kick_hz` tunes the kick's body to the key (Track 3 keeps
-A1, the fifth of D: the root an octave down is too low to hear, an octave up too high to be a kick).
-All previews use the same staged arrangement, so they can be compared bar for bar.
+| File | Track | Tempo, key | Drums | Lead | Character |
+|---|---|---|---|---|---|
+| `track01.json` | First Light | 120, A minor: Am F C G | Four-on-the-floor | Up-down chord arps | Warm house; off-beat bass |
+| `track02.json` | Solar Wind | 126, F minor: Fm E♭ D♭ E♭ | Four-on-the-floor | Falling arps, an eighth-note echo | Driving; bouncing octave bass, syncopated stabs |
+| `track03.json` | Reef | 132, D dorian: Dm9 G6 | Four-on-the-floor, rolling hats | A three-note cell turning against the bar | Rolling techno, hypnotic and liquid |
+| `track04.json` | Aurora | 138, E minor: Em Am C B | Four-on-the-floor | A tune on the even sixteenths under a high pedal note | Trance, wide and bright; galloping bass; the major V pulls home |
+| `track05.json` | Furnace | 144, G phrygian: Gm7 A♭maj7 | Kick on four, toms in 3-3-2 | A mallet: cells that climb, then fall | Tribal and warm; the flat second as a major seventh chord |
+| `track06.json` | Zenith | 150, C dorian: Cm E♭ B♭ F | Four-on-the-floor | A tune over a low pedal | The peak-time anthem; chords in 3-3-4-3-3; the major IV lifts |
+| `track07.json` | Afterglow | 156, D♭ major: D♭ A♭ B♭m G♭ | **Half time:** kick on one, snare on three | A tune over a low pedal | The first major key; big soft chords, long bass notes |
+| `track08.json` | Arcadia | 162, G major: G Em C D | Four-on-the-floor | Broken chords through two octaves | The arcade: square-wave octave bass, short blips, a short room |
+| `track09.json` | Mirage | 168, B♭ lydian: B♭maj7 C/B♭ Gm7 Fadd9 | **Broken kick:** one, the and of two, the and of three | A harp: five notes up, three down | Floating; the bass holds for two bars, the fourth bar lands home |
+| `track10.json` | Last Light | 174, A minor: Am F C G | **Two-step break:** kick on one and the and of three, snare on two and four | First Light's arps, note for note | Liquid drum and bass; the first theme comes back and the loop returns to First Light in its key |
 
-Track 3 measured: −14.0 LUFS, peak −4.9 dBFS, crest 11.5 dB; bands sub −5.2, bass −5.3, low-mid −7.4,
-mid −8.4, high-mid −12.5, high −17.2; the phone-speaker band keeps −4.2 dB, the same as Track 1. Its
-lead is more resonant (Q 2.8) and so sits 1.2 dB lower in the mix. Question for the listener: does the
-three-note lead stay hypnotic, or does it get stuck in the head the wrong way?
+A Track can carry `mix`, `send`, `duck` and `patch` overrides: that is how each gets its own
+character from the same voices. `patch.kick_hz` tunes the kick's body to the key. Every preview uses
+the same staged arrangement, so they can be compared bar for bar. Tracks 7 and 10 have no kick on
+every beat: nothing may read "kick" as "beat" (the beat is the clock's).
+
+### Listening to all ten — `previews/setlist_sampler.mp3`
+
+Six bars of every Track in order (the last two bars of its Build and the first four of its Drop):
+
+| Time | Track | | Time | Track |
+|---|---|---|---|---|
+| 0:00 | 1 First Light | | 0:56 | 6 Zenith |
+| 0:12 | 2 Solar Wind | | 1:06 | 7 Afterglow |
+| 0:24 | 3 Reef | | 1:16 | 8 Arcadia |
+| 0:35 | 4 Aurora | | 1:25 | 9 Mirage |
+| 0:46 | 5 Furnace | | 1:34 | 10 Last Light |
+
+Each Track's whole staged cycle is `previews/trackNN_cycle.mp3`. Questions for the listener (the
+composer cannot hear this): is any Track harsh, thin or tiring? Do any two sound like the same
+Track? Does 7 feel like a deep breath after 6, and does 10 feel like coming home? Is the lead in 8
+charming or annoying? Which would you drop?
+
+### What stands in for ears
+
+```
+. .\scripts\env.ps1; python -I design\tools\setlist.py        renders all ten, prints this table, writes the previews
+```
+
+Tracks 1 to 3 were accepted by ear at the M2 and M3 checkpoints. The tool flags any other Track
+that leaves their range: more than 2 dB brighter above 2.5 kHz, 3 dB thinner or 2 dB heavier below
+250 Hz, 1.5 dB weaker in the phone-speaker band, or a lead a quarter brighter. Measured 2026-11-12:
+
+| Track | LUFS | Peak dBFS | Crest dB | Below 250 Hz | 250 Hz–2.5 kHz | 2.5–6 kHz | 6–16 kHz | Phone band | Lead centroid Hz | Flags |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 First Light | −14.0 | −5.2 | 11.1 | −2.2 | −4.6 | −13.6 | −18.1 | −4.2 | 1053 | reference |
+| 2 Solar Wind | −14.0 | −5.7 | 10.4 | −1.8 | −5.4 | −13.9 | −18.5 | −4.9 | 1310 | reference |
+| 3 Reef | −14.0 | −4.9 | 11.5 | −2.3 | −4.8 | −12.5 | −17.2 | −4.2 | 1577 | reference |
+| 4 Aurora | −14.0 | −5.5 | 10.9 | −2.2 | −5.0 | −12.2 | −17.4 | −4.2 | 1619 | none |
+| 5 Furnace | −14.0 | −5.5 | 10.8 | −2.5 | −4.1 | −14.3 | −17.7 | −4.0 | 1183 | none |
+| 6 Zenith | −14.0 | −5.7 | 10.6 | −2.2 | −4.9 | −12.7 | −17.3 | −4.3 | 1377 | none |
+| 7 Afterglow | −14.0 | −5.3 | 11.1 | −3.0 | −3.5 | −13.9 | −17.8 | −3.1 | 1045 | none |
+| 8 Arcadia | −14.0 | −6.7 | 10.3 | −2.1 | −5.0 | −13.1 | −17.3 | −4.8 | 1219 | none |
+| 9 Mirage | −14.0 | −5.7 | 10.8 | −2.9 | −3.8 | −13.2 | −16.9 | −3.3 | 985 | none |
+| 10 Last Light | −14.0 | −5.4 | 11.1 | −2.8 | −3.9 | −13.2 | −17.0 | −3.4 | 878 | none |
+
+Band columns are dB of the mix's energy. Every note of every pad, stab, arp and bass line was also
+checked against its Track's scale; the one note outside is Aurora's D sharp, in its major V chord.
+Numbers say a Track is balanced like the ones that were liked; they cannot say it is liked.
 
 ## Sound variants — `previews/sound_variants.mp3`
 

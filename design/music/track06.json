@@ -1,0 +1,54 @@
+{
+  "id": "track06",
+  "name": "Zenith",
+  "bpm": 150,
+  "key": "C dorian",
+  "scale": [0, 2, 3, 5, 7, 9, 10],
+  "note": "Same format as track01.json. Character: the peak-time anthem. Cm, E flat, B flat, F: the last chord is major (the raised sixth, A), so every fourth bar lifts instead of falling. The lead is a tune on the even sixteenths with a low pedal on the odd ones, so that at this tempo a held trigger sings rather than chatters. Chords hit in 3-3-4-3-3 across the bar.",
+  "progression": ["Cm", "Eb", "Bb", "F"],
+  "chords": {
+    "Cm":  {"bass": 36, "pad": [55, 60, 63, 67], "stab": [72, 75, 79],
+            "arp": [79, 72, 75, 72, 79, 72, 84, 72, 82, 72, 79, 72, 75, 72, 77, 72]},
+    "Eb":  {"bass": 39, "pad": [55, 58, 63, 67], "stab": [70, 75, 79],
+            "arp": [79, 70, 82, 70, 79, 70, 75, 70, 77, 70, 79, 70, 82, 70, 79, 70]},
+    "Bb":  {"bass": 46, "pad": [53, 58, 62, 65], "stab": [70, 74, 77],
+            "arp": [77, 70, 74, 70, 77, 70, 82, 70, 81, 70, 77, 70, 74, 70, 77, 70]},
+    "F":   {"bass": 41, "pad": [53, 57, 60, 65], "stab": [69, 72, 77],
+            "arp": [81, 72, 77, 72, 81, 72, 84, 72, 81, 72, 79, 72, 77, 72, 79, 72]}
+  },
+  "patterns": {
+    "kick":    "9...9...9...9...",
+    "clap":    "....9.......9...",
+    "hat_off": "..8...8...8...8.",
+    "hat_16":  "5383538353835383",
+    "ohat":    "..8...8...8...8.",
+    "shaker":  "4636463646364636",
+    "stab":    "9..9..9...9..9..",
+    "pulse":   "9.......9......."
+  },
+  "bass": {
+    "groove":     [[2, 0, 0.9, 1.6], [6, 0, 0.9, 1.6], [10, 0, 0.9, 1.6], [13, 7, 0.7, 0.8], [14, 0, 0.9, 1.2]],
+    "groove_alt": [[2, 0, 0.9, 1.6], [6, 0, 0.9, 1.6], [10, 0, 0.9, 1.6], [14, 0, 0.9, 0.9], [15, 12, 0.75, 0.8]],
+    "drop":       [[2, 0, 0.9, 0.9], [3, 0, 0.7, 0.8], [6, 0, 0.9, 0.9], [7, 12, 0.8, 0.8], [10, 0, 0.9, 0.9], [11, 0, 0.7, 0.8], [14, 0, 0.9, 0.9], [15, 12, 0.8, 0.8]],
+    "format": "[step, semitone offset from the chord's bass note, velocity, length in steps]"
+  },
+  "mix": {"lead": 0.33, "pad": 0.55, "stab": 0.8},
+  "send": {"lead": 0.26, "stab": 0.38},
+  "patch": {
+    "kick_hz": 49.0,
+    "lead": {"fc_start": 5200.0, "decay": 0.15, "detune_cents": 10.0, "sub": 0.15},
+    "stab": {"detune_cents": 14.0, "fc_start": 4200.0, "decay": 0.14, "length": 0.3},
+    "delay": {"steps": 3.0, "feedback": 0.38, "mix": 0.22, "repeats": 7},
+    "reverb": {"rt60": 1.8}
+  },
+  "arrangement": [
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove"}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 0.6}},
+    {"section": "build", "bars": 4, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "pad": 0.8, "stab": 1}},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": "double", "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0}},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0}},
+    {"section": "break", "bars": 4, "layers": {"hat_off": 0.5, "lead": "sparse", "pad": 0.9}}
+  ]
+}
