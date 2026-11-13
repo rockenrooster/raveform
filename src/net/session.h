@@ -5,8 +5,9 @@
 // and runs the world's director. After each tick it sends what the tick decided: spawn batches (at least two
 // beats before they land), verdicts on enemies, the boss, Boost drops, the director's state, its own player's
 // events, and a census of its enemies every two seconds; every frame the players' poses (30 Hz), enemy
-// corrections chosen by a priority accumulator (at most 1,200 bytes a packet, 15 Hz per client) and the song
-// clock (4 Hz). Clients' hit claims and events reach its world as operations of the next tick.
+// corrections chosen by a priority accumulator (at most 1,200 bytes a packet, 15 Hz per client; a moving Shoal's as
+// a motion correction, a third of the bytes) and the song clock (4 Hz). Clients' hit claims and events reach its
+// world as operations of the next tick.
 //
 // Client: joins, keeps its clock on the host's (net/sync.h), runs its world without a director (the host's
 // spawns and verdicts arrive as operations), claims its own player's hits and predicts the kills, applies
@@ -26,7 +27,9 @@ namespace rf::net {
 enum class SessionState : u8 { Idle, Connecting, Lobby, Running, Ended };
 // Where a remote player is taken for a tick (fillRemote): ~66 ms behind its newest pose, interpolated (TECH_SPEC 8.1 as
 // written), or at the tick's own time, carried on from its newest pose (docs/PROGRESS_m4_net.md).
-enum class RemotePoses : u8 { Interpolate, Predict };
+// Direct: predicted for the players this device hears directly (the host: every client; a client: the host), the
+// relayed ones interpolated.
+enum class RemotePoses : u8 { Interpolate, Predict, Direct };
 
 struct SessionConfig {
     sim::NetRole role = sim::NetRole::Host;
@@ -44,7 +47,7 @@ struct SessionConfig {
     bool autoStart = true;
     bool autoRestart = true;
     bool beacon = false;
-    RemotePoses remotePoses = RemotePoses::Interpolate;
+    RemotePoses remotePoses = RemotePoses::Direct;  // (docs/PROGRESS_m4_net.md: 10 seeds, impaired 6.47 -> 6.03, clean 5.39 -> 5.19)
     bool motionCorrections = true;  // host: a moving Shoal's corrections are motion corrections (protocol.h NetMotion)
     // Host: the corrections' share of each client's downlink (bytes a second, every byte to the client counted) and how
     // fast each enemy family gains priority (experiments: raveform_headless --net-tune). Shoals twice as fast: boids
@@ -82,6 +85,7 @@ struct SessionStats {
     u32 attention = 0;                                  // client: enemies asked for; host: asks received (totals)
     u32 maxDatagram = 0;                                // the largest UDP payload this device sent
     u32 droppedOutgoing = 0;                            // reliable data that could not be queued (must stay 0)
+    u32 claimsDropped = 0;                              // client: claims not sent while the host was quiet
     double totalUpBytes = 0.0, totalDownBytes = 0.0;    // since start, with headers
 };
 
@@ -384,6 +388,7 @@ private:
     sim::NetClaim pendClaims_[kPendingClaims];
     u32 pendClaimCount_ = 0;
     u16 pendRun_ = 0;
+    bool hostQuiet_ = false;  // client: the host silent past kLinkSilentMs at the last send()
 
     // Measurement.
     SessionStats stats_;

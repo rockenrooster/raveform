@@ -271,6 +271,7 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     nextAttentionUs_ = 0;
     pendClaimCount_ = 0;
     pendRun_ = 0;
+    hostQuiet_ = false;
     measureFrom_ = 0;
     lastWire_ = WireStats{};
     errSum_ = 0.0;
@@ -1145,11 +1146,11 @@ void Session::fillRemote(TickInput& in, i64 hostUs) {
     // from its newest pose by its velocity, so the enemies following a player follow the same place on every device (66 ms
     // behind, the host's enemies chased a client's ship where it had been and the client's copies where it was). When a
     // new pose moves that estimate, the ship keeps its place through an offset that decays over kPoseSmoothS.
-    const bool predict = cfg_.remotePoses == RemotePoses::Predict;
-    const i64 at = predict ? hostUs : hostUs - kInterpUs;
-    const i64 reach = predict ? kPredictMaxUs : kExtrapMaxUs;
     for (u32 s = 0; s < seats_ && s < kMaxPlayers; ++s) {
         if (s == seat_) continue;
+        const bool predict = cfg_.remotePoses == RemotePoses::Predict || (cfg_.remotePoses == RemotePoses::Direct && (host() || s == 0));
+        const i64 at = predict ? hostUs : hostUs - kInterpUs;
+        const i64 reach = predict ? kPredictMaxUs : kExtrapMaxUs;
         PlayerPose& p = in.players[s];
         const PoseRing& r = poses_[s];
         if (!(seatMask_ & (1u << s)) || !r.count) {
@@ -1296,7 +1297,15 @@ void Session::afterTick() {
         if (log.claimCount && pendRun_ != run) writeClaims();  // a new run: the last one's go first
         pendRun_ = run;
         for (u32 k = 0; k < log.claimCount; ++k) {
-            if (pendClaimCount_ == kPendingClaims) writeClaims();
+            if (pendClaimCount_ == kPendingClaims) {
+                // The host has gone quiet (gone, or a long Wi-Fi hole) and kPendingClaims are waiting: the rest are not
+                // sent (they would only pile up in flight; their predicted kills come undone if the host returns).
+                if (hostQuiet_) {
+                    ++stats_.claimsDropped;
+                    continue;
+                }
+                writeClaims();
+            }
             pendClaims_[pendClaimCount_++] = log.claims[k];
         }
         for (u32 k = 0; k < log.bossClaimCount;) {
@@ -1688,6 +1697,7 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
     }
     const bool live = state_ == SessionState::Running || state_ == SessionState::Lobby;
     const bool hostQuiet = !host() && link_.peerStats(0).silentMs > kLinkSilentMs;
+    hostQuiet_ = hostQuiet;
     // Everything this device sends leaves with its pose (30 Hz): a frame sends one datagram to a peer, or none
     // (each datagram costs 32 bytes of headers). Acknowledgements are ENet's own.
     const bool poseFrame = live && localUs >= nextPoseUs_;

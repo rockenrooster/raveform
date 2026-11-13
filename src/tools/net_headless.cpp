@@ -804,9 +804,10 @@ int netHeadlessMain(int argc, char** argv) {
     }
     if (const char* rp = arg(argc, argv, "--remote-poses")) {
         if (std::strcmp(rp, "predict") == 0) g_remotePoses = RemotePoses::Predict;
+        else if (std::strcmp(rp, "direct") == 0) g_remotePoses = RemotePoses::Direct;
         else if (std::strcmp(rp, "interp") == 0) g_remotePoses = RemotePoses::Interpolate;
         else {
-            std::printf("[net] --remote-poses interp|predict\n");
+            std::printf("[net] --remote-poses interp|predict|direct\n");
             delete species;
             return 2;
         }
