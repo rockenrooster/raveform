@@ -8,6 +8,7 @@
 // Main thread only, except Band::render (the device callback). The frame loop allocates nothing.
 
 #include <atomic>
+#include <thread>
 
 #include "audio/audio_args.h"
 #include "audio/audio_device.h"
@@ -331,6 +332,10 @@ private:
     u32 updateCount_ = 0;
     // M5 (--audio-profile): the engine's time per stage, written by the audio thread, read once at the end of a run.
     audio::EngineProfile profile_, profileStart_;
+    // M5 (start-up): the later Tracks' risers baked behind the game on a first launch, then the cache written.
+    std::thread bakeThread_;
+    char cachePath_[512] = {};
+    u64 cacheKey_ = 0;
     bool profiling_ = false;
 };
 

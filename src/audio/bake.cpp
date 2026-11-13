@@ -886,7 +886,8 @@ i32 SampleBank::riser(u32 track, u32 bars) const {
     i32 best = -1;
     u32 bestDist = ~0u;
     for (u32 i = 0; i < riserCount_; ++i) {
-        if (risers_[i].track != track) continue;
+        // M5: a riser still being baked behind the game (bakeDeferred) is not there yet.
+        if (risers_[i].track != track || !riserReady_[i].load(std::memory_order_acquire)) continue;
         const u32 d = risers_[i].bars > bars ? risers_[i].bars - bars : bars - risers_[i].bars;
         if (d < bestDist) {
             bestDist = d;
@@ -920,7 +921,7 @@ i32 SampleBank::inhale(u32 track, u32 steps32) const {
     return inhale_[track][steps32];
 }
 
-bool SampleBank::bake(const MusicData& music, u32 sampleRate) {
+bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) {
     release();
     const auto t0 = std::chrono::steady_clock::now();
     const double sr = sampleRate;
@@ -977,8 +978,20 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate) {
         want(4);
         for (u32 i = 0; i < nl && riserCount_ < countOf(risers_); ++i) {
             std::snprintf(label, sizeof label, "riser_%u_%u", t, lengths[i]);
+            if (deferRisers && t > 0 && count_ < kMaxSamples) {
+                // M5 (start-up): the slot now, the sound later (bakeDeferred, on a worker while Track 1 plays).
+                Sample& s = samples_[count_];
+                s = Sample{};
+                s.channels = 2;
+                s.tag = static_cast<u16>(lengths[i]);
+                std::snprintf(s.name, sizeof s.name, "%s", label);
+                riserReady_[riserCount_].store(false, std::memory_order_relaxed);
+                risers_[riserCount_++] = {t, lengths[i], static_cast<i32>(count_++)};
+                continue;
+            }
             float* r = makeRiser(lengths[i] * bar, sr, n);
             const i32 id = put(r, 2, -1, static_cast<u16>(lengths[i]));
+            riserReady_[riserCount_].store(true, std::memory_order_relaxed);
             risers_[riserCount_++] = {t, lengths[i], id};
         }
         // Shard scale: a pentatonic from the tonic (the first chord's bass) three octaves up, inside the Track's scale
@@ -1135,6 +1148,35 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate) {
     return true;
 }
 
+bool SampleBank::bakeDeferred(const MusicData& music, u32 sampleRate) {
+    const auto t0 = std::chrono::steady_clock::now();
+    bool ok = true;
+    for (u32 i = 0; i < riserCount_; ++i) {
+        if (riserReady_[i].load(std::memory_order_acquire)) continue;
+        const RiserRef& rr = risers_[i];
+        u32 n = 0;
+        float* data = makeRiser(rr.bars * 240.0 / music.tracks[rr.track].bpm, sampleRate, n);
+        if (!data) {
+            ok = false;
+            continue;
+        }
+        Sample& s = samples_[rr.id];
+        s.data = data;
+        s.frames = n;
+        bytes_ += static_cast<u64>(n) * 2 * sizeof(float);
+        riserReady_[i].store(true, std::memory_order_release);  // the audio thread may take it from now on
+    }
+    RF_LOG("audio: baked the later Tracks' risers in %.0f ms (behind the game)",
+           std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+    return ok;
+}
+
+bool SampleBank::complete() const {
+    for (u32 i = 0; i < riserCount_; ++i)
+        if (!riserReady_[i].load(std::memory_order_acquire)) return false;
+    return true;
+}
+
 // ---------------------------------------------------------------------------------------------- cache
 
 namespace {
@@ -1201,6 +1243,7 @@ bool SampleBank::loadCache(const char* path, u64 key) {
     }
     count_ = count;
     bytes_ = bytes;
+    for (u32 i = 0; i < riserCount_; ++i) riserReady_[i].store(true, std::memory_order_release);
     bakeSeconds_ = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     RF_LOG("audio: %u one-shots (%.1f MB) from the cache in %.0f ms", count_, bytes_ / 1048576.0, bakeSeconds_ * 1000.0);
     return true;

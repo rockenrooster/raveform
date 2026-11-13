@@ -3,6 +3,8 @@
 // design/tools/musicproto.py and the sound effects of design/tools/sfxproto.py, rendered with the same
 // recipes into float buffers that the sampler plays. Load time only: allocates with malloc.
 
+#include <atomic>
+
 #include "audio/cues.h"
 #include "audio/music_data.h"
 #include "core/types.h"
@@ -42,8 +44,12 @@ public:
     SampleBank& operator=(const SampleBank&) = delete;
     ~SampleBank();
 
-    // Bakes everything the Tracks and variants of `music` need at `sampleRate`.
-    bool bake(const MusicData& music, u32 sampleRate);
+    // Bakes everything the Tracks and variants of `music` need at `sampleRate`. M5 (start-up): with deferRisers the
+    // risers of Tracks 2-10 only get their slots; bakeDeferred (a worker thread, while Track 1 plays) bakes them, and
+    // riser() leaves out one not baked yet; complete() says when all are.
+    bool bake(const MusicData& music, u32 sampleRate, bool deferRisers = false);
+    bool bakeDeferred(const MusicData& music, u32 sampleRate);
+    bool complete() const;
     void release();
     // M3 stage B (start-up): the baked bank on disk (TECH_SPEC 11: cached baked audio). key names what
     // was baked (the music data's hash, which includes the DSP version, and the sample rate); a file with
@@ -93,6 +99,7 @@ private:
         u32 track, bars;
         i32 id;
     } risers_[MusicData::kMaxTracks * 4];  // up to four Build lengths a Track
+    std::atomic<bool> riserReady_[MusicData::kMaxTracks * 4] = {};  // M5: baked (the audio thread may play it)
     u32 riserCount_ = 0;
     i32 swellHalf_[MusicData::kMaxTracks] = {};  // -1 until baked (set in the constructor)
     i32 swellBar_[MusicData::kMaxTracks] = {};

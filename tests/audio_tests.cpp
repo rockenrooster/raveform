@@ -1030,6 +1030,22 @@ void testRecipesAndCues() {
     CHECK_MSG(silent == 0 && allocs == 0, "%u silent, %u allocations", silent, allocs);
 }
 
+// M5 (start-up): the later Tracks' risers baked behind the game are missing until bakeDeferred, then the same samples.
+void testDeferredRisers() {
+    auto* b = new SampleBank;
+    CHECK(b->bake(*g_music, kRate, true));
+    CHECK(b->riser(0, 4) >= 0 && b->riser(1, 4) < 0 && b->riser(9, 4) < 0 && !b->complete());
+    CHECK(b->bakeDeferred(*g_music, kRate) && b->complete());
+    bool same = true;
+    for (u32 t = 0; t < g_music->trackCount; ++t) {
+        const Sample& x = b->sample(b->riser(t, 4));
+        const Sample& y = g_bank->sample(g_bank->riser(t, 4));
+        same = same && x.frames == y.frames && std::memcmp(x.data, y.data, sizeof(float) * x.frames * 2) == 0;
+    }
+    CHECK_MSG(same, "a riser baked behind the game differs from the one baked at start");
+    delete b;
+}
+
 // All ten palettes load, one for each Track of the set list (design/palettes.json "track").
 void testPalettes() {
     auto* p = new Palettes;
@@ -1139,6 +1155,7 @@ int main() {
         {"Shard runs in each Track's scale (M5)", testShardScales},
         {"A-minor effects in each Track's key (M5)", testEffectsInKey},
         {"recipes, held voices and cues sound, stop and do not allocate (M5)", testRecipesAndCues},
+        {"the later Tracks' risers baked behind the game (M5)", testDeferredRisers},
     };
     for (const Test& t : tests) {
         g_test = t.name;
