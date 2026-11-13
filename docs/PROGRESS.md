@@ -1,5 +1,132 @@
 # RAVEFORM — Progress
 
+## M5 part 3 "Every upgrade" — 2026-11-13
+
+All of GAME_DESIGN 6.2 to 6.5 in the game: the 28 Mods, 9 Riffs (4-12), 12 Boosts (3-6, 9-16) and 8 Fusions that the first
+slice did not have, and the Trio dealt by the lead's rule of 2026-11-13 (6.1). The simulation is `src/sim/world_upgrades_m5.cpp`
+(hooks in `world.cpp`, `world_upgrades.cpp`, `world_enemies.cpp`), the view `src/game/play_view_upgrades.cpp` and
+`play_view_shots.cpp`, the sound `src/game/upgrade_sounds.cpp` (the band's whole loadout and its cues).
+
+### What was built
+
+- **Weapon Mods**: Fork (two half-damage shots 20 degrees apart on the first hit; Fractal: again), Seeker (shots turn toward
+  the nearest enemy, or the fight's body, within 320 wu: 3, 6, 10 rad/s), Heavy Step (every fourth volley's middle lane is a
+  slow orb that blows: 90/120/150 wu), Accent (the volley on beat 1, then 1 and 3, then every beat: a 1,500 wu piercing lance
+  at 3x the shot in the middle lane's place), Echo (each volley again a beat later at half damage; two echoes), Wave (a sine
+  across the line, 28/40 wu, the hit radius x1.6/x2), Rear Guard (off-beat shots backward, then sideways), Arc (a kill
+  jumps to 2, 3, 4 more within 220 wu), Burn (two beats alight, a beat's fire x the stacks, a burning death lights its
+  neighbours), Shatter (3/5/7 shards from a kill), Gravity Rounds (a hit tugs the bodies within 110/150 wu toward it).
+- **Defence and movement**: Afterimage (the enemies chase a decoy where the Dash began, 2/4 beats), Reserve (a Dash charge a
+  stack), Shockstep (a ring where the Dash ends, 140-220 wu, x2 on a Perfect Dash), Aegis (an arc 30-60 wu out turning once a
+  bar, 60/90/120 degrees, stops bullets), Last Light (a hit fires a free mini-Nova of 420 wu, once a cycle), Slipstream
+  (+8% speed).
+- **Economy**: Prospector (25% a stack of a Shard more), Nova Stock (+1 capacity and a Nova), Encore (+1 bar on every
+  Boost), Lucky Break (a fourth and fifth orb), Collector (a Boost every 250, then 150 Shards).
+- **Rhythm**: Syncopation (the off-beat shot +50%/+100% and +2 pierce), Bar Line (a laser cross through the ship on every
+  bar line; diagonals; 1,800 wu), Crescendo (+5% a clean bar to +50%/+100%), Kick Pulse (a knockback ring on every beat
+  outside the Break, damage from 2, wider at 3), Afterparty (the band's rule: the Surge a grid step faster a stack, its
+  second gear held two bars longer a stack, x2 score and magnet in those bars).
+- **Riffs 4-12** at levels 1-5: Lancer (a beam on beat 4, beats 2 and 4 from level 3), Minelayer (a cluster a bar, all
+  blowing on the next bar line), Storm Coil (triplet-eighth zaps at the nearest 1-5), Swarm (6-16 homing missiles a bar on
+  the 1/32), Singularity (a well 300 wu ahead pulling three beats, then blowing), Mirror (a wingman at 50-100%), Comet
+  (boomerang discs, 1-3), Sweeper (a laser arm, two from level 3), Flak (pellets on beats 2 and 4, exploding at 5). Hyper
+  doubles the Lancer's, Storm Coil's, Flak's and the Sweeper's grid.
+- **Boosts**: Supernova Rounds, Colossus (x3, invulnerable, rams), Time Stretch (the enemies and their bullets at half speed),
+  Freeze Frame (the frame's bodies stop for two bars and shatter in one hit, chaining), Black Hole (the next Nova pulls three
+  beats, then blows 500 wu), Chain Storm (lightning to the 24 nearest each beat), Chorus (two ghost ships), Beam (the primary
+  as a laser), Ricochet Fever (+5 bounces, x1.1 a bounce), Confetti (six homing sparks a kill), Fractal (forks twice),
+  Carousel (six bombs, one launched each beat).
+- **Fusions** (the gold orb when both ingredients are at their caps): Helix Array, Standing Wave, Tesla Bloom, Shard Halo,
+  Downbeat Cannon, Collapse Field, Murmuration, Quartet.
+- **How a Trio is dealt** (GAME_DESIGN 6.1, the lead's ruling): the first orb is firepower, the others the whole pool by
+  weight (`tuning::kDeal*`), no two alike, the Riff guarantee; Trios hold up to six orbs (three, Lucky Break's two, a
+  Fusion), on the wire too.
+- **The band's clock**: Singularity pulls in the song bars whose index + 1 is a multiple of four and blows on the next One;
+  the Sweeper's arm stands at twelve o'clock on the One of every second song bar (`World::setSongBarShift`, set by Play from
+  the band's offset); Minelayer never blows in the first bar after it is taken. Tested.
+- **Sound**: `Band::setLoadout(slot, PlayerLoadout)` with every Mod, Riff, Boost and Fusion (this device's player and the
+  teammates'); the cues (Fork, Heavy Step, Arc, Burn's crackle, Shatter, Gravity, the decoy, Shockstep, Aegis, Last Light,
+  Collector, Ricochet's bounce, Storm Coil, Supernova, Colossus, Freeze's shatter, Confetti, Black Hole's Nova, Crescendo's
+  fall on a hit) counted a frame and posted once a kind. The fights' pending sounds now use the audio engineer's eight
+  recipes and chordNote: none is pending.
+- **Co-op**: whatever moves or stops enemies because of one player's upgrade is shared or the host's. The decoy and Black
+  Hole's singularity reach every device by the player events (dash, Nova with its place), a Singularity's well by a new one
+  (`kPeWell`), Kick Pulse and Colossus push from the poses on every device; Gravity Rounds' tug is the host's (at its own
+  shots' hits and the copies of the others'), Freeze Frame is decided by the host and carried in a spare bit of the
+  enemies' corrections. Damage is dealt by the owner's device (claims), as before. Protocol `0x52460503`. `src/net`
+  changes: `protocol.h/.cpp` (a Trio's six orbs, `kPeWell`'s range, the correction's frozen bit, the version),
+  `session.cpp` (the six orbs; `kPeWell` from the well's event).
+- **Tools**: `scripts\review-m5.ps1 -Part part3` (22 scenes, `play_pictures_m5.cpp` kUpPics); `--loadout max` (every Mod
+  at its cap, Swarm, Flak, Storm Coil and Sweeper at 5, their Fusions, Chorus and Fractal held: the worst case); the crowd
+  sim's "first run's build" line (Mods at their cap as Track 3 ends, a Fusion as Track 5 ends).
+
+### Acceptance
+
+| Check | Result | Limit |
+|---|---|---|
+| Tests (`5e6ffeb`) | audio 2,679 checks, sim 5,649 (new: the rules above, the shot caps with the heaviest build into a wall of enemies for eight bars, the band's three timings, the dealing's weights and firepower orb, Lucky Break's and the Fusion's orbs), net 131,340 (the frozen bit); determinism `f4df84a4414eaa0f` / `368f4ea929adbd19` | all pass |
+| Loopback soaks, 4 players, 10 min | before the dealing (`e205aff`): clean **5.63**, impaired **10.05** wu RMS. With it: clean 10.33, impaired **12.48** at the test's seed (seeds 2-4: 9.8, 8.8, 7.3): the four bots now reach the Hive fight and Track 3 inside the ten minutes, and the Hive's darts (their shape guessed until the host's arrives) are the worst windows (30-70 wu) | < 12 wu |
+| Careful bot, 20 x 40 min (`--sim crowd`) | median first death 16.4 min (Tracks 5-6), **1 of 20** in the first pass (9.9 min, the Choir), boss fights lost 9.7%; Longwave **70 s**, the Choir **65 s**, Alpha Hound 16 s, the Hive 18 s, the Ram 18 s, Carom King 16 s at home | the lead: Longwave about 90, the Choir about 75 |
+| Careless bot, 20 x 40 min | median 15.7 min, **1 of 20** in the first pass (9.8 min, T3); seeds 21-40 (14 min): 3 of 20 | at most 2 of 20 |
+| The build (careful, dealing, before the last health step) | as Track 3 ends: 5.2 Mods at their cap, two or more in 20 of 20 runs; as Track 5 ends a Fusion in 10 of 10 | two by Track 3; a Fusion in half |
+| Moto, the worst case (`bench_play --fast-forward 640 --nohits --loadout max`, 60 s; our APK, the lock; shared phone; APK of `b3cacc3`) | **0% missed**, panel P95 1 period, CPU max 20.2 ms; main thread P95 5.1 ms; GPU total P95 14.3 ms; sim tick p50/p95/max 0.37/0.77/3.47 ms; up to 898 enemies (581 in view), 18,673 sparks; heap allocations 0; Track 5 (the loop) | P95 <= 16.9 ms, missed <= 5% |
+| Moto, the bot's own build (`--fast-forward 640 --nohits`, 60 s) | 0% missed, main thread P95 4.5 ms, GPU P95 14.3 ms | as above |
+| Review set, Debug (`captures\m5\part3\`) | 22 pictures with `.small.png`; 0 validation messages | 0 |
+
+### Decisions taken alone
+
+- **The dealing's weights** (the lead's starting values, moved as allowed): a new Riff 3 (not 2) and Extra Cell and Regen
+  count 3 before they are held. Measured with the careless bot: with Regen at 1 it grew back 5 cells in 20 runs (107 in play
+  test 2's smaller pool) and 9 of 20 runs died in the first pass on seeds 21-40.
+- **The bot picks by a score table** (`sim/bot.cpp`): the staples and the defensive Riffs (Orbitals, Pulse Ring,
+  Sentinel) and the cells' Mods high, a Fusion's ingredient +6 when the other is held, no bonus for a new Riff (with it the
+  careless bot built Riffs before firepower and killed a sixth as fast).
+- **Boss health below the lead's lengths**: Longwave's tune 2.2 (70 s) and the Choir's 4.2 (65 s). 2.7 and 4.8 gave 86 s and
+  70 s but the careless bot then died in the first pass in 3 of 20 runs; the hard line won.
+- **Kick Pulse** rings on every beat outside the Break (the simulation has no kick pattern; the band plays its tom on the
+  kick). **Time Stretch** slows the whole world in co-op (it is one). **Slipstream** keeps the table's +8% though 6.6 asks
+  no small percentage (Design's table; for the lead). **Last Light's** mini-Nova is 420 wu.
+- **Accent's lance and Heavy Step's orb** take the middle lane's place; **Echo** fires from where the ship is a beat later;
+  **Mirror's** wingman flies beside the ship firing along the aim; **Quartet's** three cover the sides and the back;
+  **Chorus's** ghosts fly behind, 80 wu out.
+- **Beam** fires no shots: each grid step burns its line, as wide and as hard as the volley's lanes. **Collector** gives its
+  Boost at once. **Black Hole** takes the next Nova while the Boost is on (the Boost ends). **Freeze Frame's** "in view" is
+  the player's frame. **Carousel** always shows six bombs. **Fractal**: forks +2, at most 3 deep.
+- **Caps**: everything that multiplies shots (forks, echoes, wingmen, Rear Guard, shrapnel, sparks, missiles, pellets,
+  bombs) stops above the soft cap of the player's live shots (576); the test fires the heaviest build into a wall for eight
+  bars: no shot held back by the hard cap.
+
+### Numbers chosen (`src/sim/tuning.h` "M5 PART 3" block)
+
+Fork 20 degrees, half damage. Seeker 3/6/10 rad/s within 320 wu (missiles 6, Murmuration 9 within 640; sparks 8). Heavy Step:
+the orb at 0.45 of the shot's speed, x3 its radius, 1.6 s; blasts 90/120/150 wu for 4/6/8. Accent: 3x, 1,500 wu, 14 wu half
+width. Echo half damage. Wave 28/40 wu, 0.2 s, radius x1.6/x2; Helix x3. Arc 220 wu, 2 a jump. Burn 1 a beat x the stacks,
+two beats, spreads within 90 wu. Shatter 3/5/7 pellets at 700 wu/s for 0.3 s. Gravity 110/150 wu, 70/110 wu/s a hit.
+Afterimage 2/4 beats. Shockstep 140/180/220 wu for 3/5/8. Aegis 60/90/120 degrees, 30-60 wu. Last Light 420 wu. Collector
+250/150. Syncopation x1.5/x2, +2 pierce. Bar Line 900/900/1800 wu, 16 wu half width, 5. Kick Pulse 160/160/240 wu, a
+push of 380 wu/s, 2 from stack 2. Lancer 6 (x1.5 at 5), half widths 10/16/16/22/22, 1,600 wu. Mines 110 wu for 8. Storm
+Coil 220/220/260/260/300 wu, 1.5. Swarm 6/8/10/12/16 at 900 wu/s for 2, 1.4 s (Murmuration 7 s). Singularity 300 wu ahead,
+pulls 260-340 wu at 260 wu/s, blows 200-260 wu for 12/12/18/18/24. Mirror 50/60/70/80/100% at 90 wu. Comet out 520 wu,
+22 wu x 1/1.5/1.5/2/2, 1/1/2/2/3 discs, 3 an eighth. Sweeper 240/300/300/360/360 wu, 6 a pass. Flak 12/16/20/24/24, at 5
+blasts of 40 wu. Supernova 70 wu. Colossus x3, 20 a tick. Time Stretch 0.5. Freeze chain 90 wu. Black Hole pulls 700 wu at
+300 wu/s, blows 500 wu for 50. Chain Storm 360 wu, 24, 2. Chorus 80 wu. Beam 1,400 wu, 10 + 4 a lane. Fever +5, x1.1. Six
+sparks. Carousel 70 wu, bombs at 500 wu/s for 1 s, 90 wu for 6. Downbeat Cannon 60 wu half width, 2,400 wu, x8. Collapse
+200 wu at 200 wu/s. Standing Wave 1.5 an eighth. The dealing: new Mod 1, held 3, new Riff 3, Riff level 3, cells' Mods 3,
+Fusion ingredient x2. Bosses: Longwave 2.2, the Choir 4.2.
+
+### Not done or not verified
+
+- **"No pick is a trap" table** (6.6, the lead's ask): not built; with the balance pass at the end (part 7). It needs a
+  headless mode that forces a loadout and sets Track 3 cycle 2's Groove and a Choir fight, and about a hundred runs a
+  column (five seeds each, both measures): more than half a day with the rest of part 3.
+- **The impaired soak at the test's seed is 12.48 wu RMS** (above). The five upgrade effects that move or stop enemies
+  were measured one by one before the dealing (Gravity Rounds alone took it to 14-15, Freeze Frame to 14.7, until both went
+  to the host: 10.05 with everything on); since the dealing the bots get further in the ten minutes, and the worst windows
+  are the Hive's guessed shapes (part 1's). A client that waits for the host's shape instead was tried: 18.9, reverted.
+  Not hidden: `test.ps1` fails on it at that seed.
+- By ear: the new cues through the band (the PC runs are silent). The boost name cards overlap when two Boosts come in
+  the same moment (`boost_supernova_chain.png`), a HUD layout matter.
+- Co-op on devices with the new upgrades (the loopback soaks only). The OnePlus and the tablet: not used.
 ## M5 part 2 "Species: Tracks 2 and 3's own families" — 2026-11-13
 
 `design/species_m5.json` is now `design/species.json` (`git mv`, the lead's instruction); the loader reads all sixteen
