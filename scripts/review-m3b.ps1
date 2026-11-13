@@ -25,7 +25,8 @@ param(
     [string]$Out = 'captures\m3b',
     [ValidateSet('debug', 'dev')][string]$Config = 'debug',
     [string[]]$Only = @(),
-    [switch]$Sound  # let the app be heard (default: --silent, the PC's runs are silent)
+    [switch]$Sound,  # let the app be heard (default: --silent, the PC's runs are silent)
+    [switch]$Watch  # show the windows (default: --offscreen, the PC's test runs stay off screen)
 )
 . "$PSScriptRoot\env.ps1"
 New-Item -ItemType Directory -Force $Out | Out-Null
@@ -35,7 +36,7 @@ if (-not (Test-Path $exe)) { throw "missing $exe - build first" }
 function Invoke-Shot([string]$Png, [string]$AppArgs) {
     $log = [IO.Path]::ChangeExtension($Png, '.log')
     $full = [IO.Path]::GetFullPath($Png)
-    $argv = @($AppArgs -split '\s+' | Where-Object { $_ }) + @('--res', '2400x1080', '--no-overlay', '--screenshot', $full) + @(if ($Sound) { @() } else { @('--silent') })
+    $argv = @($AppArgs -split '\s+' | Where-Object { $_ }) + @('--res', '2400x1080', '--no-overlay', '--screenshot', $full) + @(if ($Sound) { @() } else { @('--silent') }) + @(if ($Watch) { @() } else { @('--offscreen') })
     & $exe @argv *> $log
     if ($LASTEXITCODE -ne 0) { throw "run failed ($LASTEXITCODE) for $Png; see $log" }
     $v = Select-String -Path $log -Pattern 'validation messages: (\d+)' | Select-Object -Last 1

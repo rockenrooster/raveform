@@ -3,7 +3,9 @@
 #   scripts\run-desktop.ps1 -AppArgs '--scenario bench_idle --seconds 58'
 #   scripts\run-desktop.ps1 -Screenshot captures\desktop.png -Res 2400x1080 -Small
 # Silent by default (the user's rule: runs on this PC make no sound): the app gets --silent (everything plays and
-# is measured, the output is zeroed at the device) unless -Sound.
+# is measured, the output is zeroed at the device) unless -Sound. Off screen by default (the user's rule: PC test runs
+# do not show a window): the app gets --offscreen (its window off the visible desktop, never focused, no taskbar
+# button; rendering and captures as usual) unless -Watch.
 # Exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 bench aborted, 5 screenshot failed.
 param(
     [ValidateSet('debug', 'dev')][string]$Config = 'debug',
@@ -13,7 +15,8 @@ param(
     [int]$Frames = 0,          # with -Screenshot: frame to capture (default 120)
     [string]$Res = '',         # window size, e.g. 2400x1080
     [switch]$Small,            # also write <name>.small.png, at most 1600 px wide
-    [switch]$Sound             # let the app be heard (default: --silent)
+    [switch]$Sound,            # let the app be heard (default: --silent)
+    [switch]$Watch             # show the window on the desktop (default: --offscreen)
 )
 . "$PSScriptRoot\env.ps1"
 
@@ -24,10 +27,11 @@ if (-not (Test-Path $exe)) { throw "missing $exe - build first" }
 $argv = @()
 if ($AppArgs) { $argv += @($AppArgs -split '\s+' | Where-Object { $_ }) }
 if (-not $Sound -and $argv -notcontains '--silent') { $argv += @('--silent') }
+if (-not $Watch -and $argv -notcontains '--offscreen') { $argv += @('--offscreen') }
 if ($Res) { $argv += @('--res', $Res) }
 $shot = $null
 if ($Screenshot) {
-    $shot = [IO.Path]::GetFullPath((Join-Path (Get-Location) $Screenshot))
+    $shot = [IO.Path]::GetFullPath($Screenshot, (Get-Location).Path)  # (an absolute path stays as it is)
     New-Item -ItemType Directory -Force (Split-Path -Parent $shot) | Out-Null
     $argv += @('--screenshot', $shot)
     if ($Frames -le 0 -and $AppArgs -notmatch '--net-capture-bar') { $Frames = 120 }  # M4: that picture waits for its bar

@@ -2,7 +2,8 @@
 # (CLAUDE.md "Shared test devices"): the lock captures\locks\<serial>.lock (name m4b) and the time, the foreground checked
 # first (another app in front, or RAVEFORM that this script did not start: the phone is busy, nothing is launched), -s on
 # every adb call, nothing device-wide, force-stop of dev.raveform.game only, our own APK deployed before each run, the
-# lock removed after. PC processes are silent (raveform_headless opens no audio device; the desktop game gets --silent).
+# lock removed after. PC processes are silent and off screen (raveform_headless opens no audio device and no window; the
+# desktop game gets --silent --offscreen and a hidden console).
 # Nothing here changes a system or network setting: a "client drop" is a PC process killed or our app force-stopped.
 #   discovery_pc_host    the PC's game hosts a room: the phone's join screen hears it (a picture on the phone), then the
 #                        phone joins it from the list, by its room code and by its address (a picture once seated each)
@@ -75,6 +76,8 @@ function Deploy-Once {
     if ($script:deployed -or $NoDeploy) { return }
     & "$PSScriptRoot\deploy-android.ps1" -Serial $Serial -NoBuild -NoLaunch | Out-Null
     $script:deployed = $true
+    # An install can bring the store's app check to the front for a moment: wait for the launcher (never touch it).
+    if (-not (Wait-RfDeviceIdle $Serial -QuietSeconds 3 -TimeoutSeconds 120)) { throw "$Serial is busy after the install" }
 }
 function Launch-Phone([string]$AppArgs) {
     Deploy-Once
@@ -101,7 +104,7 @@ $pcs = @()
 try {
     switch ($Run) {
         'discovery_pc_host' {
-            $pcs += Start-Pc 'pc_host' $game @('--coop', 'host', '--coop-name', 'PC', '--res', '1280x576', '--silent')
+            $pcs += Start-Pc 'pc_host' $game @('--coop', 'host', '--coop-name', 'PC', '--res', '1280x576', '--silent', '--offscreen')
             Start-Sleep -Seconds 5
             $code = Get-RoomCode $PcIp
             "the PC's room code: $code"
@@ -126,14 +129,14 @@ try {
         'discovery_moto_host' {
             $phonePid = Launch-Phone '--coop host --coop-name MOTO --coop-start 3 --bot'
             Start-Sleep -Seconds 4
-            $list = Start-Pc 'pc_list' $game @('--coop', 'join', '--coop-shot', 'join', '--res', '2400x1080', '--no-overlay', '--screenshot', "$OutFull\${tag}_pc_hears_phone.png", '--silent')
+            $list = Start-Pc 'pc_list' $game @('--coop', 'join', '--coop-shot', 'join', '--res', '2400x1080', '--no-overlay', '--screenshot', "$OutFull\${tag}_pc_hears_phone.png", '--silent', '--offscreen')
             $list.WaitForExit(60000) | Out-Null
             if (Test-Path "$OutFull\${tag}_pc_hears_phone.png") { python "$PSScriptRoot\shrink_png.py" "$OutFull\${tag}_pc_hears_phone.png" | Out-Null; "picture: ${tag}_pc_hears_phone.png" }
             $code = Get-RoomCode $phoneIp
             "the phone's room code: $code"
             # The PC's game joins by the code (its bot plays) and keeps the message the host's leaving brings (a picture).
             $pcs += Start-Pc 'pc_game' $game @('--coop', "join:$code", '--bot', '--coop-shot', 'message', '--res', '2400x1080', '--no-overlay',
-                                               '--screenshot', "$OutFull\${tag}_pc_host_left.png", '--silent')
+                                               '--screenshot', "$OutFull\${tag}_pc_host_left.png", '--silent', '--offscreen')
             $pcs += Start-Pc 'pc_bot' $headless @('--net', 'join', $phoneIp, '--wait', '120', '--minutes', '10', '--name', 'PCBOT')
             # The run starts at three seats; 75 s into it the PC bot drops, half a minute later the host quits.
             $until = (Get-Date).AddSeconds(120)

@@ -24,7 +24,8 @@ param(
     [string]$Out = 'captures\m4b',
     [ValidateSet('debug', 'dev')][string]$Config = 'debug',
     [string[]]$Only = @(),
-    [int]$TimeoutS = 180
+    [int]$TimeoutS = 180,
+    [switch]$Watch  # show the windows (default: --offscreen and a hidden console, the PC's test runs stay off screen)
 )
 . "$PSScriptRoot\env.ps1"
 $OutFull = [IO.Path]::GetFullPath((Join-Path (Get-Location) $Out))
@@ -64,9 +65,9 @@ $runs = [ordered]@{
 }
 
 function Start-Game([string]$Name, [string]$Role, [string]$AppArgs) {
-    $argv = @($AppArgs -split '\s+' | Where-Object { $_ }) + @('--silent')
+    $argv = @($AppArgs -split '\s+' | Where-Object { $_ }) + @('--silent') + @(if ($Watch) { @() } else { @('--offscreen') })
     Start-Process -FilePath $exe -ArgumentList $argv -WorkingDirectory $RF_ROOT -RedirectStandardOutput "$OutFull\${Name}_$Role.log" `
-        -RedirectStandardError "$OutFull\${Name}_$Role.err" -PassThru
+        -RedirectStandardError "$OutFull\${Name}_$Role.err" -PassThru -WindowStyle $(if ($Watch) { 'Normal' } else { 'Hidden' })
 }
 
 $problems = @()

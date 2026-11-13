@@ -97,8 +97,31 @@ bool App::init() {
     android::systemProperty("ro.build.version.release", release, sizeof release);
     std::snprintf(os_, sizeof os_, "Android %s (API %d)", release, SDL_GetAndroidSDKVersion());
 #else
-    window_ = SDL_CreateWindow("RAVEFORM", args_.width, args_.height,
-                               SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    // --offscreen (the user's rule: PC test runs stay off screen): created hidden, as a utility window (no taskbar
+    // button) that cannot take focus, moved left of every display by its own width and a margin, then shown without
+    // being activated, so the surface, the swapchain and the captures behave as on screen and nothing appears.
+    const SDL_WindowFlags windowFlags = args_.offscreen ? SDL_WINDOW_VULKAN | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN |
+                                                              SDL_WINDOW_UTILITY | SDL_WINDOW_NOT_FOCUSABLE
+                                                        : SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    window_ = SDL_CreateWindow("RAVEFORM", args_.width, args_.height, windowFlags);
+    if (window_ && args_.offscreen) {
+        int minX = 0, minY = 0, count = 0;
+        if (SDL_DisplayID* displays = SDL_GetDisplays(&count)) {
+            for (int k = 0; k < count; ++k) {
+                SDL_Rect r;
+                if (!SDL_GetDisplayBounds(displays[k], &r)) continue;
+                if (r.x < minX) minX = r.x;
+                if (r.y < minY) minY = r.y;
+            }
+            SDL_free(displays);
+        }
+        SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");
+        SDL_SetWindowPosition(window_, minX - args_.width - 400, minY);
+        SDL_ShowWindow(window_);
+        int x = 0, y = 0;
+        SDL_GetWindowPosition(window_, &x, &y);
+        RF_LOG("window: off screen at (%d, %d), %dx%d, not focusable (--offscreen)", x, y, args_.width, args_.height);
+    }
     std::snprintf(device_, sizeof device_, "desktop");
     std::snprintf(os_, sizeof os_, "%s", SDL_GetPlatform());
 #endif

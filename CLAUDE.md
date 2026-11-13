@@ -205,6 +205,17 @@ scripts pass `--silent` unless `-Sound` is given (the user's opt-in to listen); 
 gets `--silent` too. `raveform_headless` opens no audio device; offline renders write WAV files only. Phones are not
 covered: their runs keep their sound.
 
+## PC runs are off screen (user rule)
+
+No game window appears on this PC's desktop during test, picture, review or benchmark runs: the user is at the
+machine. `--offscreen` creates the window hidden, as a utility window (no taskbar button) that cannot take focus, moves
+it left of every display and shows it without activating it, so the Vulkan surface, the swapchain, screenshots, strips
+and validation behave as on screen (the log says `window: off screen at (x, y)`). `scripts\run-desktop.ps1`, the review
+scripts (`review-m1`, `review-m3`, `review-m3b`, `review-m4b`, `light-breakdown` through `run-desktop`) and
+`coop-device.ps1` pass it unless `-Watch` is given (the user's opt-in to see the window); processes they start with
+`Start-Process` also get a hidden console. A desktop process started by hand gets `--offscreen` too. `scripts\test.ps1`
+and `raveform_headless` open no window. Phones are not covered.
+
 ## PC CPU limit (user rule)
 
 Anything this project runs on the PC uses at most 4 CPU cores: builds above all, also shader compiles,

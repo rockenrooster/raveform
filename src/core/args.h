@@ -44,6 +44,9 @@ struct AppArgs {
     u32 frames = 0;            // quit after N presented frames (0 = run until closed)
     char screenshot[260] = {}; // write an upright PNG of the last frame, then quit
     int width = 1600;          // desktop window size in pixels (--res WxH)
+    bool offscreen = false;    // --offscreen (desktop; the user's rule: PC test runs stay off screen): the window is placed
+                               // off the visible desktop, never takes focus and has no taskbar button; it renders and
+                               // captures as usual
     int height = 720;
     int validation = -1;       // -1 = build default (on in Debug desktop builds)
     bool tone = false;         // hold the test tone on (audio soak)

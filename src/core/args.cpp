@@ -257,6 +257,8 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             a.swappy = false;
         } else if (is("--no-overlay")) {
             a.overlay = false;
+        } else if (is("--offscreen")) {
+            a.offscreen = true;
         // M2 audio begin
         } else if (isAudioArg(arg)) {
             ok = parseAudioArg(arg, next, a.audio, usedNext);

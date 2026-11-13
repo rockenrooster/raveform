@@ -724,6 +724,9 @@ void PlayView::envelopes(const ViewInput& in) {
 
 void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W, float H, const ViewInput& in) {
     frameMute_ = in.backgroundOnly ? ~(kMuteBackground | kMuteGrid | kMuteVignette | kMuteAberration) : 0u;
+    // The co-op game over (screens.md): the run behind at a fifth; the threat layer is drawn after the tone map, where
+    // the exposure cannot dim it, so it is left out there (with the beacons).
+    if (in.noBeacons) frameMute_ |= kMutePriority;
     const World& w = *in.world;
     const float t = static_cast<float>(in.time);
     now_ = in.time;

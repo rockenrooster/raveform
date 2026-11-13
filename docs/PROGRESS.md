@@ -1,5 +1,195 @@
 # RAVEFORM — Progress
 
+## M4 stage B "LAN co-op: the lobby, the screens, the devices" — 2026-11-12
+
+Built on `main` (never pushed): `988f718`, `d72f845`, `8dbcd3b` (the first engineer: the co-op picture in the owners'
+colours, the lobby's protocol and discovery, the flow and screens, the co-op band), `ae637f4` (the fourth checkpoint: the
+inherited tree as it stood, built and tested), and `ae637f4` (the inherited tree, built and tested), `f15e8fa` (the screens as `1d605ec` gives them, one row a room, the leave on one tick, the tools) and the closing commit (off-screen PC runs, the game over's threat layer, the device results, this section). The lead's screen rules after the review of the first
+pictures are in `1d605ec` (screens.md "Co-op (M4)").
+
+### What was built
+
+- **Discovery and joining** (`src/net/lobby.cpp`, TECH_SPEC 8.3). The host's beacon on UDP 47777 twice a second (magic,
+  protocol version, game port, room code, seats taken, seats, state, name) to the limited broadcast and to every network's
+  own; the join screen's browser keeps what it heard in the last 3 s. **One row a room**: a host on several networks was
+  heard once per network it shares with the joiner (four rows on this PC, `FH39 HOST 1/4` four times in the first
+  pictures); a room is now its code, game port and name, and it keeps the address its code was made from. Join by the
+  list, by the room code (four of the sixteen symbols `34679ACDFHJKMPQR` for the low 16 bits of the host's address; the
+  address of a room heard with that code, else this device's own /16 in front), or by an address typed on the system
+  keyboard (SDL text input; Android's number keyboard; a comma, a space or a dash is taken as a dot). A join nobody
+  answers ends after 6 s with `NO ROOM WITH THAT CODE` / `NO ROOM AT THAT ADDRESS` (ENet alone takes 5 to 30 s). The
+  handshake checks the protocol version and the content hash; a refusal says why on the join screen.
+- **Android**: the Wi-Fi multicast lock is held while the join screen listens; Android 17's local network permission
+  (`ACCESS_LOCAL_NETWORK`, now also in the manifest) is asked after the game's notice, and a refusal keeps the notice up
+  with its last line changed and CONTINUE asking again. The target SDK is 36, so on today's phones the permission is not
+  asked at all.
+- **The co-op screens** (`src/game/screens_coop.cpp`, screens.md "Co-op (M4)" as updated in `1d605ec`): the local network
+  notice, the join screen (rooms on the left: one row each, FULL and PLAYING disabled, a dashed `LOOKING FOR ROOMS` row
+  with three dots on the beat; the message line in amber; HOST A ROOM; BACK; the room code and its sixteen 112 px keys on
+  the right, DEL and JOIN under them, TYPE AN ADDRESS), the lobby (the code for every seat, four seats taken / joining /
+  open, `TAP TO HEAR YOUR LEAD` under your own, START disabled until every seated player is ready, `WAITING FOR HOST` for
+  the others, LEAVE), the shared pause (`FOR EVERYONE IN THE ROOM`, the team's score with separators, the shared count-in,
+  LEAVE RUN), the co-op game over (TEAM / TIME / TRACK under the score, the players as a table centred as a whole, each
+  player's crosses in the set list in their colour, RETRY for the host and disabled with `WAITING FOR HOST` for the
+  others, the run dimmed to a fifth with no beacon or beacon sound).
+- **Nothing of a run behind the setup screens**: opening CO-OP ends the title's attract run (the world emptied and
+  still, no ship drawn; the band plays on); BACK brings the attract run back.
+- **Every screen**: controls keep 24 px from each other and from lines of text. `Ui` keeps every control and line of a
+  frame and warns once per pair that breaks the rule (`ui: <screen>: 'A' and 'B' are N px apart`); the review scripts
+  fail on it. A disabled control is an outline at 0.3 with its label at 0.4 and takes no tap. Fixed under the rule: the
+  join screen (HOST A ROOM and BACK overlapped by 10 px), the solo game over (HOME 15 px under RETRY), the SOUND tab (the
+  tabs, the hint and the cards; the SYNC offset; the host-only control and DONE).
+- **Edge chevrons keep clear of the HUD**: a chevron whose disc would come within 20 px of the score block (with the
+  co-op ranking), the Track line and phrase bar, the Nova stock with the Dash bar, or the pause ring slides along the
+  edge to the nearest free place (`PlayView::edgePlace`).
+- **Leaving**: the host quits or drops: every client's run ends, the score is kept (the high scores), and the join screen
+  says `THE HOST LEFT: THE RUN IS OVER. YOUR SCORE IS KEPT`. A client drops: the host times it out (or hears its
+  goodbye), its seat opens, its ship fades where it was, and the run goes on. The leave now lands **on the same tick on
+  every device**, two beats after the host knows (a timed player event before the seat mask; before, each device dropped
+  the player when its message arrived, so the enemies that followed it chose again at different moments). The boss's
+  health follows the players still in the run when it enters (it counted the seats).
+- **The co-op band** (the first engineer, checked): the bed identical on every device (the host decides each bar's
+  intensity), this device's lead loudest and the others by distance in their fixed timbres, the beacon's held root and
+  the revive's notes, and the SOUND setting "music from the host's phone only".
+- **Tools**: `scripts\review-m4b.ps1` (the whole review set, below), `scripts\coop-device.ps1` (the device checks, below),
+  `raveform_headless --net soak --drop-at S` (a client's process dies mid-run), the UDP peers' and the game's 20 s lines
+  now give the on-screen error at correction over the window next to the last second's error of all corrections, and
+  `--net-capture-bar` logs what pushed the lattice (`view: lattice impulses ...`). New arguments: `--coop-quit-at S`,
+  `--coop-permission-screen refused`, `--coop-demo-rooms`, the `--coop-shot` moments `address`, `beacon_off`,
+  `pause_menu`, `over_client`. `--coop-down-at` now takes the hits inside the tick (`World::hitNextTick`): the first
+  attempt's bullet at the ship's own position never downed it on this build.
+
+### Acceptance
+
+| Check | Result | Limit |
+|---|---|---|
+| Builds, tests | Desktop Debug and dev and the APK build at every checkpoint; `scripts\test.ps1` passes (audio 2,134 checks, sim 5,495, net 131,340; determinism hashes `4b50f64668105be3` / `f6fa477a0167baf9`, as before stage B) | all pass |
+| Loopback soaks, 4 players, 10 simulated min (`test.ps1`) | clean: on-screen 5.15 wu RMS, at correction 7.41; song max 2.59 ms; down 213.1 / up 44.1 kbit/s worst second; census 900 / 0; 0 overflow, 0 allocations. 5% loss + 80 ms jitter + a pause: 7.00 / 9.85 wu; 3.46 ms; 210.9 / 44.8; 894 / 0; predicted kills undone 1,160 of 116,295 (1.0%) | < 12 wu, < 10 ms, 250 / 60, 0 |
+| A client's process dies (`--net soak --players 3 --minutes 4 --drop-at 90`, seeds 1-3) | the host times it out (10 s) and the run goes on; on-screen error per 10 s 1.2-1.4 wu before, 0.3-0.9 after, run RMS 1.6-3.6 wu; 0 census mismatches, 0 allocations | as above |
+| Four processes over UDP on this PC, 8 min (`--same-clock`, today's content) | on-screen error at correction 5.14 / 3.59 / 3.47 wu RMS; true song offset max 5.86 / 2.61 / 5.41 ms; down 200.6-202.8, up 41.2-51.7 kbit/s worst second; census 239 / 0 each; 0 stalls, 0 allocations | as above |
+| Validation, layout | the 26 review pictures and the 7 solo screens (Debug): 0 validation messages, no control within 24 px of another or of a line (`ui:` warnings 0 after the fixes); a Debug co-op benchmark with three loopback bots: 0 validation messages, 0 heap allocations | 0 |
+| Discovery (Moto and PC, Wi-Fi 192.168.137.x) | the phone hears the PC's room (`184332_..._phone_hears_pc.png`, one row); **the PC does not hear the phone's** (`184633_..._pc_hears_phone.png`: Windows Firewall, below) | both ways |
+| Joining | PC to phone by the room code (`FHM4`, the PC's game) and by the address (a PC bot): seated, the run starts at three; **phone to PC by the list, the code and the address: no answer** after 6 s each (`NO ROOM ...` on the phone; the firewall) | list, code, address |
+| A client drops (the PC bot killed 75 s into the Moto-hosted run) | `seat 1 left the run` on the phone and the PC's game in the same second; the run goes on; the PC game's on-screen error 1.7 wu RMS over the 20 s with the leave | handled cleanly |
+| The host quits (the phone's app stopped) | the PC's game ends its run, keeps the score, shows `THE HOST LEFT: THE RUN IS OVER. YOUR SCORE IS KEPT` on its join screen (`184633_..._pc_host_left.png`) | handled cleanly |
+| **15 min, the Moto hosting three PC bots over Wi-Fi** (`ZY22BXMJG3-bench_play-20261112-184949.json`, `184929_long_moto_host_pc_bot*.txt`) | Moto: 53,904 frames, **0 missed**, panel P95 1 period, worst 22.2 ms, heap allocations 0, tick p50/p95/max 0.44/0.74/4.99 ms, 803 enemies on average (1,350 at most), 268,079 kills, Track 6 reached; host 0 disconnects. Each PC bot: 0 stalls, census 461 / 0, down 209.0-230.8 kbit/s worst second (mean 147), up mean 33-34 kbit/s; **on-screen error at correction 35.5 / 33.5 / 21.8 wu RMS: FAIL**; up worst second 301-764 kbit/s (one second, see below) | P95 1 period, ≤ 5% missed, ≤ 50 ms; < 12 wu; 250 / 60 |
+| 15 min, the same with 5% loss and 80 ms jitter on every peer | Moto (`...-191537.json`): 53,903 frames, 0 missed on the panel, P95 1 period, worst 28.1 ms, heap allocations 0, **PASS**; host 0 disconnects. Each PC bot: **0 stalls**, census 461 / 0, down 199.4-203.6 kbit/s worst second (mean 141), up mean 33 kbit/s (worst second 159-191, one second); on-screen error at correction **17.5 / 17.7 / 81.5 wu RMS: FAIL**. Playable and without stalls; the drift is the clean run's (below) | playable, no stalls |
+| 15 min, the PC hosting the Moto and two bots (clean and impaired) | **not run**: the phone cannot reach a PC host (Windows Firewall) | |
+| Song offset PC to phone | not measurable (two clocks) | < 10 ms |
+
+**The on-screen error fails with the Moto hosting four players.** The same content holds on this PC (four processes over
+UDP: 3.5-5.1 wu RMS; the loopback soaks 5.2 / 7.0 wu), and stage A's Moto-hosted Wi-Fi run with two players held 1.95 wu.
+With the Moto hosting four, each PC bot's error at correction, per 10 s, is 2-4 wu in Track 1's first bars and 10-115 wu
+from its denser bars on (Tracks 2-5), back to 3-6 wu in Track 6; at matching moments and enemy counts the PC-hosted run
+reads 1-10 wu. The PC's game hosting the same way (its band driving the song it publishes, as the phone's does, three
+headless bots, 6 min) reads 4.6-6.7 wu RMS, its 10 s windows up to 17.5: the band-driven host adds a little, the phone
+over Wi-Fi the rest. Census, bandwidth and stalls are clean, so the copies are complete and on time but drift between
+corrections. Not found yet: what on the phone as host makes the copies drift (suspects: poses from the phone arriving
+in Wi-Fi bursts beyond the 66 ms interpolation, so enemies chasing the host's ship turn differently on each client; the
+phone's tick timing against the host time it publishes). The next steps are a two-player and a three-player Moto-hosted
+run to see where it starts, and the host's pose arrival gaps logged on a client. The PC bots' worst second of upload
+(301-764 kbit/s) is a single second; their 10 s lines never show more than 40 kbit/s, and the phone's run had ended by
+then (not checked second by second).
+
+
+### The error jump after a seat left (`captures\m4b\device\174323_pc_game.txt`)
+
+An artefact of the measure, not a jump on screen. The figure in that line ("error 38.5 wu RMS") was the RMS of every
+correction of the last second, wherever its enemy was: off-screen enemies are corrected rarely, so their corrections
+are large, and one second's RMS swings with what the host chose to send. Measured three ways:
+
+- The loopback soak with a client's process dying mid-run (`raveform_headless --net soak --players 3 --minutes 4
+  --drop-at 90`, three seeds; the true error of every enemy on the other client's screen against the host's world,
+  each 10 s): 1.2-1.4 wu RMS in the 10 s before the death, 0.3-0.9 in the 10 s after, 1.0-2.0 in the next three
+  windows; the same one-second figure swung between 0.1 and 22.1 wu over the run of seed 1 with no event at all.
+- Three processes over UDP on this PC (host, A, B; B killed 75 s in, `captures`-free, scratch): A's on-screen error as
+  corrections landed, per 10 s, 1.2-1.3 wu before and 0.8-1.8 wu after; the one-second figure 0.6-5.3 after.
+- The Moto hosting with the PC's game and a PC bot (below, the bot killed): the PC game's on-screen error 0.9 wu RMS
+  over the 20 s before and 1.7 over the 20 s with the leave; the one-second figure 15.8 wu twenty seconds before it,
+  with nothing happening.
+
+Changed anyway: the logs now print both figures ("all corrections ... wu RMS" for the last second, "on screen ... wu
+RMS over N" for the 20 s window), and the leave itself now lands on the same tick on every device (above), so the
+enemies that followed the player who left no longer choose again at different moments on different devices.
+
+### The lattice in `frame_client.png` (the lead's question; nothing changed)
+
+Measured at the same moment (bar 40, a Surge with a level-up Trio open), from both peers' logs (`view: lattice
+impulses ...`, `captures\m4b\frame_host_host.log` and `frame_host_shot.log`): the crowd gain is **1.00** (no dimming at
+that crowd) and the swarm gain 1.00. In the middle third of the frame 65-74% of the lattice's nodes are warm (heat
+at least 5 wu) and none hot (13 wu). The heat is the springs' displacement, a mean of 5.9-6.0 wu; the kick ripples add
+0.0-0.8 wu. What pushed the springs inside the frame in the last second: **the Drop's wave** (one impulse of 600 at a
+400 wu radius around the ship) and **13 kills** (60 each, sum 780); no Nova, hit, down or Dash. Shots and the Trio's
+shove do not push the lattice at all.
+
+### Decisions taken alone
+
+- **A join that nobody answers ends after 6 s** (`kConnectTimeoutUs`) with `NO ROOM WITH THAT CODE`, `NO ROOM AT THAT
+  ADDRESS` or `THAT ROOM IS GONE` by how the join began; ENet alone gives up after 5 to 30 s.
+- **Every session that ends lands on the join screen** with its message (screens.md lists the host-left message among
+  the join screen's); BACK goes to the title. The first engineer's flow went to the title after a run.
+- **A room is its code, game port and name** in the list; it keeps the address its code was made from when heard on
+  several (else the first heard). Two hosts with one code, port and name on different /16s would share a row.
+- **The leave lands two beats after the host knows**, on the same tick everywhere (a timed player event to the others,
+  then the seats); a late event applies at once.
+- **The boss's health counts the players present when it enters** (GAME_DESIGN 8's "players"), not the seats.
+- The join list's rows stand **24 px apart, not 22** (screens.md gives both; the rule for every screen wins), so four
+  rows end 6 px lower.
+- **The SOUND tab's tabs sit 14 px higher** (top at 154, not 168) so the hint fits 24 px from them and from the cards;
+  the faders moved to y 690 as screens.md says; the SYNC offset 6 px lower; the host-only control 10 and 4 px higher.
+  A segmented row (OFF / ON) and a fader with its label and value count as one control each.
+- **The co-op game over**: a header row over the number columns (SCORE, CHAIN, KILLS at cap 12 in the accent), the
+  Chain as `X41`, the kills with separators; YOUR BAND under the set list (this device's player); RETRY at 270 px and
+  HOME at 90 px from the bottom so `WAITING FOR HOST` fits between them with 24 px each side; no beacon sound either;
+  the run behind at the pause's exposure (a fifth) with the threat layer (drawn after the tone map, where the
+  exposure cannot reach it) left out. The enemies' hulls stay readable at a fifth of the exposure because the tone map
+  compresses them (the lead's last note: an arrow crossed `P1 (YOU)`); darker would need a fade after the tone map, a
+  composite parameter that does not exist yet (not done).
+- **TYPE AN ADDRESS**: Android's number keyboard (SDL); a comma, a space or a dash typed is a dot; the sixteen keys
+  give way to two lines of help while it is open; a computer keyboard types the code on the pad too (P is one of the
+  symbols, so only Escape goes back on that screen).
+- **The local network notice** stays up after a refusal with its last line changed (screens.md) and CONTINUE asking
+  again; `ACCESS_LOCAL_NETWORK` is in the manifest while the target is 36 (it does nothing until the target is 37).
+- The lobby's own seat says `TAP TO HEAR YOUR LEAD` on a line of its own under READY; the host's `WAITING FOR ...`
+  hint sits right of START (it was 3 px under it); a ready seat's ship has its halo as two arcs (screens.py).
+- **Off screen** (the user's rule): `--offscreen` creates the window hidden, as a utility window that cannot take focus,
+  moves it left of every display by its width and 400 px, and shows it without activating it.
+- `--coop-demo-rooms` (pictures only) adds three made-up rooms after the ones heard, so the list's layout and its
+  FULL and PLAYING rows can be shown with one host on this PC; `join_list.png` has the PC's real room first.
+
+### Numbers chosen
+
+`src/net/session.h`: `kConnectTimeoutUs` 6 s; the leave two beats ahead (`session.cpp`). `src/game/screens.cpp`: the
+layout gap 24 px (quoted, `Ui::kControlGapPx`). `src/game/screens_coop.cpp`: the join screen's rows at 265 + 114 k, the
+keys' pitch 136 px (112 + 24), DEL / JOIN 180 x 80 at y 904, TYPE AN ADDRESS at y 1003, HOST A ROOM at y 850, the message
+at y 712, the dashed row's dashes 22 px; the game over's table at y 384-534 (cap 22, columns 56 px apart), its line under
+the score at y 342. `src/game/play_view.cpp`: the chevrons' clearance 20 px (quoted) searched in 4 px steps along the
+edge; the HUD's blocks (`Play::render`): the score block to 290 px or the score's width right of the margin and down to
+the Shard level (with the co-op ranking), the phrase block 280 px left and 380 px right of the centre and 70 px tall,
+the Nova stock and Dash bar to 122 px, the pause ring. `src/platform/app.cpp`: the off-screen window 400 px left of the
+leftmost display.
+
+### Not done or not verified
+
+- **The PC as host, from the phone: blocked by Windows Firewall** (the user's check). The phone hears the PC's room
+  (`captures\m4b\device\184332_discovery_pc_host_phone_hears_pc.png`), but its joins by the list, by the code and by
+  the address get no answer, and the PC's join screen does not hear the phone's room: there is no firewall rule for
+  `raveform.exe` or `raveform_headless.exe`, so unsolicited inbound UDP is dropped (`Get-NetFirewallApplicationFilter`
+  lists none; the 192.168.137.x network is Private). The prompt Windows shows to the first host was never answered on
+  this PC. To allow it, in an elevated PowerShell:
+  `foreach ($p in 'build\desktop-dev\raveform.exe','build\desktop-debug\raveform.exe','build\desktop-dev\raveform_headless.exe') { New-NetFirewallRule -DisplayName "RAVEFORM $p (LAN co-op)" -Direction Inbound -Action Allow -Protocol UDP -LocalPort 47777,47778 -Profile Private -Program (Join-Path 'D:\Stuff\DevFolder\Android_Games\Raveform' $p) }`
+  then `scripts\coop-device.ps1 -Run discovery_pc_host` should write `phone_joined_list`, `_code` and `_address`
+  pictures of the phone seated in the PC's lobby, and `-Run long_pc_host [-Impaired]` runs the 15 minutes with the PC
+  hosting. Not run here: the 15-minute PC-hosted runs, the phone joining a PC by any route, the PC hearing a phone.
+- The OnePlus 12R and the tablet are not attached; PLAN's exit run (PC host + Moto + tablet + 12R) is not possible.
+- Nobody has listened to two devices together; the song offset between the PC and the phone cannot be measured (two
+  clocks; the PC bots' clock estimate is reported instead).
+- The Android 17 local network permission is coded but cannot be exercised (target SDK 36, the Moto runs an older
+  Android); the notice and its refusal are pictured on the desktop only.
+- Hotspot mode (one phone's hotspot) is not tried.
+- The lobby's "joining" seat state lasts the clock's sync (well under a second); it is not pictured.
+
+
 ## Play test 2 — 2026-11-12 (the user's second session; design in `8b654f1`)
 
 Five notes, done between M4 stage B's third checkpoint (`8dbcd3b`) and the rest of stage B.
@@ -246,6 +436,10 @@ minutes:
   first to 6/4/2/1/1, nothing before each first downbeat, the cells above the capacity lost, no invulnerability, the
   Chain kept, an Extra Cell refilling inside the burnt capacity, one burn a ship a Track; no kill drops a Cell in the
   loop and Regen's period is 0 there; a boss killed in the loop drops two Cells for each ship).
+
+The lead's ruling (`1d605ec`, GAME_DESIGN 8): the halo burn's result is accepted as measured, and the targets are now
+the careful bot's median first death between minutes 26 and 36 and the careless bot's between 17 and 25, nobody in the
+first pass (20 seeds of 40 minutes). `--sim crowd` prints no target bands, so nothing there changed.
 
 ## Play test 1, second pass — 2026-11-12 (the lead's ruling in `39afc70`)
 
