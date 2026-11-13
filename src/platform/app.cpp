@@ -1577,6 +1577,19 @@ void App::reportBench() {
             j.integer("score", static_cast<i64>(ps.score));
             j.integer("best_chain", ps.bestChain);
             j.integer("pool_overflow", ps.overflow);
+            {
+                // M5 part 4: which pool (since the run began, the fast-forward included), and shots a player's hard cap held back.
+                const sim::WorldCounters& wc = play_.world().counters();
+                j.integer("overflow_enemies", wc.enemiesDropped);
+                j.integer("overflow_bullets", wc.bulletsDropped);
+                j.integer("overflow_shots", wc.shotsDropped);
+                j.integer("overflow_shards", wc.shardsDropped);
+                j.integer("overflow_events", wc.eventsDropped);
+                j.integer("shots_capped", wc.shotsCapped);
+                u32 live = 0;
+                for (u32 q = 0; q < sim::kMaxPlayers; ++q) live = play_.world().shotsLive(q) > live ? play_.world().shotsLive(q) : live;
+                j.integer("shots_live_now", live);
+            }
             j.boolean("finite", play_.world().finite());
             // M3 stage B: where the run was when the window closed (what was on screen).
             const sim::World& pw = play_.world();

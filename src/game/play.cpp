@@ -336,6 +336,15 @@ void Play::frame(float realDt) {
     const WorldCounters& c = w.counters();
     stats_.overflow = c.enemiesDropped + c.bulletsDropped + c.shotsDropped + c.shardsDropped + c.eventsDropped;
     stats_.ticks = w.tickCount();
+    // M5 part 4: say when a pool overflows, where the run is (at most once a bar).
+    const u32 over = stats_.overflow;
+    if (over != lastOverflow_ && w.runBar() != lastOverflowBar_) {
+        RF_WARN("play: pools overflowed: enemies %u, enemy bullets %u (%u alive), shots %u, Shards %u, events %u so far; Track %u cycle %u, run bar %u, %s",
+                c.enemiesDropped, c.bulletsDropped, w.bullets().count, c.shotsDropped, c.shardsDropped, c.eventsDropped, w.phrase().track,
+                w.phrase().cycle, w.runBar(), w.boss().active ? sim::bossId(w.boss().kind) : "no fight");
+        lastOverflow_ = over;
+        lastOverflowBar_ = w.runBar();
+    }
 }
 
 void Play::pictureFrame() {
