@@ -712,6 +712,10 @@ int runPeer(const SpeciesTable& species, bool host, int argc, char** argv) {
             // Diagnostics (docs/PROGRESS_m4_net.md): the 10 s window's corrections and poses, then the next window.
             char line[1536];
             if (!host) {
+                const WorldCounters& wc2 = peer->world().counters();
+                std::printf("[net]        spawns landed late (arrived after their landing) %u in all; predicted kills %u, undone %u; motion "
+                            "corrections %u in all\n",
+                            wc2.lateSpawns, wc2.predicted, wc2.undone, s.stats().motions);
                 formatDiagCorrections(s.diag(), line, sizeof line);
                 std::printf("[net]        %s\n", line);
             }
