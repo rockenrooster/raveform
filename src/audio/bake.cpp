@@ -420,12 +420,13 @@ float* sfxBoost(double sr, u32& n, bool major = false) {
     return x;
 }
 
-float* sfxUpgrade(double sr, u32& n, bool major = false) {
+float* sfxUpgrade(double sr, u32& n, bool major = false, bool noNinth = false) {
     n = framesFor(1.3, sr);
     float* x = alloc(n);
     if (!x) return nullptr;
     const int chord[] = {57, major ? 61 : 60, 64, major ? 68 : 67, 71};  // M5: Amaj9 on the major Tracks (both minor thirds raised)
     for (int m : chord) {
+        if (noNinth && m == 71) continue;  // M5 (sound_m5.json effectsInKey): a ninth outside the scale is left out
         addSaw(x, n, midiHz(m), sr, 0.1f);
         addSaw(x, n, midiHz(m) * std::pow(2.0, 8.0 / 1200.0), sr, 0.1f);
     }
@@ -435,7 +436,8 @@ float* sfxUpgrade(double sr, u32& n, bool major = false) {
         x[i] = static_cast<float>(x[i] * (t / 0.08 < 1.0 ? t / 0.08 : 1.0) * std::exp(-t / 0.45));
     }
     const int bells[] = {76, major ? 80 : 79, 83, 88};
-    for (int k = 0; k < 4; ++k) addBell(x, n, framesFor(0.10 + k * 0.07, sr), midiHz(bells[k]), 0.6, 3.5, 4.0, sr, 0.5f);
+    for (int k = 0; k < 4; ++k)  // ... and in the arpeggio it becomes the chord's third in that octave (B5 -> C6)
+        addBell(x, n, framesFor(0.10 + k * 0.07, sr), midiHz(noNinth && bells[k] == 83 ? 84 : bells[k]), 0.6, 3.5, 4.0, sr, 0.5f);
     normPeak(x, n);
     fadeOut(x, n, 0.05, sr);
     return x;
@@ -1082,6 +1084,8 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) 
     sfxMajor_[static_cast<u32>(Sfx::Boost)] = put(sfxBoost(sr, n, true));
     std::snprintf(label, sizeof label, "upgrade_major");
     sfxMajor_[static_cast<u32>(Sfx::Upgrade)] = put(sfxUpgrade(sr, n, true));
+    std::snprintf(label, sizeof label, "upgrade_no9");
+    upgradeNoNinth_ = put(sfxUpgrade(sr, n, false, true));
     std::snprintf(label, sizeof label, "game_over_major");
     sfxMajor_[static_cast<u32>(Sfx::GameOver)] = put(sfxGameOver(sr, n, true));
 
@@ -1181,7 +1185,7 @@ bool SampleBank::complete() const {
 
 namespace {
 constexpr u32 kCacheMagic = 0x42534652u;  // "RFSB"
-constexpr u32 kCacheVersion = 4;  // M5: tables sized for ten Tracks; the major-third effects; the recipes
+constexpr u32 kCacheVersion = 5;  // M5: tables sized for ten Tracks; the major-third effects; the recipes
 template <typename T>
 bool put(FILE* f, const T& v) { return std::fwrite(&v, sizeof v, 1, f) == 1; }
 template <typename T>
@@ -1202,7 +1206,7 @@ bool SampleBank::saveCache(const char* path, u64 key) const {
     }
     ok = ok && put(f, kits_) && put(f, clap_) && put(f, snare_) && put(f, shaker_) && put(f, pulse_) && put(f, impact_) && put(f, risers_) &&
          put(f, riserCount_) && put(f, swellHalf_) && put(f, swellBar_) && put(f, sfxFirst_) && put(f, sfxCount_) && put(f, inhale_) &&
-         put(f, shardScale_) && put(f, sfxMajor_) && put(f, recipeFirst_) && put(f, recipeCount_) && put(f, kCacheMagic);
+         put(f, shardScale_) && put(f, sfxMajor_) && put(f, upgradeNoNinth_) && put(f, recipeFirst_) && put(f, recipeCount_) && put(f, kCacheMagic);
     ok = (std::fclose(f) == 0) && ok;
     if (!ok) {
         std::remove(tmp);
@@ -1234,7 +1238,7 @@ bool SampleBank::loadCache(const char* path, u64 key) {
     u32 tail = 0;
     ok = ok && get(f, kits_) && get(f, clap_) && get(f, snare_) && get(f, shaker_) && get(f, pulse_) && get(f, impact_) && get(f, risers_) &&
          get(f, riserCount_) && get(f, swellHalf_) && get(f, swellBar_) && get(f, sfxFirst_) && get(f, sfxCount_) && get(f, inhale_) &&
-         get(f, shardScale_) && get(f, sfxMajor_) && get(f, recipeFirst_) && get(f, recipeCount_) && get(f, tail) &&
+         get(f, shardScale_) && get(f, sfxMajor_) && get(f, upgradeNoNinth_) && get(f, recipeFirst_) && get(f, recipeCount_) && get(f, tail) &&
          tail == kCacheMagic;
     std::fclose(f);
     if (!ok) {

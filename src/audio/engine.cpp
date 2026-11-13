@@ -369,6 +369,9 @@ void Engine::applyParams() {
         bool minorThird = tr_->scaleCount == 0;
         for (u32 i = 0; i < tr_->scaleCount; ++i) minorThird = minorThird || tr_->scale[i] == 3;
         keyMajor_ = !minorThird;
+        bool second = tr_->scaleCount == 0;  // the ninth (the major second) in the scale?
+        for (u32 i = 0; i < tr_->scaleCount; ++i) second = second || tr_->scale[i] == 2;
+        keyNoNinth_ = !second;
     }
     stats_.track.store(static_cast<u8>(track_), std::memory_order_relaxed);
     stats_.variant.store(static_cast<u8>(variant_), std::memory_order_relaxed);
@@ -739,6 +742,7 @@ void Engine::playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, doubl
         if (midi < 0 && (kind == Sfx::Boost || kind == Sfx::Upgrade || kind == Sfx::GameOver || kind == Sfx::Elite ||
                          kind == Sfx::PerfectDash || kind == Sfx::Shield)) {
             if (keyMajor_ && bank_->sfxMajor(kind) >= 0) id = bank_->sfxMajor(kind);
+            if (kind == Sfx::Upgrade && keyNoNinth_ && bank_->upgradeNoNinth() >= 0) id = bank_->upgradeNoNinth();
             rate *= keyRate_;
         }
     }

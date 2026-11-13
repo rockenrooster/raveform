@@ -80,6 +80,7 @@ public:
     i32 recipe(Recipe r, i32 midi = -1, u16 tag = 0) const;
     // M5: the major-third variant of an effect written in A minor (Boost, Upgrade, Game over), else -1.
     i32 sfxMajor(Sfx kind) const { return sfxMajor_[static_cast<u32>(kind)]; }
+    i32 upgradeNoNinth() const { return upgradeNoNinth_; }  // the Upgrade without its ninth (a scale without the second)
     // Nova inhale lasting `steps32` thirty-second notes of `track`'s tempo (1..8).
     i32 inhale(u32 track, u32 steps32) const;
     // Shard scale of a Track (sfxproto's shard run, a pentatonic from its tonic inside the Track's scale: minor where
@@ -106,6 +107,7 @@ private:
     i32 sfxFirst_[kSfxCount] = {};
     u32 sfxCount_[kSfxCount] = {};
     i32 sfxMajor_[kSfxCount] = {};
+    i32 upgradeNoNinth_ = -1;
     i32 recipeFirst_[kRecipeCount] = {};
     u32 recipeCount_[kRecipeCount] = {};
     i32 inhale_[MusicData::kMaxTracks][9] = {};

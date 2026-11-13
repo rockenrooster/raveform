@@ -368,7 +368,9 @@ void Engine::flushCues(i64 tickIn) {
                     playRecipeAt(Recipe::Tom, chordRootMidi(3), g, pan, f, tick, 0.0f, 0.0f);
                     if (cue == Cue::ShockstepDash && value >= 1.0f) playRecipeAt(Recipe::Tom, chordRootMidi(3) + 7, g, pan, f, tick, 0.0f, 0.0f);
                     break;
-                case Cue::AegisBlock: playSfx(Sfx::Tick, -1, sfxLevel(Sfx::Tick) * 0.15f * g, pan, f, tick); break;
+                case Cue::AegisBlock:  // sound_m5.json (f7cd516): 6 dB under the Shard chirp
+                    playSfx(Sfx::Tick, -1, sfxLevel(Sfx::Shard) * 0.5012f * g, pan, f, tick);
+                    break;
                 case Cue::LastLightNova: playSfx(Sfx::NovaBlast, -1, sfxLevel(Sfx::NovaBlast) * 0.6f, pan, f, tick); break;
                 case Cue::CollectorBoost: playSfx(Sfx::Boost, -1, sfxLevel(Sfx::Boost), pan, f, tick); break;
                 case Cue::RicochetBounce: {  // a blip a scale step above the last for each bounce (two under Ricochet Fever)
