@@ -351,16 +351,22 @@ void Play::coopTestStep() {
     World& w = *world_;
     if (netRunStarted_ && !coopOver_) {
         if (opt_.coopDownAt >= 0.0f && !coopDowned_ && runSeconds_ >= opt_.coopDownAt) {
-            // This device's ship goes down: its cells gone, a bullet where it is (the world takes the hit as any).
+            // This device's ship goes down as in play: a bullet where it is takes its last cell (a hit: a cross on the set
+            // list), the next one, once it can be hurt again, downs it (the world takes both as any hit).
             PlayerState& pl = w.playerMut(seat_);
-            if (pl.alive) {
-                pl.cells = 0;
+            if (!pl.alive) {
+                coopDowned_ = true;
+            } else {
+                if (pl.cells > 1) pl.cells = 1;
                 pl.novas = 0;  // (Auto Nova would fire one instead)
-                pl.invulS = pl.novaInvulS = 0.0f;
-                w.spawnBullet(pl.pos, Vec2{}, 0.0f);
-                RF_LOG("net: --coop-down-at %.1f s: this ship is downed", static_cast<double>(opt_.coopDownAt));
+                if (!pl.invulnerable()) {
+                    if (pl.cells == 0) {
+                        RF_LOG("net: --coop-down-at %.1f s: this ship is downed", static_cast<double>(opt_.coopDownAt));
+                        coopDowned_ = true;
+                    }
+                    w.spawnBullet(pl.pos, Vec2{}, 0.0f);
+                }
             }
-            coopDowned_ = true;
         }
         if (opt_.coopPauseAt >= 0.0f && !coopPaused_ && runSeconds_ >= opt_.coopPauseAt) {
             coopPause(true);
@@ -389,12 +395,22 @@ void Play::coopTestStep() {
         if (want <= 4 && ready >= want && seated >= want && coopAutoT_ > 2.0f) coopShotReady_ = true;
     }
     if (is("beacon") || is("revive")) {
+        // The beacon: a teammate's, on this screen (well inside the frame around this ship) once the shatter of its ship
+        // has gone, a second after it went down, and before anyone revives it. The revive: half filled.
+        const PlayerState& me = w.player(seat_);
+        bool down = false;
         for (u32 q = 0; q < kMaxPlayers; ++q) {
             const PlayerState& pl = w.player(q);
             if (!pl.present || !pl.down) continue;
-            if (is("beacon") && q != seat_ && pl.reviveTicks <= 0.0) coopShotReady_ = true;
+            if (is("beacon") && q != seat_ && pl.reviveTicks <= 0.0) {
+                down = true;
+                if (beaconDownS_ > 1.0f && std::fabs(pl.pos.x - me.pos.x) < 0.6f * tuning::kFrameHalfWWu &&
+                    std::fabs(pl.pos.y - me.pos.y) < 0.6f * tuning::kFrameHalfHWu)
+                    coopShotReady_ = true;
+            }
             if (is("revive") && pl.reviveTicks >= 0.45 * tuning::kReviveBeats * kTicksPerBeat) coopShotReady_ = true;
         }
+        beaconDownS_ = down ? beaconDownS_ + frameDt_ : 0.0f;
     }
     if (is("pause") && s.resuming()) {
         // Two beats into the shared count-in.

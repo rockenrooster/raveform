@@ -678,6 +678,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         vi.camFixed = true;
         vi.camPos = o.prevPos + (o.pos - o.prevPos) * alpha_;
     }
+    vi.noShips = flow_ && screen_ == Screen::CoopLobby;
     updatePalette(vi.music);
     view_.render(d, params, bg, W, H, vi);
 

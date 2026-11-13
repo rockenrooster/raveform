@@ -37,6 +37,8 @@ struct ViewInput {
     // M4 pictures (--net-view-seat): the camera on this point (no look-ahead) instead of the local ship.
     bool camFixed = false;
     Vec2 camPos;
+    // M4 stage B: the lobby draws no ship (the run has not begun; screens.md's lobby shows the ships in the seats).
+    bool noShips = false;
 };
 
 struct ViewStats {

@@ -228,6 +228,8 @@ private:
     u8 bandSlot(u32 q) const { return static_cast<u8>(q == seat_ ? 0u : (q < seat_ ? q + 1u : q)); }
     bool coopAutoDone_ = false;
     float coopAutoT_ = 0.0f, coopShotT_ = 0.0f;
+    float beaconDownS_ = 0.0f;  // --coop-shot beacon: how long a teammate has been down (its shatter gone after a second)
+    u8 presentLogged_ = 0;      // the seats present in the run as last logged (a teammate leaving is logged)
     bool coopShotReady_ = false, coopDowned_ = false, coopPaused_ = false, coopResumed_ = false;
     // The band's view of the co-op mix (what was last posted; slot 0 is this device's player).
     u8 bandPlayers_ = 1;

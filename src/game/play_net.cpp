@@ -163,6 +163,15 @@ void Play::netFrame(float realDt) {
         }
     }
     if (!s.host()) netBandServo();
+    {
+        // A teammate who leaves the run (its ship fades where it was), logged as it happens (device checks).
+        u8 present = 0;
+        for (u32 q = 0; q < kMaxPlayers; ++q) present = static_cast<u8>(present | (w.player(q).present ? 1u << q : 0u));
+        if (netRunStarted_)
+            for (u32 q = 0; q < kMaxPlayers; ++q)
+                if (((presentLogged_ >> q) & 1u) && !((present >> q) & 1u)) RF_LOG("net: seat %u left the run", q);
+        presentLogged_ = present;
+    }
     coopBand();  // M4 stage B: the teammates' leads, the beacons, the revive's notes (GAME_DESIGN 10)
     bandFrame();
     s.send(localUs, controller_.pose());

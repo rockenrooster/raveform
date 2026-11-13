@@ -1106,7 +1106,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     // ---- The player: two-tone ship, halo (one arc per Shield cell), trail, pool, priority layer.
     const PlayerState& me = w.player(w.viewPlayer());
     const float shipScale = kStandardEnemyWu * glyphs_->def(static_cast<u32>(gShip_)).size;
-    const bool playerShown = shown(kMutePlayer);
+    const bool playerShown = shown(kMutePlayer) && !in.noShips;
     // Trail history (the view clock).
     if (me.alive) {
         trailPos_[trailHead_] = S;
@@ -1222,7 +1222,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
                 d.scene.line(toScene(path[k]), toScene(b), 0.5f * tr.width * refPx_, field(u0), field(u1), 0);
             }
         }
-        if (shown(kMutePriority)) {
+        if (shown(kMutePriority) && !in.noShips) {
             // The ship on the priority layer (look.md §6, §9): hull and halo after tone mapping with a rim.
             const Look::PriorityShip& ph = look_->priorityHull;
             const Look::PriorityShip& pa = look_->priorityHalo;
