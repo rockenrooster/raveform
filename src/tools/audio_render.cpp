@@ -113,6 +113,10 @@ struct Render {
         double seconds;
     } trackStarts[16];
     u32 trackStartCount = 0;
+    // M5 (render max): lead voices per player, summed and the most, sampled once a 1/60 s.
+    u64 leadSum[4] = {};
+    u32 leadMax[4] = {};
+    u64 leadSamples = 0;
 };
 
 void drainEvents(Render& r) {
@@ -741,6 +745,17 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
                 }
             }
             ++frameIndex;
+            if (maxLoad) {  // M5: the lead voices of each player, once a 1/60 s
+                static LeadVoiceInfo info[128];
+                const u32 nv = engine.leadVoices(info, 128);
+                u32 per[8] = {};
+                for (u32 i = 0; i < nv; ++i) ++per[info[i].player & 7u];
+                for (u32 pl = 0; pl < 4; ++pl) {
+                    r.leadSum[pl] += per[pl];
+                    if (per[pl] > r.leadMax[pl]) r.leadMax[pl] = per[pl];
+                }
+                ++r.leadSamples;
+            }
             const u64 until = r.done + kRate / 60;
             if (r.postAt >= 0 && static_cast<u64>(r.postAt) <= until) {
                 renderTo(r, static_cast<u64>(r.postAt));
@@ -820,6 +835,12 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
         std::printf("wrote %s\n", opt.out);
     }
     if (opt.meta) writeMeta(opt.meta, music, t, v, opt.render, r.frames, opt);
+    if (maxLoad && r.leadSamples) {
+        std::printf("lead voices by player (mean / most):");
+        for (u32 pl = 0; pl < 4; ++pl)
+            std::printf("  %u: %.1f / %u", pl, static_cast<double>(r.leadSum[pl]) / static_cast<double>(r.leadSamples), r.leadMax[pl]);
+        std::printf("\n");
+    }
     if (opt.profile) {
         u64 total = 0;
         for (u64 ns : profile.ns) total += ns;

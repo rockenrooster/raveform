@@ -59,6 +59,28 @@ struct BeatEvent {
     u8 c = 0;            // bar in the section / timbre
 };
 
+// M5: the upgrades' patterned sounds, reported as Sfx events with a = kUpgradeEvent + this (value: the gain; x: the note,
+// or the playback rate where it has none), so tests and sheets can see what played when. (Impacts are not Impact events:
+// those are the Drop's, with their heavy haptic.)
+enum class UpgradeSound : u8 {
+    LancerChord, LancerCharge, MineLaid, MineBlast, SwarmBell, SingularitySwell, SingularityBoom, CometOut, CometBack,
+    FlakSnare, FlakClap, CannonOne, CollapseSwell, MurmurationTrill, TeslaZap, HaloGlass, BarLineZap, ModStab, ChainStormZap,
+    CarouselTom, KickPulseTom, FreezeGlass, StandingWave, HeavyStepBass, ColossusBass,
+    MirrorNote, QuartetNote, ChorusNote, FractalNote, SyncBlip, RearGuardNote, Count
+};
+
+// M5 (tests): a lead voice as the engine holds it (Engine::leadVoices).
+struct LeadVoiceInfo {
+    u8 player = 0;
+    u8 timbre = 0;
+    i64 start = 0;
+    float hz = 0.0f, vel = 0.0f, gain = 0.0f;  // gain: as asked, whatever the pan
+    u32 length = 0;
+    float glideSemis = 0.0f, vibSemis = 0.0f, vibPhase = 0.0f;
+    u32 glideN = 0;
+};
+constexpr u8 kUpgradeEvent = 96;
+
 enum class Timing : u8 { Now, Next32, AtTick };
 
 enum class CmdType : u8 {
@@ -199,6 +221,10 @@ public:
     // the block's first frame (frame_ - n), and the block's length.
     const float* duckBlock() const { return duck_; }
     u32 duckBlockFrames() const { return duckFrames_; }
+    // M5 (tests): the active lead voices (at most `cap`), the lead delay's length in frames, the pad voices' opening.
+    u32 leadVoices(LeadVoiceInfo* out, u32 cap) const;
+    u32 delayFrames() const { return delayD_; }
+    float padOpenNow() const;
 
 private:
     struct LeadVoice;
@@ -257,6 +283,9 @@ private:
     // already), or released there; mode 1: its cutoff follows the Sweeper's arm.
     void holdDrone(u32 slot, bool on, i32 midi, float cutoff, float gain, u8 mode, i64 frame);
     float playerLevel(u32 player) const;  // a player's lead level in this device's mix (1: its own; conductor.json lead.others)
+    void upgradeEvent(UpgradeSound s, i64 frame, double tick, float value, double x = 0.0) {
+        emit(BeatKind::Sfx, frame, tick, static_cast<u8>(kUpgradeEvent + static_cast<u8>(s)), 0, 0, value, 0, x);
+    }
     i32 echoPending_ = -1;            // Echo: the stacks the delay takes on at echoAt_ (the bar line's frame)
     i64 echoAt_ = -1;
     u8 crescBars_[kMaxPlayers] = {};  // Crescendo: bars without a hit
@@ -265,7 +294,9 @@ private:
     bool singArmed_ = false;           // Singularity: a well is pulling (its swell played)
     u32 echo_ = 0;                     // Echo: the stacks the lead's delay is set for
     bool kickPulse_ = false;           // Kick Pulse: someone owns it
-    float stabAcc_ = 0.0f;             // Accent and Bar Line: stab velocity asked for on this tick (one stab, summed)
+    float stabAcc_ = 0.0f;             // Lancer, the Cannon, Accent, Bar Line: stab velocity asked for on this tick (one stab, summed)
+    float stabMax_ = 0.0f, stabLength_ = 1.0f;  // ... its ceiling (the Cannon's 1.2) and the longest length asked (Lancer's x 2)
+    float burn_[kMaxPlayers] = {};     // Burn: each player's burning enemies (one crackle for all)
     u32 haloTick_ = 0, standNext_ = 0;
     float freezeMix_ = 0.0f, freezeTarget_ = 0.0f;  // Freeze Frame: the music bus's high-pass, 0..1
     Biquad freezeHp_[2];
@@ -290,10 +321,13 @@ private:
     void emit(BeatKind k, i64 frame, double tick, u8 a = 0, u8 b = 0, u8 c = 0, float value = 0.0f, u32 index = 0,
               double x = 0.0);
     void playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate = 1.0f, double from = 0.0);
+    // cullAt (M5, >= 0): a note that starts later (Fractal's, Fork's) makes room under its player's cap at this frame (now),
+    // so the notes it cuts short do not sound on until it starts.
     LeadVoice* playLead(u8 player, Timbre timbre, float midi, float vel, float gain, float pan, i64 frame, float lengthScale = 1.0f,
-                        float drive = 0.0f);
+                        float drive = 0.0f, i64 cullAt = -1);
     // M5: decayScale (the rubber string: x 2), lengthS (> 0: the voice's length; Heavy Step's short notes), the bus.
-    void playBass(float midi, float vel, float steps, i64 frame, float decayScale = 1.0f, float lengthS = -1.0f, Bus bus = Bus::Bass);
+    BassVoice* playBass(float midi, float vel, float steps, i64 frame, float decayScale = 1.0f, float lengthS = -1.0f, Bus bus = Bus::Bass);
+    void fastBass(BassVoice* v);  // M5 (cost): an upgrade's bass note saturates by fastTanh
     void playStab(const Chord& chord, float vel, float pan, i64 frame, float lengthScale = 1.0f);
     void playPad(const Chord& chord, float level, float bright, i64 frame);
     void playKick(float gain, float velocity, i64 frame, double tick);
