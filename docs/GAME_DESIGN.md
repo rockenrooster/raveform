@@ -99,10 +99,10 @@ next Track's Break, during which tempo, key and palette cross-fade.
 | 4 Aurora | 138 | E minor: i–iv–VI–V (the V major) | Trance: a tune under a high pedal note, galloping bass | Aurora (green, violet, ice on night blue) | Wyrms, Tethers | Event Horizon |
 | 5 Furnace | 144 | G phrygian: i7–♭IImaj7 vamp | Tribal and warm: toms, bass and lead in 3-3-2, a mallet lead | Furnace (amber, white, cyan on charcoal) | Weavers, Wells | Polyrhythm |
 | 6 Zenith | 150 | C dorian: i–III–VII–IV | The peak-time anthem; chords in 3-3-4-3-3 | Zenith (white, gold, electric blue) | Mimics | Feedback |
-| 7 Afterglow | 156 | D♭ major: I–V–vi–IV | The first major key; half-time drums under big soft chords | to design | Elites carry two traits | to design |
-| 8 Arcadia | 162 | G major: I–vi–IV–V | The arcade: square-wave octave bass, broken chords, dry | to design | — | to design |
-| 9 Mirage | 168 | B♭ lydian: I–II–vi–V over a held bass | Floating: a harp lead, a broken kick | to design | — | to design |
-| 10 Last Light | 174 | A minor: First Light's chords and lead, note for note | Liquid drum and bass; the run comes home | to design | — | to design |
+| 7 Afterglow | 156 | D♭ major: I–V–vi–IV | The first major key; half-time drums under big soft chords | Afterglow (peach, lavender, mint on plum) | Elites carry two traits | Cadence |
+| 8 Arcadia | 162 | G major: I–vi–IV–V | The arcade: square-wave octave bass, broken chords, dry | Arcadia (green, blue, magenta on black, a green grid) | — | Arpeggiator |
+| 9 Mirage | 168 | B♭ lydian: I–II–vi–V over a held bass | Floating: a harp lead, a broken kick | Mirage (turquoise, sand, violet on deep teal, a sand grid) | — | Fata Morgana |
+| 10 Last Light | 174 | A minor: First Light's chords and lead, note for note | Liquid drum and bass; the run comes home | Last Light (violet, gold, blue on indigo, a warm horizon) | — | Kaleidos, Reprise |
 | The loop | as the Tracks | — | The encore (section 8) | — | Elite traits stack | Bosses return under the loop's ramps |
 
 **Ten Tracks** (the user, 2026-11-12: "I want 10 tracks total, don't be afraid to experiment with
@@ -111,8 +111,8 @@ minute a Track, from 120 to 174. The themes are chosen to differ in what the ear
 mode (four minor, two modal, two major, one lydian, and the first theme again at the end), the drum
 pattern (four-on-the-floor, 3-3-2 toms, half time, a broken kick, a two-step break) and what the
 lead does (broken chords, a three-note cell, a pedal point, a mallet, a harp). All ten are written
-(`design/music/track01.json` to `track10.json`, `design/music/README.md`); Tracks 7 to 10 still need
-their palettes, bosses and rosters.
+(`design/music/track01.json` to `track10.json`, `design/music/README.md`) and have their palettes; Tracks 7 to 10 still need their
+bosses' full pages (7.6 has the concepts) and their rosters.
 
 **A run plays all ten, in order** (the user's call, 2026-11-12; the alternative offered was five
 drawn for each run). That is about 29 minutes of music before the encore: 72 bars at 120, then nine
@@ -384,7 +384,7 @@ danger hue and from the colours of the players present. Names are generated: `HO
 | Sentry Array | Sentries | A ring of turrets with one rotating safe gap |
 | Mirror Mimic | Mimics | Mirrors a player's movement and fires when they fire |
 
-### 7.6 Bosses (6)
+### 7.6 Bosses (10)
 
 Every boss follows the same rules: its patterns are locked to the bar structure; it shows a
 weak-point rhythm the player can read; it owns a music layer that changes with its health; it has three
@@ -398,6 +398,15 @@ phases; it fits inside the entity caps.
 | **Event Horizon** | A giant well that drags in enemies, bullets and the grid itself. Starve it by killing what it feeds on; it erupts on bar lines. |
 | **Polyrhythm** | Two rotating emitters firing three-against-four patterns. The safe gaps align once per bar; reading the rhythm is the fight. |
 | **Feedback** | Copies the players' current builds and plays their own patterns back one bar later. The stronger the build, the harder the echo. |
+| **Cadence** (Track 7, Afterglow) | The boss is the chord progression. Four great bodies marked I, V, vi and IV stand round the frame; the one whose chord the band is playing is silent and open, the other three fire slow fans in half time, on one and three. The player follows the harmony round the room a bar at a time. Later they change places on the bar line, then the chords come twice as fast. |
+| **Arpeggiator** (Track 8, Arcadia) | The bullets are the tune. Four lanes cross the frame and the lead's broken chord runs down them as blocks, lane 1-2-3-4-3-2-3-4, so the player weaves the shape of the arpeggio they have been firing. The next bar's chart shows above the lanes; the machine at the top opens as it loads each bar. Later the lanes turn a quarter, then two charts cross. |
+| **Fata Morgana** (Track 9, Mirage) | The safe place moves. A storm closes the frame and the only calm is an oasis that drifts; the boss hides in the storm wall and shows where the wall thins. Then there are two oases and one is a mirage that evaporates on the snare; then the oasis leaps on the broken kick's three hits and the storm parts for a beat to let the player cross. |
+| **Kaleidos, Reprise** (Track 10, Last Light) | The first boss comes back as the first theme does. Its own fans, now on the two-step break; then a medley, each arm playing one earlier boss's idea (a travelling wave, a call and its answer, a pull, three against four, an echo), to be shot off one by one; then the bare core fires First Light's arpeggio as its last pattern while the lattice turns to Ultraviolet for the encore. |
+
+The four for Tracks 7 to 10 are concepts (2026-11-12, when the set list grew to ten); their full
+pages under `design/bosses/` come before M5 batch 4. Each is built on something no earlier boss or
+mini-boss asks of the player: following the harmony, reading the melody as a pattern, keeping up
+with a safe place that moves, and recognising six fights inside a seventh.
 
 ---
 
