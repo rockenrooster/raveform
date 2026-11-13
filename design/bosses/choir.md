@@ -34,8 +34,8 @@ Picture: `design/previews/boss_choir.png`. Tool: `design/tools/boss_choir.py`.
 
 1. **The ring is the scale.** Going clockwise the Voices own D, E, F, G, A, B, C and the D above, so
    opposite Voices are always a fifth apart. A Voice sings its own note every time it fires.
-2. **Only a singing Voice can be hurt.** Its mouth is open from the step it fires until one beat
-   later. Shots ring off a closed hood.
+2. **Only a singing Voice can be hurt, and only a singing Voice hurts.** Its mouth is open from the
+   step it fires until one beat later. Shots ring off a closed hood, and a ship passes through one.
 3. **Every call gets its answer.** The pattern of who answers, and when, is the phase.
 4. **A dead Voice is a rest.** Its beat stays in the bar and nothing happens on it: no shots, no note.
    A dead caller is skipped; a dead answerer leaves the call unanswered.
@@ -67,7 +67,7 @@ Voices); the other phases stay near 55.
 |---|---|
 | Voice health | 260 each, 2,080 in all (× 1 + 0.5 per extra player, as for every boss) |
 | Damage scale | Singing × 1 · silent 0 · the last Voice × 1.5 |
-| Contact | A hood hurts; strings do not, except while the cage burns |
+| Contact | **Only an open mouth hurts.** A hood hurts by touch while it sings (from the step it fires until one beat later: the window in which it can be hurt) and at no other time; a silent hood is drawn at 0.6 of its level and a ship flies through it. Strings never hurt, except while the cage burns. (Ruled 2026-11-13: with every hood hurting, a ship crossing the Round lost a cell eleven times a fight. The Choir's danger is its song, not its furniture) |
 | Camera | Pulls back to 0.75 for the fight so the whole Round is in the frame from inside it, eased over the entrance bar |
 | Other enemies during the fight | The crowd drops to half and only fodder families spawn, outside the Round |
 | Reward | A bonus Trio and 220 Shards per player; the Track ends |

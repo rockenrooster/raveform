@@ -512,7 +512,7 @@ entity counts, kills per second and damage taken per cycle.
   swung the view too far on every change of direction (user play test, 2026-11-12); zoom breathes between 0.85× and 1.25× with enemy density and boss fights. Each device has
   its own camera. **Boss fights:** while a boss lives within 1,800 wu of the ship the camera holds
   0.85× and leans toward the boss by 30% of the offset to it (at most 320 wu), so the boss is in the
-  frame whenever its bullets are.
+  frame whenever its bullets are. A boss's own page may hold the camera further out, to 0.75× at most (Longwave and The Choir do), when the fight cannot be read otherwise; the Moto's contract is measured at that zoom.
 - **Indicators:** edge arrows for elites, bosses, teammates, events and incoming ranged attacks; an
   optional corner radar.
 

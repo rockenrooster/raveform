@@ -61,6 +61,11 @@ NUMBERS = dict(
         "order": "Voice k stands at k x 45 degrees and owns note k of the scale, so the ring is the scale and opposite Voices are a fifth apart",
     },
     camera={"zoom": CAMERA_ZOOM, "note": "eased over the entrance bar, so the whole Round is in the frame from inside it; back to 1 over a bar at the end"},
+    contact={"hoodHurts": "only while it sings",
+             "note": ("a hood hurts by touch only while its mouth is open (from the step it fires until one beat later: the same window in which it can be hurt). "
+                      "A silent hood is drawn at 0.6 of its level and a ship flies through it unharmed. The strings never hurt, except while the cage burns. "
+                      "Ruled 2026-11-13: with every hood hurting, a ship that crosses the Round lost a cell eleven times a fight and the bot that does not dodge lost half its runs here; "
+                      "the Choir's danger is its song, not its furniture")},
     bulletSpeed=BULLET_SPEED,
     bulletLifeSeconds=5.0,
     phases=[
