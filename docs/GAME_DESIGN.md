@@ -352,7 +352,8 @@ glyph parameters, unlock Track and cycle). Behaviour code is per family and per 
 Armored (extra health) · Swift · Giant · Splitting · Volatile (explodes on death, telegraphed) ·
 Regenerating · Cloaked (visible only on beat flashes) · Shielded (frontal arc) · Magnetic (steals
 loose Shards) · Twin (arrives as a linked pair) · Phasing (intangible on off-beats) · Commander
-(speeds up nearby enemies). Elites carry one trait at first; from Track 7 they stack.
+(speeds up nearby enemies). Elites carry one trait at first; from Track 7 they stack. The numbers, which Track brings which
+trait, how often elites come and what they drop are in `design/traits.md`.
 
 ### 7.4 Visual grammar
 
