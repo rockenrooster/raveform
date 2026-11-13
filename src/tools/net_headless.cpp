@@ -70,6 +70,8 @@ struct Hist {
 // The soak's true on-screen error, broken down (docs/PROGRESS_m4_net.md): where its squared sum comes from.
 struct TrueDiag {
     NetDiagBin all, byFamily[16], byState[16], targetDiffers, stateDiffers, knocked, frozenDiffers, byAge[6], bySize[5], called;
+    NetDiagBin shoalAge[6], otherAge[6];  // the age bins for Shoals (darts included) and for every other family
+    NetDiagBin simPos;                    // the simulated position against the host's (without the drawn offset)
     NetDiagBin byTarget[4];  // the host's copy follows: 0 this client's player, 1 the host's, 2 another client's, 3 none
     NetDiagBin perp;
     double tauSum = 0.0, tau2Sum = 0.0;
@@ -80,7 +82,8 @@ struct TrueDiag {
             std::printf(" %s %.1f (%.0f%%e2 %.0f%%n)", name, static_cast<double>(x.rms()), all.sum2 > 0.0 ? 100.0 * x.sum2 / all.sum2 : 0.0,
                         all.n ? 100.0 * static_cast<double>(x.n) / static_cast<double>(all.n) : 0.0);
         };
-        std::printf("[net]   %s: RMS %.2f wu (%llu)\n[net]     kind:", title, static_cast<double>(all.rms()), static_cast<unsigned long long>(all.n));
+        std::printf("[net]   %s: RMS %.2f wu (%llu); the simulated position alone (no drawn offset) %.2f\n[net]     kind:", title,
+                    static_cast<double>(all.rms()), static_cast<unsigned long long>(all.n), static_cast<double>(simPos.rms()));
         b("target-differs", targetDiffers);
         b("state-differs", stateDiffers);
         b("knocked", knocked);
@@ -95,6 +98,10 @@ struct TrueDiag {
         std::printf("\n[net]     since this copy's last correction:");
         static const char* const kA[6] = {"<.25s", "<.5s", "<1s", "<2s", "<4s", ">4s"};
         for (u32 k = 0; k < 6; ++k) b(kA[k], byAge[k]);
+        std::printf("\n[net]       Shoals:");
+        for (u32 k = 0; k < 6; ++k) b(kA[k], shoalAge[k]);
+        std::printf("\n[net]       the rest:");
+        for (u32 k = 0; k < 6; ++k) b(kA[k], otherAge[k]);
         const double tm = tauN ? tauSum / static_cast<double>(tauN) : 0.0, tr = tauN ? std::sqrt(tau2Sum / static_cast<double>(tauN)) : 0.0;
         std::printf("\n[net]     along the host's velocity: mean %+.1f ms, RMS %.1f ms; across it %.1f wu\n[net]     family:", tm * 1e3, tr * 1e3,
                     static_cast<double>(perp.rms()));
@@ -117,6 +124,8 @@ struct PeerReport {
     i64 downMaxAt = 0, upMaxAt = 0;       // when it ended
     u32 upPeers = 0;                      // peers connected then
     u32 upSilentMs = 0, upInFlight = 0;   // the longest silence of a peer then; reliable bytes unacknowledged
+    float upRel = 0.0f, upUnrel = 0.0f, upCtrl = 0.0f;  // the worst up second's payloads by channel (kbit/s)
+    u32 upDatagrams = 0;
     double downSum = 0.0, upSum = 0.0;    // for the mean
     u32 seconds = 0;
     float corrErrMax = 0.0f;
@@ -163,6 +172,10 @@ void secondly(NetPeer& p, PeerReport& r, i64 when, i64& last) {
         r.upPeers = s.peers;
         r.upSilentMs = s.silentMs;
         r.upInFlight = s.inFlight;
+        r.upRel = s.upRelKbps;
+        r.upUnrel = s.upUnrelKbps;
+        r.upCtrl = s.upCtrlKbps;
+        r.upDatagrams = s.upDatagrams;
     }
     r.downSum += s.downKbps;
     r.upSum += s.upKbps;
@@ -386,6 +399,7 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                 {
                     TrueDiag& g = *tdiag;
                     g.all.add(err);
+                    g.simPos.add(length(Vec2{ce.x[i] + (ce.vx[i] + ce.kx[i]) * dx, ce.y[i] + (ce.vy[i] + ce.ky[i]) * dx} - Vec2{he.x[j], he.y[j]}));
                     g.byFamily[static_cast<u32>(cw.species().get(ce.species[i]).family) & 15u].add(err);
                     g.byState[ce.state[i] & 15u].add(err);
                     if (ce.target[i] != he.target[j]) g.targetDiffers.add(err);
@@ -398,7 +412,9 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                     g.bySize[err < 5.0f ? 0 : (err < 20.0f ? 1 : (err < 50.0f ? 2 : (err < 96.0f ? 3 : 4)))].add(err);
                     const double last = peers[k].session().lastCorrection(ce.handle[i] & 0xFFFFu, ce.serial[i]);
                     const float age = last < 0.0 ? 1e9f : static_cast<float>((peers[0].music() - last) / tps);
-                    g.byAge[age < 0.25f ? 0 : (age < 0.5f ? 1 : (age < 1.0f ? 2 : (age < 2.0f ? 3 : (age < 4.0f ? 4 : 5))))].add(err);
+                    const u32 ab = age < 0.25f ? 0 : (age < 0.5f ? 1 : (age < 1.0f ? 2 : (age < 2.0f ? 3 : (age < 4.0f ? 4 : 5))));
+                    g.byAge[ab].add(err);
+                    (cw.species().get(ce.species[i]).family == Family::Shoal ? g.shoalAge[ab] : g.otherAge[ab]).add(err);
                     const Vec2 v{he.vx[j] + he.kx[j], he.vy[j] + he.ky[j]};
                     const float v2 = v.x * v.x + v.y * v.y;
                     if (v2 > 60.0f * 60.0f) {
@@ -497,6 +513,12 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                     overflow == 0 && queueFull == 0 && poolFallbacks == 0 && allocs == 0 && pauseOk && pauseSame;
     // Diagnostics (docs/PROGRESS_m4_net.md), before the summary: the true error broken down, the clients' corrections and poses.
     tdiag->print("the true on-screen error broken down");
+    for (u32 k = 1; k < players; ++k)
+        if (!(dropped && k == dropPeer))
+            std::printf("[net]   client %u's worst up second: %.1f kbit/s at %.0f s (reliable %.1f, unreliable %.1f, control %.1f payload; %u "
+                        "datagrams), down worst %.1f at %.0f s\n",
+                        k, rep[k].upMax, static_cast<double>(rep[k].upMaxAt - runFrom) * 1e-6, rep[k].upRel, rep[k].upUnrel, rep[k].upCtrl,
+                        rep[k].upDatagrams, rep[k].downMax, static_cast<double>(rep[k].downMaxAt - runFrom) * 1e-6);
     {
         for (u32 k = 1; k < players; ++k)
             if (!(dropped && k == dropPeer)) mergeDiag(*cdiag, peers[k].session().diag());

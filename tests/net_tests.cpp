@@ -280,6 +280,63 @@ void testRoundTrip() {
     CHECK(put == 38 && w.size() <= kMaxPacketBytes);  // M5: 31 bytes each (39 at 30)
     if (put != 38) std::printf("  corrections in a packet: %u (%u bytes)\n", put, static_cast<u32>(w.size()));
 
+    // M4 net follow-up: motion corrections (serials as varint steps, knockback only when there is some), after full ones
+    // in the same packet; a serial out of order ends what is written.
+    {
+        NetMotion mo[3];
+        mo[0].serial = 4242;
+        mo[0].x = -1234.5f;
+        mo[0].y = 678.25f;
+        mo[0].heading = 2.5f;
+        mo[0].target = 1;
+        mo[0].engaged = true;
+        mo[1] = mo[0];
+        mo[1].serial = 4243;
+        mo[1].kx = -40.0f;
+        mo[1].ky = 25.0f;
+        mo[1].target = 0xFF;
+        mo[1].frozen = true;
+        mo[2] = mo[0];
+        mo[2].serial = 70000;
+        w.reset();
+        CHECK(w.putCorrections(2, 10000.0, &s, 1) == 1);
+        const u32 before = w.size();
+        CHECK(w.putMotions(2, 10000.0, mo, 3) == 3);
+        CHECK(w.size() - before == 3 + 11 + (2 + 7) + (1 + 9) + (3 + 7));  // header, then steps of 2, 1 and 3 bytes
+        struct MotionSink : Count {
+            NetMotion got[4];
+            u32 n = 0;
+            u16 run = 0;
+            double music = 0.0;
+            void onMotions(u16 r, double m) override {
+                run = r;
+                music = m;
+            }
+            void onMotion(const NetMotion& m) override {
+                if (n < 4) got[n] = m;
+                ++n;
+            }
+        } ms;
+        CHECK(parsePacket(w.data(), w.size(), ms));
+        CHECK(ms.corrections == 1 && ms.n == 3 && ms.run == 2 && ms.music == 10000.0);
+        CHECK(ms.got[0].serial == 4242 && ms.got[1].serial == 4243 && ms.got[2].serial == 70000);
+        CHECK(std::fabs(ms.got[0].x - mo[0].x) <= 0.08f && std::fabs(ms.got[0].y - mo[0].y) <= 0.08f);
+        CHECK(std::fabs(std::remainder(ms.got[0].heading - 2.5f, kTau)) < 1e-3f && ms.got[0].target == 1 && ms.got[0].engaged);
+        CHECK(ms.got[0].kx == 0.0f && !ms.got[0].frozen);
+        CHECK(ms.got[1].kx == -40.0f && ms.got[1].ky == 25.0f && ms.got[1].target == 0xFF && ms.got[1].frozen && ms.got[1].engaged);
+        mo[2].serial = 10;  // out of order: not written
+        w.reset();
+        CHECK(w.putMotions(2, 10000.0, mo, 3) == 2);
+        NetMotion lots[200];
+        for (u32 k = 0; k < 200; ++k) {
+            lots[k] = mo[0];
+            lots[k].serial = 1000 + 3 * k;
+        }
+        w.reset();
+        const u32 fit = w.putMotions(2, 10000.0, lots, 200);
+        CHECK(fit > 100 && w.size() <= kMaxPacketBytes);  // about 8 bytes each
+    }
+
     // Poses and the heartbeat.
     MsgPose p;
     p.player = 3;
@@ -1025,7 +1082,7 @@ void testRelayClocks(const SpeciesTable& species) {
         for (u32 j = 1; j < 4; ++j)
             if (j != k) {
                 CHECK(peers[k].session().diag().poses[j] > 100);  // new poses of every other client arrived (30 Hz)
-                heard += peers[k].session().diag().poses[j];
+                heard += peers[k].session().diag().poses[j];  // (a relay that repeats the newest still carries the one before)
             }
     }
     CHECK(worst < 250.0f);

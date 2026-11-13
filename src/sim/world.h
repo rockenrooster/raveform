@@ -106,7 +106,9 @@ struct NetOp {
 // tick by the session (net/session.h).
 struct NetLog {
     // (Play test 1, second pass: a tick's deaths can be the whole crowd dissolving at a Break, 1,350 with four players.)
-    static constexpr u32 kSpawns = 2048, kDeaths = kMaxEnemies, kClaims = 512, kBossClaims = 64, kBoss = 16, kBoosts = 8;
+    // M4 net follow-up: a client's claims of one tick can pass 512 with M5 part 3's upgrades (95 lost in a soak); one for
+    // every enemy slot (a lost claim is a kill the host never hears of).
+    static constexpr u32 kSpawns = 2048, kDeaths = kMaxEnemies, kClaims = kMaxEnemies, kBossClaims = 64, kBoss = 16, kBoosts = 8;
     NetSpawn spawns[kSpawns];
     u32 spawnIndex[kSpawns];  // dense index while the tick runs (its group and flags are read before compact)
     NetDeath deaths[kDeaths];

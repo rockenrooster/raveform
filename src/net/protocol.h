@@ -10,7 +10,7 @@
 
 namespace rf::net {
 
-constexpr u32 kProtocolVersion = 0x52460503u;  // 'R' 'F', M5 part 3 (a Trio's orbs: up to six)
+constexpr u32 kProtocolVersion = 0x52460504u;  // 'R' 'F', M4 net follow-up (motion corrections); 0x...503 M5 part 3
 constexpr u32 kMaxPacketBytes = 1200;
 
 enum class Msg : u8 {
@@ -19,7 +19,18 @@ enum class Msg : u8 {
     // the game, reliable (channel 0)
     RunStart = 16, Spawns, Deaths, Claims, BossClaims, Boss, BoostDrop, Director, PlayerEvent, Census, Pause, Seats, Ready, Lobby, Bed,
     // the game, unreliable (channel 1)
-    Pose = 48, Players, Corrections, Heartbeat, Stats, Attention,
+    Pose = 48, Players, Corrections, Heartbeat, Stats, Attention, Motions,
+};
+
+// A motion correction (M4 net follow-up, docs/PROGRESS_m4_net.md): where an enemy is, its heading, the player it follows and
+// its knockback; nothing of its musical state, its health or its random stream. A third of a full correction's bytes, for
+// the bodies whose motion is all that diverges (a moving Shoal: boids drift apart fastest); the receiver keeps its own
+// copy's other fields. Every few corrections of an enemy the host still sends a full one.
+struct NetMotion {
+    u32 serial = 0;
+    float x = 0, y = 0, heading = 0, kx = 0, ky = 0;
+    u8 target = 0xFF;
+    bool engaged = false, frozen = false;
 };
 
 enum RefuseReason : u8 { kRefuseVersion = 1, kRefuseContent = 2, kRefuseFull = 3, kRefuseRunning = 4 };
@@ -155,6 +166,8 @@ public:
     virtual void onPose(const MsgPose&) {}
     virtual void onCorrections(u16, double) {}  // then onCorrection per enemy
     virtual void onCorrection(const sim::NetEnemyState&) {}
+    virtual void onMotions(u16, double) {}  // then onMotion per enemy
+    virtual void onMotion(const NetMotion&) {}
     virtual void onHeartbeat(const MsgHeartbeat&) {}
     virtual void onStats(const MsgStats&) {}
     // Client -> host: enemies on the client's screen that no correction has reached for a while.
@@ -200,6 +213,8 @@ public:
     // ... or the host's relay of every player's pose in one message.
     bool putPlayers(const MsgPose* poses, u32 n);
     u32 putCorrections(u16 run, double hostMusic, const sim::NetEnemyState* items, u32 n);
+    // Motion corrections, in increasing serial order (each serial a varint step from the one before): 8 to 12 bytes each.
+    u32 putMotions(u16 run, double hostMusic, const NetMotion* items, u32 n);
     bool putHeartbeat(const MsgHeartbeat& m);
     bool putStats(const MsgStats* s, u32 n);
     bool putAttention(u16 run, const u32* serials, u32 n);
@@ -225,6 +240,8 @@ private:
 // Item sizes on the wire (bytes). Play test 2: a spawn is 7 to 17 bytes (kSpawnBytes the most: only what differs from
 // the item before is sent), a death 1 to 6 (a varint).
 constexpr u32 kSpawnBytes = 17, kDeathBytes = 6, kBossClaimBytes = 6, kCorrectionBytes = 31, kPoseBytes = 39, kStatsBytes = 19;
+constexpr u32 kMotionBytesMax = 13;  // a motion correction: serial step 1-5, position 4, heading 2, a byte of bits, knockback 2
+constexpr u32 kCorrectionsHeader = 3 + 11;  // a corrections or motions message: type and length, run, host music, count
 // Claims are variable (1-7 bytes an item, see putClaims); one claim's damage is at most this.
 constexpr float kMaxClaimDamage = 16383.0f / 64.0f;
 constexpr u32 kMaxAttention = 8;  // serials in one attention message

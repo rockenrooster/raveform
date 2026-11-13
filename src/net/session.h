@@ -45,10 +45,12 @@ struct SessionConfig {
     bool autoRestart = true;
     bool beacon = false;
     RemotePoses remotePoses = RemotePoses::Interpolate;
+    bool motionCorrections = true;  // host: a moving Shoal's corrections are motion corrections (protocol.h NetMotion)
     // Host: the corrections' share of each client's downlink (bytes a second, every byte to the client counted) and how
-    // fast each enemy family gains priority (experiments: raveform_headless --net-tune).
+    // fast each enemy family gains priority (experiments: raveform_headless --net-tune). Shoals twice as fast: boids
+    // drift apart fastest (docs/PROGRESS_m4_net.md: 57-95% of the soaks' squared error; 4 starved the rest).
     float downBytesPerS = 20000.0f;
-    float familyWeight[16] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+    float familyWeight[16] = {1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 };
 // "down=20000,fam2=3,..." onto a config (raveform_headless --net-tune); false on a malformed spec.
 bool parseNetTune(const char* spec, SessionConfig& c);
@@ -58,6 +60,9 @@ struct SessionStats {
     float rttMs = 0.0f, rttVarMs = 0.0f, loss = 0.0f;  // client: to the host; host: the worst client
     u32 silentMs = 0, inFlight = 0;                     // the longest a peer has been silent; reliable bytes unacknowledged
     float upKbps = 0.0f, downKbps = 0.0f;               // this device, last second, with IP/UDP headers
+    float upRelKbps = 0.0f, upUnrelKbps = 0.0f, upCtrlKbps = 0.0f;  // of it, our payloads by channel (the rest: ENet's
+                                                                    // headers, acknowledgements, resends and IP/UDP)
+    u32 upDatagrams = 0;                                // datagrams sent in the last second
     float correctionsPerS = 0.0f;                       // client: applied; host: sent
     float errRmsWu = 0.0f, errMaxWu = 0.0f;             // client: position error the corrections found, last second
     float songOffsetMs = 0.0f;                          // client: its song against the host's, by its clock estimate
@@ -65,6 +70,7 @@ struct SessionStats {
     float dilation = 0.0f;                              // client: the clock's steering (rate - 1)
     float predictUndoMs = 0.0f;                         // client: how long a predicted kill waits for its verdict
     u32 snaps = 0, corrections = 0;                     // totals
+    u32 motions = 0;                                    // of the corrections, motion corrections (host: sent; client: applied)
     u32 corrUnknown = 0, corrOtherRun = 0;              // client: corrections for no enemy here / another run
     // Client: enemies on this player's screen, drawn position against the host's sample as each correction lands.
     double screenErrSum2 = 0.0;
@@ -250,6 +256,8 @@ private:
     void onPose(const MsgPose& m) override;
     void onCorrections(u16 run, double hostMusic) override;
     void onCorrection(const sim::NetEnemyState& s) override;
+    void onMotions(u16 run, double hostMusic) override { onCorrections(run, hostMusic); }
+    void onMotion(const NetMotion& m) override;
     void onHeartbeat(const MsgHeartbeat& m) override;
     void onStats(const MsgStats& m) override;
     void onAttention(u16 run, const u32* serials, u32 n) override;
@@ -273,6 +281,7 @@ private:
     void sendTo(u32 peer, u8 channel, const PacketWriter& w, bool rel);
     void relayEvent(const MsgPlayerEvent& m, u32 exceptSeat);
     void sendCorrections(u32 seat, double hostMusic);
+    bool motionOnly(u32 seat, u32 index) const;
     void refillBudgets(i64 localUs);
     u32 attention();
     void updatePriorities(float dt);
@@ -337,6 +346,9 @@ private:
     };
     Pick picks_[sim::kMaxEnemies];
     sim::NetEnemyState states_[64];
+    NetMotion motions_[96];
+    u8 motionRun_[sim::kMaxPlayers][sim::kMaxEnemies] = {};   // host: motion corrections since the last full one
+    float fullHp_[sim::kMaxPlayers][sim::kMaxEnemies] = {};   // host: the health the last full one carried
     i64 lastPrioUs_ = 0;
     // Host: each client's downlink budget (bytes, with headers): corrections take what the rest leaves.
     float downBudget_[sim::kMaxPlayers] = {};
@@ -378,6 +390,7 @@ private:
     mutable NetDiag diag_;  // (fillRemote, const, counts its reach)
     i64 poseArrivedUs_[sim::kMaxPlayers] = {};
     i64 corrArrivedUs_ = 0, frameUs_ = 0, poseSentUs_ = 0;
+    double chBytes_[3] = {};  // payload bytes queued per channel since the last measure
     i64 measureFrom_ = 0;
     WireStats lastWire_;
     u32 corrCount_ = 0;

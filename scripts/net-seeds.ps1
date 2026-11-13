@@ -9,10 +9,11 @@ param(
     [string[]]$Extra = @(),
     [string]$Out = 'captures\m4net\seeds\run',
     # -Low: the soaks run at idle priority (a device run's real-time PC bots on the same cores go first).
-    [switch]$Low
+    [switch]$Low,
+    [string]$Exe = 'build\desktop-dev\raveform_headless.exe'
 )
 . "$PSScriptRoot\env.ps1"
-$exe = Join-Path $RF_ROOT 'build\desktop-dev\raveform_headless.exe'
+$exe = Join-Path $RF_ROOT $Exe
 $OutFull = [IO.Path]::GetFullPath((Join-Path $RF_ROOT $Out))
 New-Item -ItemType Directory -Force $OutFull | Out-Null
 $running = @()
