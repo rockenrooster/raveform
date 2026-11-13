@@ -4,6 +4,7 @@
 // wells) are glyphs; lightning is a jagged line that fades in 0.15 s. Cosmetic only.
 
 #include <cmath>
+#include <initializer_list>
 
 #include "game/play_view.h"
 #include "sim/tuning.h"
@@ -19,9 +20,36 @@ Vec2 perpU(Vec2 v) { return {-v.y, v.x}; }
 float clampU(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
 const Vec3 kIce{0.55f, 0.85f, 1.0f};
 const Vec3 kFire{1.0f, 0.42f, 0.08f};
-constexpr float kLanceFadeS = 0.28f;  // chosen: a lance's flash
-constexpr float kBoltS = 0.15f;       // chosen: a lightning jump's life
+constexpr float kBoltS = 0.09f;       // look.md 5: a zap's 90 ms
+constexpr float kBeatPeakS = 2.0f / 60.0f, kBeatFallS = 0.110f, kEdgeLongerS = 0.060f;  // look.md 5 (a beam on a beat), 7
 }  // namespace
+
+void PlayView::drawBeam(FrameDraw& d, Vec2 from, Vec2 dir, float len, float w, Vec3 edge, Vec3 core, float edgeLevel, float coreLevel,
+                        float fillLevel) {
+    // look.md 5 (Beams, lightning and areas): two edge lines at the damage width (1.6 px), a core line on the axis (3 px; 2 px
+    // under 20 wu), a fill between the edges added at fillLevel (0.10); the edges leave the nose as a point and reach full
+    // width over 40 wu.
+    const Vec2 side = perpU(dir) * (0.5f * w);
+    const float taper = std::fmin(40.0f, len);
+    const Vec2 a0 = from, a1 = from + dir * taper, a2 = from + dir * len;
+    if (edgeLevel > 0.0f) {
+        const Vec3 ec = edge * edgeLevel;
+        for (float sgn : {-1.0f, 1.0f}) {
+            d.scene.line(toScene(a0), toScene(a1 + side * sgn), 0.8f * refPx_, ec, ec, 0);
+            d.scene.line(toScene(a1 + side * sgn), toScene(a2 + side * sgn), 0.8f * refPx_, ec, ec, 0);
+        }
+        if (fillLevel > 0.0f) {
+            const Vec3 fc = edge * fillLevel;
+            d.glass.tri(toScene(a0), fc, toScene(a1 + side), fc, toScene(a1 - side), fc);
+            d.glass.tri(toScene(a1 + side), fc, toScene(a2 + side), fc, toScene(a2 - side), fc);
+            d.glass.tri(toScene(a1 + side), fc, toScene(a2 - side), fc, toScene(a1 - side), fc);
+        }
+    }
+    if (coreLevel > 0.0f) {
+        const Vec3 cc = core * coreLevel;
+        d.scene.line(toScene(a0), toScene(a2), (w < 20.0f ? 1.0f : 1.5f) * refPx_, cc, cc, 0);
+    }
+}
 
 void PlayView::eventUpgrade(const World& w, const Event& e, float t) {
     const u32 q = e.a < kMaxPlayers ? e.a : w.viewPlayer();
@@ -40,7 +68,8 @@ void PlayView::eventUpgrade(const World& w, const Event& e, float t) {
             break;
         }
         case kFxBlast:
-            addShockRings(at, 1, e.f, e.c == 1 ? light : player, W1, t, e.c == 1 ? 0.3f : 0.18f);
+            // (look.md 5: what a Boost draws is gold: Supernova's and the Carousel's blasts)
+            addShockRings(at, 1, e.f, e.c == 1 ? light : ((e.c == 2 || e.c == 3) ? palettes_->player[3] * lvl : player), W1, t, e.c == 1 ? 0.3f : 0.18f);
             if (e.c == 1) addPool(at, 10.0f, e.f, light, 1.2f, 0.0f, 0.3f, false, 1, false, false, t);
             break;
         case kFxMineBlow:
@@ -104,20 +133,32 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
         const Vec2 ship = local ? in.shipPos : pq.prevPos + (pq.pos - pq.prevPos) * a;
         const Loadout& l = pq.loadout;
 
-        // Lines: Accent's lances, the Lancer's beam, Downbeat Cannon, Bar Line's rays (Standing Wave's stay for a bar).
+        // Beams (look.md 5): Accent's lances, the Lancer's, Downbeat Cannon, Bar Line's rays: on a beat, at their peak for two
+        // frames and gone over 110 ms (the edges 60 ms later); Standing Wave's held for a bar, the core moving on the 1/32
+        // grid. The owner's colour; a Fusion's beam (Downbeat Cannon, Standing Wave) has gold edges. Reduce flashing: a beat
+        // beam peaks at 1.0 with no white in its core.
+        const float shotLvl = look_->lines.playerShot.intensity * lvl;
+        const Vec3 own = palettes_->player[q];
         for (const PlayerState::Lance& ln : pq.lances) {
             const float age = static_cast<float>((in.music - ln.tick) / tps);
-            const float life = ln.standing ? static_cast<float>(kTicksPerBar / tps) : kLanceFadeS;
-            if (age < 0.0f || age > life) continue;
-            const float u = 1.0f - age / life;
-            const float wpx = std::fmax(2.0f * ln.half * pxPerWu_ * (ln.standing ? 0.5f : (0.4f + 0.6f * u)), 1.2f * refPx_);
-            Vec3 c = light, core = Wq;
-            if (ln.kind == kLanceCannon) c = gold;
-            if (ln.kind == kLanceBarLine) c = palette_->accent * lvl;
-            const float k = (ln.standing ? 0.5f + 0.3f * beat_ : 1.6f) * u;
-            const Vec2 A = toScene(ln.from), B = toScene(ln.from + ln.dir * ln.length);
-            d.scene.line(A, B, wpx, c * k, c * (0.3f * k), 0);
-            d.scene.line(A, B, wpx * 0.35f, core * k, core * (0.3f * k), 0);
+            if (age < 0.0f) continue;
+            const bool fusion = ln.kind == kLanceCannon || ln.standing;
+            const Vec3 edge = fusion ? palettes_->player[3] : own;
+            const Vec3 core = reduceFlashing_ ? own : mix(own, W1, 0.7f);
+            const float peak = reduceFlashing_ ? 1.0f : 1.6f;
+            float el = 0.0f, cl = 0.0f;
+            if (ln.standing) {
+                if (age > static_cast<float>(kTicksPerBar / tps)) continue;
+                const u32 step32 = static_cast<u32>(std::floor(in.music / (kTicksPerStep * 0.5)));
+                el = shotLvl;
+                cl = shotLvl * (1.0f + 0.4f * static_cast<float>((step32 * 2654435761u >> 28) & 15u) / 15.0f);
+            } else {
+                const auto env = [](float a, float fall) { return a <= kBeatPeakS ? 1.0f : clampU(1.0f - (a - kBeatPeakS) / fall); };
+                el = shotLvl * env(age, kBeatFallS + kEdgeLongerS);
+                cl = shotLvl * peak * env(age, kBeatFallS);
+                if (el <= 0.0f) continue;
+            }
+            drawBeam(d, ln.from, ln.dir, ln.length, 2.0f * ln.half, edge, core, el, cl, 0.10f * (el > 0.0f ? 1.0f : 0.0f));
         }
         if (!pq.alive) continue;
         const Vec2 aim = local ? in.shipAim : normalizeOr(pq.aim, dirU(pq.heading));
@@ -131,14 +172,15 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
             d.scene.line(toScene(ship), toScene(ship + aim * tuning::kLancerLengthWu), 0.8f * refPx_, c, c * 0.1f, 0);
         }
 
-        // Beam: the primary as a laser while it fires.
+        // Beam: the primary as a held laser while it fires (look.md 5: edges and fill steady, the core on the 1/32 grid).
         if (pq.boost(kBeam) && (in.music - pq.beamTick) < 2.0 * w.leadGrid(q) + 2.0) {
             const float half = tuning::kBeamHalfWu + 4.0f * static_cast<float>(pq.beamLanes);
-            const Vec2 A = toScene(ship + aim * tuning::kMuzzleWu), B = toScene(ship + aim * tuning::kBeamLengthWu);
-            const float flick = 0.85f + 0.15f * std::sin(t * 60.0f);
-            d.scene.line(A, B, 2.0f * half * pxPerWu_, player * (1.4f * flick), player * 0.4f, 0);
-            d.scene.line(A, B, 0.7f * half * pxPerWu_, Wq * (1.8f * flick), Wq * 0.5f, 0);
-            d.sparkles.glow(A, 3.0f * half * pxPerWu_, light * 0.8f);
+            const float shotLvl = look_->lines.playerShot.intensity * lvl;
+            const u32 step32 = static_cast<u32>(std::floor(in.music / (kTicksPerStep * 0.5)));
+            const float cl = shotLvl * (1.0f + 0.4f * static_cast<float>((step32 * 2654435761u >> 28) & 15u) / 15.0f);
+            const Vec3 own = palettes_->player[q];
+            drawBeam(d, ship + aim * tuning::kMuzzleWu, aim, tuning::kBeamLengthWu - tuning::kMuzzleWu, 2.0f * half, own,
+                     reduceFlashing_ ? own : mix(own, W1, 0.7f), shotLvl, cl, 0.10f);
         }
 
         // Wingmen (Mirror, Quartet) and Chorus's ghosts: the ship's glyph, smaller and dimmer, in formation.
@@ -162,7 +204,7 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
             const u32 segs = 10;
             for (u32 s = 0; s < segs; ++s) {
                 const float u0 = c0 - half + 2.0f * half * static_cast<float>(s) / segs, u1 = c0 - half + 2.0f * half * static_cast<float>(s + 1) / segs;
-                d.scene.line(toScene(ship + dirU(u0) * r), toScene(ship + dirU(u1) * r), 2.2f * refPx_, light * 1.6f, Wq * 1.2f, 0);
+                d.scene.line(toScene(ship + dirU(u0) * r), toScene(ship + dirU(u1) * r), 1.1f * refPx_, light * 1.6f, Wq * 1.2f, 0);
             }
         }
 
@@ -201,20 +243,21 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
             const float a0 = w.sweeperAngle(q);
             for (u32 arm = 0; arm < (L >= 3 ? 2u : 1u); ++arm) {
                 const Vec2 d0 = dirU(a0 + static_cast<float>(arm) * kPi);
-                d.scene.line(toScene(ship), toScene(ship + d0 * len), 2.2f * refPx_, player * 1.2f, light * 1.6f, 0);
+                d.scene.line(toScene(ship), toScene(ship + d0 * len), 1.1f * refPx_, player * 1.2f, light * 1.6f, 0);
                 d.sparkles.glow(toScene(ship + d0 * len), 7.0f * refPx_, light * 0.8f);
             }
         }
 
         // Singularity's well and Black Hole's singularity: rings drawn inward, a dark core.
         const auto well = [&](Vec2 at, float r, float from, float to, Vec3 c) {
+            // An area is drawn by its edge (look.md 5); the pull shows in the lattice and two faint rings falling inward.
             const float span = to - from;
             const float u = span > 1.0f ? clampU((static_cast<float>(in.music) - from) / span) : 0.0f;
-            for (u32 k = 0; k < 3; ++k) {
-                const float ph = std::fmod(t * 1.5f + static_cast<float>(k) / 3.0f, 1.0f);
-                glyph(d.glyphs, gRing128_, false, at, 0.0f, 0.0f, r * (1.0f - ph), 0.9f * ph * (0.5f + u), 0.5f, kGlyphRingW, c, Wq);
+            glyph(d.glyphs, gRing128_, false, at, 0.0f, 0.0f, r, 1.2f, 0.6f, kGlyphRingW, c, Wq);
+            for (u32 k = 0; k < 2; ++k) {
+                const float ph = std::fmod(t * 1.5f + static_cast<float>(k) * 0.5f, 1.0f);
+                glyph(d.glyphs, gRing128_, false, at, 0.0f, 0.0f, r * (1.0f - ph), 0.35f * ph * (0.5f + u), 0.4f, kGlyphRingW, c, c);
             }
-            d.pools.glow(toScene(at), r * 0.3f * pxPerWu_, c * (0.3f + 0.4f * u));
         };
         if (const u8 L = l.riffs[riffIndex(kSingularity)]; L && pq.wellFrom >= 0.0 && in.music >= pq.wellFrom)
             well(pq.wellAt, tuning::kWellPullWu[L < 5 ? L : 5], static_cast<float>(pq.wellFrom), static_cast<float>(pq.wellBlow), player);
@@ -247,24 +290,32 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
         ring(pq.shockTick, pq.shockAt, pq.shockR, 0.25f, light);
     }
 
-    // Lightning (Arc, Tesla Bloom, Chain Storm, Storm Coil): a jagged line, white at its core, gone in 0.15 s.
+    // Lightning (look.md 5, one recipe for Arc, Storm Coil, Chain Storm and Tesla Bloom): three strands of 1.2 px between the
+    // two bodies, each a polyline of pieces 18 to 30 wu pushed up to 10 wu aside, drawn afresh every frame for the zap's 90
+    // ms; the middle strand white, the outer two the owner's colour (gold for Chain Storm, a Boost); a sparkle at each end.
     for (const Bolt& b : bolts_) {
         const float age = t - b.born;
         if (age < 0.0f || age > kBoltS) continue;
-        const float u = 1.0f - age / kBoltS;
-        const float lvl = b.owner == w.viewPlayer() ? 1.0f : 0.6f;
-        const Vec3 c = (b.style == 2 ? palettes_->player[3] : palettes_->playerLight[b.owner < kMaxPlayers ? b.owner : 0]) * (lvl * 1.6f * u);
+        const float lvl = (b.owner == w.viewPlayer() ? 1.0f : 0.6f) * 1.4f;
+        const Vec3 outer = (b.style == 2 ? palettes_->player[3] : palettes_->player[b.owner < kMaxPlayers ? b.owner : 0]) * lvl;
         const Vec2 dv = b.b - b.a;
-        const Vec2 side = perpU(normalizeOr(dv, Vec2{1.0f, 0.0f}));
-        Vec2 prev = b.a;
-        const u32 segs = 5;
-        for (u32 k = 1; k <= segs; ++k) {
-            const float f = static_cast<float>(k) / segs;
-            const float jag = k == segs ? 0.0f : std::sin(static_cast<float>(k) * 12.9898f + b.born * 78.233f) * 14.0f;
-            const Vec2 p = b.a + dv * f + side * jag;
-            d.scene.line(toScene(prev), toScene(p), 1.4f * refPx_, c, W1 * (lvl * u), 0);
-            prev = p;
+        const float len = length(dv);
+        if (len < 1.0f) continue;
+        const Vec2 dir = dv * (1.0f / len), side = perpU(dir);
+        for (u32 strand = 0; strand < 3; ++strand) {
+            const Vec3 c = strand == 1 ? W1 * lvl : outer;
+            Vec2 prev = b.a;
+            float along = 0.0f;
+            while (along < len) {
+                along = std::fmin(len, along + rng_.range(18.0f, 30.0f));
+                const float push = along >= len ? 0.0f : rng_.range(-10.0f, 10.0f);
+                const Vec2 p = b.a + dir * along + side * push;
+                d.scene.line(toScene(prev), toScene(p), 0.6f * refPx_, c, c, 0);
+                prev = p;
+            }
         }
+        d.sparkles.glow(toScene(b.a), 5.0f * refPx_, outer * 0.6f);
+        d.sparkles.glow(toScene(b.b), 5.0f * refPx_, outer * 0.6f);
     }
 
     // Frozen bodies wear a ring of ice; burning ones glow like embers.
@@ -294,7 +345,7 @@ void PlayView::drawHazards(FrameDraw& d, const ViewInput& in) {
         for (u32 k = 0; k < n; ++k) {
             if (!visible((a[k] + b[k]) * 0.5f, length(b[k] - a[k]) * 0.5f + 20.0f)) continue;
             const float flick = 0.85f + 0.15f * std::sin(t * 40.0f + static_cast<float>(k));
-            d.scene.line(toScene(a[k]), toScene(b[k]), std::fmax(width * pxPerWu_, 2.0f * refPx_), danger * (1.6f * flick), danger * (1.6f * flick), 0);
+            d.scene.line(toScene(a[k]), toScene(b[k]), std::fmax(0.5f * width * pxPerWu_, 1.0f * refPx_), danger * (1.6f * flick), danger * (1.6f * flick), 0);
             d.scene.line(toScene(a[k]), toScene(b[k]), 1.2f * refPx_, mix(danger, W1, 0.7f) * (1.4f * flick), mix(danger, W1, 0.7f) * (1.4f * flick), 0);
         }
     }
@@ -308,7 +359,7 @@ void PlayView::drawHazards(FrameDraw& d, const ViewInput& in) {
             if (!visible(p0, 40.0f)) continue;
             const float age0 = static_cast<float>((in.music - tl.t[j0]) / tl.life), age1 = static_cast<float>((in.music - tl.t[j1]) / tl.life);
             const float l0 = 1.4f * (1.0f - clampU(age0)), l1 = 1.4f * (1.0f - clampU(age1));
-            d.scene.line(toScene(p0), toScene(p1), std::fmax(tl.width * pxPerWu_, 1.6f * refPx_), danger * l0, danger * l1, 0);
+            d.scene.line(toScene(p0), toScene(p1), std::fmax(0.5f * tl.width * pxPerWu_, 0.8f * refPx_), danger * l0, danger * l1, 0);
             if (tl.kind == 2) d.scene.line(toScene(p0), toScene(p1), 0.8f * refPx_, W1 * (0.5f * l0), W1 * (0.5f * l1), 0);
         }
     }

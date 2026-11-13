@@ -1054,7 +1054,13 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
                       0.5f * look_->lines.warpRing.width, kGlyphFlat, palette_->hue[s.hue], W1);
             continue;
         }
-        const Vec3 hue = palette_->hue[s.hue], partner = palette_->partner[s.hue];
+        Vec3 hue = palette_->hue[s.hue], partner = palette_->partner[s.hue];
+        if (w.worldStretch() < 1.0f) {
+            // look.md 5 (Time Stretch on the world): enemy hulls lose a third of their chroma; the room slows, the player does not.
+            const auto grey = [](Vec3 c) { const float l = 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z; return c + (Vec3{l, l, l} - c) * (1.0f / 3.0f); };
+            hue = grey(hue);
+            partner = grey(partner);
+        }
         float intensity = (look_->lines.enemyHullTier1.intensity + le.hullIntensityPerTier * (static_cast<float>(s.tier) - 1.0f)) * crowd * enemyLight_;
         const float halfWidth = 0.5f * look_->lines.enemyHullTier1.width;
         const float phase = static_cast<float>(e.serial[i] % 997u) * 0.61803f * kTau;
@@ -1429,7 +1435,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     params.bloomPump = (1.0f + look_->bloomKick * pump) * (1.0f + novaPump_);
     params.exposurePump = (1.0f + look_->exposureKick * pump) * (1.0f - novaDim) * exposureSection_;
     params.vignette = shown(kMuteVignette);
-    params.vignetteAmount = look_->vignetteAmount;
+    params.vignetteAmount = look_->vignetteAmount + (w.worldStretch() < 1.0f ? 0.15f : 0.0f);  // look.md 5: Time Stretch closes it by 0.15
     params.drain = drain_;
     params.afterglow = shown(kMuteAfterglow);
     params.afterglowGain = look_->afterglowGain == Look::Gain::Swarm ? swarm : (look_->afterglowGain == Look::Gain::Crowd ? crowd : 1.0f);

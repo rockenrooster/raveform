@@ -205,6 +205,8 @@ private:
     int speciesGlyph_[sim::SpeciesTable::kCount];
     int wyrmHeadGlyph_[sim::SpeciesTable::kCount] = {};  // M5 part 4
     void drawHazards(FrameDraw& d, const ViewInput& in);  // M5 part 4: Tether beams, trails, Wells (play_view_upgrades.cpp)
+    void drawBeam(FrameDraw& d, Vec2 from, Vec2 dir, float len, float w, Vec3 edge, Vec3 core, float edgeLevel, float coreLevel,
+                  float fillLevel);  // look.md 5: a beam in lines
     bool speciesGlyphsReady_ = false;
 
     // Camera.

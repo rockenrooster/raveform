@@ -795,6 +795,12 @@ public:
     // The band's song bars against this world's (the run's ticks = the song's - a whole number of bars, which a pause
     // moves): Singularity and the Sweeper keep the band's four- and two-bar phase (Play sets it before each tick).
     void setSongBarShift(i64 bars) { songShift_ = static_cast<u8>(((bars % 4) + 4) % 4); }
+    // The steps of a Track's kick pattern (bit k: step k of 16; the music's data, velocity 5 of 9 or more): Kick Pulse rings
+    // on them. Four on the floor until told.
+    void setKickMask(u32 song, u16 mask) {
+        if (song < kMaxSongs) kickMask_[song] = mask;
+    }
+    u16 kickMask(u32 song) const { return song < kMaxSongs ? kickMask_[song] : 0x1111u; }
     bool frozen(u32 i) const { return enemies_.frozenUntil[i] > m1_; }
     bool burning(u32 i) const { return enemies_.burnUntil[i] > m1_; }
     // Mirror's wingman (Quartet's three), Chorus's two ghosts: where each flies now, the way it fires and its share of the
@@ -1096,6 +1102,7 @@ private:
     u8 flungMask_ = 0;
     u32 fxThisTick_ = 0;
     u8 songShift_ = 0;  // the song's bar index minus this world's, mod 4
+    u16 kickMask_[kMaxSongs] = {0x1111, 0x1111, 0x1111, 0x1111, 0x1111, 0x1111, 0x1111, 0x1111, 0x1111, 0x1111};
     // M5 part 4: the multi-body creatures this tick, the lethal trails, the Wells.
     static constexpr u32 kMaxGroups = 128, kGroupSlots = 256, kMaxWells = 32;
     Group groups_[kMaxGroups];

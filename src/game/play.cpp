@@ -67,13 +67,24 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
     // The Track's tempo (stage A plays Track 1): from the band, or from the music data when it is off.
     float bpm = 120.0f;
     u32 songs = sim::kSongs;
+    // M5 (GAME_DESIGN 6.2, the lead's ruling after part 3): Kick Pulse rings on the Track's kicks (velocity 5 of 9 or more).
+    const auto kicks = [&](const audio::MusicData& m) {
+        for (u32 t = 0; t < m.trackCount && t < sim::kMaxSongs; ++t) {
+            u16 mask = 0;
+            for (u32 st = 0; st < 16; ++st)
+                if (m.tracks[t].pattern[static_cast<u32>(audio::Pat::Kick)][st] >= 5.0f / 9.0f - 1e-3f) mask = static_cast<u16>(mask | (1u << st));
+            world_->setKickMask(t, mask ? mask : 0x1111u);
+        }
+    };
     if (band && band->active()) {
         bpm = band->music().tracks[band->track()].bpm;
         songs = band->music().trackCount;
+        kicks(band->music());
     } else if (auto* md = new (std::nothrow) audio::MusicData) {
         if (md->load() && md->trackCount) {
             bpm = md->tracks[0].bpm;
             songs = md->trackCount;
+            kicks(*md);
         }
         delete md;
     }

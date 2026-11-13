@@ -875,9 +875,15 @@ void World::updateUpgradesM5(float dt) {
             continue;
         }
 
-        // Beats: Kick Pulse's ring (on the beat outside the Break: the kick's place), Chain Storm, Carousel.
-        forCrossings(m0_, m1_, kTicksPerBeat, [&](double t, i64 beat) {
-            if (const u8 st = l.mods[kKickPulse]; st && !breakNow) {
+        // Kick Pulse (the lead's ruling after part 3): a ring on every kick of the Track's pattern outside the Break, its push
+        // and damage scaled by 4 / (kicks a bar) so the Mod is worth the same in every Track.
+        if (const u8 st = l.mods[kKickPulse]; st && !breakNow) {
+            const u16 mask = kickMask(phrase_.song);
+            u32 kicks = 0;
+            for (u32 b = 0; b < 16; ++b) kicks += (mask >> b) & 1u;
+            const float scale = kicks ? 4.0f / static_cast<float>(kicks) : 1.0f;
+            forCrossings(m0_, m1_, kTicksPerStep, [&](double t, i64 k) {
+                if (!((mask >> static_cast<u32>(((k % 16) + 16) % 16)) & 1u)) return;
                 const float r = kKickRingWu[st < 3 ? st : 3];
                 const float reach = r + kQuerySlackWu;
                 grid_.query(pl.pos.x - reach, pl.pos.y - reach, pl.pos.x + reach, pl.pos.y + reach, [&](u32 i) {
@@ -888,15 +894,19 @@ void World::updateUpgradesM5(float dt) {
                     if (l2 > rr * rr || l2 < 1e-4f) return;
                     const float len = std::sqrt(l2);
                     if (e.frozenUntil[i] <= m1_) {
-                        e.kx[i] += d.x / len * kKickPush;
-                        e.ky[i] += d.y / len * kKickPush;
+                        e.kx[i] += d.x / len * kKickPush * scale;
+                        e.ky[i] += d.y / len * kKickPush * scale;
                     }
-                    if (st >= 2 && local) hitEnemy(i, kKickDamage, owner, Vec2{e.x[i], e.y[i]}, d * (1.0f / len));
+                    if (st >= 2 && local) hitEnemy(i, kKickDamage * scale, owner, Vec2{e.x[i], e.y[i]}, d * (1.0f / len));
                 });
                 pl.kickTick = t;
                 pl.kickR = r;
                 emitFx(p, kFxKick, pl.pos, pl.pos, st, r, t);
-            }
+            });
+        }
+
+        // Beats: Chain Storm, Carousel, Burn.
+        forCrossings(m0_, m1_, kTicksPerBeat, [&](double t, i64 beat) {
             if (pl.boost(kChainStorm)) {
                 // Lightning links the enemies near the ship, the nearest first, ship to body to body.
                 u32 near[kChainStormMax];

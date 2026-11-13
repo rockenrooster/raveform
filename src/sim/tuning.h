@@ -275,7 +275,7 @@ constexpr float kMothCatchUp = 1.6f;           // a Moth flies to its place on t
 // M5 PART 3: every upgrade (GAME_DESIGN 6.2-6.5 to 6.6's rules). Quoted where the tables give a number; the rest
 // chosen to 6.6's "every pick is felt at once" (docs/PROGRESS.md, M5 part 3, "Numbers chosen").
 // ======================================================================================================
-constexpr float kSlipstreamPerStack = 0.08f;                // 6.2 (quoted): +8% speed
+constexpr float kSlipstreamPerStack = 0.15f;                // 6.2 (quoted; the lead's ruling after part 3): +15% speed, cap 2
 constexpr float kForkDeg = 20.0f, kForkDamage = 0.5f;       // Fork: two half-damage shots (quoted) this far apart
 constexpr float kSeekerTurn[4] = {0.0f, 3.0f, 6.0f, 10.0f}; // rad/s by stack
 constexpr float kSeekerReachWu = 320.0f;

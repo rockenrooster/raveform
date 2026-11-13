@@ -35,7 +35,7 @@ const UpgradeInfo kInfo[kUpgradeCount] = {
     {"SHOCKSTEP", "shockstep", 3, false},
     {"AEGIS", "aegis", 3, false},
     {"LAST LIGHT", "last_light", 1, false},
-    {"SLIPSTREAM", "slipstream", 4, false},
+    {"SLIPSTREAM", "slipstream", 2, false},  // M5 (GAME_DESIGN 6.2, the lead's ruling): +15%, cap 2
     {"MAGNET", "magnet", 4, false},
     {"PROSPECTOR", "prospector", 4, false},
     {"NOVA STOCK", "nova_stock", 3, false},
@@ -73,7 +73,7 @@ const BoostInfo kBoosts[kBoostCount] = {
     {"FREEZE FRAME", "freeze_frame", "FREEZE AND SHATTER", 2},
     {"HALO", "halo", "BLOCKS THREE HITS", 8},
     {"MAGNET STORM", "magnet_storm", "PULLS EVERY SHARD", 4},
-    {"BLACK HOLE", "black_hole", "NEXT NOVA: A SINGULARITY", 4},
+    {"BLACK HOLE", "black_hole", "NEXT NOVA PULLS ALL IN", 4},
     {"CHAIN STORM", "chain_storm", "LIGHTNING EVERY BEAT", 4},
     {"CHORUS", "chorus", "TWO GHOST SHIPS", 4},
     {"BEAM", "beam", "A SWEEPING LASER", 4},
@@ -89,7 +89,7 @@ const FusionInfo kFusions[kFusionCount] = {
     {"STANDING WAVE", "standing_wave", "LANCES STAY A BAR", kEcho, kAccent},
     {"TESLA BLOOM", "tesla_bloom", "RINGS ARC LIGHTNING", kPulseRing, kArc},
     {"SHARD HALO", "shard_halo", "ORBITALS FLING SHRAPNEL", kOrbitals, kShatter},
-    {"DOWNBEAT CANNON", "downbeat_cannon", "A CRIT BEAM ON BEAT 1", kLancer, kOnBeatCrit},
+    {"DOWNBEAT CANNON", "downbeat_cannon", "A GIANT BEAM EACH BAR", kLancer, kOnBeatCrit},
     {"COLLAPSE FIELD", "collapse_field", "MINES PULL IN", kMinelayer, kGravityRounds},
     {"MURMURATION", "murmuration", "A HOMING FLOCK", kSwarm, kSeeker},
     {"QUARTET", "quartet", "THREE WINGMEN", kMirror, kRearGuard},
@@ -103,15 +103,15 @@ const char* const kRiffWords[kRiffCount][5] = {
     {"", "", "", "", ""},  // Orbitals: counted below
     {"NEW RIFF: BEAT RINGS", "LEVEL 2: SECOND RING", "LEVEL 3: WIDER RINGS", "LEVEL 4: HEAVIER RINGS", "LEVEL 5: TWICE AS OFTEN"},
     {"NEW RIFF: OFF-BEAT DRONE", "LEVEL 2: BURST OF 4", "LEVEL 3: SECOND DRONE", "LEVEL 4: BURST OF 5", "LEVEL 5: THIRD DRONE"},
-    {"NEW RIFF: BEAM ON BEAT 4", "LEVEL 2: WIDER BEAM", "LEVEL 3: EVERY TWO BEATS", "LEVEL 4: WIDER STILL", "LEVEL 5: HEAVIER BEAM"},
+    {"NEW RIFF: A BEAM EACH BAR", "LEVEL 2: WIDER BEAM", "LEVEL 3: TWO BEAMS A BAR", "LEVEL 4: WIDER STILL", "LEVEL 5: HEAVIER BEAM"},
     {"NEW RIFF: A MINE A BAR", "LEVEL 2: TWO MINES", "LEVEL 3: THREE MINES", "LEVEL 4: FOUR MINES", "LEVEL 5: FIVE MINES"},
-    {"NEW RIFF: TRIPLET ZAPS", "LEVEL 2: TWO TARGETS", "LEVEL 3: THREE, WIDER", "LEVEL 4: FOUR TARGETS", "LEVEL 5: FIVE, WIDER"},
-    {"NEW RIFF: MISSILES A BAR", "LEVEL 2: EIGHT MISSILES", "LEVEL 3: TEN MISSILES", "LEVEL 4: TWELVE MISSILES", "LEVEL 5: SIXTEEN"},
-    {"NEW RIFF: A WELL EVERY 4 BARS", "LEVEL 2: WIDER WELL", "LEVEL 3: HEAVIER BLAST", "LEVEL 4: WIDER STILL", "LEVEL 5: HEAVIER STILL"},
-    {"NEW RIFF: A WINGMAN, HALF", "LEVEL 2: WINGMAN 60%", "LEVEL 3: WINGMAN 70%", "LEVEL 4: WINGMAN 80%", "LEVEL 5: WINGMAN 100%"},
-    {"NEW RIFF: A DISC A BAR", "LEVEL 2: BIGGER DISC", "LEVEL 3: TWO DISCS", "LEVEL 4: BIGGER STILL", "LEVEL 5: THREE DISCS"},
+    {"NEW RIFF: RAPID ZAPS", "LEVEL 2: TWO TARGETS", "LEVEL 3: THREE, WIDER", "LEVEL 4: FOUR TARGETS", "LEVEL 5: FIVE, WIDER"},
+    {"NEW RIFF: HOMING MISSILES", "LEVEL 2: EIGHT MISSILES", "LEVEL 3: TEN MISSILES", "LEVEL 4: TWELVE MISSILES", "LEVEL 5: SIXTEEN MISSILES"},
+    {"NEW RIFF: A GRAVITY WELL", "LEVEL 2: WIDER WELL", "LEVEL 3: HEAVIER BLAST", "LEVEL 4: WIDER STILL", "LEVEL 5: HEAVIER STILL"},
+    {"NEW RIFF: A WINGMAN AT 50%", "LEVEL 2: WINGMAN 60%", "LEVEL 3: WINGMAN 70%", "LEVEL 4: WINGMAN 80%", "LEVEL 5: WINGMAN 100%"},
+    {"NEW RIFF: A BOOMERANG DISC", "LEVEL 2: BIGGER DISC", "LEVEL 3: TWO DISCS", "LEVEL 4: BIGGER STILL", "LEVEL 5: THREE DISCS"},
     {"NEW RIFF: A LASER ARM", "LEVEL 2: LONGER ARM", "LEVEL 3: SECOND ARM", "LEVEL 4: LONGER STILL", "LEVEL 5: FASTER ARMS"},
-    {"NEW RIFF: PELLETS ON 2 AND 4", "LEVEL 2: MORE PELLETS", "LEVEL 3: MORE STILL", "LEVEL 4: TWICE AS MANY", "LEVEL 5: PELLETS EXPLODE"},
+    {"NEW RIFF: PELLET BURSTS", "LEVEL 2: MORE PELLETS", "LEVEL 3: MORE STILL", "LEVEL 4: TWICE AS MANY", "LEVEL 5: PELLETS EXPLODE"},
 };
 }  // namespace
 
@@ -130,13 +130,13 @@ const char* upgradeWords(u8 u, u32 level) {
         case kPierce: return "SHOTS PIERCE +2";
         case kRicochet: return "SHOTS BOUNCE +2";
         case kFork: return lv <= 1 ? "SHOTS FORK ON A HIT" : "FORKS FORK AGAIN";
-        case kSeeker: return lv <= 1 ? "SHOTS SEEK TARGETS" : (lv == 2 ? "SHARPER SEEKING" : "SHOTS HUNT");
-        case kHeavyStep: return lv <= 1 ? "EVERY 4TH SHOT: AN ORB" : (lv == 2 ? "BIGGER ORB BLASTS" : "HEAVIER ORBS");
-        case kAccent: return lv <= 1 ? "LANCE ON BEAT 1" : (lv == 2 ? "LANCES ON 1 AND 3" : "A LANCE EVERY BEAT");
+        case kSeeker: return lv <= 1 ? "SHOTS HOME IN" : (lv == 2 ? "TIGHTER HOMING" : "SHOTS HUNT");
+        case kHeavyStep: return lv <= 1 ? "EVERY 4TH SHOT EXPLODES" : (lv == 2 ? "BIGGER BLASTS" : "HEAVIER BLASTS");
+        case kAccent: return lv <= 1 ? "A LANCE EACH BAR" : (lv == 2 ? "TWO LANCES A BAR" : "A LANCE EVERY BEAT");
         case kEcho: return lv <= 1 ? "SHOTS ECHO A BEAT LATER" : "TWO ECHOES";
-        case kWave: return lv <= 1 ? "SINE SHOTS, WIDER HITS" : "WIDER WAVES";
+        case kWave: return lv <= 1 ? "WAVY SHOTS HIT WIDER" : "WIDER WAVES";
         case kOvercharge: return "+50% SHOT DAMAGE";
-        case kRearGuard: return lv <= 1 ? "FIRE BACK ON OFF-BEATS" : "AND SIDEWAYS";
+        case kRearGuard: return lv <= 1 ? "ALSO FIRE BACKWARD" : "AND SIDEWAYS";
         case kArc:
             std::snprintf(buf, sizeof buf, "KILLS ARC TO %u MORE", lv + 1u);
             return buf;
@@ -147,12 +147,12 @@ const char* upgradeWords(u8 u, u32 level) {
         case kRegen:  // play test 2 (screens.md): CELL REGROWS: 16 BARS, then 8 BARS, 4 BARS
             std::snprintf(buf, sizeof buf, "CELL REGROWS: %u BARS", regenEveryBars(lv));
             return buf;
-        case kAfterimage: return lv <= 1 ? "DASH LEAVES A DECOY" : "LONGER DECOY";
+        case kAfterimage: return lv <= 1 ? "DASH LEAVES A DECOY" : "DECOY LASTS LONGER";
         case kReserve: return "+1 DASH CHARGE";
         case kShockstep: return lv <= 1 ? "DASH: A DAMAGING RING" : "A BIGGER RING";
-        case kAegis: return lv <= 1 ? "AN ARC BLOCKS BULLETS" : "A WIDER ARC";
-        case kLastLight: return "A HIT FIRES A NOVA";
-        case kSlipstream: return "+8% SPEED";
+        case kAegis: return lv <= 1 ? "A SHIELD BLOCKS BULLETS" : "A WIDER SHIELD";
+        case kLastLight: return "WHEN HIT: A FREE NOVA";
+        case kSlipstream: return "+15% SPEED";
         case kMagnet:
             std::snprintf(buf, sizeof buf, "SHARD PULL X%u", lv + 1u);
             return buf;
@@ -160,16 +160,16 @@ const char* upgradeWords(u8 u, u32 level) {
             std::snprintf(buf, sizeof buf, "+%u%% EXTRA SHARDS", 25u * lv);
             return buf;
         case kNovaStock: return "+1 NOVA";
-        case kEncore: return "BOOSTS +1 BAR";
-        case kLuckyBreak: return "+1 TRIO OPTION";
+        case kEncore: return "BOOSTS LAST +1 BAR";
+        case kLuckyBreak: return "ONE MORE CHOICE";
         case kCollector: return lv <= 1 ? "A BOOST PER 250 SHARDS" : "A BOOST PER 150 SHARDS";
         case kOnBeatCrit:
             std::snprintf(buf, sizeof buf, "BEAT SHOTS X%u", static_cast<u32>(onBeatCritMultiplier(lv)));
             return buf;
         case kSyncopation: return lv <= 1 ? "OFF-BEATS PIERCE, +50%" : "OFF-BEATS +100%";
         case kBarLine: return lv <= 1 ? "A LASER CROSS EACH BAR" : (lv == 2 ? "AND DIAGONALS" : "LONGER LASERS");
-        case kCrescendo: return lv <= 1 ? "+5% A CLEAN BAR, TO 50%" : "UP TO +100%";
-        case kKickPulse: return lv <= 1 ? "A RING ON EVERY BEAT" : (lv == 2 ? "THE RING HURTS" : "A WIDER RING");
+        case kCrescendo: return lv <= 1 ? "DAMAGE CLIMBS WHILE UNHIT" : "CLIMBS TWICE AS HIGH";
+        case kKickPulse: return lv <= 1 ? "KICK DRUM SHOVES ENEMIES" : (lv == 2 ? "THE SHOVE HURTS" : "A WIDER SHOVE");
         case kAfterparty: return "LONGER, FASTER SURGE";
         case kOrbitals: {
             const u32 n = orbitalCount(lv);
