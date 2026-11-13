@@ -313,6 +313,9 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     PeerReport rep[kMaxPlayers];
     double songSum2 = 0.0, songMax = 0.0;
     u64 songN = 0;
+    u64 thinChecks = 0, thinDiffers = 0, thinOwnerOn = 0;  // a copy's thinning against the owner's (GAME_DESIGN 6.6)
+    double thinLiveSum2 = 0.0;
+    u64 shStraight[2] = {}, shBent[2] = {}, shBentFirst[2] = {}, shCurve[2] = {};  // the host's screen: own 0, remote 1
     u64 missing = 0;
     u64 allocs0 = 0;
     EnetPoolStats pool0;
@@ -497,6 +500,39 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
             ++songN;
             if (std::fabs(ms) > songMax) songMax = std::fabs(ms);
         }
+        {
+            // Player shots on the host's screen (the game's `net: diag shots`): straight shots whose last tick bent more than
+            // a quarter from a straight step, the host's own player's against the remote players'.
+            const Shots& sh = peers[0].world().shots();
+            for (u32 i = 0; i < sh.count; ++i) {
+                if (sh.dead[i]) continue;
+                const u32 cls = sh.owner[i] == 0 ? 0u : 1u;
+                const float want = sh.speed[i] * kDt;
+                if (want < 1.0f) continue;
+                if (sh.mods[i] & (kShotSeek | kShotWave | kShotWaveNeg | kShotHelix | kShotHelixIn)) {
+                    ++shCurve[cls];
+                    continue;
+                }
+                ++shStraight[cls];
+                if (length(Vec2{sh.x[i] - sh.px[i], sh.y[i] - sh.py[i]} - Vec2{sh.dx[i], sh.dy[i]} * want) > 0.25f * want) {
+                    ++shBent[cls];
+                    if (sh.life0[i] - sh.life[i] < 1.5f * kDt) ++shBentFirst[cls];
+                }
+            }
+        }
+        // Each viewer's copy of every other player's thinning (GAME_DESIGN 6.6, decided on a beat from the live shots this
+        // world holds) against the owner's own, and the live shot counts.
+        for (u32 v = 0; v < players; ++v) {
+            if (dropped && v == dropPeer) continue;
+            for (u32 o = 0; o < players; ++o) {
+                if (o == v || (dropped && o == dropPeer) || peers[v].world().runId() != peers[o].world().runId()) continue;
+                ++thinChecks;
+                if (peers[v].world().thinning(o) != peers[o].world().thinning(o)) ++thinDiffers;
+                if (peers[o].world().thinning(o)) ++thinOwnerOn;
+                const double dl = static_cast<double>(peers[v].world().shotsLive(o)) - static_cast<double>(peers[o].world().shotsLive(o));
+                thinLiveSum2 += dl * dl;
+            }
+        }
         // On-screen enemies: each client's drawn position against the host's, at the host's musical time.
         if ((G / 100000) % 3 != 0) continue;
         const World& hw = peers[0].world();
@@ -677,6 +713,15 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                         "datagrams), down worst %.1f at %.0f s\n",
                         k, rep[k].upMax, static_cast<double>(rep[k].upMaxAt - runFrom) * 1e-6, rep[k].upRel, rep[k].upUnrel, rep[k].upCtrl,
                         rep[k].upDatagrams, rep[k].downMax, static_cast<double>(rep[k].downMaxAt - runFrom) * 1e-6);
+    for (u32 k = 1; k < players; ++k) {
+        if (dropped && k == dropPeer) continue;
+        const SessionStats& st = peers[k].session().stats();
+        std::printf("[net]   client %u's claims: %llu items sent, %llu hits, the damage changes %llu times in order; boss claims %llu "
+                    "(at most %llu a tick); the most in one second: claims %u, boss claims %u\n", k,
+                    static_cast<unsigned long long>(st.claimItems), static_cast<unsigned long long>(st.claimHits),
+                    static_cast<unsigned long long>(st.claimDmgRuns), static_cast<unsigned long long>(st.bossClaimItems),
+                    static_cast<unsigned long long>(st.bossClaimMax), st.claimSecMax, st.bossClaimSecMax);
+    }
     {
         for (u32 k = 1; k < players; ++k)
             if (!(dropped && k == dropPeer)) mergeDiag(*cdiag, peers[k].session().diag());
@@ -701,6 +746,15 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     std::printf("[net]   the same as each correction lands (drawn against the host's sample): RMS %.2f wu, max %.1f (%llu)\n", scrRms,
                 scrMax, static_cast<unsigned long long>(scrN));
     std::printf("[net]   song clock offset against the host: RMS %.2f ms, max %.2f ms (limit %.0f)\n", songRms, songMax, kMaxSongOffsetMs);
+    std::printf("[net]   thinning: a copy's against its owner's differs in %llu of %llu looks (owner thinned in %llu); live shots off by %.1f RMS\n",
+                static_cast<unsigned long long>(thinDiffers), static_cast<unsigned long long>(thinChecks),
+                static_cast<unsigned long long>(thinOwnerOn), thinChecks ? std::sqrt(thinLiveSum2 / static_cast<double>(thinChecks)) : 0.0);
+    std::printf("[net]   shots on the host's screen, straight ones bent more than a quarter in their last tick: own %llu of %llu (first tick "
+                "%llu), remote %llu of %llu (first tick %llu); curving own %llu, remote %llu\n",
+                static_cast<unsigned long long>(shBent[0]), static_cast<unsigned long long>(shStraight[0]),
+                static_cast<unsigned long long>(shBentFirst[0]), static_cast<unsigned long long>(shBent[1]),
+                static_cast<unsigned long long>(shStraight[1]), static_cast<unsigned long long>(shBentFirst[1]),
+                static_cast<unsigned long long>(shCurve[0]), static_cast<unsigned long long>(shCurve[1]));
     std::printf("[net]   per client: down %.1f kbit/s worst second (mean %.1f), up %.1f worst second (mean %.1f); limits %.0f / %.0f\n",
                 downMax, downMean, upMax, upMean, kMaxDownKbps, kMaxUpKbps);
     std::printf("[net]   largest datagram %u bytes (no IP fragmentation: <= %u); overflow %u, queue full %u, ENet pool fallbacks %llu "

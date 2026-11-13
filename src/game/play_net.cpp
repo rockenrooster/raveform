@@ -32,7 +32,9 @@ constexpr float kReseekMs = 60.0f;        // farther off than this, the band re-
 struct ShotDiag {
     double lastDrawnUs = 0.0;
     u32 frames = 0, framesOff = 0;
-    u64 shotSteps[2] = {}, bentSteps[2] = {};  // 0 this device's own player's shots, 1 the remote players'
+    u64 shotSteps[2] = {}, bentSteps[2] = {};  // 0 this device's own player's shots, 1 the remote players' (straight ones)
+    u64 bentFirst[2] = {};                     // of the bent, in their first tick (spawned with an advance)
+    u64 curveSteps[2] = {};                    // shots that curve by their Mods (Seek, Wave, Helix Array): not counted as bent
     u32 maxLive[2] = {};
 };
 ShotDiag g_shotDiag;
@@ -209,9 +211,16 @@ void Play::netFrame(float realDt) {
             ++live[cls];
             const float want = sh.speed[i] * kDt;
             if (want < 1.0f) continue;
+            if (sh.mods[i] & (kShotSeek | kShotWave | kShotWaveNeg | kShotHelix | kShotHelixIn)) {
+                ++g.curveSteps[cls];  // (they bend by design)
+                continue;
+            }
             const float bent = length(Vec2{sh.x[i] - sh.px[i], sh.y[i] - sh.py[i]} - Vec2{sh.dx[i], sh.dy[i]} * want);
             ++g.shotSteps[cls];
-            if (bent > 0.25f * want) ++g.bentSteps[cls];
+            if (bent > 0.25f * want) {
+                ++g.bentSteps[cls];
+                if (sh.life0[i] - sh.life[i] < 1.5f * kDt) ++g.bentFirst[cls];
+            }
         }
         for (u32 k = 0; k < 2; ++k)
             if (live[k] > g.maxLive[k]) g.maxLive[k] = live[k];
@@ -256,11 +265,13 @@ void Play::netFrame(float realDt) {
         }
         s.resetDiag();
         ShotDiag& g = g_shotDiag;
-        RF_LOG("net: diag shots: frames whose drawn step is off the panel's period by more than a quarter %u of %u; the last tick's step "
-               "bent more than a quarter from straight: own %llu of %llu, remote %llu of %llu; most alive own %u, remote %u (pool %u); "
-               "shots refused by the pool %u in all",
+        RF_LOG("net: diag shots: frames whose drawn step is off the panel's period by more than a quarter %u of %u; straight shots whose "
+               "last tick bent more than a quarter: own %llu of %llu (first tick %llu), remote %llu of %llu (first tick %llu); curving "
+               "(Seek, Wave, Helix) own %llu, remote %llu; most alive own %u, remote %u (pool %u); shots refused by the pool %u in all",
                g.framesOff, g.frames, static_cast<unsigned long long>(g.bentSteps[0]), static_cast<unsigned long long>(g.shotSteps[0]),
-               static_cast<unsigned long long>(g.bentSteps[1]), static_cast<unsigned long long>(g.shotSteps[1]), g.maxLive[0], g.maxLive[1],
+               static_cast<unsigned long long>(g.bentFirst[0]), static_cast<unsigned long long>(g.bentSteps[1]),
+               static_cast<unsigned long long>(g.shotSteps[1]), static_cast<unsigned long long>(g.bentFirst[1]),
+               static_cast<unsigned long long>(g.curveSteps[0]), static_cast<unsigned long long>(g.curveSteps[1]), g.maxLive[0], g.maxLive[1],
                Shots::kCap, c.shotsDropped);
         const double keep = g.lastDrawnUs;
         g = ShotDiag{};

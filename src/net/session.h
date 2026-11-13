@@ -86,6 +86,11 @@ struct SessionStats {
     u32 maxDatagram = 0;                                // the largest UDP payload this device sent
     u32 droppedOutgoing = 0;                            // reliable data that could not be queued (must stay 0)
     u32 claimsDropped = 0;                              // client: claims not sent while the host was quiet
+    u64 claimItems = 0, claimHits = 0, claimDmgRuns = 0;  // client: claims sent (after merging), of them hits, damage changes in order
+    u64 bossClaimItems = 0, bossClaimMax = 0;            // client: boss claims sent, the most in one tick
+    u32 claimSecMax = 0, bossClaimSecMax = 0;            // client: the most claims / boss claims sent in one second (host time)
+    i64 claimSec = -1;
+    u32 claimSecN = 0, bossClaimSecN = 0;
     double totalUpBytes = 0.0, totalDownBytes = 0.0;    // since start, with headers
 };
 
@@ -283,6 +288,7 @@ private:
     void reliable(F&& put);
     void flushReliable();
     void writeClaims();
+    void noteClaimSecond(u32 claims, u32 bossClaims);
     void sendTo(u32 peer, u8 channel, const PacketWriter& w, bool rel);
     void relayEvent(const MsgPlayerEvent& m, u32 exceptSeat);
     void sendCorrections(u32 seat, double hostMusic);
@@ -395,6 +401,11 @@ private:
     // Client: this player's claims since the last send (they leave with the pose, merged and sorted).
     static constexpr u32 kPendingClaims = 1024;
     sim::NetClaim pendClaims_[kPendingClaims];
+    // Hits on the boss, one a part (1-3) and pair until the pose takes them; a sum stays far under the parser's 1e6.
+    static constexpr u32 kPendingBossClaims = 3 * sim::kBossParts;
+    static constexpr float kMaxBossClaimSum = 1.0e5f;
+    sim::NetBossClaim pendBoss_[kPendingBossClaims];
+    u32 pendBossCount_ = 0;
     u32 pendClaimCount_ = 0;
     u16 pendRun_ = 0;
     bool hostQuiet_ = false;  // client: the host silent past kLinkSilentMs at the last send()

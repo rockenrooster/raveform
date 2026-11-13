@@ -284,6 +284,7 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     }
     nextAttentionUs_ = 0;
     pendClaimCount_ = 0;
+    pendBossCount_ = 0;
     pendRun_ = 0;
     hostQuiet_ = false;
     measureFrom_ = 0;
@@ -1325,7 +1326,7 @@ void Session::afterTick() {
         }
     } else {
         // This player's hits, claimed from the host (TECH_SPEC 8.1: reliable, batched; they leave with the pose).
-        if (log.claimCount && pendRun_ != run) writeClaims();  // a new run: the last one's go first
+        if ((log.claimCount || log.bossClaimCount) && pendRun_ != run) writeClaims();  // a new run: the last one's go first
         pendRun_ = run;
         for (u32 k = 0; k < log.claimCount; ++k) {
             if (pendClaimCount_ == kPendingClaims) {
@@ -1339,14 +1340,25 @@ void Session::afterTick() {
             }
             pendClaims_[pendClaimCount_++] = log.claims[k];
         }
-        for (u32 k = 0; k < log.bossClaimCount;) {
-            u32 n = rel_.putBossClaims(run, log.bossClaims + k, log.bossClaimCount - k);
-            if (!n) {
-                flushReliable();
-                n = rel_.putBossClaims(run, log.bossClaims + k, log.bossClaimCount - k);
-                if (!n) break;
+        if (log.bossClaimCount > stats_.bossClaimMax) stats_.bossClaimMax = log.bossClaimCount;
+        // Hits on the boss: one claim a part and pair until the pose takes them (the host adds them up the same way;
+        // measured: up to 48 a tick and 920 in a second, one bot's worst up second, unmerged).
+        for (u32 k = 0; k < log.bossClaimCount; ++k) {
+            const NetBossClaim& c = log.bossClaims[k];
+            u32 j = 0;
+            while (j < pendBossCount_ && (pendBoss_[j].part != c.part || pendBoss_[j].pair != c.pair)) ++j;
+            if (j < pendBossCount_ && pendBoss_[j].damage + c.damage <= kMaxBossClaimSum) {
+                pendBoss_[j].damage += c.damage;
+                continue;
             }
-            k += n;
+            if (pendBossCount_ == kPendingBossClaims) {
+                if (hostQuiet_) {
+                    ++stats_.claimsDropped;
+                    continue;
+                }
+                writeClaims();
+            }
+            pendBoss_[pendBossCount_++] = c;
         }
     }
     log.clear();
@@ -1454,9 +1466,38 @@ void Session::reliable(F&& put) {
     if (!put(rel_)) ++stats_.droppedOutgoing;  // a message larger than a packet: cannot happen
 }
 
+void Session::noteClaimSecond(u32 claims, u32 bossClaims) {
+    // Diagnostics: the claims sent in each second of host time, the most of them in one.
+    SessionStats& s = stats_;
+    const i64 sec = hostNow_ / 1000000;
+    if (sec != s.claimSec) {
+        s.claimSec = sec;
+        s.claimSecN = s.bossClaimSecN = 0;
+    }
+    s.claimSecN += claims;
+    s.bossClaimSecN += bossClaims;
+    if (s.claimSecN > s.claimSecMax) s.claimSecMax = s.claimSecN;
+    if (s.bossClaimSecN > s.bossClaimSecMax) s.bossClaimSecMax = s.bossClaimSecN;
+}
+
 void Session::writeClaims() {
     // The claims since the last send, one per enemy where they can be: hits on one enemy add up, a Nova's kill takes
     // the hits' place (the host's result is the same), sorted by serial (a byte or two an item, putClaims).
+    if (pendBossCount_) {
+        // The boss's, one a part and pair (merged as they came).
+        stats_.bossClaimItems += pendBossCount_;
+        noteClaimSecond(0, pendBossCount_);
+        for (u32 k = 0; k < pendBossCount_;) {
+            u32 n = rel_.putBossClaims(pendRun_, pendBoss_ + k, pendBossCount_ - k);
+            if (!n) {
+                flushReliable();
+                n = rel_.putBossClaims(pendRun_, pendBoss_ + k, pendBossCount_ - k);
+                if (!n) break;
+            }
+            k += n;
+        }
+        pendBossCount_ = 0;
+    }
     if (!pendClaimCount_) return;
     std::sort(pendClaims_, pendClaims_ + pendClaimCount_, [](const NetClaim& a, const NetClaim& b) { return a.serial < b.serial; });
     u32 m = 0;
@@ -1475,6 +1516,19 @@ void Session::writeClaims() {
             }
         }
         pendClaims_[m++] = c;
+    }
+    {
+        // Diagnostics (the uplink's worst second, docs/PROGRESS_m4_net.md): items, hits, and how often the damage changes.
+        i32 lastQ = -1;
+        noteClaimSecond(m, 0);
+        for (u32 k = 0; k < m; ++k) {
+            ++stats_.claimItems;
+            if ((pendClaims_[k].kind & 3u) != kClaimHit) continue;
+            ++stats_.claimHits;
+            const i32 q = static_cast<i32>(pendClaims_[k].damage * 64.0f + 0.5f);
+            if (q != lastQ) ++stats_.claimDmgRuns;
+            lastQ = q;
+        }
     }
     for (u32 k = 0; k < m;) {
         u32 n = rel_.putClaims(pendRun_, pendClaims_ + k, m - k);

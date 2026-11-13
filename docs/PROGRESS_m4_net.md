@@ -274,6 +274,30 @@ host's Track and by fight, seeds 1 and 2, in wu RMS (limit 12 for the whole run)
 - Feedback, Polyrhythm, Moth Queen, Blink Star and Sentry Array sit at 6-19 wu, near or above the limit under the
   impaired profile; not yet broken down.
 
+### The uplink's worst second: hits on the boss, one claim each (point 3)
+
+The soak now counts each client's claims (items, hits, the most in one second) and boss claims. The test seed's
+worst up second (client 3, 82.7 kbit/s, 51.1 of it reliable payload) held **920 boss claims in one second** (up to
+48 in a tick), six bytes each: every shot that hit the boss was claimed on its own, unmerged, while hits on enemies
+were already merged per enemy. Now a client keeps one claim a part and pair until the pose takes them (30 Hz; the
+host adds them up as before, `damageBossFinal` is linear in the damage): the most in one second fell to 50-117, the
+test seed's worst up second to **42.8** (the error is bit-identical: the host's health comes out the same). Ten
+seeds after main 17a36f7 was merged (`captures\m4net\seeds\r4_*`): worst up second **38.9-49.6 clean, 42.3-51.3
+impaired**, every seed under 60 (seed 5: 44.1; main measured 61.7 there).
+
+### Main 5107877 and the test seed's clean figure (point 3)
+
+Measured on this branch after the merge: the test seed (seed 1) clean **4.55** wu, seed 5 clean 3.83; ten seeds
+clean mean 5.13 (median 4.42, worst 9.31), impaired 7.77 (median 7.29, worst 10.88); 20 of 20 pass. What 5107877
+could decide from another player's state, measured: a copy's thinning against its owner's differs in **59 of 69,600
+looks** (0.08%; the owner thinned in 84) on the test seed; Wave's and Helix Array's curves are a function of each
+shot's own flight (`life0 - life`) and its muzzle, so they depend on nothing remote beyond where the copy fires from.
+The live shot counts of a copy do differ from the owner's (45.9 RMS; thinning reads them on a beat), which matters
+only near the soft cap. So nothing in 5107877 shows a systematic effect: every shot path changed, so every run took
+another course, and one seed's figure swings with what its run met (on this branch the test seed's error is mostly
+the Hive fight: 56% of its squared error from 7% of its samples). If thinning ever needs to agree, the owner's live
+count can ride in its pose (one byte, count / 4).
+
 ## The jumpy player shots the user saw on the Moto (the lead's question)
 
 The phone's runs this afternoon (PC local times, `captures\m4net\device\<tag>_*`, bench results `captures\bench\`):
