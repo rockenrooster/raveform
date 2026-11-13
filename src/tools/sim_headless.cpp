@@ -637,8 +637,10 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 median > minutes ? "no death in most runs" : "minutes", t2, n, t3);
     {
         // Play test 2's review (GAME_DESIGN 8): deaths in the first pass (Tracks 1-3) and the first deaths' Tracks.
-        u32 firstPass = 0;
+        u32 firstPass = 0, firstSet = 0;
         for (u32 k = 0; k < n; ++k) firstPass += (firstDeath[k] <= minutes && firstDeathTrack[k] <= 3) ? 1u : 0u;
+        // M5 part 4: the whole first pass of the set list (Tracks 1 to kBossesBuilt).
+        for (u32 k = 0; k < n; ++k) firstSet += (firstDeath[k] <= minutes && firstDeathTrack[k] <= kBossesBuilt) ? 1u : 0u;
         // The Track the median first death falls in (the runs sorted by first death; no death counts as the latest).
         u32 order[256];
         for (u32 k = 0; k < n; ++k) order[k] = k;
@@ -649,7 +651,8 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
             std::printf("[sim]   the median first death falls in Track %u (0: no death)\n", ta);
         else
             std::printf("[sim]   the median first death falls between Tracks %u and %u (the two middle runs; 0: no death)\n", ta, tb);
-        std::printf("[sim]   first deaths in the first pass (Tracks 1-3): %u of %u runs; first deaths by run (min/Track):", firstPass, n);
+        std::printf("[sim]   first deaths in Tracks 1-3: %u of %u runs; in the first pass (Tracks 1-%u): %u; first deaths by run (min/Track):", firstPass, n,
+                    kBossesBuilt, firstSet);
         for (u32 k = 0; k < n; ++k) {
             if (firstDeath[k] <= minutes) std::printf(" %.1f/T%u", firstDeath[k], firstDeathTrack[k]);
             else std::printf(" -");

@@ -1350,6 +1350,7 @@ void testPlayTest2() {
         auto* w = new (std::nothrow) World;
         w->init(g_species);
         w->spawner().mode = Spawner::Mode::Slice;
+        w->setSetList(3);  // (a set list of three: Track 5 is the loop's second)
         w->resetRun(31, 0.0, 1);
         w->rules().godMode = true;
         w->directorMut().track = 5;
@@ -1380,6 +1381,7 @@ void testPlayTest2() {
         auto* w = new (std::nothrow) World;
         w->init(g_species);
         w->spawner().mode = Spawner::Mode::Off;
+        w->setSetList(3);  // (a set list of three: Track 7 is First Light again)
         w->resetRun(33, 0.0, 1);
         w->rules().godMode = true;
         w->directorMut().track = 7;
@@ -1619,8 +1621,10 @@ void testMiddleDrop() {
     CHECK(seen[static_cast<u32>(BossKind::AlphaHound)] && seen[static_cast<u32>(BossKind::Hive)] && seen[static_cast<u32>(BossKind::BatteringRam)] &&
           seen[static_cast<u32>(BossKind::CaromKing)] && seen[static_cast<u32>(BossKind::Kaleidos)] == 0);
     CHECK(seen[static_cast<u32>(BossKind::AlphaHound)] + seen[static_cast<u32>(BossKind::Hive)] == 24);
+    w->directorMut().lastMini = static_cast<u8>(BossKind::BlinkStar);
+    CHECK(w->pickMini(5) == BossKind::SentryArray);  // (M5 part 4: Track 5 draws from Blink Star and Sentry Array)
     w->directorMut().lastMini = static_cast<u8>(BossKind::Hive);
-    CHECK(w->pickMini(5) == BossKind::AlphaHound);
+    CHECK(w->pickMini(2) == BossKind::AlphaHound);
     w->directorMut().lastMini = static_cast<u8>(BossKind::CaromKing);
     CHECK(w->pickMini(4) != BossKind::CaromKing);
     delete w;

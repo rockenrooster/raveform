@@ -10,7 +10,7 @@
 
 namespace rf::net {
 
-constexpr u32 kProtocolVersion = 0x52460503u;  // 'R' 'F', M5 part 3 (a Trio's orbs: up to six)
+constexpr u32 kProtocolVersion = 0x52460504u;  // 'R' 'F', M5 part 4 (the enemy states kLane, kCourt, kEgg; the fights' new decisions)
 constexpr u32 kMaxPacketBytes = 1200;
 
 enum class Msg : u8 {

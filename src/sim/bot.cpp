@@ -252,7 +252,9 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     if (bossFight) {
         const Vec2 rel = pos - (kaleidos ? boss.pos : bossNear);
         const float dist = length(rel);
-        if (dist > kBossWorkFarWu) force = force - rel * (0.9f * std::fmin((dist - kBossWorkFarWu) / 300.0f, 1.0f) / dist);
+        // (Polyrhythm: its walls die 770 wu out; the bot works from beyond them)
+        const float far = boss.kind == BossKind::Polyrhythm ? 1000.0f : kBossWorkFarWu;
+        if (dist > far) force = force - rel * (0.9f * std::fmin((dist - far) / 300.0f, 1.0f) / dist);
     }
     // M5: the other fights: keep off their bodies, out of every line they have shown, inside the Choir's Round when its cage
     // shows, and beside Longwave's crest.
@@ -408,7 +410,43 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                         gapA = fa;
                     }
                 }
-                const Vec2 goal = boss.body[k] + dirOf(gapA) * 330.0f;
+                // Where the walls do not reach (they die 770 wu out): beside the link, 820 wu from the pivot (900 from each
+                // rotor), shooting the faces as they turn toward it; in the Solo 840 wu from the survivor, in a gap.
+                (void)gapA;
+                // The place: of sixteen round the pivot (the survivor), the nearest that is beyond every wall and inside the
+                // arena, so the pivot's approach is circled rather than fled into a wall. The crowd's and the Shards' pulls
+                // count for less here (they drew it in among the walls).
+                force = force * 0.3f;
+                Vec2 goal = pos;
+                {
+                    const Vec2 centre = boss.alive == 3u ? (boss.body[0] + boss.body[1]) * 0.5f : boss.body[k];
+                    // (nearest by the way round, and approached along the circle, never across the middle)
+                    const float mine = angleOf(pos - centre);
+                    float bestD = 1e30f, bestA = mine;
+                    for (u32 j = 0; j < 16; ++j) {
+                        const float a = kTau * static_cast<float>(j) / 16.0f;
+                        const Vec2 c = centre + dirOf(a) * 820.0f;
+                        if (std::fabs(c.x) > kArenaHalfW - 220.0f || std::fabs(c.y) > kArenaHalfH - 220.0f) continue;
+                        // (clear of the rotors as they swing, and of where each living ring was thrown from: as far as it reaches)
+                        bool clear = true;
+                        for (u32 q = 0; q < 2 && clear; ++q)
+                            if ((boss.alive & (1u << q)) && lengthSq(c - boss.body[q]) < 800.0f * 800.0f) clear = false;
+                        for (const PolyRing& r : boss.pr.rings) {
+                            if (!clear || !w.polyRingAlive(r, musicTick)) continue;
+                            const float reach = P.rotorRadius + r.speed * P.wallLife + 30.0f;
+                            const float d = length(c - r.at);
+                            if (d < reach && d > w.polyRingRadius(r, musicTick) - 30.0f) clear = false;
+                        }
+                        if (!clear) continue;
+                        const float d = std::fabs(wrapAngle(a - mine));
+                        if (d < bestD) {
+                            bestD = d;
+                            bestA = a;
+                        }
+                    }
+                    const float step = clampf(wrapAngle(bestA - mine), -0.5f, 0.5f);
+                    goal = centre + dirOf(mine + step) * 820.0f;
+                }
                 const Vec2 to = goal - pos;
                 const float l = length(to);
                 if (l > 20.0f) force = force + to * (std::fmin(l / 200.0f, 1.5f) / l);
@@ -437,7 +475,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                     force = force + tang * (3.0f * (0.6f - std::fmax(ahead, 0.0f)) / 0.6f);
                     if (ahead < 0.12f) {
                         contactSoon = true;
-                        escape = escape + normalizeOr(rel, Vec2{1.0f, 0.0f}) * -1.0f;  // through it (the Dash's i-frames)
+                        escape = escape + tang;  // sideways toward its gap, the Dash's i-frames through the wall's edge
                     }
                 }
                 if (boss.alive == 3u && w.polyLinkBurn(musicTick + kTicksPerBeat) != 0) {
@@ -467,7 +505,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
             case BossKind::SentryArray: {
                 // Inside the clock: ride the notch (the turret under the hand fires nothing), a step ahead of the hand.
                 const Vec2 c = boss.mini.ringAt;
-                const float r = w.fenceRadius() - 110.0f;
+                const float r = w.fenceRadius() - 170.0f;
                 const Vec2 goal = c + dirOf(w.sentryHandAngle() + 0.4f) * (r > 60.0f ? r : 60.0f);
                 const Vec2 to = goal - pos;
                 const float l = length(to);

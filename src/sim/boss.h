@@ -30,7 +30,7 @@ const char* bossId(BossKind k);    // "kaleidos", "longwave", "choir", "alpha_ho
 bool bossFromId(const char* id, BossKind& out);
 // The bosses built so far (M5 part 1: three), in set-list order: Track t's boss in the first pass, and the loop's
 // boss for Track t is the one its song's Track had. The set list is the Tracks with their fights (Play).
-constexpr u32 kBossesBuilt = 3;
+constexpr u32 kBossesBuilt = 6;  // M5 part 4: Tracks 4 to 6 have their fights
 // The set list's bosses, Track by Track (GAME_DESIGN 4.2, 7.6).
 inline BossKind bossOfSong(u32 song) {
     constexpr BossKind k[6] = {BossKind::Kaleidos, BossKind::Longwave, BossKind::Choir, BossKind::EventHorizon, BossKind::Polyrhythm, BossKind::Feedback};

@@ -344,7 +344,7 @@ constexpr float kStandingDamage = 1.5f;
 constexpr float kLongwaveHealthTune = 2.2f;  // 70 s with the careful bot (M5 part 1; part 3, the Trio dealt: 1.4 -> 2.2; 2.7 gave 86 s but the careless bot 3 of 20 in the first pass)
 constexpr float kChoirHealthTune = 4.2f;      // 65 s with the careful bot (part 3, the Trio dealt: 4.5 -> 4.2; 4.8 gave 70 s, with the above)
 constexpr float kMiniHealthTune[8] = {6.5f, 5.0f, 2.0f, 4.8f,    // Alpha Hound, The Hive, Battering Ram, Carom King: 25-35 s
-                                     1.0f, 1.0f, 1.0f, 1.0f};   // M5 part 4: Moth Queen, Brood Mother, Blink Star, Sentry Array
+                                     12.0f, 10.0f, 5.0f, 4.0f};  // M5 part 4: Moth Queen, Brood Mother, Blink Star, Sentry Array (x 1: 4, 5, 7, 11 s)
 // M5 part 4, mini-bosses batch 2 (minibosses.md gives no number for these).
 constexpr float kMqBurstSpeed = 200.0f;      // a court Moth's burst (as a Moth's own bullets)
 constexpr float kMqCourtSpeed = 600.0f;      // a court Moth's step inward (it reaches its place within the beat)
@@ -356,11 +356,11 @@ constexpr float kSaStepBeats = 1.0f;         // turrets step round to stand even
 // M5 part 4, Event Horizon (horizon.md gives no number for these).
 constexpr float kHzJetLengthWu = 1800.0f;  // the jets reach past the frame's edge at the fight's zoom (0.8)
 constexpr float kHzJetHalfWu = 22.0f;      // a beam as wide as the Choir's held note
-constexpr float kHorizonHealthTune = 1.0f; // the page's 3,200 until the bot measures it (part 4)
+constexpr float kHorizonHealthTune = 16.0f; // the careful bot at home: x 1 9 s, x 6 25 s (the page: about 80 s)
 // Polyrhythm (polyrhythm.md gives no number for these).
 constexpr float kPrLinkBurnHalfWu = 16.0f;  // the burning link: a beam as wide as the Choir's cage strings
-constexpr float kPolyHealthTune = 1.0f;     // the page's 1,400 a rotor until the bot measures it (part 4)
-constexpr float kFeedbackHealthTune = 1.0f; // the page's 4,800 until the bot measures it (part 4)
+constexpr float kPolyHealthTune = 3.0f;     // the careful bot at home: x 1 9 s, x 8 35 s with 7 wall hits a fight and half lost (the page: 100-120 s)
+constexpr float kFeedbackHealthTune = 2.5f; // the careful bot at home: x 1 34 s (the page: about two minutes)
 
 // ======================================================================================================
 // M4 STAGE A: co-op (GAME_DESIGN 10, TECH_SPEC 8). Quoted numbers are marked; the rest are chosen where the
