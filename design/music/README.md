@@ -140,6 +140,21 @@ of the phrase cycle does to the bed, how the lead follows the fire button and th
 instrument each Riff brings. Those rules are `conductor.json`. It is the creative brief for the audio
 engine's mix state; the prototype renderer does not read it.
 
+## Sound for M5 — `sound_m5.json`
+
+Everything the first slice did not have: what each of the other 27 Mods does to the lead, the
+instrument each of Riffs 4 to 12 brings and on which pattern, what each of the other 12 Boosts does
+for its bars, the 8 Fusions, and the one-shot recipes the fights and the arena ask for (tom, sub
+drop, gong, zap, glass, saw glide, woodblock, drone, a pad voice for each living thing and the
+rest). It is written in `conductor.json`'s own schema and is a separate file only until the audio
+engineer builds it. The sound of each boss, mini-boss, structure, event and trait is on its own
+page, in the words of that file's `recipes`.
+
+Rules that hold for all of it: an upgrade is audible within a bar of being picked; whatever a kill,
+a hit or a bounce triggers is aggregated like kills (one sound of a kind on a 1/32 step, its gain
+following the count); a Fusion replaces its ingredients' sounds; nothing but hits and blasts ducks
+the music.
+
 ## Measured (v1)
 
 Integrated loudness −14.0 LUFS (the bed is kept there to leave headroom for effects), peak −5.2 dBFS,

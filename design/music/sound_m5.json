@@ -1,0 +1,99 @@
+{
+ "note": "Sound for milestone M5: every Mod, Riff, Boost and Fusion the first slice did not have, and the one-shot recipes the bosses, mini-bosses, structures, events and elite traits ask for on their pages. Same schema as conductor.json's 'mods', 'riffs' and 'boosts' blocks: when the audio engineer builds this, those three blocks move into conductor.json and this file keeps only 'recipes', 'fusions' and 'where'. It is a separate file until then so that a build in progress does not meet names it does not know. Steps are sixteenths (16 per bar). Levels are linear, relative to the voice's own mix level. Scale degrees are steps of the Track's scale above the arpeggio note. Everything a kill, a hit or a bounce triggers is aggregated like kills are: at most one sound of a kind on a 1/32 step, its gain 1 - e^(-count / 2.5). Starting values: the user tunes by ear at the M5 play test.",
+
+ "riffs": {
+  "note": "Each Riff is one instrument on one pattern, heard only while a player owns it. 'pattern' is 16 steps, digits are velocity ninths. Riffs 1 to 3 are in conductor.json.",
+  "lancer": {"layer": "stab", "pattern": "............9...", "length": 2.0, "level": 1.0, "charge": "a reverse swell at 0.3 over the three beats before", "says": "a full chord on beat 4, the beam; from level 3 on beats 2 and 4 ('....9.......9...')"},
+  "minelayer": {"layer": "clap + impact", "pattern": "9...............", "level": {"clap": 0.8, "impact": 0.4}, "drop": "a closed hat on step 8 as each mine is laid", "says": "the mines of the last bar go off together on the One"},
+  "storm_coil": {"layer": "zap", "grid": "1/8 triplet", "notes": "the chord's stab triad and its root an octave up, in turn, one octave above the stab", "level": 0.25, "says": "a zap on each triplet eighth on which something was struck"},
+  "swarm": {"layer": "bell", "grid": "1/32", "from": 0, "notes": "the chord's arp from step 0, one note a missile", "count": [8, 12, 16, 20, 24], "level": 0.3, "says": "the volley is a rising run on the One"},
+  "singularity": {"layer": "swell + impact", "everyBars": 4, "swellBeats": 3, "level": {"swell": 0.5, "impact": 0.8}, "says": "a reverse swell while it pulls, the boom on the next One"},
+  "mirror": {"layer": "lead", "transpose": 12, "level": [0.4, 0.5, 0.55, 0.6, 0.7], "says": "the wingman is the player's own lead an octave up"},
+  "comet": {"layer": "whoosh", "pattern": "9.......6.......", "level": 0.3, "says": "out on the One, back on three"},
+  "sweeper": {"layer": "drone", "note": "the chord's bass note", "cutoffHz": [300, 2400], "turnBars": 2, "level": 0.2, "says": "a drone that opens as the arm comes round to twelve o'clock and closes behind it"},
+  "flak": {"layer": "snare", "pattern": "....9.......9...", "level": 0.5, "says": "a snare with each burst, on two and four; from level 4 a clap a 1/32 after it as the pellets go off"}
+ },
+
+ "mods": {
+  "note": "What each Mod does to the lead or adds to the mix, per stack. Mods 1 to 4, 11, 17, 18, 25 and 31 are in conductor.json.",
+  "fork": {"perStack": "on a first hit the note is answered a 1/32 later by the fifth above at 0.4"},
+  "seeker": {"perStack": "each lead note glides in from the note before it over 12 ms"},
+  "heavy_step": {"perStack": "every fourth lead step (3, 7, 11, 15) is doubled an octave down on the bass patch at 0.8; its explosion is the small kill's thud at 0.5"},
+  "accent": {"perStack": "the accented note (beat 1; then 1 and 3; then every beat) plays at 1.4 with the chord's stab under it at 0.3"},
+  "echo": {"perStack": "the lead's delay is one beat long and its mix rises by 0.15"},
+  "wave": {"perStack": "vibrato on the lead: 5.5 Hz, 18 cents"},
+  "rear_guard": {"perStack": "a counter-melody two scale degrees below the arpeggio on the off-beat eighths (steps 2, 6, 10, 14) at 0.5; the second stack adds the note five degrees below on steps 1 and 9"},
+  "arc": {"perStack": "each chain is a zap one chord tone above the last, up to three"},
+  "burn": {"perStack": "a crackle whose density follows the number of burning enemies (none to thirty), at 0.08"},
+  "shatter": {"perStack": "a glass burst on each kill that throws shrapnel, at 0.25"},
+  "gravity_rounds": {"perStack": "a soft low thup on each hit (sine 180 to 120 Hz, 40 ms) at 0.15"},
+  "afterimage": {"perStack": "the Dash's sweep is heard again a beat later at half level, from where the decoy stands"},
+  "shockstep": {"perStack": "the Dash adds a tom on the chord's root; a Perfect Dash a second tom a fifth above"},
+  "aegis": {"perStack": "a high tick for each bullet the arc stops, at 0.15"},
+  "last_light": {"perStack": "the free mini-Nova is the Nova's blast at 0.6, without the inhale"},
+  "collector": {"perStack": "the Boost it spawns arrives with the Boost bells"},
+  "syncopation": {"perStack": "off-beat notes are 0.3 louder and carry a short square blip an octave up"},
+  "bar_line": {"perStack": "the cross is the chord's stab at 0.5 with a zap, on the One"},
+  "crescendo": {"perStack": "the lead rises 0.2 dB for each bar without a hit, to +2 dB, and the pad opens with it; a hit drops both at once"},
+  "kick_pulse": {"perStack": "a tom an octave above the kick's pitch doubles each kick at 0.2: on Tracks whose kick is not on every beat the ring follows the kick, not the beat"},
+  "afterparty": {"perStack": "the Surge's lead gear holds for the two extra bars"},
+  "silent": ["extra_cell", "regen", "reserve", "slipstream", "magnet", "prospector", "nova_stock", "encore", "lucky_break"]
+ },
+
+ "boosts": {
+  "note": "For the Boost's duration. Prism, Hyper, Halo and Magnet Storm are in conductor.json. Every Boost is picked up with the Boost bells.",
+  "supernova_rounds": "each impact is the small kill's thud at 0.3",
+  "colossus": "the bass gains its octave below at 0.5; each enemy rammed is a tom on the chord's root",
+  "time_stretch": "the drums play at half rate (every pattern stretched to two bars) while the lead and the Riffs keep their grid: the room slows, the player does not",
+  "freeze_frame": "a glass chord as it starts; the music bus is high-passed at 800 Hz for its two bars; each shattered enemy is a glass burst",
+  "black_hole": "the Nova's inhale lasts the singularity's three beats, rising; then the blast with the sub drop",
+  "chain_storm": "on every beat a zap on each of the chord's three stab notes at 0.35",
+  "chorus": "the lead is doubled a fifth above and an octave below at 0.4 each",
+  "beam": "the lead holds: each step retriggers softly with four times the decay, over the Sweeper's drone on the arpeggio's first note",
+  "ricochet_fever": "the bounce blips climb two scale steps a bounce",
+  "confetti": "each kill adds a run of six Shard chirps up the scale",
+  "fractal": "each lead note is followed a 1/32 apart by its octave at 0.3 and its double octave at 0.15",
+  "carousel": "each launch is a tom: root, third, fifth and octave of the chord on beats 1 to 4"
+ },
+
+ "fusions": {
+  "note": "A Fusion replaces the sounds of its two ingredients.",
+  "helix_array": "Split's harmony notes take Wave's vibrato in opposite phase to the lead: a slow chorus",
+  "standing_wave": "each accented note is held for a bar as a pad voice on the same pitch",
+  "tesla_bloom": "each ring's tom carries a zap on all three stab notes",
+  "shard_halo": "the Orbitals' shaker is doubled by glass ticks an octave apart",
+  "downbeat_cannon": "on every One the full chord stab at 1.2 with the impact at 0.5",
+  "collapse_field": "a reverse swell over the last beat of each bar runs into the mines' detonation",
+  "murmuration": "the run does not stop: a 1/32 trill between the chord's third and fifth at 0.25 while the flock lives",
+  "quartet": "the lead in four parts: the note, the third and fifth above it and the octave, the upper three at 0.4"
+ },
+
+ "recipes": {
+  "note": "One-shots and voices the pages name, in the engine's own building blocks (design/music/README.md, 'Recipes for the engine port' and 'Sound effects'). Pitched ones take a note; 'the chord' and 'the scale' are the Track's at that moment.",
+  "tom": "the 'pulse' voice at a pitch: a sine sweeping from 4.8 x the note to the note in 45 ms, 130 ms decay, with its noise tick",
+  "sub_drop": "the impact's sine alone: 120 to 38 Hz, 700 ms",
+  "gong": "the P3 bell two octaves down with ratio 1.4 and index 3, 2.5 s decay",
+  "bell": "the P3 bell at a note",
+  "zap": "the medium kill without its noise: a sine gliding from twice the pitch to the pitch, 90 ms, ring-modulated at 2.76 x",
+  "glass": "three sines at 3, 4.2 and 5.4 x a note in the seventh octave, 60 ms",
+  "saw_glide": "a detuned saw pair through the lead's low-pass, gliding by an interval over a time (the Alpha's howl: up a fifth over one beat)",
+  "sweep": "the Dash: noise through a low-pass that opens or closes over a given time",
+  "rev_cymbal": "the impact's crash reversed, a beat or a bar long, ending on a grid line",
+  "woodblock": "a sine falling from 1 kHz to 700 Hz in 8 ms, 35 ms decay, with a 3 kHz click; pitched by scale step when a page says so",
+  "chirp": "the Shard's chirp at a note",
+  "drone": "a detuned saw pair an octave under the bass through a low-pass whose cutoff is given, held",
+  "pad_voice": "one note of the pad patch, held while something lives: one voice for each thing",
+  "crackle": "5 ms bursts of 2 to 6 kHz noise at a given density",
+  "whoosh": "noise through a band-pass sweeping 400 Hz to 3 kHz over a beat (and back for a return)",
+  "roll": "the Build's snare roll over a given span of beats",
+  "low_pass_bed": "the music bus low-passed (SetMuffle) for a time: used for 'stunned', 'dazed' and 'open' moments"
+ },
+
+ "where": {
+  "note": "The sound of each fight and each thing in the arena is on its own page, in its 'Sound' section or row, written in the words of 'recipes' above.",
+  "bosses": "design/bosses/kaleidos.md, longwave.md, choir.md, horizon.md, polyrhythm.md, feedback.md; the four for Tracks 7 to 10 when their pages are written",
+  "minibosses": "design/bosses/minibosses.md, the 'Sound' row of each of the twelve",
+  "structuresAndEvents": "design/arena.md (to come)",
+  "eliteTraits": "design/traits.md (to come)"
+ }
+}
