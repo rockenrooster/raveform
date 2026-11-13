@@ -164,13 +164,16 @@ public:
     // A game event with a sound, as it happens (Cue lists what each means). Placed on the next 1/32 step, or on `tick`
     // (song ticks, >= 0); value and pan as the Cue says.
     void cue(audio::Cue c, u32 count = 1, float value = 0.0f, float pan = 0.0f, double tick = -1.0, u8 slot = 0);
-    // A recipe as a one-shot: now (tick < 0: on the next 1/32 step) or on `tick`; midi -1 = its default; p1, p2 per Recipe.
+    // A recipe as a one-shot: now (tick < 0: on the next 1/32 step) or on `tick`; midi -1 = its default (or a chordNote(),
+    // resolved against the chord at that tick); p1, p2 per Recipe.
     void playRecipe(audio::Recipe r, i32 midi = -1, float gain = 1.0f, float pan = 0.0f, double tick = -1.0, float p1 = 0.0f,
                     float p2 = 0.0f);
     // A held recipe (Drone, PadVoice, Crackle; any recipe sustains while held) in voice slot 0..kRecipeVoices-1, which
-    // the game owns: start, change its parameter (Drone: cutoff Hz; Crackle: bursts a second) or gain, stop.
+    // the game owns: start, change its parameter (Drone: cutoff Hz; Crackle: bursts a second; PadVoice at the start: its
+    // attack in seconds, 0 the pad's own) or gain, stop. M5: setVoice with a `midi` (or chordNote) glides the voice's pitch
+    // there over `glideSeconds` (a Voice's death falls a fourth; the Choir's held note rises an octave).
     void startVoice(u8 voice, audio::Recipe r, i32 midi = -1, float gain = 1.0f, float pan = 0.0f, float param = 0.0f);
-    void setVoice(u8 voice, float param, float gain = -1.0f);
+    void setVoice(u8 voice, float param, float gain = -1.0f, i32 midi = -1, float glideSeconds = 0.0f);
     void stopVoice(u8 voice, float releaseSeconds = 0.1f);
     // recipes.low_pass_bed: the music bus low-passed at `hz` for `seconds` ("stunned", "dazed", "open"), then open again.
     void lowPassBed(float hz, float seconds);

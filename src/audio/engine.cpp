@@ -15,9 +15,11 @@ namespace {
 constexpr u32 kLeadVoices = 96;  // M5: 64 before the upgrades' extra notes (Fractal's start a 1/32 later, Syncopation's blips)
 constexpr u32 kLeadPerPlayer = 12;  // per player (a 1/32 line and its harmony, or four lines at 1/16)
 // M5 (cost): a teammate's lead, mixed at 0.35 or less (conductor.json lead.others), holds at most this many: at 174 BPM
-// every player reached 12 in the full band (48 lead voices against 33 at 120 BPM); the notes it cuts short are past
-// 0.23 s, more than 20 dB under the local lead's onsets.
-constexpr u32 kLeadPerOther = 8;
+// every player reached 12 in the full band (48 lead voices against 33 at 120 BPM). It was 8; the upgrades' worst case on
+// the Moto (four players, every Mod at its cap) took it to its melody alone: the arpeggio note on its grid, four notes
+// held (the whole note at 1/16 at 174 BPM, a beat of them at 1/32); its harmony (Split, Prism, On-Beat Crit) and every
+// note its other upgrades add are its own device's (leadStep, leadUpgrades).
+constexpr u32 kLeadPerOther = 4;
 constexpr u32 kLeadFadeOut = 240;   // frames: a replaced note fades instead of clicking
 // M5: room for the upgrades (Heavy Step and Colossus double the bass; Lancer, Accent, Bar Line and the Cannon stab; the
 // Riffs' one-shots). A larger pool changes nothing where the smaller one never stole (the full band never did).
@@ -130,6 +132,8 @@ struct Engine::LeadVoice {
     bool bend = false;
     float glideSemis = 0.0f, vibSemis = 0.0f, vibPhase = 0.0f, vibStep = 0.0f;
     u32 glideN = 0;
+    u32 bendKnot = ~0u;   // the knot interval bendRatio was computed for
+    float bendRatio = 1.0f;
     bool culled = false;  // cut short by the player's cap (playLead)
     SawOsc saw[4];
     SquareOsc sq[2];
@@ -139,6 +143,7 @@ struct Engine::LeadVoice {
 struct Engine::BassVoice {
     bool active = false;
     Bus bus = Bus::Bass;  // M5: the rubber string plays on the effects bus
+    bool fastDrive = false;  // M5 (cost): the upgrades' bass notes (Heavy Step, Colossus, the rubber string) saturate by fastTanh
     i64 start = 0;
     u32 seq = 0;
     u32 delay = 0, age = 0, length = 0, gate = 0, fade = 240;
@@ -193,6 +198,7 @@ struct Engine::SampleVoice {
     double pos = 0.0;
     float rate = 1.0f;
     float gl = 0.0f, gr = 0.0f;
+    float drive = 0.0f;  // M5 (the driven kick): > 0: tanh(drive x) / tanh(drive), a mono voice at its own rate
 };
 
 struct Engine::Pending {
@@ -684,8 +690,12 @@ void Engine::emit(BeatKind k, i64 frame, double tick, u8 a, u8 b, u8 c, float va
     events_.push(e);
 }
 
-void Engine::playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate, double from) {
-    if (id < 0) return;
+void Engine::driveSample(SampleVoice* v, float drive) {
+    if (v && drive > 0.0f) v->drive = drive;
+}
+
+Engine::SampleVoice* Engine::playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate, double from) {
+    if (id < 0) return nullptr;
     const Sample& s = bank_->sample(id);
     SampleVoice* v = allocVoice(smp_, kSampleVoices, order_[PoolSample]);
     v->active = true;
@@ -697,12 +707,14 @@ void Engine::playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float
     v->age = 0;
     v->pos = from;  // M5: a start inside the sample (the reversed cymbal ends on its tick)
     v->rate = rate;
+    v->drive = 0.0f;
     if (s.channels == 2) {
         v->gl = v->gr = gain;
     } else {
         panGains(pan, gain, v->gl, v->gr);
     }
     placeVoice(smp_, order_[PoolSample], v, frame);
+    return v;
 }
 
 void Engine::playKick(float gain, float velocity, i64 frame, double tick) {
@@ -770,11 +782,13 @@ void Engine::playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, doubl
 }
 
 Engine::LeadVoice* Engine::playLead(u8 player, Timbre timbre, float midi, float vel, float gain, float pan, i64 frame,
-                                    float lengthScale, float drive) {
+                                    float lengthScale, float drive, i64 cullAt) {
     // Each player's lead holds at most kLeadPerPlayer notes (the prototype's notes overlap: about three
     // at 1/16, six at 1/32). Past that, the player's oldest note fades out over a few milliseconds, from the new
-    // note's frame (M5: decided at that frame, not at the block being planned, so the callbacks cannot change it).
-    const i64 at = frame > frame_ ? frame : frame_;
+    // note's frame (M5: decided at that frame, not at the block being planned, so the callbacks cannot change it;
+    // or from `cullAt` for a note that starts later).
+    const i64 start = frame > frame_ ? frame : frame_;
+    const i64 at = cullAt >= 0 && cullAt < start ? (cullAt > frame_ ? cullAt : frame_) : start;
     u32 mine = 0;
     LeadVoice* oldest = nullptr;
     for (u32 i = 0; i < kLeadVoices; ++i) {
@@ -880,7 +894,11 @@ Engine::LeadVoice* Engine::playLead(u8 player, Timbre timbre, float midi, float 
     return v;
 }
 
-void Engine::playBass(float midi, float vel, float steps, i64 frame, float decayScale, float lengthS, Bus bus) {
+void Engine::fastBass(BassVoice* v) {
+    if (v) v->fastDrive = true;
+}
+
+Engine::BassVoice* Engine::playBass(float midi, float vel, float steps, i64 frame, float decayScale, float lengthS, Bus bus) {
     BassVoice* v = allocVoice(bass_, kBassVoices, order_[PoolBass]);
     *v = BassVoice{};
     const BassPatch& p = sp_->bass;
@@ -909,6 +927,7 @@ void Engine::playBass(float midi, float vel, float steps, i64 frame, float decay
     v->sq.dt = static_cast<float>(hz / sr_);
     v->subDt = static_cast<float>(hz * 0.5 / sr_);
     placeVoice(bass_, order_[PoolBass], v, frame);
+    return v;
 }
 
 void Engine::playStab(const Chord& chord, float vel, float pan, i64 frame, float lengthScale) {
@@ -1006,6 +1025,34 @@ Engine::LeadVoice* Engine::bendLead(LeadVoice* v, u32 player, float glideFrom, b
         v->bend = true;
     }
     return v;
+}
+
+u32 Engine::leadVoices(LeadVoiceInfo* out, u32 cap) const {
+    u32 n = 0;
+    for (u32 i = 0; i < kLeadVoices && n < cap; ++i) {
+        const LeadVoice& v = lead_[i];
+        if (!v.active) continue;
+        LeadVoiceInfo& o = out[n++];
+        o.player = v.player;
+        o.timbre = static_cast<u8>(v.timbre);
+        o.start = v.start;
+        o.hz = v.hz;
+        o.vel = v.vel;
+        o.gain = std::sqrt(v.gl * v.gl + v.gr * v.gr) / 1.4142f;  // the gain whatever the pan (panGains)
+        o.length = v.length;
+        o.glideSemis = v.glideSemis;
+        o.glideN = v.glideN;
+        o.vibSemis = v.vibSemis;
+        o.vibPhase = v.vibPhase;
+    }
+    return n;
+}
+
+float Engine::padOpenNow() const {
+    float open = 0.0f;
+    for (u32 i = 0; i < kPadVoices; ++i)
+        if (pad_[i].active && pad_[i].start <= frame_) open = std::fmax(open, pad_[i].open);
+    return open;
 }
 
 // M5 (Crescendo): a hit drops the player's rise at once, and the pad it opened (the local player's).
@@ -1678,9 +1725,11 @@ void Engine::conductorStep(i64 tick, i64 inBar) {
             playSample(bank_->shaker(), Bus::Drums, f, s.mix.shaker * v, riffSt % 2 ? kPanShaker : -kPanShaker);
             emit(BeatKind::Shaker, f, tk, 0, 0, 0, v);
             // M5 (sound_m5.json fusions.shard_halo): the Orbitals' shaker doubled by glass ticks an octave apart (in turn).
-            if ((p.fusions >> static_cast<u32>(Fusion::ShardHalo)) & 1u && p.riff[static_cast<u32>(Riff::Orbitals)])
-                recipeShot(Recipe::Glass, 96 + p.chord->bass % 12 - 12 * static_cast<i32>(haloTick_++ % 2), recipeGain(Recipe::Glass) * v,
-                           riffSt % 2 ? kPanShaker : -kPanShaker, f, Bus::Drums);
+            if ((p.fusions >> static_cast<u32>(Fusion::ShardHalo)) & 1u && p.riff[static_cast<u32>(Riff::Orbitals)]) {
+                const i32 note = 96 + p.chord->bass % 12 - 12 * static_cast<i32>(haloTick_++ % 2);
+                recipeShot(Recipe::Glass, note, recipeGain(Recipe::Glass) * v, riffSt % 2 ? kPanShaker : -kPanShaker, f, Bus::Drums);
+                upgradeEvent(UpgradeSound::HaloGlass, f, tk, recipeGain(Recipe::Glass) * v, note);
+            }
         }
         if (on(Pat::Pulse)) {
             float v = t.pattern[static_cast<u32>(Pat::Pulse)][riffSt];
@@ -1689,10 +1738,12 @@ void Engine::conductorStep(i64 tick, i64 inBar) {
                 playSample(bank_->pulse(), Bus::Pulse, f, s.mix.pulse * v, 0.0f);
                 emit(BeatKind::Pulse, f, tk, 0, 0, 0, v);
                 // M5 (fusions.tesla_bloom): each ring's tom carries a zap on all three stab notes.
-                if ((p.fusions >> static_cast<u32>(Fusion::TeslaBloom)) & 1u && p.riff[static_cast<u32>(Riff::PulseRing)])
+                if ((p.fusions >> static_cast<u32>(Fusion::TeslaBloom)) & 1u && p.riff[static_cast<u32>(Riff::PulseRing)]) {
                     for (u32 k = 0; k < p.chord->stabCount && k < 3; ++k)
                         recipeShot(Recipe::Zap, p.chord->stab[k], recipeGain(Recipe::Zap) * v * kTeslaZap, k == 0 ? 0.0f : (k == 1 ? -0.3f : 0.3f),
                                    f, Bus::Pulse);
+                    upgradeEvent(UpgradeSound::TeslaZap, f, tk, recipeGain(Recipe::Zap) * v * kTeslaZap, p.chord->stab[0]);
+                }
             }
         }
         if (on(Pat::Stab) && t.pattern[static_cast<u32>(Pat::Stab)][riffSt] > 0.0f) {
@@ -1711,7 +1762,10 @@ void Engine::conductorStep(i64 tick, i64 inBar) {
             playBass(midi, n.vel * p.bassFade, n.steps, f);
             emit(BeatKind::Bass, f, tk, static_cast<u8>(midi), 0, 0, n.vel * p.bassFade, 0, midiHz(midi));
             // M5 (conductor.json boosts.colossus): the bass gains its octave below.
-            if ((p.boosts >> static_cast<u32>(Boost::Colossus)) & 1u) playBass(midi - 12.0f, n.vel * p.bassFade * r.colossusLevel, n.steps, f);
+            if ((p.boosts >> static_cast<u32>(Boost::Colossus)) & 1u) {
+                fastBass(playBass(midi - 12.0f, n.vel * p.bassFade * r.colossusLevel, n.steps, f));
+                upgradeEvent(UpgradeSound::ColossusBass, f, tk, n.vel * p.bassFade * r.colossusLevel, midi - 12.0f);
+            }
         }
     }
     if (p.rollDiv && inBar % p.rollDiv == 0 && !(p.lastBuildBar && inBar >= kTicksPerBar / 2)) {
@@ -1768,7 +1822,9 @@ void Engine::leadStep(i64 tick, i64 inBar) {
             const float accent = inBar % kPpq == 0 ? r.accentBeat : (inBar % (kPpq / 2) == 0 ? r.accentEighth : r.accentOther);
             const float pan = r.panDepth * std::sin(k * r.panRate + static_cast<float>(p.index));
             float scale = std::pow(r.pierceScale, static_cast<float>(pl.pierce));
-            const float drive = pl.overcharge ? 1.0f + r.overchargeDrive * pl.overcharge : 0.0f;
+            // M5 (cost): a teammate's lead is not driven on this device (Overcharge's tanh, a sample a voice); its level
+            // still rises with the stacks.
+            const float drive = pl.overcharge && i == localPlayer_ ? 1.0f + r.overchargeDrive * pl.overcharge : 0.0f;
             float gain = s.mix.lead * level * std::pow(10.0f, r.overchargeDb * pl.overcharge / 20.0f);
             const i64 f = frameOf(tk);
             // M5: what the Mods and Boosts do to this player's notes (conductor.json mods / boosts, sound_m5.json fusions).
@@ -1812,16 +1868,19 @@ void Engine::leadStep(i64 tick, i64 inBar) {
             const auto bend = [&](LeadVoice* v, bool opposite) {
                 if (m5) bendLead(v, i, glideFrom, opposite);
             };
-            for (u32 st = 0; st < pl.split && st < r.splitDegreeCount; ++st)
+            // M5 (cost): a teammate's harmony is its own device's (kLeadPerOther).
+            const bool own = i == localPlayer_;
+            const u32 splitN = own ? pl.split : 0u;
+            for (u32 st = 0; st < splitN && st < r.splitDegreeCount; ++st)
                 bend(playLead(static_cast<u8>(i), pl.timbre, degreeAbove(note, r.splitDegrees[st]), vel, gain * r.splitLevel, pan, f,
                               scale, drive),
                      helix);
-            if (pl.prism) {
+            if (pl.prism && own) {
                 bend(playLead(static_cast<u8>(i), pl.timbre, degreeAbove(note, 4), vel, gain * r.prismLevel, pan, f, scale, drive), false);
                 bend(playLead(static_cast<u8>(i), pl.timbre, note + 12.0f, vel, gain * r.prismLevel, pan, f, scale, drive), false);
             }
             // (Downbeat Cannon takes On-Beat Crit's part: sound_m5.json fusions.)
-            if (pl.crit && inBar % kPpq == 0 && !playerFusion(i, Fusion::DownbeatCannon))
+            if (pl.crit && inBar % kPpq == 0 && !playerFusion(i, Fusion::DownbeatCannon) && own)
                 bend(playLead(static_cast<u8>(i), pl.timbre, note + 12.0f, vel, gain * r.critLevel, pan, f, scale, drive), false);
             if (m5) leadUpgrades(i, tick, inBar, k, note, vel, gain, pan, scale, drive, level, glideFrom);
         } else if (p.sparse[i] && inBar % kTicksPerStep == 0) {
@@ -1991,10 +2050,14 @@ struct Engine::LeadRun {
     // M5: the pitch of a bent voice over the knot interval from age k0 (Seeker's glide toward the note, Wave's vibrato), as
     // a frequency ratio; the same for every segment of the interval, wherever the callbacks fell.
     void bendAt(u32 k0) {
-        float semis = 0.0f;
-        if (k0 < v.glideN) semis += v.glideSemis * (1.0f - static_cast<float>(k0) / static_cast<float>(v.glideN));
-        if (v.vibSemis != 0.0f) semis += v.vibSemis * sinTurns(v.vibPhase + v.vibStep * static_cast<float>(k0));
-        const float ratio = fastExp2(semis * (1.0f / 12.0f));
+        if (v.bendKnot != k0) {  // once a knot interval (a block boundary splits most of them in two)
+            float semis = 0.0f;
+            if (k0 < v.glideN) semis += v.glideSemis * (1.0f - static_cast<float>(k0) / static_cast<float>(v.glideN));
+            if (v.vibSemis != 0.0f) semis += v.vibSemis * sinTurns(v.vibPhase + v.vibStep * static_cast<float>(k0));
+            v.bendRatio = fastExp2(semis * (1.0f / 12.0f));
+            v.bendKnot = k0;
+        }
+        const float ratio = v.bendRatio;
         if constexpr (T == Timbre::P3Bell) {
             s0.dt = bellDt0 * ratio;
             s1.dt = bellDt1 * ratio;
@@ -2251,7 +2314,8 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
                 subPhase += v.subDt;
                 subPhase -= std::floor(subPhase);
                 const float att = aj < attEnd ? static_cast<float>(aj) * invAtt : 1.0f;
-                float o = std::tanh(v.drive * y * att * dec * rel) * v.vel * v.gain;
+                const float driven = v.drive * y * att * dec * rel;
+                float o = (v.fastDrive ? fastTanh(driven) : std::tanh(driven)) * v.vel * v.gain;  // M5: the upgrades' bass notes
                 if (aj >= fadeStart) o *= 1.0f - static_cast<float>(aj - fadeStart) * invFade;
                 dec *= decMul;
                 if (aj >= v.gate) rel *= relMul;
@@ -2434,6 +2498,14 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
                 for (u32 i = 0; i < cnt; ++i) {
                     L[i0 + i] += d[2 * i] * v.gl;
                     R[i0 + i] += d[2 * i + 1] * v.gr;
+                }
+            } else if (v.drive > 0.0f) {  // M5: the driven kick
+                const float* d = v.data + pos;
+                const float k = v.drive, norm = 1.0f / fastTanh(k);
+                for (u32 i = 0; i < cnt; ++i) {
+                    const float s = fastTanh(k * d[i]) * norm;
+                    L[i0 + i] += s * v.gl;
+                    R[i0 + i] += s * v.gr;
                 }
             } else {
                 const float* d = v.data + pos;

@@ -1035,15 +1035,885 @@ void testDeferredRisers() {
     auto* b = new SampleBank;
     CHECK(b->bake(*g_music, kRate, true));
     CHECK(b->riser(0, 4) >= 0 && b->riser(1, 4) < 0 && b->riser(9, 4) < 0 && !b->complete());
+    // M5: and the later Tracks' drum kits (the first Track's at once).
+    CHECK(b->kit(0, 0).kick >= 0 && b->kit(1, 0).kick < 0 && b->kit(9, 2).hat < 0);
     CHECK(b->bakeDeferred(*g_music, kRate) && b->complete());
     bool same = true;
     for (u32 t = 0; t < g_music->trackCount; ++t) {
         const Sample& x = b->sample(b->riser(t, 4));
         const Sample& y = g_bank->sample(g_bank->riser(t, 4));
         same = same && x.frames == y.frames && std::memcmp(x.data, y.data, sizeof(float) * x.frames * 2) == 0;
+        for (u32 v = 0; v < g_music->variantCount; ++v)
+            for (const i32* ids : {&b->kit(t, v).kick, &b->kit(t, v).hat, &b->kit(t, v).ohat}) {
+                const i32 other = ids == &b->kit(t, v).kick ? g_bank->kit(t, v).kick : (ids == &b->kit(t, v).hat ? g_bank->kit(t, v).hat : g_bank->kit(t, v).ohat);
+                const Sample& kx = b->sample(*ids);
+                const Sample& ky = g_bank->sample(other);
+                same = same && kx.frames == ky.frames && kx.frames && std::memcmp(kx.data, ky.data, sizeof(float) * kx.frames) == 0;
+            }
     }
-    CHECK_MSG(same, "a riser baked behind the game differs from the one baked at start");
+    CHECK_MSG(same, "a riser or a drum kit baked behind the game differs from the one baked at start");
+    // A run that starts in another Track bakes that one at once.
+    auto* c = new SampleBank;
+    CHECK(c->bake(*g_music, kRate, true, 9) && c->kit(9, 0).kick >= 0 && c->riser(9, 4) >= 0 && c->kit(0, 0).kick < 0);
+    delete c;
     delete b;
+}
+
+// ---------------------------------------------------------------- M5: the upgrades' sound (conductor.json mods, riffs,
+// boosts; sound_m5.json fusions)
+
+using U = UpgradeSound;
+
+// One player's loadout as Band::setLoadout sends it.
+void postLoadout(Session& s, u8 player, const PlayerLoadout& l) {
+    for (u32 first = 0; first < kModCount; first += 8) {
+        Command c = cmd(CmdType::SetModStacks, player, static_cast<u8>(first), static_cast<u8>(kModCount - first < 8 ? kModCount - first : 8));
+        for (u32 k = 0; k < c.c; ++k) c.mods[k] = l.mods[first + k];
+        s.post(c);
+    }
+    for (u32 r = 0; r < kRiffCount; ++r) s.post(cmd(CmdType::SetRiff, player, static_cast<u8>(r), l.riffs[r]));
+    for (u32 b = 0; b < kBoostCount; ++b) s.post(cmd(CmdType::SetBoost, player, static_cast<u8>(b), static_cast<u8>((l.boosts >> b) & 1u)));
+    s.post(cmd(CmdType::SetFusions, player, l.fusions));
+}
+
+PlayerLoadout withRiff(Riff r, u8 level, PlayerLoadout l = {}) {
+    l.riffs[static_cast<u32>(r)] = level;
+    return l;
+}
+PlayerLoadout withMod(Mod m, u8 stacks, PlayerLoadout l = {}) {
+    l.mods[static_cast<u32>(m)] = stacks;
+    return l;
+}
+PlayerLoadout withBoost(Boost b, PlayerLoadout l = {}) {
+    l.boosts = static_cast<u16>(l.boosts | (1u << static_cast<u32>(b)));
+    return l;
+}
+PlayerLoadout withFusion(Fusion f, PlayerLoadout l = {}) {
+    l.fusions = static_cast<u8>(l.fusions | (1u << static_cast<u32>(f)));
+    return l;
+}
+
+// A conductor session: a Track, the section held from bar 1 (bar 0 is the Groove), one player with a loadout, firing or
+// not, at an intensity (0: the kick alone); `bars` rendered.
+Session* upgradeRun(const PlayerLoadout& l, u32 bars, bool fire, Section sec = Section::Groove, float intensity = 1.0f, u32 track = 0,
+                    bool hold = true) {
+    auto* s = new Session(200000);
+    s->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(track), 0));
+    s->post(cmd(CmdType::SetPlayers, 1, 0));
+    s->post(cmd(CmdType::SetIntensity, 0, 0, 0, intensity));
+    if (hold) {
+        s->post(cmd(CmdType::SetSection, static_cast<u8>(sec)));
+        s->post(cmd(CmdType::HoldSection, 1));
+    } else {
+        s->post(cmd(CmdType::SetForm, static_cast<u8>(Form::Short)));
+    }
+    s->post(cmd(CmdType::SetFire, 0, fire ? 1 : 0));
+    postLoadout(*s, 0, l);
+    if (bars) s->run(static_cast<u64>(barFrames(track) * bars + 0.5));
+    return s;
+}
+
+struct Hit {
+    double tick;
+    float value;
+    double x;
+};
+// The upgrade events of a kind in a session's log (at most `cap` copied); the count.
+u32 upEvents(const Session& s, U k, Hit* out, u32 cap) {
+    u32 n = 0;
+    for (u32 i = 0; i < s.count; ++i) {
+        const BeatEvent& e = s.log[i];
+        if (e.kind != BeatKind::Sfx || e.a != kUpgradeEvent + static_cast<u8>(k)) continue;
+        if (n < cap) out[n] = {e.tick, e.value, e.x};
+        ++n;
+    }
+    return n;
+}
+u32 inBarOf(double tick) { return static_cast<u32>(std::llround(std::fmod(tick, 384.0))); }
+u32 barOf(double tick) { return static_cast<u32>(tick / 384.0 + 1e-9); }
+// The local player's Lead event (its note) on a tick, -1 when none.
+i32 leadAt(const Session& s, double tick) {
+    for (u32 i = 0; i < s.count; ++i)
+        if (s.log[i].kind == BeatKind::Lead && s.log[i].b == 0 && std::fabs(s.log[i].tick - tick) < 0.5) return s.log[i].a;
+    return -1;
+}
+u32 countKind(const Session& s, BeatKind k, u32 fromBar = 0) {
+    u32 n = 0;
+    for (u32 i = 0; i < s.count; ++i) n += s.log[i].kind == k && s.log[i].tick >= 384.0 * fromBar;
+    return n;
+}
+// The engine's own rules, for the notes a test expects.
+float scaleStepT(const Track& t, float base, i32 degrees) {
+    const i32 n = static_cast<i32>(t.scaleCount);
+    const i32 b = static_cast<i32>(std::lround(base));
+    const i32 tonic = t.chords[t.progression[0]].bass % 12;
+    const i32 pc = ((b - tonic) % 12 + 12) % 12;
+    i32 idx = 0;
+    for (i32 d = 0; d < n; ++d)
+        if (t.scale[d] <= pc) idx = d;
+    const i32 to = idx + degrees;
+    const i32 oct = to >= 0 ? to / n : -((-to + n - 1) / n);
+    return base + static_cast<float>(t.scale[to - oct * n] - t.scale[idx] + 12 * oct);
+}
+i32 chordToneT(const Chord& ch, u32 k, i32 octave) {
+    const i32 rootPc = ch.bass % 12, root = 12 * (octave + 1) + rootPc;
+    u32 mask = 0;
+    for (u32 i = 0; i < ch.padCount; ++i) mask |= 1u << (((ch.pad[i] - rootPc) % 12 + 12) % 12);
+    for (u32 i = 0; i < ch.stabCount; ++i) mask |= 1u << (((ch.stab[i] - rootPc) % 12 + 12) % 12);
+    if (k == 1) return (mask >> 3) & 1u ? root + 3 : root + 4;
+    if (k == 2) return root + 7;
+    return k == 4 ? root + 12 : root;
+}
+double midiOf(double hz) { return 69.0 + 12.0 * std::log2(hz / 440.0); }
+
+Hit g_hits[8192];
+
+// Riffs 4-12: each one's instrument on its pattern, from the band's clock (Track 1, 120 BPM, the Groove held).
+void testRiffsPatterned() {
+    constexpr u32 kBars = 9;
+    const Track& t1 = g_music->tracks[0];
+    const auto atSteps = [&](const Session& s, U k, std::initializer_list<u32> inBars, u32 perBar, u32 bars, const char* what) {
+        const u32 n = upEvents(s, k, g_hits, 8192);
+        u32 wrong = 0;
+        for (u32 i = 0; i < n && i < 8192; ++i) {
+            bool ok = false;
+            for (u32 x : inBars) ok = ok || inBarOf(g_hits[i].tick) == x;
+            wrong += !ok;
+        }
+        CHECK_MSG(n == perBar * bars && wrong == 0, "%s: %u events (want %u), %u off their steps", what, n, perBar * bars, wrong);
+    };
+    {  // Lancer, level 1: the chord on beat 4; its charge, a reverse swell from the One, three beats long.
+        Session* s = upgradeRun(withRiff(Riff::Lancer, 1), kBars, false);
+        atSteps(*s, U::LancerChord, {288}, 1, kBars, "Lancer 1 chord");
+        atSteps(*s, U::LancerCharge, {0}, 1, kBars, "Lancer 1 charge");
+        CHECK(upEvents(*s, U::LancerCharge, g_hits, 1) && std::fabs(g_hits[0].x - 288.0) < 1e-9);
+        delete s;
+        s = upgradeRun(withRiff(Riff::Lancer, 3), kBars, false);  // from level 3 on beats 2 and 4, each charged a beat
+        atSteps(*s, U::LancerChord, {96, 288}, 2, kBars, "Lancer 3 chord");
+        atSteps(*s, U::LancerCharge, {0, 192}, 2, kBars, "Lancer 3 charge");
+        CHECK(upEvents(*s, U::LancerCharge, g_hits, 1) && std::fabs(g_hits[0].x - 96.0) < 1e-9);
+        delete s;
+        s = upgradeRun(withBoost(Boost::Hyper, withRiff(Riff::Lancer, 1)), kBars, false);  // Hyper: the pattern twice a bar
+        atSteps(*s, U::LancerChord, {144, 336}, 2, kBars, "Lancer 1 under Hyper");
+        delete s;
+    }
+    {  // Minelayer: a hat as the mine is laid (step 8), the last bar's mines go off on the One.
+        Session* s = upgradeRun(withRiff(Riff::Minelayer, 1), kBars, false);
+        atSteps(*s, U::MineLaid, {192}, 1, kBars, "Minelayer laid");
+        atSteps(*s, U::MineBlast, {0}, 1, kBars - 1, "Minelayer blast");
+        delete s;
+    }
+    {  // Swarm: a bell a missile on the 1/32 grid from the One, the chord's arp; 8 at level 1, 24 at level 5.
+        for (u8 lv : {1, 5}) {
+            Session* s = upgradeRun(withRiff(Riff::Swarm, lv), kBars, false);
+            const u32 count = g_music->conductor.swarmCount[lv - 1];
+            const u32 n = upEvents(*s, U::SwarmBell, g_hits, 8192);
+            u32 wrong = 0;
+            for (u32 i = 0; i < n; ++i) {
+                const u32 k = inBarOf(g_hits[i].tick) / 12;
+                const Chord& ch = t1.chordAtBar(barOf(g_hits[i].tick));
+                wrong += inBarOf(g_hits[i].tick) % 12 != 0 || k >= count ||
+                         std::lround(g_hits[i].x) != ch.arp[k % 16] + 12 * static_cast<i32>(k / 16);
+            }
+            CHECK_MSG(n == count * kBars && wrong == 0, "Swarm %u: %u bells (want %u), %u wrong", lv, n, count * kBars, wrong);
+            delete s;
+        }
+    }
+    {  // Singularity: a three-beat swell in bars 3 and 7, the boom on the One of bars 4 and 8.
+        Session* s = upgradeRun(withRiff(Riff::Singularity, 1), kBars, false);
+        const u32 n = upEvents(*s, U::SingularitySwell, g_hits, 8192);
+        CHECK_MSG(n == 2 && barOf(g_hits[0].tick) == 3 && inBarOf(g_hits[0].tick) == 96 && barOf(g_hits[1].tick) == 7, "Singularity: %u swells", n);
+        const u32 b = upEvents(*s, U::SingularityBoom, g_hits, 8192);
+        CHECK_MSG(b == 2 && barOf(g_hits[0].tick) == 4 && inBarOf(g_hits[0].tick) == 0 && barOf(g_hits[1].tick) == 8, "Singularity: %u booms", b);
+        delete s;
+    }
+    {  // Comet: out on the One, back on three, each over two beats (a second at 120 BPM: rate 1).
+        Session* s = upgradeRun(withRiff(Riff::Comet, 1), kBars, false);
+        atSteps(*s, U::CometOut, {0}, 1, kBars, "Comet out");
+        atSteps(*s, U::CometBack, {192}, 1, kBars, "Comet back");
+        CHECK(upEvents(*s, U::CometOut, g_hits, 1) && std::fabs(g_hits[0].x - 1.0) < 1e-3);
+        delete s;
+    }
+    {  // Flak: a snare on two and four; from level 4 a clap a 1/32 after each.
+        Session* s = upgradeRun(withRiff(Riff::Flak, 1), kBars, false);
+        atSteps(*s, U::FlakSnare, {96, 288}, 2, kBars, "Flak 1 snare");
+        CHECK(upEvents(*s, U::FlakClap, g_hits, 1) == 0);
+        delete s;
+        s = upgradeRun(withRiff(Riff::Flak, 4), kBars, false);
+        atSteps(*s, U::FlakClap, {108, 300}, 2, kBars, "Flak 4 clap");
+        delete s;
+    }
+    {  // Mirror, level 3: every lead note doubled an octave up at 0.55 of the lead.
+        Session* s = upgradeRun(withRiff(Riff::Mirror, 3), kBars, true, Section::Groove, 0.0f);
+        const u32 n = upEvents(*s, U::MirrorNote, g_hits, 8192);
+        u32 wrong = 0;
+        for (u32 i = 0; i < n; ++i)
+            wrong += std::lround(g_hits[i].x) != leadAt(*s, g_hits[i].tick) + 12 ||
+                     std::fabs(g_hits[i].value - g_music->sound[0][g_music->defaultVariant].mix.lead * 0.55f) > 1e-5f;
+        CHECK_MSG(n == countKind(*s, BeatKind::Lead) && n > 0 && wrong == 0, "Mirror: %u notes for %u lead notes, %u wrong", n,
+                  countKind(*s, BeatKind::Lead), wrong);
+        delete s;
+    }
+    {  // The Riffs rest in the Break (bar 0 is the Groove).
+        PlayerLoadout l;
+        for (u32 r = 0; r < kRiffCount; ++r) l.riffs[r] = 5;
+        Session* s = upgradeRun(l, 4, true, Section::Break);
+        u32 inBreak = 0;
+        for (u32 i = 0; i < s->count; ++i) {
+            const BeatEvent& e = s->log[i];
+            inBreak += e.kind == BeatKind::Sfx && e.a >= kUpgradeEvent && e.tick >= 384.0;
+        }
+        CHECK_MSG(inBreak == 0, "%u Riff sounds in the Break", inBreak);
+        delete s;
+    }
+    {
+        // Sweeper: the drone (a render with it less one without, Track 1 with the kick alone) is brighter as the arm passes
+        // twelve o'clock (the One of every second bar) than half a turn later.
+        const u64 frames = static_cast<u64>(barFrames(0) * 4);
+        Capture c[2];
+        for (u32 k = 0; k < 2; ++k) {
+            Engine e;
+            CHECK(e.init(*g_music, *g_bank, kRate));
+            e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
+            e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 0.0f));
+            e.post(cmd(CmdType::HoldSection, 1));
+            if (k) e.post(cmd(CmdType::SetRiff, 0, static_cast<u8>(Riff::Sweeper), 1));
+            runEngine(e, c[k], frames, 256);
+        }
+        const auto bright = [&](double atS) {
+            double d = 0.0, s2 = 0.0, prev = 0.0;
+            for (u64 i = static_cast<u64>((atS - 0.15) * kRate); i < static_cast<u64>((atS + 0.15) * kRate); ++i) {
+                const double x = c[1].out[2 * i] - c[0].out[2 * i];
+                d += (x - prev) * (x - prev);
+                s2 += x * x;
+                prev = x;
+            }
+            return s2 > 0.0 ? d / s2 : 0.0;
+        };
+        const double open = bright(4.0), closed = bright(6.0);  // the One of bar 2 (twelve o'clock), of bar 3 (six)
+        CHECK_MSG(open > 3.0 * closed && closed > 0.0, "Sweeper: brightness %.6f at twelve o'clock, %.6f at six", open, closed);
+        freeCapture(c[0]);
+        freeCapture(c[1]);
+    }
+}
+
+// The Mods that change the lead or add to the mix (conductor.json mods): Track 1, the kick alone, one player firing on
+// the 1/16 grid.
+void testModsOnLead() {
+    constexpr u32 kBars = 6;
+    const Track& t1 = g_music->tracks[0];
+    const float leadMix = g_music->sound[0][g_music->defaultVariant].mix.lead;
+    static LeadVoiceInfo v[128];
+    {  // Seeker: each note glides in from the one before, 12 ms a stack.
+        Session* s = upgradeRun(withMod(Mod::Seeker, 2), 0, true, Section::Groove, 0.0f);
+        u32 pairs = 0, wrong = 0;
+        for (u32 step = 0; step < 40; ++step) {
+            s->run(6000);  // a sixteenth at 120 BPM
+            const u32 n = s->e.leadVoices(v, 128);
+            for (u32 a = 0; a < n; ++a)
+                for (u32 b = 0; b < n; ++b) {
+                    if (v[b].start - v[a].start != 6000 || std::fabs(v[a].hz - v[b].hz) < 0.5f) continue;
+                    ++pairs;
+                    const double want = midiOf(v[a].hz) - midiOf(v[b].hz);
+                    wrong += std::fabs(v[b].glideSemis - want) > 0.01 || v[b].glideN != 1152;
+                }
+        }
+        CHECK_MSG(pairs > 10 && wrong == 0, "Seeker: %u glides checked, %u wrong", pairs, wrong);
+        delete s;
+    }
+    {  // Wave: the vibrato's depth (18 cents a stack) and its phase from the song's clock; Helix Array swings the harmony
+       // half a cycle the other way.
+        PlayerLoadout l = withMod(Mod::Split, 3, withMod(Mod::Wave, 2));
+        Session* s = upgradeRun(l, 0, true, Section::Groove, 0.0f);
+        Session* h = upgradeRun(withFusion(Fusion::HelixArray, l), 0, true, Section::Groove, 0.0f);
+        s->run(static_cast<u64>(barFrames(0) * 2));
+        h->run(static_cast<u64>(barFrames(0) * 2));
+        const auto phaseAt = [](i64 start) {
+            const double t = 5.5 * static_cast<double>(start) / kRate;
+            return t - std::floor(t);
+        };
+        const auto offBy = [](double a, double b) {
+            const double d = std::fabs(a - b);
+            return std::fmin(d, 1.0 - d);
+        };
+        u32 n = s->e.leadVoices(v, 128), wrong = 0;
+        for (u32 i = 0; i < n; ++i) wrong += std::fabs(v[i].vibSemis - 0.36f) > 1e-5f || offBy(v[i].vibPhase, phaseAt(v[i].start)) > 1e-4;
+        CHECK_MSG(n > 0 && wrong == 0, "Wave: %u of %u voices off", wrong, n);
+        n = h->e.leadVoices(v, 128);
+        u32 harmony = 0;
+        wrong = 0;
+        for (u32 i = 0; i < n; ++i) {
+            float lowest = v[i].hz;  // the lead's note: the lowest of the voices that started with it
+            for (u32 j = 0; j < n; ++j)
+                if (v[j].start == v[i].start && v[j].hz < lowest) lowest = v[j].hz;
+            const bool isHarmony = v[i].hz > lowest + 0.5f;
+            harmony += isHarmony;
+            wrong += offBy(v[i].vibPhase, phaseAt(v[i].start) + (isHarmony ? 0.5 : 0.0)) > 1e-4;
+        }
+        CHECK_MSG(harmony > 0 && wrong == 0, "Helix Array: %u harmony voices, %u in the wrong phase", harmony, wrong);
+        delete s;
+        delete h;
+    }
+    {  // Heavy Step: every fourth lead step (3, 7, 11, 15) doubled an octave down on the bass.
+        Session* s = upgradeRun(withMod(Mod::HeavyStep, 1), kBars, true, Section::Groove, 0.0f);
+        const u32 n = upEvents(*s, U::HeavyStepBass, g_hits, 8192);
+        u32 wrong = 0;
+        for (u32 i = 0; i < n; ++i)
+            wrong += (inBarOf(g_hits[i].tick) / 24) % 4 != 3 || std::lround(g_hits[i].x) != leadAt(*s, g_hits[i].tick) - 12;
+        CHECK_MSG(n == 4 * kBars && wrong == 0, "Heavy Step: %u notes, %u wrong", n, wrong);
+        delete s;
+    }
+    {  // Accent: the stab under the accented note (beat 1; 1 and 3; every beat), the note itself 1.4 louder.
+        for (u8 st : {1, 2, 3}) {
+            Session* s = upgradeRun(withMod(Mod::Accent, st), kBars, true, Section::Groove, 0.0f);
+            const u32 n = upEvents(*s, U::ModStab, g_hits, 8192);
+            u32 wrong = 0;
+            for (u32 i = 0; i < n; ++i) wrong += inBarOf(g_hits[i].tick) % (st == 3 ? 96 : (st == 2 ? 192 : 384)) != 0;
+            const u32 want = (st == 3 ? 4 : st) * kBars;
+            CHECK_MSG(n == want && wrong == 0, "Accent %u: %u stabs (want %u), %u wrong", st, n, want, wrong);
+            delete s;
+        }
+        Session* s = upgradeRun(withMod(Mod::Accent, 1), 0, true, Section::Groove, 0.0f);
+        s->run(static_cast<u64>(barFrames(0) * 2) + 100);  // just after the One of bar 2
+        float accented = 0.0f, plain = 0.0f;
+        u32 n = s->e.leadVoices(v, 128);
+        for (u32 i = 0; i < n; ++i)
+            if (v[i].start == static_cast<i64>(barFrames(0) * 2)) accented = v[i].gain;
+        s->run(24000);  // just after beat 2
+        n = s->e.leadVoices(v, 128);
+        for (u32 i = 0; i < n; ++i)
+            if (v[i].start == static_cast<i64>(barFrames(0) * 2) + 24000) plain = v[i].gain;
+        CHECK_MSG(plain > 0.0f && std::fabs(accented / plain - 1.4f) < 1e-4f, "Accent: the accented note at %.4f, the next beat's at %.4f", accented, plain);
+        delete s;
+    }
+    {  // Echo: the lead's delay a beat long (24000 frames at 120 BPM; three sixteenths without).
+        Session* s = upgradeRun(withMod(Mod::Echo, 1), 2, true, Section::Groove, 0.0f);
+        Session* o = upgradeRun(PlayerLoadout{}, 2, true, Section::Groove, 0.0f);
+        CHECK_MSG(s->e.delayFrames() == 24000 && o->e.delayFrames() == 18000, "Echo: delay %u frames (without %u)", s->e.delayFrames(),
+                  o->e.delayFrames());
+        delete s;
+        delete o;
+    }
+    {  // Rear Guard: two scale degrees below the arp on steps 2, 6, 10, 14; the second stack five below on steps 1 and 9.
+        for (u8 st : {1, 2}) {
+            Session* s = upgradeRun(withMod(Mod::RearGuard, st), kBars, true, Section::Groove, 0.0f);
+            const u32 n = upEvents(*s, U::RearGuardNote, g_hits, 8192);
+            u32 wrong = 0;
+            for (u32 i = 0; i < n; ++i) {
+                const u32 step = inBarOf(g_hits[i].tick) / 24;
+                const i32 deg = (step == 1 || step == 9) ? -5 : -2;
+                const bool where = step == 2 || step == 6 || step == 10 || step == 14 || (st == 2 && (step == 1 || step == 9));
+                const Chord& ch = t1.chordAtBar(barOf(g_hits[i].tick));
+                wrong += !where || std::lround(g_hits[i].x) != std::lround(scaleStepT(t1, ch.arp[step], deg)) ||
+                         std::fabs(g_hits[i].value - leadMix * 0.5f) > 1e-5f;
+            }
+            CHECK_MSG(n == (st == 2 ? 6u : 4u) * kBars && wrong == 0, "Rear Guard %u: %u notes, %u wrong", st, n, wrong);
+            delete s;
+        }
+    }
+    {  // Syncopation: an off-beat note 0.3 louder with a square blip an octave up; none on the beat.
+        Session* s = upgradeRun(withMod(Mod::Syncopation, 1), kBars, true, Section::Groove, 0.0f);
+        const u32 n = upEvents(*s, U::SyncBlip, g_hits, 8192);
+        u32 wrong = 0;
+        for (u32 i = 0; i < n; ++i) wrong += inBarOf(g_hits[i].tick) % 96 == 0 || std::lround(g_hits[i].x) != leadAt(*s, g_hits[i].tick) + 12;
+        CHECK_MSG(n == 12 * kBars && wrong == 0, "Syncopation: %u blips, %u wrong", n, wrong);
+        delete s;
+        s = upgradeRun(withMod(Mod::Syncopation, 1), 0, true, Section::Groove, 0.0f);
+        s->run(static_cast<u64>(barFrames(0) * 2) + 100);
+        float onBeat = 0.0f, off = 0.0f;
+        u32 nv = s->e.leadVoices(v, 128);
+        for (u32 i = 0; i < nv; ++i)
+            if (v[i].start == static_cast<i64>(barFrames(0) * 2) && v[i].timbre == 0) onBeat = v[i].gain;
+        s->run(6000);
+        nv = s->e.leadVoices(v, 128);
+        for (u32 i = 0; i < nv; ++i)
+            if (v[i].start == static_cast<i64>(barFrames(0) * 2) + 6000 && v[i].timbre == 0) off = v[i].gain;
+        CHECK_MSG(onBeat > 0.0f && std::fabs(off / onBeat - 1.3f) < 1e-4f, "Syncopation: off-beat %.4f, on the beat %.4f", off, onBeat);
+        delete s;
+    }
+    {  // Bar Line: on every One the chord's stab and a zap on its root.
+        Session* s = upgradeRun(withMod(Mod::BarLine, 1), kBars, false, Section::Groove, 0.0f);
+        const u32 n = upEvents(*s, U::BarLineZap, g_hits, 8192);
+        u32 wrong = 0;
+        for (u32 i = 0; i < n; ++i)
+            wrong += inBarOf(g_hits[i].tick) != 0 || std::lround(g_hits[i].x) != chordToneT(t1.chordAtBar(barOf(g_hits[i].tick)), 0, 5);
+        CHECK_MSG(n == kBars && wrong == 0 && upEvents(*s, U::ModStab, g_hits, 8192) == kBars, "Bar Line: %u zaps, %u wrong", n, wrong);
+        delete s;
+    }
+    {  // Crescendo: the lead 0.2 dB louder a bar without a hit, to +2 dB, the pad opening with it; a hit drops both at once.
+        Session* s = upgradeRun(withMod(Mod::Crescendo, 1), 0, true, Section::Groove, 1.0f);
+        Session* o = upgradeRun(PlayerLoadout{}, 0, true, Section::Groove, 1.0f);
+        const auto newest = [&](Session& x) {
+            const u32 n = x.e.leadVoices(v, 128);
+            i64 best = -1;
+            float g = 0.0f;
+            for (u32 i = 0; i < n; ++i)
+                if (v[i].start > best) {
+                    best = v[i].start;
+                    g = v[i].gain;
+                }
+            return g;
+        };
+        const u64 at = static_cast<u64>(barFrames(0) * 3) + 100;  // bar 3: four bar lines counted, +0.8 dB
+        s->run(at);
+        o->run(at);
+        const float r3 = newest(*s) / newest(*o);
+        CHECK_MSG(std::fabs(r3 - std::pow(10.0f, 0.8f / 20.0f)) < 1e-4f, "Crescendo after 4 bars: x%.4f", r3);
+        CHECK(std::fabs(s->e.padOpenNow() - std::pow(10.0f, 0.8f / 20.0f)) < 1e-4f);
+        s->run(static_cast<u64>(barFrames(0) * 10));
+        o->run(static_cast<u64>(barFrames(0) * 10));
+        const float r13 = newest(*s) / newest(*o);
+        CHECK_MSG(std::fabs(r13 - std::pow(10.0f, 2.0f / 20.0f)) < 1e-4f, "Crescendo at its top: x%.4f", r13);
+        Command hit = cmd(CmdType::Cue, static_cast<u8>(Cue::PlayerHit), 0, 1);
+        hit.when = Timing::Next32;
+        s->post(hit);
+        s->run(6000);
+        o->run(6000);
+        const float after = newest(*s) / newest(*o);
+        CHECK_MSG(std::fabs(after - 1.0f) < 1e-4f && std::fabs(s->e.padOpenNow() - 1.0f) < 1e-6f, "Crescendo after a hit: x%.4f, pad %.4f", after,
+                  s->e.padOpenNow());
+        delete s;
+        delete o;
+    }
+    {  // Kick Pulse on Afterglow (half time: kicks on 1 and the and of 3): a tom with each kick, none on the other beats.
+        Session* s = upgradeRun(withMod(Mod::KickPulse, 1), kBars, false, Section::Groove, 0.0f, 6);
+        u32 kicks = 0, toms = 0, matched = 0;
+        for (u32 i = 0; i < s->count; ++i) {
+            const BeatEvent& e = s->log[i];
+            if (e.kind == BeatKind::Kick) {
+                ++kicks;
+                for (u32 j = 0; j < s->count; ++j)
+                    matched += s->log[j].kind == BeatKind::Sfx && s->log[j].a == kUpgradeEvent + static_cast<u8>(U::KickPulseTom) && s->log[j].frame == e.frame;
+            }
+            toms += e.kind == BeatKind::Sfx && e.a == kUpgradeEvent + static_cast<u8>(U::KickPulseTom);
+        }
+        const i32 note = static_cast<i32>(std::lround(69.0 + 12.0 * std::log2(g_music->sound[6][g_music->defaultVariant].kickHz / 440.0))) + 12;
+        CHECK(upEvents(*s, U::KickPulseTom, g_hits, 1) && std::lround(g_hits[0].x) == note);
+        CHECK_MSG(kicks == 2 * kBars && toms == kicks && matched == kicks, "Kick Pulse: %u kicks, %u toms, %u together", kicks, toms, matched);
+        delete s;
+    }
+    {  // Afterparty: the Surge (the Drop's first half: bars 12-15 of the Short form) holds its second gear two bars longer,
+       // a step faster (1/32 at once).
+        const auto grids = [&](const PlayerLoadout& l, u32* out) {
+            Session* s = upgradeRun(l, 21, true, Section::Groove, 0.0f, 0, false);
+            for (u32 b = 0; b < 21; ++b) out[b] = 0;
+            for (u32 i = 0; i < s->count; ++i)
+                if (s->log[i].kind == BeatKind::Lead && s->log[i].c) out[barOf(s->log[i].tick)] = s->log[i].c;  // c: the grid
+            delete s;
+        };
+        u32 plain[21], party[21];
+        grids(PlayerLoadout{}, plain);
+        grids(withMod(Mod::Afterparty, 1), party);
+        CHECK_MSG(plain[12] == 16 && plain[14] == 12 && plain[16] == 24 && plain[18] == 24, "the Surge: %u %u %u %u", plain[12], plain[14], plain[16], plain[18]);
+        CHECK_MSG(party[12] == 12 && party[14] == 12 && party[16] == 12 && party[17] == 12 && party[18] == 24, "Afterparty: %u %u %u %u %u", party[12],
+                  party[14], party[16], party[17], party[18]);
+    }
+}
+
+// The Boosts' sound (conductor.json boosts).
+void testBoostsPatterned() {
+    constexpr u32 kBars = 6;
+    const Track& t1 = g_music->tracks[0];
+    static LeadVoiceInfo v[128];
+    {  // Time Stretch: the drums at half rate (Track 1's kick on every beat: on 1 and 3).
+        Session* s = upgradeRun(withBoost(Boost::TimeStretch), kBars, false, Section::Groove, 0.2f);
+        Session* o = upgradeRun(PlayerLoadout{}, kBars, false, Section::Groove, 0.2f);
+        u32 wrong = 0;
+        for (u32 i = 0; i < s->count; ++i) wrong += s->log[i].kind == BeatKind::Kick && inBarOf(s->log[i].tick) % 192 != 0;
+        CHECK_MSG(countKind(*s, BeatKind::Kick) == 2 * kBars && countKind(*o, BeatKind::Kick) == 4 * kBars && wrong == 0, "Time Stretch: %u kicks (%u without)",
+                  countKind(*s, BeatKind::Kick), countKind(*o, BeatKind::Kick));
+        CHECK(countKind(*s, BeatKind::Lead) == countKind(*o, BeatKind::Lead));
+        delete s;
+        delete o;
+    }
+    {  // Freeze Frame: a glass chord as it starts, the music high-passed (much less below 150 Hz).
+        Capture c[2];
+        for (u32 k = 0; k < 2; ++k) {
+            Engine e;
+            CHECK(e.init(*g_music, *g_bank, kRate));
+            e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
+            e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+            e.post(cmd(CmdType::HoldSection, 1));
+            if (k) e.post(cmd(CmdType::SetBoost, 0, static_cast<u8>(Boost::FreezeFrame), 1));
+            runEngine(e, c[k], kRate * 4, 256);
+        }
+        const auto low = [&](const Capture& x) {
+            double lp = 0.0, sum = 0.0;
+            const double a = 1.0 - std::exp(-2.0 * kPiD * 150.0 / kRate);
+            for (u64 i = kRate; i < x.frames; ++i) {
+                lp += (x.out[2 * i] - lp) * a;
+                sum += lp * lp;
+            }
+            return sum;
+        };
+        u32 glass = 0;
+        for (u32 i = 0; i < c[1].eventCount; ++i) glass += c[1].events[i].kind == BeatKind::Sfx && c[1].events[i].a == kUpgradeEvent + static_cast<u8>(U::FreezeGlass);
+        CHECK_MSG(glass == 1 && low(c[1]) < 0.25 * low(c[0]), "Freeze Frame: %u glass chords, low end %.3f of the open music's", glass, low(c[1]) / low(c[0]));
+        freeCapture(c[0]);
+        freeCapture(c[1]);
+    }
+    {  // Colossus: the bass's octave below with every bass note.
+        Session* s = upgradeRun(withBoost(Boost::Colossus), kBars, false);
+        const u32 n = upEvents(*s, U::ColossusBass, g_hits, 8192);
+        u32 matched = 0;
+        for (u32 i = 0; i < n; ++i)
+            for (u32 j = 0; j < s->count; ++j)
+                matched += s->log[j].kind == BeatKind::Bass && std::fabs(s->log[j].tick - g_hits[i].tick) < 0.5 && s->log[j].a == std::lround(g_hits[i].x) + 12;
+        CHECK_MSG(n > 0 && n == countKind(*s, BeatKind::Bass) && matched == n, "Colossus: %u notes for %u bass notes, %u an octave under", n,
+                  countKind(*s, BeatKind::Bass), matched);
+        delete s;
+    }
+    {  // Chain Storm: on every beat a zap on each of the chord's three stab notes.
+        Session* s = upgradeRun(withBoost(Boost::ChainStorm), kBars, false);
+        const u32 n = upEvents(*s, U::ChainStormZap, g_hits, 8192);
+        u32 wrong = 0;
+        for (u32 i = 0; i < n; ++i) {
+            const Chord& ch = t1.chordAtBar(barOf(g_hits[i].tick));
+            bool stab = false;
+            for (u32 k = 0; k < ch.stabCount; ++k) stab = stab || std::lround(g_hits[i].x) == ch.stab[k];
+            wrong += inBarOf(g_hits[i].tick) % 96 != 0 || !stab;
+        }
+        CHECK_MSG(n == 12 * kBars && wrong == 0, "Chain Storm: %u zaps, %u wrong", n, wrong);
+        delete s;
+    }
+    {  // Chorus: each lead note doubled a fifth above and an octave below at 0.4.
+        Session* s = upgradeRun(withBoost(Boost::Chorus), kBars, true, Section::Groove, 0.0f);
+        const u32 n = upEvents(*s, U::ChorusNote, g_hits, 8192);
+        u32 wrong = 0;
+        for (u32 i = 0; i < n; ++i) {
+            const i32 lead = leadAt(*s, g_hits[i].tick);
+            wrong += std::lround(g_hits[i].x) != lead - 12 && std::lround(g_hits[i].x) != std::lround(scaleStepT(t1, static_cast<float>(lead), 4));
+        }
+        CHECK_MSG(n == 2 * countKind(*s, BeatKind::Lead) && wrong == 0, "Chorus: %u notes, %u wrong", n, wrong);
+        delete s;
+    }
+    {  // Beam: the lead holds (four times the decay and length), retriggered softly.
+        Session* s = upgradeRun(withBoost(Boost::Beam), 0, true, Section::Groove, 0.0f);
+        Session* o = upgradeRun(PlayerLoadout{}, 0, true, Section::Groove, 0.0f);
+        const u64 at = static_cast<u64>(barFrames(0) * 2) + 100;
+        s->run(at);
+        o->run(at);
+        u32 n = s->e.leadVoices(v, 128);
+        u32 len = 0;
+        float vel = 0.0f;
+        for (u32 i = 0; i < n; ++i)
+            if (v[i].start == static_cast<i64>(barFrames(0) * 2)) {
+                len = v[i].length;
+                vel = v[i].vel;
+            }
+        n = o->e.leadVoices(v, 128);
+        u32 len0 = 0;
+        float vel0 = 0.0f;
+        for (u32 i = 0; i < n; ++i)
+            if (v[i].start == static_cast<i64>(barFrames(0) * 2)) {
+                len0 = v[i].length;
+                vel0 = v[i].vel;
+            }
+        CHECK_MSG(len0 && std::fabs(static_cast<float>(len) / static_cast<float>(len0) - 4.0f) < 0.01f && std::fabs(vel / vel0 - 0.6f) < 1e-5f,
+                  "Beam: length %u (%u without), velocity %.3f (%.3f)", len, len0, vel, vel0);
+        delete s;
+        delete o;
+    }
+    {  // Fractal: each note followed a 1/32 apart by its octave (0.3) and its double octave (0.15).
+        Session* s = upgradeRun(withBoost(Boost::Fractal), kBars, true, Section::Groove, 0.0f);
+        const u32 n = upEvents(*s, U::FractalNote, g_hits, 8192);
+        u32 wrong = 0;
+        for (u32 i = 0; i < n; ++i) {
+            const i32 one = leadAt(*s, g_hits[i].tick - 12.0), two = leadAt(*s, g_hits[i].tick - 24.0);
+            wrong += !((one >= 0 && std::lround(g_hits[i].x) == one + 12) || (two >= 0 && std::lround(g_hits[i].x) == two + 24));
+        }
+        CHECK_MSG(n + 2 >= 2 * countKind(*s, BeatKind::Lead) && n > 0 && wrong == 0, "Fractal: %u notes for %u lead notes, %u wrong", n,
+                  countKind(*s, BeatKind::Lead), wrong);
+        delete s;
+    }
+    {  // Carousel: a tom on every beat, root, third, fifth and octave of the chord.
+        Session* s = upgradeRun(withBoost(Boost::Carousel), kBars, false);
+        const u32 n = upEvents(*s, U::CarouselTom, g_hits, 8192);
+        u32 wrong = 0;
+        static constexpr u32 kTone[4] = {0, 1, 2, 4};
+        for (u32 i = 0; i < n; ++i)
+            wrong += inBarOf(g_hits[i].tick) % 96 != 0 ||
+                     std::lround(g_hits[i].x) != chordToneT(t1.chordAtBar(barOf(g_hits[i].tick)), kTone[inBarOf(g_hits[i].tick) / 96], 3);
+        CHECK_MSG(n == 4 * kBars && wrong == 0, "Carousel: %u toms, %u wrong", n, wrong);
+        delete s;
+    }
+    {  // Magnet Storm: the Shard run climbs twice as fast.
+        for (u32 k = 0; k < 2; ++k) {
+            Session* s = upgradeRun(k ? withBoost(Boost::MagnetStorm) : PlayerLoadout{}, 1, false);
+            for (u32 j = 0; j < 4; ++j) s->post(cmd(CmdType::Shard, 0, 0, 0, 1.0f));
+            s->run(kRate / 2);
+            u32 seen = 0, wrong = 0;
+            for (u32 i = 0; i < s->count; ++i) {
+                const BeatEvent& e = s->log[i];
+                if (e.kind != BeatKind::Sfx || e.a != static_cast<u8>(Sfx::Shard)) continue;
+                wrong += std::lround(midiOf(e.x)) != g_bank->shardScale(0)[seen * (k ? 2 : 1)];
+                ++seen;
+            }
+            CHECK_MSG(seen == 4 && wrong == 0, "Magnet Storm %u: %u Shards, %u off the run", k, seen, wrong);
+            delete s;
+        }
+    }
+}
+
+// The Fusions (sound_m5.json fusions): each one's sound, and its ingredients' sounds gone.
+void testFusions() {
+    constexpr u32 kBars = 6;
+    const Track& t1 = g_music->tracks[0];
+    static LeadVoiceInfo v[128];
+    const auto count = [&](const PlayerLoadout& l, U k, bool fire = true) {
+        Session* s = upgradeRun(l, kBars, fire, Section::Groove, 0.0f);
+        const u32 n = upEvents(*s, k, g_hits, 8192);
+        delete s;
+        return n;
+    };
+    {  // Standing Wave (Echo + Accent): each accented note held a bar as a pad voice; no stab, no Echo delay.
+        const PlayerLoadout l = withFusion(Fusion::StandingWave, withMod(Mod::Echo, 2, withMod(Mod::Accent, 3)));
+        Session* s = upgradeRun(l, kBars, true, Section::Groove, 0.0f);
+        const u32 n = upEvents(*s, U::StandingWave, g_hits, 8192);
+        u32 wrong = 0;
+        for (u32 i = 0; i < n; ++i) wrong += inBarOf(g_hits[i].tick) % 96 != 0 || std::lround(g_hits[i].x) != leadAt(*s, g_hits[i].tick);
+        CHECK_MSG(n == 4 * kBars && wrong == 0 && upEvents(*s, U::ModStab, g_hits, 1) == 0 && s->e.delayFrames() == 18000,
+                  "Standing Wave: %u held notes, %u wrong, delay %u", n, wrong, s->e.delayFrames());
+        delete s;
+    }
+    {  // Tesla Bloom (Pulse Ring + Arc): each ring carries zaps; Arc's chain zaps are gone.
+        const PlayerLoadout l = withFusion(Fusion::TeslaBloom, withRiff(Riff::PulseRing, 5, withMod(Mod::Arc, 3)));
+        CHECK(count(l, U::TeslaZap, false) == 4 * kBars);  // a ring every beat from level 2
+        Capture c[2];
+        for (u32 k = 0; k < 2; ++k) {  // an Arc chain posted or not: the same render
+            Engine e;
+            CHECK(e.init(*g_music, *g_bank, kRate));
+            e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
+            Command f = cmd(CmdType::SetFusions, 0, static_cast<u8>(1u << static_cast<u32>(Fusion::TeslaBloom)));
+            e.post(f);
+            if (k) {
+                Command a = cmd(CmdType::Cue, static_cast<u8>(Cue::ArcChain), 0, 3, 1.0f);
+                a.tick = 384.0;
+                a.when = Timing::AtTick;
+                e.post(a);
+            }
+            runEngine(e, c[k], kRate * 2, 256);
+        }
+        CHECK_MSG(std::memcmp(c[0].out, c[1].out, sizeof(float) * c[0].frames * 2) == 0, "Tesla Bloom: Arc's zap still sounds");
+        freeCapture(c[0]);
+        freeCapture(c[1]);
+    }
+    {  // Shard Halo (Orbitals + Shatter): the shaker doubled by glass ticks an octave apart.
+        const PlayerLoadout l = withFusion(Fusion::ShardHalo, withRiff(Riff::Orbitals, 5, withMod(Mod::Shatter, 3)));
+        Session* s = upgradeRun(l, kBars, false, Section::Groove, 0.0f);
+        const u32 n = upEvents(*s, U::HaloGlass, g_hits, 8192);
+        u32 octaves = 0;
+        for (u32 i = 1; i < n; ++i) octaves += std::abs(std::lround(g_hits[i].x) - std::lround(g_hits[i - 1].x)) == 12;
+        CHECK_MSG(n == countKind(*s, BeatKind::Shaker) && n > 0 && octaves + 1 >= n - kBars, "Shard Halo: %u glass ticks for %u shakers, %u octave leaps", n,
+                  countKind(*s, BeatKind::Shaker), octaves);
+        delete s;
+    }
+    {  // Downbeat Cannon (Lancer + On-Beat Crit): the chord at 1.2 and the impact on every One; no Lancer, no crit octave.
+        const PlayerLoadout l = withFusion(Fusion::DownbeatCannon, withRiff(Riff::Lancer, 5, withMod(Mod::OnBeatCrit, 3)));
+        Session* s = upgradeRun(l, kBars, true, Section::Groove, 0.0f);
+        const u32 n = upEvents(*s, U::CannonOne, g_hits, 8192);
+        u32 wrong = 0;
+        for (u32 i = 0; i < n; ++i) wrong += inBarOf(g_hits[i].tick) != 0 || std::fabs(g_hits[i].value - 1.2f) > 1e-6f;
+        CHECK_MSG(n == kBars && wrong == 0 && upEvents(*s, U::LancerChord, g_hits, 1) == 0, "Downbeat Cannon: %u, %u wrong", n, wrong);
+        s->run(static_cast<u64>(barFrames(0)) + 100 - static_cast<u64>(barFrames(0)) % 1);  // a beat note: no octave above it
+        const u32 nv = s->e.leadVoices(v, 128);
+        u32 octave = 0;
+        for (u32 i = 0; i < nv; ++i)
+            for (u32 j = 0; j < nv; ++j) octave += v[i].start == v[j].start && std::fabs(v[j].hz - 2.0f * v[i].hz) < 0.5f;
+        CHECK_MSG(octave == 0, "Downbeat Cannon: %u crit octaves", octave);
+        delete s;
+    }
+    {  // Collapse Field (Minelayer + Gravity Rounds): a swell over the last beat into the detonation; Gravity's thup gone.
+        const PlayerLoadout l = withFusion(Fusion::CollapseField, withRiff(Riff::Minelayer, 5, withMod(Mod::GravityRounds, 2)));
+        Session* s = upgradeRun(l, kBars, false, Section::Groove, 0.0f);
+        const u32 n = upEvents(*s, U::CollapseSwell, g_hits, 8192);
+        u32 wrong = 0;
+        for (u32 i = 0; i < n; ++i) wrong += inBarOf(g_hits[i].tick) != 288;
+        CHECK_MSG(n == kBars && wrong == 0, "Collapse Field: %u swells, %u wrong", n, wrong);
+        delete s;
+        Capture c[2];
+        for (u32 k = 0; k < 2; ++k) {
+            Engine e;
+            CHECK(e.init(*g_music, *g_bank, kRate));
+            e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
+            e.post(cmd(CmdType::SetFusions, 0, static_cast<u8>(1u << static_cast<u32>(Fusion::CollapseField))));
+            if (k) {
+                Command a = cmd(CmdType::Cue, static_cast<u8>(Cue::GravityHit), 0, 3);
+                a.tick = 384.0;
+                a.when = Timing::AtTick;
+                e.post(a);
+            }
+            runEngine(e, c[k], kRate * 2, 256);
+        }
+        CHECK_MSG(std::memcmp(c[0].out, c[1].out, sizeof(float) * c[0].frames * 2) == 0, "Collapse Field: Gravity's thup still sounds");
+        freeCapture(c[0]);
+        freeCapture(c[1]);
+    }
+    {  // Murmuration (Swarm + Seeker): a 1/32 trill between the chord's third and fifth; no volley, no glide.
+        const PlayerLoadout l = withFusion(Fusion::Murmuration, withRiff(Riff::Swarm, 5, withMod(Mod::Seeker, 3)));
+        Session* s = upgradeRun(l, kBars, true, Section::Groove, 0.0f);
+        const u32 n = upEvents(*s, U::MurmurationTrill, g_hits, 8192);
+        u32 wrong = 0;
+        for (u32 i = 0; i < n; ++i) {
+            const Chord& ch = t1.chordAtBar(barOf(g_hits[i].tick));
+            const i32 want = chordToneT(ch, (inBarOf(g_hits[i].tick) / 12) % 2 ? 2 : 1, 5);
+            wrong += std::lround(g_hits[i].x) != want;
+        }
+        CHECK_MSG(n == 32 * kBars && wrong == 0 && upEvents(*s, U::SwarmBell, g_hits, 1) == 0, "Murmuration: %u trill notes, %u wrong", n, wrong);
+        const u32 nv = s->e.leadVoices(v, 128);
+        u32 glides = 0;
+        for (u32 i = 0; i < nv; ++i) glides += v[i].glideN != 0;
+        CHECK_MSG(glides == 0, "Murmuration: %u notes still glide", glides);
+        delete s;
+    }
+    {  // Quartet (Mirror + Rear Guard): the note in four parts; no Mirror octave, no counter-melody.
+        const PlayerLoadout l = withFusion(Fusion::Quartet, withRiff(Riff::Mirror, 5, withMod(Mod::RearGuard, 2)));
+        Session* s = upgradeRun(l, kBars, true, Section::Groove, 0.0f);
+        const u32 n = upEvents(*s, U::QuartetNote, g_hits, 8192);
+        u32 wrong = 0;
+        for (u32 i = 0; i < n; ++i) {
+            const i32 lead = leadAt(*s, g_hits[i].tick), x = static_cast<i32>(std::lround(g_hits[i].x));
+            wrong += x != std::lround(scaleStepT(t1, static_cast<float>(lead), 2)) && x != std::lround(scaleStepT(t1, static_cast<float>(lead), 4)) &&
+                     x != lead + 12;
+        }
+        CHECK_MSG(n == 3 * countKind(*s, BeatKind::Lead) && wrong == 0 && upEvents(*s, U::MirrorNote, g_hits, 1) == 0 &&
+                      upEvents(*s, U::RearGuardNote, g_hits, 1) == 0,
+                  "Quartet: %u notes, %u wrong", n, wrong);
+        delete s;
+    }
+}
+
+// The content engineer's eight (cues.h, appended): notes named against the chord at the tick they play (scale steps,
+// semitones, chord tones, from the chord's own notes: Aurora's B major has D#), a held pad note gliding an octave, the
+// impact pitched, the driven kick louder than the kick.
+void testChordNotesAndNewRecipes() {
+    {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 3, 0));  // Aurora: Em, Am, C, B
+        e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 0.0f));
+        const auto at = [&](Recipe r, i32 midi, double tick) {
+            Command k = cmd(CmdType::Recipe, static_cast<u8>(r), 0, 255, 1.0f);
+            encodeNote(k, midi);
+            k.when = Timing::AtTick;
+            k.tick = tick;
+            e.post(k);
+        };
+        Capture warm;
+        runEngine(e, warm, 512, 256);  // bar 0 planned
+        freeCapture(warm);
+        // Posted during bar 0 for bar 3 (B major: B, D#, F#, no seventh: the scale's A) and bar 0 (E minor).
+        for (i32 k = 0; k < 4; ++k) at(Recipe::RimShot, chordNote(k, 5, NoteFrom::ChordTone), 3.0 * 384.0 + 96.0 * k);
+        at(Recipe::RimShot, chordNote(2, 4), 96.0);                      // two scale steps over E4: G4
+        at(Recipe::RimShot, chordNote(-1, 4), 120.0);                    // one down: D4
+        at(Recipe::RimShot, chordNote(7, 3, NoteFrom::Semitones), 144.0);  // a fifth over E3: B3
+        Capture c;
+        runEngine(e, c, static_cast<u64>(barFrames(3) * 4.5), 256);
+        i32 got[7] = {-1, -1, -1, -1, -1, -1, -1};
+        u32 n = 0;
+        for (u32 i = 0; i < c.eventCount && n < 7; ++i)
+            if (c.events[i].kind == BeatKind::Sfx && c.events[i].a == 64 + static_cast<u8>(Recipe::RimShot)) got[n++] = static_cast<i32>(std::lround(c.events[i].x));
+        const i32 want[7] = {83, 87, 90, 93, 67, 62, 59};
+        u32 wrong = 0;
+        for (u32 i = 0; i < 7; ++i) wrong += got[i] != want[i];
+        CHECK_MSG(n == 7 && wrong == 0, "chord notes: %d %d %d %d %d %d %d", got[0], got[1], got[2], got[3], got[4], got[5], got[6]);
+        freeCapture(c);
+    }
+    // A pad voice from A4, gliding up an octave over half a second (Script: dry, alone).
+    {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), 0, 0));
+        Command s = cmd(CmdType::VoiceStart, 2, static_cast<u8>(Recipe::PadVoice), 69, 1.0f);
+        s.z = 0.02f;
+        e.post(s);
+        Capture a, b;
+        runEngine(e, a, kRate, 256);
+        Command g = cmd(CmdType::VoiceSet, 2, 0, 0, 0.0f);
+        g.y = -1.0f;
+        encodeNote(g, 81);
+        g.z = 0.5f;
+        e.post(g);
+        runEngine(e, b, kRate, 256);
+        const auto at = [](const Capture& x, u64 from, double hz) {  // Goertzel power over 0.25 s
+            const double w = 2.0 * kPiD * hz / kRate, k = 2.0 * std::cos(w);
+            double s1 = 0.0, s2 = 0.0;
+            for (u64 i = from; i < from + kRate / 4; ++i) {
+                const double s0 = x.out[2 * i] + k * s1 - s2;
+                s2 = s1;
+                s1 = s0;
+            }
+            return s1 * s1 + s2 * s2 - k * s1 * s2;
+        };
+        const double before = at(a, kRate / 2, 440.0) / (at(a, kRate / 2, 880.0) + 1e-12), after = at(b, kRate * 3 / 4 - kRate / 4, 880.0) / (at(b, kRate / 2, 440.0) + 1e-12);
+        CHECK_MSG(before > 10.0 && after > 10.0, "pad glide: 440/880 before %.1f, 880/440 after %.1f", before, after);
+        freeCapture(a);
+        freeCapture(b);
+    }
+    // The impact a fifth up rings 2^(-7/12) as long; the driven kick is louder than the kick.
+    const auto ring = [](Recipe r, float p1, double& rms) {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), 0, 0));
+        Command k = cmd(CmdType::Recipe, static_cast<u8>(r), 0, 255, 1.0f);
+        k.z = p1;
+        e.post(k);
+        Capture c;
+        runEngine(e, c, kRate * 3, 256);
+        u64 last = 0;
+        double s = 0.0;
+        for (u64 i = 0; i < c.frames; ++i) {
+            if (std::fabs(c.out[2 * i]) > 1e-4f) last = i;
+            s += static_cast<double>(c.out[2 * i]) * c.out[2 * i];
+        }
+        rms = s;
+        freeCapture(c);
+        return static_cast<double>(last);
+    };
+    double r0 = 0.0, r7 = 0.0, k1 = 0.0, k3 = 0.0;
+    const double plain = ring(Recipe::Impact, 0.0f, r0), fifth = ring(Recipe::Impact, 7.0f, r7);
+    CHECK_MSG(std::fabs(fifth / plain - std::exp2(-7.0 / 12.0)) < 0.05, "the impact a fifth up rings %.3f as long", fifth / plain);
+    ring(Recipe::DrivenKick, 0.01f, k1);
+    ring(Recipe::DrivenKick, 3.0f, k3);
+    CHECK_MSG(k3 > 1.3 * k1, "the driven kick: %.3f x the energy of the kick", k3 / k1);
+}
+
+// Everything owned at once (the four players of --band max, no cues): the same render in random bursts as in fixed ones,
+// no allocation; with the game's events every 1/60 s: no voice stolen, no allocation, on every Track's tempo extreme.
+void testUpgradesWorstCase() {
+    Command setup[64];
+    const u32 n = maxLoadSetup(setup, 64);
+    Capture c[2];
+    for (u32 k = 0; k < 2; ++k) {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 9, 0));
+        // (Held in the first section, the Groove: a section forced on a bar line, as the load test forces the Drop, ramps its
+        // gain from where the blocks fell; the game's director names its sections a bar ahead.)
+        for (u32 i = 0; i < n; ++i)
+            if (setup[i].type != CmdType::SetSection) e.post(setup[i]);
+        runEngine(e, c[k], kRate * 6, k ? 0 : 256, 11);
+    }
+    CHECK_MSG(std::memcmp(c[0].out, c[1].out, sizeof(float) * c[0].frames * 2) == 0 && c[0].allocs == 0 && c[1].allocs == 0,
+              "the worst case: random bursts differ from fixed ones, or allocations (%llu, %llu)", static_cast<unsigned long long>(c[0].allocs),
+              static_cast<unsigned long long>(c[1].allocs));
+    freeCapture(c[0]);
+    freeCapture(c[1]);
+    for (u32 t : {0u, 9u}) {
+        auto* s = new Session(400000);
+        s->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
+        for (u32 i = 0; i < n; ++i) s->post(setup[i]);
+        Command feed[40];
+        for (u32 f = 0; f < 60 * 8; ++f) {
+            const u32 m = maxLoadFrame(f, feed, 40);
+            for (u32 i = 0; i < m; ++i) s->post(feed[i]);
+            s->run(kRate / 60, 240);
+        }
+        CHECK_MSG(s->e.stats().steals.load() == 0 && s->allocs == 0 && s->offGrid == 0, "%s worst case: steals %u, allocations %llu, off the grid %u",
+                  g_music->tracks[t].id, s->e.stats().steals.load(), static_cast<unsigned long long>(s->allocs), s->offGrid);
+        std::printf("  worst case %s: voices peak %u (lead %u)\n", g_music->tracks[t].id, s->e.stats().voicesPeak.load(), s->e.stats().leadPeak.load());
+        delete s;
+    }
 }
 
 // All ten palettes load, one for each Track of the set list (design/palettes.json "track").
@@ -1156,6 +2026,12 @@ int main() {
         {"A-minor effects in each Track's key (M5)", testEffectsInKey},
         {"recipes, held voices and cues sound, stop and do not allocate (M5)", testRecipesAndCues},
         {"the later Tracks' risers baked behind the game (M5)", testDeferredRisers},
+        {"Riffs 4-12 on their patterns (M5)", testRiffsPatterned},
+        {"the Mods on the lead and in the mix (M5)", testModsOnLead},
+        {"the Boosts' layers (M5)", testBoostsPatterned},
+        {"the Fusions replace their ingredients (M5)", testFusions},
+        {"the upgrades' worst case: bursts, allocations, steals (M5)", testUpgradesWorstCase},
+        {"notes against the chord, the pad's glide, the eight new recipes (M5)", testChordNotesAndNewRecipes},
     };
     for (const Test& t : tests) {
         g_test = t.name;

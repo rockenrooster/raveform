@@ -7,7 +7,6 @@
 // on the music's effects bus (swells, impacts, whooshes, drones), like the Riffs of the first slice.
 
 #include <cmath>
-#include <cstdlib>
 #include <new>
 
 #include "audio/engine.h"
@@ -37,6 +36,13 @@ float recipeLevel(Recipe r, const SoundParams& s) {
         case Recipe::Crackle: return 0.08f;           // Burn's crackle level (conductor.json mods.burn)
         case Recipe::Whoosh: return 0.3f;             // the Comet's whoosh level (riffs.comet)
         case Recipe::Roll: return s.mix.snare;
+        // M5, appended: the content engineer's eight (the rubber string plays at the bass's own level).
+        case Recipe::RubberString: return s.mix.bass;
+        case Recipe::Impact: return s.mix.impact;
+        case Recipe::Hat: return s.mix.hat;
+        case Recipe::TomRoll: return s.mix.pulse;
+        case Recipe::DrivenKick: return s.mix.kick;
+        case Recipe::RimShot: return 0.25f;           // a woodblock's neighbour (engine choice)
         default: return 0.2f;
     }
 }
@@ -65,6 +71,9 @@ constexpr float kSyncBlip = 0.3f;            // mods.syncopation's blip: no leve
 constexpr float kSyncBlipLength = 0.3f;      // ... and as short (0.3 of the lead's length)
 constexpr float kHeavyTailS = 0.15f;         // mods.heavy_step: the bass note's voice rings this long past its gate
 constexpr float kStabMax = 1.0f;             // Accent's and Bar Line's stabs on one tick, summed, at most this velocity
+constexpr float kRubberTailS = 0.15f;        // the rubber string rings this long past its gate
+constexpr double kImpactMidi = 26.6;         // the impact's sine settles at 38 Hz (bake.cpp makeImpact)
+constexpr float kDrivenKick = 3.0f;          // the driven kick's drive when the page gives none (engine choice)
 
 float aggGain(u32 n) {  // sound_m5.json: 1 - e^(-count / 2.5), one event at its level, at most 1.6 x
     const float g = (1.0f - std::exp(-static_cast<float>(n) / 2.5f)) / (1.0f - std::exp(-1.0f / 2.5f));
@@ -86,8 +95,9 @@ struct Engine::ContentVoice {
     i16 note = -1;
     u32 delay = 0, age = 0, length = 0;  // one-shots end at length; held ones on stop
     i64 releaseAt = -1;   // the frame its release begins (-1: none planned)
-    i64 retuneAt = -1;    // the frame it glides to retune[] (a drone following the chord)
+    i64 retuneAt = -1;    // the frame it glides to retune[] (a drone following the chord; setVoice's note)
     float retune[2] = {};
+    u32 retuneN = 0;      // over this many frames (0: 20 ms)
     float gl = 0.0f, gr = 0.0f, gain = 0.0f, gainTarget = 0.0f;
     float env = 0.0f, attackStep = 1.0f, releaseMul = 0.0f;
     float param = 0.0f, paramTarget = 0.0f;
@@ -100,7 +110,7 @@ struct Engine::ContentVoice {
     SvfCoefs c{};
     // PadVoice: its filter's LFO; Crackle: the burst and its band-pass.
     float lfoW = 0.0f, fcBase = 0.0f, fcLfo = 0.0f;
-    u32 burstLeft = 0;
+    u32 burstLeft = 0, gapLeft = 0;
     float burstEnv = 0.0f, bp1 = 0.0f, bp2 = 0.0f;
     Random rng{1};
 };
@@ -120,6 +130,7 @@ void Engine::stopContent() {
     for (u32 i = 0; i < kContentVoices; ++i) content_[i].active = false;
     for (auto& row : cueCount_)
         for (u8& n : row) n = 0;
+    for (float& b : burn_) b = 0.0f;
     bedFramesLeft_ = 0;
 }
 
@@ -168,6 +179,32 @@ i32 Engine::chordTone(const Chord& ch, u32 k, i32 octave) const {
         case 3: return has(10) ? root + 10 : (has(11) ? root + 11 : static_cast<i32>(scaleStep(static_cast<float>(root), 6)));
         default: return root + 12;
     }
+}
+
+const Chord& Engine::chordAtTick(double tick) const {
+    if (tick < 0.0 || !plan_ || !plan_->chord) return currentChord();
+    // chordBar_ already counts the bar being played (as Warp reads it).
+    const i64 ahead = static_cast<i64>(tick) / kTicksPerBar - plan_->tick / kTicksPerBar;
+    return tr_->chordAtBar(static_cast<u32>(static_cast<i64>(chordBar_) - 1 + (ahead > 0 ? ahead : 0)));
+}
+
+i32 Engine::resolveNote(const Command& c, double tick) const {
+    if (c.c != 254) return c.c == 255 ? -1 : c.c;
+    // A chordNote (cues.h): amount above the chord's root in an octave, by scale steps, semitones or chord tones.
+    const Chord& ch = chordAtTick(tick);
+    const NoteFrom from = static_cast<NoteFrom>(c.mods[0]);
+    const i32 octave = c.mods[1], amount = static_cast<i32>(c.mods[2]) - 128;
+    const i32 root = 12 * (octave + 1) + ch.bass % 12;
+    i32 note = root;
+    if (from == NoteFrom::Semitones) {
+        note = root + amount;
+    } else if (from == NoteFrom::ChordTone) {
+        const i32 k = amount < 0 ? 0 : amount;
+        note = chordTone(ch, static_cast<u32>(k % 4 == 0 && k ? 4 : k % 4), octave) + 12 * (k > 4 ? (k - 1) / 4 : 0);
+    } else {
+        note = static_cast<i32>(std::lround(scaleStep(static_cast<float>(root), amount)));
+    }
+    return note < 0 ? 0 : (note > 127 ? 127 : note);
 }
 
 // ---------------------------------------------------------------- one-shots and held voices
@@ -375,6 +412,55 @@ void Engine::playRecipeAt(Recipe r, i32 midi, float gain, float pan, i64 frame, 
             }
             break;
         }
+        // M5, appended (cues.h): the content engineer's eight.
+        case Recipe::RubberString: {  // the bass patch with twice its decay, held p1 sixteenths, on the effects bus
+            const i32 note = midi >= 0 ? midi : chordAtTick(tick).bass + 12;
+            const float steps = p1 > 0.0f ? p1 : 1.0f;
+            const double gateS = 60.0 / trackBpm() / 4.0 * steps;
+            fastBass(playBass(static_cast<float>(note), gain, steps, frame, 2.0f, static_cast<float>(gateS) + kRubberTailS, Bus::Sfx));
+            break;
+        }
+        case Recipe::Impact: {  // the Drop's impact, p1 semitones up; a note puts its sine's settling pitch there
+            double semis = p1;
+            if (midi >= 0) semis += midi - kImpactMidi;
+            playSample(bank_->impact(), Bus::Sfx, frame, level, pan, static_cast<float>(std::exp2(semis / 12.0)));
+            break;
+        }
+        case Recipe::Hat: {  // the Track's closed (p1 = 1: open) hat
+            const DrumKit& kit = bank_->kit(track_, variant_);
+            playSample(p1 >= 1.0f ? kit.ohat : kit.hat, Bus::Sfx, frame, p1 >= 1.0f ? sp_->mix.ohat * gain : level, pan);
+            break;
+        }
+        case Recipe::TomRoll: {
+            // Over p1 beats ending on the frame given, as the Build's roll (quarters, eighths, sixteenths, thirty-seconds),
+            // rising from 0.35 to 1 and up p2 semitones (default an octave) from the note.
+            const double beats = p1 > 0.0f ? p1 : 2.0;
+            const double rise = p2 != 0.0f ? p2 : 12.0;
+            const i32 base = midi >= 0 ? midi : 12 * 4 + chordAtTick(tick).bass % 12;
+            const double endTick = tick >= 0.0 ? tick : tempo_.tickAt(static_cast<double>(frame));
+            const double startTick = endTick - beats * kPpq;
+            static const double kDiv[4] = {96.0, 48.0, 24.0, 12.0};
+            const ConductorRules& rules = music_->conductor;
+            u32 hits = 0;
+            for (u32 part = 0; part < 4; ++part) {
+                const double t0 = startTick + part * beats * kPpq / 4.0, t1 = t0 + beats * kPpq / 4.0;
+                for (double t = t0; t < t1 - 1e-6 && hits < 32; t += kDiv[part], ++hits) {
+                    const double u = (t - startTick) / (beats * kPpq);
+                    const i32 note = base + static_cast<i32>(std::lround(rise * u));
+                    recipeShot(Recipe::Tom, note, level * (rules.snareRollLo + (rules.snareRollHi - rules.snareRollLo) * static_cast<float>(u)), pan,
+                               frameOf(t), Bus::Sfx);
+                }
+            }
+            break;
+        }
+        case Recipe::DrivenKick:
+            driveSample(playSample(bank_->kit(track_, variant_).kick, Bus::Sfx, frame, level, pan), p1 > 0.0f ? p1 : kDrivenKick);
+            break;
+        case Recipe::RimShot: {
+            const i32 note = midi >= 0 ? midi : chordRootMidi(5);
+            pitched(note, note);
+            break;
+        }
         default: break;  // Drone, PadVoice, Crackle: held voices (startVoice)
     }
     emit(BeatKind::Sfx, frame, tick, static_cast<u8>(64 + static_cast<u32>(r)), 0, 0, level, 0, static_cast<double>(midi));
@@ -411,15 +497,16 @@ void Engine::applyContentCommand(const Command& c) {
                 tick = std::ceil(tempo_.tickAt(static_cast<double>(frame_)) / 12.0) * 12.0;
                 // Without a tick, the ones that end on their tick start now and end p1 beats on.
                 const Recipe r = static_cast<Recipe>(c.a);
-                if (r == Recipe::Roll || r == Recipe::RevCymbal) tick += (c.z > 0.0f ? c.z : (r == Recipe::Roll ? 4.0 : 1.0)) * kPpq;
+                if (r == Recipe::Roll || r == Recipe::RevCymbal || r == Recipe::TomRoll)
+                    tick += (c.z > 0.0f ? c.z : (r == Recipe::Roll ? 4.0 : (r == Recipe::TomRoll ? 2.0 : 1.0))) * kPpq;
             }
-            playRecipeAt(static_cast<Recipe>(c.a), c.c == 255 ? -1 : c.c, c.x, c.y, frameOf(tick), tick, c.z, c.level);
+            playRecipeAt(static_cast<Recipe>(c.a), resolveNote(c, tick), c.x, c.y, frameOf(tick), tick, c.z, c.level);
             break;
         }
         case CmdType::VoiceStart: {
             if (c.a >= kRecipeVoices || c.b >= kRecipeCount) break;
             const Recipe r = static_cast<Recipe>(c.b);
-            i32 midi = c.c == 255 ? -1 : c.c;
+            i32 midi = resolveNote(c, -1.0);
             if (midi < 0) midi = r == Recipe::Drone ? chordRootMidi(1) : chordRootMidi(4);  // a drone: under the bass
             ContentVoice& v = content_[c.a];
             startContentVoice(v, r, midi, c.x, c.y, c.z, 0.0f, 0.0f);
@@ -428,8 +515,19 @@ void Engine::applyContentCommand(const Command& c) {
         }
         case CmdType::VoiceSet:
             if (c.a < kRecipeVoices) {
-                content_[c.a].paramTarget = c.x;
-                if (c.y >= 0.0f) content_[c.a].gainTarget = c.y;
+                ContentVoice& v = content_[c.a];
+                v.paramTarget = c.x;
+                if (c.y >= 0.0f) v.gainTarget = c.y;
+                // M5 (cues.h, setVoice): a note to glide to over z seconds (a Voice's death falls, the held note rises).
+                if (c.c != 0 && c.c != 255 && v.active && v.kind != Recipe::Crackle && v.saw[0].dt > 0.0f) {
+                    const i32 midi = resolveNote(c, -1.0);
+                    const double hz = midiHz(midi);
+                    v.retune[0] = static_cast<float>(hz / sr_);
+                    v.retune[1] = v.retune[0] * (v.saw[1].dt / v.saw[0].dt);  // the pair keeps its detune
+                    v.retuneAt = frame_;
+                    v.retuneN = framesFor(c.z > 0.0f ? c.z : kDroneGlideS, sr_);
+                    v.note = static_cast<i16>(midi);
+                }
             }
             break;
         case CmdType::VoiceStop:
@@ -474,7 +572,7 @@ void Engine::flushCues(i64 tickIn) {
             switch (cue) {
                 case Cue::ForkSplit:  // the fifth above, a 1/32 later, at 0.4
                     playLead(static_cast<u8>(p), playerTimbre(p), static_cast<float>(playerLastNote(p) + 7), 0.8f, s.mix.lead * r.forkLevel * g, pan,
-                             frameOf(tick + static_cast<double>(r.forkTicks)));
+                             frameOf(tick + static_cast<double>(r.forkTicks)), 1.0f, 0.0f, f);
                     break;
                 case Cue::HeavyStepBurst:
                 case Cue::SupernovaImpact:  // the small kill's thud, at 0.5 / 0.3
@@ -487,10 +585,13 @@ void Engine::flushCues(i64 tickIn) {
                     playRecipeAt(Recipe::Zap, ch.stab[step % nn] + 12 * static_cast<i32>(step / nn), g, pan, f, tick, 0.0f, 0.0f);
                     break;
                 }
-                case Cue::BurnCount: {  // the crackle's density follows the burning
-                    ContentVoice& v = content_[kRecipeVoices + kOneShotGlides + p];
-                    const float density = kBurnMaxDensity * (value < 30.0f ? value : 30.0f) / 30.0f;
-                    if (density > 0.0f && !v.active) startContentVoice(v, Recipe::Crackle, -1, r.burnLevel / recipeLevel(Recipe::Crackle, s), pan, density, 0.0f, 0.0f);
+                case Cue::BurnCount: {  // the crackle's density follows the burning (M5, cost: one crackle for every player's)
+                    ContentVoice& v = content_[kRecipeVoices + kOneShotGlides];
+                    burn_[p] = value > 0.0f ? value : 0.0f;
+                    float burning = 0.0f;
+                    for (float b : burn_) burning += b;
+                    const float density = kBurnMaxDensity * (burning < 30.0f ? burning : 30.0f) / 30.0f;
+                    if (density > 0.0f && !v.active) startContentVoice(v, Recipe::Crackle, -1, r.burnLevel / recipeLevel(Recipe::Crackle, s), 0.0f, density, 0.0f, 0.0f);
                     if (v.active) {
                         v.paramTarget = density;
                         v.held = true;
@@ -656,7 +757,10 @@ void Engine::upgradeStep(i64 tick, i64 inBar) {
             stabAcc_ += r.barLineStab * lv;
             zap = std::fmax(zap, lv);
         }
-        if (zap > 0.0f) recipeShot(Recipe::Zap, chordTone(ch, 0, 5), recipeGain(Recipe::Zap) * zap, 0.0f, f, Bus::Pulse);
+        if (zap > 0.0f) {
+            recipeShot(Recipe::Zap, chordTone(ch, 0, 5), recipeGain(Recipe::Zap) * zap, 0.0f, f, Bus::Pulse);
+            upgradeEvent(UpgradeSound::BarLineZap, f, tk, recipeGain(Recipe::Zap) * zap, chordTone(ch, 0, 5));
+        }
     }
     if (p.riffsOn) {
         // Riff patterns at double rate under Hyper: rt is the tick in the pattern's 16 steps.
@@ -668,9 +772,11 @@ void Engine::upgradeStep(i64 tick, i64 inBar) {
         // charge a reverse swell into each shot from a beat after the last one (the three beats before, at level 1).
         if (const u32 lv = p.riff[ix(Riff::Lancer)]) {
             const float* pat = lv >= r.lancerFastFrom ? r.lancerFastPattern : r.lancerPattern;
-            if (step && pat[st] > 0.0f) {
-                playStab(ch, pat[st] * r.lancerLevel, 0.0f, f, r.lancerLength);
+            if (step && pat[st] > 0.0f) {  // (one stab a tick with the Mods' stabs: flushStabs)
+                stabAcc_ += pat[st] * r.lancerLevel;
+                stabLength_ = std::fmax(stabLength_, r.lancerLength);
                 emit(BeatKind::Stab, f, tk, ch.stab[0], 1, 0, pat[st]);
+                upgradeEvent(UpgradeSound::LancerChord, f, tk, pat[st] * r.lancerLevel, ch.stab[0]);
             }
             if (rt % 12 == 0) {
                 for (u32 h = 0; h < 16; ++h) {
@@ -682,7 +788,10 @@ void Engine::upgradeStep(i64 tick, i64 inBar) {
                     if (gap == 0) gap = kTicksPerBar;
                     const i64 charge = gap > kPpq ? gap - kPpq : gap / 2;
                     const i64 start = ((static_cast<i64>(h) * kTicksPerStep - charge) % kTicksPerBar + kTicksPerBar) % kTicksPerBar;
-                    if (start == rt) swellInto(tk + static_cast<double>(charge / rate), tk, s.mix.swell * r.lancerSwell);
+                    if (start == rt) {
+                        swellInto(tk + static_cast<double>(charge / rate), tk, s.mix.swell * r.lancerSwell);
+                        upgradeEvent(UpgradeSound::LancerCharge, f, tk, s.mix.swell * r.lancerSwell, static_cast<double>(charge / rate));
+                    }
                 }
             }
         }
@@ -693,15 +802,18 @@ void Engine::upgradeStep(i64 tick, i64 inBar) {
                 const float v = r.minePattern[st];
                 playSample(bank_->clap(), Bus::Clap, f, s.mix.clap * r.mineClap * v, 0.0f);
                 playSample(bank_->impact(), Bus::Fx, f, s.mix.impact * r.mineImpact * v, 0.0f);
-                emit(BeatKind::Impact, f, tk, 0, 1, 0, s.mix.impact * r.mineImpact * v, 0, 1.0);
+                upgradeEvent(UpgradeSound::MineBlast, f, tk, s.mix.impact * r.mineImpact * v);
                 mineArmed_ = false;
             }
             if (step && st == r.mineHatStep) {
                 playSample(bank_->kit(track_, variant_).hat, Bus::Drums, f, s.mix.hat, 0.0f);
+                upgradeEvent(UpgradeSound::MineLaid, f, tk, s.mix.hat);
                 mineArmed_ = true;
             }
-            if ((p.fusions & bit(Fusion::CollapseField)) && mineArmed_ && rt == kTicksPerBar - kPpq)
+            if ((p.fusions & bit(Fusion::CollapseField)) && mineArmed_ && rt == kTicksPerBar - kPpq) {
                 swellInto(tk + static_cast<double>(kPpq / rate), tk, s.mix.swell * kCollapseSwell);
+                upgradeEvent(UpgradeSound::CollapseSwell, f, tk, s.mix.swell * kCollapseSwell, static_cast<double>(kPpq / rate));
+            }
         }
         // Swarm (riffs.swarm): the volley, one bell a missile from the One on the 1/32 grid, the chord's arp from its step.
         if (const u32 lv = p.riff[ix(Riff::Swarm)]) {
@@ -711,14 +823,18 @@ void Engine::upgradeStep(i64 tick, i64 inBar) {
                 if (kk < count) {
                     const u32 a = r.swarmFrom + kk;
                     const float pan = 0.6f * (2.0f * static_cast<float>(kk) / static_cast<float>(count > 1 ? count - 1 : 1) - 1.0f);
-                    recipeShot(Recipe::Bell, ch.arp[a % 16] + 12 * static_cast<i32>(a / 16), recipeGain(Recipe::Bell) * r.swarmLevel, pan, f, Bus::Stab);
+                    const i32 note = ch.arp[a % 16] + 12 * static_cast<i32>(a / 16);
+                    recipeShot(Recipe::Bell, note, recipeGain(Recipe::Bell) * r.swarmLevel, pan, f, Bus::Stab);
+                    upgradeEvent(UpgradeSound::SwarmBell, f, tk, recipeGain(Recipe::Bell) * r.swarmLevel, note);
                 }
             }
         }
         // Murmuration (Swarm + Seeker): the run does not stop, a 1/32 trill between the chord's third and fifth.
-        if ((p.fusions & bit(Fusion::Murmuration)) && inBar % 12 == 0)
-            recipeShot(Recipe::Bell, chordTone(ch, (inBar / 12) % 2 ? 2 : 1, 5), recipeGain(Recipe::Bell) * kMurmuration,
-                       (inBar / 12) % 2 ? 0.25f : -0.25f, f, Bus::Stab);
+        if ((p.fusions & bit(Fusion::Murmuration)) && inBar % 12 == 0) {
+            const i32 note = chordTone(ch, (inBar / 12) % 2 ? 2 : 1, 5);
+            recipeShot(Recipe::Bell, note, recipeGain(Recipe::Bell) * kMurmuration, (inBar / 12) % 2 ? 0.25f : -0.25f, f, Bus::Stab);
+            upgradeEvent(UpgradeSound::MurmurationTrill, f, tk, recipeGain(Recipe::Bell) * kMurmuration, note);
+        }
         // Singularity (riffs.singularity): every four bars a reverse swell over the last three beats while it pulls, the boom
         // on the next One (on bars whose song index is a multiple of four).
         if (p.riff[ix(Riff::Singularity)]) {
@@ -726,12 +842,13 @@ void Engine::upgradeStep(i64 tick, i64 inBar) {
             const i64 swellTicks = static_cast<i64>(r.singSwellBeats) * kPpq;
             if (inBar == kTicksPerBar - swellTicks && (p.index + 1) % every == 0) {
                 swellInto(static_cast<double>(p.tick + kTicksPerBar), tk, s.mix.swell * r.singSwell);
+                upgradeEvent(UpgradeSound::SingularitySwell, f, tk, s.mix.swell * r.singSwell, static_cast<double>(swellTicks));
                 singArmed_ = true;
             }
         }
         if (inBar == 0 && singArmed_) {
             playSample(bank_->impact(), Bus::Fx, f, s.mix.impact * r.singImpact, 0.0f);
-            emit(BeatKind::Impact, f, tk, 0, 2, 0, s.mix.impact * r.singImpact, 0, 1.0);
+            upgradeEvent(UpgradeSound::SingularityBoom, f, tk, s.mix.impact * r.singImpact);
             singArmed_ = false;
         }
         // Comet (riffs.comet): a whoosh out on the One, back on three, each over the time to the next.
@@ -743,23 +860,28 @@ void Engine::upgradeStep(i64 tick, i64 inBar) {
             while (r.cometPattern[next] <= 0.0f && next != st);
             const u32 gapSteps = (next + 16 - st) % 16 ? (next + 16 - st) % 16 : 16;
             const double secs = static_cast<double>(frameOf(tk + static_cast<double>(gapSteps * kTicksPerStep / rate)) - f) / sr_;
-            recipeShot(Recipe::Whoosh, -1, r.cometLevel * r.cometPattern[st], nth % 2 ? 0.3f : -0.3f, f, Bus::Fx, nth % 2 ? 2 : 0,
-                       static_cast<float>(1.0 / (secs > 0.01 ? secs : 0.01)));
+            const float rateW = static_cast<float>(1.0 / (secs > 0.01 ? secs : 0.01));
+            recipeShot(Recipe::Whoosh, -1, r.cometLevel * r.cometPattern[st], nth % 2 ? 0.3f : -0.3f, f, Bus::Fx, nth % 2 ? 2 : 0, rateW);
+            upgradeEvent(nth % 2 ? UpgradeSound::CometBack : UpgradeSound::CometOut, f, tk, r.cometLevel * r.cometPattern[st], rateW);
         }
         // Flak (riffs.flak): a snare with each burst on two and four; from level 4 a clap a 1/32 after it.
         if (const u32 lv = p.riff[ix(Riff::Flak)]; lv && step && r.flakPattern[st] > 0.0f) {
             const float v = r.flakPattern[st];
             playSample(bank_->snare(), Bus::Snare, f, s.mix.snare * r.flakLevel * v, 0.0f);
             emit(BeatKind::Snare, f, tk, 0, 1, 0, r.flakLevel * v);
-            if (lv >= r.flakClapFrom)
-                playSample(bank_->clap(), Bus::Clap, frameOf(tk + static_cast<double>(r.flakClapTicks) / static_cast<double>(rate)), s.mix.clap * r.flakLevel * v,
-                           0.0f);
+            upgradeEvent(UpgradeSound::FlakSnare, f, tk, s.mix.snare * r.flakLevel * v);
+            if (lv >= r.flakClapFrom) {
+                const double ct = tk + static_cast<double>(r.flakClapTicks) / static_cast<double>(rate);
+                playSample(bank_->clap(), Bus::Clap, frameOf(ct), s.mix.clap * r.flakLevel * v, 0.0f);
+                upgradeEvent(UpgradeSound::FlakClap, frameOf(ct), ct, s.mix.clap * r.flakLevel * v);
+            }
         }
         // Downbeat Cannon (Lancer + On-Beat Crit): on every One the full chord stab at 1.2 with the impact at 0.5.
         if ((p.fusions & bit(Fusion::DownbeatCannon)) && inBar == 0) {
-            playStab(ch, kCannonStab, 0.0f, f);
+            stabAcc_ += kCannonStab;
+            stabMax_ = kCannonStab;  // the Cannon's chord may be louder than the Mods' stabs
             playSample(bank_->impact(), Bus::Fx, f, s.mix.impact * kCannonImpact, 0.0f);
-            emit(BeatKind::Impact, f, tk, 0, 3, 0, s.mix.impact * kCannonImpact, 0, 1.0);
+            upgradeEvent(UpgradeSound::CannonOne, f, tk, kCannonStab, ch.stab[0]);
         }
     }
     // The Boosts' patterns (any player's), on the beats; the Build's last half bar keeps its silence.
@@ -767,12 +889,16 @@ void Engine::upgradeStep(i64 tick, i64 inBar) {
         const u32 beat = static_cast<u32>(inBar / kPpq);
         if (p.boosts & bit(Boost::ChainStorm)) {  // a zap on each of the chord's three stab notes
             static constexpr float kPan[3] = {0.0f, -0.4f, 0.4f};
-            for (u32 k = 0; k < ch.stabCount && k < 3; ++k)
+            for (u32 k = 0; k < ch.stabCount && k < 3; ++k) {
                 recipeShot(Recipe::Zap, ch.stab[k], recipeGain(Recipe::Zap) * r.chainStormLevel, kPan[k], f, Bus::Pulse);
+                upgradeEvent(UpgradeSound::ChainStormZap, f, tk, recipeGain(Recipe::Zap) * r.chainStormLevel, ch.stab[k]);
+            }
         }
         if (p.boosts & bit(Boost::Carousel)) {  // each launch a tom: root, third, fifth and octave on beats 1 to 4
             static constexpr u32 kTone[4] = {0, 1, 2, 4};
-            recipeShot(Recipe::Tom, chordTone(ch, kTone[beat & 3u], 3), s.mix.pulse, 0.0f, f, Bus::Pulse);
+            const i32 note = chordTone(ch, kTone[beat & 3u], 3);
+            recipeShot(Recipe::Tom, note, s.mix.pulse, 0.0f, f, Bus::Pulse);
+            upgradeEvent(UpgradeSound::CarouselTom, f, tk, s.mix.pulse, note);
         }
     }
 }
@@ -785,7 +911,11 @@ void Engine::leadUpgrades(u32 i, i64 tick, i64 inBar, u32 k, u8 note, float vel,
     const double tk = static_cast<double>(tick);
     const i64 f = frameOf(tk);
     const u8 pid = static_cast<u8>(i);
-    const auto lead = [&](float midi, float g, i64 at) { bendLead(playLead(pid, pl.timbre, midi, vel, g, pan, at, scale, drive), i, glideFrom, false); };
+    const auto lead = [&](UpgradeSound what, float midi, float g, double atTick) {
+        const i64 at = frameOf(atTick);
+        bendLead(playLead(pid, pl.timbre, midi, vel, g, pan, at, scale, drive, f), i, glideFrom, false);
+        upgradeEvent(what, at, atTick, g, midi);
+    };
     const float n = static_cast<float>(note);
     // (cost) A teammate's lead on this device is its note and its harmony (Split, Prism, On-Beat Crit), as loud as
     // conductor.json lead.others says; the extra notes and voices its upgrades bring are its own device's. Only the stab
@@ -801,32 +931,35 @@ void Engine::leadUpgrades(u32 i, i64 tick, i64 inBar, u32 k, u8 note, float vel,
     // the note in four parts, the third, fifth and octave above at 0.4.
     if (p.riffsOn) {
         if (const u32 lv = pl.riff[ix(Riff::Mirror)]; lv && !playerFusion(i, Fusion::Quartet))
-            lead(n + static_cast<float>(r.mirrorTranspose), gain * r.mirrorLevel[(lv < 5 ? lv : 5) - 1], f);
+            lead(UpgradeSound::MirrorNote, n + static_cast<float>(r.mirrorTranspose), gain * r.mirrorLevel[(lv < 5 ? lv : 5) - 1], tk);
         if (playerFusion(i, Fusion::Quartet)) {
-            lead(scaleStep(n, 2), gain * kQuartet, f);
-            lead(scaleStep(n, 4), gain * kQuartet, f);
-            lead(n + 12.0f, gain * kQuartet, f);
+            lead(UpgradeSound::QuartetNote, scaleStep(n, 2), gain * kQuartet, tk);
+            lead(UpgradeSound::QuartetNote, scaleStep(n, 4), gain * kQuartet, tk);
+            lead(UpgradeSound::QuartetNote, n + 12.0f, gain * kQuartet, tk);
         }
     }
     // Chorus (boosts.chorus): a fifth above and an octave below.
     if (playerBoost(i, Boost::Chorus)) {
-        lead(scaleStep(n, 4), gain * r.chorusLevel, f);
-        lead(n - 12.0f, gain * r.chorusLevel, f);
+        lead(UpgradeSound::ChorusNote, scaleStep(n, 4), gain * r.chorusLevel, tk);
+        lead(UpgradeSound::ChorusNote, n - 12.0f, gain * r.chorusLevel, tk);
     }
     // Fractal (boosts.fractal): the octave a 1/32 later, the double octave a 1/32 after that.
     if (playerBoost(i, Boost::Fractal)) {
-        lead(n + 12.0f, gain * r.fractalOctave, frameOf(tk + static_cast<double>(r.fractalTicks)));
-        lead(n + 24.0f, gain * r.fractalDouble, frameOf(tk + 2.0 * static_cast<double>(r.fractalTicks)));
+        lead(UpgradeSound::FractalNote, n + 12.0f, gain * r.fractalOctave, tk + static_cast<double>(r.fractalTicks));
+        lead(UpgradeSound::FractalNote, n + 24.0f, gain * r.fractalDouble, tk + 2.0 * static_cast<double>(r.fractalTicks));
     }
     // Syncopation (mods.syncopation): an off-beat note carries a short square blip an octave up.
-    if (pl.mod[ix(Mod::Syncopation)] && inBar % kPpq != 0)
+    if (pl.mod[ix(Mod::Syncopation)] && inBar % kPpq != 0) {
         bendLead(playLead(pid, Timbre::P2Square, n + 12.0f, vel, gain * kSyncBlip, pan, f, kSyncBlipLength), i, glideFrom, false);
+        upgradeEvent(UpgradeSound::SyncBlip, f, tk, gain * kSyncBlip, n + 12.0f);
+    }
     // Heavy Step (mods.heavy_step): every fourth lead step doubled an octave down on the bass patch.
     if (pl.mod[ix(Mod::HeavyStep)] && r.heavyEvery && k % r.heavyEvery == r.heavyAt) {
         const u32 grid = p.leadGrid[i] ? p.leadGrid[i] : r.gridTicks[0];
         const float steps = static_cast<float>(grid) / static_cast<float>(kTicksPerStep);
         const double gateS = 60.0 / tr_->bpm / 4.0 * steps;
-        playBass(n - 12.0f, r.heavyLevel * level, steps, f, 1.0f, static_cast<float>(gateS) + kHeavyTailS);
+        fastBass(playBass(n - 12.0f, r.heavyLevel * level, steps, f, 1.0f, static_cast<float>(gateS) + kHeavyTailS));
+        upgradeEvent(UpgradeSound::HeavyStepBass, f, tk, r.heavyLevel * level, n - 12.0f);
     }
     // Accent (mods.accent): the accented note's stab under it (the note itself plays louder: leadStep). Standing Wave
     // (Echo + Accent) takes its part: the accented note held for a bar as a pad voice on the same pitch.
@@ -839,6 +972,7 @@ void Engine::leadUpgrades(u32 i, i64 tick, i64 inBar, u32 k, u8 note, float vel,
                 v.bus = Bus::Pad;
                 v.delay = f > frame_ ? static_cast<u32>(f - frame_) : 0u;
                 v.length = static_cast<u32>(frameOf(tk + static_cast<double>(kTicksPerBar)) - f);
+                upgradeEvent(UpgradeSound::StandingWave, f, tk, kStandingWave * level, note);
             } else {
                 stabAcc_ += r.accentStab * level;
             }
@@ -865,16 +999,16 @@ void Engine::rearGuardStep(u32 i, i64 tick, i64 inBar, float gain, float level) 
     const float pan = -r.panDepth * std::sin(static_cast<float>(st) * r.panRate + static_cast<float>(p.index));  // behind: the other side
     const float scale = std::pow(r.pierceScale, static_cast<float>(pl.pierce));
     const float drive = pl.overcharge ? 1.0f + r.overchargeDrive * pl.overcharge : 0.0f;
-    bendLead(playLead(static_cast<u8>(i), pl.timbre, scaleStep(static_cast<float>(p.chord->arp[st]), degrees), vel, gain * r.rearLevel, pan,
-                      frameOf(tk), scale, drive),
-             i, 0.0f, false);
+    const float note = scaleStep(static_cast<float>(p.chord->arp[st]), degrees);
+    bendLead(playLead(static_cast<u8>(i), pl.timbre, note, vel, gain * r.rearLevel, pan, frameOf(tk), scale, drive), i, 0.0f, false);
+    upgradeEvent(UpgradeSound::RearGuardNote, frameOf(tk), tk, gain * r.rearLevel, note);
 }
 
 void Engine::kickUpgrades(float velocity, i64 frame, double tick) {
     // Kick Pulse (conductor.json mods.kick_pulse): a tom an octave above the kick's pitch doubles each kick the pattern plays.
-    (void)tick;
     const i32 note = static_cast<i32>(std::lround(69.0 + 12.0 * std::log2(static_cast<double>(sp_->kickHz) / 440.0))) + 12;
     recipeShot(Recipe::Tom, note, sp_->mix.pulse * music_->conductor.kickPulseLevel * velocity, 0.0f, frame, Bus::Pulse);
+    upgradeEvent(UpgradeSound::KickPulseTom, frame, tick, sp_->mix.pulse * music_->conductor.kickPulseLevel * velocity, note);
 }
 
 void Engine::boostChanged(u32 player, Boost b, bool on) {
@@ -884,21 +1018,28 @@ void Engine::boostChanged(u32 player, Boost b, bool on) {
     bool any = false;
     for (u32 i = 0; i < kMaxPlayers; ++i) any = any || playerBoost(i, Boost::FreezeFrame);
     freezeTarget_ = any ? 1.0f : 0.0f;
-    if (!on || !plan_ || !plan_->chord) return;
+    if (!on) return;
     const double tick = std::ceil(tempo_.tickAt(static_cast<double>(frame_)) / 12.0) * 12.0;
-    const Chord& ch = *plan_->chord;
+    const Chord& ch = currentChord();
     for (u32 k = 0; k < ch.stabCount && k < 3; ++k)
         playRecipeAt(Recipe::Glass, ch.stab[k], 1.0f, k == 0 ? 0.0f : (k == 1 ? -0.35f : 0.35f), frameOf(tick), tick, 0.0f, 0.0f);
+    upgradeEvent(UpgradeSound::FreezeGlass, frameOf(tick), tick, recipeLevel(Recipe::Glass, *sp_), ch.stab[0]);
 }
 
 void Engine::flushStabs(i64 frame) {
-    if (plan_ && plan_->chord) playStab(*plan_->chord, std::fmin(stabAcc_, kStabMax), 0.0f, frame);
+    // M5 (cost): the stabs the upgrades ask for on one tick (Lancer's chord, the Cannon's, Accent's and Bar Line's) are one
+    // voice: their velocities summed (to kStabMax, or the Cannon's 1.2), the longest length asked.
+    const float vel = std::fmin(stabAcc_, std::fmax(kStabMax, stabMax_));
+    if (plan_ && plan_->chord) {
+        playStab(*plan_->chord, vel, 0.0f, frame, stabLength_);
+        upgradeEvent(UpgradeSound::ModStab, frame, tempo_.tickAt(static_cast<double>(frame)), vel, plan_->chord->stab[0]);
+    }
     stabAcc_ = 0.0f;
+    stabMax_ = 0.0f;
+    stabLength_ = 1.0f;
 }
 
 // ---------------------------------------------------------------- the worst case (--band max)
-
-static u32 g_maxDbg = 0;  // TEMP
 
 u32 maxLoadSetup(Command* out, u32 cap) {
     u32 n = 0;
@@ -935,56 +1076,12 @@ u32 maxLoadSetup(Command* out, u32 cap) {
                                     {Mod::GravityRounds, 2}};
     // A Boost each: the heaviest on the lead (two more notes a step; Fractal's land later and overlap more).
     static constexpr Boost kBoost[4] = {Boost::Fractal, Boost::Fractal, Boost::Chorus, Boost::Prism};
-    const char* dbg = std::getenv("RF_MAXDBG");  // TEMP
-    const u32 dbgMask = dbg ? static_cast<u32>(std::atoi(dbg)) : 0u;
-    g_maxDbg = dbgMask;
-    if (dbgMask & 1u) out[0].a = 1;
-    if (dbgMask & 256u) {  // the full band's own setup
-        for (u8 p = 0; p < 4; ++p) {
-            put(cmd(CmdType::SetFire, p, 1));
-            put(cmd(CmdType::SetTimbre, p, p));
-            for (u8 k = 0; k < 3; ++k) put(cmd(CmdType::SetRiff, p, k, 2));
-            Command m = cmd(CmdType::SetMods, p);
-            m.mods[0] = 1;
-            m.mods[1] = 1;
-            put(m);
-        }
-        return n;
-    }
     for (u8 p = 0; p < 4; ++p) {
-        if (dbgMask & 2u) {
-            put(cmd(CmdType::SetFire, p, 1));
-            put(cmd(CmdType::SetTimbre, p, p));
-            continue;
-        }
-        if (dbgMask & 4u) {
-            put(cmd(CmdType::SetFire, p, 1));
-            put(cmd(CmdType::SetTimbre, p, p));
-            u8 stacks[kModCount] = {};
-            for (const Cap& c : kMods) stacks[static_cast<u32>(c.m)] = c.stacks;
-            for (u32 first = 0; first < kModCount; first += 8) {
-                Command m = cmd(CmdType::SetModStacks, p, static_cast<u8>(first), static_cast<u8>(kModCount - first < 8 ? kModCount - first : 8));
-                for (u32 k = 0; k < m.c; ++k) m.mods[k] = stacks[first + k];
-                put(m);
-            }
-            continue;
-        }
         put(cmd(CmdType::SetFire, p, 1));
         put(cmd(CmdType::SetTimbre, p, p));
         for (const Riff rf : kRiffs[p]) put(cmd(CmdType::SetRiff, p, static_cast<u8>(rf), 5));
         u8 stacks[kModCount] = {};
         for (const Cap& c : kMods) stacks[static_cast<u32>(c.m)] = c.stacks;
-        if (dbgMask & 8u) stacks[static_cast<u32>(Mod::Overcharge)] = 0;
-        if (dbgMask & 16u) stacks[static_cast<u32>(Mod::Pierce)] = 0;
-        if (dbgMask & 32u) {
-            stacks[static_cast<u32>(Mod::DoubleTime)] = 1;
-            stacks[static_cast<u32>(Mod::Afterparty)] = 0;
-        }
-        if (dbgMask & 64u) {
-            stacks[static_cast<u32>(Mod::Wave)] = 0;
-            stacks[static_cast<u32>(Mod::Seeker)] = 0;
-        }
-        if (dbgMask & 128u) stacks[static_cast<u32>(Mod::Split)] = 0;
         for (u32 first = 0; first < kModCount; first += 8) {
             Command m = cmd(CmdType::SetModStacks, p, static_cast<u8>(first), static_cast<u8>(kModCount - first < 8 ? kModCount - first : 8));
             for (u32 k = 0; k < m.c; ++k) m.mods[k] = stacks[first + k];
@@ -1015,7 +1112,6 @@ u32 maxLoadFrame(u32 frame, Command* out, u32 cap) {
         put(CmdType::Shard, 0, 0, 0, 1.0f);
     }
     if (frame % 30 == 0) put(CmdType::Kill, 2, 1, 0, 0.0f);
-    if (g_maxDbg & 256u) return n;  // TEMP
     // ... and the cues the upgrades bring: Storm Coil strikes, chains, forks, shrapnel, gravity hits, a crowd burning.
     put(CmdType::Cue, static_cast<u8>(Cue::StormCoilStrike), 1, 2, 0.0f, Timing::Next32);  // its owner's (maxLoadSetup)
     for (u8 p = 0; p < 4; ++p) {
@@ -1052,8 +1148,8 @@ void Engine::renderContent(u32 n) {
         float* R = bus_[bus][1];
         for (u32 i = i0; i < n; ++i) {
             const i64 at = frame_ + static_cast<i64>(i);
-            if (v.retuneAt >= 0 && at >= v.retuneAt) {  // M5: a drone following the chord glides there over 20 ms
-                const u32 glideN = framesFor(kDroneGlideS, sr_);
+            if (v.retuneAt >= 0 && at >= v.retuneAt) {  // M5: a drone following the chord glides there over 20 ms (or as asked)
+                const u32 glideN = v.retuneN ? v.retuneN : framesFor(kDroneGlideS, sr_);
                 v.glideMul = std::pow(v.retune[0] / v.saw[0].dt, 1.0f / static_cast<float>(glideN));
                 v.glideLeft = glideN;
                 v.glideTo[0] = v.retune[0];
@@ -1090,13 +1186,23 @@ void Engine::renderContent(u32 n) {
             }
             float x = 0.0f;
             if (v.kind == Recipe::Crackle) {
-                if (!v.burstLeft && v.rng.uniform() < v.param / sr) {
-                    v.burstLeft = static_cast<u32>(0.005f * sr);
-                    v.burstEnv = 1.0f;
+                // M5 (cost): the bursts as a Poisson process drawn burst by burst (the gap to the next one exponential at the
+                // density), not a draw every sample.
+                if (!v.burstLeft) {
+                    if (v.gapLeft) {
+                        --v.gapLeft;
+                    } else if (v.param > 0.0f) {
+                        v.burstLeft = static_cast<u32>(0.005f * sr);
+                        v.burstEnv = 1.0f;
+                        const double u = v.rng.uniform();
+                        v.gapLeft = static_cast<u32>(-std::log(1.0 - u) * sr / v.param);
+                    }
                 }
                 if (v.burstLeft) {
                     --v.burstLeft;
-                    const float in = static_cast<float>(v.rng.gaussian()) * v.burstEnv;
+                    // M5 (cost): uniform noise at unit variance (a Gaussian draw cost a log, a square root and a sine a
+                    // sample); band-passed, the same hiss.
+                    const float in = static_cast<float>(v.rng.uniform() * 2.0 - 1.0) * 1.7320508f * v.burstEnv;
                     v.burstEnv *= 0.99f;
                     const float v3 = in - v.bp2, v1 = v.c.a1 * v.bp1 + v.c.a2 * v3, v2 = v.bp2 + v.c.a2 * v.bp1 + v.c.a3 * v3;
                     v.bp1 = 2.0f * v1 - v.bp1;

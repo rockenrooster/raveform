@@ -45,9 +45,10 @@ public:
     ~SampleBank();
 
     // Bakes everything the Tracks and variants of `music` need at `sampleRate`. M5 (start-up): with deferRisers the
-    // risers of Tracks 2-10 only get their slots; bakeDeferred (a worker thread, while Track 1 plays) bakes them, and
-    // riser() leaves out one not baked yet; complete() says when all are.
-    bool bake(const MusicData& music, u32 sampleRate, bool deferRisers = false);
+    // drum kits and risers of Tracks 2-10 only get their slots; bakeDeferred (a worker thread, while Track 1 plays) bakes
+    // them, and kit() / riser() leave out one not baked yet; complete() says when all are.
+    // (firstTrack: the Track the run starts in, baked at once.)
+    bool bake(const MusicData& music, u32 sampleRate, bool deferRisers = false, u32 firstTrack = 0);
     bool bakeDeferred(const MusicData& music, u32 sampleRate);
     bool complete() const;
     void release();
@@ -62,8 +63,12 @@ public:
     u64 bytes() const { return bytes_; }
     double bakeSeconds() const { return bakeSeconds_; }
 
-    // Lookups (cheap, audio-thread safe: read-only after bake).
-    const DrumKit& kit(u32 track, u32 variant) const { return kits_[track][variant]; }
+    // Lookups (cheap, audio-thread safe: read-only after bake). M5: a later Track's kit baked behind the game is empty (no
+    // sound) until it is there.
+    const DrumKit& kit(u32 track, u32 variant) const {
+        static const DrumKit kNone{};
+        return kitReady_[track].load(std::memory_order_acquire) ? kits_[track][variant] : kNone;
+    }
     i32 clap() const { return clap_; }
     i32 snare() const { return snare_; }
     i32 shaker() const { return shaker_; }
@@ -95,6 +100,7 @@ private:
     u64 bytes_ = 0;
     double bakeSeconds_ = 0.0;
     DrumKit kits_[MusicData::kMaxTracks][MusicData::kMaxVariants];
+    std::atomic<bool> kitReady_[MusicData::kMaxTracks] = {};  // M5: baked (the audio thread may play it)
     i32 clap_ = -1, snare_ = -1, shaker_ = -1, pulse_ = -1, impact_ = -1;
     struct RiserRef {
         u32 track, bars;

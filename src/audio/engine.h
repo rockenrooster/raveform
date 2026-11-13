@@ -59,6 +59,28 @@ struct BeatEvent {
     u8 c = 0;            // bar in the section / timbre
 };
 
+// M5: the upgrades' patterned sounds, reported as Sfx events with a = kUpgradeEvent + this (value: the gain; x: the note,
+// or the playback rate where it has none), so tests and sheets can see what played when. (Impacts are not Impact events:
+// those are the Drop's, with their heavy haptic.)
+enum class UpgradeSound : u8 {
+    LancerChord, LancerCharge, MineLaid, MineBlast, SwarmBell, SingularitySwell, SingularityBoom, CometOut, CometBack,
+    FlakSnare, FlakClap, CannonOne, CollapseSwell, MurmurationTrill, TeslaZap, HaloGlass, BarLineZap, ModStab, ChainStormZap,
+    CarouselTom, KickPulseTom, FreezeGlass, StandingWave, HeavyStepBass, ColossusBass,
+    MirrorNote, QuartetNote, ChorusNote, FractalNote, SyncBlip, RearGuardNote, Count
+};
+
+// M5 (tests): a lead voice as the engine holds it (Engine::leadVoices).
+struct LeadVoiceInfo {
+    u8 player = 0;
+    u8 timbre = 0;
+    i64 start = 0;
+    float hz = 0.0f, vel = 0.0f, gain = 0.0f;  // gain: as asked, whatever the pan
+    u32 length = 0;
+    float glideSemis = 0.0f, vibSemis = 0.0f, vibPhase = 0.0f;
+    u32 glideN = 0;
+};
+constexpr u8 kUpgradeEvent = 96;
+
 enum class Timing : u8 { Now, Next32, AtTick };
 
 enum class CmdType : u8 {
@@ -108,7 +130,10 @@ enum class CmdType : u8 {
     Cue,           // a = Cue, b = player, c = count (<= 255), x = value, y = pan; timing Next32 or AtTick
     Recipe,        // a = Recipe, c = MIDI (255: the default), x = gain, y = pan, z = p1, level = p2; timing Now / Next32 / AtTick
     VoiceStart,    // a = voice slot, b = Recipe, c = MIDI (255: the default), x = gain, y = pan, z = param
-    VoiceSet,      // a = voice slot, x = param, y = gain (< 0: unchanged)
+    VoiceSet,      // a = voice slot, x = param, y = gain (< 0: unchanged); M5: c = a note to glide to (0 or 255: none),
+                   // z = the glide in seconds
+                   // (M5: c = 254 in Recipe, VoiceStart and VoiceSet: a chordNote(), its from / octave / amount + 128 in
+                   // mods[0..2]: encodeNote)
     VoiceStop,     // a = voice slot, x = release in seconds
     LowPassBed,    // x = cutoff in Hz, y = seconds (then the bus opens again over 150 ms)
 };
@@ -121,6 +146,19 @@ struct Command {
     float x = 0.0f, y = 0.0f, level = 1.0f, z = 0.0f;
     double tick = 0.0;
 };
+
+// M5: a recipe command's note (Recipe, VoiceStart, VoiceSet): c = the MIDI note, 255 none (the recipe's default), 254 a
+// chordNote() with its parts in mods[0..2].
+inline void encodeNote(Command& c, i32 midi) {
+    if (midi >= kChordNote) {
+        c.c = 254;
+        c.mods[0] = static_cast<u8>((midi >> 12) & 15);
+        c.mods[1] = static_cast<u8>((midi >> 8) & 15);
+        c.mods[2] = static_cast<u8>(midi & 255);
+    } else {
+        c.c = static_cast<u8>(midi >= 0 && midi < 254 ? midi : 255);
+    }
+}
 
 // Live numbers for overlays and benchmarks (written by the audio thread, read anywhere).
 struct EngineStats {
@@ -199,6 +237,10 @@ public:
     // the block's first frame (frame_ - n), and the block's length.
     const float* duckBlock() const { return duck_; }
     u32 duckBlockFrames() const { return duckFrames_; }
+    // M5 (tests): the active lead voices (at most `cap`), the lead delay's length in frames, the pad voices' opening.
+    u32 leadVoices(LeadVoiceInfo* out, u32 cap) const;
+    u32 delayFrames() const { return delayD_; }
+    float padOpenNow() const;
 
 private:
     struct LeadVoice;
@@ -257,6 +299,9 @@ private:
     // already), or released there; mode 1: its cutoff follows the Sweeper's arm.
     void holdDrone(u32 slot, bool on, i32 midi, float cutoff, float gain, u8 mode, i64 frame);
     float playerLevel(u32 player) const;  // a player's lead level in this device's mix (1: its own; conductor.json lead.others)
+    void upgradeEvent(UpgradeSound s, i64 frame, double tick, float value, double x = 0.0) {
+        emit(BeatKind::Sfx, frame, tick, static_cast<u8>(kUpgradeEvent + static_cast<u8>(s)), 0, 0, value, 0, x);
+    }
     i32 echoPending_ = -1;            // Echo: the stacks the delay takes on at echoAt_ (the bar line's frame)
     i64 echoAt_ = -1;
     u8 crescBars_[kMaxPlayers] = {};  // Crescendo: bars without a hit
@@ -265,7 +310,9 @@ private:
     bool singArmed_ = false;           // Singularity: a well is pulling (its swell played)
     u32 echo_ = 0;                     // Echo: the stacks the lead's delay is set for
     bool kickPulse_ = false;           // Kick Pulse: someone owns it
-    float stabAcc_ = 0.0f;             // Accent and Bar Line: stab velocity asked for on this tick (one stab, summed)
+    float stabAcc_ = 0.0f;             // Lancer, the Cannon, Accent, Bar Line: stab velocity asked for on this tick (one stab, summed)
+    float stabMax_ = 0.0f, stabLength_ = 1.0f;  // ... its ceiling (the Cannon's 1.2) and the longest length asked (Lancer's x 2)
+    float burn_[kMaxPlayers] = {};     // Burn: each player's burning enemies (one crackle for all)
     u32 haloTick_ = 0, standNext_ = 0;
     float freezeMix_ = 0.0f, freezeTarget_ = 0.0f;  // Freeze Frame: the music bus's high-pass, 0..1
     Biquad freezeHp_[2];
@@ -289,11 +336,17 @@ private:
     i64 frameOf(double tick) const { return tempo_.gridFrame(tick); }
     void emit(BeatKind k, i64 frame, double tick, u8 a = 0, u8 b = 0, u8 c = 0, float value = 0.0f, u32 index = 0,
               double x = 0.0);
-    void playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate = 1.0f, double from = 0.0);
+    SampleVoice* playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate = 1.0f, double from = 0.0);
+    void driveSample(SampleVoice* v, float drive);  // M5 (the driven kick): the voice through tanh(drive x), its peak kept
+    i32 resolveNote(const Command& c, double tick) const;  // M5: a command's note (encodeNote) at a tick (< 0: now); -1: none
+    const Chord& chordAtTick(double tick) const;           // M5: the chord that plays on a tick (this bar's or a later one's)
+    // cullAt (M5, >= 0): a note that starts later (Fractal's, Fork's) makes room under its player's cap at this frame (now),
+    // so the notes it cuts short do not sound on until it starts.
     LeadVoice* playLead(u8 player, Timbre timbre, float midi, float vel, float gain, float pan, i64 frame, float lengthScale = 1.0f,
-                        float drive = 0.0f);
+                        float drive = 0.0f, i64 cullAt = -1);
     // M5: decayScale (the rubber string: x 2), lengthS (> 0: the voice's length; Heavy Step's short notes), the bus.
-    void playBass(float midi, float vel, float steps, i64 frame, float decayScale = 1.0f, float lengthS = -1.0f, Bus bus = Bus::Bass);
+    BassVoice* playBass(float midi, float vel, float steps, i64 frame, float decayScale = 1.0f, float lengthS = -1.0f, Bus bus = Bus::Bass);
+    void fastBass(BassVoice* v);  // M5 (cost): an upgrade's bass note saturates by fastTanh
     void playStab(const Chord& chord, float vel, float pan, i64 frame, float lengthScale = 1.0f);
     void playPad(const Chord& chord, float level, float bright, i64 frame);
     void playKick(float gain, float velocity, i64 frame, double tick);
