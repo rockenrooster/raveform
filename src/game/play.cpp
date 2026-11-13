@@ -115,6 +115,13 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
     if (picture) scriptSetup();
     // M5 --fight (benchmarks; the m5_ pictures set it up themselves): the run plays on to the fight.
     if (opt.fight[0] && !picture && !setupFight(opt.fight, opt.fightPhase)) return false;
+    if (opt.jumpTrack && !picture) {
+        // M5 --drop <track>.<cycle> (benchmarks): that Track from its start, fast-forwarded to the cycle's Drop.
+        world_->directorMut().track = static_cast<u8>(opt.jumpTrack <= world_->setList() ? opt.jumpTrack : world_->setList());
+        world_->spawner().mode = Spawner::Mode::Slice;
+        dropJump_ = true;
+        scriptFastForwardS_ = std::fmax(scriptFastForwardS_, 600.0f);
+    }
     if (bandDrives_) band->setIntensity(tuning::kIntensityFloor);
 
     // M4: co-op (the session takes the world over; the host starts the run once every seat is in).
@@ -131,6 +138,7 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
         for (u32 k = 0; k < ticks; ++k) {
             frame(kDt);
             if (fightJump_ && fightReady()) break;  // M5 --fight: the fight is on (in its phase)
+            if (dropJump_ && world_->phrase().cycle == opt.jumpCycle && world_->phrase().section == sim::Section::Drop && world_->phrase().sectionBar >= 1) break;
         }
         ffRunning_ = false;
         opt_ = saved;

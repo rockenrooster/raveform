@@ -69,8 +69,10 @@ void World::spawnShotRaw(u32 p, Vec2 pos, Vec2 dir, float advanceS, float damage
 void World::hitEnemy(u32 i, float dmg, u8 owner, Vec2 at, Vec2 dir) {
     Enemies& e = enemies_;
     if (e.flags[i] & kFlagDead) return;
-    if (role_ == NetRole::Client) logClaim(i, dmg, kClaimHit);  // M4: the host applies it; a kill here is predicted
-    e.hp[i] -= dmg;
+    // M5: a Hound C's front arc sheds the shot (no damage, the spark of an impact).
+    const bool shed = shieldStops(i, dir);
+    if (role_ == NetRole::Client && !shed) logClaim(i, dmg, kClaimHit);  // M4: the host applies it; a kill here is predicted
+    if (!shed) e.hp[i] -= dmg;
     if (e.hp[i] <= 0.0f) {
         killEnemy(i, owner);
         return;

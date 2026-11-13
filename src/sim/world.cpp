@@ -762,6 +762,7 @@ void World::killEnemy(u32 i, u8 killer) {
     }
     dropShards(i, killer);
     if (role_ == NetRole::Host) logDeath(i, killer, kDeathKill);
+    familyDeath(i, s);  // M5: Brood C bursts into a swarm
 }
 
 void World::dropShards(u32 i, u8 killer) {
@@ -831,6 +832,7 @@ i32 World::spawnEnemyAs(u16 speciesIndex, Vec2 pos, float heading, double landTi
     e.group[i] = 0;
     e.flags[i] = 0;
     e.far[i] = 0;
+    e.step[i] = 0;
     e.ox[i] = e.oy[i] = e.pred[i] = 0.0f;
     e.target[i] = 0xFF;
     // M4: a client's enemy carries the host's spawn number, so its own random stream is the host's.
@@ -926,6 +928,7 @@ void World::removeEnemyAt(u32 i) {
         e.state[i] = e.state[last];
         e.flags[i] = e.flags[last];
         e.far[i] = e.far[last];
+        e.step[i] = e.step[last];
         e.handle[i] = e.handle[last];
         e.serial[i] = e.serial[last];
         e.rng[i] = e.rng[last];
@@ -1106,6 +1109,7 @@ u64 World::hash() const {
     mix(e.state, n);
     mix(e.flags, n);
     mix(e.far, n);
+    mix(e.step, n);
     mix(e.handle, n * sizeof(u32));
     mix(e.serial, n * sizeof(u32));
     mix(e.rng, n * sizeof(u32));

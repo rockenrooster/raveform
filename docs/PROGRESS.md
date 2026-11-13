@@ -1,5 +1,86 @@
 # RAVEFORM — Progress
 
+## M5 part 2 "Species: Tracks 2 and 3's own families" — 2026-11-13
+
+`design/species_m5.json` is now `design/species.json` (`git mv`, the lead's instruction); the loader reads all sixteen
+families' base numbers and motion, every variant number the game uses, the 106-entry roster, and budgets and crowd
+targets for ten Tracks. Built in this part: the families **Flanker, Skitter, Moth, Brood, Blink** and the variants Tracks 1
+to 3 use (**Drifter B, Hound C, Carom B, Moth B, Brood B and C, Blink B, Flanker B**; Hound B and Sentry B were the
+slice's), with Track 2's and Track 3's rosters. Track 1 is untouched.
+
+### What was built (`src/sim/world_families.cpp`, `species.*`, the view)
+
+- **The table**: sixteen families in the enum (the slice's six first, as on the wire), 240 species and one more row, the
+  **broodling** (the Brood's mini: brood.motion.mini*, fodder, chases like a Hound, drawn with `brood_1`). Families
+  without behaviour yet (Wyrm, Tether, Weaver, Well, Mimic) are never picked (`familyBuilt`).
+- **Flanker**: lands off the line to the player and comes in on a slant, then circles at orbitRadius 260 closing at
+  closeRate 40 wu/s. B: on the orbit, a beat's tell, then a shot inward (at the player) on every beat.
+- **Skitter**: chases; in a player's line of fire (within 900 wu along the aim, 36 wu plus its radius beside it) it
+  sidesteps dodgeDistance 90 square to the line in 0.18 s, then not again for two beats.
+- **Moth**: a clock round the player: its place turns a quarter turn a bar and steps a quarter of closePerBar 60 inward
+  on every beat, down to minRadius 60; it flies to its place at up to 1.6 x its speed. B: after a beat's tell, two
+  petals opposite each other on every eighth, each pair turned on 20 degrees, at 180 wu/s.
+- **Brood**: a slow carrier toward the player. B: a clutch of two on every bar line while engaged, at most six of its
+  own alive. C: bursts into eight broodlings on death. Hatching and the swarm are the host's (the clients hear them).
+- **Blink**: does not travel: it stands on a point of a five-point star round the player, hops to every second point on
+  each beat (a white blink flash), four hops, then a beat's tell (the Ram's chevrons along its line), a strike through
+  where the player stood at 700 wu/s for a beat, two beats' rest, a new star. B: three bullets left along each hop,
+  flying on along it.
+- **Drifter B**: a slow aimed shot every second bar on its downbeat, after a beat's glint (each Drifter its own bar).
+  **Hound C**: a frontal shield of 120 degrees (a white arc) turning to the player at 1.6 rad/s; a shot that meets it is
+  shed. **Carom B**: three bullets fanned 50 degrees from every bounce (walls and the Pen).
+- Every shooter's glint gives it the edge indicator off screen (`Species::ranged`: Hound, Sentry, Drifter, Flanker and
+  Moth B).
+- **The director**: the roster runs to Track 10; a Track picks what has debuted by its cycle; the loop (after the set
+  list) picks everything that debuted in the set list's Tracks. Budgets and crowd targets: the set list's Tracks from the
+  data, past it the last Track's last value and a step (with three Tracks in the set list: the first slice's rule,
+  unchanged). Packs (chosen): Flankers 4, Skitters 3, Moths 6, Blinks 2, a Brood or a Sentry alone.
+- **Co-op**: an enemy's correction carries one more byte, a family's own counter (a Blink's hops), and the new states
+  (protocol `0x52460502`, 31 bytes a correction, 38 to a packet).
+- **The Pen fights' crowd** (the lead's ruling after part 1): 0.35 of the Drop's, never more than 120 bodies inside
+  (minibosses.json `common.crowd.penScale`, `penMax`); fodder inside beyond 120 dissolves as the Pen rises. `ram_*` and
+  `carom_*` retaken.
+- **Tools**: `--drop <track>.<cycle>` (benchmarks: that Track from its start, fast-forwarded to the cycle's Drop);
+  `scripts\review-m5.ps1 -Part part2`.
+
+### Acceptance
+
+| Check | Result | Limit |
+|---|---|---|
+| Tests | `scripts\test.ps1` passes: sim 5,621 checks (new: the table, Moth's clock, Blink's star and strike, Brood B's cap and C's swarm, Hound C's shield, Drifter B's tell, Flanker's orbit, Skitter's sidestep); net 131,340 (the correction's new byte); determinism `30e1c914ed5830b6` / `e2de53b4dc0ecca6`; soaks clean 6.4 wu RMS, impaired **9.97** wu RMS (was 7.9; below) | all pass, < 12 wu |
+| Careful bot, 20 seeds x 40 min | median first death **31.10 min** (Tracks 8-9), none in the first pass, boss fights lost 4.6% (Kaleidos 3/79, Longwave 2/67, Choir 4/56) | 26-36, none, 1 in 10 |
+| Careless bot, 20 seeds x 40 min | median **19.15 min**, **1 of 20** in the first pass (seed 4, 6.0 min, in Longwave); seeds 21-40: 17.95 min, 0 of 20 | 17-25, none |
+| Crowd in view / target (careful, Groove) | Tracks 1-3: 0.50 / 0.53 / 0.50, 0.50 / 0.46 / 0.43, 0.41 / 0.41 / 0.37 (as before) | |
+| The Moto, Track 3's first Drop (`--drop 3.1 --tier low --nohits`, 30 s; shared phone, our APK, the lock) | missed **0%**, P95 1 period, max 19.0 ms; up to 774 enemies in view (the jump brings no upgrades from Tracks 1 and 2, so the crowd piles up: a harder case than play); GPU P95 14.6 ms at the governor's clock; main thread P95 4.6 ms | P95 <= 16.9 ms, missed <= 5% |
+| Review set, Debug (`captures\m5\part2\`) | 12 pictures, 2 strips (`fam_moth_strip`, `fam_blink_strip`) with sheets, the glyph sheets of all sixteen families (`glyphs_1`, `glyphs_2`); 0 validation messages | 0 |
+
+### Decisions taken alone
+
+- **A Blink's star**: hopWu (200) is the star's radius round the player (each hop to every second point is then 380 wu);
+  read as a hop's length the star would be 105 wu across the player.
+- **Brood A** is the carrier alone (GAME_DESIGN 7.2: B hatches, C bursts); a clutch hatches only while the Brood is
+  engaged (near a player).
+- **Flanker's closeRate** is wu a second while it circles (no unit given); it closes to the player's body.
+- **The loop's roster**: everything that debuted in the set list's Tracks; species_m5.json's "every species comes back
+  one tier higher for each time round" is not built yet (part 7, with the ten-Track loop).
+
+### Numbers chosen (`src/sim/tuning.h` M5 part 2 block, `world_spawner.cpp` packs)
+
+Flanker: lands 0.9 rad off the line, slant weight 0.8, circles within 1.3 x its orbit, radial reach 120 wu, turns 3 rad/s.
+Skitter: turns 4 rad/s, a sidestep in 0.18 s, reads the line of fire 900 wu along and 36 wu (+ radius) beside. Moth:
+catches up at 1.6 x its speed. Packs: Flanker 4 (spread 90), Skitter 3 (60), Moth 6 (120), Blink 2 (80), Brood 1;
+spotlight groups Brood 1, Blink 2.
+
+### Not done or not verified
+
+- Variants for Tracks 4 to 10 (Skitter B and C, Moth C, Blink C, Flanker C, Drifter C, Carom C, Sentry C, Ram B and C,
+  Shoal B and C): their numbers load; behaviour comes with part 4.
+- **The impaired co-op soak's error rose to 9.97 wu RMS** (limit 12): the new families decide from where the players
+  are (a Skitter's sidestep reads each player's aim, a Moth's clock and a Blink's star their position), and a client
+  knows the others' a moment late. Not yet looked into further.
+- **The enemy bullet pool filled** in 2 of the careless bot's 20 runs deep in the loop (4,297 and 4,310 bullets refused,
+  Tracks 5-6): Moth B's petals on every eighth under the loop's ramps. The pool's cap held; the patterns thinned there.
+- Pictures are on Track 1's palette for the family scenes (the spawner off on Track 1).
 ## M5 part 1 "Longwave, The Choir, mini-bosses batch 1 and the Pen" — 2026-11-13
 
 Built on `main` (never pushed): `4c62506` (the previous content engineer's uncommitted tree, taken over: it built after two

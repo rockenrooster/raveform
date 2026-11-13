@@ -76,6 +76,7 @@ struct NetEnemyState {
     double until = 0.0;
     u32 rng = 0;
     u8 state = 0, flags = 0, target = 0xFF, far = 0;
+    u8 step = 0;  // M5: a family's own counter (a Blink's hops)
 };
 // What a player's own device decided, applied to that player in the other worlds (reliable).
 enum NetPlayerEventKind : u8 {
@@ -230,6 +231,11 @@ enum EnemyState : u8 {
     kCharge,       // a pack Hound's charge along its line (a, b = the direction)
     kFormation,    // a Hive dart following its place in its hive's shape (a = its slot, b = its hive)
     kFlee,         // the pack scatters when the Alpha dies (double Shards)
+    // M5 part 2 (sim/world_families.cpp): a Blink hopping round its star (a, b = the star's centre, until = the next hop;
+    // then kTelegraph / kDash / kRest as a Ram's, a and b its line), a Skitter's sidestep (a, b = its direction).
+    kHop,
+    kDodge,
+    kStateCount
 };
 enum EnemyFlag : u8 { kFlagDead = 1, kFlagEngaged = 2, kFlagArriving = 4, kFlagPredicted = 8, kFlagCalled = 16 };  // arriving: crowd fodder on its way into the frame
 // kFlagCalled (M5): a mini-boss called it (the Alpha's pack, the Hive's darts); sent with its spawn.
@@ -253,6 +259,7 @@ struct Enemies {
     u16 group[kCap];                             // a Shoal's school
     u8 state[kCap], flags[kCap];
     u8 far[kCap];                                // bars in a row outside every frame x the crowd's stray scale
+    u8 step[kCap];                               // M5: a family's own counter (a Blink's hops round its star)
     u32 handle[kCap];                            // generation << 16 | slot
     u32 serial[kCap];                            // spawn number (seeds the enemy's own random stream)
     u32 rng[kCap];
@@ -675,6 +682,9 @@ public:
     bool spawnBullet(Vec2 pos, Vec2 vel, float advanceS, float lifeS = 0.0f);  // 0: an enemy bullet's life
     bool spawnShard(Vec2 pos, Vec2 vel, u8 owner);
     void setEnemyHp(u32 i, float hp) { enemies_.hp[i] = hp; }
+    // Tests (M5): a Hound C's shield would shed a shot travelling along `dir`; turn an enemy's family value b (the shield).
+    bool shieldWouldStop(u32 i, Vec2 dir) const { return shieldStops(i, dir); }
+    void setEnemyB(u32 i, float b) { enemies_.b[i] = b; }
     void killEnemy(u32 i, u8 killer);
 
     u64 hash() const;
@@ -819,6 +829,15 @@ private:
     void caromBounce(u32 k, double t);
     void updateCarom(float dt);
     bool minionMotion(u32 i, float dt);
+    // world_families.cpp (M5 part 2): the families of Tracks 2 and 3 and the variants their rosters use.
+    void landFamily(u32 i, const Species& s, const FamilyData& fd, Vec2 to);
+    void moveFamily(u32 i, const Species& s, const FamilyData& fd, float dt, i32 tp, Vec2 to, bool engaged);
+    void drifterShot(u32 i, const Species& s, const FamilyData& fd, i32 tp, Vec2 to, bool engaged);
+    void caromBounceShot(u32 i, const Species& s, const FamilyData& fd);
+    void houndShield(u32 i, const Species& s, const FamilyData& fd, i32 tp, Vec2 to, float dt);
+    bool shieldStops(u32 i, Vec2 shotDir) const;
+    void hatchBroodlings(u32 i, u32 n, double land);
+    void familyDeath(u32 i, const Species& s);
     void minionLand(u32 i);
     // world_net.cpp (M4)
     bool coop() const { return playerCount_ > 1; }
@@ -848,7 +867,7 @@ private:
     i32 idSlot(u32 serial) const;
 
     const SpeciesTable* species_ = nullptr;
-    u8 setList_ = kSongs;
+    u8 setList_ = static_cast<u8>(kBossesBuilt);  // M5: every Track with its fights (Play: those the music also has)
     u8 forcedMini_ = 0xFF;  // --fight (pictures, benchmarks): the mini-boss every middle Drop brings
     Rules rules_;
     Spawner spawner_;

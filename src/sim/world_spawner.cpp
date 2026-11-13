@@ -20,7 +20,12 @@ u32 packMax(Family f) {
         case Family::Hound: return 4;
         case Family::Carom: return 3;
         case Family::Ram: return 2;
-        default: return 1;
+        // M5 part 2 (chosen: docs/PROGRESS.md): Flankers come from several sides, Moths make a ring.
+        case Family::Flanker: return 4;
+        case Family::Skitter: return 3;
+        case Family::Moth: return 6;
+        case Family::Blink: return 2;
+        default: return 1;  // Sentry, Brood
     }
 }
 // Scatter of a pack around its anchor (wu).
@@ -31,6 +36,10 @@ float packSpread(Family f) {
         case Family::Shoal: return 50.0f;
         case Family::Carom: return 70.0f;
         case Family::Ram: return 60.0f;
+        case Family::Flanker: return 90.0f;
+        case Family::Skitter: return 60.0f;
+        case Family::Moth: return 120.0f;
+        case Family::Blink: return 80.0f;
         default: return 0.0f;
     }
 }
@@ -38,7 +47,9 @@ float packSpread(Family f) {
 u32 spotlightCount(Family f, u32 groupMin) {
     switch (f) {
         case Family::Shoal: return groupMin;
-        case Family::Sentry: return 1;
+        case Family::Sentry:
+        case Family::Brood: return 1;
+        case Family::Blink:
         case Family::Ram:
         case Family::Carom: return 2;
         default: return 3;
@@ -204,7 +215,14 @@ i32 World::pickSpecies(int kind) {
     u16 cand[SpeciesTable::kMaxRoster];
     float weight[SpeciesTable::kMaxRoster];
     u32 n = 0, newest = 0;
-    const auto debuted = [&](const SpeciesTable::RosterEntry& r) { return t >= 3 || r.track < t || (r.track == t && r.cycle <= c); };
+    // M5: the roster runs to Track 10; in the loop (after the set list) everything that debuted in the set list's Tracks,
+    // and only families with behaviour code (sim/species.h familyBuilt).
+    const bool loop = inLoop(t, director_.songs);
+    const auto debuted = [&](const SpeciesTable::RosterEntry& r) {
+        if (!familyBuilt(species_->get(r.species).family)) return false;
+        if (loop) return r.track <= director_.songs;
+        return r.track < t || (r.track == t && r.cycle <= c);
+    };
     for (u32 k = 0; k < species_->rosterCount; ++k) {
         const SpeciesTable::RosterEntry& r = species_->roster[k];
         if (!debuted(r)) continue;
@@ -217,7 +235,7 @@ i32 World::pickSpecies(int kind) {
         const bool fodder = species_->get(r.species).hue == 0;  // look.md 2: hue 1 = fodder
         if ((kind == 1 && !fodder) || (kind == 2 && fodder)) continue;
         cand[n] = r.species;
-        weight[n] = (t < 3 && static_cast<u32>(r.track) * 16 + r.cycle == newest) ? 2.0f : 1.0f;
+        weight[n] = (!loop && static_cast<u32>(r.track) * 16 + r.cycle == newest) ? 2.0f : 1.0f;
         ++n;
     }
     if (!n) return -1;
@@ -369,7 +387,13 @@ void World::spendCrowd(double landTick, const Phrase& ph) {
     const SpeciesTable::Crowd& c = species_->crowd;
     const u32 lost = director_.crowdLost;
     director_.crowdLost = 0;
-    const float target = crowdTarget(c, ph.track, ph.cycle ? ph.cycle : 1u) * crowdScale(c, ph);
+    float target = crowdTarget(c, ph.track, ph.cycle ? ph.cycle : 1u, director_.songs) * crowdScale(c, ph);
+    if (pen_.up && boss_.active && isMiniBoss(boss_.kind) && c.miniDrop > 0.0f) {
+        // minibosses.json common.crowd (the lead, 2026-11-13): in a Pen fight the crowd is penScale of the Drop's (not
+        // sectionScale's), never more than penMax bodies, so the lock line and the bounces can be followed.
+        const MiniData& md = species_->minis;
+        target = std::fmin(target / c.miniDrop * md.penCrowdScale, md.penCrowdMax);
+    }
     crowdGoal_ = target;
     // Arrivals stop being on their way once they land (kCrowdArrivingBars after it) or reach a counted frame.
     {
@@ -463,7 +487,7 @@ void World::megaWave(double landTick) {
     // beats): kMegaWaveBars bars of the Drop's budget at once, as formations.
     DirectorState& d = director_;
     const Phrase next = phraseAt(d, barOf(landTick + 1.0));
-    const float base = baseBudget(species_->budget, species_->budgetCycles, next.track, next.cycle);
+    const float base = baseBudget(*species_, next.track, next.cycle, d.songs);
     float wave = kMegaWaveBars * base * kDropScaleStart * d.assist * coopBudgetScale() * loopRamp(kLoopThreatRamp, next.track, d.songs);
     for (u32 formations = 0; formations < 16 && wave > 0.0f; ++formations) {
         if (enemies_.count >= aliveCap()) return;
@@ -662,7 +686,7 @@ void World::directorBar(double barTick, u32 bar) {
     spendCrowd(land, ph);
     // The threats: the budget by Track, cycle and section (none during the boss's Drop: kaleidos.md); co-op x
     // (1 + 0.6 x (players - 1)) (GAME_DESIGN 8).
-    const float base = baseBudget(species_->budget, species_->budgetCycles, ph.track, ph.cycle ? ph.cycle : 1u);
+    const float base = baseBudget(*species_, ph.track, ph.cycle ? ph.cycle : 1u, d.songs);
     // Play test 1: the threat budget's lever (tuning::kThreatBudgetScale, 1 = the first slice's numbers); play test 2's review:
     // the loop ramps it a Track at a time (GAME_DESIGN 8).
     const bool miniFight = boss_.active && !boss_.dying && isMiniBoss(boss_.kind);  // M5: fodder only while it lives

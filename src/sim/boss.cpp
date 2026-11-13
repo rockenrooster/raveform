@@ -505,6 +505,8 @@ bool MiniData::load() {
     }
     num("common.healthByTrack.loopFactorPerTrack", loopFactor);
     num("common.crowd.sectionScale", crowdScale);
+    num("common.crowd.penScale", penCrowdScale);
+    num("common.crowd.penMax", penCrowdMax);
     float orbs = 1, shards = 60;
     num("common.reward.boostOrbs", orbs);
     num("common.reward.shards", shards);

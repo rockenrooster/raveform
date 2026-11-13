@@ -213,6 +213,7 @@ struct MiniData {
     u32 healthTracks = 0;            // the last Track with a number
     float loopFactor = 1.25f;
     float crowdScale = 0.75f;
+    float penCrowdScale = 0.35f, penCrowdMax = 120.0f;  // common.crowd.penScale, penMax (the lead, 2026-11-13): a Pen fight's crowd
     u32 rewardOrbs = 1, rewardShards = 60;
     float penSide = 1400, penRiseBeats = 1;
 

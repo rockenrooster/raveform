@@ -10,7 +10,7 @@
 
 namespace rf::net {
 
-constexpr u32 kProtocolVersion = 0x52460501u;  // 'R' 'F', M5 part 1 (the fights: which one, its parts, the Pen, the held Drop)
+constexpr u32 kProtocolVersion = 0x52460502u;  // 'R' 'F', M5 part 2 (an enemy's own counter in its correction; the new states)
 constexpr u32 kMaxPacketBytes = 1200;
 
 enum class Msg : u8 {
@@ -224,7 +224,7 @@ private:
 
 // Item sizes on the wire (bytes). Play test 2: a spawn is 7 to 17 bytes (kSpawnBytes the most: only what differs from
 // the item before is sent), a death 1 to 6 (a varint).
-constexpr u32 kSpawnBytes = 17, kDeathBytes = 6, kBossClaimBytes = 6, kCorrectionBytes = 30, kPoseBytes = 39, kStatsBytes = 19;
+constexpr u32 kSpawnBytes = 17, kDeathBytes = 6, kBossClaimBytes = 6, kCorrectionBytes = 31, kPoseBytes = 39, kStatsBytes = 19;
 // Claims are variable (1-7 bytes an item, see putClaims); one claim's damage is at most this.
 constexpr float kMaxClaimDamage = 16383.0f / 64.0f;
 constexpr u32 kMaxAttention = 8;  // serials in one attention message

@@ -83,6 +83,7 @@ void World::landEnemy(u32 i) {
         }
         default: break;
     }
+    landFamily(i, s, fd, to);  // M5 part 2: the new families, and the Hound C's shield
     e.pheading[i] = e.heading[i];
 }
 
@@ -192,9 +193,11 @@ void World::updateEnemies(float dt) {
                 const Vec2 v = dirOf(h) * s.speed;
                 e.vx[i] = v.x;
                 e.vy[i] = v.y;
+                drifterShot(i, s, fd, tp, to, engaged);  // M5: Drifter B
                 break;
             }
             case Family::Hound: {
+                houndShield(i, s, fd, tp, to, dt);  // M5: Hound C
                 // Steer straight at the nearest player; a pack keeps a little apart.
                 float h = e.heading[i];
                 if (tp >= 0) h = turnToward(h, angleOf(to), fd.turnRate * dt);
@@ -364,6 +367,11 @@ void World::updateEnemies(float dt) {
                 }
                 break;
             }
+            case Family::Flanker:
+            case Family::Skitter:
+            case Family::Moth:
+            case Family::Brood:
+            case Family::Blink: moveFamily(i, s, fd, dt, tp, to, engaged); break;  // M5 part 2 (world_families.cpp)
             default: break;
         }
 
@@ -384,6 +392,7 @@ void World::updateEnemies(float dt) {
                 if (s.family == Family::Carom) {
                     if (hit & 1u) e.vx[i] = -e.vx[i];
                     if (hit & 2u) e.vy[i] = -e.vy[i];
+                    caromBounceShot(i, s, fd);  // M5: Carom B
                 } else {
                     if (hit & 1u) e.kx[i] = 0.0f;
                     if (hit & 2u) e.ky[i] = 0.0f;
@@ -403,6 +412,7 @@ void World::updateEnemies(float dt) {
             if (hitX) e.vx[i] = -e.vx[i];
             if (hitY) e.vy[i] = -e.vy[i];
             e.a[i] = std::fmin(e.a[i] + fd.speedGainPerBounce, fd.maxSpeedFactor);
+            caromBounceShot(i, s, fd);  // M5: Carom B
         } else {
             if (hitX) e.kx[i] = 0.0f;
             if (hitY) e.ky[i] = 0.0f;

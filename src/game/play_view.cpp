@@ -1063,6 +1063,16 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
                 glyph(d.glyphs, mark, false, pos, rot0, rot0, scale, look_->lines.variantMark.intensity * crowd,
                       0.5f * look_->lines.variantMark.width, kGlyphWhite, W1, W1);
             }
+            if (s.family == Family::Hound && s.variant == kVariantC) {
+                // M5 (GAME_DESIGN 7.2): the Hound C's frontal shield, a white arc where shots are shed.
+                const float half = 0.5f * table.family(Family::Hound).v.shieldArcDeg * kTau / 360.0f;
+                const float r = scale * 1.75f;
+                const u32 n = 6;
+                for (u32 k = 0; k < n; ++k) {
+                    const float a0 = e.b[i] - half + 2.0f * half * static_cast<float>(k) / n, a1 = e.b[i] - half + 2.0f * half * static_cast<float>(k + 1) / n;
+                    d.scene.line(toScene(pos + dir(a0) * r), toScene(pos + dir(a1) * r), 0.9f * refPx_, W1 * (1.4f * crowd), W1 * (1.4f * crowd), 0);
+                }
+            }
             if (s.family == Family::Carom) {  // a short motion streak (geometry, look.md §7)
                 const Vec2 v{e.vx[i], e.vy[i]};
                 const float sp = length(v);

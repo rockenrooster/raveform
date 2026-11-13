@@ -10,7 +10,10 @@
 #   alpha_strip; hive_tell (x 2), hive_ring, hive_spear, hive_wall, hive_half, hive_death, strip hive_strip; ram_tell
 #   (the lock), ram_attack, ram_x2 (stunned), ram_death, strip ram_strip; carom_tell (a bounce), carom_x2, carom_split,
 #   carom_death, strip carom_strip.
-#   scripts\review-m5.ps1 [-Part part1] [-Out captures\m5\part1] [-Config debug|dev] [-Only lw_chop,ch_cage]
+#   Part 2 (-Part part2): each new family at its moment round a still ship (fam_flanker, fam_skitter, fam_moth, fam_brood,
+#   fam_brood_c, fam_blink, fam_hound_c, fam_drifter_b, fam_carom_b; strips fam_moth_strip, fam_blink_strip), the bot's run in
+#   Track 2 cycle 3 and Track 3 cycles 2 and 3 (t2_c3, t3_c2, t3_c3), and the glyph sheets of all sixteen families.
+#   scripts\review-m5.ps1 [-Part part1|part2] [-Out captures\m5\<part>] [-Config debug|dev] [-Only lw_chop,ch_cage]
 # Debug (the default) runs with validation; the script stops on the first run that is not clean.
 param(
     [string]$Part = 'part1',
@@ -49,8 +52,14 @@ $sets = @{
                     'carom_death')
         strips = @('lw_strip', 'ch_strip', 'alpha_strip', 'hive_strip', 'ram_strip', 'carom_strip')
     }
+    'part2' = @{
+        singles = @('fam_flanker', 'fam_skitter', 'fam_moth', 'fam_brood', 'fam_brood_c', 'fam_blink', 'fam_hound_c', 'fam_drifter_b', 'fam_carom_b',
+                    't2_c3', 't3_c2', 't3_c3')
+        strips = @('fam_moth_strip', 'fam_blink_strip')
+        sheets = @(1, 2)
+    }
 }
-if (-not $sets.ContainsKey($Part)) { throw "no review set '$Part' (part1)" }
+if (-not $sets.ContainsKey($Part)) { throw "no review set '$Part' (part1, part2)" }
 $singles = $sets[$Part].singles
 $strips = $sets[$Part].strips
 if ($Only.Count) {
@@ -74,5 +83,14 @@ foreach ($s in $strips) {
     python -I -c $sheet (Join-Path $Out "${s}_sheet.png") @frames
     python "$PSScriptRoot\shrink_png.py" (Join-Path $Out "${s}_sheet.png") | Out-Null
     Write-Host "[review] $s (strip)"
+}
+# The glyph sheets (every family's five tiers in the engine: the silhouettes; part 2 on).
+$sheets = if ($sets[$Part].ContainsKey('sheets')) { $sets[$Part].sheets } else { @() }
+foreach ($pg in $sheets) {
+    if ($Only.Count -and -not ($Only -contains "glyphs_$pg")) { continue }
+    $png = Join-Path $Out "glyphs_$pg.png"
+    Invoke-Shot $png "--scenario glyph_sheet --page $pg --frames 4"
+    python "$PSScriptRoot\shrink_png.py" $png | Out-Null
+    Write-Host "[review] glyphs_$pg"
 }
 Write-Host "[review] done: $Out"

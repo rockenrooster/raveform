@@ -582,7 +582,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         for (u32 cy = 1; cy <= cyclesOfTrack(tr + 1); ++cy) {
             const Cell& c = cells[tr][cy];
             if (tr == 3 && !c.grooveTicks) continue;  // the loop's first Track, when a run got there
-            const float target = crowdTarget(cr, tr + 1, cy);
+            const float target = crowdTarget(cr, tr + 1, cy, kBossesBuilt);  // (the set list: the Tracks with their fights)
             const double mean = c.grooveTicks ? c.grooveSum / static_cast<double>(c.grooveTicks) : 0.0;
             const double cm = c.grooveTicks ? c.countedSum / static_cast<double>(c.grooveTicks) : 0.0;
             const double pk = c.dropRuns ? c.dropPeakSum / c.dropRuns : 0.0;
@@ -594,10 +594,9 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         }
     }
     {
-        static const char* const kFam[kFamilyCount] = {"drifter", "hound", "shoal", "ram", "carom", "sentry"};
         std::printf("[sim]   hits by cause:");
         for (u32 f = 0; f < kFamilyCount; ++f)
-            if (hitsBy[f]) std::printf(" %s %llu,", kFam[f], static_cast<unsigned long long>(hitsBy[f]));
+            if (hitsBy[f]) std::printf(" %s %llu,", familyName(static_cast<Family>(f)), static_cast<unsigned long long>(hitsBy[f]));
         std::printf(" bullets or beams %llu; boss fights won %llu (mean %.0f s), lost %llu; hits in boss fights %llu; by section G/B/D/Br %llu/%llu/%llu/%llu\n", static_cast<unsigned long long>(hitsBy[kFamilyCount]),
                     static_cast<unsigned long long>(bossWon), bossWon ? bossWonTicks / static_cast<double>(bossWon) / 60.0 : 0.0,
                     static_cast<unsigned long long>(bossLost), static_cast<unsigned long long>(hitsInBossFight), static_cast<unsigned long long>(hitsBySection[0]),

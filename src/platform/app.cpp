@@ -308,6 +308,8 @@ bool App::init() {
         std::memcpy(po.fight, args_.fight, sizeof po.fight);
         po.fightPhase = args_.fightPhase;
         po.fightHold = args_.fightHold;
+        po.jumpTrack = args_.jumpTrack;
+        po.jumpCycle = args_.jumpCycle;
         std::snprintf(po.picture, sizeof po.picture, "%s", args_.picture);
         // M4 stage A: co-op from the command line.
         po.net = args_.net;

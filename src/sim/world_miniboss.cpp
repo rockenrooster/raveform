@@ -38,10 +38,14 @@ void World::penRise(Vec2 centre, double tick) {
     // Fodder caught outside dissolves (the host's verdict; a client hears of each).
     if (role_ == NetRole::Client) return;
     Enemies& e = enemies_;
+    // And never more than penMax bodies of fodder inside (minibosses.json common.crowd.penMax, the lead 2026-11-13).
+    u32 inside = 0;
+    const u32 maxInside = static_cast<u32>(md.penCrowdMax);
     for (u32 i = 0; i < e.count; ++i) {
         if (e.flags[i] & kFlagDead) continue;
         const Species& s = species_->get(e.species[i]);
-        if (s.hue != 0 || penInside(Vec2{e.x[i], e.y[i]}, 0.0f)) continue;
+        if (s.hue != 0) continue;
+        if (penInside(Vec2{e.x[i], e.y[i]}, 0.0f) && ++inside <= maxInside) continue;
         e.flags[i] |= kFlagDead;
         Event ev;
         ev.type = EventType::Kill;

@@ -118,39 +118,43 @@ float tempoAt(const DirectorState& d, double tick) {
     return phraseAt(d, bar).bpm;
 }
 
-float baseBudget(const float budget[3][8], const u32 budgetCycles[3], u32 track, u32 cycle) {
+float baseBudget(const SpeciesTable& s, u32 track, u32 cycle, u32 songs) {
+    // species.json firstSlice.threatBudgetPerBar by Track and cycle, for the set list's Tracks (M5: up to ten); past the
+    // set list (the loop) the last Track's last value, rising a step per cycle played since (the loop multiplies on top,
+    // World). With three Tracks in the set list this is the first slice's rule, unchanged.
     if (cycle < 1) cycle = 1;
-    constexpr u32 kData = 3;  // the Tracks species.json gives budgets for
-    if (track >= 1 && track <= kData) {
+    const u32 data = songs < s.budgetTracks ? songs : s.budgetTracks;
+    if (data == 0) return 1.0f;
+    if (track >= 1 && track <= data) {
         const u32 t = track - 1;
-        const u32 n = budgetCycles[t];
+        const u32 n = s.budgetCycles[t];
         if (n == 0) return 1.0f;
-        return budget[t][(cycle <= n ? cycle : n) - 1];
+        return s.budget[t][(cycle <= n ? cycle : n) - 1];
     }
-    // Past the data: its last value, rising a step per cycle played since (the loop multiplies on top, World).
-    const u32 n3 = budgetCycles[kData - 1];
-    const float last = n3 ? budget[kData - 1][n3 - 1] : 1.0f;
+    const u32 nl = s.budgetCycles[data - 1];
+    const float last = nl ? s.budget[data - 1][nl - 1] : 1.0f;
     u32 cyclesSince = 0;
-    for (u32 t = kData + 1; t < track; ++t) cyclesSince += cyclesOfTrack(t);
+    for (u32 t = data + 1; t < track; ++t) cyclesSince += cyclesOfTrack(t);
     cyclesSince += cycle;
     return last + kEndlessBudgetStep * static_cast<float>(cyclesSince);
 }
 
-float crowdTarget(const SpeciesTable::Crowd& c, u32 track, u32 cycle) {
+float crowdTarget(const SpeciesTable::Crowd& c, u32 track, u32 cycle, u32 songs) {
+    // firstSlice.crowd.aliveTarget likewise: the set list's Tracks from the data, the loop a step a Track past its last.
     if (cycle < 1) cycle = 1;
-    constexpr u32 kData = 3;
+    const u32 data = songs < c.targetTracks ? songs : c.targetTracks;
     float v = 0.0f;
-    if (track >= 1 && track <= kData) {
+    if (data == 0) return 0.0f;
+    if (track >= 1 && track <= data) {
         const u32 t = track - 1;
         const u32 n = c.targetCycles[t];
         v = n ? c.target[t][(cycle <= n ? cycle : n) - 1] : 0.0f;
     } else {
-        const u32 n3 = c.targetCycles[kData - 1];
-        v = (n3 ? c.target[kData - 1][n3 - 1] : 0.0f) + c.loopStep * static_cast<float>(track - kData);
+        const u32 nl = c.targetCycles[data - 1];
+        v = (nl ? c.target[data - 1][nl - 1] : 0.0f) + c.loopStep * static_cast<float>(track - data);
     }
     return v < c.max ? v : c.max;
 }
-
 float crowdScale(const SpeciesTable::Crowd& c, const Phrase& p) {
     const float n = static_cast<float>(p.sectionBars > 1 ? p.sectionBars - 1 : 1);
     const float u = std::fmin(static_cast<float>(p.sectionBar) / n, 1.0f);

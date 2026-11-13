@@ -257,6 +257,17 @@ constexpr float kRamWallFanDeg = 160.0f;      // the wall's 16 bullets fan this 
 constexpr float kRamWakeWu = 22.0f;           // the wake's half-width (contact)
 constexpr float kHiveDartSpeed = 900.0f;      // wu/s: a Hive dart (and the Queen) moves to its place at most this fast
 
+// M5 part 2 (sim/world_families.cpp): what species.json's motion leaves open, chosen (docs/PROGRESS.md, M5 part 2).
+constexpr float kFlankerArcRad = 0.9f;         // a Flanker lands heading this far off the line to the player (its arc)
+constexpr float kFlankerApproachSlant = 0.8f;  // ... and comes in on a slant: the tangent's weight against the radial's 1
+constexpr float kFlankerOrbitBand = 1.3f;      // within this x its orbit radius it circles
+constexpr float kFlankerRadialWu = 120.0f;     // the radial correction's reach on the orbit
+constexpr float kFlankerTurn = 3.0f;           // rad/s
+constexpr float kSkitterTurn = 4.0f;           // rad/s
+constexpr float kSkitterDodgeS = 0.18f;        // a sidestep of dodgeDistance takes this long
+constexpr float kSkitterSeeWu = 900.0f;        // it reads a line of fire this far along the aim ...
+constexpr float kSkitterLaneWu = 36.0f;        // ... passing within this of it (plus its radius)
+constexpr float kMothCatchUp = 1.6f;           // a Moth flies to its place on the clock at up to this x its speed
 // The pages leave the health to the bot ("tune the segment health with the bot once it can surf", "tune the Voice health
 // with the bot", minibosses.md "25 to 35 seconds of fire ... tune with the bot"): the careful bot's time to kill each at its
 // home Track (8 seeds) brought into the page's window by these factors on the page's health (docs/PROGRESS.md, M5 part 1).

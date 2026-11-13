@@ -255,6 +255,7 @@ void testRoundTrip() {
     s.flags = kFlagEngaged;
     s.target = 2;
     s.far = 1;
+    s.step = 7;  // M5 part 2: a family's own counter
     w.reset();
     CHECK(w.putCorrections(2, 10000.0, &s, 1) == 1);
     Count c2;
@@ -265,7 +266,7 @@ void testRoundTrip() {
     CHECK(std::fabs(r.vx - s.vx) <= 0.06f && std::fabs(r.vy - s.vy) <= 0.06f && std::fabs(r.kx - s.kx) <= 2.6f);
     CHECK(std::fabs(std::remainder(r.heading - s.heading, kTau)) < 1e-3f);
     CHECK(std::fabs(r.a - s.a) < 1e-3f && r.b == -0.5f && r.hp == 37.25f && std::fabs(r.until - s.until) < 0.13);
-    CHECK(r.rng == s.rng && r.state == kTelegraph && r.flags == kFlagEngaged && r.target == 2);
+    CHECK(r.rng == s.rng && r.state == kTelegraph && r.flags == kFlagEngaged && r.target == 2 && r.step == 7);
 
     // A full corrections packet stays inside 1,200 bytes.
     NetEnemyState many[64];
@@ -275,7 +276,8 @@ void testRoundTrip() {
     }
     w.reset();
     const u32 put = w.putCorrections(2, 10000.0, many, 64);
-    CHECK(put == 39 && w.size() <= kMaxPacketBytes);
+    CHECK(put == 38 && w.size() <= kMaxPacketBytes);  // M5: 31 bytes each (39 at 30)
+    if (put != 38) std::printf("  corrections in a packet: %u (%u bytes)\n", put, static_cast<u32>(w.size()));
 
     // Poses and the heartbeat.
     MsgPose p;

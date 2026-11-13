@@ -154,6 +154,15 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
                 }
             }
             usedNext = true;
+        } else if (is("--drop") && next) {
+            // M5: --drop <track>.<cycle> (benchmarks: a Track's Drop with its own roster and crowd).
+            const int t = std::atoi(next);
+            const char* dot = std::strchr(next, '.');
+            const int cy = dot ? std::atoi(dot + 1) : 1;
+            ok = t >= 1 && t <= 10 && cy >= 1 && cy <= 3;
+            a.jumpTrack = static_cast<u8>(t);
+            a.jumpCycle = static_cast<u8>(cy);
+            usedNext = true;
         } else if (is("--picture") && next) {
             ok = copyString(a.picture, sizeof a.picture, next);
             usedNext = true;

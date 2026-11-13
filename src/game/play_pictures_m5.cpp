@@ -160,9 +160,58 @@ bool Play::fightReady() {
 
 // ---------------------------------------------------------------------------------------------- the m5_ pictures
 
+// ---- M5 part 2: the families of Tracks 2 and 3 at their moments (a scripted group round a still ship, the spawner off),
+// and the bot's run in Tracks 2 and 3 with their rosters.
+namespace {
+struct FamPic {
+    const char* name;  // m5_fam_<name> or m5_<name>
+    Family family;
+    u8 tier, variant, count;
+    bool fire, strip;
+    u8 track, cycle;   // a Track picture (count 0): the bot's run, its cycle's Groove, four bars in
+};
+const FamPic kFamPics[] = {
+    {"fam_flanker", Family::Flanker, 2, kVariantB, 4, false, false, 0, 0},
+    {"fam_skitter", Family::Skitter, 2, kVariantA, 3, true, false, 0, 0},
+    {"fam_moth", Family::Moth, 2, kVariantB, 6, false, false, 0, 0},
+    {"fam_moth_strip", Family::Moth, 2, kVariantB, 6, false, true, 0, 0},
+    {"fam_brood", Family::Brood, 1, kVariantB, 2, false, false, 0, 0},
+    {"fam_brood_c", Family::Brood, 2, kVariantC, 1, true, false, 0, 0},
+    {"fam_blink", Family::Blink, 2, kVariantB, 2, false, false, 0, 0},
+    {"fam_blink_strip", Family::Blink, 2, kVariantB, 1, false, true, 0, 0},
+    {"fam_hound_c", Family::Hound, 2, kVariantC, 4, true, false, 0, 0},
+    {"fam_drifter_b", Family::Drifter, 1, kVariantB, 5, false, false, 0, 0},
+    {"fam_carom_b", Family::Carom, 1, kVariantB, 3, false, false, 0, 0},
+    {"t2_c3", Family::Drifter, 0, 0, 0, false, false, 2, 3},
+    {"t3_c2", Family::Drifter, 0, 0, 0, false, false, 3, 2},
+    {"t3_c3", Family::Drifter, 0, 0, 0, false, false, 3, 3},
+};
+constexpr u32 kFamPicCount = sizeof(kFamPics) / sizeof(kFamPics[0]);
+constexpr u8 kFamBase = 100;  // m5Pic_ for a FamPic: kFamBase + its index
+}  // namespace
+
 bool Play::scriptSetupM5() {
     const char* p = opt_.picture;
     if (!starts(p, "m5_")) return false;
+    for (u32 k = 0; k < kFamPicCount; ++k)
+        if (std::strcmp(p + 3, kFamPics[k].name) == 0) m5Pic_ = static_cast<u8>(kFamBase + k);
+    if (m5Pic_ != 0xFF) {
+        const FamPic& f = kFamPics[m5Pic_ - kFamBase];
+        World& w = *world_;
+        w.rules().godMode = true;
+        if (f.strip) stripStride_ = 4;
+        if (f.track) {
+            // The Track's cycle, four bars into its Groove: the run starts in that Track and is fast-forwarded there.
+            w.directorMut().track = f.track;
+            w.spawner().mode = Spawner::Mode::Slice;
+            const u32* len = kSectionBars[formOfTrack(f.track, w.setList())];
+            const u32 bars = (f.cycle - 1u) * (len[0] + len[1] + len[2] + len[3]) + 4u;
+            scriptFastForwardS_ = static_cast<float>(bars) * 4.0f * 60.0f / bpmOfTrack(f.track, w.setList());
+        } else {
+            w.spawner().mode = Spawner::Mode::Off;
+        }
+        return true;
+    }
     for (u32 k = 0; k < kPicCount; ++k)
         if (std::strcmp(p + 3, kPics[k].name) == 0) m5Pic_ = static_cast<u8>(k);
     if (m5Pic_ == 0xFF) {
@@ -179,6 +228,96 @@ bool Play::scriptSetupM5() {
 bool Play::scriptInputM5(StickInput& in) {
     if (m5Pic_ == 0xFF) return false;
     World& w = *world_;
+    if (m5Pic_ >= kFamBase) {
+        const FamPic& f = kFamPics[m5Pic_ - kFamBase];
+        const u32 t = scriptTick_;
+        const i64 now = static_cast<i64>(frameNo_);
+        const double music = music1_;
+        const Vec2 ship = controller_.pose().pos;
+        const Enemies& e = w.enemies();
+        in = StickInput{};
+        in.assist = false;  // (no auto-aim: the group lives to show itself; the shooters' scenes aim below)
+        if (f.track) {
+            in = bot_.think(w, 0, controller_, clock_.heardNow());
+            if (ffRunning_) return true;
+            in.nova = false;
+            w.closeTrioNow(0);
+            w.playerMut(0).levelsBanked = 0;
+            if (captureFrom_ < 0 && t == 150) captureFrom_ = now;
+            return true;
+        }
+        if (t == 200) {
+            // The group lands on the next beat round the ship (after the run's Track card has mostly gone) (a ring for Moths, ahead for the shooters' targets).
+            const double land = (std::floor(music / kTicksPerBeat) + 1.0) * kTicksPerBeat;
+            const u16 sp = SpeciesTable::index(f.family, f.tier, f.variant);
+            for (u32 k = 0; k < f.count; ++k) {
+                const float a = kTau * static_cast<float>(k) / static_cast<float>(f.count);
+                Vec2 at = ship + Vec2{std::cos(a) * 520.0f, std::sin(a) * 300.0f};
+                if (f.fire) at = ship + Vec2{420.0f + 60.0f * static_cast<float>(k), -120.0f + 80.0f * static_cast<float>(k)};
+                if (f.family == Family::Carom) at = ship + Vec2{-420.0f - 90.0f * static_cast<float>(k), -200.0f + 160.0f * static_cast<float>(k)};  // they cross to the wall
+                w.spawnEnemy(sp, at, f.family == Family::Carom ? 0.0f : angleOf(ship - at), land);
+            }
+        }
+        if (t == 201 && f.fire && f.family != Family::Brood) {
+            // The shooters' targets live through the stream (the scene is their answer to it).
+            for (u32 i = 0; i < e.count; ++i)
+                if (!(e.flags[i] & kFlagDead)) w.setEnemyHp(i, 400.0f);
+        }
+        if (f.family == Family::Carom && t < 3) {
+            // The Caroms bounce off the arena's right wall: the ship stands near it.
+            controller_.reset(Vec2{kArenaHalfW - 520.0f, 0.0f});  // the wall inside the frame
+        }
+        if (f.fire && t > (f.family == Family::Brood ? 300u : 210u)) {
+            // The ship's stream at the nearest of them.
+            i32 best = -1;
+            float bd = 1e30f;
+            for (u32 i = 0; i < e.count; ++i) {
+                if ((e.flags[i] & kFlagDead) || e.state[i] == kWarping) continue;
+                const float d = lengthSq(Vec2{e.x[i], e.y[i]} - ship);
+                if (d < bd) {
+                    bd = d;
+                    best = static_cast<i32>(i);
+                }
+            }
+            if (best >= 0) {
+                in.aim = Vec2{e.x[best], e.y[best]} - ship;
+                in.aimActive = true;
+            }
+        }
+        if (captureFrom_ >= 0 || t < 300) return true;  // (after the run's Track card, 2.25 bars)
+        bool go = false;
+        for (u32 i = 0; i < e.count && !go; ++i) {
+            if (e.flags[i] & kFlagDead) continue;
+            switch (f.family) {
+                case Family::Flanker: go = e.state[i] == kGlint || e.state[i] == kFiring; break;
+                case Family::Skitter: go = e.state[i] == kDodge; break;
+                case Family::Moth: go = e.state[i] == kFiring && std::fmod(music, 48.0) < (f.strip ? 1.0 : 10.0); break;
+                case Family::Brood: go = f.variant == kVariantB ? (e.species[i] == SpeciesTable::kBroodling && e.state[i] != kWarping && t > 420) : false; break;
+                case Family::Blink: go = e.state[i] == kTelegraph && (f.strip || music > e.until[i] - 0.5 * kTicksPerBeat); break;
+                case Family::Hound: go = true; break;
+                case Family::Drifter: go = e.state[i] == kGlint && music > e.until[i] - 0.5 * kTicksPerBeat; break;
+                case Family::Carom: go = w.bullets().count >= 3; break;
+                default: break;
+            }
+        }
+        if (f.family == Family::Brood && f.variant == kVariantC) {
+            // Its death: the ship's stream kills it; the swarm a few frames later.
+            for (u32 k = 0; k < w.eventCount() && !go; ++k)
+                go = w.events()[k].type == EventType::Kill && w.events()[k].species == SpeciesTable::index(Family::Brood, 2, kVariantC);
+            if (go) {
+                captureFrom_ = now + 6;
+                return true;
+            }
+            for (u32 i = 0; i < e.count; ++i)
+                if (e.species[i] == SpeciesTable::index(Family::Brood, 2, kVariantC) && t == 310) w.setEnemyHp(i, 0.001f);
+        }
+        if (!go && t > 60u * 60u) go = true;
+        if (go) {
+            captureFrom_ = now + 1;
+            RF_LOG("play: picture '%s' captures from frame %lld", opt_.picture, static_cast<long long>(captureFrom_));
+        }
+        return true;
+    }
     in = bot_.think(w, 0, controller_, clock_.heardNow());
     if (ffRunning_) return true;
     in.nova = false;  // (no Nova's ring over the moment)

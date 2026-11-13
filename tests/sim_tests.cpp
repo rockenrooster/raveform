@@ -403,7 +403,9 @@ void testSpecies() {
         CHECK(h.ranged());
         CHECK(h.killSize() == 0);
     }
-    CHECK(s.rosterCount == 12);
+    // M5 (species.json, was species_m5.json): the whole set list's roster, budgets and crowd for ten Tracks.
+    CHECK_MSG(s.rosterCount == 106, "roster %u", s.rosterCount);
+    CHECK(s.budgetTracks == 10 && s.crowd.targetTracks == 10);
     CHECK(s.budgetCycles[0] == 3 && s.budgetCycles[1] == 3);  // play test 2 (species.json): Track 1 has three cycles
     CHECK(s.get(SpeciesTable::index(Family::Ram, 3, kVariantA)).killSize() == 1);
     CHECK(s.get(SpeciesTable::index(Family::Ram, 5, kVariantA)).killSize() == 2);
@@ -496,12 +498,12 @@ void testDirectorCycle() {
     CHECK(songOfTrack(3, 3) == 2 && cyclesOfTrack(3) == 3 && formOfTrack(3, 3) == 1);
     CHECK(songOfTrack(4, 3) == 0 && cyclesOfTrack(4) == 3 && formOfTrack(4, 3) == 0 && songOfTrack(5, 3) == 1 && songOfTrack(6, 3) == 2);
     // Budgets (species.json firstSlice, threats only), rising past the data; section scales (GAME_DESIGN 8).
-    const float(*b)[8] = g_species->budget;
-    CHECK(baseBudget(b, g_species->budgetCycles, 1, 1) == 2.0f && baseBudget(b, g_species->budgetCycles, 1, 2) == 3.5f &&
-          baseBudget(b, g_species->budgetCycles, 1, 3) == 6.0f);
-    CHECK(baseBudget(b, g_species->budgetCycles, 2, 3) == 12.0f);
-    CHECK(baseBudget(b, g_species->budgetCycles, 3, 1) == 14.0f && baseBudget(b, g_species->budgetCycles, 3, 3) == 18.0f);
-    CHECK(baseBudget(b, g_species->budgetCycles, 4, 1) == 20.0f);
+    const SpeciesTable& b = *g_species;
+    CHECK(baseBudget(b, 1, 1, 3) == 2.0f && baseBudget(b, 1, 2, 3) == 3.5f && baseBudget(b, 1, 3, 3) == 6.0f);
+    CHECK(baseBudget(b, 2, 3, 3) == 12.0f);
+    CHECK(baseBudget(b, 3, 1, 3) == 14.0f && baseBudget(b, 3, 3, 3) == 18.0f);
+    // Past a set list of three: Track 3's last plus a step a cycle (the first slice's rule); with ten, the data (M5).
+    CHECK(baseBudget(b, 4, 1, 3) == 18.0f + tuning::kEndlessBudgetStep && baseBudget(b, 4, 1, 10) == 20.0f && baseBudget(b, 10, 3, 10) == 60.0f);
     Phrase s;
     s.section = Section::Build;
     s.sectionBars = 4;
@@ -548,9 +550,11 @@ void testCrowd() {
     g_test = "crowd";
     // Targets (species.json firstSlice.crowd): by Track and cycle, then rising a step a Track up to the max.
     const SpeciesTable::Crowd& c = g_species->crowd;
-    CHECK(crowdTarget(c, 1, 1) == 20.0f && crowdTarget(c, 1, 2) == 60.0f && crowdTarget(c, 1, 3) == 120.0f);
-    CHECK(crowdTarget(c, 2, 1) == 150.0f && crowdTarget(c, 3, 3) == 300.0f);
-    CHECK(crowdTarget(c, 4, 1) == 320.0f && crowdTarget(c, 30, 1) == 400.0f);
+    CHECK(crowdTarget(c, 1, 1, 3) == 20.0f && crowdTarget(c, 1, 2, 3) == 60.0f && crowdTarget(c, 1, 3, 3) == 120.0f);
+    CHECK(crowdTarget(c, 2, 1, 3) == 150.0f && crowdTarget(c, 3, 3, 3) == 300.0f);
+    CHECK(crowdTarget(c, 4, 1, 3) == 320.0f && crowdTarget(c, 30, 1, 3) == 400.0f);
+    // M5: with ten Tracks in the set list their own targets (species.json Tracks 4 to 10), the max from Track 8.
+    CHECK(crowdTarget(c, 4, 1, 10) == 310.0f && crowdTarget(c, 7, 3, 10) == 390.0f && crowdTarget(c, 8, 2, 10) == 400.0f && crowdTarget(c, 11, 1, 10) == 400.0f);
     Phrase p;
     p.section = Section::Groove;
     CHECK(crowdScale(c, p) == 1.0f);
@@ -1912,6 +1916,179 @@ void testMinibosses() {
 
 }  // namespace
 
+// ---------------------------------------------------------------------------------------------- M5 part 2: families
+
+// Steps until `until` with the ship at `ship`, firing along +x when `fire`.
+void runShip(World& w, double& music, double until, Vec2 ship, u8 fire = 0) {
+    while (music + kTicksPerSimTick <= until + 1e-9) stepWorld(w, music, ship, fire);
+}
+i32 spawnAt(World& w, Family f, u32 tier, u32 variant, Vec2 at, double land) {
+    return w.spawnEnemy(SpeciesTable::index(f, tier, variant), at, 0.0f, land);
+}
+
+void testFamiliesM5() {
+    g_test = "families (M5 part 2)";
+    const SpeciesTable& s = *g_species;
+    // The table: sixteen families, 240 species and the broodling; every roster entry is a family x tier x variant row.
+    CHECK(kFamilyCount == 16 && SpeciesTable::kFamilySpecies == 240 && SpeciesTable::kCount == 241);
+    CHECK(std::strcmp(s.get(static_cast<u16>(SpeciesTable::kBroodling)).id, "broodling") == 0 &&
+          s.get(static_cast<u16>(SpeciesTable::kBroodling)).hue == 0 && s.get(static_cast<u16>(SpeciesTable::kBroodling)).radius == 8.0f);
+    CHECK(s.find("moth_2_B") == SpeciesTable::index(Family::Moth, 2, kVariantB) && s.find("mimic_5_C") == 239);
+    CHECK(s.family(Family::Moth).orbitRadius == 360.0f && s.family(Family::Blink).hops == 4 && s.family(Family::Brood).maxMinisEach == 6);
+    CHECK(s.family(Family::Hound).v.shieldArcDeg == 120.0f && s.family(Family::Moth).v.petals == 2 && s.family(Family::Brood).v.swarmOnDeath == 8);
+    {
+        // Only families with behaviour are picked; the first pass's Track 3 picks Track 3's debuts in their cycles.
+        u32 unbuilt = 0, t3 = 0;
+        for (u32 k = 0; k < s.rosterCount; ++k) {
+            const Species& sp = s.get(s.roster[k].species);
+            if (!familyBuilt(sp.family) && s.roster[k].track <= 3) ++unbuilt;
+            if (s.roster[k].track == 3) ++t3;
+        }
+        CHECK(unbuilt == 0 && t3 == 15);
+    }
+    const double beat = kTicksPerBeat;
+    {
+        // Moth: its place steps inward a quarter of closePerBar on every beat, down to minRadius.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 i = spawnAt(*w, Family::Moth, 1, kVariantA, Vec2{300.0f, 0.0f}, music + 1.0);
+        runShip(*w, music, 4.0 * beat, Vec2{});
+        const Enemies& e = w->enemies();
+        const float r0 = e.b[i];
+        const double m0 = music;
+        runShip(*w, music, 8.0 * beat, Vec2{});
+        const float beats = static_cast<float>(std::floor(music / beat) - std::floor(m0 / beat));
+        CHECK_MSG(std::fabs((r0 - e.b[i]) - 0.25f * s.family(Family::Moth).closePerBar * beats) < 1.0f, "radius %.1f -> %.1f in %.0f beats", r0, e.b[i], beats);
+        runShip(*w, music, 60.0 * beat, Vec2{});
+        CHECK(e.b[i] == s.family(Family::Moth).minRadius && length(Vec2{e.x[i], e.y[i]}) < s.family(Family::Moth).minRadius + 40.0f);
+        delete w;
+    }
+    {
+        // Blink: it lands on a point of a star of hopWu round the player, hops on four beats (every second point), then
+        // tells its strike for a beat, strikes, rests, and starts a new star.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 i = spawnAt(*w, Family::Blink, 2, kVariantB, Vec2{0.0f, 300.0f}, music + 1.0);
+        const Enemies& e = w->enemies();
+        const float hop = s.family(Family::Blink).hopWu;
+        runShip(*w, music, 0.6 * beat, Vec2{});
+        CHECK(e.state[i] == kHop && std::fabs(length(Vec2{e.x[i], e.y[i]}) - hop) < 1.0f);
+        u32 hops = 0, bullets = 0;
+        u8 last = e.step[i];
+        while (music < 8.0 * beat && e.state[i] == kHop) {
+            const u32 b0 = w->bullets().count;
+            stepWorld(*w, music, Vec2{});
+            if (e.step[i] != last) {
+                ++hops;
+                last = e.step[i];
+                CHECK(std::fabs(length(Vec2{e.x[i], e.y[i]}) - hop) < 1.0f);
+                bullets += w->bullets().count - b0;
+            }
+        }
+        CHECK_MSG(hops == 4 && e.state[i] == kTelegraph, "hops %u state %u", hops, e.state[i]);
+        CHECK_MSG(bullets == 4 * s.family(Family::Blink).v.pathBullets, "path bullets %u", bullets);
+        runShip(*w, music, music + 1.05 * beat, Vec2{});
+        CHECK(e.state[i] == kDash);
+        runShip(*w, music, music + 1.0 * beat, Vec2{});
+        CHECK(e.state[i] == kRest);
+        runShip(*w, music, music + 2.1 * beat, Vec2{});
+        CHECK(e.state[i] == kHop && e.step[i] == 0);
+        delete w;
+    }
+    {
+        // Brood B hatches its clutch on the bar line, never more than maxMinisEach of its own; Brood C bursts into its swarm.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->rules().godMode = true;
+        const i32 b = spawnAt(*w, Family::Brood, 1, kVariantB, Vec2{500.0f, 0.0f}, music + 1.0);
+        runShip(*w, music, 2.5 * kTicksPerBar, Vec2{});  // clutches on the bar lines 1 and 2
+        u32 minis = 0;
+        const Enemies& e = w->enemies();
+        for (u32 k = 0; k < e.count; ++k)
+            if (!(e.flags[k] & kFlagDead) && e.species[k] == SpeciesTable::kBroodling) ++minis;
+        (void)b;
+        CHECK_MSG(minis >= 2 && minis <= s.family(Family::Brood).maxMinisEach, "minis %u", minis);
+        delete w;
+        w = quietWorld();
+        music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->rules().godMode = true;
+        const i32 c = spawnAt(*w, Family::Brood, 2, kVariantC, Vec2{300.0f, 0.0f}, music + 1.0);
+        runShip(*w, music, beat, Vec2{});
+        w->setEnemyHp(static_cast<u32>(c), 0.001f);
+        // The ship's stream kills it; its swarm is there the same tick.
+        const u16 broodC = SpeciesTable::index(Family::Brood, 2, kVariantC);
+        bool killed = false;
+        for (u32 t = 0; t < 240 && !killed; ++t) {
+            stepWorld(*w, music, Vec2{}, 1);
+            for (u32 k = 0; k < w->eventCount(); ++k) killed = killed || (w->events()[k].type == EventType::Kill && w->events()[k].species == broodC);
+        }
+        (void)c;
+        const Enemies& e2 = w->enemies();
+        u32 swarm = 0;
+        for (u32 k = 0; k < e2.count; ++k)
+            if (!(e2.flags[k] & kFlagDead) && e2.species[k] == SpeciesTable::kBroodling) ++swarm;
+        CHECK_MSG(killed && swarm == s.family(Family::Brood).v.swarmOnDeath, "killed %d swarm %u", killed ? 1 : 0, swarm);
+        delete w;
+    }
+    {
+        // Hound C: its front arc sheds a shot, its back takes one.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 h = spawnAt(*w, Family::Hound, 2, kVariantC, Vec2{400.0f, 0.0f}, music + 1.0);
+        runShip(*w, music, 0.5 * beat, Vec2{});
+        w->setEnemyB(static_cast<u32>(h), kPi);  // the shield faces the ship (at the origin)
+        CHECK(w->shieldWouldStop(static_cast<u32>(h), Vec2{1.0f, 0.0f}) && !w->shieldWouldStop(static_cast<u32>(h), Vec2{-1.0f, 0.0f}));
+        delete w;
+    }
+    {
+        // Drifter B: a beat's tell, then one aimed shot.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 d = spawnAt(*w, Family::Drifter, 1, kVariantB, Vec2{350.0f, 0.0f}, music + 1.0);
+        u32 tells = 0, shots = 0;
+        while (music < 5.0 * kTicksPerBar) {
+            stepWorld(*w, music, Vec2{});
+            tells += countEvents(*w, EventType::Telegraph);
+            shots += countEvents(*w, EventType::EnemyShot);
+        }
+        (void)d;
+        CHECK_MSG(tells >= 1 && shots >= 1 && shots <= tells, "tells %u shots %u", tells, shots);
+        delete w;
+    }
+    {
+        // Flanker: it comes round and circles inside its orbit band.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 f = spawnAt(*w, Family::Flanker, 1, kVariantA, Vec2{900.0f, 0.0f}, music + 1.0);
+        runShip(*w, music, 4.0 * kTicksPerBar, Vec2{});
+        const Enemies& e = w->enemies();
+        CHECK_MSG(length(Vec2{e.x[f], e.y[f]}) < s.family(Family::Flanker).orbitRadius * tuning::kFlankerOrbitBand + 40.0f, "at %.0f",
+                  length(Vec2{e.x[f], e.y[f]}));
+        delete w;
+    }
+    {
+        // Skitter: in the ship's line of fire it steps aside.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 k = spawnAt(*w, Family::Skitter, 1, kVariantA, Vec2{500.0f, 0.0f}, music + 1.0);
+        bool dodged = false;
+        for (u32 t = 0; t < 60 && !dodged; ++t) {
+            stepWorld(*w, music, Vec2{}, 1);
+            dodged = w->enemies().state[k] == kDodge;
+        }
+        CHECK(dodged);
+        delete w;
+    }
+}
+
 int main() {
     g_species = new (std::nothrow) SpeciesTable;
     if (!g_species || !g_species->load()) {
@@ -1939,6 +2116,7 @@ int main() {
     testLongwave();
     testChoir();
     testMinibosses();
+    testFamiliesM5();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;
     return g_failures;

@@ -118,11 +118,11 @@ Phrase phraseAt(const DirectorState& d, u32 bar);
 float tempoAt(const DirectorState& d, double tick);
 // The Groove budget per bar of a Track's cycle (species.json firstSlice.threatBudgetPerBar; past its
 // last value it keeps rising, tuning::kEndlessBudgetStep per cycle).
-float baseBudget(const float budget[3][8], const u32 budgetCycles[3], u32 track, u32 cycle);
+float baseBudget(const SpeciesTable& s, u32 track, u32 cycle, u32 songs);
 // The crowd (GAME_DESIGN 8): fodder alive near the ships the director keeps, by Track and cycle
 // (species.json firstSlice.crowd; past Track 3 it rises loopStepPerTrack a Track up to its max), and the
 // section's scale on it.
-float crowdTarget(const SpeciesTable::Crowd& c, u32 track, u32 cycle);
+float crowdTarget(const SpeciesTable::Crowd& c, u32 track, u32 cycle, u32 songs);
 float crowdScale(const SpeciesTable::Crowd& c, const Phrase& p);
 // The section's scale on that budget (GAME_DESIGN 8): Groove 1.0, Build 1.0 -> 1.6, Drop 2.0 -> 1.2,
 // Break 0; the boss's Drop 0.3 (kaleidos.md).

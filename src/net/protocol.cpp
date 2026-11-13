@@ -493,8 +493,9 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 s.state = packed & 15u;  // M5: the called bodies' states need four bits
                 s.flags = static_cast<u8>(((packed & 16u) ? kFlagEngaged : 0) | ((packed & 32u) ? kFlagArriving : 0) | ((packed & 64u) ? kFlagCalled : 0));
                 s.target = r.u8v();
+                s.step = r.u8v();  // M5 part 2
                 s.far = 0;
-                if (r.bad() || s.serial == 0 || !finite(s.a) || !finite(s.b) || !finite(s.hp) || s.state > kFlee || packed > 127 ||
+                if (r.bad() || s.serial == 0 || !finite(s.a) || !finite(s.b) || !finite(s.hp) || s.state >= kStateCount || packed > 127 ||
                     !(s.target < kMaxPlayers || s.target == 0xFF) || s.rng == 0)
                     return false;
                 if (sink) sink->onCorrection(s);
@@ -973,6 +974,7 @@ u32 PacketWriter::putCorrections(u16 run, double base, const NetEnemyState* item
         u8v(static_cast<u8>((s.state & 15u) | ((s.flags & kFlagEngaged) ? 16u : 0u) | ((s.flags & kFlagArriving) ? 32u : 0u) |
                             ((s.flags & kFlagCalled) ? 64u : 0u)));
         u8v(s.target);
+        u8v(s.step);
     }
     return n;
 }

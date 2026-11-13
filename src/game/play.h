@@ -46,6 +46,7 @@ struct PlayOptions {
     char fight[24] = {};        // M5 --fight <id>: the run starts in the fight's home Track and plays on to it (pictures, benchmarks)
     u8 fightPhase = 0;          // ... its parts taken down to that phase once it fights
     bool fightHold = false;     // ... and held there (its health comes back: a benchmark of the phase)
+    u8 jumpTrack = 0, jumpCycle = 0;  // M5 --drop <track>.<cycle>: fast-forwarded to that Track's cycle's Drop
     char picture[32] = {};      // --picture <name>: a scripted scene for the review strips
     float pxPerMm = 0.0f;       // touch control sizes (0: scale with the screen height)
     bool autoplay = false;      // --autoplay: the screens as in play, the bot playing each run (taps start and retry)
@@ -308,7 +309,7 @@ private:
     bool scriptSetupM5();
     bool scriptInputM5(sim::StickInput& in);
     bool scriptEventsM5();
-    bool fightJump_ = false, fightPhaseDone_ = false;
+    bool fightJump_ = false, fightPhaseDone_ = false, dropJump_ = false;
     sim::BossKind fightKind_ = sim::BossKind::Kaleidos;
     u8 fightPhase_ = 0;
     double fightPhaseAt_ = -1.0;

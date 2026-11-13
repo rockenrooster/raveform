@@ -601,6 +601,7 @@ bool World::netSample(u32 i, NetEnemyState& s) const {
     s.flags = static_cast<u8>(e.flags[i] & (kFlagEngaged | kFlagArriving | kFlagCalled));
     s.target = e.target[i];
     s.far = e.far[i];
+    s.step = e.step[i];
     return true;
 }
 
@@ -648,6 +649,7 @@ float World::netCorrect(const NetEnemyState& s, double hostMusic) {
         e.state[i] = s.state;
         e.rng[i] = s.rng;
         e.far[i] = s.far;
+        e.step[i] = s.step;
         e.target[i] = s.target;
         e.flags[i] = static_cast<u8>((e.flags[i] & ~(kFlagEngaged | kFlagArriving | kFlagCalled)) | (s.flags & (kFlagEngaged | kFlagArriving | kFlagCalled)));
     }

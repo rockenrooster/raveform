@@ -13,7 +13,8 @@ const char kSpeciesJson[] =
 #include "species.json.inc"
     ;
 
-const char* const kFamilyNames[kFamilyCount] = {"drifter", "hound", "shoal", "ram", "carom", "sentry"};
+const char* const kFamilyNames[kFamilyCount] = {"drifter", "hound", "shoal",  "ram",    "carom",  "sentry", "flanker", "skitter",
+                                                "moth",    "brood", "blink",  "wyrm",  "tether", "weaver", "well",    "mimic"};
 }  // namespace
 
 u64 speciesDataDigest() {
@@ -71,6 +72,16 @@ bool SpeciesTable::load() {
         }
     }
 
+    // A number under `obj` the game reads (M5): missing, logged and the family marked incomplete.
+    const auto num = [&](const JsonValue* obj, const char* key, bool& k) -> float {
+        bool g = obj != nullptr;
+        const double v = obj ? doc.number(key, 0.0, &g, obj) : 0.0;
+        if (!g) {
+            RF_ERR("species: '%s' is missing", key);
+            k = false;
+        }
+        return static_cast<float>(v);
+    };
     // Families with behaviour code.
     for (u32 f = 0; f < kFamilyCount; ++f) {
         const JsonValue* fam = doc.find("families");
@@ -118,7 +129,111 @@ bool SpeciesTable::load() {
                 d.fireEverySteps = static_cast<u32>(doc.number("fireEverySteps", 2.0, &k, m));
                 d.bulletSpeed = static_cast<float>(doc.number("bulletSpeed", 0.0, &k, m));
                 break;
-            default: break;
+            // M5 part 2.
+            case Family::Flanker:
+                d.orbitRadius = num(m, "orbitRadius", k);
+                d.closeRate = num(m, "closeRate", k);
+                break;
+            case Family::Skitter:
+                d.dodgeDistance = num(m, "dodgeDistance", k);
+                d.dodgeCooldownBeats = num(m, "dodgeCooldownBeats", k);
+                break;
+            case Family::Moth:
+                d.orbitRadius = num(m, "orbitRadius", k);
+                d.closePerBar = num(m, "closePerBar", k);
+                d.turnsPerBar = num(m, "turnsPerBar", k);
+                d.minRadius = num(m, "minRadius", k);
+                break;
+            case Family::Brood:
+                d.miniRadius = num(m, "miniRadius", k);
+                d.miniHealth = num(m, "miniHealth", k);
+                d.miniSpeed = num(m, "miniSpeed", k);
+                d.miniScore = num(m, "miniScore", k);
+                d.maxMinisEach = static_cast<u32>(num(m, "maxMinisEach", k));
+                break;
+            case Family::Blink:
+                d.hopEveryBeats = num(m, "hopEveryBeats", k);
+                d.hopWu = num(m, "hopWu", k);
+                d.hops = static_cast<u32>(num(m, "hops", k));
+                d.strikeTellBeats = num(m, "strikeTellBeats", k);
+                d.strikeSpeed = num(m, "strikeSpeed", k);
+                d.strikeBeats = num(m, "strikeBeats", k);
+                d.restBeats = num(m, "restBeats", k);
+                break;
+            default: break;  // Tracks 4 to 6's families: their motion comes with their behaviour (M5 part 4)
+        }
+        // Variants B and C (variants.<family>.B / .C; GAME_DESIGN 7.2): the numbers of the variants built so far.
+        {
+            const JsonValue* vb = doc.find("variants");
+            vb = vb ? doc.member(vb, kFamilyNames[f]) : nullptr;
+            const JsonValue* B = vb ? doc.member(vb, "B") : nullptr;
+            const JsonValue* C = vb ? doc.member(vb, "C") : nullptr;
+            FamilyData::Variants& v = d.v;
+            switch (static_cast<Family>(f)) {
+                case Family::Drifter:
+                    v.aimedShotEveryBars = num(B, "aimedShotEveryBars", k);
+                    v.aimedBullets = static_cast<u32>(num(B, "bullets", k));
+                    v.splitInto = static_cast<u32>(num(C, "splitInto", k));
+                    v.childTierDrop = static_cast<u32>(num(C, "childTierDrop", k));
+                    break;
+                case Family::Hound:
+                    v.shieldArcDeg = num(C, "shieldArcDegrees", k);
+                    v.shieldTurnRate = num(C, "shieldTurnRate", k);
+                    break;
+                case Family::Carom:
+                    v.bulletsPerBounce = num(B, "bulletsPerBounce", k);
+                    v.bounceFanDeg = num(B, "fanDegrees", k);
+                    v.splitEveryBounces = static_cast<u32>(num(C, "splitEveryBounces", k));
+                    v.maxSplits = static_cast<u32>(num(C, "maxSplits", k));
+                    break;
+                case Family::Moth:
+                    v.petals = static_cast<u32>(num(B, "petals", k));
+                    v.petalEverySteps = static_cast<u32>(num(B, "everySteps", k));
+                    v.petalRotateDeg = num(B, "rotateDegrees", k);
+                    v.petalSpeed = num(B, "bulletSpeed", k);
+                    v.burstBullets = static_cast<u32>(num(C, "burstBullets", k));
+                    v.burstAtRadius = num(C, "atRadius", k);
+                    break;
+                case Family::Brood:
+                    v.hatchEveryBars = num(B, "hatchEveryBars", k);
+                    v.hatchCount = static_cast<u32>(num(B, "hatchCount", k));
+                    v.swarmOnDeath = static_cast<u32>(num(C, "swarmOnDeath", k));
+                    break;
+                case Family::Blink:
+                    v.pathBullets = static_cast<u32>(num(B, "pathBullets", k));
+                    v.pathBulletSpeed = num(B, "bulletSpeed", k);
+                    v.decoyLifeBeats = num(C, "decoyLifeBeats", k);
+                    break;
+                case Family::Flanker:
+                    v.sideShotEverySteps = static_cast<u32>(num(B, "sideShotEverySteps", k));
+                    v.sideBullets = static_cast<u32>(num(B, "bullets", k));
+                    v.speedUpPerDeath = num(C, "speedUpPerDeath", k);
+                    v.speedMaxFactor = num(C, "maxFactor", k);
+                    v.speedWithinWu = num(C, "withinWu", k);
+                    break;
+                case Family::Skitter:
+                    v.mineLifeBars = num(B, "mineLifeBars", k);
+                    v.mineRadius = num(B, "mineRadius", k);
+                    v.blinkHopWu = num(C, "blinkHopWu", k);
+                    v.blinkCooldownBeats = num(C, "cooldownBeats", k);
+                    break;
+                case Family::Shoal:
+                    v.streamLines = static_cast<u32>(num(B, "streamLines", k));
+                    v.lineSpeed = num(B, "lineSpeed", k);
+                    v.spearTellBeats = num(C, "tellBeats", k);
+                    v.spearSpeed = num(C, "spearSpeed", k);
+                    break;
+                case Family::Ram:
+                    v.wakeBars = num(B, "wakeBars", k);
+                    v.wakeWidth = num(B, "wakeWidth", k);
+                    v.reboundDashes = static_cast<u32>(num(C, "reboundDashes", k));
+                    break;
+                case Family::Sentry:
+                    v.domeRadius = num(C, "domeRadius", k);
+                    v.domeWithinWu = num(C, "shieldsNeighboursWithinWu", k);
+                    break;
+                default: break;
+            }
         }
         if (!k) {
             RF_ERR("species: family '%s' lacks a number the game reads", kFamilyNames[f]);
@@ -151,6 +266,23 @@ bool SpeciesTable::load() {
         }
     }
 
+    // M5: the Brood's mini (families.brood.motion.mini*): fodder that chases like a Hound, drawn with brood_1.
+    {
+        const FamilyData& d = families_[static_cast<u32>(Family::Brood)];
+        Species& s = species_[kBroodling];
+        std::snprintf(s.id, sizeof s.id, "broodling");
+        s.family = Family::Brood;
+        s.tier = 1;
+        s.variant = kVariantA;
+        s.hue = 0;  // "its minis ... count as fodder" (look.md 2: hue 1)
+        s.health = d.miniHealth;
+        s.speed = d.miniSpeed;
+        s.radius = d.miniRadius;
+        s.score = d.miniScore;
+        s.threat = 0.0f;
+        s.shards = 1;
+    }
+
     // Enemy bullets.
     {
         bool k = true;
@@ -169,7 +301,7 @@ bool SpeciesTable::load() {
         char id[24] = {};
         doc.text("species", id, sizeof id, e);
         const i32 s = find(id);
-        if (s < 0) {
+        if (s < 0 || static_cast<u32>(s) >= kFamilySpecies) {
             RF_ERR("species: roster entry '%s' is not a family the game knows", id);
             ok = false;
             continue;
@@ -179,17 +311,23 @@ bool SpeciesTable::load() {
         r.track = static_cast<u8>(doc.number("debut.track", 1.0, nullptr, e));
         r.cycle = static_cast<u8>(doc.number("debut.cycle", 1.0, nullptr, e));
     }
-    budgetCycles[0] = doc.numbers("firstSlice.threatBudgetPerBar.track1", budget[0], 8);
-    budgetCycles[1] = doc.numbers("firstSlice.threatBudgetPerBar.track2", budget[1], 8);
-    budgetCycles[2] = doc.numbers("firstSlice.threatBudgetPerBar.track3", budget[2], 8);
+    // M5: budgets and crowd targets for every Track of the set list (track1 .. track10).
+    budgetTracks = 0;
+    for (u32 t = 0; t < kMaxTracks; ++t) {
+        char path[96];
+        std::snprintf(path, sizeof path, "firstSlice.threatBudgetPerBar.track%u", t + 1);
+        budgetCycles[t] = doc.numbers(path, budget[t], 8);
+        if (budgetCycles[t]) budgetTracks = t + 1;
+    }
     // The crowd (firstSlice.crowd).
     {
         Crowd& c = crowd;
-        static const char* const kT[3] = {"track1", "track2", "track3"};
         char path[96];
-        for (u32 t = 0; t < 3; ++t) {
-            std::snprintf(path, sizeof path, "firstSlice.crowd.aliveTarget.%s", kT[t]);
+        c.targetTracks = 0;
+        for (u32 t = 0; t < kMaxTracks; ++t) {
+            std::snprintf(path, sizeof path, "firstSlice.crowd.aliveTarget.track%u", t + 1);
             c.targetCycles[t] = doc.numbers(path, c.target[t], 8);
+            if (c.targetCycles[t]) c.targetTracks = t + 1;
         }
         bool got = true;
         const auto num = [&](const char* p, float& out) {
@@ -224,9 +362,16 @@ bool SpeciesTable::load() {
         RF_ERR("species: firstSlice roster or budgets missing");
         ok = false;
     }
+    for (u32 t = 0; t < budgetTracks; ++t)
+        if (!budgetCycles[t] || !crowd.targetCycles[t]) {
+            RF_ERR("species: Track %u has no budget or no crowd target", t + 1);
+            ok = false;
+        }
     if (ok) {
-        RF_LOG("species: %u species from %u families, roster of %u, budgets %u + %u + %u cycles, crowd %.0f..%.0f", kCount, kFamilyCount,
-               rosterCount, budgetCycles[0], budgetCycles[1], budgetCycles[2], crowd.target[0][0], crowd.target[2][crowd.targetCycles[2] ? crowd.targetCycles[2] - 1 : 0]);
+        const u32 last = crowd.targetTracks ? crowd.targetTracks - 1 : 0;
+        RF_LOG("species: %u species from %u families (+ the broodling), roster of %u, budgets and crowd for %u Tracks, crowd %.0f..%.0f",
+               kFamilySpecies, kFamilyCount, rosterCount, budgetTracks, crowd.target[0][0],
+               crowd.target[last][crowd.targetCycles[last] ? crowd.targetCycles[last] - 1 : 0]);
     }
     if (!boss.load()) ok = false;
     // M5 part 1: Longwave, The Choir and the mini-bosses.
