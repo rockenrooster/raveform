@@ -124,12 +124,16 @@ struct Loadout {
     bool fusionDue(u8 f) const;
 };
 
-// GAME_DESIGN 6.1: three options (four, five with Lucky Break) from the Mods that are not capped, the Riffs not yet owned
-// (while a slot is free) and level-ups of owned Riffs, by weight (tuning::kTrioWeight*). Guarantees: at least one option
-// affects weapons; with fewer than four Riffs and no new Riff offered in the last two Trios, one is. Play test 2: when
-// fewer upgrades can still be taken, the orbs left offer different Boosts. M5: a Fusion that is due comes as one more
-// (gold) orb. Returns the orbs (<= kMaxOrbs). `sinceRiff`: Trios in a row that offered no new Riff (updated).
+// GAME_DESIGN 6.1 (M5: how a Trio is dealt): three orbs (four, five with Lucky Break). The first is firepower: the weapon
+// and rhythm Mods held, the Riffs held and the four staples (Split, Double-Time, Overcharge, On-Beat Crit), what is at its
+// cap left out (none: drawn as the others). The others are the whole pool by weight (dealWeight, tuning::kDeal*). No two
+// alike. With fewer than four Riffs and no new Riff offered in the last two Trios, one of the others is. Play test 2: when
+// fewer upgrades can still be taken, the orbs left offer different Boosts. A Fusion that is due comes as one more (gold)
+// orb. Returns the orbs (<= kMaxOrbs). `sinceRiff`: Trios in a row that offered no new Riff (updated).
 u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[kMaxOrbs]);
+// The dealing's weight of an upgrade for a loadout (0: it cannot be offered); a weapon or rhythm Mod (firepower).
+float dealWeight(const Loadout& l, u8 u);
+bool firepower(u8 u);
 
 // Shard levels (GAME_DESIGN 6.1, play test 2): the Shards level n takes from level n - 1, base x ratio^(n - 1) rounded
 // (tuning::kLevelShardsBase and kLevelShardsRatio; n >= 1).

@@ -331,6 +331,10 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     double levelAt[kMarks] = {}, takenAt[kMarks] = {}, modsAt[kMarks] = {}, riffsAt[kMarks] = {}, cellsAt[kMarks] = {};
     u32 runsAt[kMarks] = {};
     u64 levelTrios = 0, levelUps = 0, cellsTaken = 0, cellsRegrown = 0;
+    // M5 part 3 (GAME_DESIGN 6.1, how a Trio is dealt): the first run's build as Track 3 ends (Mods at their cap) and as
+    // Track 5 ends (a Fusion held).
+    u32 t3Runs = 0, t3Capped2 = 0, t5Runs = 0, t5Fusion = 0;
+    double t3Capped = 0.0;
     const SpeciesTable::Crowd& cr = species.crowd;
     const float hw = tuning::kFrameHalfWWu, hh = tuning::kFrameHalfHWu;
     const float cw = hw * cr.countFrameScale, ch = hh * cr.countFrameScale;
@@ -365,8 +369,21 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 firstDeathTrack[s] = world->phrase().track;
             }
             const Phrase& ph = w.phrase();
-            if (ph.track > maxTrack[s]) maxTrack[s] = ph.track;
             const PlayerState& p = w.player(0);
+            if (ph.track > maxTrack[s] && runner.deaths() == 0 && p.alive) {
+                if (ph.track == 4) {
+                    u32 capped = 0;
+                    for (u8 u = 0; u < kModCount; ++u) capped += p.loadout.mods[u] >= upgradeInfo(u).cap ? 1u : 0u;
+                    ++t3Runs;
+                    t3Capped += capped;
+                    t3Capped2 += capped >= 2 ? 1u : 0u;
+                }
+                if (ph.track == 6) {
+                    ++t5Runs;
+                    t5Fusion += p.loadout.fusions ? 1u : 0u;
+                }
+            }
+            if (ph.track > maxTrack[s]) maxTrack[s] = ph.track;
             if (p.alive) paceTicks[(ph.track < 4 ? ph.track : 4u) - 1] += 1.0;
             for (u32 k = 0; k < w.eventCount(); ++k) {
                 if (w.events()[k].type == EventType::LevelUp) {
@@ -675,6 +692,13 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         }
         std::printf("[sim]   level-ups %llu, level-up Trios opened %llu; Cells taken %llu, cells grown back by Regen %llu\n", static_cast<unsigned long long>(levelUps),
                     static_cast<unsigned long long>(levelTrios), static_cast<unsigned long long>(cellsTaken), static_cast<unsigned long long>(cellsRegrown));
+        // M5 part 3 (GAME_DESIGN 6.1): a build deepens (two Mods at their cap by Track 3) and a Fusion is reachable (held by
+        // the end of Track 5 in half the careful bot's runs).
+        std::printf("[sim]   the first run's build: as Track 3 ends (%u runs) %.2f Mods at their cap, two or more in %u; as Track 5 ends (%u runs) "
+                    "a Fusion held in %u\n",
+                    t3Runs, t3Runs ? t3Capped / t3Runs : 0.0, t3Capped2, t5Runs, t5Fusion);
+        logTagged("RFSIM", "{\"test\":\"crowd_build\",\"t3_runs\":%u,\"t3_capped_mean\":%.2f,\"t3_capped2\":%u,\"t5_runs\":%u,\"t5_fusion\":%u}", t3Runs,
+                  t3Runs ? t3Capped / t3Runs : 0.0, t3Capped2, t5Runs, t5Fusion);
     }
     logTagged("RFSIM", "{\"test\":\"crowd\",\"seeds\":%u,\"minutes\":%.0f,\"policy\":\"%s\",\"first_death_median\":%.2f,\"track2\":%u,\"track3\":%u,"
                        "\"kills_per_min\":%.1f,\"overflow\":%llu,\"nan\":%u,\"allocs\":%llu}",

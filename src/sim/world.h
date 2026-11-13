@@ -788,6 +788,9 @@ public:
 
     // M5 part 3 (world_upgrades_m5.cpp): what the view, the band and the bots read of the new upgrades.
     float worldStretch() const { return stretch_; }  // Time Stretch: the enemies' and their bullets' speed (1 or 0.5)
+    // The band's song bars against this world's (the run's ticks = the song's - a whole number of bars, which a pause
+    // moves): Singularity and the Sweeper keep the band's four- and two-bar phase (Play sets it before each tick).
+    void setSongBarShift(i64 bars) { songShift_ = static_cast<u8>(((bars % 4) + 4) % 4); }
     bool frozen(u32 i) const { return enemies_.frozenUntil[i] > m1_; }
     bool burning(u32 i) const { return enemies_.burnUntil[i] > m1_; }
     // Mirror's wingman (Quartet's three), Chorus's two ghosts: where each flies now, the way it fires and its share of the
@@ -1036,6 +1039,7 @@ private:
     u8 extrasDepth_ = 0;
     u8 flungMask_ = 0;
     u32 fxThisTick_ = 0;
+    u8 songShift_ = 0;  // the song's bar index minus this world's, mod 4
     // The loop's ramps this tick (GAME_DESIGN 8; 1 in the first pass): enemy speed, enemy bullet speed, shooters' counts.
     float loopSpeed_ = 1.0f, loopBulletSpeed_ = 1.0f, loopShooters_ = 1.0f;
     u32 shooterCount(u32 base, u32& rngState) const;  // a volley's bullets with the loop's ramp, inside the pool

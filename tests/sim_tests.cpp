@@ -634,7 +634,9 @@ void testTrioRules() {
             const u32 n = drawTrio(l, since, rng, o);
             CHECK(n == 3);
             CHECK(o[0] != o[1] && o[1] != o[2] && o[0] != o[2]);
-            CHECK(upgradeInfo(o[0]).weapon || upgradeInfo(o[1]).weapon || upgradeInfo(o[2]).weapon);
+            // M5 (GAME_DESIGN 6.1): the first orb is firepower (a staple, a held weapon or rhythm Mod, a held Riff).
+            CHECK((firepower(o[0]) && (l.mods[o[0]] > 0 || o[0] == kSplit || o[0] == kDoubleTime || o[0] == kOvercharge || o[0] == kOnBeatCrit)) ||
+                  (isRiff(o[0]) && l.level(o[0]) > 0));
             for (u32 k = 0; k < 3; ++k) riffSeen = riffSeen || (isRiff(o[k]) && l.level(o[k]) == 0);
             // Take a Mod that is not a Riff when there is one (so the guarantee is what brings the Riff; M5: not Lucky
             // Break, which would make it four orbs).
@@ -2280,6 +2282,77 @@ void testUpgradesM5() {
         stepWorld(*w, music, Vec2{});
         CHECK(w->crescendo(0) == 1.0f);
         delete w;
+    }
+    {
+        // The band's clock (audio, riffs.*): Singularity pulls in the bars whose song index + 1 is a multiple of four and
+        // blows on the next One; the Sweeper's arm stands at twelve o'clock on the One of every second song bar; Minelayer
+        // never blows in the first bar after it is taken. With the song two bars ahead of the run too.
+        for (i64 shift : {0, 2, 5}) {
+            World* w = quietWorld();
+            w->setSongBarShift(shift);
+            double music = 0.0;
+            stepWorld(*w, music, Vec2{});
+            for (u32 k = 0; k < 3; ++k) {
+                w->grantUpgrade(0, kSingularity);
+                w->grantUpgrade(0, kSweeper);
+            }
+            runShip(*w, music, 0.5 * bar, Vec2{});
+            w->grantUpgrade(0, kMinelayer);  // mid-bar 0
+            u32 wellsBad = 0, wells = 0, blowsBad = 0, sweepBad = 0;
+            i64 firstMineBlowBar = -1;
+            while (music < 12.0 * bar) {
+                const double m0 = music;
+                stepWorld(*w, music, Vec2{});
+                const i64 b = static_cast<i64>(std::floor(music / bar));
+                const i64 song = b + shift;
+                for (u32 k = 0; k < w->eventCount(); ++k) {
+                    const Event& ev = w->events()[k];
+                    if (ev.type != EventType::Upgrade) continue;
+                    if (ev.b == kFxWell) {
+                        ++wells;
+                        const double inBar = std::fmod(music, bar);
+                        if ((song + 1) % 4 != 0 || inBar < beat || inBar > beat + 4.0) ++wellsBad;
+                    }
+                    if (ev.b == kFxWellBlow && (std::fmod(music, bar) > 4.0 || song % 4 != 0)) ++blowsBad;
+                    if (ev.b == kFxMineBlow && firstMineBlowBar < 0) firstMineBlowBar = b;
+                }
+                if (std::floor(m0 / bar) != std::floor(music / bar) && song % 2 == 0) {
+                    // just after the One of an even song bar: the arm is at twelve o'clock (y down: -pi/2)
+                    const float a = w->sweeperAngle(0);
+                    if (std::fabs(wrapAngle(a + 0.5f * kPi)) > 0.1f) ++sweepBad;
+                }
+            }
+            CHECK_MSG(wells >= 2 && wellsBad == 0 && blowsBad == 0 && sweepBad == 0 && firstMineBlowBar == 2,
+                      "shift %lld: wells %u (%u off the band), blows off %u, sweeper off %u, first mine blast in bar %lld", static_cast<long long>(shift),
+                      wells, wellsBad, blowsBad, sweepBad, static_cast<long long>(firstMineBlowBar));
+            delete w;
+        }
+    }
+    {
+        // How a Trio is dealt (GAME_DESIGN 6.1): the weights; the first orb from the held firepower.
+        Loadout l;
+        CHECK(dealWeight(l, kAccent) == tuning::kDealModNew && dealWeight(l, kLancer) == tuning::kDealRiffNew);
+        l.mods[kSplit] = 1;
+        CHECK(dealWeight(l, kSplit) == tuning::kDealModHeld && dealWeight(l, kWave) == tuning::kDealModNew * tuning::kDealFusionFactor);
+        l.riffs[riffIndex(kOrbitals)] = 2;
+        CHECK(dealWeight(l, kOrbitals) == tuning::kDealRiffLevel && dealWeight(l, kShatter) == tuning::kDealModNew * tuning::kDealFusionFactor);
+        Loadout f;  // the staples at their caps, Accent held: the first orb is Accent, always
+        f.mods[kSplit] = upgradeInfo(kSplit).cap;
+        f.mods[kDoubleTime] = upgradeInfo(kDoubleTime).cap;
+        f.mods[kOvercharge] = upgradeInfo(kOvercharge).cap;
+        f.mods[kOnBeatCrit] = upgradeInfo(kOnBeatCrit).cap;
+        f.mods[kAccent] = 1;
+        f.mods[kExtraCell] = 1;  // (held, not firepower)
+        Rng rng;
+        rng.reseed(5);
+        u32 accentFirst = 0, held = 0;
+        for (u32 k = 0; k < 300; ++k) {
+            u8 s = 0, o[kMaxOrbs];
+            const u32 n = drawTrio(f, s, rng, o);
+            accentFirst += (n >= 1 && o[0] == kAccent) ? 1u : 0u;
+            for (u32 j = 1; j < n; ++j) held += (o[j] == kExtraCell) ? 1u : 0u;
+        }
+        CHECK_MSG(accentFirst == 300 && held > 20, "Accent first %u of 300, Extra Cell offered %u", accentFirst, held);
     }
     {
         // The caps hold (GAME_DESIGN 6.6, TECH_SPEC 7.1): Split 7, Double-Time 2, Echo 2, Fork 2, Quartet's three wingmen,

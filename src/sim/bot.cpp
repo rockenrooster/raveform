@@ -31,12 +31,12 @@ constexpr i32 kBotUpgradeScore[kUpgradeCount] = {
     // Split, Double-Time, Pierce, Ricochet, Fork, Seeker, Heavy Step, Accent, Echo, Wave, Overcharge, Rear Guard
     10, 10, 6, 5, 6, 3, 5, 8, 8, 3, 9, 2,
     // Arc, Burn, Shatter, Gravity Rounds, Extra Cell, Regen, Afterimage, Reserve, Shockstep, Aegis, Last Light, Slipstream
-    5, 5, 4, 3, 8, 7, 3, 4, 3, 5, 6, 3,
+    5, 5, 4, 3, 9, 10, 3, 4, 3, 6, 6, 3,
     // Magnet, Prospector, Nova Stock, Encore, Lucky Break, Collector, On-Beat Crit, Syncopation, Bar Line, Crescendo,
     // Kick Pulse, Afterparty
     4, 2, 6, 2, 3, 3, 9, 7, 4, 7, 4, 3,
     // Orbitals, Pulse Ring, Sentinel, Lancer, Minelayer, Storm Coil, Swarm, Singularity, Mirror, Comet, Sweeper, Flak
-    5, 6, 9, 9, 3, 6, 8, 4, 9, 5, 4, 5};
+    9, 9, 9, 7, 3, 7, 7, 4, 7, 5, 6, 6};
 constexpr i32 kBotBoostScore[kBoostCount] = {
     // Prism, Hyper, Supernova, Colossus, Time Stretch, Freeze Frame, Halo, Magnet Storm, Black Hole, Chain Storm, Chorus,
     // Beam, Ricochet Fever, Confetti, Fractal, Carousel
@@ -409,7 +409,13 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
             // M5 part 3: with the whole pool (36 Mods, 12 Riffs) the bot picks as a player who knows them: a Fusion's gold
             // orb first, then by what each does for the fights (the stream's strength, a Riff that reaches the boss,
             // cells), a new Riff a little above its level-ups. Boosts in the orbs by the same idea.
-            const i32 score = isFusionOrb(u) ? 100 : (isBoostOrb(u) ? kBotBoostScore[boostOfOrb(u)] : kBotUpgradeScore[u] + ((isRiff(u) && me.loadout.level(u) == 0) ? 2 : 0));
+            i32 score = isFusionOrb(u) ? 100 : (isBoostOrb(u) ? kBotBoostScore[boostOfOrb(u)] : kBotUpgradeScore[u]);
+            // (GAME_DESIGN 6.1: the careful bot takes a Fusion's ingredient when the other is held)
+            if (u < kUpgradeCount)
+                for (u8 f = 0; f < kFusionCount; ++f) {
+                    const FusionInfo& fi = fusionInfo(f);
+                    if (!me.loadout.fused(f) && ((u == fi.a && me.loadout.level(fi.b) > 0) || (u == fi.b && me.loadout.level(fi.a) > 0))) score += 6;
+                }
             if (score > bestScore) {
                 bestScore = score;
                 pick = k;

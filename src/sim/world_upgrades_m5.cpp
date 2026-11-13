@@ -103,7 +103,9 @@ float World::sweeperAngle(u32 p) const {
     const u8 lv = pl.loadout.riffs[riffIndex(kSweeper)];
     double turn = lv >= 5 ? kTicksPerBar : 2.0 * kTicksPerBar;
     if (pl.boost(kHyper)) turn *= 0.5;
-    const double ph = std::fmod(m1_ - director_.startTick, turn) / turn;
+    // The band's rule (audio, riffs.sweeper): the arm stands at twelve o'clock on the One of every second bar of the song.
+    const double song = m1_ + static_cast<double>(songShift_) * kTicksPerBar;
+    const double ph = std::fmod(song, turn) / turn;
     return static_cast<float>(ph) * kTau - 0.25f * kTau;
 }
 
@@ -1066,12 +1068,12 @@ void World::updateRiffsM5(float dt) {
         }
 
         // Singularity: every fourth bar a well 300 wu ahead (placed on beat 2) pulls for three beats, then blows on beat 1.
+        // The band's rule (audio, riffs.singularity): the pull is in the bars whose song index + 1 is a multiple of four.
         if (const u8 L = lv(kSingularity)) {
-            const i64 startBar = static_cast<i64>(std::llround(director_.startTick / kTicksPerBar));
             // (co-op: the owner places it and tells the others, world_net.cpp kPeWell)
             if (local)
                 forCrossings(m0_, m1_, kTicksPerBar, [&](double t, i64 bar) {
-                    if (((bar - startBar) % 4) != 0 || pl.wellFrom >= 0.0) return;
+                    if ((((bar + songShift_ + 1) % 4) + 4) % 4 != 0 || pl.wellFrom >= 0.0) return;
                     pl.wellFrom = t + kTicksPerBeat;
                     pl.wellBlow = t + kTicksPerBar;
                 });
