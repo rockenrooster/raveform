@@ -106,7 +106,7 @@ Reef, 2:21 Aurora, 3:02 Furnace, 3:42 Zenith, 4:22 Afterglow, 5:00 Arcadia, 5:38
 | **Final: Track 10, 120 s** | 26,628 | 0.192 / **0.224** / 0.286 / 0.625 | 950 / 1070 / 1320 | **0** | **0** | 72 |
 | **Final: Track 9, 120 s** (heaviest offline, with Track 10) | 26,629 | 0.194 / **0.226** / 0.284 / 0.736 | 960 / 1080 / 1260 | **0** | **0** | 74 |
 | Final: Track 1, 60 s | 13,314 | 0.172 / 0.206 / 0.270 / 0.700 | 840 / 990 / 1170 | 0 | 0 | 68 |
-| Final: Track 10, 10 minutes | see the soak line in the report | | | | | |
+| **Final: Track 10, 10 minutes** | 133,134 | 0.193 / **0.225** / 0.279 / 0.687 | 950 / 1070 / 1440 | **0** | **0** | 72 |
 
 Offline profile of the full band (`--render full --track N --profile`, ms of engine time a second of audio, before the
 teammates' cap): Track 1 29, Tracks 2-6 34-37, Tracks 7, 9, 10 38.2-39.8 (9 and 10 tie within noise). On the phone
@@ -123,11 +123,44 @@ beat"), `play_view_coop.cpp` 73 and 108 (chevron, beacon flare), `play_hud.cpp` 
 `stage.cpp` 1627 and 1644 (the bench stage's Pulse Ring and Lancer "every second beat" from `lastKickT_`);
 `play_view.cpp` 706-719 (the no-band fallback synthesises a kick on every beat; fine for pictures of Tracks 1-6).
 
+## Follow-ups after the lead's acceptance (2026-11-13)
+
+- **Effects in key** (`95e9e6c`): the effects written in A minor (Boost bells, Upgrade chord and bells, Game over,
+  Elite's fifth, Perfect Dash bell, Shield) move to the Track's root by a playback rate (-6..+5 semitones: Solar Wind
+  -4, Reef +5, Aurora -5, Furnace -2, Zenith +3, Afterglow +4, Arcadia -2, Mirage +1) and take a baked major-third
+  variant on Afterglow, Arcadia and Mirage (Boost's top note C#, Amaj9 with G# for the Upgrade and its bells, the Game
+  over's C#). The UI ticks (confirm, back) stay as they are. On Furnace (G phrygian) the Upgrade chord's ninth (A over
+  G) is outside the scale as written. Tested on all ten Tracks.
+- **Start-up** (`26696ab`): after `pm clear` the Moto baked 375 one-shots (56.8 MB) in 6.1 s before the first frame,
+  over PLAN's 5 s; a normal launch read the cache in 54 ms. Memory then: PSS 149 MB, native heap 75 MB. The risers of
+  Tracks 2-10 are now baked on a worker while Track 1 plays, then cached. Numbers after the change: the report.
+- **Teammates' leads at eight notes**: accepted, on the user's co-op listening list.
+
+## M5 content sound (sound_m5.json): state
+
+Published first: `src/audio/cues.h` (`386da70`): Mod 36, Riff 12, Boost 16, Fusion 8 (GAME_DESIGN numbering), the
+`PlayerLoadout`, `Cue` (19 game events), `Recipe` (16) and 16 held-voice slots; `Band::setLoadout(slot, PlayerLoadout)`,
+`cue()`, `playRecipe()`, `startVoice() / setVoice() / stopVoice()`, `lowPassBed()`. The engine takes every Mod's stacks,
+all sixteen Boosts and the Fusions per player.
+
+Built (`2d33052`): every recipe (tom, bell, gong, zap, glass baked on a grid of notes three semitones apart; sub drop,
+woodblock, sweeps, reversed cymbal, whooshes, Gravity Rounds' thup once; saw glide, drone, pad voice and crackle live;
+the roll and the reversed cymbal end on their tick; the timed low-pass bed) and every cue of cues.h as sound_m5.json
+says, aggregated per 1/32 (Storm Coil per triplet eighth). Recipe levels are engine starting values (`recipeLevel()` in
+`content_sound.cpp`: the voices' own mix levels, e.g. the tom is the pulse's 0.36). Sheets with what plays when:
+`captures\m5audio\sheets\recipes.{mp3,wav,txt}` (48 s) and `cues.{mp3,wav,txt}` (28 s), dry on Track 1 like the effect
+sheet (`raveform_headless --render recipes|cues [--track N]`). Aegis's tick, written "at 0.15" of the 0.05 tick, is at
+about -63 dBFS in the sheet: inaudible in a mix.
+
+Not built yet (next): the patterned parts: Riffs 4-12's instruments (Lancer, Minelayer, Swarm, Singularity, Mirror,
+Comet, Sweeper, Flak; Storm Coil's strikes are built), the Mods' changes to the lead and mix (Seeker, Heavy Step,
+Accent, Echo, Wave, Rear Guard, Syncopation, Bar Line, Crescendo, Kick Pulse, Afterparty), the Boosts' layers
+(Colossus, Time Stretch, Freeze Frame, Chain Storm, Chorus, Beam, Fractal, Carousel), the eight Fusions, their sheets,
+the move of the three blocks into conductor.json, and the Moto with all of it playing.
+
 ## Not done or not verified
 
 - By ear: the user has not heard the engine's ten Tracks (the match is by numbers; the medley is for that).
-- The fixed-pitch effects of sfxproto (Boost A arpeggio, Upgrade Am9, Elite A-E fifth, game over A) are in A minor on
-  every Track; on Solar Wind, Furnace, Afterglow and Mirage they are out of key (a design question, unchanged).
 - The game's director still plays three songs and the loop (`kSongs = 3`, the other engineer's).
 - `CLAUDE.md` still says `--track 1|2|3`.
 - The one-shot bank is 48.3 MB in memory and in the cache file; the four-bar risers are half of it (int16 risers or
