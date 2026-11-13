@@ -407,8 +407,9 @@ phases; it fits inside the entity caps.
 | **Fata Morgana** (Track 9, Mirage) | The safe place moves. A storm closes the frame and the only calm is an oasis that drifts; the boss hides in the storm wall and shows where the wall thins. Then there are two oases and one is a mirage that evaporates on the snare; then the oasis leaps on the broken kick's three hits and the storm parts for a beat to let the player cross. |
 | **Kaleidos, Reprise** (Track 10, Last Light) | The first boss comes back as the first theme does. Its own fans, now on the two-step break; then a medley, each arm playing one earlier boss's idea (a travelling wave, a call and its answer, a pull, three against four, an echo), to be shot off one by one; then the bare core fires First Light's arpeggio as its last pattern while the lattice turns to Ultraviolet for the encore. |
 
-The four for Tracks 7 to 10 are concepts (2026-11-12, when the set list grew to ten); their full
-pages under `design/bosses/` come before M5 batch 4. Each is built on something no earlier boss or
+The four for Tracks 7 to 10 were added on 2026-11-12, when the set list grew to ten; their full
+pages are `design/bosses/cadence.md`, `arpeggiator.md`, `morgana.md` and `reprise.md` (picture:
+`design/previews/bosses_7_10.png`). Each is built on something no earlier boss or
 mini-boss asks of the player: following the harmony, reading the melody as a pattern, keeping up
 with a safe place that moves, and recognising six fights inside a seventh.
 
