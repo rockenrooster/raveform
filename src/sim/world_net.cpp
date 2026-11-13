@@ -304,6 +304,9 @@ void World::applyPlayerOp(const NetOp& op) {
         case kPeDash: {
             ++pl.dashes;
             dashExtras(p, Vec2{op.x, op.y}, Vec2{op.x2, op.y2}, op.b != 0);  // M5: Afterimage's decoy here too (Shockstep: its owner's)
+            pl.lastDashFrom = Vec2{op.x, op.y};  // M5 part 4: Mimic C
+            pl.lastDashTo = Vec2{op.x2, op.y2};
+            pl.lastDashTick = m1_;
             Event ev;
             ev.type = EventType::Dash;
             ev.a = static_cast<u8>(p);
@@ -717,6 +720,7 @@ void World::netDirector(const DirectorSync& d) {
 void World::netBossState(const float* partHp, u32 parts, float coreHp, Vec2 pos) {
     BossState& b = boss_;
     if (!b.active || b.dying) return;
+    if (b.kind == BossKind::EventHorizon && parts >= 1) b.hz.meal = static_cast<u16>(partHp[0] > 0.0f ? partHp[0] : 0.0f);  // M5 part 4
     for (u32 k = 0; k < parts && k < kBossParts; ++k)
         if ((b.alive & (1u << k)) && partHp[k] < b.partHp[k]) b.partHp[k] = partHp[k] > 0.0f ? partHp[k] : 0.0f;
     if (coreHp < b.coreHp) b.coreHp = coreHp > 0.0f ? coreHp : 0.0f;
@@ -725,6 +729,8 @@ void World::netBossState(const float* partHp, u32 parts, float coreHp, Vec2 pos)
         case BossKind::Kaleidos: b.pos = pos; break;
         case BossKind::Longwave: b.lw.anchor = pos; break;
         case BossKind::Choir: b.ch.centre = pos; break;
+        case BossKind::EventHorizon:
+        case BossKind::Polyrhythm: b.pos = pos; break;  // (the pivot; the Solo survivor)
         case BossKind::AlphaHound:
         case BossKind::BatteringRam: b.body[0] = pos; break;
         default: break;  // the Hive's Queen and the Carom King follow their song-time paths
@@ -737,6 +743,8 @@ u32 World::bossPartCount() const {
         case BossKind::Longwave: return species_->longwave.segments;
         case BossKind::Choir: return ChoirData::kVoices;
         case BossKind::CaromKing: return 3;
+        case BossKind::EventHorizon: return 1;  // M5 part 4: the meal (not a health)
+        case BossKind::Polyrhythm: return 2;    // Three, Four
         default: return 0;
     }
 }
@@ -745,7 +753,9 @@ Vec2 World::bossSyncPoint() const {
     switch (boss_.kind) {
         case BossKind::Longwave: return boss_.lw.anchor;
         case BossKind::Choir: return boss_.ch.centre;
-        case BossKind::Kaleidos: return boss_.pos;
+        case BossKind::Kaleidos:
+        case BossKind::EventHorizon:
+        case BossKind::Polyrhythm: return boss_.pos;
         default: return boss_.body[0];
     }
 }

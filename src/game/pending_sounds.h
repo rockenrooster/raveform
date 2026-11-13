@@ -33,7 +33,12 @@ enum class SoundPlay : u8 {
 };
 // How a row's note is found: none (-1: the recipe's default), the cue's f as a MIDI note, or against the Track's chord
 // (audio::chordNote, resolved by the band at the tick it plays).
-enum class NoteRule : u8 { None, Midi, RunDegree, WallTone };
+// ArpCount (Event Horizon's count): the meal's next note of the arpeggio (chord tones up the scale: 0 2 4 6 steps) an
+// octave down, cue b = the meal.
+// KeyRoot (Polyrhythm's drums): the Track's root (its first chord's bass) in MIDI octave octave, plus the cue's f semitones.
+// ChordUp (the Brood Mother's hatching): chord tone b up the chord in octave; PentaRun (the Blink Star's hops): the b-th
+// note of a minor pentatonic run on the Track's root in octave; ScaleUp (the Sentry Array's hand): b scale steps up.
+enum class NoteRule : u8 { None, Midi, RunDegree, WallTone, ArpCount, KeyRoot, ChordUp, PentaRun, ScaleUp };
 
 struct FightSound {
     sim::BossCue cue;
@@ -47,6 +52,7 @@ struct FightSound {
     NoteRule note = NoteRule::None;  // (pitched rows: Midi)
     u8 id2 = 0;                      // Pair's second recipe
     float glideSemis = 0.0f, glideAfter = 0.0f, glideOver = 0.0f;  // PadVoice's glide (beats)
+    i8 octave = 4;                   // KeyRoot's octave
 };
 
 // The table, one row per sim::BossCue (in its order).

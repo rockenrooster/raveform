@@ -192,6 +192,27 @@ add_custom_command(OUTPUT ${RF_GEN}/longwave.json.inc
   COMMENT "embed longwave.json"
   JOB_POOL rf_jobs
   VERBATIM)
+add_custom_command(OUTPUT ${RF_GEN}/horizon.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/horizon.json -DOUT=${RF_GEN}/horizon.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/bosses/horizon.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed horizon.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
+add_custom_command(OUTPUT ${RF_GEN}/polyrhythm.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/polyrhythm.json -DOUT=${RF_GEN}/polyrhythm.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/bosses/polyrhythm.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed polyrhythm.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
+add_custom_command(OUTPUT ${RF_GEN}/feedback.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/feedback.json -DOUT=${RF_GEN}/feedback.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/bosses/feedback.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed feedback.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
 add_custom_command(OUTPUT ${RF_GEN}/choir.json.inc
   COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/choir.json -DOUT=${RF_GEN}/choir.json.inc
           -P ${RF_ROOT}/cmake/EmbedText.cmake
@@ -220,9 +241,14 @@ add_library(raveform_sim STATIC
   src/sim/world_choir.cpp
   src/sim/world_enemies.cpp
   src/sim/world_families.cpp
+  src/sim/world_families4.cpp
+  src/sim/world_feedback.cpp
+  src/sim/world_horizon.cpp
   src/sim/world_longwave.cpp
   src/sim/world_miniboss.cpp
+  src/sim/world_miniboss2.cpp
   src/sim/world_net.cpp
+  src/sim/world_polyrhythm.cpp
   src/sim/world_spawner.cpp
   src/sim/world_upgrades.cpp
   src/sim/world_upgrades_m5.cpp
@@ -230,6 +256,9 @@ add_library(raveform_sim STATIC
   ${RF_GEN}/kaleidos.json.inc
   ${RF_GEN}/longwave.json.inc
   ${RF_GEN}/choir.json.inc
+  ${RF_GEN}/horizon.json.inc
+  ${RF_GEN}/polyrhythm.json.inc
+  ${RF_GEN}/feedback.json.inc
   ${RF_GEN}/minibosses.json.inc)
 target_include_directories(raveform_sim PUBLIC ${RF_ROOT}/src ${RF_GEN})
 target_compile_options(raveform_sim PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti> -fno-math-errno)
@@ -358,6 +387,7 @@ target_sources(raveform_core PRIVATE
   src/game/play_view.cpp
   src/game/play_view_b.cpp
   src/game/play_view_m5.cpp
+  src/game/play_view_m5b.cpp
   src/game/pending_sounds.cpp
   src/game/upgrade_sounds.cpp
   src/game/play_view_upgrades.cpp

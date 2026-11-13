@@ -1,5 +1,117 @@
 # RAVEFORM — Progress
 
+The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, the resend back-off, motion corrections for
+moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
+M5 part 4; protocol `0x52460505` holds both).
+
+## M5 part 4 "Tracks 4 to 6" — 2026-11-13
+
+Tracks 4 (Aurora), 5 (Furnace) and 6 (Zenith) with everything the design gives them: the five families of their rosters
+(Wyrm, Tether, Weaver, Well, Mimic) and the variants they use, their bosses Event Horizon, Polyrhythm and Feedback, and
+mini-bosses batch 2 (Moth Queen, Brood Mother, Blink Star, Sentry Array). The set list is now six Tracks (`kBossesBuilt`);
+the loop begins after Feedback.
+
+### What was built
+
+- **Families** (`src/sim/world_families4.cpp`, commits `e9f1728`, `10ae503`): Wyrm chains (a head and its body, the C variant
+  regrowing a head), Tether pairs and triads (the beams between them), Weaver trails (the C blast), Wells (pulling ships,
+  bodies and shots; B swallows shots), Mimics (stepping to the mirror point on the beats, B firing every fourth volley, C
+  copying the Dash), and the variants Tracks 4-6 use (Skitter B mines, Moth C bursts, Blink C decoys, Flanker C, Drifter C,
+  Shoal, Ram C, Carom C, Skitter C).
+- **Event Horizon** (`world_horizon.cpp`, `cdc1fac`): the pull (ship 260, fodder 340, bullets 180, shots 220, Shards 300 wu/s
+  at the photon ring, x (136/d)^1.2; a Dash ignores it), eating (a cell a body, five Shards a body; no Shards, no score), the
+  bar line's verdict (the host's `kGeomHorizonBar`: fed, the eruption of 8 + 4 a body on spiral arms and the shield x 0.15;
+  starved, the gasp and x 1 for the bar), the lanes (two, three, four spiral arms of 1,300 wu, 270 degrees; the Well's own
+  stream, the director's crowd off), Tidal's wave on beat 3 (shoves ships and Shards 140 wu), Collapse's drift (90 wu/s) and
+  jets (shown a bar ahead along the next axis, two beats on a fed bar line), the contact throw (300 wu,
+  `PlayerState::knock`, taken by the controller). The view: a true black disc on the threat layer (after tone mapping, no
+  bloom, no grid inside), the rings of dashes brighter on the right half, the photon ring, the meter on the priority layer
+  (the cell filled flashes white), the lanes lit by what walks them, the gold star and rim while starved, the lattice pulled
+  in on every beat, the wave, the jets; its death implodes and the flash and its 300 Shards come a bar and a beat later
+  (`BossState::payoutTick`). Camera 0.8.
+- **Polyrhythm** (`world_polyrhythm.cpp`, `c4ef960`): Three and Four 720 wu apart on the link (the pivot follows the
+  players' centre at 50 wu/s, the link turns once in 8 bars); walls from the corners on each pulse (3 and 4 a bar, arcs of
+  80 and 60 degrees, a gap in front of every face, 10 thick, 260 wu/s, 2.6 s), the One with both gaps on the link; only the
+  faces hurt (x 1, Solo x 1.25); Hemiola (the host's word, from the bar line after 60% joint health): the turn reverses every
+  second bar, Four's walls at 300, the link burns on beats 3-4 of every second bar after a bar of dashes; Solo: the survivor
+  plays both counts (its own ring and the dead one's, turning the other way, gaps together on the One) and walks at 70 wu/s.
+  A wall that hits is erased there (this device's own); a Nova erases what its front reaches (on every device: it follows
+  the Nova). Its death: a last bar of sparks along the link, the break and 240 Shards on the One that ends the Track.
+  Camera 0.75.
+- **Feedback** (`world_feedback.cpp`, `89322d5`): the tape (`World::tape_`) records every present player each tick (place
+  relative to the Head, aim, alive), every shot their ship and Riffs fire (from where and which way; past 120 a bar every
+  second one) and their Novas. Each Echo plays a bar back from the mirror point (220-900 wu), the shots turned, at 400 wu/s
+  for 3.2 s as enemy bullets (`Bullets::echo`: a Nova clears them; at most 500), and counts as playing for two sixteenths
+  after each primary shot. The Head takes x 1 only while every Echo is silent (co-op: the silent share). Regeneration's second
+  Echo, two bars back, stands where the player stood; Howl runs the tape at two and four beats and burns the Loop (15 wu a
+  bar line, to 300). Novas come back as Nulls (a danger ring growing as a Nova's front). Echo bodies, Nulls and the burning
+  Loop take a cell. The view: the loudspeaker (its cone pushing on the kick, the shutter across or drawn back, the gold
+  core), the Loop with sixteen slots, the next bar's ticks in each player's colour and the gold head on the sixteenths, the
+  Echoes as their player's ship in the danger colour with three after-images and the dashed line to where the player stood,
+  echo shots as streaks with the threat rim. Its death: the tape cut, the break and 320 Shards two bars on.
+- **Mini-bosses batch 2** (`world_miniboss2.cpp`, `a6c2843`): the **Moth Queen** (holds 520 wu and circles once in 8 bars; a
+  court of twelve Moths warps in round the player and spirals in over three bars, bursting into rings of six on the fourth
+  while she is open x 2; rosettes of five on every eighth, 12 degrees apart; from half health two courts of eight turning
+  apart and rosettes in pairs, open for the second half of bar four); the **Brood Mother** (drifts at 40 wu/s; six eggs on
+  beat 1 that die to one shot and hatch on beat 3; her dome x 0.25 while a broodling lives, x 2 with none; from half health
+  two clutches of five; her last clutch is Shards); the **Blink Star** (a 420 wu star round where the player stood, an edge
+  a beat, all five lethal for a beat on bar two's beat 2, dazed x 2 at its first point; from half health decoys at the
+  points throwing fans and the star a quarter larger); the **Sentry Array** (eight turrets on a 340 wu fenced ring: the fence
+  keeps ships and stops shots; the turret under the hand is open x 2, the rest fire five inward on every beat; they step
+  round to stand evenly after a death; with four left the clock runs backwards every second bar and the volleys come on the
+  eighths). Track 4 draws from the first two, Track 5 from the others.
+- **Sound** (`src/game/pending_sounds.cpp`): a row for every new cue: Event Horizon's count (the pad voice gliding down),
+  fed (impact and gong, louder with the meal), starved (the reversed cymbal), the wave (the whoosh); Polyrhythm's drums on the
+  Track's root and flat second rising a semitone a quarter of health (`NoteRule::KeyRoot`), the gong on the One, the link's
+  ticks and impact; Feedback's echoes (each player's own lead, quieter; the second Echo 6 dB more), the held root while the
+  Head opens, the swallowed shot's hat, the Null, the cut; batch 2's hats, plucks, risers, toms, chirps up the chord
+  (`ChordUp`), bells, the Blink Star's pentatonic run (`PentaRun`), the Sentry's woodblock up the scale (`ScaleUp`). What the
+  engine lacks is written in each row (below).
+- **Co-op**: the fights' decisions that read where players stand are the host's (`kGeomHorizonBar`, `kGeomPolyHemiola`,
+  `kGeomMothCourt`, `kGeomBlinkStar`); the Horizon's meal travels in the heartbeat's part slot; deaths and health steps as
+  always. Protocol `0x52460505` (the enemy states `kLane`, `kCourt`, `kEgg` and the new decisions; with the network follow-up's motion corrections, merged here). `src/net` change: the
+  version in `protocol.h` only.
+- **Tools**: `--fight horizon|polyrhythm|feedback|moth_queen|brood_mother|blink_star|sentry_array[:phase[:hold]]` (a fight
+  past the run's set list stretches it for that run); `scripts\review-m5.ps1 -Part part4` (34 pictures and 6 strips); the
+  crowd sim reports first deaths in Tracks 1-3 and in the whole first pass.
+
+<!-- part 4 acceptance below -->
+
+### Decisions taken alone
+
+- **Event Horizon**: its eruption leaves from the outer ring (320 wu): from the photon ring the Collapse's pull on bullets
+  (270 wu/s there) would take a 200 wu/s bullet straight back. The pull on bullets and Shards is a speed added to theirs (the
+  page's numbers are wu/s), so slow bullets curl back as the page says. The fight's first bar line gives no verdict (nothing
+  eaten yet). Collapse's jets are shown every bar along the coming axis (whether the bar is fed is known only on its line).
+  Its 300 Shards come with the flash, a bar and a beat after it dies. Not built: on the entrance "every light leans toward one
+  point" (the grid pinches); the death spiral of everything alive (the disc and rings implode).
+- **Polyrhythm**: the link starts across the screen (it is wide). The rotors turn smoothly between pulses, exactly a step at
+  each. The link's dashes run from the bar before until it burns on beat 3. Solo's second ring is the dead rotor's shape
+  (its corners and arcs) from the survivor. Its break and Shards come on the bar line the Track ends at (the first at least
+  half a bar after the death), so the "last bar" of sparks is half a bar to a bar and a half. Wall hits count as beams in the
+  crowd sim's table.
+- **Feedback**: the Echo plays back the shots as they left (straight, at 400 wu/s): what a shot does after it leaves
+  (Pierce, Split, Ricochet, homing) and the Riffs that fire nothing (Orbitals, Pulse Ring, Sweeper) are not echoed; Boosts
+  are echoed through the shots they change. A Null is a danger ring growing as a Nova's front does (to 1,400 wu in 0.35 s):
+  a Dash through it or distance. The second Echo stays unreflected in Howl too. The phase follows the health on every device
+  (as Event Horizon's). The 320 Shards come at the break (the Echoes flying home as 100 of them is not drawn). The bot fires
+  in the page's phrases (two beats on and two off, swapped; a bar on and two off; two beats on and four off) and holds its
+  Nova.
+- **Batch 2**: the Moth Queen's two courts (half health) close a bar apart by the inner ring spiralling in over two bars and
+  the outer over three; the Brood Mother's eggs land a tick after they are laid (so a shot can take them at once); her last
+  clutch is sixteen clumps of ten Shards (no gold egg to touch); broodlings move at their species' speed (the page's 260 wu/s
+  and the half's 15% are not applied); the Blink Star's fifth hop is on bar two's beat 2 as the star fires, its first point on
+  the side the Star stood; the Sentry Array's fence is kept as circles (the ring's apothem inside, its radius outside).
+- **Track 6's mini-boss** is Mirror Mimic's (batch 3, part 6): until it is built Track 6 draws from batch 2.
+- **The set list is six Tracks** now (`kBossesBuilt`); two loop tests pin a set list of three to keep testing what they test.
+
+### Numbers chosen (`src/sim/tuning.h`, part 4; the pages' prose numbers in `src/sim/boss_prose.h`)
+
+Event Horizon: the jets 1,800 wu long, 22 wu half width; health x 1 (`kHorizonHealthTune`). Polyrhythm: the burning link 16
+wu half width; health x 1. Feedback: a Null's front 30 wu; health x 1. Moth Queen: the burst at 200 wu/s, the court's step at
+600 wu/s, the Queen at up to 300 wu/s. Blink Star: the decoys' fans at 220 wu/s, 15 degrees apart. Sentry Array: a step round
+over a beat. Batch 2's health x 1 (`kMiniHealthTune[4..7]`).
+
 ## M5 part 3 "Every upgrade" — 2026-11-13
 
 All of GAME_DESIGN 6.2 to 6.5 in the game: the 28 Mods, 9 Riffs (4-12), 12 Boosts (3-6, 9-16) and 8 Fusions that the first

@@ -406,9 +406,15 @@ void PlayView::onEvents(const World& w, double tickEnd) {
     if (!speciesGlyphsReady_) {
         for (u32 i = 0; i < SpeciesTable::kCount; ++i) {
             const Species& s = table.get(static_cast<u16>(i));
-            int g = glyphs_->enemy(familyName(s.family), s.tier);
-            for (u32 t = 1; g < 0 && t <= 5; ++t) g = glyphs_->enemy(familyName(s.family), t);
+            // (M5 part 4: a Wyrm's body is wyrm_body_N, its head wyrm_head_N)
+            const char* fam = s.family == Family::Wyrm ? "wyrm_body" : familyName(s.family);
+            int g = glyphs_->enemy(fam, s.tier);
+            for (u32 t = 1; g < 0 && t <= 5; ++t) g = glyphs_->enemy(fam, t);
             speciesGlyph_[i] = g >= 0 ? g : gRing32_;
+            if (s.family == Family::Wyrm) {
+                int h = glyphs_->enemy("wyrm_head", s.tier);
+                wyrmHeadGlyph_[i < SpeciesTable::kCount ? i : 0] = h >= 0 ? h : speciesGlyph_[i];
+            }
         }
         speciesGlyphsReady_ = true;
     }
@@ -761,6 +767,9 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     if (w.boss().active && !w.boss().dying) {
         if (w.boss().kind == sim::BossKind::Longwave) fightZoom = w.species().longwave.zoom;
         if (w.boss().kind == sim::BossKind::Choir) fightZoom = w.species().choir.zoom;
+        if (w.boss().kind == sim::BossKind::EventHorizon) fightZoom = w.species().horizon.zoom;  // M5 part 4 (horizon.json camera)
+        if (w.boss().kind == sim::BossKind::Polyrhythm) fightZoom = w.species().poly.zoom;
+        if (w.boss().kind == sim::BossKind::Feedback) fightZoom = w.species().feedback.zoom;
     }
     if (w.boss().active && !w.boss().dying && w.boss().kind != sim::BossKind::Longwave) {
         const Vec2 off = lerp2(w.boss().prevPos, w.boss().pos, a) - S;
@@ -1025,7 +1034,8 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         // M4: a co-op client draws a corrected enemy where it was, the offset decaying (ox, oy; 0 otherwise).
         const Vec2 pos = lerp2(Vec2{e.px[i], e.py[i]}, Vec2{e.x[i], e.y[i]}, a) + Vec2{e.ox[i], e.oy[i]};
         const Species& s = table.get(e.species[i]);
-        const int g = speciesGlyph_[e.species[i]];
+        // (M5 part 4: a Wyrm's head)
+        const int g = (s.family == Family::Wyrm && e.a[i] > 0.5f) ? wyrmHeadGlyph_[e.species[i]] : speciesGlyph_[e.species[i]];
         const GlyphDef& gd = glyphs_->def(static_cast<u32>(g));
         const float scale = e.radius[i];
         const bool inView = visible(pos, 0.0f);
@@ -1047,7 +1057,13 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
                       0.5f * look_->lines.warpRing.width, kGlyphFlat, palette_->hue[s.hue], W1);
             continue;
         }
-        const Vec3 hue = palette_->hue[s.hue], partner = palette_->partner[s.hue];
+        Vec3 hue = palette_->hue[s.hue], partner = palette_->partner[s.hue];
+        if (w.worldStretch() < 1.0f) {
+            // look.md 5 (Time Stretch on the world): enemy hulls lose a third of their chroma; the room slows, the player does not.
+            const auto grey = [](Vec3 c) { const float l = 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z; return c + (Vec3{l, l, l} - c) * (1.0f / 3.0f); };
+            hue = grey(hue);
+            partner = grey(partner);
+        }
         float intensity = (look_->lines.enemyHullTier1.intensity + le.hullIntensityPerTier * (static_cast<float>(s.tier) - 1.0f)) * crowd * enemyLight_;
         const float halfWidth = 0.5f * look_->lines.enemyHullTier1.width;
         const float phase = static_cast<float>(e.serial[i] % 997u) * 0.61803f * kTau;
@@ -1119,6 +1135,18 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             const Vec2 p = lerp2(Vec2{bl.px[i], bl.py[i]}, Vec2{bl.x[i], bl.y[i]}, a);
             if (!visible(p, 10.0f)) continue;
             if (visible(p, 0.0f)) ++stats_.bulletsInView;
+            if (bl.echo[i]) {
+                // M5 part 4 (feedback.md): an echo shot is the player's shot, turned: a short streak in the danger colour with
+                // the threat rim.
+                const Vec2 dv = normalizeOr(Vec2{bl.vx[i], bl.vy[i]}, Vec2{1.0f, 0.0f});
+                const Vec2 tail = p - dv * w.species().feedback.streak;
+                if (shown(kMuteBullet)) d.scene.line(toScene(tail), toScene(p), 0.5f * look_->lines.enemyBullet.width * refPx_, danger * 0.4f, danger * 1.6f, 0);
+                if (shown(kMutePriority)) {
+                    d.threatRims.line(toScreen(tail), toScreen(p), rimHalf * refPx_, Vec3{}, Vec3{}, 0);
+                    d.threatCores.line(toScreen(tail), toScreen(p), coreHalf * refPx_, threatCore, threatCore, 0);
+                }
+                continue;
+            }
             if (shown(kMuteBullet)) {
                 glyph(d.glyphs, gBullet_, false, p, 0.0f, 0.0f, bulletScale, look_->lines.enemyBullet.intensity * swarm,
                       0.5f * look_->lines.enemyBullet.width, kGlyphFlat, danger, danger);
@@ -1422,7 +1450,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     params.bloomPump = (1.0f + look_->bloomKick * pump) * (1.0f + novaPump_);
     params.exposurePump = (1.0f + look_->exposureKick * pump) * (1.0f - novaDim) * exposureSection_;
     params.vignette = shown(kMuteVignette);
-    params.vignetteAmount = look_->vignetteAmount;
+    params.vignetteAmount = look_->vignetteAmount + (w.worldStretch() < 1.0f ? 0.15f : 0.0f);  // look.md 5: Time Stretch closes it by 0.15
     params.drain = drain_;
     params.afterglow = shown(kMuteAfterglow);
     params.afterglowGain = look_->afterglowGain == Look::Gain::Swarm ? swarm : (look_->afterglowGain == Look::Gain::Crowd ? crowd : 1.0f);

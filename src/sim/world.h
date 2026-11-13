@@ -206,6 +206,8 @@ enum class EventType : u8 {
     // M5 part 3: what the new upgrades do that is seen or heard (a = player, b = UpgradeFx, c = a count or level; x, y and
     // x2, y2 as each notes; f a radius or a value).
     Upgrade,
+    // M5 part 4: a Weaver C trail blows on the bar line (x, y: one of its points; tick).
+    TrailBlast,
 };
 enum UpgradeFx : u8 {
     kFxFork,          // a shot forked: x, y
@@ -276,6 +278,10 @@ enum EnemyState : u8 {
     // then kTelegraph / kDash / kRest as a Ram's, a and b its line), a Skitter's sidestep (a, b = its direction).
     kHop,
     kDodge,
+    // M5 part 4: a body walking one of Event Horizon's lanes (a = its lane, b = its distance along it).
+    kLane,
+    kCourt,        // M5 part 4: a Moth Queen's court Moth (a = its place round the court, b = its ring)
+    kEgg,          // M5 part 4: a Brood Mother's egg (a = its place round her, until = its hatch)
     kStateCount
 };
 enum EnemyFlag : u8 { kFlagDead = 1, kFlagEngaged = 2, kFlagArriving = 4, kFlagPredicted = 8, kFlagCalled = 16 };  // arriving: crowd fodder on its way into the frame
@@ -320,6 +326,51 @@ struct Bullets {
     float x[kCap], y[kCap], px[kCap], py[kCap], vx[kCap], vy[kCap];
     float life[kCap];  // seconds left
     u8 dead[kCap];
+    u8 echo[kCap];     // M5 part 4: a Feedback echo shot (1 + its player; drawn as the player's shot, turned)
+};
+
+// M5 part 4, Feedback (design/bosses/feedback.md): each player's last bars as the tape holds them (positions relative to
+// the Head, aim, alive; the shots they fired with where and which way; their Novas) and the Nulls bursting.
+struct FeedbackTape {
+    static constexpr u32 kPoses = 384;  // a pose a tick: four bars at 150 BPM
+    static constexpr u32 kShots = 512;  // three bars at the 120-a-bar cap
+    static constexpr u32 kNovas = 8;
+    struct Pose {
+        double tick = -1.0;
+        Vec2 rel, aim;
+        u8 alive = 0;
+    };
+    struct Shot {
+        double tick = -1.0;
+        Vec2 off, dir;  // from the ship, and its heading
+        u8 primary = 0;
+    };
+    struct Lane {
+        Pose poses[kPoses];
+        u32 poseHead = 0, poseCount = 0;
+        Shot shots[kShots];
+        u32 shotHead = 0, shotCount = 0;
+        i64 bar = -1;
+        u32 barShots = 0;  // shots this bar (the 120 cap: every second one after)
+        double novas[kNovas] = {};
+        u32 novaHead = 0, novaCount = 0;
+    };
+    Lane lanes[kMaxPlayers];
+    struct Null {
+        double tick = -1e9;
+        Vec2 at;
+    };
+    static constexpr u32 kNulls = 8;
+    Null nulls[kNulls];
+    u32 nullHead = 0;
+    void clear() {
+        for (Lane& l : lanes) {
+            l.poseHead = l.poseCount = l.shotHead = l.shotCount = l.barShots = l.novaHead = l.novaCount = 0;
+            l.bar = -1;
+        }
+        for (Null& n : nulls) n.tick = -1e9;
+        nullHead = 0;
+    }
 };
 
 enum ShotKind : u8 { kShotPrimary = 0, kShotSentinel, kShotMini, kShotOrb, kShotMissile, kShotPellet, kShotBomb };  // M5: Heavy Step, Swarm, Flak, Carousel
@@ -508,6 +559,10 @@ struct PlayerState {
     u8 lanceNext = 0;
     double beamTick = -1e9;      // Beam: the last volley it fired
     u8 beamLanes = 1;
+    Vec2 knock;                  // M5 part 4: what the world has moved the ship by, all told (the controller takes the rest)
+    u32 knockSerial = 0;
+    Vec2 lastDashFrom, lastDashTo;  // M5 part 4 (Mimic C copies it): the last Dash, and when it began
+    double lastDashTick = -1e9;
     Vec2 shockAt;                // Shockstep's ring: where, when, how far
     double shockTick = -1e9;
     float shockR = 0.0f, shockDamage = 0.0f;  // (damage > 0: its ring hurts this tick, once the grid is built)
@@ -660,6 +715,30 @@ public:
     // note of Voice k (0, 1 its line, 2 its beam; *angle: where it points).
     bool choirSinging(u32 k, double t) const;
     u8 choirCage(double t) const;
+    // M5 part 4, Event Horizon (world_horizon.cpp): the pull's speed toward the Well at a point (max: the speed at the
+    // photon ring); the fight is on (past its entrance bar); a point inside the burning jets (from: where on the jet).
+    float horizonPullAt(Vec2 at, float max) const;
+    bool horizonOn() const;
+    bool horizonJetHits(Vec2 at, Vec2& from) const;
+    // Polyrhythm (world_polyrhythm.cpp): the link's direction (Three to Four), a rotor's place and the direction of one of
+    // its faces at a moment, a ring's radius, whether a point is on a wall, the link's burn (0 none, 1 its dashes, 2 burning).
+    float polyLinkAngle(double t) const;
+    Vec2 polyRotor(u32 k) const;
+    float polyFace(u32 k, double t) const;
+    float polySecondFace(double t) const;  // Solo: the survivor's second ring (the dead rotor's count, turning the other way)
+    float polyRingRadius(const PolyRing& r, double t) const;
+    bool polyRingAlive(const PolyRing& r, double t) const;
+    bool polyWallAt(const PolyRing& r, float angle) const;  // a wall (not a gap, not erased) in that direction
+    bool polyWallHit(Vec2 at, Vec2& from) const;
+    u8 polyLinkBurn(double t) const;
+    // Feedback (world_feedback.cpp): the tape, an Echo's delay (ticks) and whether it plays now, a recorded pose, the hits
+    // of its Echoes' bodies, its Nulls and (Howl) its Loop.
+    const FeedbackTape& tape() const { return tape_; }
+    double feedbackDelay(u32 echo) const;
+    u32 feedbackEchoes() const;
+    bool feedbackPose(u32 p, double t, Vec2& rel, Vec2& aim, bool& alive) const;
+    bool feedbackHits(Vec2 at, Vec2& from) const;
+    float feedbackNullRadius(const FeedbackTape::Null& n, double t) const;
     u8 choirHeld(u32 k, double t, float* angle) const;
     float choirRingAngle(double t) const;
     // The Voices that sing on the eighth at song time t (this bar's caller and groups; the next bar's caller as it will move
@@ -670,6 +749,18 @@ public:
     Vec2 hiveSlot(u32 h, float slot, double t, bool queen) const;
     // Battering Ram: its wake burns (half health).
     bool ramWakeHit(Vec2 at) const;
+    // Mini-bosses batch 2 (world_miniboss2.cpp): the Blink Star's star (its points, which edges are drawn, firing), the
+    // Sentry Array's hand and fence.
+    Vec2 blinkPoint(u32 k) const;           // point k of the star (in star order: 0, 2, 4, 1, 3 are its hops)
+    u32 blinkEdges(double t) const;         // edges drawn so far (0-5)
+    bool blinkFiring(double t) const;
+    bool blinkDazed(double t) const;
+    bool blinkBeamHit(Vec2 at, Vec2& from) const;
+    i32 sentryHand() const;                 // the turret under the hand (-1: none)
+    float sentryHandAngle() const { return boss_.mini.ringAng; }
+    bool fenceUp() const;
+    float fenceRadius() const;              // the fence's inner radius (the ring's apothem)
+    bool mothOpen(double t) const;
     // The lead grid (musical ticks per shot) a player fires on now: 1/16, moved along by Double-Time and
     // the Surge's gear (capped at 1/32), halved by Hyper (GAME_DESIGN 4.1, 6.2, 6.4).
     double leadGrid(u32 p) const;
@@ -680,8 +771,9 @@ public:
     // Benchmarks (M5, --fight <id>:<phase>:hold): every live part back to full health and the core to at least coreShare,
     // so the fight stays in its phase while it is measured.
     void bossRefill(float coreShare) {
+        const float part = boss_.kind == BossKind::Polyrhythm ? coreShare : 1.0f;  // (Polyrhythm's health is its rotors')
         for (u32 k = 0; k < kBossParts; ++k)
-            if (boss_.alive & (1u << k)) boss_.partHp[k] = boss_.partMax;
+            if (boss_.alive & (1u << k)) boss_.partHp[k] = boss_.partMax * part;
         if (boss_.coreHp < boss_.coreMax * coreShare) boss_.coreHp = boss_.coreMax * coreShare;
     }
     // Pictures (M5): an open Trio takes its first orb now (so it does not cover the moment).
@@ -714,6 +806,9 @@ public:
     // the host's verdict would.
     void bossHealthNow(float share) {
         boss_.coreHp = boss_.coreMax * share;
+        if (boss_.kind == BossKind::Polyrhythm)  // (no core: each rotor to that share of its own)
+            for (u32 k = 0; k < 2; ++k)
+                if (boss_.alive & (1u << k)) boss_.partHp[k] = boss_.partMax * share;
         if (isMiniBoss(boss_.kind) && role_ != NetRole::Client) miniHealthSteps();
     }
 
@@ -797,6 +892,12 @@ public:
     // The band's song bars against this world's (the run's ticks = the song's - a whole number of bars, which a pause
     // moves): Singularity and the Sweeper keep the band's four- and two-bar phase (Play sets it before each tick).
     void setSongBarShift(i64 bars) { songShift_ = static_cast<u8>(((bars % 4) + 4) % 4); }
+    // The steps of a Track's kick pattern (bit k: step k of 16; the music's data, velocity 5 of 9 or more): Kick Pulse rings
+    // on them. Four on the floor until told.
+    void setKickMask(u32 song, u16 mask) {
+        if (song < kMaxSongs) kickMask_[song] = mask;
+    }
+    u16 kickMask(u32 song) const { return song < kMaxSongs ? kickMask_[song] : 0x1111u; }
     bool frozen(u32 i) const { return enemies_.frozenUntil[i] > m1_; }
     bool burning(u32 i) const { return enemies_.burnUntil[i] > m1_; }
     // Mirror's wingman (Quartet's three), Chorus's two ghosts: where each flies now, the way it fires and its share of the
@@ -808,6 +909,34 @@ public:
     Vec2 carouselBomb(u32 p, u32 k) const;                 // Carousel's six bombs round the ship
     float crescendo(u32 p) const;                          // the damage multiplier its clean bars give now
     bool afterparty(u32 p) const;                          // Afterparty: its Surge goes on (faster) now
+    // M5 part 4 (world_families4.cpp): the lethal lines (Tether beams; Weaver trails and Ram B's wake), the Wells' pull on a ship
+    // (the controller adds it), the multi-body creatures.
+    struct Trail {
+        static constexpr u32 kCap = 48;
+        u32 owner = 0;            // the handle of the body that lays it
+        u16 n = 0, head = 0;      // points alive; the next point's place
+        u8 kind = 0;              // 0 a Weaver's, 1 a Ram B's wake, 2 a Weaver C's (blows on the bar line)
+        float width = 5.0f;
+        double life = 0.0, blastTick = -1e9;
+        float x[kCap], y[kCap];
+        double t[kCap];
+    };
+    static constexpr u32 kTrails = 96;
+    const Trail* trails() const { return trails_; }
+    // Skitter B's mines (lethal circles a player sets off), Blink C's decoys (white copies that stop shots), Sentry C's domes.
+    struct Spot {
+        Vec2 at;
+        float r = 0.0f;
+        double until = -1.0;  // < m1: gone
+    };
+    static constexpr u32 kSpots = 64;
+    const Spot* enemyMines() const { return emines_; }
+    const Spot* decoys() const { return decoys_; }
+    u32 domes(Vec2* at, float* r, u32 cap) const;
+    u32 tetherBeams(Vec2* a, Vec2* b, u32 cap) const;
+    Vec2 wellPull(Vec2 pos) const;
+    // Tests and pictures: a Wyrm's chain or a Tether's pair (triad) as the spawner makes them.
+    void spawnCreatureNow(u16 speciesIndex, Vec2 p, float heading, double landTick) { spawnCreature(speciesIndex, p, heading, landTick); }
 
     u64 hash() const;
     bool finite() const;  // no NaN or infinity in any position or velocity
@@ -917,6 +1046,54 @@ private:
     void aegisBullets();
     void updateUpgradesM5(float dt);
     void updateRiffsM5(float dt);
+    // world_families4.cpp (M5 part 4)
+    struct Group {
+        static constexpr u32 kCap = 16;
+        u16 id = 0;
+        u8 n = 0;
+        u16 idx[kCap];
+        Vec2 centre;
+    };
+    void buildGroups();
+    const Group* groupOf(u16 id) const;
+    void spawnCreature(u16 speciesIndex, Vec2 p, float heading, double landTick);
+    void landFamily4(u32 i, const Species& s, const FamilyData& fd, Vec2 to);
+    void moveFamily4(u32 i, const Species& s, const FamilyData& fd, float dt, i32 tp, Vec2 to, bool engaged);
+    void updateTrails();
+    bool hazardHits(u32 p, Vec2& from);
+    void layMine(Vec2 at, float r, float bars);
+    void addDecoy(Vec2 at, float r, double until);
+    void familyDeath4(u32 i, const Species& s);
+    void shoalVariant(u32 i, const Species& s, const FamilyData& fd, i32 tp, Vec2 to);
+    void caromSplit(u32 i, const Species& s, const FamilyData& fd);
+    void skitterHop(u32 i, Vec2 dir);
+    void findWells();
+    void wellShots(float dt);
+    bool wellSwallow(u32 i, u32 k);
+    void bossPayout();  // a boss's Shards and Cells (world_boss.cpp)
+    // world_feedback.cpp (M5 part 4)
+    void enterFeedback(Vec2 centre);
+    void updateFeedback(float dt);
+    void feedbackRecord(u32 shot0);
+    float feedbackScale() const;
+    void feedbackSwallow();
+    bool spawnEchoShot(Vec2 pos, Vec2 vel, float advanceS, float lifeS, u8 player);
+    // world_polyrhythm.cpp (M5 part 4)
+    void enterPoly(Vec2 centre);
+    void updatePoly(float dt);
+    float polyScale(u8 part, u8 index) const;
+    void polyPartDied(u8 index, Event& ev);
+    void polyFire(u32 rotor, double t, bool second);
+    void polyErase(Vec2 at, float radius);
+    void polyEraseHit(Vec2 at);
+    // world_horizon.cpp (M5 part 4)
+    void enterHorizon(Vec2 centre);
+    float horizonScale() const;
+    void horizonBar(double t, bool fed, u32 meal);
+    void eatBody(u32 i);
+    bool horizonLane(u32 i, float dt);
+    void updateHorizon(float dt);
+    void knockPlayer(u32 p, Vec2 by);
     // world_boss.cpp
     void updateBoss(float dt);
     void bossFire(double stepTick);
@@ -977,6 +1154,24 @@ private:
     void updateMini(float dt);
     void alphaHowl(double t);
     void updateAlpha(float dt);
+    // world_miniboss2.cpp (M5 part 4): batch 2.
+    void enterMini2(Vec2 penAt);
+    void updateMoth(float dt);
+    void mothCourt(double t);
+    void updateBrood(float dt);
+    void broodClutch(double t, u32 n);
+    void updateBlink(float dt);
+    void updateSentry(float dt);
+    void sentryVolley(double t, u32 fan);
+    void sentryRespace();
+    float mini2Scale(u8 part, double t) const;
+    u32 mini2Parts(BossPart* out, u32 cap) const;
+    void mini2PartDied(u8 index);
+    void mini2Release(bool killed);
+    bool minion2Motion(u32 i, float dt);
+    void minion2Land(u32 i);
+    u8 fenceKeep(Vec2 from, Vec2& to, float r) const;
+    void fenceShots();
     void hiveHatch(u32 n, double land);
     void hiveReslot();
     void hiveShapeStart(double t);
@@ -1035,6 +1230,8 @@ private:
     BoostPickups boostPickups_;
     CellPickups cellPickups_;
     BossState boss_;
+    FeedbackTape tape_;  // M5 part 4: Feedback's tape (World::init holds it; no allocation after)
+    u32 fbShot0_ = 0;    // the shots before this tick's (Feedback records the new ones)
     PenState pen_;
     u32 hiveIdx_[192] = {};  // the Hive's darts by spawn number (hiveReslot's scratch)
     u8 hitShotFlags_ = 0;  // play test 2: the flags of the shot whose hit hitEnemy() is applying (its Impact's Prism lane)
@@ -1046,6 +1243,19 @@ private:
     u8 flungMask_ = 0;
     u32 fxThisTick_ = 0;
     u8 songShift_ = 0;  // the song's bar index minus this world's, mod 4
+    u16 kickMask_[kMaxSongs] = {0x1111, 0x1111, 0x1111, 0x1111, 0x1111, 0x1111, 0x1111, 0x1111, 0x1111, 0x1111};
+    // M5 part 4: the multi-body creatures this tick, the lethal trails, the Wells.
+    static constexpr u32 kMaxGroups = 128, kGroupSlots = 256, kMaxWells = 32;
+    Group groups_[kMaxGroups];
+    u16 groupSlot_[kGroupSlots] = {};
+    u32 groupCount_ = 0;
+    Trail trails_[kTrails];
+    Spot emines_[kSpots], decoys_[kSpots];
+    Vec2 domeAt_[16];
+    float domeR_[16] = {};
+    u32 domeCount_ = 0;
+    u16 wellIdx_[kMaxWells] = {};
+    u32 wellCount_ = 0;
     // The loop's ramps this tick (GAME_DESIGN 8; 1 in the first pass): enemy speed, enemy bullet speed, shooters' counts.
     float loopSpeed_ = 1.0f, loopBulletSpeed_ = 1.0f, loopShooters_ = 1.0f;
     u32 shooterCount(u32 base, u32& rngState) const;  // a volley's bullets with the loop's ramp, inside the pool

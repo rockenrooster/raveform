@@ -1,6 +1,9 @@
 #include "sim/bot.h"
 
 #include <cmath>
+#include <initializer_list>
+
+#include "sim/boss_prose.h"
 
 #include "sim/tuning.h"
 
@@ -249,7 +252,9 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     if (bossFight) {
         const Vec2 rel = pos - (kaleidos ? boss.pos : bossNear);
         const float dist = length(rel);
-        if (dist > kBossWorkFarWu) force = force - rel * (0.9f * std::fmin((dist - kBossWorkFarWu) / 300.0f, 1.0f) / dist);
+        // (Polyrhythm: its walls die 770 wu out; the bot works from beyond them)
+        const float far = boss.kind == BossKind::Polyrhythm ? 1000.0f : kBossWorkFarWu;
+        if (dist > far) force = force - rel * (0.9f * std::fmin((dist - far) / 300.0f, 1.0f) / dist);
     }
     // M5: the other fights: keep off their bodies, out of every line they have shown, inside the Choir's Round when its cage
     // shows, and beside Longwave's crest.
@@ -348,6 +353,183 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                     const float off = wrapAngle(angleOf(pos - from) - mid);
                     if (std::fabs(off) < 1.25f) force = force + perpOf(dirOf(mid)) * (off >= 0.0f ? 2.5f : -2.5f);
                 }
+                break;
+            }
+            case BossKind::EventHorizon: {
+                // Hold the lanes (horizon.md: what you leave alive feeds it): meet the next body coming in on its lane, at a
+                // working distance outside the rings; off the jets' axis (the burning one and the one shown for the next bar).
+                const HorizonData& H = w.species().horizon;
+                const HorizonState& hz = boss.hz;
+                const u32 lanes = H.phases[hz.phase < 3 ? hz.phase : 2].lanes;
+                constexpr float kHoldWu = 560.0f;
+                float soonest = 1e30f;
+                Vec2 goal = boss.pos + normalizeOr(pos - boss.pos, Vec2{1.0f, 0.0f}) * kHoldWu;
+                for (u32 i = 0; i < e.count; ++i) {
+                    if ((e.flags[i] & kFlagDead) || e.state[i] != kLane || e.b[i] < kHoldWu - 80.0f) continue;
+                    if (e.b[i] < soonest) {
+                        soonest = e.b[i];
+                        const float lane0 = kTau * e.a[i] / static_cast<float>(lanes ? lanes : 1u);
+                        const float wind = prose::kHzLaneWindDeg * kTau / 360.0f;
+                        goal = boss.pos + dirOf(lane0 + wind * (1.0f - kHoldWu / prose::kHzLaneWu)) * kHoldWu;
+                    }
+                }
+                const Vec2 to = goal - pos;
+                const float l = length(to);
+                if (l > 30.0f) force = force + to * (std::fmin(l / 250.0f, 1.4f) / l);
+                if (H.phases[hz.phase < 3 ? hz.phase : 2].jets) {
+                    for (float sgn : {1.0f, -1.0f}) {
+                        offLine(boss.pos, dirOf(hz.axis) * sgn, 110.0f);
+                        offLine(boss.pos, dirOf(hz.axis + prose::kHzAxisTurnDeg * kTau / 360.0f) * sgn, 110.0f);
+                    }
+                }
+                break;
+            }
+            case BossKind::Polyrhythm: {
+                // Ride a gap of the nearer rotor at a working distance (its face is open down the gap); step through the
+                // other's rings by their gaps, and dash a wall that cannot be dodged; off the link while it burns.
+                const PolyData& P = w.species().poly;
+                u32 k = 0;
+                float best = 1e30f;
+                for (u32 j = 0; j < 2; ++j) {
+                    if (!(boss.alive & (1u << j))) continue;
+                    const float d2 = lengthSq(boss.body[j] - pos);
+                    if (d2 < best) {
+                        best = d2;
+                        k = j;
+                    }
+                }
+                const double soon = musicTick + 0.3 * w.ticksPerSecond();
+                const u32 n = P.sides[k] ? P.sides[k] : 3u;
+                const float myA = angleOf(pos - boss.body[k]);
+                float gapA = w.polyFace(k, soon), gapD = 10.0f;
+                for (u32 j = 0; j < n; ++j) {
+                    const float fa = w.polyFace(k, soon) + kTau * static_cast<float>(j) / static_cast<float>(n);
+                    const float dd = std::fabs(wrapAngle(fa - myA));
+                    if (dd < gapD) {
+                        gapD = dd;
+                        gapA = fa;
+                    }
+                }
+                // Where the walls do not reach (they die 770 wu out): beside the link, 820 wu from the pivot (900 from each
+                // rotor), shooting the faces as they turn toward it; in the Solo 840 wu from the survivor, in a gap.
+                (void)gapA;
+                // The place: of sixteen round the pivot (the survivor), the nearest that is beyond every wall and inside the
+                // arena, so the pivot's approach is circled rather than fled into a wall. The crowd's and the Shards' pulls
+                // count for less here (they drew it in among the walls).
+                force = force * 0.3f;
+                Vec2 goal = pos;
+                {
+                    const Vec2 centre = boss.alive == 3u ? (boss.body[0] + boss.body[1]) * 0.5f : boss.body[k];
+                    // (nearest by the way round, and approached along the circle, never across the middle)
+                    const float mine = angleOf(pos - centre);
+                    float bestD = 1e30f, bestA = mine;
+                    for (u32 j = 0; j < 16; ++j) {
+                        const float a = kTau * static_cast<float>(j) / 16.0f;
+                        const Vec2 c = centre + dirOf(a) * 820.0f;
+                        if (std::fabs(c.x) > kArenaHalfW - 220.0f || std::fabs(c.y) > kArenaHalfH - 220.0f) continue;
+                        // (clear of the rotors as they swing, and of where each living ring was thrown from: as far as it reaches)
+                        bool clear = true;
+                        for (u32 q = 0; q < 2 && clear; ++q)
+                            if ((boss.alive & (1u << q)) && lengthSq(c - boss.body[q]) < 800.0f * 800.0f) clear = false;
+                        for (const PolyRing& r : boss.pr.rings) {
+                            if (!clear || !w.polyRingAlive(r, musicTick)) continue;
+                            const float reach = P.rotorRadius + r.speed * P.wallLife + 30.0f;
+                            const float d = length(c - r.at);
+                            if (d < reach && d > w.polyRingRadius(r, musicTick) - 30.0f) clear = false;
+                        }
+                        if (!clear) continue;
+                        const float d = std::fabs(wrapAngle(a - mine));
+                        if (d < bestD) {
+                            bestD = d;
+                            bestA = a;
+                        }
+                    }
+                    const float step = clampf(wrapAngle(bestA - mine), -0.5f, 0.5f);
+                    goal = centre + dirOf(mine + step) * 820.0f;
+                }
+                const Vec2 to = goal - pos;
+                const float l = length(to);
+                if (l > 20.0f) force = force + to * (std::fmin(l / 200.0f, 1.5f) / l);
+                // The walls coming: sideways toward the nearest gap of that ring; a dash when one is about to hit.
+                for (const PolyRing& r : boss.pr.rings) {
+                    if (!w.polyRingAlive(r, musicTick)) continue;
+                    const float rad = w.polyRingRadius(r, musicTick);
+                    const Vec2 rel = pos - r.at;
+                    const float dist = length(rel);
+                    const float ahead = (dist - rad) / std::fmax(r.speed, 1.0f);  // seconds until it reaches me
+                    if (ahead < -0.05f || ahead > 0.6f) continue;
+                    const float ang = angleOf(rel);
+                    if (!w.polyWallAt(r, ang)) continue;
+                    const u32 rn = r.sides ? r.sides : 3u;
+                    float gd = 10.0f, ga = ang;
+                    for (u32 j = 0; j < rn; ++j) {
+                        const float fa = r.face0 + kTau * static_cast<float>(j) / static_cast<float>(rn);
+                        const float dd = wrapAngle(fa - ang);
+                        if (std::fabs(dd) < std::fabs(gd)) {
+                            gd = dd;
+                            ga = fa;
+                        }
+                    }
+                    (void)ga;
+                    const Vec2 tang = perpOf(normalizeOr(rel, Vec2{1.0f, 0.0f})) * (gd >= 0.0f ? 1.0f : -1.0f);
+                    force = force + tang * (3.0f * (0.6f - std::fmax(ahead, 0.0f)) / 0.6f);
+                    if (ahead < 0.12f) {
+                        contactSoon = true;
+                        escape = escape + tang;  // sideways toward its gap, the Dash's i-frames through the wall's edge
+                    }
+                }
+                if (boss.alive == 3u && w.polyLinkBurn(musicTick + kTicksPerBeat) != 0) {
+                    const Vec2 dv = normalizeOr(boss.body[1] - boss.body[0], Vec2{1.0f, 0.0f});
+                    offLine(boss.body[0] - dv * 60.0f, dv, 110.0f);
+                }
+                break;
+            }
+            case BossKind::BlinkStar: {
+                // Off every edge the star has drawn (they fire on bar two's beat 2); nearest the first point when it fires.
+                static const u32 kOrder[5] = {0, 2, 4, 1, 3};
+                const u32 edges = w.blinkEdges(musicTick + kTicksPerBeat);
+                for (u32 k = 0; k < 5 && k < (edges ? edges + 1u : 0u); ++k) {
+                    const Vec2 a0 = w.blinkPoint(kOrder[k]), a1 = w.blinkPoint(kOrder[(k + 1) % 5]);
+                    const Vec2 dd = a1 - a0;
+                    const float u = clampf(dot(pos - a0, dd) / std::fmax(lengthSq(dd), 1e-6f), 0.0f, 1.0f);
+                    const Vec2 side = pos - (a0 + dd * u);
+                    const float off = length(side);
+                    if (off < 90.0f) force = force + normalizeOr(side, perpOf(normalizeOr(dd, Vec2{1.0f, 0.0f}))) * (3.0f * (90.0f - off) / 90.0f);
+                    if (off < 30.0f && w.blinkFiring(musicTick + 0.15 * w.ticksPerSecond())) {
+                        contactSoon = true;
+                        escape = escape + normalizeOr(side, Vec2{1.0f, 0.0f});
+                    }
+                }
+                break;
+            }
+            case BossKind::SentryArray: {
+                // Inside the clock: ride the notch (the turret under the hand fires nothing), a step ahead of the hand.
+                const Vec2 c = boss.mini.ringAt;
+                const float r = w.fenceRadius() - 170.0f;
+                const Vec2 goal = c + dirOf(w.sentryHandAngle() + 0.4f) * (r > 60.0f ? r : 60.0f);
+                const Vec2 to = goal - pos;
+                const float l = length(to);
+                if (l > 20.0f) force = force + to * (std::fmin(l / 160.0f, 1.6f) / l);
+                break;
+            }
+            case BossKind::Feedback: {
+                // Off the Echoes' bodies (they are not targets, so not parts); in Howl off the burning Loop, inside it.
+                for (u32 k = 0; k < FeedbackState::kEchoes; ++k) {
+                    if (!(boss.fb.active & (1u << k))) continue;
+                    const Vec2 dd = pos - boss.body[1 + k];
+                    const float dist = length(dd);
+                    if (dist < 160.0f && dist > 1e-3f) force = force + dd * (2.5f * (160.0f - dist) / 160.0f / dist);
+                    if (dist < 60.0f) {
+                        contactSoon = true;
+                        escape = escape + normalizeOr(dd, Vec2{1.0f, 0.0f});
+                    }
+                }
+                const Vec2 rel = pos - boss.pos;
+                const float dc = length(rel);
+                const float keep = boss.fb.phase == 2 ? boss.fb.loopR - 90.0f : 0.0f;
+                if (boss.fb.phase == 2 && dc > keep && dc > 1e-3f) force = force - rel * (2.0f * std::fmin((dc - keep) / 60.0f, 1.5f) / dc);
+                // Keep a working distance from the Head (its body hurts): 200-380 wu.
+                if (dc < 200.0f && dc > 1e-3f) force = force + rel * (1.5f / dc);
                 break;
             }
             case BossKind::AlphaHound:
@@ -515,6 +697,27 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                       ((close >= 7 && me.novas >= 2) || bulletsNear >= 10 || (me.cells == 0 && contactSoon && !dash));
     in.nova = nova && !novaLast_;
     novaLast_ = nova;
+    if (boss.active && !boss.dying && boss.kind == BossKind::Feedback && musicTick >= boss.fightTick) {
+        // Feedback (feedback.md: play, then listen): fire in phrases the Echoes leave silent a bar later. Slapback: two beats
+        // on, two off, swapped the next bar; Regeneration: a bar on, two off; Howl: two beats on, four off. A Nova would come
+        // back as a Null: none in the fight.
+        const double bar = kTicksPerBar;
+        const i64 b = static_cast<i64>(std::floor(musicTick / bar));
+        const i64 beat = static_cast<i64>(std::floor(musicTick / kTicksPerBeat));
+        const i64 inBar = beat - b * 4;
+        bool fire = true;
+        switch (boss.fb.phase) {
+            case 0: fire = ((b & 1) == 0) == (inBar < 2); break;
+            case 1: fire = (b % 3) == 0; break;
+            default: fire = (beat % 6) < 2; break;
+        }
+        if (!fire) {
+            in.aimActive = false;
+            in.assist = false;
+        }
+        in.nova = false;
+        novaLast_ = false;
+    }
     return in;
 }
 

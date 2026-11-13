@@ -487,28 +487,55 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
     // name under it, never across it (gold, cap 11 wu = 16.5 px, 6 wu = 9 px under the frame) and, through the
     // two bars after it was taken, its effect words (screens.md) under the name.
     {
+        // screens.md (Boost cards, M5): laid out from what they say: side by side, centred as a pair, 48 px between the nearer
+        // ends of their text (name or words, the wider); a pair wider than 900 px drops its words.
+        const float capN = 16.5f * s, capW = 11.0f * s;
+        float width[kBoostSlots] = {}, nameW[kBoostSlots] = {};
+        bool words[kBoostSlots] = {};
         u32 count = 0;
-        for (const ActiveBoost& b : me.boosts) count += b.type != kNoBoost ? 1u : 0u;
-        u32 n = 0;
-        for (const ActiveBoost& b : me.boosts) {
+        for (u32 k = 0; k < kBoostSlots; ++k) {
+            const ActiveBoost& b = me.boosts[k];
             if (b.type == kNoBoost) continue;
             const BoostInfo& bi = boostInfo(b.type);
-            const float x = cx + (static_cast<float>(n) - 0.5f * static_cast<float>(count - 1)) * 220.0f * s, y = rowY - 116.0f * s;
+            const float since = static_cast<float>((st.music - b.from) / kTicksPerBar);
+            words[k] = since >= 0.0f && since < 2.0f;
+            nameW[k] = textW(font, capN, bi.name);
+            width[k] = std::fmax(nameW[k], words[k] ? textW(font, capW, bi.words) : 0.0f);
+            ++count;
+        }
+        float total = 0.0f;
+        for (u32 k = 0; k < kBoostSlots; ++k) total += width[k];
+        total += count > 1 ? 48.0f * s : 0.0f;
+        if (total > 900.0f * s) {
+            total = count > 1 ? 48.0f * s : 0.0f;
+            for (u32 k = 0; k < kBoostSlots; ++k) {
+                words[k] = false;
+                width[k] = nameW[k];
+                total += width[k];
+            }
+        }
+        float left0 = cx - 0.5f * total;
+        for (u32 k = 0; k < kBoostSlots; ++k) {
+            const ActiveBoost& b = me.boosts[k];
+            if (b.type == kNoBoost) continue;
+            const BoostInfo& bi = boostInfo(b.type);
+            const float x = left0 + 0.5f * width[k], y = rowY - 116.0f * s;
+            left0 += width[k] + 48.0f * s;
             if (st.icons) st.icons->drawHud(d.hud, st.boostIcons[b.type], {x, y}, 15.0f * s, 1.0f, hudFn, &ctx);
             const float cap = 16.5f * s, top = y + (15.0f + 9.0f) * s;
             font.drawField(d.hud, {x - 0.5f * textW(font, cap, bi.name), top}, cap, 0.7f * s, col(gold, 1.4f), col(gold, 1.4f), col(gold, 1.4f), bi.name);
             const float since = static_cast<float>((st.music - b.from) / kTicksPerBar);
-            if (since >= 0.0f && since < 2.0f) {
-                const float k = since < 1.5f ? 1.0f : (2.0f - since) * 2.0f, c2 = 11.0f * s;
-                font.drawField(d.hud, {x - 0.5f * textW(font, c2, bi.words), top + cap + 8.0f * s}, c2, 0.55f * s, col(white, 1.1f * k),
-                               col(white, 1.1f * k), col(white, 1.1f * k), bi.words);
+            if (words[k] && since >= 0.0f && since < 2.0f) {
+                const float kk = since < 1.5f ? 1.0f : (2.0f - since) * 2.0f, c2 = capW;
+                font.drawField(d.hud, {x - 0.5f * textW(font, c2, bi.words), top + cap + 8.0f * s}, c2, 0.55f * s, col(white, 1.1f * kk),
+                               col(white, 1.1f * kk), col(white, 1.1f * kk), bi.words);
             }
             const u32 left = b.type == kHalo ? b.hits : static_cast<u32>(std::ceil((b.until - st.music) / kTicksPerBar));
             for (u32 p = 0; p < left && p < 8; ++p) {
                 const Vec2 q{x + 28.0f * s + static_cast<float>(p) * 10.0f * s, y};
                 d.hud.line(q, q, 2.4f * s, col(gold, 1.6f), col(gold, 1.6f), 0);
             }
-            ++n;
+            
         }
     }
     // The orb just taken flies to the band row.

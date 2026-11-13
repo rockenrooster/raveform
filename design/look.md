@@ -1,4 +1,4 @@
-# RAVEFORM — Look Bible (v2.4)
+# RAVEFORM — Look Bible (v2.5)
 
 Creative direction for the renderer and effects. It complements `docs/GAME_DESIGN.md` §11 and
 `docs/TECH_SPEC.md` §5: those say what exists and how it is built; this says how it should look, with
@@ -59,6 +59,13 @@ the world and scales with the camera.
 `captures/m5/part3/`). One new subsection in §5, "Beams, lightning and areas": a beam is drawn in
 lines, lightning is one recipe, an area is drawn by its edge, what a Boost draws is gold, and what
 Time Stretch does to the picture.
+
+**v2.5 (2026-11-13, afternoon)** is the user's word on v2.4's beams as they looked on the phone:
+"much thinner like a laser, big glow is fine, but not excessive". An outlined bar is still a bar.
+**A beam is one thin line and its glow** (§5, "Beams, lightning and areas"): no edge lines, no fill,
+and no beam hurts wider than 64 wu. The same day the user watched a co-op run on the phone and
+found the players' shots "very jumpy, like there might be too many": **a stream of shots reads as
+a line** (§5, "Shots that leave the straight line").
 
 ---
 
@@ -370,27 +377,62 @@ hotter each time, and never near the danger colour.
 The first pictures of the upgrades drew every beam as a filled bar with a white band down the
 middle: Lancer, Accent, the Beam Boost, Bar Line and the Downbeat Cannon, up to 215 px wide. A
 filled bar is not a vector picture, it hides what it hits, and Bar Line's eight took a quiet frame
-to 39% dark with a fifth of the screen above 200. The same pictures drew lightning three ways.
+to 39% dark with a fifth of the screen above 200. v2.4 drew the bar's outline instead (two edge
+lines and a faint fill between them) and it was still a bar: on the phone the beams read as slabs,
+not lasers. The same pictures drew lightning three ways.
 
-**A beam is drawn in lines.** For a beam of damage width *w* (the picture is never wider than what
-hurts):
+**A beam is a laser: one thin line and its glow** (v2.5). Principle 2 holds for a beam as for any
+line: a stronger beam is hotter and longer, never fatter. For a beam of damage width *w*:
 
 | Part | Drawn |
 |---|---|
-| Edges | Two lines at ± w/2, 1.6 px, the owner's colour at the shot level |
-| Core | One line on the axis, 3 px (2 px when w is under 20 wu), 70% white and 30% the owner's colour, at 1.6 of the shot level at its peak |
-| Fill | The owner's colour between the edges, added at 0.10. It is soft light (§3): it feeds neither bloom nor the afterglow, and an enemy inside the beam is seen as clearly as one outside |
-| Start | The edges leave the ship's nose as a point and reach full width over 40 wu. No round cap behind the ship |
+| Core | One line on the axis, and it is the only thing in the beam with an edge: 2 px (Accent, Bar Line, the Beam Boost, Standing Wave's lines), 3 px (Lancer at every level), 4 px (Downbeat Cannon). 70% white and 30% the owner's colour at the nose, running to the owner's `light` colour at the far end (principle 6); 1.6 of the shot level at its peak, the Downbeat Cannon 2.0 |
+| Glow | A soft strip of the owner's colour, Gaussian across the beam: 0.25 on the axis, σ = w / 5, nothing left at ± w/2. It is a pool in every respect (§3): low-frequency light drawn with the pools, never full-resolution fill. The glow is all that shows how wide the beam hurts, and it is never wider than what hurts |
+| Start | Core and glow begin at the ship's nose; the glow comes up over its first 20 wu. Nothing behind the ship |
 
+- **No edge lines, no flat fill, no outline of the beam's width**, at any level and on any tier. A
+  body the beam hurts flashes as it does from any hit; that, and the glow, say what it touched.
+- **How wide a beam may hurt.** No beam hurts wider than 64 wu, so no glow is wider than 96 px at
+  zoom 1. The Downbeat Cannon was 120 wu and comes down to 64; it stays giant by its 4 px core, its
+  light, its length and its critical damage (its numbers are looked at again in the balance pass,
+  GAME_DESIGN 6.6). Lancer (20 to 44 wu by level), Accent (28), Bar Line (32) and the Beam Boost
+  (20) keep what they hurt: a Lancer level that says WIDER widens the glow and the damage, never
+  the core.
 - **A beam on a beat** (Lancer, Accent, Bar Line, Downbeat Cannon) is at its peak for two frames and
-  falls to nothing over the beat envelope's 110 ms (§7); the edges last 60 ms longer than the core.
-- **A held beam** (the Beam Boost, the Sweeper's arm, Standing Wave's lines) keeps edges and fill and
-  lets the core move between 1.0 and 1.4 on the 1/32 grid. The Sweeper's arm of part 3, one line, is
-  right as it is: its width is under 6 wu, so edges and core are one line.
-- **Whose it is.** A beam is its owner's colour, like every shot's tail. Part 3's Bar Line was in the
-  Track's second colour, and in co-op nobody could say whose it was. A Fusion's beam has gold edges
-  and its owner's colour in the core.
-- **Reduce flashing:** a beam on a beat peaks at 1.0 and has no white in its core.
+  falls to nothing over the beat envelope's 110 ms (§7); the glow falls with the core.
+- **A held beam** (the Beam Boost, the Sweeper's arm, Standing Wave's lines) keeps its glow steady
+  and lets the core move between 1.0 and 1.4 on the 1/32 grid. A beam under 12 wu wide is its core
+  alone: the Sweeper's arm of part 3, one line, is right as it is.
+- **Whose it is.** Core and glow are the owner's colour, like every shot's tail. A Fusion's beam
+  (Downbeat Cannon, Standing Wave's lines) has a gold glow and a core of half white, half its
+  owner's colour, so the owner still shows.
+- **Lethal beams are not this.** An enemy's or a boss's beam is danger red on the priority layer
+  (§6) and is drawn exactly as wide as it kills: a threat's picture is its hit box.
+- **Reduce flashing:** a beam on a beat peaks at 1.0, has no white in its core, and its glow is 0.15.
+- **Checked on the retaken pictures** (2400×1080, `scenes.py light`): no beam's core wider than
+  4 px; `up_barline` at least 50% dark with under 8% of the screen above 200 (v2.3's bars: 39% and
+  20%); `fusion_cannon` under 6% above 200 (16%).
+
+### Shots that leave the straight line (v2.5)
+
+Part 3's Wave moved a shot 21 wu sideways in a frame and Helix Array 63 wu (94 px), against 23 wu
+forward, on a wave 280 wu long that the stream's volleys, 175 wu apart at 120 BPM, sampled less
+than twice. The eye cannot join that into a wave: it sees clusters hopping from side to side
+(`captures/m5/part3/up_wave.png`, `up_helix.png`). And above the soft cap the outer Split lanes
+fired on alternate steps, so the fan changed shape sixteen times a bar.
+
+**A stream of shots reads as a line.** Whatever bends a player's shots:
+
+- **Beads on a string.** Every shot of a stream follows the same curve, fixed to the aim line and
+  measured from the muzzle, so the stream is one curve with shots running along it.
+- **Four volleys to a wave, at least.** A curve's wavelength is never less than the distance a shot
+  flies in one beat (700 wu at 120 BPM, 483 at 174).
+- **Forward first.** No shot moves sideways faster than 0.6 of its forward speed, so its streak
+  never points more than 31° off the line it follows. Homing turns (Seeker, the Swarm, Confetti)
+  are arcs and already hold this; a bounce or a fork is one corner, not a wobble.
+- **A fan is the same on every step.** When shots have to be thinned (GAME_DESIGN 6.6) the fan
+  keeps every lane on every step; what gives way is how far the outer lanes reach, and it changes
+  on a beat, never between two steps.
 
 **Lightning is one thing.** Arc, Storm Coil, Chain Storm and Tesla Bloom all draw the bolt of
 `captures/m5/part3/fusion_tesla.png`: three strands of 1.2 px between the two bodies, each a

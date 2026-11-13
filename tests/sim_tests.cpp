@@ -1350,6 +1350,7 @@ void testPlayTest2() {
         auto* w = new (std::nothrow) World;
         w->init(g_species);
         w->spawner().mode = Spawner::Mode::Slice;
+        w->setSetList(3);  // (a set list of three: Track 5 is the loop's second)
         w->resetRun(31, 0.0, 1);
         w->rules().godMode = true;
         w->directorMut().track = 5;
@@ -1380,6 +1381,7 @@ void testPlayTest2() {
         auto* w = new (std::nothrow) World;
         w->init(g_species);
         w->spawner().mode = Spawner::Mode::Off;
+        w->setSetList(3);  // (a set list of three: Track 7 is First Light again)
         w->resetRun(33, 0.0, 1);
         w->rules().godMode = true;
         w->directorMut().track = 7;
@@ -1619,8 +1621,10 @@ void testMiddleDrop() {
     CHECK(seen[static_cast<u32>(BossKind::AlphaHound)] && seen[static_cast<u32>(BossKind::Hive)] && seen[static_cast<u32>(BossKind::BatteringRam)] &&
           seen[static_cast<u32>(BossKind::CaromKing)] && seen[static_cast<u32>(BossKind::Kaleidos)] == 0);
     CHECK(seen[static_cast<u32>(BossKind::AlphaHound)] + seen[static_cast<u32>(BossKind::Hive)] == 24);
+    w->directorMut().lastMini = static_cast<u8>(BossKind::BlinkStar);
+    CHECK(w->pickMini(5) == BossKind::SentryArray);  // (M5 part 4: Track 5 draws from Blink Star and Sentry Array)
     w->directorMut().lastMini = static_cast<u8>(BossKind::Hive);
-    CHECK(w->pickMini(5) == BossKind::AlphaHound);
+    CHECK(w->pickMini(2) == BossKind::AlphaHound);
     w->directorMut().lastMini = static_cast<u8>(BossKind::CaromKing);
     CHECK(w->pickMini(4) != BossKind::CaromKing);
     delete w;
@@ -1776,6 +1780,437 @@ void testChoir() {
     stepWorld(*w, music, ship);
     CHECK(s.dying);
     delete w;
+}
+
+// M5 part 4: Event Horizon (horizon.md): the pull, eating, the bar line's verdict, the lanes, the eruption, the wave, the
+// jets, the contact throw.
+u32 cuesUntil(World& w, double& music, double until, Vec2 ship, BossCue c) {
+    u32 n = 0;
+    while (music + kTicksPerSimTick <= until + 1e-9) {
+        stepWorld(w, music, ship);
+        n += cuesIn(w, c);
+    }
+    return n;
+}
+
+void testHorizon() {
+    g_test = "horizon";
+    const HorizonData& d = g_species->horizon;
+    CHECK(d.horizonRadius == 120.0f && d.photonRadius == 136.0f && d.phases[0].lanes == 2 && d.phases[1].lanes == 3 && d.phases[2].lanes == 4);
+    CHECK(d.phases[0].hunger == 5 && d.phases[1].hunger == 7 && d.phases[2].stream == 26 && d.phases[1].wave && !d.phases[0].wave);
+    CHECK(d.phases[2].jets && !d.phases[1].jets && d.phases[2].drift == 90.0f && d.phases[1].pullScale == 1.25f);
+    CHECK(d.pullShip == 260.0f && d.fed == 0.15f && d.starved == 1.0f && d.zoom == 0.8f && d.meterCells == 12);
+    CHECK(bossOfSong(3) == BossKind::EventHorizon && bossHomeTrack(BossKind::EventHorizon) == 4 && fightBuilt(BossKind::EventHorizon));
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    const Vec2 ship{600.0f, 0.0f};
+    stepWorld(*w, music, ship);
+    w->spawnBossNow(kTicksPerBar, Vec2{}, BossKind::EventHorizon);
+    const BossState& s = w->boss();
+    CHECK(s.kind == BossKind::EventHorizon && s.fightTick == 2.0 * kTicksPerBar && s.hz.shield);
+    runTo(*w, music, 2.0 * kTicksPerBar + 5.0, ship);
+    CHECK(w->horizonOn());
+    // The pull: 260 wu/s on the ship at the photon ring, falling off as (136 / distance)^1.2.
+    CHECK(std::fabs(w->horizonPullAt(s.pos + Vec2{136.0f, 0.0f}, d.pullShip) - 260.0f) < 0.5f);
+    CHECK(std::fabs(w->horizonPullAt(s.pos + Vec2{272.0f, 0.0f}, d.pullShip) - 260.0f * std::pow(0.5f, 1.2f)) < 0.5f);
+    {
+        const Vec2 pull = w->wellPull(ship);
+        CHECK_MSG(pull.x < -10.0f && std::fabs(pull.y) < 1e-3f, "pull %.1f %.1f", pull.x, pull.y);
+    }
+    // Fed (the shield, from the start): x 0.15.
+    CHECK(w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == d.fed);
+    // A body that crosses the horizon is eaten: a cell on the meter and the count's note.
+    w->spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), s.pos + Vec2{60.0f, 0.0f}, 0.0f, w->music());
+    stepWorld(*w, music, ship);
+    CHECK_MSG(s.hz.meal == 1 && cuesIn(*w, BossCue::HzEat) == 1, "meal %u", s.hz.meal);
+    // The lanes: the bar's stream walks in (Accretion: two lanes, ten bodies a bar).
+    u32 lane = 0;
+    runTo(*w, music, 2.0 * kTicksPerBar + 0.95 * kTicksPerBar, ship);
+    for (u32 i = 0; i < w->enemies().count; ++i) lane += w->enemies().state[i] == kLane && !(w->enemies().flags[i] & kFlagDead) ? 1u : 0u;
+    CHECK_MSG(lane >= 8 && lane <= 10, "%u on the lanes", lane);
+    // Starved (one body against a hunger of five): the gasp, and full damage for the bar.
+    CHECK(cuesUntil(*w, music, 3.0 * kTicksPerBar + 10.0, ship, BossCue::HzStarved) == 1);
+    CHECK_MSG(!s.hz.shield && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == d.starved, "shield %d", s.hz.shield ? 1 : 0);
+    // Fed: six bodies before the next bar line; the eruption (8 + 4 a body) leaves on two arms, one a sixteenth each.
+    for (u32 k = 0; k < 6; ++k)
+        w->spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), s.pos + dirOf(static_cast<float>(k)) * 50.0f, 0.0f, w->music());
+    stepWorld(*w, music, ship);
+    CHECK(s.hz.meal >= 6);
+    CHECK(cuesUntil(*w, music, 4.0 * kTicksPerBar + 2.0, ship, BossCue::HzFed) == 1);
+    CHECK_MSG(s.hz.shield && s.hz.eruptLeft >= 8 + 4 * 6 - 2, "erupt %u", s.hz.eruptLeft);
+    {
+        const u32 b0 = w->bullets().count;
+        runTo(*w, music, 4.0 * kTicksPerBar + 2.0 * kTicksPerStep + 10.0, ship);
+        CHECK_MSG(w->bullets().count - b0 >= 4, "%u bullets", w->bullets().count - b0);
+    }
+    // Touching the horizon: thrown 300 wu out (the controller takes the knock).
+    {
+        const u32 serial = w->player(0).knockSerial;
+        stepWorld(*w, music, s.pos + Vec2{100.0f, 0.0f});
+        const Vec2 k = w->player(0).knock;
+        CHECK_MSG(w->player(0).knockSerial == serial + 1 && k.x > 250.0f, "knock %.1f %.1f", k.x, k.y);
+    }
+    // Tidal (two thirds of its health): the wave on beat 3 of every bar.
+    w->bossHealthNow(0.6f);
+    stepWorld(*w, music, ship);
+    CHECK(s.hz.phase == 1);
+    {
+        const double line = (std::floor(w->music() / kTicksPerBar) + 1.0) * kTicksPerBar;
+        runTo(*w, music, line + 5.0, ship);
+        CHECK(cuesUntil(*w, music, line + 2.0 * kTicksPerBeat + 5.0, ship, BossCue::HzWave) == 1);
+    }
+    // Collapse: the jets burn on a fed bar line along the axis, which turns 45 degrees a bar; it drifts toward the players.
+    w->bossHealthNow(0.3f);
+    stepWorld(*w, music, ship);
+    CHECK(s.hz.phase == 2);
+    const Vec2 at0 = s.pos;
+    for (u32 k = 0; k < 12; ++k)
+        w->spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), s.pos + dirOf(static_cast<float>(k)) * 50.0f, 0.0f, w->music());
+    stepWorld(*w, music, ship);
+    {
+        const double line = (std::floor(w->music() / kTicksPerBar) + 1.0) * kTicksPerBar;
+        runTo(*w, music, line + 10.0, ship);
+        CHECK(s.hz.shield && w->music() >= s.hz.jetFrom && w->music() < s.hz.jetUntil);
+        Vec2 from;
+        const Vec2 along = s.pos + dirOf(s.hz.axis) * 500.0f, aside = s.pos + dirOf(s.hz.axis + 1.0f) * 500.0f;
+        CHECK(w->horizonJetHits(along, from) && !w->horizonJetHits(aside, from));
+        runTo(*w, music, line + 2.0 * kTicksPerBeat + 10.0, ship);
+        CHECK(!w->horizonJetHits(along, from));
+    }
+    CHECK(length(s.pos - at0) > 20.0f && (s.pos - at0).x > 0.0f);
+    // Its death: 300 Shards a player.
+    w->killBossNextTick(0, true);
+    stepWorld(*w, music, ship);
+    CHECK(s.dying);
+    delete w;
+}
+
+// M5 part 4: Polyrhythm (polyrhythm.md): the pulses, the walls and their gaps, the One, the faces, a wall's hit, Hemiola's
+// turn and burning link, the Solo, the death's late break.
+const PolyRing* newestRing(const World& w, u8 rotor) {
+    const PolyRing* best = nullptr;
+    for (const PolyRing& r : w.boss().pr.rings)
+        if (r.tick >= 0.0 && r.rotor == rotor && (!best || r.tick > best->tick)) best = &r;
+    return best;
+}
+
+void testPolyrhythm() {
+    g_test = "polyrhythm";
+    const PolyData& d = g_species->poly;
+    CHECK(d.health[0] == 1400.0f && d.health[1] == 1400.0f && d.sides[0] == 3 && d.sides[1] == 4 && d.pulses[0] == 3 && d.pulses[1] == 4);
+    CHECK(d.arcDeg[0] == 80.0f && d.arcDeg[1] == 60.0f && d.turnDeg[0] == 40.0f && d.turnDeg[1] == 22.5f && d.span == 720.0f);
+    CHECK(d.ringSpeed == 260.0f && d.wallLife == 2.6f && d.wallThickness == 10.0f && d.dmgSolo == 1.25f && d.zoom == 0.75f && d.linkTicks == 12);
+    CHECK(bossOfSong(4) == BossKind::Polyrhythm && bossHomeTrack(BossKind::Polyrhythm) == 5 && fightBuilt(BossKind::Polyrhythm));
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    const Vec2 ship{0.0f, 420.0f};
+    stepWorld(*w, music, ship);
+    w->spawnBossNow(kTicksPerBar, Vec2{}, BossKind::Polyrhythm);
+    const BossState& s = w->boss();
+    CHECK(s.kind == BossKind::Polyrhythm && s.alive == 3u && s.fightTick == 3.0 * kTicksPerBar);
+    // The One: both fire, a face of each looking at the other: Three's gap on the link (+x), Four's too (-x).
+    u32 three = 0, four = 0, one = 0;
+    while (music + kTicksPerSimTick <= 3.0 * kTicksPerBar + 5.0) {
+        stepWorld(*w, music, ship);
+        three += cuesIn(*w, BossCue::PrThree);
+        four += cuesIn(*w, BossCue::PrFour);
+        one += cuesIn(*w, BossCue::PrOne);
+    }
+    CHECK_MSG(three == 1 && four == 1 && one == 1, "%u %u %u", three, four, one);
+    const PolyRing* r3 = newestRing(*w, 0);
+    const PolyRing* r4 = newestRing(*w, 1);
+    CHECK(r3 && r4 && r3->sides == 3 && r4->sides == 4);
+    if (r3 && r4) {
+        const float link = w->polyLinkAngle(r3->tick);
+        CHECK_MSG(std::fabs(wrapAngle(r3->face0 - link)) < 1e-3f && std::fabs(wrapAngle(r4->face0 - link - kPi)) < 1e-3f, "%.3f %.3f %.3f", r3->face0, r4->face0, link);
+        CHECK(!w->polyWallAt(*r3, link) && w->polyWallAt(*r3, link + kPi / 3.0f) && !w->polyWallAt(*r3, link + kPi / 3.0f + 0.75f));
+        CHECK(!w->polyWallAt(*r4, link + kPi) && w->polyWallAt(*r4, link + kPi / 4.0f));
+    }
+    // A bar: Three three times, Four four times, the One once.
+    three = four = one = 0;
+    while (music + kTicksPerSimTick <= 4.0 * kTicksPerBar + 5.0) {
+        stepWorld(*w, music, ship);
+        three += cuesIn(*w, BossCue::PrThree);
+        four += cuesIn(*w, BossCue::PrFour);
+        one += cuesIn(*w, BossCue::PrOne);
+    }
+    CHECK_MSG(three == 3 && four == 4 && one == 1, "%u %u %u", three, four, one);
+    // Between pulses Three turns 40 degrees (its gaps step round).
+    CHECK(std::fabs(wrapAngle(w->polyFace(0, 4.0 * kTicksPerBar + kTicksPerBar / 3.0) - w->polyLinkAngle(4.0 * kTicksPerBar + kTicksPerBar / 3.0) - 40.0f * kTau / 360.0f)) < 1e-3f);
+    // Only the faces can be hurt.
+    CHECK(w->bossDamageScale(2, 0, w->music(), Vec2{1.0f, 0.0f}) == 1.0f && w->bossDamageScale(1, 0, w->music(), Vec2{1.0f, 0.0f}) == 0.0f);
+    // A wall hits; it is erased where it hit.
+    {
+        w->rules().godMode = false;
+        const PolyRing* r = nullptr;  // (an older ring, well clear of the rotor's body)
+        for (const PolyRing& q : s.pr.rings)
+            if (q.rotor == 1 && w->polyRingAlive(q, w->music()) && w->polyRingRadius(q, w->music()) > 250.0f && (!r || q.tick > r->tick)) r = &q;
+        CHECK(r != nullptr);
+        if (r) {
+            const double next = w->music() + kTicksPerSimTick;
+            const float a = r->face0 + kPi / 4.0f;
+            const Vec2 on = r->at + dirOf(a) * w->polyRingRadius(*r, next);
+            const u8 cells = w->player(0).cells;
+            stepWorld(*w, music, on);
+            CHECK_MSG(w->player(0).cells + 1 == cells || !w->player(0).alive, "cells %u -> %u", cells, w->player(0).cells);
+            CHECK(!w->polyWallAt(*r, a) && w->polyWallAt(*r, a + 0.5f));
+        }
+        w->rules().godMode = true;
+    }
+    // Hemiola from the bar line after their joint health falls to 60%: the turn reverses every second bar, Four's walls fly
+    // at 300, the link shows its dashes for a bar and burns on beats 3 and 4 of the next.
+    w->bossHealthNow(0.55f);
+    stepWorld(*w, music, ship);
+    const double h0 = (std::floor(w->music() / kTicksPerBar) + 1.0) * kTicksPerBar;
+    CHECK(s.pr.phase == 1 && s.pr.hemiolaBar0 == static_cast<i64>(h0 / kTicksPerBar));
+    CHECK(w->polyLinkBurn(h0 + 10.0) == 1 && w->polyLinkBurn(h0 + kTicksPerBar + 10.0) == 1 && w->polyLinkBurn(h0 + kTicksPerBar + 2.0 * kTicksPerBeat + 10.0) == 2 &&
+          w->polyLinkBurn(h0 + 2.0 * kTicksPerBar - 10.0) == 2 && w->polyLinkBurn(h0 + 2.0 * kTicksPerBar + 10.0) == 1);
+    {
+        const double mid = h0 + kTicksPerBar + kTicksPerBar / 3.0;  // the second bar: turning back
+        CHECK(std::fabs(wrapAngle(w->polyFace(0, mid) - w->polyLinkAngle(mid) + 40.0f * kTau / 360.0f)) < 1e-3f);
+    }
+    runTo(*w, music, h0 + kTicksPerBar / 4.0 + 5.0, ship);
+    {
+        const PolyRing* r = newestRing(*w, 1);
+        CHECK(r && r->speed == 300.0f);
+    }
+    // Solo: Four dead; Three plays both counts (its own ring and Four's, turning the other way, gaps together on the One)
+    // and takes x 1.25.
+    w->killBossNextTick(0x2u, false);
+    stepWorld(*w, music, ship);
+    CHECK(s.pr.phase == 2 && s.alive == 1u && s.pr.firstDead == 1);
+    CHECK(w->bossDamageScale(2, 0, w->music(), Vec2{1.0f, 0.0f}) == d.dmgSolo);
+    {
+        const double line = (std::floor(w->music() / kTicksPerBar) + 1.0) * kTicksPerBar;
+        runTo(*w, music, line + 5.0, ship);
+        const PolyRing* own = newestRing(*w, 0);
+        const PolyRing* other = newestRing(*w, 1);
+        CHECK(own && other && own->tick == line && other->tick == line && other->sides == 4 && length(other->at - s.body[0]) < 30.0f);
+        if (own && other) CHECK(std::fabs(wrapAngle(own->face0 - other->face0)) < 1e-3f);
+    }
+    // The death: the boss break and the Shards on the One that ends the Track.
+    w->killBossNextTick(0x1u, false);
+    stepWorld(*w, music, ship);
+    CHECK(s.dying && s.payoutTick > w->music());
+    const u32 shards0 = w->shards().count;
+    runTo(*w, music, s.payoutTick + 5.0, ship);
+    CHECK_MSG(w->shards().count >= shards0 + 240u, "%u -> %u", shards0, w->shards().count);  // polyrhythm.md: 240 Shards
+    delete w;
+}
+
+// M5 part 4: Feedback (feedback.md): the tape, the Echo at the mirror point, its shots turned, the Head open only while
+// the Echo is silent, Regeneration's second Echo, Howl's double speed and burning Loop, the death's late break.
+u32 echoShots(const World& w) {
+    u32 n = 0;
+    for (u32 i = 0; i < w.bullets().count; ++i) n += !w.bullets().dead[i] && w.bullets().echo[i] ? 1u : 0u;
+    return n;
+}
+
+void testFeedback() {
+    g_test = "feedback";
+    const FeedbackData& d = g_species->feedback;
+    CHECK(d.health == 4800.0f && d.headRadius == 84.0f && d.loopRadius == 420.0f && d.loopSteps == 16 && d.shotSpeed == 400.0f && d.shotLife == 3.2f);
+    CHECK(d.echoRadius == 16.0f && d.howlShrink == 15.0f && d.howlMin == 300.0f && d.zoom == 0.75f && d.blades == 6 && d.ribs == 16);
+    CHECK(bossOfSong(5) == BossKind::Feedback && bossHomeTrack(BossKind::Feedback) == 6 && fightBuilt(BossKind::Feedback));
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    const Vec2 ship{300.0f, 0.0f};
+    stepWorld(*w, music, ship);
+    w->spawnBossNow(kTicksPerBar, Vec2{}, BossKind::Feedback);
+    const BossState& s = w->boss();
+    CHECK(s.kind == BossKind::Feedback && s.fightTick == 3.0 * kTicksPerBar && length(s.pos) < 1.0f);
+    // Bar 3: the player fires for two beats (along +x, away from the Head), then rests.
+    runTo(*w, music, 3.0 * kTicksPerBar, ship);
+    while (music + kTicksPerSimTick <= 3.0 * kTicksPerBar + 2.0 * kTicksPerBeat) stepWorld(*w, music, ship, 1);
+    runTo(*w, music, 4.0 * kTicksPerBar + 10.0, ship);
+    // Bar 4: the Echo at the mirror point plays it back, the shots turned (along -x), and the Head is shut while it plays.
+    CHECK_MSG((s.fb.active & 1u) && length(s.body[1] - Vec2{-300.0f, 0.0f}) < 20.0f, "active %u at %.0f %.0f", s.fb.active, s.body[1].x, s.body[1].y);
+    runTo(*w, music, 4.0 * kTicksPerBar + kTicksPerBeat, ship);
+    CHECK_MSG(echoShots(*w) >= 2, "%u echo shots", echoShots(*w));
+    {
+        bool turned = false;
+        for (u32 i = 0; i < w->bullets().count; ++i)
+            if (w->bullets().echo[i] && !w->bullets().dead[i]) turned = w->bullets().vx[i] < -300.0f && w->bullets().x[i] < 0.0f;
+        CHECK(turned);
+    }
+    CHECK_MSG(s.fb.playing & 1u && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 0.0f, "playing %u open %.2f", s.fb.playing, s.fb.open);
+    runTo(*w, music, 4.0 * kTicksPerBar + 2.0 * kTicksPerBeat + 3.0 * kTicksPerStep, ship);
+    CHECK_MSG(!(s.fb.playing & 1u) && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 1.0f, "playing %u open %.2f", s.fb.playing, s.fb.open);
+    // Its body hurts; player shots are not stopped by it (it is not a part).
+    {
+        Vec2 from;
+        CHECK(w->feedbackHits(s.body[1], from) && !w->feedbackHits(Vec2{0.0f, 300.0f}, from));
+        BossPart parts[kBossBodies + 4];
+        CHECK(w->bossParts(parts, kBossBodies + 4) == 1 && parts[0].part == 3);
+    }
+    // Regeneration: a second Echo, two bars behind, where the player stood.
+    w->bossHealthNow(0.5f);
+    stepWorld(*w, music, ship);
+    runTo(*w, music, 5.0 * kTicksPerBar + 10.0, ship);  // (the tape holds two bars from bar 5 on)
+    CHECK_MSG(s.fb.phase == 1 && (s.fb.active & 3u) == 3u && length(s.body[2] - ship) < 20.0f, "phase %u active %u", s.fb.phase, s.fb.active);
+    // Howl: the tape at double speed (two beats and four), the Loop tightening 15 wu a bar line, burning.
+    w->bossHealthNow(0.25f);
+    stepWorld(*w, music, ship);
+    CHECK(s.fb.phase == 2 && w->feedbackDelay(0) == 2.0 * kTicksPerBeat && w->feedbackDelay(1) == 4.0 * kTicksPerBeat);
+    {
+        const double line = (std::floor(w->music() / kTicksPerBar) + 2.0) * kTicksPerBar;
+        runTo(*w, music, line + 5.0, ship);
+        CHECK_MSG(s.fb.loopR == d.loopRadius - 2.0f * d.howlShrink, "loop %.1f", s.fb.loopR);
+        Vec2 from;
+        CHECK(w->feedbackHits(Vec2{0.0f, s.fb.loopR}, from) && !w->feedbackHits(Vec2{0.0f, s.fb.loopR - 60.0f}, from));
+    }
+    // The death: the tape is cut; the break and the Shards come two bars on.
+    w->killBossNextTick(0, true);
+    stepWorld(*w, music, ship);
+    CHECK(s.dying && s.payoutTick > w->music() + kTicksPerBar);
+    const u32 shards0 = w->shards().count;
+    runTo(*w, music, s.payoutTick + 5.0, ship);
+    CHECK_MSG(w->shards().count >= shards0 + 320u, "%u -> %u", shards0, w->shards().count);  // feedback.md: 320 Shards
+    delete w;
+}
+
+// M5 part 4: mini-bosses batch 2 (minibosses.md): the Moth Queen's court, the Brood Mother's nest, the Blink Star's star,
+// the Sentry Array's clock.
+u32 calledIn(const World& w, u8 state) {
+    u32 n = 0;
+    for (u32 i = 0; i < w.enemies().count; ++i)
+        n += !(w.enemies().flags[i] & kFlagDead) && (w.enemies().flags[i] & kFlagCalled) && w.enemies().state[i] == state ? 1u : 0u;
+    return n;
+}
+
+void testMinibosses2() {
+    g_test = "minibosses batch 2";
+    CHECK(fightBuilt(BossKind::MothQueen) && fightBuilt(BossKind::SentryArray) && !fightBuilt(BossKind::MirrorMimic));
+    CHECK(bossHomeTrack(BossKind::MothQueen) == 4 && bossHomeTrack(BossKind::BlinkStar) == 5);
+    const Vec2 ship{0.0f, 0.0f};
+    // The Moth Queen: the court of twelve warps in round the player and spirals in; a rosette of five on every eighth; on
+    // bar four the court bursts (six bullets each) and she is open (x 2).
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        w->spawnBossNow(kTicksPerBar, Vec2{500.0f, 0.0f}, BossKind::MothQueen);
+        const BossState& s = w->boss();
+        const double f0 = s.fightTick;
+        runTo(*w, music, f0 + 2.0 * kTicksPerBeat + 10.0, ship);
+        CHECK_MSG(calledIn(*w, kCourt) == 12, "%u court Moths", calledIn(*w, kCourt));
+        CHECK(length(s.mini.ringAt - ship) < 5.0f && !w->mothOpen(w->music()));
+        CHECK(w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 1.0f);
+        {
+            const u32 b0 = w->bullets().count;
+            runTo(*w, music, w->music() + kTicksPerBeat / 2.0, ship);
+            CHECK_MSG(w->bullets().count - b0 == 5, "%u petals", w->bullets().count - b0);
+        }
+        runTo(*w, music, f0 + 3.0 * kTicksPerBar - 10.0, ship);
+        {
+            const u32 court = calledIn(*w, kCourt);
+            const u32 b0 = w->bullets().count;
+            runTo(*w, music, f0 + 3.0 * kTicksPerBar + 2.0, ship);
+            CHECK_MSG(calledIn(*w, kCourt) == 0 && w->bullets().count >= b0 + 6u * court, "court %u bullets %u -> %u", court, b0, w->bullets().count);
+        }
+        CHECK(w->mothOpen(w->music()) && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 2.0f);
+        delete w;
+    }
+    // The Brood Mother: six eggs on beat 1 (white, one shot), hatching on beat 3; while a broodling lives her dome is shut
+    // (x 0.25); with none, x 2.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        w->spawnBossNow(kTicksPerBar, Vec2{400.0f, 0.0f}, BossKind::BroodMother);
+        const BossState& s = w->boss();
+        const double f0 = s.fightTick;
+        runTo(*w, music, f0 + 10.0, ship);
+        CHECK_MSG(calledIn(*w, kEgg) == 6, "%u eggs", calledIn(*w, kEgg));
+        CHECK(w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 2.0f);  // (no broodling yet)
+        runTo(*w, music, f0 + 2.0 * kTicksPerBeat + 10.0, ship);
+        CHECK_MSG(calledIn(*w, kEgg) == 0 && calledIn(*w, kMoving) == 6, "%u eggs, %u young", calledIn(*w, kEgg), calledIn(*w, kMoving));
+        CHECK(s.mini.shut && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 0.25f);
+        for (u32 i = 0; i < w->enemies().count; ++i)
+            if (w->enemies().flags[i] & kFlagCalled) w->setEnemyHp(i, 0.001f);
+        for (u32 k = 0; k < 4; ++k) stepWorld(*w, music, ship, 1);
+        delete w;
+    }
+    // The Blink Star: it appears at the first point, hops a point a beat in star order, fires all five edges on bar two's
+    // beat 2 (16 wu wide), then is dazed at the first point (x 2).
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        w->spawnBossNow(kTicksPerBar, Vec2{300.0f, 200.0f}, BossKind::BlinkStar);
+        const BossState& s = w->boss();
+        const double f0 = s.fightTick;
+        runTo(*w, music, f0 + 10.0, ship);
+        CHECK(length(s.mini.ringAt - ship) < 5.0f && length(s.body[0] - w->blinkPoint(0)) < 1.0f);
+        runTo(*w, music, f0 + kTicksPerBeat + 10.0, ship);
+        CHECK(length(s.body[0] - w->blinkPoint(2)) < 1.0f && w->blinkEdges(w->music()) == 1);
+        runTo(*w, music, f0 + 5.0 * kTicksPerBeat + 10.0, ship);
+        CHECK(w->blinkFiring(w->music()));
+        {
+            Vec2 from;
+            const Vec2 mid = (w->blinkPoint(0) + w->blinkPoint(2)) * 0.5f;
+            CHECK(w->blinkBeamHit(mid, from) && !w->blinkBeamHit(s.mini.ringAt, from));
+        }
+        runTo(*w, music, f0 + 6.0 * kTicksPerBeat + 10.0, ship);
+        CHECK(w->blinkDazed(w->music()) && length(s.body[0] - w->blinkPoint(0)) < 1.0f && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 2.0f);
+        delete w;
+    }
+    // The Sentry Array: eight turrets on a ring of 340 round the players' centre, fenced; the one under the hand is the only
+    // one open (x 2); every other fires five inward on each beat; a death and they step round to stand evenly.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        w->spawnBossNow(kTicksPerBar, Vec2{200.0f, 0.0f}, BossKind::SentryArray, Vec2{});
+        const BossState& s = w->boss();
+        const double f0 = s.fightTick;
+        CHECK(s.alive == 0xFFu && length(s.body[1] - Vec2{0.0f, -340.0f}) < 1.0f);
+        runTo(*w, music, f0 + 10.0, ship);
+        const i32 hand = w->sentryHand();
+        CHECK(hand >= 0);
+        BossPart parts[kBossBodies + 4];
+        const u32 n = w->bossParts(parts, kBossBodies + 4);
+        u32 open = 0;
+        for (u32 k = 0; k < n; ++k) open += parts[k].part == 2 ? 1u : 0u;
+        CHECK(n == 8 && open == 1 && w->bossDamageScale(2, static_cast<u8>(hand), w->music(), Vec2{1.0f, 0.0f}) == 2.0f &&
+              w->bossDamageScale(1, 0, w->music(), Vec2{1.0f, 0.0f}) == 0.0f);
+        {
+            const u32 b0 = w->bullets().count;
+            runTo(*w, music, f0 + kTicksPerBeat + 10.0, ship);
+            CHECK_MSG(w->bullets().count - b0 == 35, "%u bullets", w->bullets().count - b0);
+        }
+        // The fence keeps a ship inside.
+        {
+            Vec2 to{400.0f, 0.0f};
+            CHECK(w->penKeep(Vec2{100.0f, 0.0f}, to, 16.0f) && to.x < 340.0f);
+        }
+        w->killBossNextTick(1u << 3, false);
+        stepWorld(*w, music, ship);
+        CHECK(s.alive == (0xFFu & ~(1u << 3)));
+        const double line = (std::floor(w->music() / kTicksPerBar) + 1.0) * kTicksPerBar;
+        runTo(*w, music, line + kTicksPerBeat + 10.0, ship);
+        {
+            float gapMin = 10.0f, gapMax = 0.0f;
+            for (u32 k = 0; k < 8; ++k) {
+                if (!(s.alive & (1u << k))) continue;
+                u32 j = (k + 1) % 8;
+                while (!(s.alive & (1u << j))) j = (j + 1) % 8;
+                const float g = wrapAngle(s.mini.turretAng[j] - s.mini.turretAng[k]);
+                const float gp = g < 0.0f ? g + kTau : g;
+                gapMin = std::fmin(gapMin, gp);
+                gapMax = std::fmax(gapMax, gp);
+            }
+            CHECK_MSG(gapMax - gapMin < 0.02f, "gaps %.3f-%.3f", gapMin, gapMax);
+        }
+        delete w;
+    }
 }
 
 void testMinibosses() {
@@ -2112,6 +2547,139 @@ void testFamiliesM5() {
     }
 }
 
+// ---------------------------------------------------------------------------------------------- M5 part 4: families
+
+void testFamiliesM5b() {
+    g_test = "families (M5 part 4)";
+    const SpeciesTable& s = *g_species;
+    const double beat = kTicksPerBeat, bar = kTicksPerBar;
+    CHECK(familyBuilt(Family::Mimic) && s.family(Family::Wyrm).segmentsMax == 12 && s.family(Family::Tether).pairDistance == 160.0f &&
+          s.family(Family::Well).pullRadius == 200.0f && s.family(Family::Mimic).beatStepWu == 80.0f && s.family(Family::Tether).v.triad);
+    {
+        // Wyrm: a chain, each segment spacing behind the one before; C: cut in two, the rear half grows a head in two beats.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->spawnCreatureNow(SpeciesTable::index(Family::Wyrm, 1, kVariantC), Vec2{600.0f, 0.0f}, kPi, music);
+        runShip(*w, music, music + 2.0 * beat, Vec2{-800.0f, 0.0f});
+        const Enemies& e = w->enemies();
+        u32 n = 0, heads = 0;
+        float worst = 0.0f;
+        i32 mid = -1;
+        for (u32 i = 0; i < e.count; ++i) {
+            if (e.flags[i] & kFlagDead) continue;
+            ++n;
+            heads += e.a[i] > 0.5f ? 1u : 0u;
+            if (e.step[i] == 3) mid = static_cast<i32>(i);
+            for (u32 j = 0; j < e.count; ++j)
+                if (!(e.flags[j] & kFlagDead) && e.serial[j] + 1u == e.serial[i])
+                    worst = std::fmax(worst, std::fabs(length(Vec2{e.x[i] - e.x[j], e.y[i] - e.y[j]}) - s.family(Family::Wyrm).segmentSpacing));
+        }
+        CHECK_MSG(n >= 6 && n <= 12 && heads == 1 && worst < 3.0f, "segments %u, heads %u, spacing off by %.1f", n, heads, worst);
+        w->killEnemy(static_cast<u32>(mid), 0);
+        runShip(*w, music, music + 3.0 * beat, Vec2{-800.0f, 0.0f});
+        heads = 0;
+        for (u32 i = 0; i < e.count; ++i) heads += (!(e.flags[i] & kFlagDead) && e.a[i] > 0.5f) ? 1u : 0u;
+        CHECK_MSG(heads == 2, "heads after the cut %u", heads);
+        delete w;
+    }
+    {
+        // Tether: a pair joined by a lethal beam; one killed, the beam goes.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->spawnCreatureNow(SpeciesTable::index(Family::Tether, 1, kVariantA), Vec2{0.0f, -300.0f}, 0.0f, music);
+        runShip(*w, music, music + beat, Vec2{0.0f, 300.0f});
+        Vec2 a[4], b[4];
+        CHECK(w->tetherBeams(a, b, 4) == 1 && std::fabs(length(a[0] - b[0]) - s.family(Family::Tether).pairDistance) < 4.0f);
+        // The ship crossing the beam is hit.
+        const Vec2 mid = (a[0] + b[0]) * 0.5f;
+        const u32 cells = w->player(0).cells;
+        stepWorld(*w, music, mid);
+        CHECK(w->player(0).cells == cells - 1);
+        const Enemies& e = w->enemies();
+        for (u32 i = 0; i < e.count; ++i)
+            if (!(e.flags[i] & kFlagDead)) {
+                w->killEnemy(i, 0);
+                break;
+            }
+        stepWorld(*w, music, Vec2{0.0f, 900.0f});
+        CHECK(w->tetherBeams(a, b, 4) == 0);
+        delete w;
+    }
+    {
+        // Weaver: its trail is lethal for two bars; Well: it pulls a ship (none beyond its radius) and B returns what it
+        // swallowed as a ring on beat 1; Mimic: it steps on beats to where the player would be turned half round.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->spawnEnemy(SpeciesTable::index(Family::Weaver, 1, kVariantA), Vec2{-600.0f, 400.0f}, 0.0f, music);
+        runShip(*w, music, music + bar, Vec2{2000.0f, -1500.0f});
+        u32 points = 0;
+        for (u32 k = 0; k < World::kTrails; ++k) points += w->trails()[k].n;
+        CHECK_MSG(points >= 15, "trail points %u", points);
+        const i32 wl = w->spawnEnemy(SpeciesTable::index(Family::Well, 1, kVariantB), Vec2{1000.0f, 0.0f}, 0.0f, music);
+        stepWorld(*w, music, Vec2{2000.0f, -1500.0f});
+        CHECK(length(w->wellPull(Vec2{1100.0f, 0.0f})) > 1.0f && length(w->wellPull(Vec2{1300.0f, 0.0f})) == 0.0f);
+        (void)wl;
+        u32 bullets0 = w->bullets().count;
+        // Shots into it from beside it, then the bar line.
+        for (u32 k = 0; k < 30; ++k) stepWorld(*w, music, Vec2{850.0f, 0.0f}, 1);
+        runShip(*w, music, (std::floor(music / bar) + 1.0) * bar + 2.0, Vec2{2000.0f, -1500.0f});
+        CHECK_MSG(w->bullets().count >= bullets0 + 12, "bullets %u -> %u", bullets0, w->bullets().count);
+        delete w;
+    }
+    {
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 m = w->spawnEnemy(SpeciesTable::index(Family::Mimic, 1, kVariantA), Vec2{400.0f, 0.0f}, 0.0f, music);
+        runShip(*w, music, music + 2.0 * beat, Vec2{});
+        // The centre is (200, 0): with the ship at (-100, 0) its place is (500, 0).
+        runShip(*w, music, music + 8.0 * beat, Vec2{-100.0f, 0.0f});
+        const Enemies& e = w->enemies();
+        CHECK_MSG(std::fabs(e.x[m] - 500.0f) < 2.0f && std::fabs(e.y[m]) < 2.0f, "mimic at (%.0f, %.0f)", e.x[m], e.y[m]);
+        delete w;
+    }
+    {
+        // The slice's families' variants of Tracks 4 to 6: Drifter C splits a tier down; Moth C bursts as its spiral closes;
+        // Sentry C's dome (with a neighbour near) stops shots.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 dr = w->spawnEnemy(SpeciesTable::index(Family::Drifter, 3, kVariantC), Vec2{900.0f, 0.0f}, 0.0f, music);
+        stepWorld(*w, music, Vec2{});
+        w->killEnemy(static_cast<u32>(dr), 0);
+        stepWorld(*w, music, Vec2{});
+        u32 children = 0;
+        for (u32 i = 0; i < w->enemies().count; ++i)
+            children += (!(w->enemies().flags[i] & kFlagDead) && w->enemies().species[i] == SpeciesTable::index(Family::Drifter, 2, kVariantA)) ? 1u : 0u;
+        CHECK_MSG(children == s.family(Family::Drifter).v.splitInto, "children %u", children);
+        const i32 mo = w->spawnEnemy(SpeciesTable::index(Family::Moth, 1, kVariantC), Vec2{0.0f, -400.0f}, 0.0f, music);
+        const u32 b0 = w->bullets().count;
+        bool burst = false;
+        for (u32 k = 0; k < 60 * 60 && !burst; ++k) {
+            stepWorld(*w, music, Vec2{});
+            burst = (w->enemies().flags[mo] & kFlagDead) != 0;
+        }
+        CHECK_MSG(burst && w->bullets().count >= b0 + s.family(Family::Moth).v.burstBullets - 2, "moth burst %d, bullets %u", burst ? 1 : 0, w->bullets().count);
+        delete w;
+    }
+    {
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 se = w->spawnEnemy(SpeciesTable::index(Family::Sentry, 1, kVariantC), Vec2{500.0f, 0.0f}, 0.0f, music);
+        w->setEnemyHp(static_cast<u32>(se), 1000.0f);
+        const i32 nb = w->spawnEnemy(SpeciesTable::index(Family::Sentry, 1, kVariantA), Vec2{560.0f, 120.0f}, 0.0f, music);
+        w->setEnemyHp(static_cast<u32>(nb), 1000.0f);
+        runShip(*w, music, music + 2.0 * beat, Vec2{});
+        for (u32 k = 0; k < 40; ++k) stepWorld(*w, music, Vec2{}, 1);
+        CHECK_MSG(w->enemies().hp[se] == 1000.0f, "the dome let %.0f damage through", 1000.0f - w->enemies().hp[se]);
+        delete w;
+    }
+}
+
 // ---------------------------------------------------------------------------------------------- M5 part 3: upgrades
 
 u32 countFx(const World& w, u8 fx) {
@@ -2411,9 +2979,14 @@ int main() {
     testMiddleDrop();
     testLongwave();
     testChoir();
+    testHorizon();
+    testPolyrhythm();
+    testFeedback();
+    testMinibosses2();
     testMinibosses();
     testFamiliesM5();
     testUpgradesM5();
+    testFamiliesM5b();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;
     return g_failures;

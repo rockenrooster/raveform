@@ -275,7 +275,7 @@ constexpr float kMothCatchUp = 1.6f;           // a Moth flies to its place on t
 // M5 PART 3: every upgrade (GAME_DESIGN 6.2-6.5 to 6.6's rules). Quoted where the tables give a number; the rest
 // chosen to 6.6's "every pick is felt at once" (docs/PROGRESS.md, M5 part 3, "Numbers chosen").
 // ======================================================================================================
-constexpr float kSlipstreamPerStack = 0.08f;                // 6.2 (quoted): +8% speed
+constexpr float kSlipstreamPerStack = 0.15f;                // 6.2 (quoted; the lead's ruling after part 3): +15% speed, cap 2
 constexpr float kForkDeg = 20.0f, kForkDamage = 0.5f;       // Fork: two half-damage shots (quoted) this far apart
 constexpr float kSeekerTurn[4] = {0.0f, 3.0f, 6.0f, 10.0f}; // rad/s by stack
 constexpr float kSeekerReachWu = 320.0f;
@@ -343,7 +343,24 @@ constexpr float kStandingDamage = 1.5f;
 // home Track (8 seeds) brought into the page's window by these factors on the page's health (docs/PROGRESS.md, M5 part 1).
 constexpr float kLongwaveHealthTune = 2.2f;  // 70 s with the careful bot (M5 part 1; part 3, the Trio dealt: 1.4 -> 2.2; 2.7 gave 86 s but the careless bot 3 of 20 in the first pass)
 constexpr float kChoirHealthTune = 4.2f;      // 65 s with the careful bot (part 3, the Trio dealt: 4.5 -> 4.2; 4.8 gave 70 s, with the above)
-constexpr float kMiniHealthTune[4] = {6.5f, 5.0f, 2.0f, 4.8f};  // Alpha Hound, The Hive, Battering Ram, Carom King: 25-35 s
+constexpr float kMiniHealthTune[8] = {6.5f, 5.0f, 2.0f, 4.8f,    // Alpha Hound, The Hive, Battering Ram, Carom King: 25-35 s
+                                     12.0f, 10.0f, 5.0f, 4.0f};  // M5 part 4: Moth Queen, Brood Mother, Blink Star, Sentry Array (x 1: 4, 5, 7, 11 s)
+// M5 part 4, mini-bosses batch 2 (minibosses.md gives no number for these).
+constexpr float kMqBurstSpeed = 200.0f;      // a court Moth's burst (as a Moth's own bullets)
+constexpr float kMqCourtSpeed = 600.0f;      // a court Moth's step inward (it reaches its place within the beat)
+constexpr float kMqMoveSpeed = 300.0f;       // the Queen keeps her distance at up to this
+constexpr float kBsDecoyBulletSpeed = 220.0f;  // a decoy's fan (half health)
+constexpr float kBsDecoyFanDeg = 15.0f;
+constexpr float kSaStepBeats = 1.0f;         // turrets step round to stand evenly over a beat after a death
+
+// M5 part 4, Event Horizon (horizon.md gives no number for these).
+constexpr float kHzJetLengthWu = 1800.0f;  // the jets reach past the frame's edge at the fight's zoom (0.8)
+constexpr float kHzJetHalfWu = 22.0f;      // a beam as wide as the Choir's held note
+constexpr float kHorizonHealthTune = 16.0f; // the careful bot at home: x 1 9 s, x 6 25 s (the page: about 80 s)
+// Polyrhythm (polyrhythm.md gives no number for these).
+constexpr float kPrLinkBurnHalfWu = 16.0f;  // the burning link: a beam as wide as the Choir's cage strings
+constexpr float kPolyHealthTune = 3.0f;     // the careful bot at home: x 1 9 s, x 8 35 s with 7 wall hits a fight and half lost (the page: 100-120 s)
+constexpr float kFeedbackHealthTune = 2.5f; // the careful bot at home: x 1 34 s (the page: about two minutes)
 
 // ======================================================================================================
 // M4 STAGE A: co-op (GAME_DESIGN 10, TECH_SPEC 8). Quoted numbers are marked; the rest are chosen where the

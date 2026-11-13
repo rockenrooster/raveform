@@ -22,7 +22,7 @@ enum class Family : u8 {
 constexpr u32 kFamilyCount = static_cast<u32>(Family::Count);
 const char* familyName(Family f);  // "drifter", ... (also the glyph family in design/glyphs.json)
 // Families with behaviour code so far (M5 part 2: the first eleven). The director never picks the others.
-inline bool familyBuilt(Family f) { return f <= Family::Blink; }
+inline bool familyBuilt(Family f) { return f <= Family::Mimic; }  // M5 part 4: all sixteen
 u64 speciesDataDigest();  // a digest of the embedded species.json (M4: peers must match)
 u64 bossDataDigest();     // ... and of the boss pages (design/bosses/*.json)
 
@@ -49,6 +49,12 @@ struct FamilyData {
     u32 maxMinisEach = 6;
     float hopEveryBeats = 1, hopWu = 200, strikeTellBeats = 1, strikeSpeed = 700, strikeBeats = 1;  // blink (+ restBeats)
     u32 hops = 4;
+    // M5 part 4 (Tracks 4 to 6).
+    u32 segmentsMin = 6, segmentsMax = 12; float segmentSpacing = 26, waveAmplitude = 60, wavePeriodBeats = 4;  // wyrm (+ turnRate)
+    float pairDistance = 160, orbitTurnsPerBar = 0.125f, beamWidth = 6;                                       // tether
+    float curveTurnRate = 1.2f, trailBars = 2, trailWidth = 5; u32 trailSegments = 40;                         // weaver
+    float pullRadius = 200, pullPeakAt = 60, pullSpeed = 140, shotBend = 0.5f;                                 // well
+    float beatStepWu = 80;                                                                                      // mimic
     // Variants B and C (species_m5.json variants.<family>; GAME_DESIGN 7.2). Only the family's own are set.
     struct Variants {
         // B
@@ -73,6 +79,12 @@ struct FamilyData {
         float domeRadius = 0, domeWithinWu = 0;                   // sentry
         u32 reboundDashes = 0;                                    // ram
         float spearTellBeats = 1, spearSpeed = 0;                 // shoal
+        // M5 part 4.
+        u32 fromEveryNthSegment = 3; float regrowHeadBeats = 2;  // wyrm B (+ sideShotEverySteps), C
+        float orbitB = 0.25f; bool triad = false; float triadSideWu = 180;  // tether B, C
+        float loopEveryBars = 2; bool detonateOnBarLine = false; float trailBlastWu = 40;  // weaver B, C
+        float returnOnBeat = 1; u32 ringBullets = 12; float growPerShots = 20, burstAtScale = 2; u32 wellBurstBullets = 24;  // well B, C
+        u32 everyNthShot = 4; float copyDashAfterBeats = 1;  // mimic B, C
     } v;
 };
 
@@ -151,6 +163,9 @@ public:
     BossData boss;
     LongwaveData longwave;
     ChoirData choir;
+    HorizonData horizon;  // M5 part 4
+    PolyData poly;        // M5 part 4
+    FeedbackData feedback;  // M5 part 4
     MiniData minis;
 
 private:

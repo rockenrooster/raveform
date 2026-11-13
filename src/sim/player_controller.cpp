@@ -19,6 +19,7 @@ void PlayerController::reset(Vec2 pos) {
     dashLeftS_ = 0.0f;
     dashReadyAt_ = -1e18;
     charges_ = 1;
+    knockKnown_ = false;
     targetHandle_ = 0;
 }
 
@@ -106,6 +107,13 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
         }
         p.pos = p.pos + p.vel * dt;
     }
+    // M5 part 4 (GAME_DESIGN 7.2): Wells pull the ship toward them.
+    if (!p.dashing) p.pos = p.pos + world.wellPull(p.pos) * dt;
+    // M5 part 4: what the world has moved the ship by since the last update (Event Horizon's wave and its throw).
+    if (knockKnown_ && state.knockSerial > knockSerial_) p.pos = p.pos + (state.knock - knockTaken_);
+    knockTaken_ = state.knock;
+    knockSerial_ = state.knockSerial;
+    knockKnown_ = true;
     // M5 (minibosses.md): the Pen's walls stop ships without hurting (inside stays inside, outside stays outside).
     {
         Vec2 to = p.pos;

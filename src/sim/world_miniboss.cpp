@@ -72,6 +72,7 @@ bool World::penInside(Vec2 p, float r) const {
 
 u8 World::penKeep(Vec2 from, Vec2& to, float r) const {
     // Walls stop ships and bodies without hurting: what was inside stays inside, what was outside stays outside.
+    if (fenceUp()) return fenceKeep(from, to, r);  // M5 part 4: the Sentry Array's fence
     if (!pen_.up) return 0;
     const Vec2 c = pen_.centre;
     const float h = pen_.half;
@@ -104,6 +105,11 @@ u8 World::penKeep(Vec2 from, Vec2& to, float r) const {
 
 Vec2 World::penPlace(Vec2 p, float r) {
     // A spawn while the Pen stands lands inside it (the crowd warps in inside), away from every ship.
+    if (fenceUp() && length(p - boss_.mini.ringAt) > fenceRadius() - r) {
+        // M5 part 4: inside the Sentry Array's fence.
+        const float l = fenceRadius() - r - 30.0f;
+        return boss_.mini.ringAt + dirOf(rng_.range(0.0f, kTau)) * rng_.range(0.3f * l, l);
+    }
     if (!pen_.up || penInside(p, r)) return p;
     const float l = pen_.half - r - 30.0f;
     Vec2 best = pen_.centre;
@@ -166,6 +172,16 @@ BossKind World::pickMini(u32 track) const {
     switch (songOfTrack(track, director_.songs)) {
         case 1: cand[n++] = BossKind::AlphaHound; cand[n++] = BossKind::Hive; break;
         case 2: cand[n++] = BossKind::BatteringRam; cand[n++] = BossKind::CaromKing; break;
+        // M5 part 4, batch 2: Track 4 from Moth Queen and Brood Mother, Track 5 from Blink Star and Sentry Array. Track 6 is
+        // Mirror Mimic's (batch 3, part 6); until it is built Track 6 draws from batch 2 (decision taken alone).
+        case 3: cand[n++] = BossKind::MothQueen; cand[n++] = BossKind::BroodMother; break;
+        case 4: cand[n++] = BossKind::BlinkStar; cand[n++] = BossKind::SentryArray; break;
+        case 5:
+            cand[n++] = BossKind::MothQueen;
+            cand[n++] = BossKind::BroodMother;
+            cand[n++] = BossKind::BlinkStar;
+            cand[n++] = BossKind::SentryArray;
+            break;
         default:
             cand[n++] = BossKind::AlphaHound;
             cand[n++] = BossKind::Hive;
@@ -220,7 +236,7 @@ void World::enterMini(Vec2 pos, Vec2 penAt) {
             m.legEnd[0] = -1.0;  // its first leg starts on the fight's downbeat
             break;
         }
-        default: break;
+        default: enterMini2(penAt); break;  // M5 part 4: batch 2
     }
     emitCue(BossCue::MiniEnter, s.enterTick, static_cast<u8>(s.kind), 0.0f, pos);
 }
@@ -285,6 +301,10 @@ void World::miniPartDied(u8 index, u8 owner, Event& ev) {
             spawnShard(at, dirOf(rng_.range(0.0f, kTau)) * rng_.range(kShardBurstLo, kShardBurstHi), static_cast<u8>(p));
     }
     (void)owner;
+    if (s.kind == BossKind::SentryArray) {
+        mini2PartDied(index);
+        return;
+    }
     if (role_ == NetRole::Client || s.kind != BossKind::CaromKing) return;
     const u16 sp = miniTierSpecies(Family::Carom);
     const Vec2 kd = normalizeOr(s.mini.legTo[1 + index] - s.mini.legFrom[1 + index], Vec2{1.0f, 0.0f});
@@ -362,6 +382,8 @@ void World::miniRelease(bool killed) {
                 if (role_ == NetRole::Host) logDeath(i, 0xFF, kDeathDissolve);
             }
         }
+    } else if (s.kind >= BossKind::MothQueen && s.kind <= BossKind::SentryArray) {
+        mini2Release(killed);  // M5 part 4: batch 2
     } else if (s.kind == BossKind::CaromKing && killed && role_ != NetRole::Client) {
         const u16 sp = miniTierSpecies(Family::Carom);
         for (u32 k = 0; k < 3; ++k) {
@@ -408,6 +430,7 @@ u32 World::miniParts(BossPart* out, u32 cap) const {
             for (u32 k = 0; k < 3; ++k)
                 if ((s.alive & (1u << k)) && n < cap) out[n++] = BossPart{s.body[1 + k], kPrinceRadius, 2, static_cast<u8>(k)};
             break;
+        case BossKind::SentryArray: return mini2Parts(out, cap);  // M5 part 4
         default:
             if (n < cap) out[n++] = BossPart{s.body[0], r, 3, 0};
             break;
@@ -430,6 +453,10 @@ float World::miniScale(u8 part, u8 /*index*/, double t, Vec2 dir) const {
             return dot(dir * -1.0f, m.face) > c ? 0.0f : 1.0f;
         }
         case BossKind::CaromKing: return part == 3 && t < m.hot[0] ? 2.0f : 1.0f;
+        case BossKind::MothQueen:
+        case BossKind::BroodMother:
+        case BossKind::BlinkStar:
+        case BossKind::SentryArray: return mini2Scale(part, t);  // M5 part 4
         default: return 1.0f;
     }
 }
@@ -449,6 +476,10 @@ void World::updateMini(float dt) {
         case BossKind::Hive: updateHive(dt); break;
         case BossKind::BatteringRam: updateRam(dt); break;
         case BossKind::CaromKing: updateCarom(dt); break;
+        case BossKind::MothQueen: updateMoth(dt); break;  // M5 part 4: batch 2
+        case BossKind::BroodMother: updateBrood(dt); break;
+        case BossKind::BlinkStar: updateBlink(dt); break;
+        case BossKind::SentryArray: updateSentry(dt); break;
         default: break;
     }
     s.pos = s.body[0];
@@ -942,6 +973,9 @@ bool World::minionMotion(u32 i, float dt) {
     Enemies& e = enemies_;
     if (!(e.flags[i] & kFlagCalled)) return false;
     switch (e.state[i]) {
+        case kLane: return horizonLane(i, dt);  // M5 part 4: Event Horizon's lanes
+        case kCourt:
+        case kEgg: return minion2Motion(i, dt);  // M5 part 4: a court Moth, an egg
         case kCharge: {
             // The pack's charge: along its line at 520 wu/s for two beats, through and past; then an ordinary Hound.
             e.vx[i] = e.a[i] * kAlphaChargeSpeed;
@@ -1004,6 +1038,8 @@ void World::minionLand(u32 i) {
     } else if (s.family == Family::Shoal) {
         e.state[i] = kFormation;
         e.heading[i] = e.pheading[i] = randRange(e.rng[i], 0.0f, kTau);
+    } else {
+        minion2Land(i);  // M5 part 4: a court Moth, an egg
     }
 }
 

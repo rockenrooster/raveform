@@ -68,6 +68,10 @@ Family miniFamily(BossKind k) {
         case BossKind::AlphaHound: return Family::Hound;
         case BossKind::Hive: return Family::Shoal;
         case BossKind::BatteringRam: return Family::Ram;
+        case BossKind::MothQueen: return Family::Moth;  // M5 part 4: batch 2
+        case BossKind::BroodMother: return Family::Brood;
+        case BossKind::BlinkStar: return Family::Blink;
+        case BossKind::SentryArray: return Family::Sentry;
         default: return Family::Carom;
     }
 }
@@ -98,6 +102,9 @@ void PlayView::drawFight(FrameDraw& d, const ViewInput& in) {
         case BossKind::Kaleidos: drawBoss(d, in); break;
         case BossKind::Longwave: drawLongwave(d, in); break;
         case BossKind::Choir: drawChoir(d, in); break;
+        case BossKind::EventHorizon: drawHorizon(d, in); break;
+        case BossKind::Polyrhythm: drawPoly(d, in); break;
+        case BossKind::Feedback: drawFeedback(d, in); break;
         default: drawMini(d, in); break;
     }
 }
@@ -503,6 +510,115 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
             }
             break;
         }
+        case BossKind::MothQueen: {
+            // Open for her fourth bar: wings spread (two gold flares), core gold.
+            const bool open = w.mothOpen(t);
+            drawBody(body, me->radius, s.bodyAng[0], open ? mix(hue, W1, 0.3f) : hue, partner, level, open);
+            if (open) {
+                d.sparkles.glow(toScene(body), 18.0f * refPx_, gold * 2.2f);
+                flare(d.scene, body, s.bodyAng[0] + 0.5f * kPi, 2.2f * me->radius, 1, gold * 1.8f, 0.8f);
+            }
+            break;
+        }
+        case BossKind::BroodMother: {
+            // The dome (shut while a broodling lives: a thread of light from each to her); the eggs, white, pulsing on the beats.
+            const bool shut = m.shut;
+            drawBody(body, me->radius, s.bodyAng[0], hue, partner, level, !shut);
+            const float beat = std::exp(-static_cast<float>(std::fmod(t, kTicksPerBeat)) / 24.0f);
+            const Enemies& e = w.enemies();
+            for (u32 i = 0; i < e.count; ++i) {
+                if ((e.flags[i] & kFlagDead) || !(e.flags[i] & kFlagCalled)) continue;
+                const Vec2 p{e.x[i], e.y[i]};
+                if (e.state[i] == kEgg) {
+                    if (!visible(p, 30.0f)) continue;
+                    const u32 n = 10;
+                    for (u32 j = 0; j < n; ++j)
+                        d.scene.line(toScene(p + dirv(kTau * j / n) * 13.0f), toScene(p + dirv(kTau * (j + 1) / n) * 13.0f), 1.0f * refPx_,
+                                     W1 * (1.4f + 1.2f * beat), W1 * (1.4f + 1.2f * beat), 0);
+                } else if (e.state[i] != kWarping && (visible(p, 20.0f) || visible(body, 60.0f))) {
+                    d.scene.line(toScene(p), toScene(body), 0.4f * refPx_, hue * 0.7f, partner * 0.4f, 0);  // its thread
+                }
+            }
+            const float dome = me->radius * 1.3f;
+            const u32 n = 36;
+            for (u32 j = 0; j < n; ++j) {
+                if (!shut && (j % 3) == 0) continue;  // broken
+                d.scene.line(toScene(body + dirv(kTau * j / n) * dome), toScene(body + dirv(kTau * (j + 1) / n) * dome), 0.9f * refPx_,
+                             shut ? partner * 1.4f : W1 * 0.5f, shut ? partner * 1.4f : W1 * 0.5f, 0);
+            }
+            if (!shut) d.sparkles.glow(toScene(body), 20.0f * refPx_, gold * 2.2f);
+            break;
+        }
+        case BossKind::BlinkStar: {
+            // The star: each edge left behind as a dashed danger line; all five lethal for a beat; dazed (gold) after. From
+            // half health a white decoy at every point. The first point is marked from the first beat.
+            static const u32 kOrder[5] = {0, 2, 4, 1, 3};
+            const bool dazed = w.blinkDazed(t);
+            drawBody(body, me->radius, s.bodyAng[0], dazed ? mix(hue, W1, 0.3f) : hue, partner, level * (dazed ? 0.8f : 1.0f), dazed);
+            if (dazed) d.sparkles.glow(toScene(body), 20.0f * refPx_, gold * 2.2f);
+            if (m.ringTick >= 0.0 && !s.dying) {
+                const u32 edges = w.blinkEdges(t);
+                const bool firing = w.blinkFiring(t);
+                for (u32 k = 0; k < 5; ++k) {
+                    const Vec2 a0 = w.blinkPoint(kOrder[k]), a1 = w.blinkPoint(kOrder[(k + 1) % 5]);
+                    if (firing) {
+                        const float bw = 0.5f * prose::kBsBeamWu * pxPerWu_;
+                        d.scene.line(toScene(a0), toScene(a1), bw, danger * 3.0f, danger * 3.0f, 0);
+                        d.scene.line(toScene(a0), toScene(a1), bw * 0.35f, W1 * 2.5f, W1 * 2.5f, 0);
+                        d.threatRims.line(toScreen(a0), toScreen(a1), bw + 2.0f * refPx_, Vec3{}, Vec3{}, 0);
+                        d.threatCores.line(toScreen(a0), toScreen(a1), bw, mix(danger, W1, 0.3f), mix(danger, W1, 0.3f), 0);
+                    } else if (k < edges) {
+                        for (float u = 0.0f; u < 1.0f; u += 0.08f) telegraphLine(d, lerpv(a0, a1, u), lerpv(a0, a1, std::fmin(u + 0.04f, 1.0f)), 1.0f);
+                    }
+                }
+                const Vec2 first = w.blinkPoint(0);
+                const u32 n = 16;
+                for (u32 j = 0; j < n; ++j)
+                    d.scene.line(toScene(first + dirv(kTau * j / n) * 24.0f), toScene(first + dirv(kTau * (j + 1) / n) * 24.0f), 0.8f * refPx_, W1 * 1.4f,
+                                 W1 * 1.4f, 0);
+                if (m.half)
+                    for (u32 k = 0; k < 5; ++k) {
+                        const Vec2 p = w.blinkPoint(k);
+                        if (length(p - body) > 10.0f) drawBody(p, me->radius * 0.6f, s.bodyAng[0], W1, W1, level * 0.5f, false);
+                    }
+            }
+            break;
+        }
+        case BossKind::SentryArray: {
+            // Eight turrets in a fenced ring; domes join each to its neighbours; the turret under the hand has no dome (gold,
+            // open); the hand: a white line from the centre.
+            const i32 hand = w.sentryHand();
+            const Vec2 c = m.ringAt;
+            u32 order[8];
+            u32 n = 0;
+            for (u32 k = 0; k < 8; ++k)
+                if (s.alive & (1u << k)) order[n++] = k;
+            for (u32 j = 0; j < n && !s.dying; ++j) {
+                const Vec2 p0 = lerpv(s.bodyPrev[1 + order[j]], s.body[1 + order[j]], a), p1 = lerpv(s.bodyPrev[1 + order[(j + 1) % n]], s.body[1 + order[(j + 1) % n]], a);
+                if (n > 1) d.scene.line(toScene(p0), toScene(p1), 1.0f * refPx_, W1 * 1.2f, W1 * 1.2f, 0);
+            }
+            for (u32 j = 0; j < n; ++j) {
+                const u32 k = order[j];
+                const Vec2 p = lerpv(s.bodyPrev[1 + k], s.body[1 + k], a);
+                const bool open = static_cast<i32>(k) == hand;
+                drawBody(p, me->radius, s.bodyAng[1 + k], hue, partner, level, open);
+                if (open) {
+                    d.sparkles.glow(toScene(p), 16.0f * refPx_, gold * 2.2f);
+                } else {
+                    const u32 seg = 20;
+                    for (u32 q = 0; q < seg; ++q)
+                        d.scene.line(toScene(p + dirv(kTau * q / seg) * (me->radius * 1.3f)), toScene(p + dirv(kTau * (q + 1) / seg) * (me->radius * 1.3f)),
+                                     0.7f * refPx_, W1 * 0.9f, W1 * 0.9f, 0);
+                }
+            }
+            if (!s.dying && t >= s.fightTick) {
+                const Vec2 tip = c + dirv(w.sentryHandAngle()) * (prose::kSaRingWu - me->radius * 1.4f);
+                d.scene.line(toScene(c), toScene(tip), 1.2f * refPx_, W1 * 2.2f, W1 * 2.2f, 0);
+                d.sparkles.glow(toScene(c), 8.0f * refPx_, W1 * 1.6f);
+            }
+            d.pools.glow(toScene(c), prose::kSaRingWu * 2.0f * pxPerWu_, hue * (0.05f * life));
+            return;
+        }
         default: {
             // Carom King: a size smaller at each split; gold for a beat after each bounce; its Princes on the half beats.
             const float r = prose::kKingRadii[m.splits < 4 ? m.splits : 3];
@@ -576,6 +692,25 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
             }
             if (cue == BossCue::LwWhip) addShockRings(at, 1, 300.0f, palette_->hue[2], whiteV(), t, 0.4f);
             if (cue == BossCue::HvShape) push(kImpBoss, at, 200.0f, 300.0f, t);
+            if (cue == BossCue::HzEat) {
+                // Event Horizon eats: the body folds into the horizon (a small white implosion), its cell flashes.
+                hzEatAt_ = t;
+                SparkReq r{};
+                r.at = at;
+                r.dir = normalizeOr(s.pos - at, Vec2{1.0f, 0.0f});
+                r.count = 10;
+                r.kind = 3;
+                r.a = palette_->hue[0];
+                r.b = whiteV();
+                r.t0 = t;
+                sparkRequest(r);
+            }
+            if ((cue == BossCue::PrThree || cue == BossCue::PrFour) && s.kind == BossKind::Polyrhythm)
+                push(kImpBoss, at, prose::kPrLatticeImpulse, 120.0f, t);  // the grid beats three against four
+            if (cue == BossCue::HzFed) addShockRings(s.pos, 1, w.species().horizon.ringRadius[2] + 120.0f, palette_->hue[1], whiteV(), t, 0.35f);
+            if (cue == BossCue::HzStarved)
+                addPool(s.pos, w.species().horizon.photonRadius, w.species().horizon.ringRadius[1], palettes_->player[3], reduceFlashing_ ? 0.2f : 0.45f, 0.0f, 0.25f,
+                        false, 1, false, false, t);
             break;
         }
         case EventType::BossPair: {
@@ -597,7 +732,10 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
         }
         case EventType::BossDeath: {
             // The boss break (three rings, 300 sparks, the 30 px distortion ring) for the bosses; a mini-boss dies as a large
-            // kill with its own rings.
+            // kill with its own rings. Event Horizon implodes first: its flash comes a bar and a beat later (drawHorizon).
+            if (static_cast<BossKind>(e.a) == BossKind::EventHorizon || static_cast<BossKind>(e.a) == BossKind::Polyrhythm ||
+                static_cast<BossKind>(e.a) == BossKind::Feedback)
+                break;
             const bool mini = isMiniBoss(static_cast<BossKind>(e.a));
             const Vec3 c = static_cast<BossKind>(e.a) == BossKind::Choir ? choirHue_[0] : palette_->hue[mini ? 2 : 1];
             addPool(at, 60.0f, mini ? 260.0f : 420.0f, whiteV(), reduceFlashing_ ? 0.45f : 0.9f, 0.0f, 0.12f, false, 1, false, false, t);

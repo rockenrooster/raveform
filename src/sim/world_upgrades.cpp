@@ -100,6 +100,8 @@ void World::hitEnemy(u32 i, float dmg, u8 owner, Vec2 at, Vec2 dir) {
         }
         return;
     }
+    // M5 part 4: Skitter C blinks aside when shot.
+    if (!shed && species_->get(e.species[i]).family == Family::Skitter && species_->get(e.species[i]).variant == kVariantC) skitterHop(i, dir);
     if (applyingClaim_) return;  // M4 host: the claimant's shot already showed its impact here (a cosmetic copy)
     Event ev;
     ev.type = EventType::Impact;

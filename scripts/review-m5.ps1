@@ -16,7 +16,9 @@
 #   Part 3 (-Part part3): every new upgrade round a still ship (play_pictures_m5.cpp kUpPics): the weapon Mods (up_weapons,
 #   up_wave, up_helix, up_accent, up_standing_wave, up_kills, up_wingmen, up_quartet), defence and rhythm (up_defence, up_barline),
 #   the Riffs (riff_lancer, riff_singularity), the Boosts in pairs (boost_*) and the Fusions (fusion_*).
-#   scripts\review-m5.ps1 [-Part part1|part2|part3] [-Out captures\m5\<part>] [-Config debug|dev] [-Only lw_chop,ch_cage]
+#   Part 4 (-Part part4): Event Horizon hz_accretion (the lanes), hz_starved (the gasp), hz_fed (the eruption), hz_tidal
+#   (the wave), hz_collapse (the jets shown), hz_jets (burning), hz_death, strip hz_strip.
+#   scripts\review-m5.ps1 [-Part part1|part2|part3|part4] [-Out captures\m5\<part>] [-Config debug|dev] [-Only lw_chop,ch_cage]
 # Debug (the default) runs with validation; the script stops on the first run that is not clean.
 param(
     [string]$Part = 'part1',
@@ -68,8 +70,15 @@ $sets = @{
                     'fusion_collapse_murmuration')
         strips = @()
     }
+    'part4' = @{
+        singles = @('hz_accretion', 'hz_starved', 'hz_fed', 'hz_tidal', 'hz_collapse', 'hz_jets', 'hz_death', 'pr_one', 'pr_rings', 'pr_hemiola',
+                    'pr_burn', 'pr_solo', 'pr_death', 'fb_slapback', 'fb_open', 'fb_regeneration', 'fb_howl', 'fb_death', 'mq_court', 'mq_open',
+                    'mq_half', 'mq_death', 'bm_nest', 'bm_exposed', 'bm_half', 'bm_death', 'bs_draw', 'bs_fire', 'bs_dazed', 'bs_half', 'bs_death',
+                    'sa_clock', 'sa_half', 'sa_death')
+        strips = @('hz_strip', 'pr_strip', 'fb_strip', 'mq_strip', 'bs_strip', 'sa_strip')
+    }
 }
-if (-not $sets.ContainsKey($Part)) { throw "no review set '$Part' (part1, part2, part3)" }
+if (-not $sets.ContainsKey($Part)) { throw "no review set '$Part' (part1, part2, part3, part4)" }
 $singles = $sets[$Part].singles
 $strips = $sets[$Part].strips
 if ($Only.Count) {
