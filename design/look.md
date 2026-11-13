@@ -63,7 +63,9 @@ Time Stretch does to the picture.
 **v2.5 (2026-11-13, afternoon)** is the user's word on v2.4's beams as they looked on the phone:
 "much thinner like a laser, big glow is fine, but not excessive". An outlined bar is still a bar.
 **A beam is one thin line and its glow** (§5, "Beams, lightning and areas"): no edge lines, no fill,
-and no beam hurts wider than 64 wu.
+and no beam hurts wider than 64 wu. The same day the user watched a co-op run on the phone and
+found the players' shots "very jumpy, like there might be too many": **a stream of shots reads as
+a line** (§5, "Shots that leave the straight line").
 
 ---
 
@@ -410,6 +412,27 @@ line: a stronger beam is hotter and longer, never fatter. For a beam of damage w
 - **Checked on the retaken pictures** (2400×1080, `scenes.py light`): no beam's core wider than
   4 px; `up_barline` at least 50% dark with under 8% of the screen above 200 (v2.3's bars: 39% and
   20%); `fusion_cannon` under 6% above 200 (16%).
+
+### Shots that leave the straight line (v2.5)
+
+Part 3's Wave moved a shot 21 wu sideways in a frame and Helix Array 63 wu (94 px), against 23 wu
+forward, on a wave 280 wu long that the stream's volleys, 175 wu apart at 120 BPM, sampled less
+than twice. The eye cannot join that into a wave: it sees clusters hopping from side to side
+(`captures/m5/part3/up_wave.png`, `up_helix.png`). And above the soft cap the outer Split lanes
+fired on alternate steps, so the fan changed shape sixteen times a bar.
+
+**A stream of shots reads as a line.** Whatever bends a player's shots:
+
+- **Beads on a string.** Every shot of a stream follows the same curve, fixed to the aim line and
+  measured from the muzzle, so the stream is one curve with shots running along it.
+- **Four volleys to a wave, at least.** A curve's wavelength is never less than the distance a shot
+  flies in one beat (700 wu at 120 BPM, 483 at 174).
+- **Forward first.** No shot moves sideways faster than 0.6 of its forward speed, so its streak
+  never points more than 31° off the line it follows. Homing turns (Seeker, the Swarm, Confetti)
+  are arcs and already hold this; a bounce or a fork is one corner, not a wobble.
+- **A fan is the same on every step.** When shots have to be thinned (GAME_DESIGN 6.6) the fan
+  keeps every lane on every step; what gives way is how far the outer lanes reach, and it changes
+  on a beat, never between two steps.
 
 **Lightning is one thing.** Arc, Storm Coil, Chain Storm and Tesla Bloom all draw the bolt of
 `captures/m5/part3/fusion_tesla.png`: three strands of 1.2 px between the two bodies, each a

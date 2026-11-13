@@ -221,7 +221,7 @@ Weapon
 | 7 | Heavy Step | Every 4th shot is a slow orb that explodes | 3 | Low octave thump |
 | 8 | Accent | The shot on beat 1 is a full-length piercing lance; then beats 1+3; then every beat | 3 | Accented note, white flash line |
 | 9 | Echo | Each shot repeats as a ghost one beat later at half damage; then two echoes | 2 | Delay line on the lead |
-| 10 | Wave | Shots travel in sine paths with a wider hit radius | 2 | Vibrato |
+| 10 | Wave | Shots travel in sine paths with a wider hit radius (M5: one wave to a beat of flight, 28 then 40 wu to each side; every shot of the stream on the same curve; look.md v2.5) | 2 | Vibrato |
 | 11 | Overcharge | +50% damage, larger hotter shots: the shot's head changes colour with every stack (look.md section 5, "The build on the shots") | 5 | More drive on the lead |
 | 12 | Rear Guard | Also fire backward on off-beats; then sideways too | 2 | Off-beat counter-melody |
 | 13 | Arc | Kills chain lightning to 2 more enemies | 3 | Zap arpeggio |
@@ -306,7 +306,7 @@ Rhythm
 
 | Fusion | Ingredients (both maxed) | Result |
 |---|---|---|
-| Helix Array | Split + Wave | Shots braid into a helix that sweeps a wide corridor |
+| Helix Array | Split + Wave | Shots braid into a helix that sweeps a wide corridor (M5: the Split lanes stop fanning and ride strands in pairs, one of each pair the mirror of the other, the middle lane straight down the axis; one wave to two beats of flight; the outer pair 80 wu to each side, the pairs inside it at 2/3 and 1/3 of that) |
 | Standing Wave | Echo + Accent | Accent lances persist as lethal lines for a bar |
 | Tesla Bloom | Pulse Ring + Arc | Rings arc lightning between everything they touch |
 | Shard Halo | Orbitals + Shatter | Orbitals fling shrapnel streams on every kill |
@@ -328,6 +328,12 @@ Rhythm
   in kills a minute against a Groove's crowd, or in seconds to kill the Track's boss, whichever the
   upgrade is made for. One outside the band has its numbers changed, not its odds of being offered.
 - No upgrade may break the entity caps (TECH_SPEC §7): effects that multiply projectiles carry their own caps.
+- **Thinning never flickers** (M5, 2026-11-13; part 3 fired the outer Split lanes on alternate steps
+  above a player's soft cap, and the fan changed shape from step to step). While a player is over
+  the soft cap every lane still fires on every step, and the lanes beyond the middle three fly half
+  as far; the multipliers' extras (forks, echoes, ghosts' shots, sparks, missiles, pellets, bombs)
+  wait. Thinning starts above the soft cap, ends below three quarters of it, and starts or ends
+  only on a beat. Above the second cap the middle lane fires alone, as before.
 - First slice (M3): Mods 1–4, 11, 17, 25, 31, and 18 since play test 2; Riffs 1–3; Boosts 1, 2, 7, 8.
 
 ---
