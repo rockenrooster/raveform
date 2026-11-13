@@ -37,7 +37,7 @@ inline BossKind bossOfSong(u32 song) {
     return k[song % 6u];
 }
 // The fights built so far (--fight takes these; a run's set list ends before the first Track without its fights).
-inline bool fightBuilt(BossKind k) { return k <= BossKind::CaromKing || k >= BossKind::EventHorizon; }
+inline bool fightBuilt(BossKind k) { return k <= BossKind::SentryArray || k >= BossKind::EventHorizon; }
 // A fight's home Track (1-based): a boss's own; a mini-boss's the Track whose middle Drop draws it (minibosses.json
 // common.pick).
 inline u32 bossHomeTrack(BossKind k) {
@@ -73,6 +73,14 @@ enum class BossCue : u8 {
     // Feedback: an Echo plays a sixteenth of its player's shots (b = player, f = 1 for the second Echo), the Head opens (f =
     // semitones risen, a tenth of health lost: one), a shot swallowed by the closed Head, a Null bursts, the tape is cut.
     FbEcho, FbOpen, FbSwallow, FbNull, FbCut,
+    // Mini-bosses batch 2. Moth Queen: the court's step (f = its turn, radians), a rosette (b = its count), the riser into
+    // the close, the burst, open (b = 1 on). Brood Mother: the laying, a hatch (b = the egg), the dome breaks. Blink Star: a
+    // hop (b = 0..4 up the run), the star fires, dazed. Sentry Array: the hand (b = steps round), a volley, a turret down,
+    // the turn back.
+    MqStep, MqRosette, MqRiser, MqBurst, MqOpen,
+    BmLay, BmHatch, BmBreak,
+    BsHop, BsFire, BsDazed,
+    SaHand, SaVolley, SaTurret, SaBack,
     Count
 };
 
@@ -427,6 +435,16 @@ struct MiniState {
     u16 nextSlot = 0;            // the next dart's slot (its place in its hive's shape)
     u16 slots[2] = {};           // slots in each hive
     u8 legWall[4] = {};          // Carom King: the wall each leg ends on (0 left, 1 top, 2 right, 3 bottom)
+    // Batch 2 (M5 part 4, world_miniboss2.cpp).
+    Vec2 ringAt;                 // the Moth Queen's court, the Blink Star's star, the Sentry Array's ring: the centre
+    float ringAng = 0.0f;        // the star's first point; the Sentry hand's direction
+    double ringTick = -1.0;      // the court or the star began (a bar line)
+    float rosette = 0.0f;        // the Moth Queen's next rosette's turn
+    bool shut = true;            // the Brood Mother's dome (a broodling alive)
+    float turretAng[8] = {};     // the Sentry Array's turrets round the ring (they step round after a death)
+    float turretFrom[8] = {}, turretTo[8] = {};
+    double stepTick = -1.0;      // ... the step round began
+    i64 halfBar0 = 0;            // the Sentry Array's clock runs backwards on every second bar from here
 };
 
 // The Pen (minibosses.md): a square of white light walls round the players' centre while a fight needs it.
@@ -486,6 +504,8 @@ enum BossGeom : u8 {
     kGeomHive0 = 0, kGeomHive1, kGeomSpear0, kGeomSpear1, kGeomAlphaLock, kGeomRamLock, kGeomLunge,
     kGeomHorizonBar,   // M5 part 4: Event Horizon's bar line (a: fed, meal)
     kGeomPolyHemiola,  // M5 part 4: Polyrhythm's Hemiola begins (a.x: its first bar)
+    kGeomMothCourt,    // M5 part 4: the Moth Queen's court (a: its centre)
+    kGeomBlinkStar,    // M5 part 4: the Blink Star's star (a: its centre, b.x: its first point's direction)
     kGeomCount
 };
 static_assert(kGeomCount <= 12, "BossState::geomTick holds twelve");

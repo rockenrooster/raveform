@@ -112,6 +112,37 @@ const FightSound kRows[] = {
      0.6f, 0, 0},
     {BossCue::FbCut, "(not on the page; chosen)", "the tape is cut: a closing sweep over two beats", nullptr, SoundPlay::Recipe, rc(Recipe::Sweep), false,
      0.8f, -1, 2},
+    // ---- Moth Queen (minibosses.md)
+    {BossCue::MqStep, "minibosses.md", "the court is the open hat, stepping round the stereo field with the ring's turn",
+     "the hat is panned to the court, not round it with its turn", SoundPlay::Recipe, rc(Recipe::Hat), false, 0.45f, 1, 0},
+    {BossCue::MqRosette, "minibosses.md", "each rosette is a plucked note of the Track's arpeggio", nullptr, SoundPlay::Lead, 0xFF, false, 0.3f, 0, 0},
+    {BossCue::MqRiser, "minibosses.md", "bar three is a riser", nullptr, SoundPlay::Recipe, rc(Recipe::RevCymbal), false, 0.6f, 4, 0},
+    {BossCue::MqBurst, "minibosses.md", "the burst is the clap on the downbeat", "no clap: the impact, quiet", SoundPlay::Recipe, rc(Recipe::Impact),
+     false, 0.5f, 0, 0},
+    {BossCue::MqOpen, "minibosses.md", "while she is open the bed drops to kick and pad",
+     "the band cannot drop to kick and pad: the bed is low-passed while she is open", SoundPlay::LowPass, 0, false, 1.0f, 500, 4},
+    // ---- Brood Mother (minibosses.md)
+    {BossCue::BmLay, "minibosses.md", "the laying is a low tom on beat 1", nullptr, SoundPlay::Recipe, rc(Recipe::Tom), false, 0.7f, 0, 0,
+     NoteRule::KeyRoot, 0, 0.0f, 0.0f, 0.0f, 2},
+    {BossCue::BmHatch, "minibosses.md", "the hatching is a chirp for each egg, arpeggiated up the chord on beat 3", nullptr, SoundPlay::Recipe,
+     rc(Recipe::Chirp), false, 0.35f, 0, 0, NoteRule::ChordUp, 0, 0.0f, 0.0f, 0.0f, 5},
+    {BossCue::BmBreak, "minibosses.md", "a bell marks the break",
+     "the threads' pad (one voice for each living broodling) is not played: no voice a body", SoundPlay::Recipe, rc(Recipe::Bell), false, 0.6f, 0, 0},
+    // ---- Blink Star (minibosses.md)
+    {BossCue::BsHop, "minibosses.md", "each hop is the next note of a five-note pentatonic run on the Track's root", nullptr, SoundPlay::Recipe,
+     rc(Recipe::Bell), false, 0.5f, 0, 0, NoteRule::PentaRun, 0, 0.0f, 0.0f, 0.0f, 5},
+    {BossCue::BsFire, "minibosses.md", "the firing is all five notes at once as a stab with a zap", "the stab of five notes is not built: the zap alone",
+     SoundPlay::Recipe, rc(Recipe::Zap), false, 0.8f, 0, 0},
+    {BossCue::BsDazed, "minibosses.md", "dazed is the stab's tail with the bed low-passed", nullptr, SoundPlay::LowPass, 0, false, 1.0f, 600, 2},
+    // ---- Sentry Array (minibosses.md)
+    {BossCue::SaHand, "minibosses.md", "the hand is a woodblock on every beat, panned to where it points and one step up the scale for each step "
+                                         "round (an octave a turn)",
+     nullptr, SoundPlay::Recipe, rc(Recipe::Woodblock), false, 0.5f, 0, 0, NoteRule::ScaleUp, 0, 0.0f, 0.0f, 0.0f, 5},
+    {BossCue::SaVolley, "minibosses.md", "the volleys are closed hats", nullptr, SoundPlay::Recipe, rc(Recipe::Hat), false, 0.35f, 0, 0},
+    {BossCue::SaTurret, "minibosses.md", "a turret's death is a tom and a gap in the scale", nullptr, SoundPlay::Recipe, rc(Recipe::Tom), false, 0.7f, 0,
+     0},
+    {BossCue::SaBack, "minibosses.md", "the turn back is a reverse cymbal into its bar line", nullptr, SoundPlay::Recipe, rc(Recipe::RevCymbal), false,
+     0.6f, 1, 0},
 };
 static_assert(sizeof(kRows) / sizeof(kRows[0]) == static_cast<u32>(BossCue::Count), "one row per BossCue, in its order");
 }  // namespace
@@ -142,6 +173,19 @@ void playFightCue(Band& band, FightVoices& voices, const sim::Event& e, double t
         const audio::Track& T = md.tracks[tr];
         const i32 root = T.chordCount ? static_cast<i32>(T.chords[T.progressionCount ? T.progression[0] : 0].bass % 12u) : 0;
         midi = 12 * (r.octave + 1) + root + static_cast<i32>(std::lround(e.f));
+    } else if (r.note == NoteRule::ChordUp) {
+        midi = audio::chordNote(static_cast<i32>(e.b % 4u), r.octave + static_cast<i32>(e.b / 4u), audio::NoteFrom::ChordTone);
+    } else if (r.note == NoteRule::PentaRun || r.note == NoteRule::ScaleUp) {
+        static const i32 kPenta[5] = {0, 3, 5, 7, 10};
+        if (r.note == NoteRule::ScaleUp) {
+            midi = audio::chordNote(static_cast<i32>(e.b % 8u), r.octave);
+        } else {
+            const audio::MusicData& md = band.music();
+            const u32 tr = band.track() < md.trackCount ? band.track() : 0u;
+            const audio::Track& T = md.tracks[tr];
+            const i32 root = T.chordCount ? static_cast<i32>(T.chords[T.progressionCount ? T.progression[0] : 0].bass % 12u) : 0;
+            midi = 12 * (r.octave + 1) + root + kPenta[e.b % 5u];
+        }
     } else if (r.note == NoteRule::ArpCount) {
         midi = audio::chordNote(static_cast<i32>(e.b % 4u) * 2, 3);  // root, third, fifth, seventh up the scale, an octave down
     } else if (r.note == NoteRule::WallTone) {

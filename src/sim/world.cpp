@@ -169,6 +169,7 @@ void World::tick(const TickInput& in) {
     updateBoosts();
     updateCells(dt);
     moveProjectiles(dt);
+    fenceShots();    // M5 part 4: the Sentry Array's fence stops shots
     aegisBullets();  // M5: Aegis's arc stops the bullets that reach it
     collide();
     if (scriptHits_) {

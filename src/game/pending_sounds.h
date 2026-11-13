@@ -36,7 +36,9 @@ enum class SoundPlay : u8 {
 // ArpCount (Event Horizon's count): the meal's next note of the arpeggio (chord tones up the scale: 0 2 4 6 steps) an
 // octave down, cue b = the meal.
 // KeyRoot (Polyrhythm's drums): the Track's root (its first chord's bass) in MIDI octave octave, plus the cue's f semitones.
-enum class NoteRule : u8 { None, Midi, RunDegree, WallTone, ArpCount, KeyRoot };
+// ChordUp (the Brood Mother's hatching): chord tone b up the chord in octave; PentaRun (the Blink Star's hops): the b-th
+// note of a minor pentatonic run on the Track's root in octave; ScaleUp (the Sentry Array's hand): b scale steps up.
+enum class NoteRule : u8 { None, Midi, RunDegree, WallTone, ArpCount, KeyRoot, ChordUp, PentaRun, ScaleUp };
 
 struct FightSound {
     sim::BossCue cue;

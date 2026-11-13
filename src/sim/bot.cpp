@@ -446,6 +446,34 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                 }
                 break;
             }
+            case BossKind::BlinkStar: {
+                // Off every edge the star has drawn (they fire on bar two's beat 2); nearest the first point when it fires.
+                static const u32 kOrder[5] = {0, 2, 4, 1, 3};
+                const u32 edges = w.blinkEdges(musicTick + kTicksPerBeat);
+                for (u32 k = 0; k < 5 && k < (edges ? edges + 1u : 0u); ++k) {
+                    const Vec2 a0 = w.blinkPoint(kOrder[k]), a1 = w.blinkPoint(kOrder[(k + 1) % 5]);
+                    const Vec2 dd = a1 - a0;
+                    const float u = clampf(dot(pos - a0, dd) / std::fmax(lengthSq(dd), 1e-6f), 0.0f, 1.0f);
+                    const Vec2 side = pos - (a0 + dd * u);
+                    const float off = length(side);
+                    if (off < 90.0f) force = force + normalizeOr(side, perpOf(normalizeOr(dd, Vec2{1.0f, 0.0f}))) * (3.0f * (90.0f - off) / 90.0f);
+                    if (off < 30.0f && w.blinkFiring(musicTick + 0.15 * w.ticksPerSecond())) {
+                        contactSoon = true;
+                        escape = escape + normalizeOr(side, Vec2{1.0f, 0.0f});
+                    }
+                }
+                break;
+            }
+            case BossKind::SentryArray: {
+                // Inside the clock: ride the notch (the turret under the hand fires nothing), a step ahead of the hand.
+                const Vec2 c = boss.mini.ringAt;
+                const float r = w.fenceRadius() - 110.0f;
+                const Vec2 goal = c + dirOf(w.sentryHandAngle() + 0.4f) * (r > 60.0f ? r : 60.0f);
+                const Vec2 to = goal - pos;
+                const float l = length(to);
+                if (l > 20.0f) force = force + to * (std::fmin(l / 160.0f, 1.6f) / l);
+                break;
+            }
             case BossKind::Feedback: {
                 // Off the Echoes' bodies (they are not targets, so not parts); in Howl off the burning Loop, inside it.
                 for (u32 k = 0; k < FeedbackState::kEchoes; ++k) {

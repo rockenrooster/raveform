@@ -72,8 +72,10 @@ $sets = @{
     }
     'part4' = @{
         singles = @('hz_accretion', 'hz_starved', 'hz_fed', 'hz_tidal', 'hz_collapse', 'hz_jets', 'hz_death', 'pr_one', 'pr_rings', 'pr_hemiola',
-                    'pr_burn', 'pr_solo', 'pr_death', 'fb_slapback', 'fb_open', 'fb_regeneration', 'fb_howl', 'fb_death')
-        strips = @('hz_strip', 'pr_strip', 'fb_strip')
+                    'pr_burn', 'pr_solo', 'pr_death', 'fb_slapback', 'fb_open', 'fb_regeneration', 'fb_howl', 'fb_death', 'mq_court', 'mq_open',
+                    'mq_half', 'mq_death', 'bm_nest', 'bm_exposed', 'bm_half', 'bm_death', 'bs_draw', 'bs_fire', 'bs_dazed', 'bs_half', 'bs_death',
+                    'sa_clock', 'sa_half', 'sa_death')
+        strips = @('hz_strip', 'pr_strip', 'fb_strip', 'mq_strip', 'bs_strip', 'sa_strip')
     }
 }
 if (-not $sets.ContainsKey($Part)) { throw "no review set '$Part' (part1, part2, part3, part4)" }

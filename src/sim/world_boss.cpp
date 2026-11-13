@@ -144,7 +144,7 @@ float World::bossHealthScale(BossKind kind) const {
         if (inLoop(tr, director_.songs)) h *= std::pow(md.loopFactor, static_cast<float>(tr - director_.songs));
         const MiniData::Entry* e = md.find(kind);
         const u32 mk = static_cast<u32>(kind) - static_cast<u32>(BossKind::AlphaHound);
-        return scale * h * (e ? e->healthFactor : 1.0f) * (mk < 4 ? kMiniHealthTune[mk] : 1.0f);
+        return scale * h * (e ? e->healthFactor : 1.0f) * (mk < 8 ? kMiniHealthTune[mk] : 1.0f);
     }
     // A boss's own health is for its home Track's build; elsewhere (the loop) it follows the build's growth since, and
     // the loop's ramp. GAME_DESIGN 8 (play test 1, second pass): the first boss of a run, Track 1's, is the teacher.
@@ -532,7 +532,8 @@ void World::killBossPart(u8 index, u8 owner) {
     }
     emit(ev);
     // The Choir has no core: its last Voice is its death (Polyrhythm: its second rotor).
-    if ((s.kind == BossKind::Choir || s.kind == BossKind::Polyrhythm) && s.alive == 0 && role_ != NetRole::Client) killBoss(owner);
+    if ((s.kind == BossKind::Choir || s.kind == BossKind::Polyrhythm || s.kind == BossKind::SentryArray) && s.alive == 0 && role_ != NetRole::Client)
+        killBoss(owner);
 }
 
 void World::killBoss(u8 owner) {
@@ -664,6 +665,11 @@ void World::bossGeom(u8 geom, Vec2 a, Vec2 b, double tick, bool host) {
             s.pr.phase = s.pr.phase < 1 ? 1 : s.pr.phase;
             s.pr.hemiolaBar0 = static_cast<i64>(a.x);
             break;
+        case kGeomMothCourt: m.ringAt = a; break;  // M5 part 4
+        case kGeomBlinkStar:
+            m.ringAt = a;
+            m.ringAng = b.x;
+            break;
         case kGeomHive0:
         case kGeomHive1: {
             const u32 h = geom - kGeomHive0;
@@ -767,6 +773,7 @@ bool World::bossBeamsHit(Vec2 at, Vec2& from) const {
             from = boss_.body[0];
             return ramWakeHit(at);
         case BossKind::Feedback: return feedbackHits(at, from);  // its Echoes' bodies, the Nulls, the burning Loop
+        case BossKind::BlinkStar: return blinkBeamHit(at, from);  // M5 part 4: the star fires
         case BossKind::Polyrhythm: {
             // The walls, and the link while it burns.
             if (polyWallHit(at, from)) return true;

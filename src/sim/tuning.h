@@ -343,7 +343,15 @@ constexpr float kStandingDamage = 1.5f;
 // home Track (8 seeds) brought into the page's window by these factors on the page's health (docs/PROGRESS.md, M5 part 1).
 constexpr float kLongwaveHealthTune = 2.2f;  // 70 s with the careful bot (M5 part 1; part 3, the Trio dealt: 1.4 -> 2.2; 2.7 gave 86 s but the careless bot 3 of 20 in the first pass)
 constexpr float kChoirHealthTune = 4.2f;      // 65 s with the careful bot (part 3, the Trio dealt: 4.5 -> 4.2; 4.8 gave 70 s, with the above)
-constexpr float kMiniHealthTune[4] = {6.5f, 5.0f, 2.0f, 4.8f};  // Alpha Hound, The Hive, Battering Ram, Carom King: 25-35 s
+constexpr float kMiniHealthTune[8] = {6.5f, 5.0f, 2.0f, 4.8f,    // Alpha Hound, The Hive, Battering Ram, Carom King: 25-35 s
+                                     1.0f, 1.0f, 1.0f, 1.0f};   // M5 part 4: Moth Queen, Brood Mother, Blink Star, Sentry Array
+// M5 part 4, mini-bosses batch 2 (minibosses.md gives no number for these).
+constexpr float kMqBurstSpeed = 200.0f;      // a court Moth's burst (as a Moth's own bullets)
+constexpr float kMqCourtSpeed = 600.0f;      // a court Moth's step inward (it reaches its place within the beat)
+constexpr float kMqMoveSpeed = 300.0f;       // the Queen keeps her distance at up to this
+constexpr float kBsDecoyBulletSpeed = 220.0f;  // a decoy's fan (half health)
+constexpr float kBsDecoyFanDeg = 15.0f;
+constexpr float kSaStepBeats = 1.0f;         // turrets step round to stand evenly over a beat after a death
 
 // M5 part 4, Event Horizon (horizon.md gives no number for these).
 constexpr float kHzJetLengthWu = 1800.0f;  // the jets reach past the frame's edge at the fight's zoom (0.8)

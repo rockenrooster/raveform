@@ -31,6 +31,7 @@ enum class Moment : u8 {
     HzLanes, HzStarved, HzFed, HzWave, HzJetsShown, HzJets,     // Event Horizon (M5 part 4)
     PrOne, PrRings, PrBurnShown, PrBurn, PrSolo,                // Polyrhythm
     FbEchoes, FbOpen, FbTwo, FbHowl,                            // Feedback
+    MqCourt, MqOpen, BmNest, BmExposed, BsDraw, BsFire, BsDazed, SaClock,  // mini-bosses batch 2
 };
 
 struct Pic {
@@ -101,6 +102,25 @@ const Pic kPics[] = {
     {"fb_howl", "feedback", 2, Moment::FbHowl, false},
     {"fb_death", "feedback", 1, Moment::Death, false},
     {"fb_strip", "feedback", 0, Moment::FbEchoes, true},
+    {"mq_court", "moth_queen", 0, Moment::MqCourt, false},
+    {"mq_open", "moth_queen", 0, Moment::MqOpen, false},
+    {"mq_half", "moth_queen", 1, Moment::MqCourt, false},
+    {"mq_death", "moth_queen", 0, Moment::Death, false},
+    {"mq_strip", "moth_queen", 0, Moment::MqOpen, true},
+    {"bm_nest", "brood_mother", 0, Moment::BmNest, false},
+    {"bm_exposed", "brood_mother", 0, Moment::BmExposed, false},
+    {"bm_half", "brood_mother", 1, Moment::BmNest, false},
+    {"bm_death", "brood_mother", 0, Moment::Death, false},
+    {"bs_draw", "blink_star", 0, Moment::BsDraw, false},
+    {"bs_fire", "blink_star", 0, Moment::BsFire, false},
+    {"bs_dazed", "blink_star", 0, Moment::BsDazed, false},
+    {"bs_half", "blink_star", 1, Moment::BsFire, false},
+    {"bs_death", "blink_star", 0, Moment::Death, false},
+    {"bs_strip", "blink_star", 0, Moment::BsDraw, true},
+    {"sa_clock", "sentry_array", 0, Moment::SaClock, false},
+    {"sa_half", "sentry_array", 1, Moment::SaClock, false},
+    {"sa_death", "sentry_array", 0, Moment::Death, false},
+    {"sa_strip", "sentry_array", 0, Moment::SaClock, true},
 };
 constexpr u32 kPicCount = sizeof(kPics) / sizeof(kPics[0]);
 
@@ -163,6 +183,7 @@ void Play::applyFightPhase() {
         case BossKind::CaromKing: w.bossHealthNow(1.0f - 0.25f * static_cast<float>(ph < 3 ? ph : 3) - 0.01f); break;
         case BossKind::EventHorizon: w.bossHealthNow(horizonShare(ph)); break;  // Tidal below 66%, Collapse below 33%
         case BossKind::Feedback: w.bossHealthNow(feedbackShare(ph)); break;
+        case BossKind::SentryArray: w.killBossNextTick(0x0Fu, false); break;  // half: four left
         case BossKind::Polyrhythm:
             // Hemiola: both at half; Solo: Four dead.
             if (ph == 1) w.bossHealthNow(0.5f);
@@ -336,7 +357,9 @@ bool Play::scriptSetupM5() {
     world_->rules().godMode = true;
     if (!setupFight(pic.fight, pic.phase)) return true;
     // Part 4: the Track 5 build kills a rotor in seconds; the fight holds its health until the moment (not for its death).
-    if ((fightKind_ == BossKind::Polyrhythm || fightKind_ == BossKind::Feedback) && pic.moment != Moment::Death) opt_.fightHold = true;
+    if ((fightKind_ == BossKind::Polyrhythm || fightKind_ == BossKind::Feedback || (fightKind_ >= BossKind::MothQueen && fightKind_ <= BossKind::SentryArray)) &&
+        pic.moment != Moment::Death)
+        opt_.fightHold = true;
     if (pic.strip) stripStride_ = 4;
     return true;
 }
@@ -611,6 +634,24 @@ bool Play::scriptInputM5(StickInput& in) {
             case Moment::FbOpen: go = b.fb.active && b.fb.open >= 0.999f && music > b.fightTick + 2.0 * kTicksPerBar && inBar > 0.3 * kTicksPerBar; break;
             case Moment::FbTwo: go = (b.fb.active & 0x3u) == 0x3u && music > fightPhaseAt_ + 2.0 * kTicksPerBar; break;
             case Moment::FbHowl: go = b.fb.phase == 2 && music > fightPhaseAt_ + 3.0 * kTicksPerBar && inBar > 0.5 * kTicksPerBar; break;
+            // Mini-bosses batch 2.
+            case Moment::MqCourt: go = m.ringTick >= 0.0 && music - m.ringTick > 1.3 * kTicksPerBar && music - m.ringTick < 1.5 * kTicksPerBar && seen(m.ringAt); break;
+            case Moment::MqOpen: go = w.mothOpen(music) && inBar > (pic.strip ? 0.0 : 0.3 * kTicksPerBar) && seen(b.body[0]); break;
+            case Moment::BmNest: {
+                u32 eggs = 0, young = 0;
+                for (u32 i = 0; i < w.enemies().count; ++i) {
+                    if ((w.enemies().flags[i] & kFlagDead) || !(w.enemies().flags[i] & kFlagCalled)) continue;
+                    if (w.enemies().state[i] == kEgg) ++eggs;
+                    else ++young;
+                }
+                go = eggs >= 3 && young >= 3 && seen(b.body[0]);
+                break;
+            }
+            case Moment::BmExposed: go = !m.shut && music > b.fightTick + 2.0 * kTicksPerBar && seen(b.body[0]); break;
+            case Moment::BsDraw: go = w.blinkEdges(music) == 3 && (pic.strip || inBeat > 40.0); break;
+            case Moment::BsFire: go = w.blinkFiring(music) && inBeat > 20.0 && inBeat < 60.0; break;
+            case Moment::BsDazed: go = w.blinkDazed(music) && inBeat > 30.0; break;
+            case Moment::SaClock: go = music > fightPhaseAt_ + kTicksPerBar && inBeat > (pic.strip ? 0.0 : 40.0) && inBeat < (pic.strip ? 4.0 : 56.0); break;
             case Moment::PrSolo: go = b.pr.phase == 2 && music > fightPhaseAt_ + kTicksPerBar && inBar > 0.2 * kTicksPerBar && inBar < 0.3 * kTicksPerBar; break;
             default: break;
         }

@@ -278,6 +278,8 @@ enum EnemyState : u8 {
     kDodge,
     // M5 part 4: a body walking one of Event Horizon's lanes (a = its lane, b = its distance along it).
     kLane,
+    kCourt,        // M5 part 4: a Moth Queen's court Moth (a = its place round the court, b = its ring)
+    kEgg,          // M5 part 4: a Brood Mother's egg (a = its place round her, until = its hatch)
     kStateCount
 };
 enum EnemyFlag : u8 { kFlagDead = 1, kFlagEngaged = 2, kFlagArriving = 4, kFlagPredicted = 8, kFlagCalled = 16 };  // arriving: crowd fodder on its way into the frame
@@ -745,6 +747,18 @@ public:
     Vec2 hiveSlot(u32 h, float slot, double t, bool queen) const;
     // Battering Ram: its wake burns (half health).
     bool ramWakeHit(Vec2 at) const;
+    // Mini-bosses batch 2 (world_miniboss2.cpp): the Blink Star's star (its points, which edges are drawn, firing), the
+    // Sentry Array's hand and fence.
+    Vec2 blinkPoint(u32 k) const;           // point k of the star (in star order: 0, 2, 4, 1, 3 are its hops)
+    u32 blinkEdges(double t) const;         // edges drawn so far (0-5)
+    bool blinkFiring(double t) const;
+    bool blinkDazed(double t) const;
+    bool blinkBeamHit(Vec2 at, Vec2& from) const;
+    i32 sentryHand() const;                 // the turret under the hand (-1: none)
+    float sentryHandAngle() const { return boss_.mini.ringAng; }
+    bool fenceUp() const;
+    float fenceRadius() const;              // the fence's inner radius (the ring's apothem)
+    bool mothOpen(double t) const;
     // The lead grid (musical ticks per shot) a player fires on now: 1/16, moved along by Double-Time and
     // the Surge's gear (capped at 1/32), halved by Hyper (GAME_DESIGN 4.1, 6.2, 6.4).
     double leadGrid(u32 p) const;
@@ -1134,6 +1148,24 @@ private:
     void updateMini(float dt);
     void alphaHowl(double t);
     void updateAlpha(float dt);
+    // world_miniboss2.cpp (M5 part 4): batch 2.
+    void enterMini2(Vec2 penAt);
+    void updateMoth(float dt);
+    void mothCourt(double t);
+    void updateBrood(float dt);
+    void broodClutch(double t, u32 n);
+    void updateBlink(float dt);
+    void updateSentry(float dt);
+    void sentryVolley(double t, u32 fan);
+    void sentryRespace();
+    float mini2Scale(u8 part, double t) const;
+    u32 mini2Parts(BossPart* out, u32 cap) const;
+    void mini2PartDied(u8 index);
+    void mini2Release(bool killed);
+    bool minion2Motion(u32 i, float dt);
+    void minion2Land(u32 i);
+    u8 fenceKeep(Vec2 from, Vec2& to, float r) const;
+    void fenceShots();
     void hiveHatch(u32 n, double land);
     void hiveReslot();
     void hiveShapeStart(double t);

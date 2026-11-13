@@ -246,6 +246,7 @@ add_library(raveform_sim STATIC
   src/sim/world_horizon.cpp
   src/sim/world_longwave.cpp
   src/sim/world_miniboss.cpp
+  src/sim/world_miniboss2.cpp
   src/sim/world_net.cpp
   src/sim/world_polyrhythm.cpp
   src/sim/world_spawner.cpp
