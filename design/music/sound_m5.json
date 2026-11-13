@@ -29,7 +29,7 @@
   "gravity_rounds": {"perStack": "a soft low thup on each hit (sine 180 to 120 Hz, 40 ms) at 0.15"},
   "afterimage": {"perStack": "the Dash's sweep is heard again a beat later at half level, from where the decoy stands"},
   "shockstep": {"perStack": "the Dash adds a tom on the chord's root; a Perfect Dash a second tom a fifth above"},
-  "aegis": {"perStack": "a high tick for each bullet the arc stops, at 0.15"},
+  "aegis": {"perStack": "a high tick for each bullet the arc stops, 6 dB under the Shard chirp (the first number, 0.15 of the tick, came out at -63 dBFS: nobody would have heard it)"},
   "last_light": {"perStack": "the free mini-Nova is the Nova's blast at 0.6, without the inhale"},
   "collector": {"perStack": "the Boost it spawns arrives with the Boost bells"},
   "syncopation": {"perStack": "off-beat notes are 0.3 louder and carry a short square blip an octave up"},
@@ -87,6 +87,12 @@
   "whoosh": "noise through a band-pass sweeping 400 Hz to 3 kHz over a beat (and back for a return)",
   "roll": "the Build's snare roll over a given span of beats",
   "low_pass_bed": "the music bus low-passed (SetMuffle) for a time: used for 'stunned', 'dazed' and 'open' moments"
+ },
+
+ "effectsInKey": {
+  "note": "The one-shots that were written in A minor (the Boost bells, the upgrade chord and its bell arpeggio, the elite's fifth, the game over) follow the Track: they are part of the music.",
+  "rule": "transpose to the Track's root; on the major Tracks (7 Afterglow, 8 Arcadia) and the lydian one (9 Mirage) the minor thirds become major",
+  "outsideTheScale": "a transposed note that is not in the Track's scale is not played as written: in a chord it is left out, in an arpeggio it becomes the chord's third in that octave. Today that is one note: the upgrade chord's ninth on Furnace (A over G phrygian), so Furnace's upgrade is G minor seventh with the arpeggio D, F, B flat, D"
  },
 
  "where": {
