@@ -268,11 +268,78 @@ constexpr float kSkitterDodgeS = 0.18f;        // a sidestep of dodgeDistance ta
 constexpr float kSkitterSeeWu = 900.0f;        // it reads a line of fire this far along the aim ...
 constexpr float kSkitterLaneWu = 36.0f;        // ... passing within this of it (plus its radius)
 constexpr float kMothCatchUp = 1.6f;           // a Moth flies to its place on the clock at up to this x its speed
+// ======================================================================================================
+// M5 PART 3: every upgrade (GAME_DESIGN 6.2-6.5 to 6.6's rules). Quoted where the tables give a number; the rest
+// chosen to 6.6's "every pick is felt at once" (docs/PROGRESS.md, M5 part 3, "Numbers chosen").
+// ======================================================================================================
+constexpr float kSlipstreamPerStack = 0.08f;                // 6.2 (quoted): +8% speed
+constexpr float kForkDeg = 20.0f, kForkDamage = 0.5f;       // Fork: two half-damage shots (quoted) this far apart
+constexpr float kSeekerTurn[4] = {0.0f, 3.0f, 6.0f, 10.0f}; // rad/s by stack
+constexpr float kSeekerReachWu = 320.0f;
+constexpr float kHeavyOrbSpeed = 0.45f, kHeavyOrbRadius = 3.0f, kHeavyOrbLifeS = 1.6f;  // x the shot's speed, radius
+constexpr float kHeavyBlastWu[4] = {0.0f, 90.0f, 120.0f, 150.0f}, kHeavyBlastDamage[4] = {0.0f, 4.0f, 6.0f, 8.0f};
+constexpr float kAccentDamage = 3.0f, kAccentLengthWu = 1500.0f, kAccentHalfWu = 14.0f;  // x the shot's damage
+constexpr float kEchoDamage = 0.5f;                         // quoted: half damage
+constexpr float kWaveAmpWu[3] = {0.0f, 28.0f, 40.0f}, kWavePeriodS = 0.2f, kWaveRadius[3] = {1.0f, 1.6f, 2.0f};
+constexpr float kHelixAmp = 3.0f;                           // Helix Array: the Wave's amplitude x this
+constexpr float kArcReachWu = 220.0f, kArcDamage = 2.0f;    // Arc: 2, 3, 4 more (quoted 2 at the first stack)
+constexpr float kBurnDamage = 1.0f, kBurnSpreadWu = 90.0f;  // a beat's fire, x the stacks; neighbours caught on a death
+constexpr double kBurnBeats = 2.0;                          // quoted
+constexpr u32 kShatterShards[4] = {0, 3, 5, 7};
+constexpr float kPelletSpeed = 700.0f, kPelletLifeS = 0.3f;
+constexpr float kGravityReachWu[3] = {0.0f, 110.0f, 150.0f}, kGravityPull[3] = {0.0f, 70.0f, 110.0f};  // wu, wu/s
+constexpr double kDecoyBeats[3] = {0.0, 2.0, 4.0};          // Afterimage (quoted 2 beats)
+constexpr float kDecoyReachWu = 600.0f;
+constexpr float kShockRingWu[4] = {0.0f, 140.0f, 180.0f, 220.0f}, kShockDamage[4] = {0.0f, 3.0f, 5.0f, 8.0f};
+constexpr float kAegisArcDeg[4] = {0.0f, 60.0f, 90.0f, 120.0f}, kAegisInWu = 30.0f, kAegisOutWu = 60.0f;
+constexpr float kLastLightWu = 420.0f;                      // Last Light: the mini-Nova's reach (the Nova's front: 1,400)
+constexpr float kProspectorChance = 0.25f;                  // quoted
+constexpr u32 kCollectorEvery[3] = {0, 250, 150};           // quoted
+constexpr float kSyncopationDamage[3] = {1.0f, 1.5f, 2.0f}; // quoted +50%, then chosen +100%
+constexpr u8 kSyncopationPierce = 2;
+constexpr float kBarLineWu[4] = {0.0f, 900.0f, 900.0f, 1800.0f}, kBarLineHalfWu = 16.0f, kBarLineDamage = 5.0f;
+constexpr float kCrescendoStep = 0.05f, kCrescendoMax[3] = {0.0f, 0.5f, 1.0f};  // quoted
+constexpr float kKickRingWu[4] = {0.0f, 160.0f, 160.0f, 240.0f}, kKickPush = 380.0f, kKickDamage = 2.0f;
+constexpr u32 kAfterpartyBars = 2;                          // quoted
+// Riffs 4-12 (by level 1-5).
+constexpr float kLancerDamage = 6.0f, kLancerHalfWu[6] = {0.0f, 10.0f, 16.0f, 16.0f, 22.0f, 22.0f}, kLancerLengthWu = 1600.0f;
+constexpr float kMineBlastWu = 110.0f, kMineDamage = 8.0f;
+constexpr float kCoilReachWu[6] = {0.0f, 220.0f, 220.0f, 260.0f, 260.0f, 300.0f}, kCoilDamage = 1.5f;
+constexpr u32 kSwarmCount[6] = {0, 6, 8, 10, 12, 16};
+constexpr float kMissileSpeed = 900.0f, kMissileDamage = 2.0f, kMissileLifeS = 1.4f, kMurmurationLifeS = 7.0f;
+constexpr float kWellAheadWu = 300.0f, kWellPullWu[6] = {0.0f, 260.0f, 300.0f, 300.0f, 340.0f, 340.0f}, kWellPull = 260.0f;
+constexpr float kWellBlastWu[6] = {0.0f, 200.0f, 230.0f, 230.0f, 260.0f, 260.0f}, kWellDamage[6] = {0.0f, 12.0f, 12.0f, 18.0f, 18.0f, 24.0f};
+constexpr float kMirrorShare[6] = {0.0f, 0.5f, 0.6f, 0.7f, 0.8f, 1.0f}, kWingWu = 90.0f;  // quoted shares
+constexpr float kCometOutWu = 520.0f, kCometRadiusWu = 22.0f, kCometDamage = 3.0f;
+constexpr float kCometSize[6] = {0.0f, 1.0f, 1.5f, 1.5f, 2.0f, 2.0f};
+constexpr u32 kCometCount[6] = {0, 1, 1, 2, 2, 3};
+constexpr float kSweeperLengthWu[6] = {0.0f, 240.0f, 300.0f, 300.0f, 360.0f, 360.0f}, kSweeperDamage = 6.0f;  // a pass
+constexpr u32 kFlakPellets[6] = {0, 12, 16, 20, 24, 24};
+constexpr float kFlakBlastWu = 40.0f;
+// Boosts 3-6, 9-16.
+constexpr float kSupernovaWu = 70.0f;
+constexpr float kColossusScale = 3.0f, kColossusRamDamage = 20.0f;  // quoted x3
+constexpr float kTimeStretchSpeed = 0.5f;                           // quoted: half speed
+constexpr float kFreezeChainWu = 90.0f;
+constexpr float kHolePullWu = 700.0f, kHolePull = 300.0f, kHoleBlastWu = 500.0f, kHoleDamage = 50.0f;
+constexpr double kHoleBeats = 3.0;                                  // quoted
+constexpr float kChainStormWu = 360.0f, kChainStormDamage = 2.0f;
+constexpr u32 kChainStormMax = 24;
+constexpr float kChorusWu = 80.0f;
+constexpr float kBeamLengthWu = 1400.0f, kBeamHalfWu = 10.0f;
+constexpr u8 kFeverBounces = 5;                                     // quoted
+constexpr float kFeverSpeedUp = 1.1f;
+constexpr u32 kConfettiSparks = 6;                                  // quoted
+constexpr float kCarouselWu = 70.0f, kBombSpeed = 500.0f, kBombLifeS = 1.0f, kBombBlastWu = 90.0f, kBombDamage = 6.0f;
+// Fusions.
+constexpr float kDownbeatHalfWu = 60.0f, kDownbeatLengthWu = 2400.0f;
+constexpr float kCollapsePullWu = 200.0f, kCollapsePull = 200.0f;
+constexpr float kStandingDamage = 1.5f;
 // The pages leave the health to the bot ("tune the segment health with the bot once it can surf", "tune the Voice health
 // with the bot", minibosses.md "25 to 35 seconds of fire ... tune with the bot"): the careful bot's time to kill each at its
 // home Track (8 seeds) brought into the page's window by these factors on the page's health (docs/PROGRESS.md, M5 part 1).
-constexpr float kLongwaveHealthTune = 1.4f;  // the page's 70-100 s (docs/PROGRESS.md, M5 part 1)
-constexpr float kChoirHealthTune = 4.5f;      // the page's 80-110 s
+constexpr float kLongwaveHealthTune = 0.55f;  // the page's 70-100 s (docs/PROGRESS.md, M5 part 1; part 3: with the whole pool, 1.4 -> 0.55)
+constexpr float kChoirHealthTune = 1.6f;      // the page's 80-110 s (part 3: 4.5 -> 1.6)
 constexpr float kMiniHealthTune[4] = {6.5f, 5.0f, 2.0f, 4.8f};  // Alpha Hound, The Hive, Battering Ram, Carom King: 25-35 s
 
 // ======================================================================================================

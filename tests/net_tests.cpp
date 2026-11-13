@@ -256,6 +256,7 @@ void testRoundTrip() {
     s.target = 2;
     s.far = 1;
     s.step = 7;  // M5 part 2: a family's own counter
+            s.frozen = true;  // M5 part 3: Freeze Frame's bit
     w.reset();
     CHECK(w.putCorrections(2, 10000.0, &s, 1) == 1);
     Count c2;
@@ -266,7 +267,7 @@ void testRoundTrip() {
     CHECK(std::fabs(r.vx - s.vx) <= 0.06f && std::fabs(r.vy - s.vy) <= 0.06f && std::fabs(r.kx - s.kx) <= 2.6f);
     CHECK(std::fabs(std::remainder(r.heading - s.heading, kTau)) < 1e-3f);
     CHECK(std::fabs(r.a - s.a) < 1e-3f && r.b == -0.5f && r.hp == 37.25f && std::fabs(r.until - s.until) < 0.13);
-    CHECK(r.rng == s.rng && r.state == kTelegraph && r.flags == kFlagEngaged && r.target == 2 && r.step == 7);
+    CHECK(r.rng == s.rng && r.state == kTelegraph && r.flags == kFlagEngaged && r.target == 2 && r.step == 7 && r.frozen);
 
     // A full corrections packet stays inside 1,200 bytes.
     NetEnemyState many[64];

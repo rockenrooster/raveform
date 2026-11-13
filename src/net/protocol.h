@@ -10,7 +10,7 @@
 
 namespace rf::net {
 
-constexpr u32 kProtocolVersion = 0x52460502u;  // 'R' 'F', M5 part 2 (an enemy's own counter in its correction; the new states)
+constexpr u32 kProtocolVersion = 0x52460503u;  // 'R' 'F', M5 part 3 (a Trio's orbs: up to six)
 constexpr u32 kMaxPacketBytes = 1200;
 
 enum class Msg : u8 {
@@ -79,7 +79,7 @@ struct MsgDirector {
 struct MsgPlayerEvent {
     u16 run = 0;
     u8 player = 0, kind = 0, b = 0;
-    u8 opts[3] = {};
+    u8 opts[sim::kMaxOrbs] = {};  // M5 part 3: Lucky Break's and a Fusion's orbs too
     float x = 0.0f, y = 0.0f, x2 = 0.0f, y2 = 0.0f;
     double tick = 0.0;
 };

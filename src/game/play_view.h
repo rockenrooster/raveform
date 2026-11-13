@@ -173,6 +173,17 @@ private:
     // Play test 2 (look.md 5, "The build on the shots"): the shots, their heads by the build (play_view_shots.cpp); the
     // colours it needs (Prism's lanes from the local player's colour, Overcharge's heads), computed once.
     void drawShots(FrameDraw& d, const ViewInput& in, float a);
+    // M5 part 3 (play_view_upgrades.cpp): the new upgrades on screen, and their events; lightning's jumps.
+    void drawUpgrades(FrameDraw& d, const ViewInput& in);
+    void eventUpgrade(const sim::World& w, const sim::Event& e, float t);
+    struct Bolt {
+        Vec2 a, b;
+        float born = -100.0f;
+        u8 owner = 0, style = 0;
+    };
+    static constexpr u32 kBolts = 96;
+    Bolt bolts_[kBolts];
+    u32 boltHead_ = 0;
     void buildColours(Vec3 player);
     float beatAmount() const;
 
@@ -302,6 +313,11 @@ private:
     const VectorFont* font_ = nullptr;
     i32 upgradeIcon_[sim::kUpgradeCount] = {};
     i32 boostIcon_[sim::kBoostCount] = {};
+    i32 fusionIcon_[sim::kFusionCount] = {};
+    // A Trio orb's icon: an upgrade's, a Boost's or (M5) a Fusion's.
+    i32 orbIcon(u8 u) const {
+        return sim::isBoostOrb(u) ? boostIcon_[sim::boostOfOrb(u)] : (sim::isFusionOrb(u) ? fusionIcon_[sim::fusionOfOrb(u)] : (u < sim::kUpgradeCount ? upgradeIcon_[u] : -1));
+    }
     float enemyLight_ = 1.0f, trioRest_ = 0.0f, drain_ = 0.0f, sectionZoom_ = 1.0f, exposureSection_ = 1.0f;
     struct Tumble {
         Vec2 p, v;

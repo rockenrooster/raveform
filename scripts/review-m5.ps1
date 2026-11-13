@@ -13,7 +13,10 @@
 #   Part 2 (-Part part2): each new family at its moment round a still ship (fam_flanker, fam_skitter, fam_moth, fam_brood,
 #   fam_brood_c, fam_blink, fam_hound_c, fam_drifter_b, fam_carom_b; strips fam_moth_strip, fam_blink_strip), the bot's run in
 #   Track 2 cycle 3 and Track 3 cycles 2 and 3 (t2_c3, t3_c2, t3_c3), and the glyph sheets of all sixteen families.
-#   scripts\review-m5.ps1 [-Part part1|part2] [-Out captures\m5\<part>] [-Config debug|dev] [-Only lw_chop,ch_cage]
+#   Part 3 (-Part part3): every new upgrade round a still ship (play_pictures_m5.cpp kUpPics): the weapon Mods (up_weapons,
+#   up_wave, up_helix, up_accent, up_standing_wave, up_kills, up_wingmen, up_quartet), defence and rhythm (up_defence, up_barline),
+#   the Riffs (riff_lancer, riff_singularity), the Boosts in pairs (boost_*) and the Fusions (fusion_*).
+#   scripts\review-m5.ps1 [-Part part1|part2|part3] [-Out captures\m5\<part>] [-Config debug|dev] [-Only lw_chop,ch_cage]
 # Debug (the default) runs with validation; the script stops on the first run that is not clean.
 param(
     [string]$Part = 'part1',
@@ -58,8 +61,15 @@ $sets = @{
         strips = @('fam_moth_strip', 'fam_blink_strip')
         sheets = @(1, 2)
     }
+    'part3' = @{
+        singles = @('up_weapons', 'up_wave', 'up_helix', 'up_accent', 'up_standing_wave', 'up_kills', 'up_wingmen', 'up_quartet', 'up_defence',
+                    'up_barline', 'riff_lancer', 'riff_singularity', 'boost_supernova_chain', 'boost_colossus_carousel', 'boost_freeze_fever',
+                    'boost_black_hole', 'boost_chorus_beam', 'boost_fractal_stretch', 'fusion_tesla', 'fusion_shard_halo', 'fusion_cannon',
+                    'fusion_collapse_murmuration')
+        strips = @()
+    }
 }
-if (-not $sets.ContainsKey($Part)) { throw "no review set '$Part' (part1, part2)" }
+if (-not $sets.ContainsKey($Part)) { throw "no review set '$Part' (part1, part2, part3)" }
 $singles = $sets[$Part].singles
 $strips = $sets[$Part].strips
 if ($Only.Count) {

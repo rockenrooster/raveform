@@ -16,13 +16,22 @@ constexpr float kDeg = kTau / 360.0f;
 // Grid queries reach this much past their radius: the largest enemy (40 wu) and how far one moves after the grid was
 // built this tick (32 wu), as in world.cpp.
 constexpr float kQuerySlackWu = 72.0f;
-// Trio orbs: top, lower left, lower right (world y grows down the screen).
-const Vec2 kOrbAt[3] = {{0.0f, -1.0f}, {-0.8660254f, 0.5f}, {0.8660254f, 0.5f}};
 }  // namespace
+
+Vec2 trioOrbPlace(Vec2 centre, u32 k, u32 n) {
+    // Three on their places (top, lower left, lower right; world y grows down the screen); more (M5: Lucky Break, a
+    // Fusion) evenly round the ring from the top.
+    static const Vec2 kOrbAt[3] = {{0.0f, -1.0f}, {-0.8660254f, 0.5f}, {0.8660254f, 0.5f}};
+    const Vec2 d = (n == 3 && k < 3) ? kOrbAt[k] : dirOf(-0.25f * kTau + kTau * static_cast<float>(k) / static_cast<float>(n ? n : 1u));
+    return centre + d * kTrioRingWu;
+}
 
 double World::leadGrid(u32 p) const {
     const PlayerState& pl = players_[p];
     u32 idx = static_cast<u32>(pl.loadout.mods[kDoubleTime]) + phrase_.surgeGear();
+    // M5: Afterparty, its Surge a step faster a stack, and the second gear held two bars longer a stack (the band's own rule,
+    // audio leadGridIndex).
+    if (afterparty(p)) idx = (phrase_.surge() ? idx : static_cast<u32>(pl.loadout.mods[kDoubleTime]) + 2u) + pl.loadout.mods[kAfterparty];
     if (idx > 2) idx = 2;
     double g = kLeadGrid[idx];
     if (pl.boost(kHyper) && std::fmod(g, 2.0) == 0.0) g *= 0.5;
@@ -34,6 +43,7 @@ double World::leadGrid(u32 p) const {
 void World::spawnShotRaw(u32 p, Vec2 pos, Vec2 dir, float advanceS, float damage, u8 kind, u8 flags, float life, u8 pierce,
                          u8 bounces) {
     Shots& s = shots_;
+    lastShot_ = -1;
     if (s.count >= Shots::kCap) {
         ++counters_.shotsDropped;
         return;
@@ -64,6 +74,9 @@ void World::spawnShotRaw(u32 p, Vec2 pos, Vec2 dir, float advanceS, float damage
     s.bounces[i] = bounces;
     s.kind[i] = kind;
     s.flags[i] = flags;
+    s.mods[i] = 0;
+    s.forks[i] = 0;
+    lastShot_ = static_cast<i32>(i);  // M5: what the caller may still set on it
 }
 
 void World::hitEnemy(u32 i, float dmg, u8 owner, Vec2 at, Vec2 dir) {
@@ -71,10 +84,20 @@ void World::hitEnemy(u32 i, float dmg, u8 owner, Vec2 at, Vec2 dir) {
     if (e.flags[i] & kFlagDead) return;
     // M5: a Hound C's front arc sheds the shot (no damage, the spark of an impact).
     const bool shed = shieldStops(i, dir);
+    // M5: Freeze Frame, a frozen body dies in one hit (and its shatter chains through the frozen ones touching it).
+    const bool frozen = !shed && e.frozenUntil[i] > m1_;
+    if (frozen && dmg < e.hp[i] + 1.0f) dmg = e.hp[i] + 1.0f;
     if (role_ == NetRole::Client && !shed) logClaim(i, dmg, kClaimHit);  // M4: the host applies it; a kill here is predicted
     if (!shed) e.hp[i] -= dmg;
     if (e.hp[i] <= 0.0f) {
+        // M5 part 3: this device's player's kill brings its Mods' and Boosts' kill effects (Arc, Shatter, Burn, Confetti).
+        const bool extras = !applyingClaim_ && owner < kMaxPlayers && isLocal(owner);
+        if (extras) killExtras(i, owner);
         killEnemy(i, owner);
+        if (frozen && extras) {
+            e.frozenUntil[i] = -1.0;
+            freezeShatter(i, owner);
+        }
         return;
     }
     if (applyingClaim_) return;  // M4 host: the claimant's shot already showed its impact here (a cosmetic copy)
@@ -95,7 +118,7 @@ void World::hitEnemy(u32 i, float dmg, u8 owner, Vec2 at, Vec2 dir) {
 void World::openTrio(u32 p, double closeTick, u8 kind, u16 level) {
     TrioState& tr = trio_[p];
     PlayerState& pl = players_[p];
-    u8 opts[3];
+    u8 opts[kMaxOrbs];
     const u32 n = drawTrio(pl.loadout, tr.sinceRiff, upgradeRng_, opts);
     tr.open = n > 0;
     tr.homing = -1;
@@ -112,11 +135,12 @@ void World::openTrio(u32 p, double closeTick, u8 kind, u16 level) {
     tr.closeTick = closeTick;
     tr.holdOrb = -1;
     tr.holdTicks = 0.0;
-    for (u32 k = 0; k < 4; ++k) tr.upgrade[k] = kNoUpgrade;
+    for (u32 k = 0; k < kMaxOrbs; ++k) tr.upgrade[k] = kNoUpgrade;
     for (u32 k = 0; k < n; ++k) {
         tr.upgrade[k] = opts[k];
         tr.level[k] = isBoostOrb(opts[k]) ? 0 : static_cast<u8>(pl.loadout.level(opts[k]) + 1);
-        tr.orbPos[k] = tr.centre + kOrbAt[k] * kTrioRingWu;
+        // Three on their places (top, lower left, lower right); more (Lucky Break, a Fusion) evenly round the ring.
+        tr.orbPos[k] = trioOrbPlace(tr.centre, k, n);
     }
     ++tr.opened;
     Event ev;
@@ -147,16 +171,18 @@ void World::openTrioNow(u32 p, double closeTick, const u8* forced, u8 kind) {
 void World::takeOrb(u32 p, u32 k) {
     TrioState& tr = trio_[p];
     const u8 u = tr.upgrade[k];
-    // Play test 2: a Boost orb (every Mod and Riff at its cap) gives its Boost.
+    // Play test 2: a Boost orb (every Mod and Riff at its cap) gives its Boost; M5: a Fusion orb its Fusion.
     if (isBoostOrb(u))
         activateBoost(p, boostOfOrb(u));
+    else if (isFusionOrb(u))
+        players_[p].loadout.fusions = static_cast<u8>(players_[p].loadout.fusions | (1u << fusionOfOrb(u)));
     else
         applyUpgrade(p, u);
     Event ev;
     ev.type = EventType::TrioTake;
     ev.a = static_cast<u8>(p);
     ev.b = u;
-    ev.c = isBoostOrb(u) ? 0 : static_cast<u8>(players_[p].loadout.level(u));
+    ev.c = (isBoostOrb(u) || isFusionOrb(u)) ? 0 : static_cast<u8>(players_[p].loadout.level(u));
     ev.x = tr.orbPos[k].x;
     ev.y = tr.orbPos[k].y;
     emit(ev);
@@ -212,6 +238,11 @@ void World::applyUpgrade(u32 p, u8 u) {
         return;
     }
     ++l.mods[u];
+    if (u == kNovaStock) {
+        // M5 (GAME_DESIGN 6.2): +1 Nova capacity and one Nova.
+        ++pl.novaCap;
+        if (pl.novas < pl.novaCap) ++pl.novas;
+    }
     if (u == kExtraCell) {
         // GAME_DESIGN 6.2 (play test 1): +1 Shield cell capacity and every cell refilled; in the loop inside the capacity the
         // burn has left (GAME_DESIGN 8).
@@ -449,6 +480,8 @@ void World::updateRiffs(float dt) {
                     const float d = length(Vec2{e.x[i], e.y[i]} - c);
                     if (d + e.radius[i] <= r0 || d - e.radius[i] > r) return;  // the front did not pass it this tick
                     hitEnemy(i, w.damage, owner, Vec2{e.x[i], e.y[i]}, normalizeOr(Vec2{e.x[i], e.y[i]} - c, Vec2{1.0f, 0.0f}));
+                    // M5: Tesla Bloom, the ring arcs lightning on from everything it touches.
+                    if (l.fused(kTeslaBloom) && !(e.flags[i] & kFlagDead)) arcFrom(i, owner, 1, kArcDamage, 1);
                 });
             if (local && boss_.active && !boss_.dying) {
                 const Vec2 to = boss_.pos - c;
@@ -581,7 +614,9 @@ void World::activateBoost(u32 p, u8 type) {
     }
     slot->type = type;
     slot->from = m1_;
-    slot->until = m1_ + static_cast<double>(boostInfo(type).bars) * kTicksPerBar;
+    // M5: Encore, every Boost one bar longer a stack.
+    slot->until = m1_ + static_cast<double>(boostInfo(type).bars + pl.loadout.mods[kEncore]) * kTicksPerBar;
+    if (type == kFreezeFrame) freezeView(p, slot->until);  // M5: the frame's bodies stop where they are
     slot->hits = type == kHalo ? static_cast<u8>(kHaloHits) : 0;
     ++pl.boostsTaken;
     if (type == kMagnetStorm) {
@@ -682,6 +717,7 @@ void World::collectShard(u32 p) {
     // the ship on a coming bar line (openLevelTrios; banked while a Trio is open).
     if (p >= kMaxPlayers) return;
     PlayerState& pl = players_[p];
+    collectorShard(p);  // M5: Collector
     const u32 need = levelShards(static_cast<u32>(pl.level) + 1u);
     if (++pl.levelShards < need) return;
     pl.levelShards -= need;

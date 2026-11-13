@@ -58,8 +58,28 @@ void PlayView::drawShots(FrameDraw& d, const ViewInput& in, float a) {
         const Vec2 tail = head - dirv * len;
         const bool mine = owner == me;
         const Vec3 base = palettes_->player[owner], light = palettes_->playerLight[owner];
-        // M4 (look.md 6): a teammate's shots at 0.6 of the level and 0.8 of the width.
-        const float lvl = (mine ? 1.0f : 0.6f) * pl.intensity, wid = (mine ? 1.0f : 0.8f) * 0.5f * pl.width * refPx_;
+        // M4 (look.md 6): a teammate's shots at 0.6 of the level and 0.8 of the width. M5: Echo's ghosts at 0.45.
+        const float ghost = (sh.mods[i] & kShotGhost) ? 0.45f : 1.0f;
+        const float lvl = (mine ? 1.0f : 0.6f) * pl.intensity * ghost, wid = (mine ? 1.0f : 0.8f) * 0.5f * pl.width * refPx_;
+        if (sh.kind[i] == kShotOrb || sh.kind[i] == kShotBomb) {
+            // M5: Heavy Step's slow orb (its light colour, a white core, pulsing) and Carousel's bombs (gold).
+            const bool orb = sh.kind[i] == kShotOrb;
+            const Vec3 c = orb ? light : palettes_->player[3];
+            const float r = sh.radius[i] * (orb ? 1.2f : 1.0f) * (1.0f + 0.15f * beat_);
+            glyph(d.glyphs, gRing32_, false, head, 0.0f, 0.0f, r, 2.0f * lvl, 0.8f, kGlyphFlat, c, W1);
+            d.sparkles.glow(toScene(head), r * 2.2f * pxPerWu_, c * (0.9f * lvl));
+            d.scene.line(toScene(tail), toScene(head), wid * 2.0f, c * (0.4f * lvl), c * lvl, 0);
+            continue;
+        }
+        if (sh.kind[i] == kShotMissile || sh.kind[i] == kShotPellet) {
+            // M5: Swarm's missiles (a short bright streak, a hot head), Flak's, Shatter's and Confetti's pellets (a fleck).
+            const bool missile = sh.kind[i] == kShotMissile;
+            const Vec3 c = missile ? light : mix(base, W1, 0.4f);
+            const Vec2 t2 = head - dirv * (len * (missile ? 0.6f : 0.35f));
+            d.scene.line(toScene(t2), toScene(head), wid * (missile ? 0.9f : 0.6f), c * (0.5f * lvl), W1 * lvl, 0);
+            if (missile) d.sparkles.glow(toScene(head), headR * 0.8f, light * (headI * 0.8f * lvl));
+            continue;
+        }
         if (sh.kind[i] == kShotSentinel) {
             // What a Riff throws (Sentinel's bursts) by its level.
             const u32 lv = lo.riffs[riffIndex(kSentinel)];

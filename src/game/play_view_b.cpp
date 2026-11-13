@@ -275,6 +275,7 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
             }
             break;
         case EventType::PulseRing: break;
+        case EventType::Upgrade: eventUpgrade(w, e, t); break;  // M5 part 3
         case EventType::Restart: tumbleCount_ = 0; break;
         default: break;
     }
@@ -405,6 +406,8 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
         }
     }
 
+    drawUpgrades(d, in);  // M5 part 3: the rest of the Mods, Riffs, Boosts and the Fusions
+
     // ---- Kaleidos.
     drawFight(d, in);  // M5: the fight of the moment (Kaleidos is drawBoss), and the Pen
 
@@ -485,7 +488,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             // Locked: outlines at 0.5, fading in; lit: the icon at its level (the third beat flashes it). Play test 2: a Boost
             // orb (every Mod and Riff at its cap) shows its Boost.
             const bool boostOrb = isBoostOrb(u);
-            const i32 icon = boostOrb ? boostIcon_[boostOfOrb(u)] : upgradeIcon_[u];
+            const i32 icon = orbIcon(u);
             const float iconLevel = locked ? 0.5f * fadeIn : (ans ? 1.35f : 1.0f) + 0.8f * lightUp;
             icons_->draw(d, icon, sp, orbWu * pxPerWu_ / icons_->size(icon) * (riff ? tuning::kTrioRiffScale : 1.0f), iconLevel);
             if (lightUp > 0.0f) d.pools.glow(sp, orbWu * 2.6f * pxPerWu_, W1 * (0.25f * lightUp));
@@ -527,8 +530,9 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             }
             // Words, always outside the ring: above the top orb, left of the left one, right of the right one.
             const UpgradeInfo& info = upgradeInfo(u);
-            const char* name = boostOrb ? boostInfo(boostOfOrb(u)).name : info.name;
-            const char* words = boostOrb ? boostInfo(boostOfOrb(u)).words : upgradeWords(u, tr.level[k]);
+            const bool fusionOrb = isFusionOrb(u);  // M5: a Fusion's gold orb
+            const char* name = boostOrb ? boostInfo(boostOfOrb(u)).name : (fusionOrb ? fusionInfo(fusionOfOrb(u)).name : info.name);
+            const char* words = boostOrb ? boostInfo(boostOfOrb(u)).words : (fusionOrb ? fusionInfo(fusionOfOrb(u)).words : upgradeWords(u, tr.level[k]));
             const float capName = 20.0f * pxPerWu_, capWords = 11.0f * pxPerWu_;
             const float wName = font_->measure(TextStyle{capName}, name), wWords = font_->measure(TextStyle{capWords}, words);
             const float gap = (ringWu + 14.0f) * pxPerWu_;
@@ -551,7 +555,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             const float wy = org.y + capWords + 12.0f * refPx_;
             font_->drawField(d.scene, Vec2{org.x - align * wWords, wy - capWords}, capWords, 0.7f * refPx_, wordCol, wordCol, wordCol, words);
             // Pips: one per stack or level the upgrade can have; owned white, this pick gold with a ring (a Boost has none).
-            const u32 cap = boostOrb ? 0u : info.cap;
+            const u32 cap = (boostOrb || isFusionOrb(u)) ? 0u : info.cap;
             if (!cap) continue;
             const float pip = 5.0f * refPx_, step = 15.0f * refPx_;
             const float rowW = static_cast<float>(cap - 1) * step;
@@ -603,7 +607,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
                 const bool riff = isRiff(u);
                 const float orbWu = tuning::kTrioOrbWu * (riff ? tuning::kTrioRiffScale : 1.0f) * swell;
                 const Vec2 p = ot.orbPos[k];
-                const i32 icon = isBoostOrb(u) ? boostIcon_[boostOfOrb(u)] : upgradeIcon_[u];
+                const i32 icon = orbIcon(u);
                 icons_->draw(d, icon, toScene(p), orbWu * pxPerWu_ / icons_->size(icon) * (riff ? tuning::kTrioRiffScale : 1.0f), third);
                 const float ringWu = 1.42f * orbWu;
                 for (u32 s = 0; s < 48; ++s) {

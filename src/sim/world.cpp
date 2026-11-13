@@ -134,23 +134,35 @@ void World::tick(const TickInput& in) {
     loopShooters_ = std::fmin(loopRamp(kLoopShooterRamp, phrase_.track, director_.songs), kLoopShooterMax);
     const float dt = kDt * timeScale();
     if (dipS_ > 0.0f) dipS_ -= kDt;
-    spawnShots(in);
-    updateNovas();
+    // M5 part 3: Time Stretch (GAME_DESIGN 6.4) halves the enemies' and their bullets' speed while any player has it.
+    stretch_ = 1.0f;
+    for (u32 p = 0; p < playerCount_; ++p)
+        if (players_[p].present && players_[p].boost(kTimeStretch)) stretch_ = kTimeStretchSpeed;
+    fxThisTick_ = 0;
+    flungMask_ = 0;
 
     // The grid holds the solid enemies as the tick begins (indices stay valid until compact()); flocking
-    // and the collisions below query it with slack for the movement since.
+    // and the collisions below query it with slack for the movement since. M5: built before the shots, so a volley's
+    // lines (Accent, Beam) can ask it; the bodies a Nova kills below stay in it, skipped as dead.
     for (u32 i = 0; i < enemies_.count; ++i)
         solid_[i] = (enemies_.flags[i] & kFlagDead) == 0 && enemies_.state[i] != kWarping;
     grid_.build(enemies_.x, enemies_.y, enemies_.count, solid_);
 
-    updateEnemies(dt);
+    spawnShots(in);
+    fireEchoes();  // M5: Echo's ghost volleys
+    updateNovas();
+
+    updateEnemies(dt * stretch_);
     updateBoss(dt);
     updateRiffs(dt);
+    updateRiffsM5(dt);     // M5 part 3: Riffs 4-12
+    updateUpgradesM5(dt);  // M5 part 3: the bar's and the beat's Mods, the Boosts that act every tick
     updateTrios();
     shelterTrios();  // play test 2: bodies touching a level-up orb's ring are shoved off before the contacts
     updateBoosts();
     updateCells(dt);
     moveProjectiles(dt);
+    aegisBullets();  // M5: Aegis's arc stops the bullets that reach it
     collide();
     if (scriptHits_) {
         // (tests, pictures: a hit asked for from outside the tick lands inside it, so its events go out like any)
@@ -227,6 +239,7 @@ void World::applyPlayers(const TickInput& in) {
         if (ps.dashStarted) {
             ++pl.dashes;
             if (ps.perfectDash) ++pl.perfectDashes;
+            dashExtras(p, ps.dashFrom, ps.dashTo, ps.perfectDash);  // M5: Afterimage, Shockstep
             Event ev;
             ev.type = EventType::Dash;
             ev.a = static_cast<u8>(p);
@@ -252,6 +265,7 @@ bool World::pressNova(u32 p) {
     pl.novaPending = true;
     const double earliest = m1_ + static_cast<double>(latencyTicks_) + 6.0;
     pl.novaBlastTick = std::ceil(earliest / kTicksPerBeat) * kTicksPerBeat;
+    blackHoleNova(p);  // M5: Black Hole makes it a three-beat singularity (its blast later)
     pl.novaInvulS = 1e9f;
     Event ev;
     ev.type = EventType::NovaPress;
@@ -290,15 +304,9 @@ void World::fireShot(u32 p, float advanceS, double stepTick) {
     const Loadout& l = pl.loadout;
     const Vec2 d = normalizeOr(pl.aim, dirOf(pl.heading));
     const Vec2 muzzle = pl.pos + d * kMuzzleWu;
-    // species.json note: one player shot deals 1 damage. Play test 1 (GAME_DESIGN 6.2): Overcharge +50% a stack;
-    // On-Beat Crit: shots on quarter-note beats x3, x5, x8, bursting over 80 wu.
-    float damage = 1.0f + kOverchargePerStack * static_cast<float>(l.mods[kOvercharge]);
-    u8 flags = 0;
-    const double inBeat = std::fmod(stepTick, kTicksPerBeat);
-    if (l.mods[kOnBeatCrit] && (inBeat < 0.5 || kTicksPerBeat - inBeat < 0.5)) {
-        damage *= onBeatCritMultiplier(l.mods[kOnBeatCrit]);
-        flags |= kShotCrit;
-    }
+    // The shot's damage and flags (Overcharge, On-Beat Crit; M5: Syncopation, Crescendo; world_upgrades_m5.cpp).
+    u8 flags = 0, pierceAdd = 0;
+    const float damage = shotDamage(p, stepTick, flags, pierceAdd);
     const bool prism = pl.boost(kPrism);
     if (prism) flags |= kShotPrism;
     // Split: +2 lanes a stack in a tight fan (3, 5, 7); Prism: every lane refracts into five. Above the soft cap of
@@ -306,27 +314,23 @@ void World::fireShot(u32 p, float advanceS, double stepTick) {
     // kShotsMiddleOnly the middle lane alone fires (tuning.h; the pool stays inside its 1,024 a player with Split 7,
     // Prism, Double-Time and Hyper at 174 BPM, in the Build's slowed last bar too).
     const u32 lanes = splitLanes(l.mods[kSplit]);
-    const u32 fan = prism ? 5u : 1u;
     const u32 live = shotsLive_[p < kMaxPlayers ? p : 0];
     const u32 thin = lanes < 3 ? 0u : (live >= kShotsMiddleOnly ? 2u : (live >= kShotsSoftCap ? 1u : 0u));
     const i64 step = static_cast<i64>(std::floor(stepTick / leadGrid(p) + 0.5));
     const float base = angleOf(d);
-    const float deg = kTau / 360.0f;
-    const u8 pierce = static_cast<u8>(pierceCount(l.mods[kPierce]));
+    const u8 pierce = static_cast<u8>(pierceCount(l.mods[kPierce]) + pierceAdd);
     const u8 bounces = static_cast<u8>(ricochetBounces(l.mods[kRicochet]));
-    const i32 mid = static_cast<i32>(lanes / 2);
+    ++pl.volleys;
     u32 made = 0;
-    for (u32 lane = 0; lane < lanes; ++lane) {
-        const i32 off = static_cast<i32>(lane) - mid;
-        const i32 ring = off < 0 ? -off : off;  // 0 the middle, 1 its neighbours, 2 and 3 the outer pairs
-        if (thin == 2 && ring >= 1) continue;
-        if (thin == 1 && ring >= 1 && ((ring + step) & 1) != 0) continue;
-        const float la = base + static_cast<float>(off) * kSplitFanDeg * deg;
-        for (u32 f = 0; f < fan && made < kMaxShotsPerStep; ++f, ++made) {
-            const float a = la + (static_cast<float>(f) - 0.5f * static_cast<float>(fan - 1)) * kPrismFanDeg * deg;
-            const u8 laneFlag = prism ? shotLaneFlags(static_cast<i32>(f) - 2) : 0;
-            spawnShotRaw(p, muzzle, dirOf(a), advanceS, damage, kShotPrimary, static_cast<u8>(flags | laneFlag), kShotLifeS, pierce, bounces);
-        }
+    if (pl.boost(kBeam)) {
+        // M5: Beam, the primary as a continuous laser (no shots).
+        beamVolley(p, muzzle, d, damage, lanes, stepTick);
+    } else {
+        // M5: Accent's lance takes the middle lane's place on its beats; Heavy Step makes every fourth volley's an orb.
+        const bool lance = accentLance(p, stepTick, muzzle, d, damage);
+        const bool heavy = !lance && l.mods[kHeavyStep] && (pl.volleys % 4u) == 0u;
+        made = volley(p, muzzle, base, advanceS, damage, flags, pierce, bounces, lanes, prism, thin, step, lance ? 1 : (heavy ? 2 : 0), 0);
+        volleyExtras(p, advanceS, stepTick, base, damage, flags, pierce, bounces, lanes, thin, step);
     }
     ++pl.shotsFired;
     Event ev;
@@ -412,27 +416,43 @@ void World::updateNovas() {
 
 void World::moveProjectiles(float dt) {
     // Enemy bullets fly straight until their life ends or they meet a wall.
+    // M5: Time Stretch slows them with the enemies (the player's own shots keep their speed).
     Bullets& b = bullets_;
+    const float bdt = dt * stretch_;
     for (u32 i = 0; i < b.count; ++i) {
         b.px[i] = b.x[i];
         b.py[i] = b.y[i];
         if (b.dead[i]) continue;
-        b.x[i] += b.vx[i] * dt;
-        b.y[i] += b.vy[i] * dt;
-        b.life[i] -= dt;
+        b.x[i] += b.vx[i] * bdt;
+        b.y[i] += b.vy[i] * bdt;
+        b.life[i] -= bdt;
         if (b.life[i] <= 0.0f || !insideArena(b.x[i], b.y[i])) b.dead[i] = 1;
     }
     Shots& s = shots_;
+    steerShots(dt);  // M5: Seeker, missiles, sparks
     for (u32 i = 0; i < s.count; ++i) {
         if (s.dead[i]) continue;
         s.px[i] = s.x[i];
         s.py[i] = s.y[i];
         s.x[i] += s.dx[i] * s.speed[i] * dt;
         s.y[i] += s.dy[i] * s.speed[i] * dt;
+        if (s.mods[i] & kShotWave) {
+            // M5: Wave's sine across the line (Helix Array's braid).
+            const Vec2 w = waveStep(i, dt);
+            s.x[i] += w.x;
+            s.y[i] += w.y;
+        }
         s.life[i] -= dt;
+        if (s.life[i] <= 0.0f && (s.mods[i] & kShotBlast) && s.kind[i] != kShotPrimary && s.kind[i] != kShotMini) {
+            // M5: Heavy Step's orbs, Carousel's bombs and Flak's pellets at level 5 blow where their life ends.
+            s.dead[i] = 1;
+            shotBlast(i, Vec2{s.x[i], s.y[i]}, -1);
+            continue;
+        }
         if (!insideArena(s.x[i], s.y[i]) && s.bounces[i] > 0) {
             // Ricochet (GAME_DESIGN 6.2): off the arena wall, mirrored.
             --s.bounces[i];
+            if (s.mods[i] & kShotFever) s.speed[i] = std::fmin(s.speed[i] * kFeverSpeedUp, 3.0f * kShotSpeed);  // M5: Ricochet Fever
             if (std::fabs(s.x[i]) > kArenaHalfW) {
                 s.dx[i] = -s.dx[i];
                 s.x[i] = std::copysign(2.0f * kArenaHalfW - std::fabs(s.x[i]), s.x[i]);
@@ -468,7 +488,9 @@ void World::moveProjectiles(float dt) {
         if (pl.alive) {
             to = pl.pos - Vec2{h.x[i], h.y[i]};
             dist = length(to);
-            const float magnet = kShardMagnetWu * rules_.magnetMultiplier *
+            // M5: Afterparty keeps the Surge's x2 for its player past the Surge.
+            const float surge = (afterparty(h.owner[i]) && !phrase_.surge()) ? 2.0f : 1.0f;
+            const float magnet = kShardMagnetWu * rules_.magnetMultiplier * surge *
                                  (1.0f + kMagnetPerStack * static_cast<float>(pl.loadout.mods[kMagnet]));
             home = h.homing[i] || dist < magnet;
         }
@@ -528,6 +550,7 @@ void World::collide() {
                 s.dead[k] = 1;
                 if (real) {
                     damageBoss(part, pair, s.damage[k], s.owner[k], Vec2{ax + dx * bt, ay + dy * bt}, Vec2{s.dx[k], s.dy[k]});
+                    if (s.mods[k] & kShotBlast) shotBlast(k, Vec2{ax + dx * bt, ay + dy * bt}, -1);  // M5: the blast round it
                 } else {
                     Event ev;
                     ev.type = EventType::Impact;
@@ -547,6 +570,8 @@ void World::collide() {
         if (best < 0) continue;
         if (!real) {
             s.dead[k] = 1;
+            // M5: Gravity Rounds tug at a teammate's shot's hit too (the host moves the bodies; gravityTug).
+            if (s.kind[k] == kShotPrimary && s.owner[k] < kMaxPlayers) gravityTug(s.owner[k], Vec2{ax + dx * bestT, ay + dy * bestT}, static_cast<u32>(best));
             Event ev;
             ev.type = EventType::Impact;
             ev.species = e.species[best];
@@ -577,6 +602,11 @@ void World::collide() {
             const i32 next = ricochetTarget(i, at);
             if (next >= 0) {
                 --s.bounces[k];
+                if (s.mods[k] & kShotFever) s.speed[k] = std::fmin(s.speed[k] * kFeverSpeedUp, 3.0f * kShotSpeed);  // M5: Ricochet Fever
+                if (owner < kMaxPlayers) {  // M5: the bounce's blip (its number in the shot's run)
+                    const u32 all = ricochetBounces(players_[owner].loadout.mods[kRicochet]) + ((s.mods[k] & kShotFever) ? kFeverBounces : 0u);
+                    emitFx(owner, kFxBounce, at, at, static_cast<u8>(all > s.bounces[k] ? all - s.bounces[k] : 1u), 0.0f, m1_);
+                }
                 const Vec2 nd = normalizeOr(Vec2{e.x[next], e.y[next]} - at, dir);
                 s.dx[k] = nd.x;
                 s.dy[k] = nd.y;
@@ -595,6 +625,7 @@ void World::collide() {
         hitEnemy(i, dmg, owner, at, dir);
         hitShotFlags_ = 0;
         if (crit) critBurst(i, owner, at, dmg * kCritBurstShare);
+        shotHitExtras(k, i, at, dir);  // M5: Fork, the blasts, Gravity Rounds, Burn
         if (refract) {
             s.flags[k] = static_cast<u8>(s.flags[k] | kShotRefracted);
             const float a = angleOf(dir), deg = kTau / 360.0f;
@@ -718,6 +749,7 @@ void World::hitPlayer(u32 p, Vec2 from) {
     ev.x2 = from.x;
     ev.y2 = from.y;
     emit(ev);
+    hitExtras(p);  // M5: Crescendo starts again, Last Light
 }
 
 void World::killEnemy(u32 i, u8 killer) {
@@ -751,7 +783,8 @@ void World::killEnemy(u32 i, u8 killer) {
         if (isLocal(killer)) {
             ++pl.kills;
             const float chain = static_cast<float>(pl.chain);
-            pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * chain * rules_.scoreMultiplier));
+            const float surge = (afterparty(killer) && !phrase_.surge()) ? 2.0f : 1.0f;  // M5: Afterparty's longer Surge
+            pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * chain * rules_.scoreMultiplier * surge));
         }
         // A Boost is due (GAME_DESIGN 6.1, director controlled): this kill drops it.
         if (director_.boostDue && spawner_.mode == Spawner::Mode::Slice) {
@@ -781,6 +814,10 @@ void World::dropShards(u32 i, u8 killer) {
         if (killer != 0xFF) dropCellFor(p, Vec2{e.x[i], e.y[i]}, e.rng[i]);
         u32 n = players_[p].boost(kMagnetStorm) ? 2u * s.shards : s.shards;
         if (e.state[i] == kFlee) n *= 2u;  // M5: the Alpha's pack, scattering, drops double Shards
+        // M5 part 3: Prospector, a 25% chance a stack of one Shard more for the killer.
+        if (killer == p && players_[p].loadout.mods[kProspector] &&
+            rand01(e.rng[i]) < kProspectorChance * static_cast<float>(players_[p].loadout.mods[kProspector]))
+            ++n;
         // Play test 1: while the Shard pool is crowded a death drops one, and none in its last 64 places (the
         // stronger build's bursts: a Drop's mega-wave, a boss's 200), so the pool never overflows.
         if (shards_.count > kShardsCrowded && n > 1) n = 1;
@@ -833,6 +870,9 @@ i32 World::spawnEnemyAs(u16 speciesIndex, Vec2 pos, float heading, double landTi
     e.flags[i] = 0;
     e.far[i] = 0;
     e.step[i] = 0;
+    e.burnUntil[i] = e.frozenUntil[i] = -1.0;  // M5
+    e.burnOwner[i] = 0xFF;
+    e.burnLevel[i] = 0;
     e.ox[i] = e.oy[i] = e.pred[i] = 0.0f;
     e.target[i] = 0xFF;
     // M4: a client's enemy carries the host's spawn number, so its own random stream is the host's.
@@ -929,6 +969,10 @@ void World::removeEnemyAt(u32 i) {
         e.flags[i] = e.flags[last];
         e.far[i] = e.far[last];
         e.step[i] = e.step[last];
+        e.burnUntil[i] = e.burnUntil[last];
+        e.frozenUntil[i] = e.frozenUntil[last];
+        e.burnOwner[i] = e.burnOwner[last];
+        e.burnLevel[i] = e.burnLevel[last];
         e.handle[i] = e.handle[last];
         e.serial[i] = e.serial[last];
         e.rng[i] = e.rng[last];
@@ -986,6 +1030,8 @@ void World::compact() {
         s.bounces[i] = s.bounces[l];
         s.kind[i] = s.kind[l];
         s.flags[i] = s.flags[l];
+        s.mods[i] = s.mods[l];
+        s.forks[i] = s.forks[l];
     }
     // Play test 1: each player's live shots, for the pool's per-player caps in the next tick.
     for (u32& n : shotsLive_) n = 0;
@@ -1110,6 +1156,8 @@ u64 World::hash() const {
     mix(e.flags, n);
     mix(e.far, n);
     mix(e.step, n);
+    mix(e.burnUntil, n * sizeof(double));
+    mix(e.frozenUntil, n * sizeof(double));
     mix(e.handle, n * sizeof(u32));
     mix(e.serial, n * sizeof(u32));
     mix(e.rng, n * sizeof(u32));
@@ -1186,6 +1234,24 @@ u64 World::hash() const {
         val(pl.burnCap);
     }
     val(director_.burnedTrack);
+    // M5 part 3: the new upgrades' state.
+    mix(s.mods, s.count);
+    mix(s.forks, s.count);
+    mix(s.kind, s.count);
+    mix(e.burnLevel, n);
+    for (u32 p = 0; p < kMaxPlayers; ++p) {
+        const PlayerState& pl = players_[p];
+        val(pl.loadout.fusions);
+        val(pl.volleys);
+        val(pl.cleanBars);
+        val(pl.collectorShards);
+        val(pl.decoyUntil);
+        val(pl.wellFrom);
+        val(pl.holeFrom);
+        for (const PlayerState::Mine& m : pl.mines) val(m.blowTick);
+        for (const PlayerState::Comet& c : pl.comets) val(c.start);
+        for (const PlayerState::Echo& ec : pl.echoes) val(ec.tick);
+    }
     {
         const CellPickups& c = cellPickups_;
         val(c.count);

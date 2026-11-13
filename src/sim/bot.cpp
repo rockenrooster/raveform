@@ -25,6 +25,22 @@ constexpr float kBossWorkFarWu = 750.0f;
 constexpr float kBossFodderWu = 140.0f;
 // M4: a downed teammate's beacon this near is worth going to (two frames wide).
 constexpr float kReviveReachWu = 1600.0f;
+// M5 part 3: how much the bot wants each upgrade (GAME_DESIGN 6.2-6.3 order) and Boost (6.4): the stream's strength and
+// what reaches a boss highest, cells next, the crowd's tools and the economy lower.
+constexpr i32 kBotUpgradeScore[kUpgradeCount] = {
+    // Split, Double-Time, Pierce, Ricochet, Fork, Seeker, Heavy Step, Accent, Echo, Wave, Overcharge, Rear Guard
+    10, 10, 6, 5, 6, 3, 5, 8, 8, 3, 9, 2,
+    // Arc, Burn, Shatter, Gravity Rounds, Extra Cell, Regen, Afterimage, Reserve, Shockstep, Aegis, Last Light, Slipstream
+    5, 5, 4, 3, 8, 7, 3, 4, 3, 5, 6, 3,
+    // Magnet, Prospector, Nova Stock, Encore, Lucky Break, Collector, On-Beat Crit, Syncopation, Bar Line, Crescendo,
+    // Kick Pulse, Afterparty
+    4, 2, 6, 2, 3, 3, 9, 7, 4, 7, 4, 3,
+    // Orbitals, Pulse Ring, Sentinel, Lancer, Minelayer, Storm Coil, Swarm, Singularity, Mirror, Comet, Sweeper, Flak
+    5, 6, 9, 9, 3, 6, 8, 4, 9, 5, 4, 5};
+constexpr i32 kBotBoostScore[kBoostCount] = {
+    // Prism, Hyper, Supernova, Colossus, Time Stretch, Freeze Frame, Halo, Magnet Storm, Black Hole, Chain Storm, Chorus,
+    // Beam, Ricochet Fever, Confetti, Fractal, Carousel
+    8, 9, 6, 7, 6, 6, 8, 2, 4, 5, 8, 7, 5, 3, 6, 4};
 }  // namespace
 
 void Bot::reset(u64 seed, Policy policy) {
@@ -390,7 +406,10 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
         i32 bestScore = -1;
         for (u32 k = 0; k < tr.orbs; ++k) {
             const u8 u = tr.upgrade[k];
-            const i32 score = (isRiff(u) && me.loadout.level(u) == 0) ? 3 : (upgradeInfo(u).weapon ? 2 : 1);
+            // M5 part 3: with the whole pool (36 Mods, 12 Riffs) the bot picks as a player who knows them: a Fusion's gold
+            // orb first, then by what each does for the fights (the stream's strength, a Riff that reaches the boss,
+            // cells), a new Riff a little above its level-ups. Boosts in the orbs by the same idea.
+            const i32 score = isFusionOrb(u) ? 100 : (isBoostOrb(u) ? kBotBoostScore[boostOfOrb(u)] : kBotUpgradeScore[u] + ((isRiff(u) && me.loadout.level(u) == 0) ? 2 : 0));
             if (score > bestScore) {
                 bestScore = score;
                 pick = k;

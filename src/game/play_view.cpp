@@ -6,6 +6,7 @@
 #include <initializer_list>
 
 #include "audio/band.h"
+#include "content/icons.h"
 #include "core/args.h"
 #include "core/half.h"
 #include "core/log.h"
@@ -202,6 +203,7 @@ void PlayView::setIcons(const IconSet* icons, const i32* upgradeIcons, const i32
     icons_ = icons;
     for (u32 k = 0; k < kUpgradeCount; ++k) upgradeIcon_[k] = upgradeIcons[k];
     for (u32 k = 0; k < kBoostCount; ++k) boostIcon_[k] = boostIcons[k];
+    for (u32 k = 0; k < kFusionCount; ++k) fusionIcon_[k] = icons ? icons->find(fusionInfo(static_cast<u8>(k)).icon) : -1;  // M5
 }
 
 void PlayView::resetEffects() {
@@ -210,6 +212,7 @@ void PlayView::resetEffects() {
     for (u32 i = 0; i < shatterCap_; ++i) shatter_[i].born = -100.0f;
     for (u32 i = 0; i < ringCap_; ++i) rings_[i].born = -100.0f;
     for (ShockRing& s : shock_) s.start = -100.0f;
+    for (Bolt& b : bolts_) b.born = -100.0f;  // M5
     sparkReqCount_ = 0;
     trailCount_ = 0;
     for (u32 p = 0; p < kMaxPlayers; ++p) {

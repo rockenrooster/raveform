@@ -169,11 +169,12 @@ void World::updateEnemies(float dt) {
             ev.age = tickAgeOf(e.until[i]);
             emit(ev);
         }
+        if (e.frozenUntil[i] > m1_) continue;  // M5: Freeze Frame holds it where it is (no motion, no fire)
         const Species& s = species_->get(e.species[i]);
         const FamilyData& fd = species_->family(s.family);
         const float x = e.x[i], y = e.y[i];
         const i32 tp = targetOf(i);  // solo: the nearest player (M4 co-op: by distance, with some stickiness)
-        const Vec2 target = tp >= 0 ? players_[tp].pos : Vec2{x, y};
+        const Vec2 target = tp >= 0 ? chaseTarget(static_cast<u32>(tp)) : Vec2{x, y};  // M5: Afterimage's decoy
         const Vec2 to = target - Vec2{x, y};
         const bool engaged = engagedBy(x, y);
         e.flags[i] = static_cast<u8>(engaged ? (e.flags[i] | kFlagEngaged) : (e.flags[i] & ~kFlagEngaged));

@@ -630,15 +630,16 @@ void testTrioRules() {
         u8 since = 0;
         bool riffSeen = false;
         for (u32 trio = 0; trio < 3; ++trio) {
-            u8 o[3];
+            u8 o[kMaxOrbs];
             const u32 n = drawTrio(l, since, rng, o);
             CHECK(n == 3);
             CHECK(o[0] != o[1] && o[1] != o[2] && o[0] != o[2]);
             CHECK(upgradeInfo(o[0]).weapon || upgradeInfo(o[1]).weapon || upgradeInfo(o[2]).weapon);
             for (u32 k = 0; k < 3; ++k) riffSeen = riffSeen || (isRiff(o[k]) && l.level(o[k]) == 0);
-            // Take a Mod that is not a Riff when there is one (so the guarantee is what brings the Riff).
+            // Take a Mod that is not a Riff when there is one (so the guarantee is what brings the Riff; M5: not Lucky
+            // Break, which would make it four orbs).
             for (u32 k = 0; k < 3; ++k)
-                if (!isRiff(o[k])) {
+                if (!isRiff(o[k]) && o[k] != kLuckyBreak) {
                     ++l.mods[o[k]];
                     break;
                 }
@@ -651,15 +652,35 @@ void testTrioRules() {
     for (u8& r : full.riffs) r = kRiffMaxLevel;
     full.mods[kExtraCell] = 0;
     full.mods[kMagnet] = 0;
-    u8 since = 0, o[3];
-    CHECK(drawTrio(full, since, rng, o) == 3);
-    CHECK((o[0] == kExtraCell || o[0] == kMagnet) && (o[1] == kExtraCell || o[1] == kMagnet) && isBoostOrb(o[2]));
+    full.fusions = 0xFF;  // M5: every Fusion taken (no gold orb); Lucky Break at its cap: five orbs
+    u8 since = 0, o[kMaxOrbs];
+    CHECK(drawTrio(full, since, rng, o) == 5);
+    CHECK((o[0] == kExtraCell || o[0] == kMagnet) && (o[1] == kExtraCell || o[1] == kMagnet) && isBoostOrb(o[2]) && isBoostOrb(o[3]) &&
+          isBoostOrb(o[4]));
     // Every Mod and Riff at its cap: three different Boosts.
     full.mods[kExtraCell] = upgradeInfo(kExtraCell).cap;
     full.mods[kMagnet] = upgradeInfo(kMagnet).cap;
     for (u32 k = 0; k < 50; ++k) {
-        CHECK(drawTrio(full, since, rng, o) == 3);
-        CHECK(isBoostOrb(o[0]) && isBoostOrb(o[1]) && isBoostOrb(o[2]) && o[0] != o[1] && o[1] != o[2] && o[0] != o[2]);
+        CHECK(drawTrio(full, since, rng, o) == 5);
+        bool distinct = true;
+        for (u32 a = 0; a < 5; ++a) {
+            distinct = distinct && isBoostOrb(o[a]);
+            for (u32 b = a + 1; b < 5; ++b) distinct = distinct && o[a] != o[b];
+        }
+        CHECK(distinct);
+    }
+    // M5 (GAME_DESIGN 6.5): both ingredients at their caps bring the Fusion as one more (gold) orb, once; taken, never again.
+    {
+        Loadout f;
+        f.mods[kSplit] = upgradeInfo(kSplit).cap;
+        f.mods[kWave] = upgradeInfo(kWave).cap;
+        u8 s = 0, fo[kMaxOrbs];
+        const u32 fn = drawTrio(f, s, rng, fo);
+        CHECK(fn == 4 && fo[3] == kFusionOrb + kHelixArray);
+        f.fusions = static_cast<u8>(1u << kHelixArray);
+        CHECK(drawTrio(f, s, rng, fo) == 3);
+        f.mods[kLuckyBreak] = 2;
+        CHECK(drawTrio(f, s, rng, fo) == 5);
     }
     // A capped Mod and a maxed Riff are never offered.
     Loadout some;
@@ -2089,6 +2110,208 @@ void testFamiliesM5() {
     }
 }
 
+// ---------------------------------------------------------------------------------------------- M5 part 3: upgrades
+
+u32 countFx(const World& w, u8 fx) {
+    u32 n = 0;
+    for (u32 i = 0; i < w.eventCount(); ++i) n += (w.events()[i].type == EventType::Upgrade && w.events()[i].b == fx) ? 1u : 0u;
+    return n;
+}
+u32 countShots(const World& w, u8 kind, u8 mod = 0) {
+    u32 n = 0;
+    for (u32 i = 0; i < w.shots().count; ++i)
+        if (!w.shots().dead[i] && w.shots().kind[i] == kind && (!mod || (w.shots().mods[i] & mod))) ++n;
+    return n;
+}
+
+void testUpgradesM5() {
+    g_test = "upgrades (M5 part 3)";
+    const double beat = kTicksPerBeat, bar = kTicksPerBar;
+    const u16 target = SpeciesTable::index(Family::Drifter, 1, kVariantA);
+    {
+        // Nova Stock: +1 capacity and a Nova; Encore: a Boost one bar longer; Collector: 250 Shards spawn a Boost.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->grantUpgrade(0, kNovaStock);
+        CHECK(w->player(0).novaCap == kNovaCapacity + 1 && w->player(0).novas == kStartNovas + 1);
+        w->grantUpgrade(0, kEncore);
+        w->grantBoost(0, kHyper);
+        const ActiveBoost& b = w->player(0).boosts[0];
+        CHECK(b.type == kHyper && std::fabs((b.until - b.from) - 5.0 * bar) < 1e-6);
+        w->grantUpgrade(0, kCollector);
+        w->collectShardsNow(0, 249);
+        const u32 before = w->player(0).boostsTaken;
+        w->collectShardsNow(0, 1);
+        CHECK(w->player(0).boostsTaken == before + 1);
+        delete w;
+    }
+    {
+        // Accent: the volley on beat 1 is a lance along the aim: an enemy 600 wu away dies at once (3 x the shot).
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->grantUpgrade(0, kAccent);
+        runShip(*w, music, bar - 40.0, Vec2{});
+        const i32 i = w->spawnEnemy(target, Vec2{600.0f, 0.0f}, 0.0f, music);
+        w->setEnemyHp(static_cast<u32>(i), 2.5f);
+        runShip(*w, music, bar - 2.0, Vec2{});
+        u32 lances = 0;
+        bool dead = false;
+        while (music < bar + 4.0) {
+            stepWorld(*w, music, Vec2{}, 1);
+            lances += countFx(*w, kFxLance);
+            dead = dead || countEvents(*w, EventType::Kill) > 0;
+        }
+        CHECK_MSG(lances == 1 && dead, "lances %u, killed %d", lances, dead ? 1 : 0);
+        delete w;
+    }
+    {
+        // Heavy Step: every fourth volley's middle lane is a slow orb; Echo: each volley again a beat later, as ghosts.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->grantUpgrade(0, kHeavyStep);
+        w->grantUpgrade(0, kEcho);
+        const u32 v0 = w->player(0).volleys;
+        u32 orbs = 0;
+        while (w->player(0).volleys < v0 + 8) {
+            stepWorld(*w, music, Vec2{}, 1);
+            orbs = countShots(*w, kShotOrb) > orbs ? countShots(*w, kShotOrb) : orbs;
+        }
+        CHECK_MSG(orbs == 2, "orbs %u in 8 volleys", orbs);
+        u32 echoes = 0, ghosts = 0;
+        const double stop = music;
+        while (music < stop + 1.5 * beat) {
+            stepWorld(*w, music, Vec2{}, 0);
+            echoes += countFx(*w, kFxEcho);
+            ghosts = countShots(*w, kShotPrimary, kShotGhost) > ghosts ? countShots(*w, kShotPrimary, kShotGhost) : ghosts;
+        }
+        CHECK_MSG(echoes >= 4 && ghosts >= 1, "echo volleys %u, ghosts %u", echoes, ghosts);
+        delete w;
+    }
+    {
+        // Fork: the first hit splits a shot into two; Burn: the hit sets it alight, and the fire hurts on every beat.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->grantUpgrade(0, kFork);
+        w->grantUpgrade(0, kBurn);
+        const i32 i = w->spawnEnemy(target, Vec2{200.0f, 0.0f}, 0.0f, music);
+        w->setEnemyHp(static_cast<u32>(i), 1000.0f);
+        u32 forks = 0;
+        for (u32 k = 0; k < 40 && !w->burning(static_cast<u32>(i)); ++k) {
+            stepWorld(*w, music, Vec2{-200.0f, 0.0f}, 1);
+            forks += countFx(*w, kFxFork);
+        }
+        CHECK(forks >= 1 && w->burning(static_cast<u32>(i)));
+        runShip(*w, music, music + 8.0, Vec2{-200.0f, 0.0f});
+        const float hp0 = w->enemies().hp[i];
+        runShip(*w, music, std::ceil(music / beat) * beat + 1.0, Vec2{-2000.0f, 0.0f});
+        CHECK_MSG(w->enemies().hp[i] <= hp0 - tuning::kBurnDamage + 1e-3f, "hp %.2f -> %.2f", hp0, w->enemies().hp[i]);
+        delete w;
+    }
+    {
+        // Freeze Frame: the frame's bodies stop and die in one hit; Time Stretch: the world at half speed.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 i = w->spawnEnemy(target, Vec2{300.0f, 100.0f}, 0.0f, music);
+        w->setEnemyHp(static_cast<u32>(i), 1000.0f);
+        runShip(*w, music, music + beat, Vec2{});
+        w->grantBoost(0, kFreezeFrame);
+        stepWorld(*w, music, Vec2{});
+        const Vec2 at{w->enemies().x[i], w->enemies().y[i]};
+        runShip(*w, music, music + beat, Vec2{});
+        CHECK(w->frozen(static_cast<u32>(i)) && w->enemies().x[i] == at.x && w->enemies().y[i] == at.y);
+        bool killed = false;
+        for (u32 k = 0; k < 60 && !killed; ++k) {
+            stepWorld(*w, music, Vec2{0.0f, 100.0f}, 1);
+            killed = countEvents(*w, EventType::Kill) > 0;
+        }
+        CHECK(killed);
+        w->grantBoost(0, kTimeStretch);
+        stepWorld(*w, music, Vec2{});
+        CHECK(w->worldStretch() == tuning::kTimeStretchSpeed);
+        delete w;
+    }
+    {
+        // Black Hole: the next Nova is a singularity that pulls for three beats, then blows on a beat.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 i = w->spawnEnemy(target, Vec2{500.0f, 0.0f}, 0.0f, music);
+        w->setEnemyHp(static_cast<u32>(i), 1e6f);
+        runShip(*w, music, music + beat, Vec2{});
+        w->grantBoost(0, kBlackHole);
+        const double press = music;
+        stepWorld(*w, music, Vec2{}, 0, true);
+        const PlayerState& pl = w->player(0);
+        CHECK(pl.holeFrom >= 0.0 && pl.novaBlastTick >= press + 3.0 * beat - 1e-6 && pl.novaBlastTick < press + 4.0 * beat + 1e-6 && !pl.boost(kBlackHole));
+        const float d0 = length(Vec2{w->enemies().x[i], w->enemies().y[i]});
+        runShip(*w, music, music + beat, Vec2{});
+        CHECK_MSG(length(Vec2{w->enemies().x[i], w->enemies().y[i]}) < d0 - 100.0f, "pulled from %.0f to %.0f", d0,
+                  length(Vec2{w->enemies().x[i], w->enemies().y[i]}));
+        u32 blows = 0;
+        while (music < press + 5.0 * beat) {
+            stepWorld(*w, music, Vec2{});
+            blows += countFx(*w, kFxHoleBlow);
+        }
+        CHECK(blows == 1 && pl.holeFrom < 0.0);
+        delete w;
+    }
+    {
+        // Minelayer: a cluster on every bar line (two at level 2), all blowing on the next one; Crescendo: +5% a clean bar.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->grantUpgrade(0, kMinelayer);
+        w->grantUpgrade(0, kMinelayer);
+        w->grantUpgrade(0, kCrescendo);
+        u32 drops = 0, blows = 0;
+        while (music < 2.0 * bar + 2.0) {
+            stepWorld(*w, music, Vec2{});
+            drops += countFx(*w, kFxMineDrop);
+            blows += countFx(*w, kFxMineBlow);
+        }
+        CHECK_MSG(drops == 4 && blows == 2, "drops %u, blows %u", drops, blows);
+        CHECK(std::fabs(w->crescendo(0) - (1.0f + 2.0f * tuning::kCrescendoStep)) < 1e-4f);
+        w->hitNextTick(0);
+        stepWorld(*w, music, Vec2{});
+        CHECK(w->crescendo(0) == 1.0f);
+        delete w;
+    }
+    {
+        // The caps hold (GAME_DESIGN 6.6, TECH_SPEC 7.1): Split 7, Double-Time 2, Echo 2, Fork 2, Quartet's three wingmen,
+        // Rear Guard 2, Chorus and Fractal into a wall of enemies for eight bars: no shot over the player's 1,024.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        for (u8 u : {kSplit, kSplit, kSplit, kDoubleTime, kDoubleTime, kEcho, kEcho, kFork, kFork, kRearGuard, kRearGuard, kShatter, kShatter, kShatter})
+            w->grantUpgrade(0, u);
+        for (u32 k = 0; k < kRiffMaxLevel; ++k) {
+            w->grantUpgrade(0, kMirror);
+            w->grantUpgrade(0, kSwarm);
+            w->grantUpgrade(0, kFlak);
+        }
+        w->playerMut(0).loadout.fusions = static_cast<u8>(1u << kQuartet);
+        w->grantBoost(0, kChorus);
+        w->grantBoost(0, kFractal);
+        for (u32 k = 0; k < 120; ++k) {
+            const i32 i = w->spawnEnemy(target, Vec2{300.0f + 10.0f * static_cast<float>(k % 12), -300.0f + 50.0f * static_cast<float>(k / 12)}, 0.0f, music);
+            if (i >= 0) w->setEnemyHp(static_cast<u32>(i), 1e6f);
+        }
+        u32 most = 0;
+        while (music < 8.0 * bar) {
+            stepWorld(*w, music, Vec2{}, 1);
+            most = w->shotsLive(0) > most ? w->shotsLive(0) : most;
+        }
+        CHECK_MSG(w->counters().shotsCapped == 0 && w->counters().shotsDropped == 0 && most <= 1024, "most %u, capped %u, dropped %u", most,
+                  w->counters().shotsCapped, w->counters().shotsDropped);
+        delete w;
+    }
+}
+
 int main() {
     g_species = new (std::nothrow) SpeciesTable;
     if (!g_species || !g_species->load()) {
@@ -2117,6 +2340,7 @@ int main() {
     testChoir();
     testMinibosses();
     testFamiliesM5();
+    testUpgradesM5();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;
     return g_failures;

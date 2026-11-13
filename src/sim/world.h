@@ -77,10 +77,11 @@ struct NetEnemyState {
     u32 rng = 0;
     u8 state = 0, flags = 0, target = 0xFF, far = 0;
     u8 step = 0;  // M5: a family's own counter (a Blink's hops)
+    bool frozen = false;  // M5 part 3: Freeze Frame holds it on the host (the clients freeze by the host's word)
 };
 // What a player's own device decided, applied to that player in the other worlds (reliable).
 enum NetPlayerEventKind : u8 {
-    kPeNova, kPeDash, kPeHit, kPeDown, kPeRevive, kPeTrioOpen, kPeTrioTake, kPeBoostTake, kPeHalo, kPeLeave, kPeCount
+    kPeNova, kPeDash, kPeHit, kPeDown, kPeRevive, kPeTrioOpen, kPeTrioTake, kPeBoostTake, kPeHalo, kPeLeave, kPeWell, kPeCount
 };
 // One operation from the network, applied inside the next tick (so its events land in the tick's buffer
 // and the view and the band see them like any other). `run`: the run it belongs to (World::runId());
@@ -93,7 +94,7 @@ struct NetOp {
     Kind kind = Spawn;
     u8 player = 0;              // claimant, event owner
     u8 a = 0, b = 0, c = 0;     // death kind / killer, boss part / pair, boost type, player event kind, ...
-    u8 opts[3] = {};            // a Trio's upgrades
+    u8 opts[kMaxOrbs] = {};     // a Trio's upgrades (M5: up to six orbs)
     u16 run = 0;
     u16 species = 0, group = 0;
     u32 serial = 0, u = 0;      // enemy id; seed (low) / changeBar / ...
@@ -200,7 +201,45 @@ enum class EventType : u8 {
     // mini-boss that warped out at the end of its hold (a = BossKind; x, y).
     BossCue,
     BossGone,
+    // M5 part 3: what the new upgrades do that is seen or heard (a = player, b = UpgradeFx, c = a count or level; x, y and
+    // x2, y2 as each notes; f a radius or a value).
+    Upgrade,
 };
+enum UpgradeFx : u8 {
+    kFxFork,          // a shot forked: x, y
+    kFxBlast,         // an explosion (Heavy Step's orb, Supernova, a Carousel bomb, Flak at level 5): x, y; f = radius; c = 1 Heavy Step,
+                      // 2 Supernova, 3 Carousel, 4 Flak
+    kFxArc,           // a lightning jump (Arc, Tesla Bloom, Chain Storm, Storm Coil): x, y -> x2, y2; c = the jump's number (1..);
+                      // f = 0 Arc, 1 Tesla Bloom, 2 Chain Storm, 3 Storm Coil
+    kFxShatter,       // Shatter's shrapnel: x, y; c = pieces
+    kFxGravity,       // Gravity Rounds' tug: x, y; f = reach
+    kFxDecoy,         // Afterimage: a decoy at x, y until tick
+    kFxShockstep,     // x, y; f = radius; c = 1 Perfect
+    kFxAegis,         // the arc stopped a bullet: x, y
+    kFxLastLight,     // the free mini-Nova: x, y; f = radius
+    kFxCollector,     // a Boost spawned: c = the Boost
+    kFxBarLine,       // x, y; c = rays
+    kFxKick,          // Kick Pulse: x, y; f = radius
+    kFxLance,         // Accent / Lancer / Downbeat Cannon: x, y -> x2, y2; c = LanceKind
+    kFxMineDrop,      // x, y
+    kFxMineBlow,      // x, y; f = radius
+    kFxWell,          // Singularity placed: x, y; tick = it blows
+    kFxWellBlow,      // x, y; f = radius
+    kFxSwarm,         // a missile left: x, y
+    kFxComet,         // a disc thrown: x, y; c = count
+    kFxFlak,          // a burst: x, y; c = pellets
+    kFxRam,           // Colossus rammed: x, y
+    kFxFreeze,        // Freeze Frame froze c (x 1) enemies: x, y
+    kFxShatterFrozen, // a frozen enemy shattered: x, y
+    kFxHole,          // Black Hole's Nova: x, y; tick = it blows
+    kFxHoleBlow,      // x, y; f = radius
+    kFxConfetti,      // a kill burst into sparks: x, y
+    kFxCarousel,      // a bomb launched: x, y
+    kFxBurnSpread,    // a burning death lit its neighbours: x, y; c = how many
+    kFxEcho,          // a ghost volley: x, y
+    kFxBounce,        // Ricochet (Ricochet Fever): a shot bounced: x, y; c = the bounce's number
+};
+enum LanceKind : u8 { kLanceAccent = 0, kLanceLancer, kLanceCannon, kLanceBarLine };
 // M5: BossEnter carries a = the BossKind; BossPair c = the BossKind (a = the part: a pair, a segment, a Voice, a Prince);
 // BossDeath a = the BossKind, b = the killer, tick = the bar line the Track (or the mini-boss's Drop) ends on.
 // Impact events on the boss carry this species, with c = 1 lens plate, 2 arm, 3 core. Play test 2: every Impact carries
@@ -260,6 +299,9 @@ struct Enemies {
     u8 state[kCap], flags[kCap];
     u8 far[kCap];                                // bars in a row outside every frame x the crowd's stray scale
     u8 step[kCap];                               // M5: a family's own counter (a Blink's hops round its star)
+    double burnUntil[kCap];                      // M5 (Burn): ignited until then (musical ticks; < 0 never)
+    double frozenUntil[kCap];                    // M5 (Freeze Frame): frozen until then
+    u8 burnOwner[kCap], burnLevel[kCap];         // whose fire, its Burn stacks
     u32 handle[kCap];                            // generation << 16 | slot
     u32 serial[kCap];                            // spawn number (seeds the enemy's own random stream)
     u32 rng[kCap];
@@ -278,7 +320,7 @@ struct Bullets {
     u8 dead[kCap];
 };
 
-enum ShotKind : u8 { kShotPrimary = 0, kShotSentinel, kShotMini };
+enum ShotKind : u8 { kShotPrimary = 0, kShotSentinel, kShotMini, kShotOrb, kShotMissile, kShotPellet, kShotBomb };  // M5: Heavy Step, Swarm, Flak, Carousel
 
 struct Shots {
     static constexpr u32 kCap = kMaxShots;  // 1,024 per player in one pool (M4)
@@ -289,7 +331,11 @@ struct Shots {
     u8 owner[kCap], dead[kCap];
     u8 pierce[kCap], bounces[kCap];  // Pierce and Ricochet left
     u8 kind[kCap], flags[kCap];      // ShotKind; ShotFlag
+    u8 mods[kCap];                   // M5: ShotMod bits (what the owner's Mods and Boosts do to it in flight)
+    u8 forks[kCap];                  // M5: forks left on a hit (Fork, Fractal)
 };
+// M5 part 3: what a shot does in flight and on a hit (sim/world_upgrades_m5.cpp).
+enum ShotMod : u8 { kShotSeek = 1, kShotWave = 2, kShotWaveNeg = 4, kShotGhost = 8, kShotBlast = 16, kShotFever = 32, kShotHelix = 64 };
 // kShotRefracted (play test 1): a Prism shot refracts on its first hit only.
 enum ShotFlag : u8 { kShotCrit = 1, kShotPrism = 2, kShotLaneMask = 7u << 2, kShotRefracted = 32 };
 // M3 stage C2: a Prism shot's lane in its fan (-2..2, GAME_DESIGN 7: the rainbow), kept in flags bits 2-4 (0: none);
@@ -337,10 +383,10 @@ struct TrioState {
     u16 levelShown = 0;    // a level-up Trio's level (LEVEL n at its centre for the first bar)
     u8 breakWaiting = 0;   // Break Trios (1, or 2 after a boss) waiting for the open level-up Trio to close
     u8 orbs = 0;
-    u8 upgrade[4] = {kNoUpgrade, kNoUpgrade, kNoUpgrade, kNoUpgrade};
-    u8 level[4] = {};      // the stacks or Riff level the pick gives
+    u8 upgrade[kMaxOrbs] = {kNoUpgrade, kNoUpgrade, kNoUpgrade, kNoUpgrade, kNoUpgrade, kNoUpgrade};  // M5: up to six orbs
+    u8 level[kMaxOrbs] = {};  // the stacks or Riff level the pick gives
     Vec2 centre;
-    Vec2 orbPos[4];
+    Vec2 orbPos[kMaxOrbs];
     double openTick = 0.0, closeTick = 0.0;  // the clock (musical ticks)
     // Play test 1: locked for the Break's first two beats (until openTick + kTrioLockBeats); then the orb the ship
     // stays inside fills over kTrioHoldBeats (musical ticks so far; leaving empties it at once).
@@ -354,6 +400,9 @@ struct TrioState {
     double lastTakenTick = -1e9;
     Vec2 lastTakenAt;
 };
+
+// Where orb k of a Trio of n sits round its centre (world_upgrades.cpp).
+Vec2 trioOrbPlace(Vec2 centre, u32 k, u32 n);
 
 struct Shards {
     static constexpr u32 kCap = kMaxShards;
@@ -412,7 +461,57 @@ struct PlayerState {
     u8 regenBars = 0;         // bars the missing cell has been growing back (Regen)
     u8 burnCap = kMaxCells;   // GAME_DESIGN 8: the most cells the halo can hold once the loop has burnt it down
     u32 cellsTaken = 0, cellsRegrown = 0, levelTrios = 0;
-    bool invulnerable() const { return invulS > 0.0f || novaInvulS > 0.0f || dashing; }
+    // M5 part 3 (sim/world_upgrades_m5.cpp): what the new Mods, Riffs and Boosts keep.
+    struct Echo {
+        double tick = -1.0;  // when the ghost volley fires (< 0: free)
+        float angle = 0.0f, damage = 0.0f;
+        u8 lanes = 1;
+    };
+    static constexpr u32 kEchoes = 32;
+    Echo echoes[kEchoes];
+    u32 volleys = 0;             // volleys fired (Heavy Step's every fourth)
+    Vec2 decoyAt;                // Afterimage
+    double decoyUntil = -1.0;
+    u32 lastLightCycle = 0xFFFFFFFFu;  // Last Light: the cycle it fired in
+    u16 cleanBars = 0;           // Crescendo: bars in a row without a hit
+    u32 collectorShards = 0;     // Collector
+    struct Mine {
+        Vec2 at;
+        double blowTick = -1.0;  // < 0: free
+    };
+    static constexpr u32 kMines = 16;
+    Mine mines[kMines];
+    struct Comet {
+        Vec2 from, dir;
+        double start = -1.0;     // < 0: free; out over a beat, back over a beat
+        float size = 1.0f;
+    };
+    static constexpr u32 kComets = 3;
+    Comet comets[kComets];
+    Vec2 wellAt;                 // Singularity: placed on wellFrom, pulls until wellBlow
+    double wellFrom = -1.0, wellBlow = -1.0;
+    Vec2 holeAt;                 // Black Hole: the Nova's singularity, pulling from holeFrom to holeBlow
+    double holeFrom = -1.0, holeBlow = -1.0;
+    // The lines the view draws and Standing Wave keeps lethal: Accent's lances, the Lancer's and Downbeat Cannon's beams,
+    // Bar Line's rays (from, dir, length, half width), newest over the oldest.
+    struct Lance {
+        Vec2 from, dir;
+        double tick = -1e9;
+        float length = 0.0f, half = 0.0f;
+        u8 kind = 0;             // LanceKind
+        bool standing = false;   // Standing Wave: it stays lethal for a bar
+    };
+    static constexpr u32 kLances = 16;
+    Lance lances[kLances];
+    u8 lanceNext = 0;
+    double beamTick = -1e9;      // Beam: the last volley it fired
+    u8 beamLanes = 1;
+    Vec2 shockAt;                // Shockstep's ring: where, when, how far
+    double shockTick = -1e9;
+    float shockR = 0.0f, shockDamage = 0.0f;  // (damage > 0: its ring hurts this tick, once the grid is built)
+    double kickTick = -1e9;      // the last Kick Pulse ring
+    float kickR = 0.0f;
+    bool invulnerable() const { return invulS > 0.0f || novaInvulS > 0.0f || dashing || boost(kColossus); }
     bool boost(u8 b) const {
         for (const ActiveBoost& a : boosts)
             if (a.type == b) return true;
@@ -687,6 +786,20 @@ public:
     void setEnemyB(u32 i, float b) { enemies_.b[i] = b; }
     void killEnemy(u32 i, u8 killer);
 
+    // M5 part 3 (world_upgrades_m5.cpp): what the view, the band and the bots read of the new upgrades.
+    float worldStretch() const { return stretch_; }  // Time Stretch: the enemies' and their bullets' speed (1 or 0.5)
+    bool frozen(u32 i) const { return enemies_.frozenUntil[i] > m1_; }
+    bool burning(u32 i) const { return enemies_.burnUntil[i] > m1_; }
+    // Mirror's wingman (Quartet's three), Chorus's two ghosts: where each flies now, the way it fires and its share of the
+    // damage. Returns how many (<= cap).
+    u32 wingmen(u32 p, Vec2* pos, Vec2* dir, float* share, u32 cap) const;
+    float aegisAngle(u32 p) const;                         // the Aegis arc's centre now
+    float sweeperAngle(u32 p) const;                       // the Sweeper's arm 0 now (arm 1 opposite)
+    bool cometAt(u32 p, u32 k, Vec2& at, float& radius) const;
+    Vec2 carouselBomb(u32 p, u32 k) const;                 // Carousel's six bombs round the ship
+    float crescendo(u32 p) const;                          // the damage multiplier its clean bars give now
+    bool afterparty(u32 p) const;                          // Afterparty: its Surge goes on (faster) now
+
     u64 hash() const;
     bool finite() const;  // no NaN or infinity in any position or velocity
 
@@ -759,6 +872,42 @@ private:
     void critBurst(u32 hit, u8 owner, Vec2 at, float damage);
     i32 ricochetTarget(u32 hit, Vec2 at) const;
     void orbitalBullets(const PlayerState& pl, u32 n);
+    // world_upgrades_m5.cpp (M5 part 3): the rest of the Mods, Riffs, Boosts and the Fusions.
+    Vec2 chaseTarget(u32 p) const;  // where the enemies chasing player p go (Afterimage's decoy)
+    void emitFx(u32 p, u8 fx, Vec2 at, Vec2 to, u8 c, float f, double tick);
+    void addLance(u32 p, Vec2 from, Vec2 dir, float len, float half, u8 kind, bool standing, double tick);
+    i32 nearestEnemy(Vec2 at, float r, i32 skip) const;
+    u32 nearestEnemies(Vec2 at, float r, u32* out, u32 cap) const;
+    void novaKill(u32 i, u32 p);
+    void areaHit(u8 owner, Vec2 at, float r, float dmg, i32 skip, bool boss);
+    u32 lineHit(u8 owner, Vec2 from, Vec2 dir, float len, float half, float dmg);
+    void arcFrom(u32 i, u8 owner, u32 jumps, float dmg, u8 style);
+    void pullBodies(Vec2 at, float r, float speed, float dt);
+    float shotDamage(u32 p, double stepTick, u8& flags, u8& pierceAdd) const;
+    void tagShot(u32 p, u8 extraMods, u8 wave);
+    u32 volley(u32 p, Vec2 origin, float base, float advanceS, float damage, u8 flags, u8 pierce, u8 bounces, u32 lanes, bool prism,
+               u32 thin, i64 step, u8 middle, u8 extraMods);
+    bool accentLance(u32 p, double stepTick, Vec2 muzzle, Vec2 d, float damage);
+    void volleyExtras(u32 p, float advanceS, double stepTick, float base, float damage, u8 flags, u8 pierce, u8 bounces, u32 lanes,
+                      u32 thin, i64 step);
+    void beamVolley(u32 p, Vec2 muzzle, Vec2 d, float damage, u32 lanes, double stepTick);
+    void fireEchoes();
+    void steerShots(float dt);
+    Vec2 waveStep(u32 i, float dt) const;
+    float blastRadius(u32 k, float& dmg) const;
+    void shotBlast(u32 k, Vec2 at, i32 skip);
+    void shotHitExtras(u32 k, u32 i, Vec2 at, Vec2 dir);
+    void killExtras(u32 i, u8 owner);
+    void gravityTug(u8 owner, Vec2 at, u32 skip, bool grid = true);
+    void freezeShatter(u32 i, u8 owner);
+    void dashExtras(u32 p, Vec2 from, Vec2 to, bool perfect);
+    void hitExtras(u32 p);
+    bool blackHoleNova(u32 p, double blowTick = -1.0, const Vec2* at = nullptr);
+    void freezeView(u32 p, double until);
+    void collectorShard(u32 p);
+    void aegisBullets();
+    void updateUpgradesM5(float dt);
+    void updateRiffsM5(float dt);
     // world_boss.cpp
     void updateBoss(float dt);
     void bossFire(double stepTick);
@@ -880,6 +1029,13 @@ private:
     PenState pen_;
     u32 hiveIdx_[192] = {};  // the Hive's darts by spawn number (hiveReslot's scratch)
     u8 hitShotFlags_ = 0;  // play test 2: the flags of the shot whose hit hitEnemy() is applying (its Impact's Prism lane)
+    // M5 part 3: the shot spawnShotRaw() last made (-1: none), Time Stretch's speed this tick, kill extras' depth (an Arc's
+    // kill may Shatter, not Arc on forever), Shard Halo's fling this tick (a bit a player), the upgrade events this tick.
+    i32 lastShot_ = -1;
+    float stretch_ = 1.0f;
+    u8 extrasDepth_ = 0;
+    u8 flungMask_ = 0;
+    u32 fxThisTick_ = 0;
     // The loop's ramps this tick (GAME_DESIGN 8; 1 in the first pass): enemy speed, enemy bullet speed, shooters' counts.
     float loopSpeed_ = 1.0f, loopBulletSpeed_ = 1.0f, loopShooters_ = 1.0f;
     u32 shooterCount(u32 base, u32& rngState) const;  // a volley's bullets with the loop's ramp, inside the pool

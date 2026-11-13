@@ -145,6 +145,26 @@ void Play::holdFight() {
     w.bossRefill(share);
 }
 
+void Play::maxLoadout() {
+    // The upgrades' worst case for the measured frame (M5 part 3): every Mod at its cap, the four Riffs that throw or
+    // look the most (Swarm, Flak, Storm Coil, Sweeper) at level 5, every Fusion they make, Chorus and Fractal always on.
+    World& w = *world_;
+    const u32 p = seat_;
+    if (maxLoadoutRun_ != w.runId() || w.player(p).loadout.taken == 0) {
+        maxLoadoutRun_ = w.runId();
+        for (u8 u = 0; u < kModCount; ++u)
+            while (w.player(p).loadout.canTake(u)) w.grantUpgrade(p, u);
+        for (u8 r : {kSwarm, kFlak, kStormCoil, kSweeper})
+            while (w.player(p).loadout.canTake(r)) w.grantUpgrade(p, r);
+        u8 f = 0;
+        for (u8 k = 0; k < kFusionCount; ++k)
+            if (w.player(p).loadout.fusionDue(k)) f = static_cast<u8>(f | (1u << k));
+        w.playerMut(p).loadout.fusions = f;
+    }
+    for (u8 b : {kChorus, kFractal})
+        if (!w.player(p).boost(b)) w.grantBoost(p, b);
+}
+
 bool Play::fightReady() {
     const BossState& b = world_->boss();
     if (!b.active || b.dying || b.kind != fightKind_ || music1_ < b.fightTick) return false;
@@ -188,11 +208,65 @@ const FamPic kFamPics[] = {
 };
 constexpr u32 kFamPicCount = sizeof(kFamPics) / sizeof(kFamPics[0]);
 constexpr u8 kFamBase = 100;  // m5Pic_ for a FamPic: kFamBase + its index
+
+// ---- M5 part 3: every new upgrade on screen (GAME_DESIGN 6.6: visible within a bar of the pick). A still ship (the
+// spawner off, hits costing nothing) is given its upgrades after the Track card, a group lands round it, and the picture
+// is taken at its moment: a tick, or the first upgrade event of a kind after it.
+enum UpLayout : u8 { kUpAhead, kUpRing, kUpCrowd };
+enum UpAction : u8 { kUpNone, kUpDash, kUpNova };
+struct UpPic {
+    const char* name;      // m5_<name>
+    u8 ups[16];            // upgrades in order (a Riff once a level; kNoUpgrade ends the list)
+    u8 boosts[2];          // kNoBoost: none
+    u8 fusions;            // bits
+    u8 count;              // enemies in the group
+    u8 layout;             // UpLayout
+    float hp;              // their health (high: they live through the scene)
+    bool fire;
+    u8 action;             // UpAction at tick 300
+    u8 waitFx, waitC;      // capture on this upgrade event after tick 300 (0xFF: at tick `at`), its c (0xFF: any)
+    u16 at, after;         // the capture tick, or how many frames after the event
+};
+constexpr u8 N = kNoUpgrade;
+constexpr u8 NB = kNoBoost;
+const UpPic kUpPics[] = {
+    {"up_weapons", {kFork, kFork, kSeeker, kSeeker, kHeavyStep, kHeavyStep, kHeavyStep, kEcho, kEcho, kOvercharge, N}, {NB, NB}, 0, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 340, 0},
+    {"up_wave", {kSplit, kSplit, kSplit, kWave, kWave, N}, {NB, NB}, 0, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 330, 0},
+    {"up_helix", {kSplit, kSplit, kSplit, kWave, kWave, N}, {NB, NB}, 1u << kHelixArray, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 330, 0},
+    {"up_accent", {kAccent, kAccent, kAccent, kOnBeatCrit, N}, {NB, NB}, 0, 10, kUpAhead, 400.0f, true, kUpNone, kFxLance, kLanceAccent, 300, 2},
+    {"up_standing_wave", {kAccent, kAccent, kAccent, kEcho, kEcho, N}, {NB, NB}, 1u << kStandingWave, 10, kUpAhead, 400.0f, true, kUpNone, kFxLance, kLanceAccent, 300, 20},
+    {"up_kills", {kArc, kArc, kArc, kBurn, kBurn, kBurn, kShatter, kShatter, kShatter, kGravityRounds, kGravityRounds, kSplit, kSplit, N}, {NB, NB}, 0, 40, kUpCrowd, 6.0f, true, kUpNone, kFxArc, 0, 226, 1},
+    {"up_wingmen", {kRearGuard, kRearGuard, kSyncopation, kMirror, kMirror, kMirror, kMirror, kMirror, N}, {NB, NB}, 0, 10, kUpRing, 400.0f, true, kUpNone, 0xFF, 0xFF, 337, 0},
+    {"up_quartet", {kRearGuard, kRearGuard, kMirror, kMirror, kMirror, kMirror, kMirror, N}, {NB, NB}, 1u << kQuartet, 10, kUpRing, 400.0f, true, kUpNone, 0xFF, 0xFF, 337, 0},
+    {"up_defence", {kAegis, kAegis, kAegis, kAfterimage, kAfterimage, kShockstep, kShockstep, kShockstep, kKickPulse, kKickPulse, kKickPulse, N}, {NB, NB}, 0, 10, kUpRing, 400.0f, false, kUpDash, 0xFF, 0xFF, 312, 0},
+    {"up_barline", {kBarLine, kBarLine, kBarLine, kCrescendo, kCrescendo, N}, {NB, NB}, 0, 16, kUpCrowd, 400.0f, false, kUpNone, kFxBarLine, 0xFF, 300, 2},
+    {"riff_lancer", {kLancer, kLancer, kLancer, kMinelayer, kMinelayer, kMinelayer, kStormCoil, kStormCoil, kStormCoil, kSwarm, kSwarm, kSwarm, N}, {NB, NB}, 0, 16, kUpCrowd, 400.0f, false, kUpNone, kFxLance, kLanceLancer, 300, 3},
+    {"riff_singularity", {kSingularity, kSingularity, kSingularity, kComet, kComet, kComet, kSweeper, kSweeper, kSweeper, kFlak, kFlak, kFlak, N}, {NB, NB}, 0, 24, kUpCrowd, 400.0f, false, kUpNone, kFxWell, 0xFF, 300, 50},
+    {"boost_supernova_chain", {kSplit, N}, {kSupernova, kChainStorm}, 0, 24, kUpCrowd, 400.0f, true, kUpNone, kFxArc, 0xFF, 330, 2},
+    {"boost_colossus_carousel", {N}, {kColossus, kCarousel}, 0, 12, kUpRing, 400.0f, false, kUpNone, 0xFF, 0xFF, 340, 0},
+    {"boost_freeze_fever", {kRicochet, N}, {kFreezeFrame, kRicochetFever}, 0, 20, kUpCrowd, 400.0f, true, kUpNone, 0xFF, 0xFF, 345, 0},
+    {"boost_black_hole", {N}, {kBlackHole, kConfetti}, 0, 30, kUpCrowd, 400.0f, true, kUpNova, kFxHole, 0xFF, 300, 70},
+    {"boost_chorus_beam", {kSplit, kSplit, N}, {kChorus, kBeam}, 0, 12, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 335, 0},
+    {"boost_fractal_stretch", {kSplit, N}, {kFractal, kTimeStretch}, 0, 16, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 335, 0},
+    {"fusion_tesla", {kPulseRing, kPulseRing, kPulseRing, kPulseRing, kPulseRing, kArc, kArc, kArc, N}, {NB, NB}, 1u << kTeslaBloom, 24, kUpCrowd, 400.0f, false, kUpNone, kFxArc, 0xFF, 300, 1},
+    {"fusion_shard_halo", {kOrbitals, kOrbitals, kOrbitals, kOrbitals, kOrbitals, kShatter, kShatter, kShatter, N}, {NB, NB}, 1u << kShardHalo, 40, kUpCrowd, 4.0f, true, kUpNone, kFxShatter, 0xFF, 226, 2},
+    {"fusion_cannon", {kLancer, kLancer, kLancer, kLancer, kLancer, kOnBeatCrit, kOnBeatCrit, kOnBeatCrit, N}, {NB, NB}, 1u << kDownbeatCannon, 16, kUpAhead, 400.0f, false, kUpNone, kFxLance, kLanceCannon, 300, 2},
+    {"fusion_collapse_murmuration", {kMinelayer, kMinelayer, kMinelayer, kMinelayer, kMinelayer, kGravityRounds, kGravityRounds, kSwarm, kSwarm, kSwarm, kSwarm, kSwarm, kSeeker, kSeeker, kSeeker, N}, {NB, NB}, (1u << kCollapseField) | (1u << kMurmuration), 30, kUpCrowd, 400.0f, false, kUpNone, kFxMineDrop, 0xFF, 300, 60},
+};
+constexpr u32 kUpPicCount = sizeof(kUpPics) / sizeof(kUpPics[0]);
+constexpr u8 kUpBase = 150;  // m5Pic_ for an UpPic: kUpBase + its index
 }  // namespace
 
 bool Play::scriptSetupM5() {
     const char* p = opt_.picture;
     if (!starts(p, "m5_")) return false;
+    for (u32 k = 0; k < kUpPicCount; ++k)
+        if (std::strcmp(p + 3, kUpPics[k].name) == 0) m5Pic_ = static_cast<u8>(kUpBase + k);
+    if (m5Pic_ != 0xFF) {
+        world_->rules().godMode = true;
+        world_->spawner().mode = Spawner::Mode::Off;
+        return true;
+    }
     for (u32 k = 0; k < kFamPicCount; ++k)
         if (std::strcmp(p + 3, kFamPics[k].name) == 0) m5Pic_ = static_cast<u8>(kFamBase + k);
     if (m5Pic_ != 0xFF) {
@@ -228,6 +302,95 @@ bool Play::scriptSetupM5() {
 bool Play::scriptInputM5(StickInput& in) {
     if (m5Pic_ == 0xFF) return false;
     World& w = *world_;
+    if (m5Pic_ >= kUpBase) {
+        // M5 part 3: an upgrade's scene round a still ship.
+        const UpPic& u = kUpPics[m5Pic_ - kUpBase];
+        const u32 t = scriptTick_;
+        const i64 now = static_cast<i64>(frameNo_);
+        const double music = music1_;
+        const Vec2 ship = controller_.pose().pos;
+        const Enemies& e = w.enemies();
+        in = StickInput{};
+        in.assist = false;
+        if (t == 120) {
+            for (u8 k : u.ups) {
+                if (k == kNoUpgrade) break;
+                w.grantUpgrade(0, k);
+            }
+            w.playerMut(0).loadout.fusions = u.fusions;
+        }
+        if (t == 200) {
+            // The group lands on the next beat: ahead of the ship, round it, or a crowd across the frame.
+            const double land = (std::floor(music / kTicksPerBeat) + 1.0) * kTicksPerBeat;
+            const u16 sp = SpeciesTable::index(Family::Drifter, 2, kVariantA);
+            for (u32 k = 0; k < u.count; ++k) {
+                const float f = static_cast<float>(k) / static_cast<float>(u.count);
+                Vec2 at;
+                if (u.layout == kUpAhead) at = ship + Vec2{360.0f + 50.0f * static_cast<float>(k % 4), -180.0f + 360.0f * f};
+                else if (u.layout == kUpRing) at = ship + Vec2{std::cos(kTau * f) * 300.0f, std::sin(kTau * f) * 220.0f};
+                else at = ship + Vec2{-700.0f + 1400.0f * static_cast<float>(k % 8) / 7.0f + 40.0f * static_cast<float>((k / 8) % 2),
+                                      -300.0f + 600.0f * static_cast<float>(k / 8) / std::fmax(1.0f, static_cast<float>((u.count - 1) / 8))};
+                if (u.layout == kUpCrowd && length(at - ship) < 120.0f) at = at + Vec2{0.0f, 160.0f};
+                w.spawnEnemy(sp, at, angleOf(ship - at), land);
+            }
+        }
+        if (t == 210) {
+            for (u32 i = 0; i < e.count; ++i)
+                if (!(e.flags[i] & kFlagDead)) w.setEnemyHp(i, u.hp);
+            for (u8 b : u.boosts)
+                if (b != kNoBoost) w.grantBoost(0, b);
+        }
+        if (u.fire && t > 220) {
+            // The stream at the nearest of them (the ring's scenes turn with the clock).
+            i32 best = -1;
+            float bd = 1e30f;
+            for (u32 i = 0; i < e.count; ++i) {
+                if ((e.flags[i] & kFlagDead) || e.state[i] == kWarping) continue;
+                const float d = lengthSq(Vec2{e.x[i], e.y[i]} - ship);
+                if (d < bd) {
+                    bd = d;
+                    best = static_cast<i32>(i);
+                }
+            }
+            in.aim = best >= 0 ? Vec2{e.x[best], e.y[best]} - ship : Vec2{1.0f, 0.0f};
+            in.aimActive = true;
+        } else if (t < 160) {
+            // (the Riffs' and Bar Line's scenes: the aim set along the crowd early, then the stick idle: no stream)
+            in.aim = Vec2{1.0f, -0.25f};
+            in.aimActive = true;
+        }
+        if (u.action == kUpDash && t >= 300 && t < 304) {
+            in.dash = true;
+            in.move = Vec2{1.0f, 0.0f};
+        }
+        if (u.action == kUpNova && t >= 300 && t < 304) in.nova = true;
+        w.closeTrioNow(0);
+        w.playerMut(0).levelsBanked = 0;
+        if (captureFrom_ >= 0 || t < (u.waitFx == 0xFF ? 300u : static_cast<u32>(u.at))) return true;
+        bool go = false;
+        if (u.waitFx == 0xFF) {
+            go = t >= u.at;
+        } else {
+            for (u32 k = 0; k < w.eventCount() && !go; ++k) {
+                const Event& ev = w.events()[k];
+                go = ev.type == EventType::Upgrade && ev.b == u.waitFx && (u.waitC == 0xFF || ev.c == u.waitC) && ev.a == 0;
+            }
+            if (go) {
+                captureFrom_ = now + 1 + u.after;
+                RF_LOG("play: picture '%s' captures from frame %lld (music %.1f)", opt_.picture, static_cast<long long>(captureFrom_), music);
+                return true;
+            }
+        }
+        if (!go && t > 60u * 60u) {
+            RF_LOG("play: picture '%s': its moment did not come in 60 s; taken as it is", opt_.picture);
+            go = true;
+        }
+        if (go) {
+            captureFrom_ = now + 1;
+            RF_LOG("play: picture '%s' captures from frame %lld (music %.1f)", opt_.picture, static_cast<long long>(captureFrom_), music);
+        }
+        return true;
+    }
     if (m5Pic_ >= kFamBase) {
         const FamPic& f = kFamPics[m5Pic_ - kFamBase];
         const u32 t = scriptTick_;

@@ -46,6 +46,7 @@ private:
     Vec2 dashDir_;
     double dashReadyAt_ = -1e18;  // musical tick at which the Dash has recharged
     double dashStartedAt_ = 0.0;
+    u8 charges_ = 1;              // M5: Dash charges ready (Reserve holds more)
     u32 targetHandle_ = 0;
 };
 

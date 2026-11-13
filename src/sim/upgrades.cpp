@@ -10,20 +10,56 @@ using namespace tuning;
 
 namespace {
 // GAME_DESIGN 6.2 / 6.3 (names, caps; play test 1: Split 3; play test 2: Extra Cell 4, Regen 3); icons from
-// design/icons.json.
+// design/icons.json. In the tables' order.
 const UpgradeInfo kInfo[kUpgradeCount] = {
     {"SPLIT", "split", 3, true},
     {"DOUBLE-TIME", "double_time", 2, true},
     {"PIERCE", "pierce", 3, true},
     {"RICOCHET", "ricochet", 3, true},
+    {"FORK", "fork", 2, true},
+    {"SEEKER", "seeker", 3, true},
+    {"HEAVY STEP", "heavy_step", 3, true},
+    {"ACCENT", "accent", 3, true},
+    {"ECHO", "echo", 2, true},
+    {"WAVE", "wave", 2, true},
     {"OVERCHARGE", "overcharge", 5, true},
+    {"REAR GUARD", "rear_guard", 2, true},
+    {"ARC", "arc", 3, true},
+    {"BURN", "burn", 3, true},
+    {"SHATTER", "shatter", 3, true},
+    {"GRAVITY ROUNDS", "gravity_rounds", 2, true},
     {"EXTRA CELL", "extra_cell", 4, false},
-    {"MAGNET", "magnet", 4, false},
-    {"ON-BEAT CRIT", "on_beat_crit", 3, true},
     {"REGEN", "regen", 3, false},
+    {"AFTERIMAGE", "afterimage", 2, false},
+    {"RESERVE", "reserve", 2, false},
+    {"SHOCKSTEP", "shockstep", 3, false},
+    {"AEGIS", "aegis", 3, false},
+    {"LAST LIGHT", "last_light", 1, false},
+    {"SLIPSTREAM", "slipstream", 4, false},
+    {"MAGNET", "magnet", 4, false},
+    {"PROSPECTOR", "prospector", 4, false},
+    {"NOVA STOCK", "nova_stock", 3, false},
+    {"ENCORE", "encore", 3, false},
+    {"LUCKY BREAK", "lucky_break", 2, false},
+    {"COLLECTOR", "collector", 2, false},
+    {"ON-BEAT CRIT", "on_beat_crit", 3, true},
+    {"SYNCOPATION", "syncopation", 2, true},
+    {"BAR LINE", "bar_line", 3, true},
+    {"CRESCENDO", "crescendo", 2, true},
+    {"KICK PULSE", "kick_pulse", 3, false},
+    {"AFTERPARTY", "afterparty", 2, true},
     {"ORBITALS", "orbitals", kRiffMaxLevel, true},
     {"PULSE RING", "pulse_ring", kRiffMaxLevel, true},
     {"SENTINEL", "sentinel", kRiffMaxLevel, true},
+    {"LANCER", "lancer", kRiffMaxLevel, true},
+    {"MINELAYER", "minelayer", kRiffMaxLevel, true},
+    {"STORM COIL", "storm_coil", kRiffMaxLevel, true},
+    {"SWARM", "swarm", kRiffMaxLevel, true},
+    {"SINGULARITY", "singularity", kRiffMaxLevel, true},
+    {"MIRROR", "mirror", kRiffMaxLevel, true},
+    {"COMET", "comet", kRiffMaxLevel, true},
+    {"SWEEPER", "sweeper", kRiffMaxLevel, true},
+    {"FLAK", "flak", kRiffMaxLevel, true},
 };
 const UpgradeInfo kNone{"?", "", 0, false};
 
@@ -31,64 +67,119 @@ const UpgradeInfo kNone{"?", "", 0, false};
 const BoostInfo kBoosts[kBoostCount] = {
     {"PRISM", "prism", "FIVE-WAY RAINBOW FAN", 4},
     {"HYPER", "hyper", "FIRE RATE X2", 4},
+    {"SUPERNOVA ROUNDS", "supernova_rounds", "SHOTS EXPLODE", 4},
+    {"COLOSSUS", "colossus", "GIANT, RAMS THROUGH", 2},
+    {"TIME STRETCH", "time_stretch", "THE WORLD AT HALF SPEED", 2},
+    {"FREEZE FRAME", "freeze_frame", "FREEZE AND SHATTER", 2},
     {"HALO", "halo", "BLOCKS THREE HITS", 8},
     {"MAGNET STORM", "magnet_storm", "PULLS EVERY SHARD", 4},
+    {"BLACK HOLE", "black_hole", "NEXT NOVA: A SINGULARITY", 4},
+    {"CHAIN STORM", "chain_storm", "LIGHTNING EVERY BEAT", 4},
+    {"CHORUS", "chorus", "TWO GHOST SHIPS", 4},
+    {"BEAM", "beam", "A SWEEPING LASER", 4},
+    {"RICOCHET FEVER", "ricochet_fever", "+5 BOUNCES, FASTER", 4},
+    {"CONFETTI", "confetti", "KILLS BURST INTO SPARKS", 4},
+    {"FRACTAL", "fractal", "SHOTS FORK TWICE", 4},
+    {"CAROUSEL", "carousel", "A BOMB EVERY BEAT", 4},
+};
+
+// GAME_DESIGN 6.5.
+const FusionInfo kFusions[kFusionCount] = {
+    {"HELIX ARRAY", "helix_array", "SHOTS BRAID A HELIX", kSplit, kWave},
+    {"STANDING WAVE", "standing_wave", "LANCES STAY A BAR", kEcho, kAccent},
+    {"TESLA BLOOM", "tesla_bloom", "RINGS ARC LIGHTNING", kPulseRing, kArc},
+    {"SHARD HALO", "shard_halo", "ORBITALS FLING SHRAPNEL", kOrbitals, kShatter},
+    {"DOWNBEAT CANNON", "downbeat_cannon", "A CRIT BEAM ON BEAT 1", kLancer, kOnBeatCrit},
+    {"COLLAPSE FIELD", "collapse_field", "MINES PULL IN", kMinelayer, kGravityRounds},
+    {"MURMURATION", "murmuration", "A HOMING FLOCK", kSwarm, kSeeker},
+    {"QUARTET", "quartet", "THREE WINGMEN", kMirror, kRearGuard},
 };
 
 const char* const kNumberWords[] = {"ZERO", "ONE", "TWO",   "THREE", "FOUR",  "FIVE",
                                      "SIX",  "SEVEN", "EIGHT", "NINE", "TEN", "ELEVEN"};
+
+// The Riffs' words by level (M5: chosen for Riffs 4-12, screens.md's for 1-3).
+const char* const kRiffWords[kRiffCount][5] = {
+    {"", "", "", "", ""},  // Orbitals: counted below
+    {"NEW RIFF: BEAT RINGS", "LEVEL 2: SECOND RING", "LEVEL 3: WIDER RINGS", "LEVEL 4: HEAVIER RINGS", "LEVEL 5: TWICE AS OFTEN"},
+    {"NEW RIFF: OFF-BEAT DRONE", "LEVEL 2: BURST OF 4", "LEVEL 3: SECOND DRONE", "LEVEL 4: BURST OF 5", "LEVEL 5: THIRD DRONE"},
+    {"NEW RIFF: BEAM ON BEAT 4", "LEVEL 2: WIDER BEAM", "LEVEL 3: EVERY TWO BEATS", "LEVEL 4: WIDER STILL", "LEVEL 5: HEAVIER BEAM"},
+    {"NEW RIFF: A MINE A BAR", "LEVEL 2: TWO MINES", "LEVEL 3: THREE MINES", "LEVEL 4: FOUR MINES", "LEVEL 5: FIVE MINES"},
+    {"NEW RIFF: TRIPLET ZAPS", "LEVEL 2: TWO TARGETS", "LEVEL 3: THREE, WIDER", "LEVEL 4: FOUR TARGETS", "LEVEL 5: FIVE, WIDER"},
+    {"NEW RIFF: MISSILES A BAR", "LEVEL 2: EIGHT MISSILES", "LEVEL 3: TEN MISSILES", "LEVEL 4: TWELVE MISSILES", "LEVEL 5: SIXTEEN"},
+    {"NEW RIFF: A WELL EVERY 4 BARS", "LEVEL 2: WIDER WELL", "LEVEL 3: HEAVIER BLAST", "LEVEL 4: WIDER STILL", "LEVEL 5: HEAVIER STILL"},
+    {"NEW RIFF: A WINGMAN, HALF", "LEVEL 2: WINGMAN 60%", "LEVEL 3: WINGMAN 70%", "LEVEL 4: WINGMAN 80%", "LEVEL 5: WINGMAN 100%"},
+    {"NEW RIFF: A DISC A BAR", "LEVEL 2: BIGGER DISC", "LEVEL 3: TWO DISCS", "LEVEL 4: BIGGER STILL", "LEVEL 5: THREE DISCS"},
+    {"NEW RIFF: A LASER ARM", "LEVEL 2: LONGER ARM", "LEVEL 3: SECOND ARM", "LEVEL 4: LONGER STILL", "LEVEL 5: FASTER ARMS"},
+    {"NEW RIFF: PELLETS ON 2 AND 4", "LEVEL 2: MORE PELLETS", "LEVEL 3: MORE STILL", "LEVEL 4: TWICE AS MANY", "LEVEL 5: PELLETS EXPLODE"},
+};
 }  // namespace
 
 const UpgradeInfo& upgradeInfo(u8 u) { return u < kUpgradeCount ? kInfo[u] : kNone; }
 const BoostInfo& boostInfo(u8 b) { return kBoosts[b < kBoostCount ? b : 0]; }
+const FusionInfo& fusionInfo(u8 f) { return kFusions[f < kFusionCount ? f : 0]; }
 
 const char* upgradeWords(u8 u, u32 level) {
-    // Effect words: screens.md's table (final, play test 1, 2026-11-12), word for word.
+    // Effect words: screens.md's table (final, play test 1, 2026-11-12) for the first slice, word for word; M5's chosen
+    // in the same style (docs/PROGRESS.md, M5 part 3).
     static char buf[48];
+    const u32 lv = level < 1 ? 1u : level;
     switch (u) {
         case kSplit: return "+2 SHOT LANES";
         case kDoubleTime: return level <= 1 ? "FIRE RATE X1.5" : "FIRE RATE X2";
         case kPierce: return "SHOTS PIERCE +2";
         case kRicochet: return "SHOTS BOUNCE +2";
+        case kFork: return lv <= 1 ? "SHOTS FORK ON A HIT" : "FORKS FORK AGAIN";
+        case kSeeker: return lv <= 1 ? "SHOTS SEEK TARGETS" : (lv == 2 ? "SHARPER SEEKING" : "SHOTS HUNT");
+        case kHeavyStep: return lv <= 1 ? "EVERY 4TH SHOT: AN ORB" : (lv == 2 ? "BIGGER ORB BLASTS" : "HEAVIER ORBS");
+        case kAccent: return lv <= 1 ? "LANCE ON BEAT 1" : (lv == 2 ? "LANCES ON 1 AND 3" : "A LANCE EVERY BEAT");
+        case kEcho: return lv <= 1 ? "SHOTS ECHO A BEAT LATER" : "TWO ECHOES";
+        case kWave: return lv <= 1 ? "SINE SHOTS, WIDER HITS" : "WIDER WAVES";
         case kOvercharge: return "+50% SHOT DAMAGE";
+        case kRearGuard: return lv <= 1 ? "FIRE BACK ON OFF-BEATS" : "AND SIDEWAYS";
+        case kArc:
+            std::snprintf(buf, sizeof buf, "KILLS ARC TO %u MORE", lv + 1u);
+            return buf;
+        case kBurn: return lv <= 1 ? "HITS IGNITE" : (lv == 2 ? "HOTTER FIRE" : "FIERCE FIRE");
+        case kShatter: return lv <= 1 ? "KILLS THROW SHRAPNEL" : "MORE SHRAPNEL";
+        case kGravityRounds: return lv <= 1 ? "HITS PULL ENEMIES IN" : "A STRONGER PULL";
         case kExtraCell: return "+1 CELL, ALL REFILLED";
-        case kMagnet:
-            std::snprintf(buf, sizeof buf, "SHARD PULL X%u", (level < 1 ? 1u : level) + 1u);
-            return buf;
-        case kOnBeatCrit:
-            std::snprintf(buf, sizeof buf, "BEAT SHOTS X%u", static_cast<u32>(onBeatCritMultiplier(level < 1 ? 1u : level)));
-            return buf;
         case kRegen:  // play test 2 (screens.md): CELL REGROWS: 16 BARS, then 8 BARS, 4 BARS
-            std::snprintf(buf, sizeof buf, "CELL REGROWS: %u BARS", regenEveryBars(level < 1 ? 1u : level));
+            std::snprintf(buf, sizeof buf, "CELL REGROWS: %u BARS", regenEveryBars(lv));
             return buf;
+        case kAfterimage: return lv <= 1 ? "DASH LEAVES A DECOY" : "LONGER DECOY";
+        case kReserve: return "+1 DASH CHARGE";
+        case kShockstep: return lv <= 1 ? "DASH: A DAMAGING RING" : "A BIGGER RING";
+        case kAegis: return lv <= 1 ? "AN ARC BLOCKS BULLETS" : "A WIDER ARC";
+        case kLastLight: return "A HIT FIRES A NOVA";
+        case kSlipstream: return "+8% SPEED";
+        case kMagnet:
+            std::snprintf(buf, sizeof buf, "SHARD PULL X%u", lv + 1u);
+            return buf;
+        case kProspector:
+            std::snprintf(buf, sizeof buf, "+%u%% EXTRA SHARDS", 25u * lv);
+            return buf;
+        case kNovaStock: return "+1 NOVA";
+        case kEncore: return "BOOSTS +1 BAR";
+        case kLuckyBreak: return "+1 TRIO OPTION";
+        case kCollector: return lv <= 1 ? "A BOOST PER 250 SHARDS" : "A BOOST PER 150 SHARDS";
+        case kOnBeatCrit:
+            std::snprintf(buf, sizeof buf, "BEAT SHOTS X%u", static_cast<u32>(onBeatCritMultiplier(lv)));
+            return buf;
+        case kSyncopation: return lv <= 1 ? "OFF-BEATS PIERCE, +50%" : "OFF-BEATS +100%";
+        case kBarLine: return lv <= 1 ? "A LASER CROSS EACH BAR" : (lv == 2 ? "AND DIAGONALS" : "LONGER LASERS");
+        case kCrescendo: return lv <= 1 ? "+5% A CLEAN BAR, TO 50%" : "UP TO +100%";
+        case kKickPulse: return lv <= 1 ? "A RING ON EVERY BEAT" : (lv == 2 ? "THE RING HURTS" : "A WIDER RING");
+        case kAfterparty: return "LONGER, FASTER SURGE";
         case kOrbitals: {
-            const u32 n = orbitalCount(level < 1 ? 1u : level);
-            if (level <= 1) {
-                std::snprintf(buf, sizeof buf, "NEW RIFF: %s ORBITERS", kNumberWords[n < 12 ? n : 11]);
-                return buf;
-            }
-            std::snprintf(buf, sizeof buf, "LEVEL %u: %s ORBITERS", level, kNumberWords[n < 12 ? n : 11]);
+            const u32 n = orbitalCount(lv);
+            if (lv <= 1) std::snprintf(buf, sizeof buf, "NEW RIFF: %s ORBITERS", kNumberWords[n < 12 ? n : 11]);
+            else std::snprintf(buf, sizeof buf, "LEVEL %u: %s ORBITERS", lv, kNumberWords[n < 12 ? n : 11]);
             return buf;
         }
-        case kPulseRing:
-            switch (level) {
-                case 0:
-                case 1: return "NEW RIFF: BEAT RINGS";
-                case 2: return "LEVEL 2: SECOND RING";
-                case 3: return "LEVEL 3: WIDER RINGS";
-                case 4: return "LEVEL 4: HEAVIER RINGS";
-                default: return "LEVEL 5: TWICE AS OFTEN";
-            }
-        case kSentinel:
-            switch (level) {
-                case 0:
-                case 1: return "NEW RIFF: OFF-BEAT DRONE";
-                case 2: return "LEVEL 2: BURST OF 4";
-                case 3: return "LEVEL 3: SECOND DRONE";
-                case 4: return "LEVEL 4: BURST OF 5";
-                default: return "LEVEL 5: THIRD DRONE";
-            }
-        default: return "";
+        default:
+            if (isRiff(u)) return kRiffWords[riffIndex(u)][(lv <= 5 ? lv : 5) - 1];
+            return "";
     }
 }
 
@@ -102,7 +193,13 @@ bool Loadout::canTake(u8 u) const {
     return mods[u] < kInfo[u].cap;
 }
 
-u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[3]) {
+bool Loadout::fusionDue(u8 f) const {
+    if (f >= kFusionCount || fused(f)) return false;
+    const FusionInfo& fi = kFusions[f];
+    return level(fi.a) >= kInfo[fi.a].cap && level(fi.b) >= kInfo[fi.b].cap;
+}
+
+u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[kMaxOrbs]) {
     u8 cand[kUpgradeCount];
     float weight[kUpgradeCount];
     u32 n = 0;
@@ -112,10 +209,11 @@ u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[3]) {
         weight[n] = !isRiff(u) ? kTrioWeightMod : (l.level(u) == 0 ? kTrioWeightNewRiff : kTrioWeightRiffLevel);
         ++n;
     }
-    // Three without replacement, by weight.
+    // Three (Lucky Break: one more a stack) without replacement, by weight.
+    const u32 want = 3u + static_cast<u32>(l.mods[kLuckyBreak]);
     u32 count = 0;
     bool used[kUpgradeCount] = {};
-    while (count < 3 && count < n) {
+    while (count < want && count < n) {
         float total = 0.0f;
         for (u32 k = 0; k < n; ++k)
             if (!used[k]) total += weight[k];
@@ -169,11 +267,17 @@ u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[3]) {
     u8 boosts[kBoostCount];
     u32 nb = 0;
     for (u8 b = 0; b < kBoostCount; ++b) boosts[nb++] = b;
-    while (count < 3 && nb > 0) {
+    while (count < want && nb > 0) {
         const u32 k = rng.below(nb);
         out[count++] = static_cast<u8>(kBoostOrb + boosts[k]);
         boosts[k] = boosts[--nb];
     }
+    // GAME_DESIGN 6.5: a Fusion that is due comes as a gold orb more (the first due, in the table's order).
+    for (u8 f = 0; f < kFusionCount && count < kMaxOrbs; ++f)
+        if (l.fusionDue(f)) {
+            out[count++] = static_cast<u8>(kFusionOrb + f);
+            break;
+        }
     return count;
 }
 

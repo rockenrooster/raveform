@@ -17,7 +17,6 @@ using namespace tuning;
 
 namespace {
 // Trio orbs: top, lower left, lower right (as world_upgrades.cpp places them).
-const Vec2 kTrioOrbAt[3] = {{0.0f, -1.0f}, {-0.8660254f, 0.5f}, {0.8660254f, 0.5f}};
 constexpr u32 kIdMask = 8192u - 1u;
 u32 idHash(u32 serial) { return (serial * 2654435761u) >> (32u - 13u); }
 u64 censusMix(u32 serial) {
@@ -276,6 +275,10 @@ void World::applyPlayerOp(const NetOp& op) {
             if (!pl.alive || pl.novaPending) break;
             pl.novaPending = true;
             pl.novaBlastTick = op.tick;  // the owner's beat
+            {
+                const Vec2 at{op.x, op.y};
+                blackHoleNova(p, op.tick, &at);  // M5: Black Hole's singularity pulls here too (where and when its owner's does)
+            }
             pl.novaInvulS = 1e9f;
             ++pl.novasUsed;
             Event ev;
@@ -287,8 +290,17 @@ void World::applyPlayerOp(const NetOp& op) {
             emit(ev);
             break;
         }
+        case kPeWell: {
+            // M5: a teammate's Singularity, placed where its owner placed it, pulling until its blow (the owner's beat).
+            pl.wellAt = Vec2{op.x, op.y};
+            pl.wellFrom = m1_;
+            pl.wellBlow = op.tick;
+            emitFx(p, kFxWell, pl.wellAt, pl.wellAt, op.b, 0.0f, op.tick);
+            break;
+        }
         case kPeDash: {
             ++pl.dashes;
+            dashExtras(p, Vec2{op.x, op.y}, Vec2{op.x2, op.y2}, op.b != 0);  // M5: Afterimage's decoy here too (Shockstep: its owner's)
             Event ev;
             ev.type = EventType::Dash;
             ev.a = static_cast<u8>(p);
@@ -349,7 +361,7 @@ void World::applyPlayerOp(const NetOp& op) {
         case kPeTrioOpen: {
             TrioState& tr = trio_[p];
             tr.open = op.b > 0;
-            tr.orbs = op.b > 3 ? 3 : op.b;
+            tr.orbs = op.b > kMaxOrbs ? static_cast<u8>(kMaxOrbs) : op.b;
             tr.homing = -1;
             tr.centre = Vec2{op.x, op.y};
             tr.openTick = m1_;
@@ -357,11 +369,11 @@ void World::applyPlayerOp(const NetOp& op) {
             // Play test 2: x2 = the level a level-up Trio shows, y2 = its kind (its orbs are shelters here too).
             tr.kind = op.y2 > 0.5f ? kTrioLevel : kTrioBreak;
             tr.levelShown = tr.kind == kTrioLevel && op.x2 > 0.0f && op.x2 < 65535.0f ? static_cast<u16>(op.x2) : 0;
-            for (u32 k = 0; k < 4; ++k) tr.upgrade[k] = kNoUpgrade;
+            for (u32 k = 0; k < kMaxOrbs; ++k) tr.upgrade[k] = kNoUpgrade;
             for (u32 k = 0; k < tr.orbs; ++k) {
                 tr.upgrade[k] = validOrb(op.opts[k]) ? op.opts[k] : kSplit;
                 tr.level[k] = isBoostOrb(tr.upgrade[k]) ? 0 : static_cast<u8>(pl.loadout.level(tr.upgrade[k]) + 1);
-                tr.orbPos[k] = tr.centre + kTrioOrbAt[k] * kTrioRingWu;
+                tr.orbPos[k] = trioOrbPlace(tr.centre, k, tr.orbs);
             }
             ++tr.opened;
             Event ev;
@@ -380,7 +392,8 @@ void World::applyPlayerOp(const NetOp& op) {
         case kPeTrioTake: {
             if (!validOrb(op.b)) break;
             // Play test 2: a Boost orb's Boost arrives as its own kPeBoostTake (sent just before this).
-            if (!isBoostOrb(op.b)) applyUpgrade(p, op.b);
+            if (isFusionOrb(op.b)) pl.loadout.fusions = static_cast<u8>(pl.loadout.fusions | (1u << fusionOfOrb(op.b)));
+            else if (!isBoostOrb(op.b)) applyUpgrade(p, op.b);
             TrioState& tr = trio_[p];
             tr.open = false;
             tr.lastTaken = op.b;
@@ -602,6 +615,7 @@ bool World::netSample(u32 i, NetEnemyState& s) const {
     s.target = e.target[i];
     s.far = e.far[i];
     s.step = e.step[i];
+    s.frozen = e.frozenUntil[i] > m1_;
     return true;
 }
 
@@ -634,6 +648,8 @@ float World::netCorrect(const NetEnemyState& s, double hostMusic) {
     }
     // The rest of its state, unless a beat lies between the host's sample and now (the musical behaviour has
     // moved on from what the sample knew: a new wander, a glint, a dash) or it has landed here already.
+    // M5 part 3: Freeze Frame is the host's word here (a client freezes nothing itself): frozen for a bar more, or not.
+    e.frozenUntil[i] = s.frozen ? std::fmax(e.frozenUntil[i], m1_ + kTicksPerBar) : -1.0;
     const bool beatBetween = crossed(std::fmin(hostMusic, m1_), std::fmax(hostMusic, m1_), kTicksPerBeat);
     const bool landedHere = hostWarping && e.state[i] != kWarping;
     if (!beatBetween && !landedHere) {

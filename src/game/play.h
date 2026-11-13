@@ -17,6 +17,7 @@
 #include "game/music_clock.h"
 #include "game/play_hud.h"
 #include "game/pending_sounds.h"
+#include "game/upgrade_sounds.h"
 #include "game/play_view.h"
 #include "game/screens.h"
 #include "game/settings.h"
@@ -43,6 +44,7 @@ struct PlayOptions {
     u64 seed = 1;
     float fastForwardS = 0.0f;  // --fast-forward S: run S seconds of the game before the first frame
     bool noHits = false;        // C2: hits cost nothing (--nohits: a measured run deep in the game)
+    bool loadoutMax = false;    // M5 --loadout max: the upgrades' worst case (benchmarks)
     char fight[24] = {};        // M5 --fight <id>: the run starts in the fight's home Track and plays on to it (pictures, benchmarks)
     u8 fightPhase = 0;          // ... its parts taken down to that phase once it fights
     bool fightHold = false;     // ... and held there (its health comes back: a benchmark of the phase)
@@ -238,6 +240,7 @@ private:
     u8 bandSlot(u32 q) const { return static_cast<u8>(q == seat_ ? 0u : (q < seat_ ? q + 1u : q)); }
     void bossCue(const sim::Event& e);  // M5: a fight's sound, through the band (game/pending_sounds.cpp)
     FightVoices fightVoices_;           // M5: the held voices a fight started (the Choir's pads)
+    UpgradeCues upgradeCues_;           // M5 part 3: the upgrades' cues this frame (game/upgrade_sounds.cpp)
     bool coopAutoDone_ = false;
     float coopAutoT_ = 0.0f, coopShotT_ = 0.0f;
     float beaconDownS_ = 0.0f;  // --coop-shot beacon: how long a teammate has been down (its shatter gone after a second)
@@ -306,6 +309,8 @@ private:
     bool fightReady();
     void applyFightPhase();
     void holdFight();  // --fight ...:hold: after each tick, its health comes back (it stays in its phase)
+    void maxLoadout();  // M5 --loadout max: the upgrades' worst case, given at the run's start and the Boosts kept on
+    u16 maxLoadoutRun_ = 0xFFFF;
     bool scriptSetupM5();
     bool scriptInputM5(sim::StickInput& in);
     bool scriptEventsM5();

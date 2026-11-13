@@ -225,6 +225,7 @@ add_library(raveform_sim STATIC
   src/sim/world_net.cpp
   src/sim/world_spawner.cpp
   src/sim/world_upgrades.cpp
+  src/sim/world_upgrades_m5.cpp
   ${RF_GEN}/species.json.inc
   ${RF_GEN}/kaleidos.json.inc
   ${RF_GEN}/longwave.json.inc
@@ -358,6 +359,8 @@ target_sources(raveform_core PRIVATE
   src/game/play_view_b.cpp
   src/game/play_view_m5.cpp
   src/game/pending_sounds.cpp
+  src/game/upgrade_sounds.cpp
+  src/game/play_view_upgrades.cpp
   src/game/play_view_shots.cpp
   src/game/screens.cpp
   src/game/settings.cpp)

@@ -455,7 +455,7 @@ void Session::onPlayerEvent(const MsgPlayerEvent& m) {
     op.player = m.player;
     op.a = m.kind;
     op.b = m.b;
-    for (u32 k = 0; k < 3; ++k) op.opts[k] = m.opts[k];
+    for (u32 k = 0; k < kMaxOrbs; ++k) op.opts[k] = m.opts[k];
     op.x = m.x;
     op.y = m.y;
     op.x2 = m.x2;
@@ -1012,7 +1012,7 @@ void Session::collectLocalEvents() {
             case EventType::TrioOpen: {
                 const TrioState& tr = w.trio(e.a);
                 m.kind = kPeTrioOpen;
-                m.b = tr.orbs > 3 ? 3 : tr.orbs;
+                m.b = tr.orbs > kMaxOrbs ? static_cast<u8>(kMaxOrbs) : tr.orbs;
                 for (u32 o = 0; o < m.b; ++o) m.opts[o] = tr.upgrade[o];
                 m.tick = e.tick;
                 break;
@@ -1028,6 +1028,13 @@ void Session::collectLocalEvents() {
             case EventType::HaloBlock:
                 m.kind = kPeHalo;
                 m.b = e.b;
+                break;
+            case EventType::Upgrade:
+                // M5 part 3: a Singularity's well, where this device's player placed it (the others pull to the same place).
+                if (e.b != kFxWell) continue;
+                m.kind = kPeWell;
+                m.b = e.c;
+                m.tick = e.tick;
                 break;
             default: continue;
         }

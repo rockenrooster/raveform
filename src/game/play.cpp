@@ -387,6 +387,7 @@ void Play::afterTick() {
     const World& w = *world_;
     view_.onEvents(w, tickEnd_);
     holdFight();  // M5 --fight ...:hold (benchmarks)
+    if (opt_.loadoutMax) maxLoadout();  // M5 --loadout max (benchmarks)
     // M5: the fights' held voices end on time, and all of them when no fight is on.
     if (bandDrives_) updateFightVoices(*band_, fightVoices_, band_->view().heardTick, !w.boss().active || w.boss().dying);
     for (u32 k = 0; k < w.eventCount(); ++k) {
@@ -424,6 +425,7 @@ void Play::afterTick() {
                 markCount_ = 0;
                 marks_[markCount_++] = Mark{0.0f, 0, 1};
                 loadoutSig_ = ~0u;
+                upgradeCues_.reset();
                 break;
             case EventType::Section:
                 if (e.f > 0.5f) {
@@ -472,10 +474,23 @@ void Play::afterTick() {
                 // M4 stage B: the set list keeps whose hit it was (screens.md: each player's crosses in their colour);
                 // this device sounds its own player's.
                 if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 3, e.a};
-                if (bandDrives_ && e.a == seat_) band_->playSfx(audio::Sfx::Hit);
+                if (bandDrives_ && e.a == seat_) {
+                    band_->playSfx(audio::Sfx::Hit);
+                    upgradeCues_.add(e, 0.0f, 0.0);  // M5: Crescendo falls back
+                }
                 break;
-            case EventType::NovaPress:
-                if (bandDrives_ && e.a == seat_) band_->nova(e.tick);
+            case EventType::NovaPress: {
+                // M5: Black Hole's Nova is its own cue (the three-beat inhale and the blast with the sub drop).
+                const PlayerState& me = w.player(seat_);
+                const bool hole = me.holeFrom >= 0.0 && me.holeBlow == e.tick;
+                if (bandDrives_ && e.a == seat_ && !hole) band_->nova(e.tick);
+                break;
+            }
+            case EventType::Upgrade:
+                // M5 part 3: the upgrades' cues (game/upgrade_sounds.cpp), this device's player's.
+                if (bandDrives_ && e.a == seat_)
+                    upgradeCues_.add(e, clampf((e.x - w.player(seat_).pos.x) / 900.0f, -1.0f, 1.0f) * 0.7f,
+                                     coop() ? netBandOffset_ : clock_.offset());
                 break;
             case EventType::Dash:
                 if (bandDrives_ && e.a == seat_) band_->playSfx(e.b ? audio::Sfx::PerfectDash : audio::Sfx::Dash);
@@ -488,7 +503,7 @@ void Play::afterTick() {
                 break;
             case EventType::TrioTake:
                 if (e.a != seat_) break;  // M4: a teammate's pick is theirs (their device sounds it)
-                RF_LOG("play: Trio: took %s (now %u) at bar %u", isBoostOrb(e.b) ? boostInfo(boostOfOrb(e.b)).name : upgradeInfo(e.b).name, e.c,
+                RF_LOG("play: Trio: took %s (now %u) at bar %u", isBoostOrb(e.b) ? boostInfo(boostOfOrb(e.b)).name : (isFusionOrb(e.b) ? fusionInfo(fusionOfOrb(e.b)).name : upgradeInfo(e.b).name), e.c,
                        w.phrase().bar);
                 if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 2, e.b};
                 takenT_ = static_cast<float>(tickEnd_);
@@ -570,8 +585,10 @@ void Play::bandFrame() {
     if (!bandDrives_) {
         killsPending_[0] = killsPending_[1] = killsPending_[2] = 0;
         shardsPending_ = 0;
+        upgradeCues_.reset();
         return;
     }
+    upgradeCues_.flush(*band_, *world_, seat_);  // M5 part 3
     // Kills: the engine aggregates them per 1/32 step (one cluster sound per size class).
     for (u8 s = 0; s < 3; ++s) {
         if (killsPending_[s]) band_->kill(s, killsPending_[s]);
@@ -605,18 +622,14 @@ void Play::conductBand() {
     if (!bandDrives_ || !clock_.fromBand()) return;
     const World& w = *world_;
     const PlayerState& pl = w.player(seat_);
-    // The local player's upgrades: the lead's harmony, grid and drive, the Riffs' layers.
+    // The local player's upgrades: every Mod, Riff, Boost and Fusion (M5, audio/cues.h); the band plays the lead's
+    // changes, the Riffs' layers and the Boosts' and Fusions' from them.
     {
-        const Loadout& l = pl.loadout;
-        const u8 mods[5] = {l.mods[kSplit], l.mods[kDoubleTime], l.mods[kPierce], l.mods[kOvercharge], l.mods[kOnBeatCrit]};
-        const bool prism = pl.boost(kPrism), hyper = pl.boost(kHyper);
-        u32 sig = 0;
-        for (u8 m : mods) sig = sig * 7u + m;
-        for (u8 r : l.riffs) sig = sig * 7u + r;
-        sig = sig * 4u + (prism ? 1u : 0u) + (hyper ? 2u : 0u);
+        const audio::PlayerLoadout l = bandLoadout(pl);
+        const u32 sig = loadoutSignature(l);
         if (sig != loadoutSig_) {
             loadoutSig_ = sig;
-            band_->setLoadout(mods, l.riffs, prism, hyper);
+            band_->setLoadout(0, l);
         }
     }
     const double heard = band_->view().heardTick;  // the band's own (absolute) song ticks

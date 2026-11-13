@@ -305,6 +305,7 @@ bool App::init() {
         po.seed = args_.seed;
         po.fastForwardS = args_.fastForward;
         po.noHits = args_.noHits;
+        po.loadoutMax = args_.loadoutMax;
         std::memcpy(po.fight, args_.fight, sizeof po.fight);
         po.fightPhase = args_.fightPhase;
         po.fightHold = args_.fightHold;

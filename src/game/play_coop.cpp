@@ -559,15 +559,11 @@ void Play::coopBand() {
                 band_->setPlayerDistance(slot, dist);
                 bandDist_[slot] = dist;
             }
-            const Loadout& l = pl.loadout;
-            const u8 mods[5] = {l.mods[kSplit], l.mods[kDoubleTime], l.mods[kPierce], l.mods[kOvercharge], l.mods[kOnBeatCrit]};
-            const bool prism = pl.boost(kPrism), hyper = pl.boost(kHyper);
-            u32 sig = 1;
-            for (u8 m : mods) sig = sig * 7u + m;
-            for (u8 r : l.riffs) sig = sig * 7u + r;
-            sig = sig * 4u + (prism ? 1u : 0u) + (hyper ? 2u : 0u);
+            // M5: a teammate's whole loadout (audio/cues.h), as this device's own.
+            const audio::PlayerLoadout l = bandLoadout(pl);
+            const u32 sig = loadoutSignature(l);
             if (sig != bandLoadSig_[slot]) {
-                band_->setPlayerLoadout(slot, mods, l.riffs, prism, hyper);
+                band_->setLoadout(slot, l);
                 bandLoadSig_[slot] = sig;
             }
         }

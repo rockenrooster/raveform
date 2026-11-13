@@ -372,10 +372,11 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             u32 bMax = 255;
             switch (m.kind) {
                 case kPeHit: bMax = kMaxCells; break;
-                case kPeTrioOpen: bMax = 3; break;
+                case kPeTrioOpen: bMax = sim::kMaxOrbs; break;
                 case kPeTrioTake: bMax = 255; break;  // an upgrade or a Boost orb (play test 2), checked below
                 case kPeBoostTake: bMax = kBoostCount - 1; break;
                 case kPeHalo: bMax = 3; break;
+                case kPeWell: bMax = sim::kRiffMaxLevel; break;
                 case kPeDash:
                 case kPeRevive: bMax = 1; break;
                 default: bMax = 0; break;
@@ -492,10 +493,11 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 const u8 packed = r.u8v();
                 s.state = packed & 15u;  // M5: the called bodies' states need four bits
                 s.flags = static_cast<u8>(((packed & 16u) ? kFlagEngaged : 0) | ((packed & 32u) ? kFlagArriving : 0) | ((packed & 64u) ? kFlagCalled : 0));
+                s.frozen = (packed & 128u) != 0;  // M5 part 3: Freeze Frame
                 s.target = r.u8v();
                 s.step = r.u8v();  // M5 part 2
                 s.far = 0;
-                if (r.bad() || s.serial == 0 || !finite(s.a) || !finite(s.b) || !finite(s.hp) || s.state >= kStateCount || packed > 127 ||
+                if (r.bad() || s.serial == 0 || !finite(s.a) || !finite(s.b) || !finite(s.hp) || s.state >= kStateCount ||
                     !(s.target < kMaxPlayers || s.target == 0xFF) || s.rng == 0)
                     return false;
                 if (sink) sink->onCorrection(s);
@@ -870,7 +872,7 @@ bool PacketWriter::putDirector(const MsgDirector& m) {
     return true;
 }
 bool PacketWriter::putPlayerEvent(const MsgPlayerEvent& m) {
-    if (!begin(Msg::PlayerEvent, 32)) return false;
+    if (!begin(Msg::PlayerEvent, 29 + sim::kMaxOrbs)) return false;
     u16v(m.run);
     u8v(m.player);
     u8v(m.kind);
@@ -972,7 +974,7 @@ u32 PacketWriter::putCorrections(u16 run, double base, const NetEnemyState* item
         u16v(static_cast<u16>(q16(static_cast<float>(s.until - base), kUntilQ)));
         u32v(s.rng);
         u8v(static_cast<u8>((s.state & 15u) | ((s.flags & kFlagEngaged) ? 16u : 0u) | ((s.flags & kFlagArriving) ? 32u : 0u) |
-                            ((s.flags & kFlagCalled) ? 64u : 0u)));
+                            ((s.flags & kFlagCalled) ? 64u : 0u) | (s.frozen ? 128u : 0u)));
         u8v(s.target);
         u8v(s.step);
     }

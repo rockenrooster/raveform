@@ -18,11 +18,12 @@ void PlayerController::reset(Vec2 pos) {
     novaHeld_ = dashHeld_ = false;
     dashLeftS_ = 0.0f;
     dashReadyAt_ = -1e18;
+    charges_ = 1;
     targetHandle_ = 0;
 }
 
 float PlayerController::dashCharge(double musicTick) const {
-    if (musicTick >= dashReadyAt_) return 1.0f;
+    if (charges_ > 0) return 1.0f;
     const double span = dashReadyAt_ - dashStartedAt_;
     return span > 0.0 ? static_cast<float>(clampf(static_cast<float>((musicTick - dashStartedAt_) / span), 0.0f, 1.0f)) : 1.0f;
 }
@@ -49,15 +50,28 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
     // ---- Dash (GAME_DESIGN 5): 220 wu in 0.12 s, invulnerable throughout; recharges in four beats; a
     // Dash within +-60 ms of a beat is Perfect (R7) and refunds half the recharge.
     const float ticksPerS = bpm * static_cast<float>(kTicksPerBeat) / 60.0f;
-    if (in.dash && !dashHeld_ && dashLeftS_ <= 0.0f && musicTick >= dashReadyAt_) {
+    // M5: Reserve (GAME_DESIGN 6.2) holds one more charge a stack; a charge comes back each recharge, one at a time.
+    const u32 maxCharges = 1u + static_cast<u32>(state.loadout.mods[kReserve]);
+    if (musicTick >= dashReadyAt_ && charges_ < maxCharges) {
+        ++charges_;
+        if (charges_ < maxCharges) {
+            dashStartedAt_ = dashReadyAt_ > 0.0 ? dashReadyAt_ : musicTick;
+            dashReadyAt_ = dashStartedAt_ + kDashRechargeBeats * kTicksPerBeat;
+        }
+    }
+    if (charges_ > maxCharges) charges_ = static_cast<u8>(maxCharges);
+    if (in.dash && !dashHeld_ && dashLeftS_ <= 0.0f && charges_ > 0) {
         const Vec2 dir = lengthSq(in.move) > 0.04f ? normalizeOr(in.move, dirOf(p.heading)) : dirOf(p.heading);
         const double inBeat = std::fmod(musicTick, kTicksPerBeat);
         const double off = inBeat < kTicksPerBeat * 0.5 ? inBeat : kTicksPerBeat - inBeat;
         const bool perfect = static_cast<float>(off) / ticksPerS <= kPerfectDashS;
         dashDir_ = dir;
         dashLeftS_ = kDashS;
-        dashStartedAt_ = musicTick;
-        dashReadyAt_ = musicTick + (perfect ? 0.5 : 1.0) * kDashRechargeBeats * kTicksPerBeat;
+        if (charges_ >= maxCharges || musicTick >= dashReadyAt_) {  // no recharge under way: this one starts it
+            dashStartedAt_ = musicTick;
+            dashReadyAt_ = musicTick + (perfect ? 0.5 : 1.0) * kDashRechargeBeats * kTicksPerBeat;
+        }
+        --charges_;
         p.dashStarted = true;
         p.perfectDash = perfect;
         p.dashFrom = p.pos;
@@ -83,7 +97,8 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
         const Vec2 dir = m > 1e-4f ? in.move * (1.0f / m) : Vec2{};
         if (m > 1.0f) m = 1.0f;
         if (m > 1e-4f) {
-            const Vec2 target = dir * (kPlayerSpeed * m);
+            const float speed = kPlayerSpeed * (1.0f + kSlipstreamPerStack * static_cast<float>(state.loadout.mods[kSlipstream]));  // M5: Slipstream
+            const Vec2 target = dir * (speed * m);
             const float k = 1.0f - std::exp(-dt / kAccelTau);
             p.vel = p.vel + (target - p.vel) * k;
         } else {
