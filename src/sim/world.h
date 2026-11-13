@@ -380,6 +380,7 @@ struct Shots {
     u32 count = 0;
     float x[kCap], y[kCap], px[kCap], py[kCap], dx[kCap], dy[kCap];
     float speed[kCap], life[kCap], damage[kCap], radius[kCap];
+    float life0[kCap];               // M5 (look.md v2.5): the life it left with (its flight so far is life0 - life)
     u32 lastHit[kCap];               // the enemy handle it last went through (Pierce)
     u8 owner[kCap], dead[kCap];
     u8 pierce[kCap], bounces[kCap];  // Pierce and Ricochet left
@@ -388,7 +389,9 @@ struct Shots {
     u8 forks[kCap];                  // M5: forks left on a hit (Fork, Fractal)
 };
 // M5 part 3: what a shot does in flight and on a hit (sim/world_upgrades_m5.cpp).
-enum ShotMod : u8 { kShotSeek = 1, kShotWave = 2, kShotWaveNeg = 4, kShotGhost = 8, kShotBlast = 16, kShotFever = 32, kShotHelix = 64 };
+// kShotHelix / kShotHelixIn (GAME_DESIGN 6.5, look.md v2.5): a Helix Array strand, its pair's level: Helix alone the outer pair,
+// both the pair inside it, In alone the next (1, 2/3, 1/3 of the amplitude); kShotWaveNeg the mirror strand of its pair.
+enum ShotMod : u8 { kShotSeek = 1, kShotWave = 2, kShotWaveNeg = 4, kShotGhost = 8, kShotBlast = 16, kShotFever = 32, kShotHelix = 64, kShotHelixIn = 128 };
 // kShotRefracted (play test 1): a Prism shot refracts on its first hit only.
 enum ShotFlag : u8 { kShotCrit = 1, kShotPrism = 2, kShotLaneMask = 7u << 2, kShotRefracted = 32 };
 // M3 stage C2: a Prism shot's lane in its fan (-2..2, GAME_DESIGN 7: the rainbow), kept in flags bits 2-4 (0: none);
@@ -651,6 +654,7 @@ public:
     const SpatialGrid& grid() const { return grid_; }
     // Play test 1: a player's live shots as the last tick ended (the shot pool's per-player caps, tuning.h).
     u32 shotsLive(u32 p) const { return p < kMaxPlayers ? shotsLive_[p] : 0u; }
+    bool thinning(u32 p) const { return p < kMaxPlayers && thinning_[p]; }  // M5 (GAME_DESIGN 6.6)
     const Event* events() const { return events_; }
     u32 eventCount() const { return eventCount_; }
     const WorldCounters& counters() const { return counters_; }
@@ -1018,7 +1022,11 @@ private:
     void arcFrom(u32 i, u8 owner, u32 jumps, float dmg, u8 style);
     void pullBodies(Vec2 at, float r, float speed, float dt);
     float shotDamage(u32 p, double stepTick, u8& flags, u8& pierceAdd) const;
-    void tagShot(u32 p, u8 extraMods, u8 wave);
+    void tagShot(u32 p, u8 extraMods, i32 laneOff, u32 lanes);
+    void updateThinning();
+    Vec2 waveAt(u32 i, float age) const;
+    // The multipliers' extras may fire (GAME_DESIGN 6.6: they wait while the player is over the soft cap, as before).
+    bool shotRoom(u32 p) const;
     u32 volley(u32 p, Vec2 origin, float base, float advanceS, float damage, u8 flags, u8 pierce, u8 bounces, u32 lanes, bool prism,
                u32 thin, i64 step, u8 middle, u8 extraMods);
     bool accentLance(u32 p, double stepTick, Vec2 muzzle, Vec2 d, float damage);
@@ -1267,7 +1275,8 @@ private:
     float allDownDipS_ = 0.0f;  // M4: all down, time at 50% for one beat (look.md 6)
     float predictUndoS_ = 0.30f;  // M4 client: a predicted death unconfirmed this long is undone (tuning::kPredictUndoS at least)
     float threatInView_ = 0.0f;
-    u32 shotsLive_[kMaxPlayers] = {};  // play test 1: each player's live shots (counted in compact(), added on spawn)
+    u32 shotsLive_[kMaxPlayers] = {};
+    bool thinning_[kMaxPlayers] = {};  // M5 (GAME_DESIGN 6.6): a player's shots thinned (set and cleared on a beat)  // play test 1: each player's live shots (counted in compact(), added on spawn)
     u32 crowdInFrame_ = 0;
     float crowdGoal_ = 0.0f;
     bool restartPending_ = false;

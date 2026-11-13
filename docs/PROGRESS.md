@@ -75,6 +75,30 @@ the loop begins after Feedback.
   past the run's set list stretches it for that run); `scripts\review-m5.ps1 -Part part4` (34 pictures and 6 strips); the
   crowd sim reports first deaths in Tracks 1-3 and in the whole first pass.
 
+### The lead's rulings of the afternoon, built with part 4's close
+
+- **Beams v2.5** (look.md section 5, `3c110c7`): a beam is one thin line and its glow (`PlayView::drawBeam`). The core on the axis
+  (2 px Accent, Bar Line, the Beam Boost, Standing Wave; 3 px Lancer; 4 px the Downbeat Cannon), 70% white and 30% the owner's
+  colour at the nose running to the owner's light colour (a Fusion's half white), 1.6 of the shot level at its peak (the Cannon
+  2.0); the glow a Gaussian strip of the owner's colour (a Fusion's gold), 0.25 on the axis, sigma w / 5, drawn with the pools
+  as round Gaussians a sigma wide two sigmas apart (their sum along the axis is the strip, its ripple under 2%), coming up over
+  the first 20 wu; under 12 wu the core alone; no edge lines, no fill. A beam on a beat peaks two frames and is gone over 110 ms
+  with its glow; a held one keeps its glow and moves its core between 1.0 and 1.4 on the 1/32 grid. Reduce flashing: peak 1.0,
+  no white, glow 0.15. `kDownbeatHalfWu` 60 -> 32 (no beam hurts wider than 64 wu); the Cannon's kills a minute before and
+  after belong to the "no pick is a trap" table, which stays with part 7's balance pass.
+- **A stream of shots reads as a line** (look.md 5, GAME_DESIGN 6.2 row 10, 6.5, `3b2f03b`): Wave is a standing curve fixed
+  to the aim line and measured from the muzzle (each shot's phase by its own flight, `Shots::life0`; a shot starts on its
+  curve), one wave to a beat of flight, 28 then 40 wu, every Split lane about its own direction with the same phase. Helix
+  Array: the Split lanes stop fanning and ride strands in mirrored pairs (the outer 80 wu, the pairs inside 2/3 and 1/3), the
+  middle lane straight, one wave to two beats; `kHelixAmp` is gone; the Wave's wider hit radius stays.
+- **Thinning never flickers** (GAME_DESIGN 6.6): thinning starts above the soft cap (576) and ends below three quarters of it
+  (432), only on a beat (`World::updateThinning`); while it lasts every lane fires on every step and the lanes beyond the
+  middle three fly half as far; the multipliers' extras wait above the soft cap as before; above the second cap (800) the middle
+  lane alone. The alternate steps are gone.
+- Tests: the Wave's curve (every shot within 0.5 wu of A sin(2 pi age / beat), sideways at most 0.6 of forward), Helix Array's
+  strands (no fan, mirrored pairs at three levels, the middle straight), the thinning (on and off only on a beat, half-reach
+  outer lanes, every lane firing).
+
 <!-- part 4 acceptance below -->
 
 ### Decisions taken alone

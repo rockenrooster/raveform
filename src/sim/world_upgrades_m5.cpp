@@ -345,8 +345,23 @@ float World::shotDamage(u32 p, double stepTick, u8& flags, u8& pierceAdd) const 
     return damage * crescendo(p);
 }
 
-void World::tagShot(u32 p, u8 extraMods, u8 wave) {
-    // What the owner's Mods and Boosts give a primary shot in flight (lastShot_: the one just spawned).
+bool World::shotRoom(u32 p) const { return shotsLive_[p < kMaxPlayers ? p : 0] < kShotsSoftCap; }
+
+void World::updateThinning() {
+    // GAME_DESIGN 6.6: thinning starts above the soft cap of a player's live shots and ends below three quarters of it, and
+    // starts or ends only on a beat.
+    forCrossings(m0_, m1_, kTicksPerBeat, [&](double, i64) {
+        for (u32 p = 0; p < kMaxPlayers; ++p) {
+            if (!thinning_[p] && shotsLive_[p] > kShotsSoftCap) thinning_[p] = true;
+            else if (thinning_[p] && shotsLive_[p] < kShotsThinEnd) thinning_[p] = false;
+        }
+    });
+}
+
+void World::tagShot(u32 p, u8 extraMods, i32 laneOff, u32 lanes) {
+    // What the owner's Mods and Boosts give a primary shot in flight (lastShot_: the one just spawned). Wave: every lane on
+    // the same curve about its own direction; Helix Array: the lanes ride strands in mirrored pairs, the outer pair at the
+    // full amplitude and the pairs inside it at 2/3 and 1/3, the middle lane straight (GAME_DESIGN 6.2, 6.5).
     if (lastShot_ < 0) return;
     const u32 i = static_cast<u32>(lastShot_);
     Shots& s = shots_;
@@ -355,10 +370,26 @@ void World::tagShot(u32 p, u8 extraMods, u8 wave) {
     u8 m = extraMods;
     if (l.mods[kSeeker]) m |= kShotSeek;
     if (l.mods[kWave]) {
-        m |= kShotWave;
-        if (wave & 1u) m |= kShotWaveNeg;
-        if (l.fused(kHelixArray)) m |= kShotHelix;
         s.radius[i] *= kWaveRadius[l.mods[kWave] < 2 ? l.mods[kWave] : 2];
+        if (l.fused(kHelixArray)) {
+            const i32 pairs = static_cast<i32>(lanes / 2u);
+            const i32 k = laneOff < 0 ? -laneOff : laneOff;
+            if (k > 0 && pairs > 0) {
+                const i32 level = pairs - k;  // 0 the outer pair, 1 inside it, 2 the next
+                m |= kShotWave;
+                m |= level == 0 ? kShotHelix : (level == 1 ? static_cast<u8>(kShotHelix | kShotHelixIn) : kShotHelixIn);
+                if (laneOff < 0) m |= kShotWaveNeg;
+            }
+        } else {
+            m |= kShotWave;
+        }
+    }
+    s.mods[i] = m;
+    if (m & kShotWave) {
+        // (it starts on its curve: advanced along it as far as along the line)
+        const Vec2 o = waveAt(i, s.life0[i] - s.life[i]);
+        s.x[i] += o.x;
+        s.y[i] += o.y;
     }
     if (pl.boost(kSupernova)) m |= kShotBlast;
     if (pl.boost(kRicochetFever)) {
@@ -372,10 +403,9 @@ void World::tagShot(u32 p, u8 extraMods, u8 wave) {
 }
 
 u32 World::volley(u32 p, Vec2 origin, float base, float advanceS, float damage, u8 flags, u8 pierce, u8 bounces, u32 lanes,
-                  bool prism, u32 thin, i64 step, u8 middle, u8 extraMods) {
-    // Split: +2 lanes a stack in a tight fan (3, 5, 7); Prism: every lane refracts into five. Above the soft cap of live
-    // shots every pair of lanes beyond the middle one fires on every second step, the pairs taking turns; above
-    // kShotsMiddleOnly the middle lane alone fires (play test 1). M5: `middle` 1 leaves the middle lane out (Accent's
+                  bool prism, u32 thin, i64 /*step*/, u8 middle, u8 extraMods) {
+    // Split: +2 lanes a stack in a tight fan (3, 5, 7); Prism: every lane refracts into five. Thinned (GAME_DESIGN 6.6),
+    // the lanes beyond the middle three fly half as far; above kShotsMiddleOnly the middle lane alone fires (play test 1). M5: `middle` 1 leaves the middle lane out (Accent's
     // lance took its place), 2 makes it Heavy Step's orb.
     const u32 fan = prism ? 5u : 1u;
     const i32 mid = static_cast<i32>(lanes / 2);
@@ -384,9 +414,12 @@ u32 World::volley(u32 p, Vec2 origin, float base, float advanceS, float damage, 
         const i32 off = static_cast<i32>(lane) - mid;
         const i32 ring = off < 0 ? -off : off;  // 0 the middle, 1 its neighbours, 2 and 3 the outer pairs
         if (thin == 2 && ring >= 1) continue;
-        if (thin == 1 && ring >= 1 && ((ring + step) & 1) != 0) continue;
         if (ring == 0 && middle == 1) continue;
-        const float la = base + static_cast<float>(off) * kSplitFanDeg * kDeg;
+        // GAME_DESIGN 6.6: thinned, the lanes beyond the middle three fly half as far (every lane still fires). Helix Array
+        // (6.5): the lanes stop fanning and ride their strands along the aim.
+        const float life = thin == 1 && ring >= 2 ? kShotLifeS * kThinReach : kShotLifeS;
+        const bool helix = players_[p].loadout.fused(kHelixArray) && players_[p].loadout.mods[kWave];
+        const float la = base + (helix ? 0.0f : static_cast<float>(off) * kSplitFanDeg * kDeg);
         if (ring == 0 && middle == 2) {
             // Heavy Step: a slow orb that explodes (on its hit, or where its life ends).
             spawnShotRaw(p, origin, dirOf(la), advanceS * kHeavyOrbSpeed, damage, kShotOrb, flags, kHeavyOrbLifeS, 0, 0);
@@ -402,8 +435,8 @@ u32 World::volley(u32 p, Vec2 origin, float base, float advanceS, float damage, 
         for (u32 f = 0; f < fan && made < kMaxShotsPerStep; ++f, ++made) {
             const float a = la + (static_cast<float>(f) - 0.5f * static_cast<float>(fan - 1)) * kPrismFanDeg * kDeg;
             const u8 laneFlag = prism ? shotLaneFlags(static_cast<i32>(f) - 2) : 0;
-            spawnShotRaw(p, origin, dirOf(a), advanceS, damage, kShotPrimary, static_cast<u8>(flags | laneFlag), kShotLifeS, pierce, bounces);
-            tagShot(p, extraMods, static_cast<u8>(lane));
+            spawnShotRaw(p, origin, dirOf(a), advanceS, damage, kShotPrimary, static_cast<u8>(flags | laneFlag), life, pierce, bounces);
+            tagShot(p, extraMods, off, lanes);
         }
     }
     return made;
@@ -430,7 +463,7 @@ void World::volleyExtras(u32 p, float advanceS, double stepTick, float base, flo
     // 6.6): none of these fire above the soft cap of the player's live shots.
     PlayerState& pl = players_[p];
     const Loadout& l = pl.loadout;
-    if (shotsLive_[p < kMaxPlayers ? p : 0] >= kShotsSoftCap) return;
+    if (!shotRoom(p)) return;  // (GAME_DESIGN 6.6: the extras wait while the player is over the soft cap)
     const u8 plain = static_cast<u8>(flags & kShotCrit);
     if (const u8 st = l.mods[kEcho]) {
         for (u32 k = 1; k <= st; ++k) {
@@ -447,13 +480,13 @@ void World::volleyExtras(u32 p, float advanceS, double stepTick, float base, flo
     const Vec2 d = dirOf(base);
     if (const u8 st = l.mods[kRearGuard]; st && offBeat(stepTick)) {
         spawnShotRaw(p, pl.pos - d * kMuzzleWu, d * -1.0f, advanceS, damage, kShotPrimary, plain, kShotLifeS, pierce, bounces);
-        tagShot(p, 0, 0);
+        tagShot(p, 0, 0, 1);
         if (st >= 2) {
             const Vec2 side = perpOf(d);
             spawnShotRaw(p, pl.pos + side * kMuzzleWu, side, advanceS, damage, kShotPrimary, plain, kShotLifeS, pierce, bounces);
-            tagShot(p, 0, 0);
+            tagShot(p, 0, 0, 1);
             spawnShotRaw(p, pl.pos - side * kMuzzleWu, side * -1.0f, advanceS, damage, kShotPrimary, plain, kShotLifeS, pierce, bounces);
-            tagShot(p, 0, 1);
+            tagShot(p, 0, 0, 1);
         }
     }
     Vec2 wp[5], wd[5];
@@ -480,7 +513,7 @@ void World::fireEchoes() {
             if (ec.tick < 0.0 || ec.tick > m1_) continue;
             const double t = ec.tick;
             ec.tick = -1.0;
-            if (!pl.alive || shotsLive_[p] >= kShotsSoftCap) continue;
+            if (!pl.alive || !shotRoom(p)) continue;
             const Vec2 d = dirOf(ec.angle);
             volley(p, pl.pos + d * kMuzzleWu, ec.angle, tickAgeOf(t), ec.damage, 0, static_cast<u8>(pierceCount(pl.loadout.mods[kPierce])),
                    static_cast<u8>(ricochetBounces(pl.loadout.mods[kRicochet])), ec.lanes, false, 0, 0, 0, kShotGhost);
@@ -525,17 +558,29 @@ void World::steerShots(float dt) {
 }
 
 Vec2 World::waveStep(u32 i, float dt) const {
-    // Wave: a sine across the shot's line (Helix Array: three times as wide, lanes braided in opposite phase).
+    // Wave's (Helix Array's) sideways move over dt.
+    const float a0 = shots_.life0[i] - shots_.life[i];
+    return waveAt(i, a0 + dt) - waveAt(i, a0);
+}
+
+Vec2 World::waveAt(u32 i, float age) const {
+    // Wave: a sine across the shot's line (Helix Array: its strand) at this age of the shot's flight.
     const Shots& s = shots_;
     const PlayerState& pl = players_[s.owner[i] < kMaxPlayers ? s.owner[i] : 0];
     const u8 st = pl.loadout.mods[kWave];
+    // look.md v2.5 (shots that leave the straight line): a standing curve fixed to the aim line and measured from the
+    // muzzle (its phase by the shot's own flight), one wave to a beat of flight (Helix Array: two beats), never sideways
+    // faster than 0.6 of forward.
     float amp = kWaveAmpWu[st < 2 ? (st ? st : 1) : 2];
-    if (s.mods[i] & kShotHelix) amp *= kHelixAmp;
-    if (s.mods[i] & kShotWaveNeg) amp = -amp;
-    const float w = kTau / kWavePeriodS;
-    const float a0 = kShotLifeS - s.life[i], a1 = a0 + dt;
-    const float off = amp * (std::sin(w * a1) - std::sin(w * a0));
-    return perpOf(Vec2{s.dx[i], s.dy[i]}) * off;
+    float beats = 1.0f;
+    const u8 m = s.mods[i];
+    if (m & (kShotHelix | kShotHelixIn)) {
+        amp = kHelixAmpWu * ((m & kShotHelix) ? ((m & kShotHelixIn) ? 2.0f / 3.0f : 1.0f) : 1.0f / 3.0f);
+        beats = kHelixWaveBeats;
+    }
+    if (m & kShotWaveNeg) amp = -amp;
+    const float w = kTau / (beats * 60.0f / std::fmax(bpm_, 30.0f));
+    return perpOf(Vec2{s.dx[i], s.dy[i]}) * (amp * std::sin(w * age));
 }
 
 float World::blastRadius(u32 k, float& dmg) const {
@@ -572,7 +617,7 @@ void World::shotHitExtras(u32 k, u32 i, Vec2 at, Vec2 dir) {
     Enemies& e = enemies_;
     if (s.mods[k] & kShotBlast) shotBlast(k, at, static_cast<i32>(i));
     const bool primary = s.kind[k] == kShotPrimary || s.kind[k] == kShotMini;
-    if (s.forks[k] > 0 && primary && shotsLive_[owner] < kShotsSoftCap) {
+    if (s.forks[k] > 0 && primary && shotRoom(owner)) {
         // Fork: on the first hit, two half-damage shots (Fractal: and they fork again).
         const u8 forks = static_cast<u8>(s.forks[k] - 1u);
         const float a = angleOf(dir);
@@ -635,7 +680,7 @@ void World::killExtras(u32 i, u8 owner) {
     const Loadout& l = pl.loadout;
     Enemies& e = enemies_;
     const Vec2 at{e.x[i], e.y[i]};
-    const bool room = shotsLive_[owner] < kShotsSoftCap;
+    const bool room = shotRoom(owner);
     if (const u8 st = l.mods[kArc]) arcFrom(i, owner, st + 1u, kArcDamage, 0);
     if (const u8 st = l.mods[kShatter]; st && room) {
         // Shatter: the body's line segments fly out as shrapnel.
@@ -920,7 +965,7 @@ void World::updateUpgradesM5(float dt) {
                     from = at;
                 }
             }
-            if (pl.boost(kCarousel) && shotsLive_[p] < kShotsSoftCap) {
+            if (pl.boost(kCarousel) && shotRoom(p)) {
                 const u32 k = static_cast<u32>(((beat % 6) + 6) % 6);
                 const Vec2 at = carouselBomb(p, k);
                 const Vec2 d = normalizeOr(at - pl.pos, Vec2{1.0f, 0.0f});
@@ -1064,7 +1109,7 @@ void World::updateRiffsM5(float dt) {
             const u32 count = kSwarmCount[L < 5 ? L : 5];
             forCrossings(m0_, m1_, 0.5 * kTicksPerStep, [&](double t, i64 k) {
                 const u32 j = static_cast<u32>(((k % 32) + 32) % 32);
-                if (j >= count || shotsLive_[p] >= kShotsSoftCap) return;
+                if (j >= count || !shotRoom(p)) return;
                 const float side = (j & 1u) ? 1.0f : -1.0f;
                 const float a = angleOf(d) + side * (25.0f + 5.0f * static_cast<float>(j / 2)) * kDeg;
                 spawnShotRaw(p, pl.pos, dirOf(a), tickAgeOf(t) * (kMissileSpeed / kShotSpeed), kMissileDamage, kShotMissile, 0,
@@ -1160,7 +1205,7 @@ void World::updateRiffsM5(float dt) {
         if (const u8 L = lv(kFlak)) {
             forCrossings(m0_, m1_, kTicksPerBeat, [&](double t, i64 beat) {
                 const i32 b = static_cast<i32>(((beat % 4) + 4) % 4);
-                if (!(hyper || b == 1 || b == 3) || shotsLive_[p] >= kShotsSoftCap) return;
+                if (!(hyper || b == 1 || b == 3) || !shotRoom(p)) return;
                 const u32 n = kFlakPellets[L < 5 ? L : 5];
                 const float a0 = static_cast<float>(beat % 7) * 0.37f;
                 for (u32 k = 0; k < n; ++k) {

@@ -2213,6 +2213,121 @@ void testMinibosses2() {
     }
 }
 
+// M5 (look.md v2.5 "Shots that leave the straight line", GAME_DESIGN 6.2, 6.5, 6.6): a stream of shots reads as a line.
+float sidewaysWorst(const World& w) {
+    // The largest sideways move of a Wave shot this tick against its forward move.
+    float worst = 0.0f;
+    const Shots& s = w.shots();
+    for (u32 i = 0; i < s.count; ++i) {
+        if (s.dead[i] || !(s.mods[i] & kShotWave)) continue;
+        const Vec2 d{s.dx[i], s.dy[i]}, m{s.x[i] - s.px[i], s.y[i] - s.py[i]};
+        const float fwd = dot(m, d), side = std::fabs(m.x * d.y - m.y * d.x);
+        if (fwd > 1.0f) worst = std::fmax(worst, side / fwd);
+    }
+    return worst;
+}
+
+void testShotStream() {
+    g_test = "shot stream";
+    const Vec2 ship{0.0f, 0.0f};
+    // Wave: every shot on one curve from the muzzle (y = A sin(2 pi age / beat)), sideways never above 0.6 of forward.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        w->grantUpgrade(0, kWave);
+        w->grantUpgrade(0, kWave);
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        float worst = 0.0f, offCurve = 0.0f;
+        const float wv = kTau / (60.0f / kBpm);
+        u32 seen = 0;
+        for (u32 t = 0; t < 120; ++t) {
+            stepWorld(*w, music, ship, 1);
+            worst = std::fmax(worst, sidewaysWorst(*w));
+            const Shots& s = w->shots();
+            for (u32 i = 0; i < s.count; ++i) {
+                if (s.dead[i] || !(s.mods[i] & kShotWave)) continue;
+                const float want = 40.0f * std::sin(wv * (s.life0[i] - s.life[i]));
+                offCurve = std::fmax(offCurve, std::fmin(std::fabs(s.y[i] - want), std::fabs(s.y[i] + want)));
+                ++seen;
+            }
+        }
+        CHECK_MSG(seen > 100 && offCurve < 0.5f && worst <= 0.6f, "%u shots, %.2f wu off the curve, sideways %.2f of forward", seen, offCurve, worst);
+        delete w;
+    }
+    // Helix Array: the Split lanes ride strands along the aim (no fan), mirrored pairs at 80, 53 and 27 wu, the middle
+    // lane straight; one wave to two beats.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        for (u32 k = 0; k < 3; ++k) w->grantUpgrade(0, kSplit);
+        w->grantUpgrade(0, kWave);
+        w->grantUpgrade(0, kWave);
+        w->playerMut(0).loadout.fusions = static_cast<u8>(1u << kHelixArray);
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        u32 outer = 0, mid = 0, inner = 0, straight = 0, neg = 0;
+        bool fan = false;
+        float worst = 0.0f;
+        for (u32 t = 0; t < 60; ++t) {
+            const u32 before = w->shots().count;
+            stepWorld(*w, music, ship, 1);
+            worst = std::fmax(worst, sidewaysWorst(*w));
+            if (t > 5 || w->shots().count == before) continue;
+        }
+        const Shots& s = w->shots();
+        for (u32 i = 0; i < s.count; ++i) {
+            if (s.dead[i]) continue;
+            fan = fan || std::fabs(s.dy[i]) > 1e-4f;
+            const u8 m = s.mods[i];
+            if (!(m & kShotWave)) ++straight;
+            else if ((m & kShotHelix) && !(m & kShotHelixIn)) ++outer;
+            else if ((m & kShotHelix) && (m & kShotHelixIn)) ++mid;
+            else if (m & kShotHelixIn) ++inner;
+            if (m & kShotWaveNeg) ++neg;
+        }
+        CHECK_MSG(!fan && outer > 0 && outer == mid && mid == inner && straight * 2 == outer && neg * 2 == outer + mid + inner && worst <= 0.6f,
+                  "fan %d outer %u mid %u inner %u straight %u neg %u sideways %.2f", fan ? 1 : 0, outer, mid, inner, straight, neg, worst);
+        delete w;
+    }
+    // Thinning never flickers: it starts above the soft cap and ends below three quarters of it, only on a beat; while it
+    // lasts every lane fires and the lanes beyond the middle three fly half as far.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        for (u32 k = 0; k < 3; ++k) w->grantUpgrade(0, kSplit);
+        for (u32 k = 0; k < 3; ++k) w->grantUpgrade(0, kDoubleTime);
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        u32 changesOffBeat = 0, thinnedTicks = 0, halfOuter = 0, fullOuter = 0, most = 0;
+        bool was = false;
+        for (u32 t = 0; t < 600; ++t) {
+            if (t % 60 == 0) {
+                w->grantBoost(0, kPrism);
+                w->grantBoost(0, kHyper);
+            }
+            const double m0 = music;
+            stepWorld(*w, music, ship, t < 360 ? 1 : 0);
+            most = w->shotsLive(0) > most ? w->shotsLive(0) : most;
+            const bool now = w->thinning(0);
+            if (now != was && std::floor(m0 / kTicksPerBeat) == std::floor(music / kTicksPerBeat)) ++changesOffBeat;
+            was = now;
+            if (!now) continue;
+            ++thinnedTicks;
+            const Shots& s = w->shots();
+            for (u32 i = 0; i < s.count; ++i) {
+                if (s.dead[i] || s.kind[i] != kShotPrimary || s.life0[i] - s.life[i] > 0.02f) continue;
+                if (std::fabs(s.life0[i] - 0.5f * tuning::kShotLifeS) < 1e-4f) ++halfOuter;
+                else ++fullOuter;
+            }
+        }
+        CHECK_MSG(thinnedTicks > 0 && changesOffBeat == 0 && halfOuter > 0 && fullOuter > 0 && !w->thinning(0),
+                  "thinned %u ticks, %u changes off a beat, %u half-reach and %u full shots, %u live at most", thinnedTicks, changesOffBeat, halfOuter,
+                  fullOuter, most);
+        delete w;
+    }
+}
+
 void testMinibosses() {
     g_test = "minibosses";
     const MiniData& md = g_species->minis;
@@ -2983,6 +3098,7 @@ int main() {
     testPolyrhythm();
     testFeedback();
     testMinibosses2();
+    testShotStream();
     testMinibosses();
     testFamiliesM5();
     testUpgradesM5();
