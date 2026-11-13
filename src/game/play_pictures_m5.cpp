@@ -235,7 +235,7 @@ const UpPic kUpPics[] = {
     {"up_helix", {kSplit, kSplit, kSplit, kWave, kWave, N}, {NB, NB}, 1u << kHelixArray, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 330, 0},
     {"up_accent", {kAccent, kAccent, kAccent, kOnBeatCrit, N}, {NB, NB}, 0, 10, kUpAhead, 400.0f, true, kUpNone, kFxLance, kLanceAccent, 300, 2},
     {"up_standing_wave", {kAccent, kAccent, kAccent, kEcho, kEcho, N}, {NB, NB}, 1u << kStandingWave, 10, kUpAhead, 400.0f, true, kUpNone, kFxLance, kLanceAccent, 300, 20},
-    {"up_kills", {kArc, kArc, kArc, kBurn, kBurn, kBurn, kShatter, kShatter, kShatter, kGravityRounds, kGravityRounds, kSplit, kSplit, N}, {NB, NB}, 0, 40, kUpCrowd, 6.0f, true, kUpNone, kFxArc, 0, 226, 1},
+    {"up_kills", {kArc, kArc, kArc, kBurn, kBurn, kBurn, kShatter, kShatter, kShatter, kGravityRounds, kGravityRounds, kSplit, kSplit, N}, {NB, NB}, 0, 40, kUpCrowd, 6.0f, true, kUpNone, kFxArc, 0xFF, 300, 1},
     {"up_wingmen", {kRearGuard, kRearGuard, kSyncopation, kMirror, kMirror, kMirror, kMirror, kMirror, N}, {NB, NB}, 0, 10, kUpRing, 400.0f, true, kUpNone, 0xFF, 0xFF, 337, 0},
     {"up_quartet", {kRearGuard, kRearGuard, kMirror, kMirror, kMirror, kMirror, kMirror, N}, {NB, NB}, 1u << kQuartet, 10, kUpRing, 400.0f, true, kUpNone, 0xFF, 0xFF, 337, 0},
     {"up_defence", {kAegis, kAegis, kAegis, kAfterimage, kAfterimage, kShockstep, kShockstep, kShockstep, kKickPulse, kKickPulse, kKickPulse, N}, {NB, NB}, 0, 10, kUpRing, 400.0f, false, kUpDash, 0xFF, 0xFF, 312, 0},
@@ -249,7 +249,7 @@ const UpPic kUpPics[] = {
     {"boost_chorus_beam", {kSplit, kSplit, N}, {kChorus, kBeam}, 0, 12, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 335, 0},
     {"boost_fractal_stretch", {kSplit, N}, {kFractal, kTimeStretch}, 0, 16, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 335, 0},
     {"fusion_tesla", {kPulseRing, kPulseRing, kPulseRing, kPulseRing, kPulseRing, kArc, kArc, kArc, N}, {NB, NB}, 1u << kTeslaBloom, 24, kUpCrowd, 400.0f, false, kUpNone, kFxArc, 0xFF, 300, 1},
-    {"fusion_shard_halo", {kOrbitals, kOrbitals, kOrbitals, kOrbitals, kOrbitals, kShatter, kShatter, kShatter, N}, {NB, NB}, 1u << kShardHalo, 40, kUpCrowd, 4.0f, true, kUpNone, kFxShatter, 0xFF, 226, 2},
+    {"fusion_shard_halo", {kOrbitals, kOrbitals, kOrbitals, kOrbitals, kOrbitals, kShatter, kShatter, kShatter, N}, {NB, NB}, 1u << kShardHalo, 40, kUpCrowd, 4.0f, true, kUpNone, kFxShatter, 0xFF, 300, 2},
     {"fusion_cannon", {kLancer, kLancer, kLancer, kLancer, kLancer, kOnBeatCrit, kOnBeatCrit, kOnBeatCrit, N}, {NB, NB}, 1u << kDownbeatCannon, 16, kUpAhead, 400.0f, false, kUpNone, kFxLance, kLanceCannon, 300, 2},
     {"fusion_collapse_murmuration", {kMinelayer, kMinelayer, kMinelayer, kMinelayer, kMinelayer, kGravityRounds, kGravityRounds, kSwarm, kSwarm, kSwarm, kSwarm, kSwarm, kSeeker, kSeeker, kSeeker, N}, {NB, NB}, (1u << kCollapseField) | (1u << kMurmuration), 30, kUpCrowd, 400.0f, false, kUpNone, kFxMineDrop, 0xFF, 300, 60},
 };
@@ -340,7 +340,7 @@ bool Play::scriptInputM5(StickInput& in) {
             for (u8 b : u.boosts)
                 if (b != kNoBoost) w.grantBoost(0, b);
         }
-        if (u.fire && t > 220) {
+        if (u.fire && t > (u.hp < 50.0f ? 296u : 220u)) {  // (a weak crowd: the stream after the Track card has gone)
             // The stream at the nearest of them (the ring's scenes turn with the clock).
             i32 best = -1;
             float bd = 1e30f;

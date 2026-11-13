@@ -199,70 +199,84 @@ bool Loadout::fusionDue(u8 f) const {
     return level(fi.a) >= kInfo[fi.a].cap && level(fi.b) >= kInfo[fi.b].cap;
 }
 
-u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[kMaxOrbs]) {
-    u8 cand[kUpgradeCount];
-    float weight[kUpgradeCount];
-    u32 n = 0;
-    for (u8 u = 0; u < kUpgradeCount; ++u) {
-        if (!l.canTake(u)) continue;
-        cand[n] = u;
-        weight[n] = !isRiff(u) ? kTrioWeightMod : (l.level(u) == 0 ? kTrioWeightNewRiff : kTrioWeightRiffLevel);
-        ++n;
+bool firepower(u8 u) {
+    // GAME_DESIGN 6.1: the weapon (6.2's 1-16) and rhythm (31-36) Mods.
+    return u < kExtraCell || (u >= kOnBeatCrit && u <= kAfterparty);
+}
+
+float dealWeight(const Loadout& l, u8 u) {
+    // GAME_DESIGN 6.1 (M5): a Mod not held 1, held and under its cap 3, a new Riff 2 (none once four are held), a level of
+    // a held Riff 3; an ingredient of a Fusion whose other ingredient is held counts double. 0: it cannot be offered.
+    if (!l.canTake(u)) return 0.0f;
+    const u32 lv = l.level(u);
+    float w = isRiff(u) ? (lv == 0 ? kDealRiffNew : kDealRiffLevel) : (lv == 0 ? kDealModNew : kDealModHeld);
+    if (lv == 0 && (u == kExtraCell || u == kRegen)) w = kDealCellsNew;  // (measured, M5 part 3: tuning.h)
+    for (u8 f = 0; f < kFusionCount; ++f) {
+        const FusionInfo& fi = kFusions[f];
+        if (l.fused(f)) continue;
+        if ((u == fi.a && l.level(fi.b) > 0) || (u == fi.b && l.level(fi.a) > 0)) {
+            w *= kDealFusionFactor;
+            break;
+        }
     }
-    // Three (Lucky Break: one more a stack) without replacement, by weight.
+    return w;
+}
+
+u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[kMaxOrbs]) {
+    // GAME_DESIGN 6.1 (M5, the lead's ruling of 2026-11-13): the Trio is dealt. The first orb is firepower (the weapon and
+    // rhythm Mods held, the Riffs held and the four staples, by the same weights, what is at its cap left out; none: as
+    // the others); the other orbs are the whole pool by weight; no two alike; the Riff guarantee; Lucky Break's orbs as the
+    // others; then Boosts where nothing can be offered, and a due Fusion's gold orb.
+    float weight[kUpgradeCount];
+    for (u8 u = 0; u < kUpgradeCount; ++u) weight[u] = dealWeight(l, u);
+    bool used[kUpgradeCount] = {};
+    const auto draw = [&](auto pred) -> i32 {
+        float total = 0.0f;
+        for (u8 u = 0; u < kUpgradeCount; ++u)
+            if (!used[u] && weight[u] > 0.0f && pred(u)) total += weight[u];
+        if (total <= 0.0f) return -1;
+        float pick = rng.range(0.0f, total);
+        i32 last = -1;
+        for (u8 u = 0; u < kUpgradeCount; ++u) {
+            if (used[u] || weight[u] <= 0.0f || !pred(u)) continue;
+            last = u;
+            if (pick < weight[u]) return u;
+            pick -= weight[u];
+        }
+        return last;
+    };
+    const auto staple = [](u8 u) { return u == kSplit || u == kDoubleTime || u == kOvercharge || u == kOnBeatCrit; };
+    const auto fire = [&](u8 u) { return isRiff(u) ? l.level(u) > 0 : (staple(u) || (firepower(u) && l.mods[u] > 0)); };
+    const auto any = [](u8) { return true; };
+    const auto newRiff = [&](u8 u) { return isRiff(u) && l.level(u) == 0; };
     const u32 want = 3u + static_cast<u32>(l.mods[kLuckyBreak]);
     u32 count = 0;
-    bool used[kUpgradeCount] = {};
-    while (count < want && count < n) {
-        float total = 0.0f;
-        for (u32 k = 0; k < n; ++k)
-            if (!used[k]) total += weight[k];
-        float pick = rng.range(0.0f, total);
-        u32 c = 0;
-        for (; c < n; ++c) {
-            if (used[c]) continue;
-            if (pick < weight[c]) break;
-            pick -= weight[c];
-        }
-        if (c >= n) {
-            for (c = n; c-- > 0;)
-                if (!used[c]) break;
-        }
-        used[c] = true;
-        out[count++] = cand[c];
+    i32 first = draw(fire);
+    if (first < 0) first = draw(any);
+    if (first >= 0) {
+        used[first] = true;
+        out[count++] = static_cast<u8>(first);
     }
-    const auto offered = [&](auto pred) {
-        for (u32 k = 0; k < count; ++k)
-            if (pred(out[k])) return true;
-        return false;
-    };
-    // Replace the last option that is not protected with a random candidate matching `pred`.
-    const auto force = [&](auto pred, auto keep) {
-        u32 m = 0;
-        u8 pool[kUpgradeCount];
-        for (u32 k = 0; k < n; ++k)
-            if (!used[k] && pred(cand[k])) pool[m++] = static_cast<u8>(k);
-        if (m == 0 || count == 0) return;
-        const u32 k = pool[rng.below(m)];
-        u32 slot = count - 1;
-        for (u32 s = count; s-- > 0;) {
-            if (!keep(out[s])) {
-                slot = s;
-                break;
-            }
+    while (count < want) {
+        const i32 u = draw(any);
+        if (u < 0) break;
+        used[u] = true;
+        out[count++] = static_cast<u8>(u);
+    }
+    bool riffOffered = false;
+    for (u32 k = 0; k < count; ++k) riffOffered = riffOffered || newRiff(out[k]);
+    // A new Riff when fewer than four are owned and none was offered in the last two Trios: it takes the last of the other
+    // orbs' places (the firepower orb stays).
+    if (l.riffsOwned() < kRiffSlots && sinceRiff >= 2 && !riffOffered && count >= 2) {
+        const i32 r = draw(newRiff);
+        if (r >= 0) {
+            used[out[count - 1]] = false;
+            used[r] = true;
+            out[count - 1] = static_cast<u8>(r);
+            riffOffered = true;
         }
-        for (u32 j = 0; j < n; ++j)
-            if (cand[j] == out[slot]) used[j] = false;
-        used[k] = true;
-        out[slot] = cand[k];
-    };
-    const auto newRiff = [&](u8 u) { return isRiff(u) && l.level(u) == 0; };
-    const auto weapon = [&](u8 u) { return kInfo[u].weapon; };
-    // A new Riff when fewer than four are owned and none was offered in the last two Trios.
-    if (l.riffsOwned() < kRiffSlots && sinceRiff >= 2 && !offered(newRiff)) force(newRiff, [](u8) { return false; });
-    // At least one option affects weapons (keep a new Riff placed above).
-    if (!offered(weapon)) force(weapon, newRiff);
-    sinceRiff = offered(newRiff) ? 0 : static_cast<u8>(sinceRiff < 250 ? sinceRiff + 1 : 250);
+    }
+    sinceRiff = riffOffered ? 0 : static_cast<u8>(sinceRiff < 250 ? sinceRiff + 1 : 250);
     // Play test 2 (GAME_DESIGN 6.1): the orbs no upgrade can fill offer Boosts, each a different one.
     u8 boosts[kBoostCount];
     u32 nb = 0;

@@ -172,14 +172,17 @@ except settings, local high scores and lifetime stats.
     Double-Time, Overcharge, On-Beat Crit) whether held or not; whatever is at its cap is left out.
     A player can always choose to hit harder. When none of these can grow it is drawn like the others.
   - **The other orbs are the whole pool**, drawn by weight: a Mod not yet held 1, a Mod held and
-    under its cap 3, a new Riff 2 (none once four are held), a level of a held Riff 3. An ingredient
-    of a Fusion whose other ingredient the player holds counts double. The first orb uses the same
+    under its cap 3, a new Riff 3 (none once four are held), a level of a held Riff 3. Extra Cell and
+    Regen count 3 from the start: they are what keeps a careless player alive. An ingredient of a
+    Fusion whose other ingredient the player holds counts double. The first orb uses the same
     weights. No two orbs of a Trio are the same upgrade.
   - With fewer than four Riffs and none offered in the last two Trios, one of the other orbs is a
     new Riff (as before). Lucky Break's extra orbs are drawn like the other orbs.
-  - The weights are starting values. What they are for: a build deepens (by Track 3 a player who
-    wants it has two Mods at their cap) and a Fusion is reachable (the careful bot, which takes the
-    ingredient when it is offered, holds one by the end of Track 5 in half its runs).
+  - What the weights are for, and what they gave (M5 part 3, twenty runs of each bot): a build
+    deepens (the careful bot has 5.2 Mods at their cap when Track 3 ends, two or more in every run)
+    and a Fusion is reachable (it held one at the end of Track 5 in every run that got there). With
+    Extra Cell and Regen at 1 the careless bot grew back 5 cells in twenty runs, against 107 in play
+    test 2, and died in the first three Tracks in 9 runs of 20; at 3, in 1 of 20.
 - **Fusion.** When both ingredients of a Fusion are maxed, it appears as a gold fourth orb.
 - **Shard levels** (play test 2, 2026-11-12: "upgrades need to happen more often, maybe scale by
   collected Shards"). Collected Shards fill a level meter under the Chain. Each time it fills the
@@ -237,7 +240,7 @@ Defence and movement
 | 21 | Shockstep | Dash emits a damaging ring; a Perfect Dash doubles it | 3 |
 | 22 | Aegis | A rotating arc blocks bullets from one side; wider per stack | 3 |
 | 23 | Last Light | Taking a hit fires a free mini-Nova, once per cycle | 1 |
-| 24 | Slipstream | +8% speed | 4 |
+| 24 | Slipstream | +15% speed (M5: +8% four times over was a pick nobody feels, rule 6.6) | 2 |
 
 Economy
 
@@ -258,7 +261,7 @@ Rhythm
 | 32 | Syncopation | Off-beat shots pierce and deal +50% | 2 |
 | 33 | Bar Line | At each bar start a laser cross flashes through your position; then diagonals; then longer | 3 |
 | 34 | Crescendo | +5% damage per bar without being hit, up to +50%; then +100% | 2 |
-| 35 | Kick Pulse | Every kick drum emits a knockback ring around you; later adds damage and radius | 3 |
+| 35 | Kick Pulse | Every kick drum emits a knockback ring around you; later adds damage and radius. The ring is on the steps of the Track's kick pattern at velocity 5 or more, as its tom is, so in Tracks 7, 9 and 10 it is not on every beat; its push and damage are scaled by 4 / (kicks a bar) so the Mod is worth the same in every Track. None in a Break | 3 |
 | 36 | Afterparty | Surge lasts two bars longer and its fire grid is one step faster | 2 |
 
 ### 6.3 Riffs (12) — autonomous weapons, each a layer in the mix
@@ -286,7 +289,7 @@ Rhythm
 | 2 | Hyper | Primary and all Riffs run at double grid |
 | 3 | Supernova Rounds | Every shot explodes on impact |
 | 4 | Colossus | Ship ×3 size, invulnerable, rams through enemies (2 bars) |
-| 5 | Time Stretch | World at half speed, you at full; music drops to half-time (2 bars) |
+| 5 | Time Stretch | World at half speed, you at full; music drops to half-time (2 bars). In co-op the world slows for everyone and every player keeps full speed: it is a gift to the team |
 | 6 | Freeze Frame | Enemies in view freeze for 2 bars and shatter in one hit, chaining |
 | 7 | Halo | Absorbs up to 3 hits (until broken, at most 8 bars) |
 | 8 | Magnet Storm | All your Shards on the map fly to you; kills drop double |

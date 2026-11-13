@@ -1,4 +1,4 @@
-# RAVEFORM — Look Bible (v2.3)
+# RAVEFORM — Look Bible (v2.4)
 
 Creative direction for the renderer and effects. It complements `docs/GAME_DESIGN.md` §11 and
 `docs/TECH_SPEC.md` §5: those say what exists and how it is built; this says how it should look, with
@@ -54,6 +54,11 @@ intensities, the engine is wrong before the numbers are.
 Units: **reference pixels** (ref px; 1 = screen height / 1080) for line widths and anything that must
 look the same on every screen, **world units** (wu; 1.5 ref px at zoom 1) for anything that lives in
 the world and scales with the camera.
+
+**v2.4 (2026-11-13)** is the review of the engine's pictures of every upgrade (M5 part 3,
+`captures/m5/part3/`). One new subsection in §5, "Beams, lightning and areas": a beam is drawn in
+lines, lightning is one recipe, an area is drawn by its edge, what a Boost draws is gold, and what
+Time Stretch does to the picture.
 
 ---
 
@@ -359,6 +364,54 @@ hotter each time, and never near the danger colour.
   end, white only in its front 15%, drawn at 0.6 of the shot level and 1.3 of its width: the tone
   map bleaches anything brighter, which is why the first build's fan looked pale. Glow, sparks and
   mini-refractions take the lane's colour.
+
+### Beams, lightning and areas (M5, 2026-11-13)
+
+The first pictures of the upgrades drew every beam as a filled bar with a white band down the
+middle: Lancer, Accent, the Beam Boost, Bar Line and the Downbeat Cannon, up to 215 px wide. A
+filled bar is not a vector picture, it hides what it hits, and Bar Line's eight took a quiet frame
+to 39% dark with a fifth of the screen above 200. The same pictures drew lightning three ways.
+
+**A beam is drawn in lines.** For a beam of damage width *w* (the picture is never wider than what
+hurts):
+
+| Part | Drawn |
+|---|---|
+| Edges | Two lines at ± w/2, 1.6 px, the owner's colour at the shot level |
+| Core | One line on the axis, 3 px (2 px when w is under 20 wu), 70% white and 30% the owner's colour, at 1.6 of the shot level at its peak |
+| Fill | The owner's colour between the edges, added at 0.10. It is soft light (§3): it feeds neither bloom nor the afterglow, and an enemy inside the beam is seen as clearly as one outside |
+| Start | The edges leave the ship's nose as a point and reach full width over 40 wu. No round cap behind the ship |
+
+- **A beam on a beat** (Lancer, Accent, Bar Line, Downbeat Cannon) is at its peak for two frames and
+  falls to nothing over the beat envelope's 110 ms (§7); the edges last 60 ms longer than the core.
+- **A held beam** (the Beam Boost, the Sweeper's arm, Standing Wave's lines) keeps edges and fill and
+  lets the core move between 1.0 and 1.4 on the 1/32 grid. The Sweeper's arm of part 3, one line, is
+  right as it is: its width is under 6 wu, so edges and core are one line.
+- **Whose it is.** A beam is its owner's colour, like every shot's tail. Part 3's Bar Line was in the
+  Track's second colour, and in co-op nobody could say whose it was. A Fusion's beam has gold edges
+  and its owner's colour in the core.
+- **Reduce flashing:** a beam on a beat peaks at 1.0 and has no white in its core.
+
+**Lightning is one thing.** Arc, Storm Coil, Chain Storm and Tesla Bloom all draw the bolt of
+`captures/m5/part3/fusion_tesla.png`: three strands of 1.2 px between the two bodies, each a
+polyline of pieces 18 to 30 wu long pushed up to 10 wu sideways, drawn afresh every frame for the
+zap's 90 ms; the middle strand white, the outer two the owner's colour (gold for Chain Storm, a
+Boost), a sparkle at each end. No straight lines from body to body (part 3's Chain Storm) and no
+smooth curves (part 3's Arc).
+
+**An area is drawn by its edge.** A ring, a well, a disc or a field is its edge line and, at most, a
+fill added at 0.12: the Black Hole's disc and the Singularity's well were filled to a glow that hid
+the bodies being pulled in. The pull is shown by the lattice (it already dimples) and by the sparks
+that fall inward.
+
+**What a Boost draws is gold**, the colour of its orb and its card: Colossus' hull, the Carousel's
+bombs, the Black Hole's edge, Chain Storm, the blasts of Supernova Rounds. Gold on the field means a
+gift that will end. What a Mod or a Riff draws is its owner's colour.
+
+**Time Stretch** has to be seen on the world, not only read on its card: while it runs the lattice's
+beat pulse follows the half-time drums (one pulse in two), the vignette closes by 0.15, and enemy
+hulls lose a third of their chroma. Ships, shots, Shards and everything on the priority layer keep
+their colour: the room slows, the player does not.
 
 Beat response amounts are in `docs/GAME_DESIGN.md` §11.1; their envelopes are in §7.
 

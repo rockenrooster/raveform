@@ -372,6 +372,8 @@ void Play::runTick(double music0, double music1, bool firstOfFrame) {
         }
         bandShots_ += in.shotCount;
     }
+    // M5 part 3: the song's bars against the run's (Singularity's and the Sweeper's phase follow the band's).
+    world_->setSongBarShift(static_cast<i64>(std::llround((coop() ? netBandOffset_ : clock_.offset()) / kTicksPerBar)));
     const u64 t0 = nowNs();
     world_->tick(in);
     const float ms = static_cast<float>(nsToMs(nowNs() - t0));

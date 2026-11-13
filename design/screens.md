@@ -175,6 +175,76 @@ Effect words (final, 2026-11-12; plain words, no music terms, so a first-time pl
 | Sentinel | `NEW RIFF: OFF-BEAT DRONE`, `LEVEL 2: BURST OF 4`, `LEVEL 3: SECOND DRONE`, `LEVEL 4: BURST OF 5`, `LEVEL 5: THIRD DRONE` |
 | Boosts (HUD) | Prism `FIVE-WAY RAINBOW FAN`, Hyper `FIRE RATE X2`, Halo `BLOCKS THREE HITS`, Magnet Storm `PULLS EVERY SHARD` |
 
+The rest of the upgrades (M5, 2026-11-13). The engineer wrote words for all of them in this style
+while building them; these are those words, read as a first-time player would read them. Changed:
+no word a player must know music or mathematics for (`SINE`, `TRIPLET`, `ON 2 AND 4`), nothing that
+names a thing the game never names on screen (`TRIO`), and no word that is also another upgrade's
+name (`ARC` for Aegis, `SINGULARITY` for the Black Hole). At most 26 characters.
+
+| Mod | Words by stack |
+|---|---|
+| Fork | `SHOTS FORK ON A HIT`, then `FORKS FORK AGAIN` |
+| Seeker | `SHOTS HOME IN`, `TIGHTER HOMING`, `SHOTS HUNT` |
+| Heavy Step | `EVERY 4TH SHOT EXPLODES`, `BIGGER BLASTS`, `HEAVIER BLASTS` |
+| Accent | `A LANCE EACH BAR`, `TWO LANCES A BAR`, `A LANCE EVERY BEAT` |
+| Echo | `SHOTS ECHO A BEAT LATER`, `TWO ECHOES` |
+| Wave | `WAVY SHOTS HIT WIDER`, `WIDER WAVES` |
+| Rear Guard | `ALSO FIRE BACKWARD`, `AND SIDEWAYS` |
+| Arc | `KILLS ARC TO 2 MORE`, then the number that stack reaches |
+| Burn | `HITS IGNITE`, `HOTTER FIRE`, `FIERCE FIRE` |
+| Shatter | `KILLS THROW SHRAPNEL`, `MORE SHRAPNEL` |
+| Gravity Rounds | `HITS PULL ENEMIES IN`, `A STRONGER PULL` |
+| Afterimage | `DASH LEAVES A DECOY`, `DECOY LASTS LONGER` |
+| Reserve | `+1 DASH CHARGE` |
+| Shockstep | `DASH: A DAMAGING RING`, `A BIGGER RING` |
+| Aegis | `A SHIELD BLOCKS BULLETS`, `A WIDER SHIELD` |
+| Last Light | `WHEN HIT: A FREE NOVA` |
+| Slipstream | `+15% SPEED` |
+| Prospector | `+25% EXTRA SHARDS`, then `+50%`, `+75%`, `+100%` |
+| Nova Stock | `+1 NOVA` |
+| Encore | `BOOSTS LAST +1 BAR` |
+| Lucky Break | `ONE MORE CHOICE` |
+| Collector | `A BOOST PER 250 SHARDS`, `A BOOST PER 150 SHARDS` |
+| Syncopation | `OFF-BEATS PIERCE, +50%`, `OFF-BEATS +100%` |
+| Bar Line | `A LASER CROSS EACH BAR`, `AND DIAGONALS`, `LONGER LASERS` |
+| Crescendo | `DAMAGE CLIMBS WHILE UNHIT`, `CLIMBS TWICE AS HIGH` |
+| Kick Pulse | `KICK DRUM SHOVES ENEMIES`, `THE SHOVE HURTS`, `A WIDER SHOVE` |
+| Afterparty | `LONGER, FASTER SURGE` |
+
+| Riff | Level 1 | Levels 2 to 5 |
+|---|---|---|
+| Lancer | `NEW RIFF: A BEAM EACH BAR` | `LEVEL 2: WIDER BEAM`, `LEVEL 3: TWO BEAMS A BAR`, `LEVEL 4: WIDER STILL`, `LEVEL 5: HEAVIER BEAM` |
+| Minelayer | `NEW RIFF: A MINE A BAR` | `LEVEL 2: TWO MINES`, `LEVEL 3: THREE MINES`, `LEVEL 4: FOUR MINES`, `LEVEL 5: FIVE MINES` |
+| Storm Coil | `NEW RIFF: RAPID ZAPS` | `LEVEL 2: TWO TARGETS`, `LEVEL 3: THREE, WIDER`, `LEVEL 4: FOUR TARGETS`, `LEVEL 5: FIVE, WIDER` |
+| Swarm | `NEW RIFF: HOMING MISSILES` | `LEVEL 2: EIGHT MISSILES`, `LEVEL 3: TEN MISSILES`, `LEVEL 4: TWELVE MISSILES`, `LEVEL 5: SIXTEEN MISSILES` |
+| Singularity | `NEW RIFF: A GRAVITY WELL` | `LEVEL 2: WIDER WELL`, `LEVEL 3: HEAVIER BLAST`, `LEVEL 4: WIDER STILL`, `LEVEL 5: HEAVIER STILL` |
+| Mirror | `NEW RIFF: A WINGMAN AT 50%` | `LEVEL 2: WINGMAN 60%`, `LEVEL 3: WINGMAN 70%`, `LEVEL 4: WINGMAN 80%`, `LEVEL 5: WINGMAN 100%` |
+| Comet | `NEW RIFF: A BOOMERANG DISC` | `LEVEL 2: BIGGER DISC`, `LEVEL 3: TWO DISCS`, `LEVEL 4: BIGGER STILL`, `LEVEL 5: THREE DISCS` |
+| Sweeper | `NEW RIFF: A LASER ARM` | `LEVEL 2: LONGER ARM`, `LEVEL 3: SECOND ARM`, `LEVEL 4: LONGER STILL`, `LEVEL 5: FASTER ARMS` |
+| Flak | `NEW RIFF: PELLET BURSTS` | `LEVEL 2: MORE PELLETS`, `LEVEL 3: MORE STILL`, `LEVEL 4: TWICE AS MANY`, `LEVEL 5: PELLETS EXPLODE` |
+
+| Boost | Words | | Fusion | Words |
+|---|---|---|---|---|
+| Supernova Rounds | `SHOTS EXPLODE` | | Helix Array | `SHOTS BRAID A HELIX` |
+| Colossus | `GIANT, RAMS THROUGH` | | Standing Wave | `LANCES STAY A BAR` |
+| Time Stretch | `THE WORLD AT HALF SPEED` | | Tesla Bloom | `RINGS ARC LIGHTNING` |
+| Freeze Frame | `FREEZE AND SHATTER` | | Shard Halo | `ORBITALS FLING SHRAPNEL` |
+| Black Hole | `NEXT NOVA PULLS ALL IN` | | Downbeat Cannon | `A GIANT BEAM EACH BAR` |
+| Chain Storm | `LIGHTNING EVERY BEAT` | | Collapse Field | `MINES PULL IN` |
+| Chorus | `TWO GHOST SHIPS` | | Murmuration | `A HOMING FLOCK` |
+| Beam | `A SWEEPING LASER` | | Quartet | `THREE WINGMEN` |
+| Ricochet Fever | `+5 BOUNCES, FASTER` | | | |
+| Confetti | `KILLS BURST INTO SPARKS` | | | |
+| Fractal | `SHOTS FORK TWICE` | | | |
+| Carousel | `A BOMB EVERY BEAT` | | | |
+
+**Boost cards (HUD).** An active Boost shows its icon, its name and its words above the Riff slots.
+Two can be active, and their cards are laid out from what they say, not at fixed places: side by
+side, centred as a pair, with 48 px between the nearer ends of their text (the name or the words,
+whichever is wider). Part 3's pictures had `SUPERNOVA ROUNDS` running into `CHAIN STORM` and
+`FREEZE FRAME` into `RICOCHET FEVER`. A pair wider than 900 px drops its words and keeps icons and
+names.
+
 ## Track name card (M3)
 
 A new Track announces itself like a boss does. On the first downbeat after a Track-change Break the

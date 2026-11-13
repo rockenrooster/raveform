@@ -121,9 +121,12 @@ constexpr float kTrioHomeSpeed = 900.0f;      // wu/s: the orb that flies to the
 constexpr double kTrioLockBeats = 2.0;
 constexpr double kTrioHoldBeats = 2.0;
 constexpr float kTrioHoldRing = 1.42f;
-constexpr float kTrioWeightMod = 1.0f;        // draw weights: an uncapped Mod,
-constexpr float kTrioWeightNewRiff = 1.2f;    // a Riff not yet owned,
-constexpr float kTrioWeightRiffLevel = 1.0f;  // a level for an owned Riff
+// How a Trio is dealt (GAME_DESIGN 6.1, M5: the lead's starting weights): a Mod not held, a Mod held under its cap, a new
+// Riff (none once four are held), a level of a held Riff; an ingredient of a Fusion whose other ingredient is held, x2.
+constexpr float kDealModNew = 1.0f, kDealModHeld = 3.0f, kDealRiffNew = 3.0f, kDealRiffLevel = 3.0f, kDealFusionFactor = 2.0f;
+// M5 part 3 (measured; for the lead): the cells' Mods (Extra Cell, Regen) count as held before they are, so the halo can grow
+// in the first pass as it did in the play tests' smaller pool (Regen grew back 107 cells for the careless bot then, 5 with 1).
+constexpr float kDealCellsNew = 3.0f;
 
 // ---- Mods (GAME_DESIGN 6.2 gives each effect per stack; how wide, how far is chosen) ----
 // Play test 1 (2026-11-12) raised them: Split +2 lanes, Pierce +2, Ricochet +2 (and on to the nearest other enemy
@@ -338,8 +341,8 @@ constexpr float kStandingDamage = 1.5f;
 // The pages leave the health to the bot ("tune the segment health with the bot once it can surf", "tune the Voice health
 // with the bot", minibosses.md "25 to 35 seconds of fire ... tune with the bot"): the careful bot's time to kill each at its
 // home Track (8 seeds) brought into the page's window by these factors on the page's health (docs/PROGRESS.md, M5 part 1).
-constexpr float kLongwaveHealthTune = 0.55f;  // the page's 70-100 s (docs/PROGRESS.md, M5 part 1; part 3: with the whole pool, 1.4 -> 0.55)
-constexpr float kChoirHealthTune = 1.6f;      // the page's 80-110 s (part 3: 4.5 -> 1.6)
+constexpr float kLongwaveHealthTune = 2.2f;  // 70 s with the careful bot (M5 part 1; part 3, the Trio dealt: 1.4 -> 2.2; 2.7 gave 86 s but the careless bot 3 of 20 in the first pass)
+constexpr float kChoirHealthTune = 4.2f;      // 65 s with the careful bot (part 3, the Trio dealt: 4.5 -> 4.2; 4.8 gave 70 s, with the above)
 constexpr float kMiniHealthTune[4] = {6.5f, 5.0f, 2.0f, 4.8f};  // Alpha Hound, The Hive, Battering Ram, Carom King: 25-35 s
 
 // ======================================================================================================
