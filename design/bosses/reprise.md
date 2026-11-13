@@ -3,7 +3,7 @@
 The first boss comes back as the first theme does. Six arms, and each one plays one boss the player has already beaten.
 
 174 BPM, A minor: First Light's chords and lead. Data: `design/bosses/reprise.json` (load it, do not retype it). Picture: `design/previews/bosses_7_10.png`.
-Tool: `design/tools/bosses_7_10.py`. It on the last Drop of its Track and stays until it is dead; the music holds its Drop for the whole fight.
+Tool: `design/tools/bosses_7_10.py`. It arrives on the last Drop of its Track and stays until it is dead; the music holds its Drop for the whole fight.
 
 What it teaches:
 

@@ -3,7 +3,7 @@
 The safe place moves. A storm closes the frame and the only calm is an oasis that drifts; later there are two, and one of them is not there.
 
 168 BPM, B flat lydian: B flat major 7, C over B flat, G minor 7, F add 9. Data: `design/bosses/morgana.json` (load it, do not retype it). Picture: `design/previews/bosses_7_10.png`.
-Tool: `design/tools/bosses_7_10.py`. It on the last Drop of its Track and stays until it is dead; the music holds its Drop for the whole fight.
+Tool: `design/tools/bosses_7_10.py`. It arrives on the last Drop of its Track and stays until it is dead; the music holds its Drop for the whole fight.
 
 What it teaches:
 

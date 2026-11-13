@@ -3,7 +3,7 @@
 The bullets are the tune. Four lanes run from a machine across the frame and the lead's broken chord comes down them as blocks, so the player weaves the shape of the arpeggio they have been firing all Track.
 
 162 BPM, G major: G, E minor, C, D. Data: `design/bosses/arpeggiator.json` (load it, do not retype it). Picture: `design/previews/bosses_7_10.png`.
-Tool: `design/tools/bosses_7_10.py`. It on the last Drop of its Track and stays until it is dead; the music holds its Drop for the whole fight.
+Tool: `design/tools/bosses_7_10.py`. It arrives on the last Drop of its Track and stays until it is dead; the music holds its Drop for the whole fight.
 
 What it teaches:
 

@@ -3,7 +3,7 @@
 The boss is the chord progression. Four great bodies stand round the players, one for each chord; the one whose chord the band is playing is silent and open, and the other three fire.
 
 156 BPM, D flat major: D flat, A flat, B flat minor, G flat (I, V, vi, IV). Data: `design/bosses/cadence.json` (load it, do not retype it). Picture: `design/previews/bosses_7_10.png`.
-Tool: `design/tools/bosses_7_10.py`. It on the last Drop of its Track and stays until it is dead; the music holds its Drop for the whole fight.
+Tool: `design/tools/bosses_7_10.py`. It arrives on the last Drop of its Track and stays until it is dead; the music holds its Drop for the whole fight.
 
 What it teaches:
 

@@ -159,7 +159,7 @@ def page(b):
     md = ["# %s — boss of Track %d, %s" % (b["name"].upper(), b["track"], b["trackName"]), "",
           b["line"], "",
           "%d BPM, %s. Data: `design/bosses/%s.json` (load it, do not retype it). Picture: `design/previews/bosses_7_10.png`." % (b["bpm"], b["key"], b["id"]),
-          "Tool: `design/tools/bosses_7_10.py`. It %s." % COMMON["arrives"], "",
+          "Tool: `design/tools/bosses_7_10.py`. It arrives %s." % COMMON["arrives"], "",
           "What it teaches:", ""]
     md += ["%d. %s" % (i + 1, t) for i, t in enumerate(b["lessons"])]
     md += ["", "---", "", "## Parts", "", "| Part | What it is |", "|---|---|"]
