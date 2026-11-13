@@ -1,5 +1,9 @@
 # FEEDBACK — boss of Track 6
 
+> **M5, 2026-11-13.** Armour takes a quarter: the shut Head takes 0.25 of a shot's damage, where this
+> page says none (`damageScale` in the data; GAME_DESIGN 7.6, "A boss's rule is a bonus, not a wall").
+> Hint line (screens.md): `STOP FIRING TO OPEN IT`. The health is tuned with the novice bot.
+
 A loudspeaker inside a loop of tape. It has no attack of its own. It records each player's bar and,
 one bar later, an **Echo** of that player plays it back from the far side: the same ship, the same
 shots, the same Riffs, aimed the other way. It arrives on the last Drop of Track 6 "Zenith" (150 BPM,

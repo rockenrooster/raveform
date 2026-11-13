@@ -30,16 +30,18 @@ Picture: `design/previews/boss_longwave.png`. Tool: `design/tools/boss_longwave.
 
 1. **The body is a wave.** Every segment swings sideways off the spine as a sine: 150 wu each way,
    eight segments to a wavelength, so a whole body carries three crests and three troughs.
-2. **Only a crest can be hurt.** The segment at the top of the wave is white-hot and takes damage for
-   that one grid step. Every other segment is armoured. Shots that hit armour spark and stop.
+2. **The crest is where it hurts.** The segment at the top of the wave is white-hot and takes full
+   damage for that one grid step. Every other segment is armoured: shots that hit armour spark and
+   stop, and do a quarter of their damage (M5, 2026-11-13: it was none, nothing on screen said so,
+   and the user never got past this boss; GAME_DESIGN 7.6, "A boss's rule is a bonus, not a wall").
 3. **The crest runs from head to tail, one segment per step.** In the first phase a step is an eighth
    note, which makes the crest travel at 420 wu/s: slower than the ship (520). Fly beside it and every
-   shot counts; stand still and one shot in eight does.
+   shot counts in full; stand still and seven in eight count a quarter.
 4. **Troughs fire.** The segment at the bottom of the wave spits to both sides, square to the body, on
    the same steps. So the dangerous side of the wave is always half a wavelength from the safe one, and
    it moves with it.
-5. **The jaw opens on beat 1.** For the first beat of every bar the mandibles part and the head can be
-   hurt through them. A horn marks it. **Kill the head and it is over**, whatever is left of the body.
+5. **The jaw opens on beat 1.** For the first beat of every bar the mandibles part and the head takes
+   full damage through them; closed, it is armour like the body (a quarter). A horn marks it. **Kill the head and it is over**, whatever is left of the body.
 6. **A dead segment closes up.** Its neighbours snap together, the body is one segment shorter, and the
    crest skips on without missing a step.
 7. **Everything is a function of song time**, as for every boss: the head's place on its path, the
@@ -65,7 +67,7 @@ Bullets fly at 220 wu/s and live five seconds. The most alive at once is about 3
 | | Value |
 |---|---|
 | Segment health / head health | 60 / 600 (× 1 + 0.5 per extra player, as for every boss) |
-| Damage scale | Crest × 1 · any other segment 0 · head through the open jaw × 1 (× 3 when bare) · closed jaw 0 |
+| Damage scale | Crest × 1 · any other segment × 0.25 · head through the open jaw × 1 (× 3 when bare) · closed jaw × 0.25 |
 | Contact | Head and segments hurt |
 | Path | A figure of eight, 3,000 wu wide and 1,040 tall, around the centre of the players when it arrives (kept 1,100 wu from every wall). The head swims it; segment k is 100 × k wu behind along the same path, then swings with the wave |
 | Camera | Pulls back to 0.75 for the fight so the wave can be read, eased over the entrance bar |
@@ -74,8 +76,11 @@ Bullets fly at 220 wu/s and live five seconds. The most alive at once is about 3
 
 With the build a player has by the end of Track 2 (about 30 damage a second on target), riding one
 crest down the whole body takes three bars and strips about seven health from every segment; expect
-70–100 seconds for the fight. A player who never moves with the wave does an eighth of that damage.
-Tune the segment health with the bot once it can surf.
+70–100 seconds for the fight. A player who never moves with the wave does about a third of that
+damage (an eighth before armour took a quarter). The health is tuned with the novice bot, which
+does not surf (GAME_DESIGN 7.6): it must win, in at most 150 seconds.
+
+**Hint line** (screens.md): `SHOOT THE WHITE SEGMENT`.
 
 ## Sound
 

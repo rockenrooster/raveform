@@ -406,8 +406,14 @@ line: a stronger beam is hotter and longer, never fatter. For a beam of damage w
 - **Whose it is.** Core and glow are the owner's colour, like every shot's tail. A Fusion's beam
   (Downbeat Cannon, Standing Wave's lines) has a gold glow and a core of half white, half its
   owner's colour, so the owner still shows.
-- **Lethal beams are not this.** An enemy's or a boss's beam is danger red on the priority layer
-  (§6) and is drawn exactly as wide as it kills: a threat's picture is its hit box.
+- **A lethal beam is a laser too.** An enemy's or a boss's beam is danger red on the priority layer
+  (§6): its capsule is exactly as wide as it kills (a threat's picture is its hit box), with a
+  white-pink line of 2 px down its axis, and round it a glow of the danger colour drawn as the
+  players' is (0.25 on the axis, σ = twice the kill width) that hurts nobody. **No lethal beam
+  kills wider than 12 wu** (18 px at zoom 1); Kaleidos' beam, 10 wu, is the model. Part 4 drew
+  Event Horizon's jets about 90 wu wide and Polyrhythm's burning link and the Blink Star's star as
+  bars (`captures/m5/part4/hz_jets.png`, `pr_burn.png`, `bs_fire.png`): the pages gave no width,
+  and they come down to 12, 12 and 10. The dashes that warn of a beam are as wide as the beam.
 - **Reduce flashing:** a beam on a beat peaks at 1.0, has no white in its core, and its glow is 0.15.
 - **Checked on the retaken pictures** (2400×1080, `scenes.py light`): no beam's core wider than
   4 px; `up_barline` at least 50% dark with under 8% of the screen above 200 (v2.3's bars: 39% and

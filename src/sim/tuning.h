@@ -140,12 +140,15 @@ constexpr float kRicochetSeekWu = 300.0f;     // GAME_DESIGN 6.2 (quoted): a hit
 constexpr float kCritBurstWu = 80.0f;         // GAME_DESIGN 6.2 (quoted): a beat shot's hit bursts this wide ...
 constexpr float kCritBurstShare = 0.5f;       // ... dealing this share of the shot's damage to the others in it (chosen)
 // The shot pool (TECH_SPEC 7.1: 1,024 a player) with Split 7 x Prism 5, Double-Time, Hyper and the endless tempo
-// on top: above kShotsSoftCap live shots of a player, every pair of Split lanes beyond the middle one fires on every
-// second step (the pairs take turns) and Prism's mini-refractions stop; above kShotsMiddleOnly the middle lane alone
-// fires; a player never has more than kShotsHardCap (a guard the rules above keep from being reached).
+// on top: above kShotsSoftCap live shots of a player (from a beat; until below kShotsThinEnd, on a beat: GAME_DESIGN 6.6)
+// every lane still fires but those beyond the middle three fly half as far, and the multipliers' extras and Prism's
+// mini-refractions wait; above kShotsMiddleOnly the middle lane alone fires; a player never has more than kShotsHardCap
+// (a guard the rules above keep from being reached).
 constexpr u32 kShotsSoftCap = 576;
 constexpr u32 kShotsMiddleOnly = 800;
 constexpr u32 kShotsHardCap = 1000;
+constexpr u32 kShotsThinEnd = 432;            // GAME_DESIGN 6.6 (quoted): thinning ends below three quarters of the soft cap
+constexpr float kThinReach = 0.5f;            // GAME_DESIGN 6.6 (quoted): the lanes beyond the middle three fly half as far
 constexpr u32 kMaxShotsPerStep = 35;          // Split 7 x Prism 5
 // The Shard pool (2,048): above this many out at once a loose Shard lasts one bar instead of GAME_DESIGN 5's four and a
 // death drops one Shard; within kShardsReserve of the cap a death drops none.
@@ -283,8 +286,10 @@ constexpr float kHeavyOrbSpeed = 0.45f, kHeavyOrbRadius = 3.0f, kHeavyOrbLifeS =
 constexpr float kHeavyBlastWu[4] = {0.0f, 90.0f, 120.0f, 150.0f}, kHeavyBlastDamage[4] = {0.0f, 4.0f, 6.0f, 8.0f};
 constexpr float kAccentDamage = 3.0f, kAccentLengthWu = 1500.0f, kAccentHalfWu = 14.0f;  // x the shot's damage
 constexpr float kEchoDamage = 0.5f;                         // quoted: half damage
-constexpr float kWaveAmpWu[3] = {0.0f, 28.0f, 40.0f}, kWavePeriodS = 0.2f, kWaveRadius[3] = {1.0f, 1.6f, 2.0f};
-constexpr float kHelixAmp = 3.0f;                           // Helix Array: the Wave's amplitude x this
+constexpr float kWaveAmpWu[3] = {0.0f, 28.0f, 40.0f}, kWaveRadius[3] = {1.0f, 1.6f, 2.0f};  // (GAME_DESIGN 6.2 row 10: one wave
+                                                            // to a beat of flight, look.md v2.5)
+constexpr float kHelixAmpWu = 80.0f;                        // GAME_DESIGN 6.5 (quoted): the outer pair 80 wu to each side, the
+constexpr float kHelixWaveBeats = 2.0f;                     // pairs inside at 2/3 and 1/3; one wave to two beats of flight
 constexpr float kArcReachWu = 220.0f, kArcDamage = 2.0f;    // Arc: 2, 3, 4 more (quoted 2 at the first stack)
 constexpr float kBurnDamage = 1.0f, kBurnSpreadWu = 90.0f;  // a beat's fire, x the stacks; neighbours caught on a death
 constexpr double kBurnBeats = 2.0;                          // quoted
@@ -335,7 +340,7 @@ constexpr float kFeverSpeedUp = 1.1f;
 constexpr u32 kConfettiSparks = 6;                                  // quoted
 constexpr float kCarouselWu = 70.0f, kBombSpeed = 500.0f, kBombLifeS = 1.0f, kBombBlastWu = 90.0f, kBombDamage = 6.0f;
 // Fusions.
-constexpr float kDownbeatHalfWu = 60.0f, kDownbeatLengthWu = 2400.0f;
+constexpr float kDownbeatHalfWu = 32.0f, kDownbeatLengthWu = 2400.0f;  // look.md v2.5: no beam hurts wider than 64 wu (was 60)
 constexpr float kCollapsePullWu = 200.0f, kCollapsePull = 200.0f;
 constexpr float kStandingDamage = 1.5f;
 // The pages leave the health to the bot ("tune the segment health with the bot once it can surf", "tune the Voice health

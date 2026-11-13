@@ -75,6 +75,64 @@ the loop begins after Feedback.
   past the run's set list stretches it for that run); `scripts\review-m5.ps1 -Part part4` (34 pictures and 6 strips); the
   crowd sim reports first deaths in Tracks 1-3 and in the whole first pass.
 
+### The lead's rulings of the afternoon, built with part 4's close
+
+- **Beams v2.5** (look.md section 5, `3c110c7`): a beam is one thin line and its glow (`PlayView::drawBeam`). The core on the axis
+  (2 px Accent, Bar Line, the Beam Boost, Standing Wave; 3 px Lancer; 4 px the Downbeat Cannon), 70% white and 30% the owner's
+  colour at the nose running to the owner's light colour (a Fusion's half white), 1.6 of the shot level at its peak (the Cannon
+  2.0); the glow a Gaussian strip of the owner's colour (a Fusion's gold), 0.25 on the axis, sigma w / 5, drawn with the pools
+  as round Gaussians a sigma wide two sigmas apart (their sum along the axis is the strip, its ripple under 2%), coming up over
+  the first 20 wu; under 12 wu the core alone; no edge lines, no fill. A beam on a beat peaks two frames and is gone over 110 ms
+  with its glow; a held one keeps its glow and moves its core between 1.0 and 1.4 on the 1/32 grid. Reduce flashing: peak 1.0,
+  no white, glow 0.15. `kDownbeatHalfWu` 60 -> 32 (no beam hurts wider than 64 wu); the Cannon's kills a minute before and
+  after belong to the "no pick is a trap" table, which stays with part 7's balance pass.
+- **A stream of shots reads as a line** (look.md 5, GAME_DESIGN 6.2 row 10, 6.5, `3b2f03b`): Wave is a standing curve fixed
+  to the aim line and measured from the muzzle (each shot's phase by its own flight, `Shots::life0`; a shot starts on its
+  curve), one wave to a beat of flight, 28 then 40 wu, every Split lane about its own direction with the same phase. Helix
+  Array: the Split lanes stop fanning and ride strands in mirrored pairs (the outer 80 wu, the pairs inside 2/3 and 1/3), the
+  middle lane straight, one wave to two beats; `kHelixAmp` is gone; the Wave's wider hit radius stays.
+- **Thinning never flickers** (GAME_DESIGN 6.6): thinning starts above the soft cap (576) and ends below three quarters of it
+  (432), only on a beat (`World::updateThinning`); while it lasts every lane fires on every step and the lanes beyond the
+  middle three fly half as far; the multipliers' extras wait above the soft cap as before; above the second cap (800) the middle
+  lane alone. The alternate steps are gone.
+- Tests: the Wave's curve (every shot within 0.5 wu of A sin(2 pi age / beat), sideways at most 0.6 of forward), Helix Array's
+  strands (no fan, mirrored pairs at three levels, the middle straight), the thinning (on and off only on a beat, half-reach
+  outer lanes, every lane firing).
+
+### Acceptance
+
+| Check | Result | Limit |
+|---|---|---|
+| Tests (`5107877`) | audio 2,679 checks, sim 5,761 (new: Event Horizon, Polyrhythm, Feedback, batch 2, the shot stream), net 131,366; determinism passes (`78fd9381c93838c6` play, `fcbe62dd9e1c369a` reckless: moved from part 3's with the six-Track set list in `b3b967f`; the shot stream's rules did not move them, the two-minute bots neither take Wave nor reach the soft cap) | all pass |
+| Loopback soaks, 4 players, 10 min (test seed) | after the merge of `m4-net` (`f14beab`): clean **8.03**, impaired **5.13** wu RMS; with the shot stream's rules (`5107877`): clean **10.52**, impaired **5.21**. Clean over ten seeds (`scripts\net-seeds.ps1`): mean 4.80, median 3.81, best 2.89, worst 10.52 (the test's seed); seed 5 fails on upload (61.7 kbit/s against 60). For the network engineer; not tuned here | < 12 wu |
+| Careful bot, 20 x 40 min (`--sim crowd`, final tunes) | first deaths in Tracks 1-3: **0 of 20**; in the first pass (Tracks 1-6): **4 of 20**; median 27.9 min; boss fights lost 7.2%. At home: Event Horizon **54 s**, Polyrhythm **21 s** (3.0 wall hits a fight, 4 of 25 lost), Feedback **65 s**, Moth Queen 23 s, Brood Mother 19 s, Blink Star 22 s, Sentry Array 22 s; Longwave 72 s, the Choir 69 s | the pages: Horizon about 80 s, Polyrhythm 100-120, Feedback about two minutes, mini-bosses 25-35 |
+| Careless bot, 20 x 40 min | Tracks 1-3: **1 of 20** (9.8 min, T3); the first pass (Tracks 1-6): **6 of 20** (T5 1, T6 4); median 26.5 min; Feedback 124 s with 15 hits a fight (its own echo shots: it does not dodge) | the lead's line: at most 2 of 20 in the first pass (set when the first pass was Tracks 1-3) |
+| `--loadout max` (desktop, the part 3 worst case) | the live shots' peak **623** of 1,024 (the old alternate steps: 593); thinned 1.7% of the ticks; the second cap never reached; nothing refused by the hard cap; the largest sideways step of any player shot **0.41** of its forward step | 0.6 |
+| Beams (`scenes.py light`, 2400x1080) | `up_barline` **52.8%** dark, **1.3%** above 200; `fusion_cannon` 62.5%, **0.7%**; `up_accent` 64.3% / 0.5%; `riff_lancer` 62.0% / 0.7%; `boost_chorus_beam` 62.8% / 0.5%; `up_standing_wave` 61.7% / 0.8%; no core wider than 4 px | barline >= 50% and < 8%; cannon < 6% |
+| Moto (shared phone, our APK of `5107877` deployed before each run, the lock; `bench_play`, `--tier low --nohits`) | **every run 0-0.06% missed, panel P95 one period, heap allocations 0**. Track 6's last Drop (`--drop 6.3`, the Feedback fight): up to 389 enemies in view (764 alive), 273 enemy bullets; main thread P95 4.7 ms, GPU P95 14.2 ms, tick P95 0.50 ms. `horizon:2:hold` 4.1 / 13.5 ms, 776 bullets alive at most; `polyrhythm:1:hold` 4.5 / 14.4 ms; `feedback:2:hold` 4.6 / 14.4 ms, 408 in view and 517 bullets (its echo shots), the worst frame 32 ms; `moth_queen:1:hold` 4.5 / 14.4 ms, 875 alive; `sentry_array:1:hold` 4.3 / 14.1 ms, 463 in view; `--fast-forward 640 --nohits --loadout max` (60 s) 5.1 / 13.8 ms, tick 0.37/0.78/3.47 ms, 898 alive, 0.03% missed | P95 <= 16.9 ms, missed <= 5% |
+| Pools on the Moto (new: the result's `overflow_*` fields and a log line when a pool overflows) | the runs that jump to Track 5 (`--fight polyrhythm`, `--fight sentry_array`) fill the **enemy bullet pool (2,048)** in Track 5 cycle 1's Drop during their fast-forward, run bars 17-20, before the fight: 10,237 bullets refused, the same in all three runs (the phone's simulation is deterministic; the desktop's same run diverges and drops none). The jump starts the Track with no upgrades, so the crowd and its shooters pile up (as `--drop` runs do). Nothing dropped in any measured window, nor in the crowd sims' 40 runs of 40 minutes. Not changed (the lead's rule: report first) | |
+| Review sets, Debug | `captures\m5\part4\`: 34 pictures and 6 strips (`.small.png`, contact sheets); `captures\m5\part3\` retaken: `up_accent`, `up_barline`, `up_standing_wave`, `riff_lancer`, `boost_chorus_beam`, `fusion_cannon`, `up_wave`, `up_helix`, and the strips `up_wave_strip`, `up_helix_strip`; 0 validation messages | 0 |
+
+### Not done or not verified
+
+- **Polyrhythm's length**: the bot cannot ride its gaps. Walls are thrown from where the rotors were (they swing with the
+  link at about 170 wu/s), so even beyond the walls' reach it is caught; at x8 (35 s) it took 7 wall hits a fight and lost half
+  its fights. The health is x3 (21 s) until a better bot or a play test says how hard the walls are for a player.
+- **Event Horizon at 54 s and Feedback at 65 s** are under their pages' lengths. Their health was raised as far as the first
+  pass allowed in one pass of measurements; part 7's balance pass takes them up with the ten Tracks.
+- **The first pass is now six Tracks**: the careless bot dies in it in 6 of 20 runs (Tracks 1-3: 1 of 20). The lead's line
+  of 2 of 20 was set for Tracks 1-3; the line for Tracks 1-6 is the lead's to set.
+- **Not built**: Riff echoes that fire nothing (Orbitals, Pulse Ring, Sweeper) and what shots do after they leave, on
+  Feedback's Echo; the gold eggs to touch (Brood Mother's last clutch is plain Shards); Event Horizon's entrance lean of every
+  light and its death spiral of everything alive (the disc and rings implode); the Echoes flying home as Shards. Broodlings move
+  at their species' speed (the page's 260 wu/s and the half's 15% are not applied).
+- **Sounds** the engine lacks are written in each row of `src/game/pending_sounds.cpp`: the Horizon's drone (a sub sine), the
+  bend of its count, the starved cut of pads and bass; the band's pad and filter on Feedback's open and closed Head, its
+  delay feedback in Howl, the echo's octave-down low-passed copy; the Moth Queen's clap and the bed dropping to kick and pad;
+  the Brood Mother's thread pad; the Blink Star's five-note stab. By ear: nothing (the PC runs are silent).
+- The "no pick is a trap" table (and in it the Downbeat Cannon's kills a minute before and after its 64 wu): with part 7.
+- The flaky audio check "seq latest" failed once under load on the merge (passed on three reruns and in the final run).
+
 <!-- part 4 acceptance below -->
 
 ### Decisions taken alone

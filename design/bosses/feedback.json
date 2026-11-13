@@ -85,7 +85,7 @@
   ],
   "damageScale": {
    "open": 1.0,
-   "closed": 0.0
+   "closed": 0.25
   },
   "contact": "the Head and every Echo take a cell on touch; the Loop only in the third phase",
   "crowd": "half, fodder only; echo shots pass through enemies",

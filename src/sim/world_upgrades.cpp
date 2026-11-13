@@ -65,6 +65,7 @@ void World::spawnShotRaw(u32 p, Vec2 pos, Vec2 dir, float advanceS, float damage
     s.dy[i] = dir.y;
     s.speed[i] = kShotSpeed;
     s.life[i] = life - advanceS;
+    s.life0[i] = life;
     s.damage[i] = damage;
     s.radius[i] = kShotRadius * (1.0f + kOverchargeRadius * static_cast<float>(players_[p].loadout.mods[kOvercharge]));
     s.lastHit[i] = 0xFFFFFFFFu;

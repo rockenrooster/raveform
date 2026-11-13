@@ -1,5 +1,9 @@
 # THE CHOIR — boss of Track 3
 
+> **M5, 2026-11-13.** Armour takes a quarter: a silent Voice takes 0.25 of a shot's damage, where this
+> page says none (`damageScale` in the data; GAME_DESIGN 7.6, "A boss's rule is a bonus, not a wall").
+> Hint line (screens.md): `SHOOT THE ONE THAT SINGS`. The health is tuned with the novice bot.
+
 Eight hooded Voices standing on a ring around the players, each one a note of the scale and a colour
 of its own, joined by strings of light. They do not chase: they surround, and they sing at you. The
 Choir arrives on the last Drop of Track 3 "Reef" (132 BPM, D dorian) and stays until the last Voice

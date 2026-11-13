@@ -338,6 +338,7 @@ private:
     PlayView view_;
     TouchControls touch_;
     Stats stats_;
+    u32 lastOverflow_ = 0, lastOverflowBar_ = 0xFFFFFFFFu;  // M5 part 4: the overflow log (once a bar)
 
     double tickEnd_ = 0.0;     // sim time at the end of the newest tick
     double music1_ = 0.0, musicPrev_ = 0.0;  // musical position at the end of the newest and the one before

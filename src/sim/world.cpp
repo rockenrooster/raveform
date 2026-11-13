@@ -45,6 +45,7 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask) {
     for (u32 s = 0; s < kMaxEnemies; ++s) e.freeSlots[s] = kMaxEnemies - 1 - s;  // slot 0 is taken first
     bullets_.count = shots_.count = shards_.count = 0;
     for (u32& n : shotsLive_) n = 0;
+    for (bool& b : thinning_) b = false;
     for (Trail& t : trails_) t.n = 0;  // M5 part 4
     for (Spot& m : emines_) m.until = -1.0;
     for (Spot& d : decoys_) d.until = -1.0;
@@ -157,6 +158,7 @@ void World::tick(const TickInput& in) {
     findWells();
 
     fbShot0_ = shots_.count;  // (M5 part 4: Feedback records what this tick fires)
+    updateThinning();         // M5 (GAME_DESIGN 6.6): on a beat
     spawnShots(in);
     fireEchoes();  // M5: Echo's ghost volleys
     updateNovas();
@@ -324,13 +326,14 @@ void World::fireShot(u32 p, float advanceS, double stepTick) {
     const float damage = shotDamage(p, stepTick, flags, pierceAdd);
     const bool prism = pl.boost(kPrism);
     if (prism) flags |= kShotPrism;
-    // Split: +2 lanes a stack in a tight fan (3, 5, 7); Prism: every lane refracts into five. Above the soft cap of
-    // live shots every pair of lanes beyond the middle one fires on every second step, the pairs taking turns; above
-    // kShotsMiddleOnly the middle lane alone fires (tuning.h; the pool stays inside its 1,024 a player with Split 7,
+    // Split: +2 lanes a stack in a tight fan (3, 5, 7); Prism: every lane refracts into five. While the player's shots
+    // are thinned (GAME_DESIGN 6.6) the lanes beyond the middle three fly half as far; above kShotsMiddleOnly the middle
+    // lane alone fires (tuning.h; the pool stays inside its 1,024 a player with Split 7,
     // Prism, Double-Time and Hyper at 174 BPM, in the Build's slowed last bar too).
     const u32 lanes = splitLanes(l.mods[kSplit]);
     const u32 live = shotsLive_[p < kMaxPlayers ? p : 0];
-    const u32 thin = lanes < 3 ? 0u : (live >= kShotsMiddleOnly ? 2u : (live >= kShotsSoftCap ? 1u : 0u));
+    // M5 (GAME_DESIGN 6.6, thinning never flickers): while thinned the lanes beyond the middle three fly half as far.
+    const u32 thin = lanes < 3 ? 0u : (live >= kShotsMiddleOnly ? 2u : (thinning_[p < kMaxPlayers ? p : 0] ? 1u : 0u));
     const i64 step = static_cast<i64>(std::floor(stepTick / leadGrid(p) + 0.5));
     const float base = angleOf(d);
     const u8 pierce = static_cast<u8>(pierceCount(l.mods[kPierce]) + pierceAdd);
@@ -610,7 +613,7 @@ void World::collide() {
         // Prism (GAME_DESIGN 6.4): a shot's first hit spawns two mini-refractions (play test 1: the first only, and
         // none above the soft cap of live shots).
         const bool refract = (s.flags[k] & (kShotPrism | kShotRefracted)) == kShotPrism && s.kind[k] == kShotPrimary &&
-                             shotsLive_[owner < kMaxPlayers ? owner : 0] < kShotsSoftCap;
+                             shotRoom(owner);
         const u32 hitHandle = e.handle[i];
         if (s.pierce[k] > 0) {
             // Pierce (GAME_DESIGN 6.2): through this one, on to the next.
@@ -1050,6 +1053,7 @@ void World::compact() {
         s.dy[i] = s.dy[l];
         s.speed[i] = s.speed[l];
         s.life[i] = s.life[l];
+        s.life0[i] = s.life0[l];
         s.damage[i] = s.damage[l];
         s.radius[i] = s.radius[l];
         s.lastHit[i] = s.lastHit[l];

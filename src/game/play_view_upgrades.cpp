@@ -21,36 +21,30 @@ float clampU(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
 const Vec3 kIce{0.55f, 0.85f, 1.0f};
 const Vec3 kFire{1.0f, 0.42f, 0.08f};
 constexpr float kBoltS = 0.09f;       // look.md 5: a zap's 90 ms
-constexpr float kBeatPeakS = 2.0f / 60.0f, kBeatFallS = 0.110f, kEdgeLongerS = 0.060f;  // look.md 5 (a beam on a beat), 7
+constexpr float kBeatPeakS = 2.0f / 60.0f, kBeatFallS = 0.110f;  // look.md 5 (a beam on a beat), 7
 }  // namespace
 
-void PlayView::drawBeam(FrameDraw& d, Vec2 from, Vec2 dir, float len, float w, Vec3 edge, Vec3 core, float edgeLevel, float coreLevel,
-                        float fillLevel) {
-    // look.md 5 (Beams, lightning and areas): two edge lines at the damage width (1.6 px), a core line on the axis (3 px; 2 px
-    // under 20 wu), a fill between the edges added at fillLevel (0.10); the edges leave the nose as a point and reach full
-    // width over 40 wu.
-    const Vec2 side = perpU(dir) * (0.5f * w);
-    const float taper = std::fmin(40.0f, len);
-    const Vec2 a0 = from, a1 = from + dir * taper, a2 = from + dir * len;
-    if (edgeLevel > 0.0f) {
-        const Vec3 ec = edge * edgeLevel;
-        for (float sgn : {-1.0f, 1.0f}) {
-            d.scene.line(toScene(a0), toScene(a1 + side * sgn), 0.8f * refPx_, ec, ec, 0);
-            d.scene.line(toScene(a1 + side * sgn), toScene(a2 + side * sgn), 0.8f * refPx_, ec, ec, 0);
-        }
-        if (fillLevel > 0.0f) {
-            const Vec3 fc = edge * fillLevel;
-            d.glass.tri(toScene(a0), fc, toScene(a1 + side), fc, toScene(a1 - side), fc);
-            d.glass.tri(toScene(a1 + side), fc, toScene(a2 + side), fc, toScene(a2 - side), fc);
-            d.glass.tri(toScene(a1 + side), fc, toScene(a2 - side), fc, toScene(a1 - side), fc);
-        }
-    }
-    if (coreLevel > 0.0f) {
-        const Vec3 cc = core * coreLevel;
-        d.scene.line(toScene(a0), toScene(a2), (w < 20.0f ? 1.0f : 1.5f) * refPx_, cc, cc, 0);
+void PlayView::drawBeam(FrameDraw& d, Vec2 from, Vec2 dir, float len, float w, float corePx, Vec3 noseCol, Vec3 farCol, Vec3 glowCol,
+                        float coreLevel, float glowLevel) {
+    // look.md v2.5 ("Beams, lightning and areas"): a beam is a laser, one thin line and its glow. The core, the only thing
+    // with an edge, on the axis (2, 3 or 4 px), from the nose's colour to the far end's; the glow a Gaussian strip of the
+    // owner's colour, 0.25 on the axis, sigma w / 5, nothing left at +-w/2, drawn with the pools (round Gaussians a sigma
+    // wide, two sigmas apart: their sum along the axis is the strip), coming up over the first 20 wu. Under 12 wu: the core
+    // alone. No edge lines, no fill.
+    if (coreLevel > 0.0f) d.scene.line(toScene(from), toScene(from + dir * len), 0.5f * corePx * refPx_, noseCol * coreLevel, farCol * coreLevel, 0);
+    if (glowLevel <= 0.0f || w < 12.0f) return;
+    const float sigma = w / 5.0f;
+    const float step = 2.0f * sigma;
+    const float radius = sigma * look_->glowRadiusOverSigma;
+    // (a disc's peak c gives c x sigma x sqrt(2 pi) / step on the axis)
+    const float c = glowLevel * step / (sigma * 2.5066283f);
+    for (float u = 0.0f; u <= len; u += step) {
+        const Vec2 p = from + dir * u;
+        if (!visible(p, radius)) continue;
+        const float rise = u < 20.0f ? u / 20.0f : 1.0f;
+        d.pools.glow(toScene(p), radius * pxPerWu_, glowCol * (c * rise));
     }
 }
-
 void PlayView::eventUpgrade(const World& w, const Event& e, float t) {
     const u32 q = e.a < kMaxPlayers ? e.a : w.viewPlayer();
     const float lvl = q == w.viewPlayer() ? 1.0f : 0.6f;
@@ -133,32 +127,35 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
         const Vec2 ship = local ? in.shipPos : pq.prevPos + (pq.pos - pq.prevPos) * a;
         const Loadout& l = pq.loadout;
 
-        // Beams (look.md 5): Accent's lances, the Lancer's, Downbeat Cannon, Bar Line's rays: on a beat, at their peak for two
-        // frames and gone over 110 ms (the edges 60 ms later); Standing Wave's held for a bar, the core moving on the 1/32
-        // grid. The owner's colour; a Fusion's beam (Downbeat Cannon, Standing Wave) has gold edges. Reduce flashing: a beat
-        // beam peaks at 1.0 with no white in its core.
+        // Beams (look.md v2.5): Accent's lances, the Lancer's, Downbeat Cannon, Bar Line's rays: on a beat, at their peak for
+        // two frames and gone over 110 ms, the glow falling with the core; Standing Wave's held for a bar (a steady glow, the
+        // core between 1.0 and 1.4 on the 1/32 grid). The core 70% white at the nose running to the owner's light colour; a
+        // Fusion's beam (Downbeat Cannon, Standing Wave) a gold glow and a core half white, half the owner's colour. Reduce
+        // flashing: a beat beam peaks at 1.0, no white in its core, its glow 0.15.
         const float shotLvl = look_->lines.playerShot.intensity * lvl;
-        const Vec3 own = palettes_->player[q];
+        const Vec3 own = palettes_->player[q], ownLight = palettes_->playerLight[q];
         for (const PlayerState::Lance& ln : pq.lances) {
             const float age = static_cast<float>((in.music - ln.tick) / tps);
             if (age < 0.0f) continue;
             const bool fusion = ln.kind == kLanceCannon || ln.standing;
-            const Vec3 edge = fusion ? palettes_->player[3] : own;
-            const Vec3 core = reduceFlashing_ ? own : mix(own, W1, 0.7f);
-            const float peak = reduceFlashing_ ? 1.0f : 1.6f;
-            float el = 0.0f, cl = 0.0f;
+            const Vec3 glowCol = fusion ? palettes_->player[3] : own;
+            const Vec3 nose = reduceFlashing_ ? own : mix(own, W1, fusion ? 0.5f : 0.7f);
+            const float corePx = ln.kind == kLanceCannon ? 4.0f : (ln.kind == kLanceLancer ? 3.0f : 2.0f);
+            const float peak = reduceFlashing_ ? 1.0f : (ln.kind == kLanceCannon ? 2.0f : 1.6f);
+            const float glowPeak = reduceFlashing_ ? 0.15f : 0.25f;
+            float gl = 0.0f, cl = 0.0f;
             if (ln.standing) {
                 if (age > static_cast<float>(kTicksPerBar / tps)) continue;
                 const u32 step32 = static_cast<u32>(std::floor(in.music / (kTicksPerStep * 0.5)));
-                el = shotLvl;
+                gl = glowPeak * lvl;
                 cl = shotLvl * (1.0f + 0.4f * static_cast<float>((step32 * 2654435761u >> 28) & 15u) / 15.0f);
             } else {
-                const auto env = [](float a, float fall) { return a <= kBeatPeakS ? 1.0f : clampU(1.0f - (a - kBeatPeakS) / fall); };
-                el = shotLvl * env(age, kBeatFallS + kEdgeLongerS);
-                cl = shotLvl * peak * env(age, kBeatFallS);
-                if (el <= 0.0f) continue;
+                const float e = age <= kBeatPeakS ? 1.0f : clampU(1.0f - (age - kBeatPeakS) / kBeatFallS);
+                if (e <= 0.0f) continue;
+                gl = glowPeak * lvl * e;
+                cl = shotLvl * peak * e;
             }
-            drawBeam(d, ln.from, ln.dir, ln.length, 2.0f * ln.half, edge, core, el, cl, 0.10f * (el > 0.0f ? 1.0f : 0.0f));
+            drawBeam(d, ln.from, ln.dir, ln.length, 2.0f * ln.half, corePx, nose, ownLight * lvl, glowCol, cl, gl);
         }
         if (!pq.alive) continue;
         const Vec2 aim = local ? in.shipAim : normalizeOr(pq.aim, dirU(pq.heading));
@@ -179,8 +176,8 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
             const u32 step32 = static_cast<u32>(std::floor(in.music / (kTicksPerStep * 0.5)));
             const float cl = shotLvl * (1.0f + 0.4f * static_cast<float>((step32 * 2654435761u >> 28) & 15u) / 15.0f);
             const Vec3 own = palettes_->player[q];
-            drawBeam(d, ship + aim * tuning::kMuzzleWu, aim, tuning::kBeamLengthWu - tuning::kMuzzleWu, 2.0f * half, own,
-                     reduceFlashing_ ? own : mix(own, W1, 0.7f), shotLvl, cl, 0.10f);
+            drawBeam(d, ship + aim * tuning::kMuzzleWu, aim, tuning::kBeamLengthWu - tuning::kMuzzleWu, 2.0f * half, 2.0f,
+                     reduceFlashing_ ? own : mix(own, W1, 0.7f), palettes_->playerLight[q] * lvl, own, cl, (reduceFlashing_ ? 0.15f : 0.25f) * lvl);
         }
 
         // Wingmen (Mirror, Quartet) and Chorus's ghosts: the ship's glyph, smaller and dimmer, in formation.

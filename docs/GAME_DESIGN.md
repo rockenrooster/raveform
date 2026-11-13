@@ -420,10 +420,41 @@ Every boss follows the same rules: its patterns are locked to the bar structure;
 weak-point rhythm the player can read; it owns a music layer that changes with its health; it has three
 phases; it fits inside the entity caps.
 
+**A boss's rule is a bonus, not a wall** (M5, 2026-11-13). The first six bosses were written so that
+shots anywhere but the weak point did nothing: Longwave off its crest, a silent Voice, a rotor's
+corners, Feedback's shut Head. On paper that is the lesson; in the hand it is a boss that will not
+die and does not say why, and the user never got past Longwave. So:
+
+- **Armour takes a quarter.** Any part a boss's page calls armoured, closed, silent, shut or fed
+  takes 0.25 of a shot's damage (the pages' data say so now); the weak point takes what it took.
+  Knowing the rule is worth three or four times the damage, not all of it. A shot on armour still
+  sparks and stops as armour does, and the boss's health bar still moves.
+- **The game says the rule.** Each boss has one hint line (design/screens.md, "Boss hint"), shown
+  under its name as it arrives and again whenever a player's shots have met only armour for two
+  bars.
+- **Fights are tuned for a person.** The careful and the careless bot aim perfectly, never stop
+  firing and know every rule; both pass Longwave in at least nineteen runs of twenty. A third policy, the
+  **novice**, stands in for a player's first week:
+  - it aims at the nearest body (of a boss: its nearest part, not its weak point), 200 ms behind
+    where that body is, and wanders 6° to either side;
+  - it learns a boss's rule only from the hint: for the first 16 bars of a fight it ignores the weak
+    point, after that it aims at it half the time;
+  - it reacts to a threat 250 ms late, never rides a wave or threads a gap on purpose, dashes out of
+    half the hits it sees coming and fires its Nova at one cell;
+  - it takes a Trio's first orb half the time, otherwise any orb.
+- **The lines, over 20 runs** (starting values; bosses 7 to 10 at the balance pass). The novice
+  reaches Track 2's boss in at least 16 runs. It wins its first meeting with Kaleidos in at least
+  18, with Longwave and the Choir in at least 16, with the bosses of Tracks 4 to 6 in at least 12.
+  A fight it wins lasts at most 1.5 times the longer length on the boss's page. The careful bot's
+  fight lasts at least half the shorter length. Where the two pull apart, the novice's line wins.
+- **Calibration.** On the build the user played (part 3: Longwave's health at 2.2 times its page,
+  armour at nothing) the novice must lose to Longwave in most runs. A novice that passes it there
+  is not one.
+
 | Boss | Concept |
 |---|---|
 | **Kaleidos** | A huge rotating kaleidoscope wheel. Mirrored arms fire symmetric fans on 1/8 notes; shoot arms off to expose the core. A gentle teacher of "attacks land on the beat". |
-| **Longwave** | An arena-length serpent whose body is a travelling sine wave. Segments are vulnerable only as they crest; the wave speeds up each phase. |
+| **Longwave** | An arena-length serpent whose body is a travelling sine wave. Segments take full damage as they crest and a quarter otherwise; the wave speeds up each phase. |
 | **The Choir** | Eight linked sentries around the player trading call-and-response volleys. Each one destroyed removes its voice from the boss music and changes the pattern. |
 | **Event Horizon** | A giant well that drags in enemies, bullets and the grid itself. Starve it by killing what it feeds on; it erupts on bar lines. |
 | **Polyrhythm** | Two rotating emitters firing three-against-four patterns. The safe gaps align once per bar; reading the rhythm is the fight. |

@@ -357,8 +357,8 @@ bool Play::scriptSetupM5() {
     world_->rules().godMode = true;
     if (!setupFight(pic.fight, pic.phase)) return true;
     // Part 4: the Track 5 build kills a rotor in seconds; the fight holds its health until the moment (not for its death).
-    if ((fightKind_ == BossKind::Polyrhythm || fightKind_ == BossKind::Feedback || (fightKind_ >= BossKind::MothQueen && fightKind_ <= BossKind::SentryArray)) &&
-        pic.moment != Moment::Death)
+    // (its death too: the hold gives nothing back once it is dying, and the picture kills it itself)
+    if (fightKind_ == BossKind::Polyrhythm || fightKind_ == BossKind::Feedback || (fightKind_ >= BossKind::MothQueen && fightKind_ <= BossKind::SentryArray))
         opt_.fightHold = true;
     if (pic.strip) stripStride_ = 4;
     return true;
@@ -568,7 +568,8 @@ bool Play::scriptInputM5(StickInput& in) {
     if (t < 150) return true;  // the camera settles (the fights' zoom eases in after the fast-forward)
     if (pic.moment == Moment::Death) {
         // The death: killed on a beat after a bar of the fight, captured as it plays out.
-        if (b.active && !b.dying && inBeat < 2.0) w.killBossNextTick(0, true);
+        // (within a frame of the beat: at 144 BPM a 1/60 s frame is 3.84 ticks and lands on the same 25 places of every beat)
+        if (b.active && !b.dying && inBeat < 5.0) w.killBossNextTick(0, true);
         const double after = b.kind == BossKind::Choir ? 0.6 : (b.kind == BossKind::Longwave ? 0.45 : (b.kind == BossKind::EventHorizon ? 0.5 : (b.kind == BossKind::Polyrhythm ? 0.4 : (b.kind == BossKind::Feedback ? 0.4 : 0.08))));
         go = b.dying && music >= b.deathTick + after * kTicksPerBar;
     } else if (b.active && !b.dying) {

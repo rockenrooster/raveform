@@ -172,7 +172,7 @@
   ],
   "damageScale": {
    "singing": 1.0,
-   "silent": 0.0,
+   "silent": 0.25,
    "lastVoice": 1.5
   },
   "singing": "a Voice's mouth is open from the step it fires until one beat later; shots ring off a closed hood",
