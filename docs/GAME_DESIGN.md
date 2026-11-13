@@ -310,7 +310,7 @@ Rhythm
 | Standing Wave | Echo + Accent | Accent lances persist as lethal lines for a bar |
 | Tesla Bloom | Pulse Ring + Arc | Rings arc lightning between everything they touch |
 | Shard Halo | Orbitals + Shatter | Orbitals fling shrapnel streams on every kill |
-| Downbeat Cannon | Lancer + On-Beat Crit | A screen-wide critical beam every beat 1 |
+| Downbeat Cannon | Lancer + On-Beat Crit | A critical beam the whole length of the screen every beat 1 (M5: 64 wu wide, the widest any beam hurts; look.md v2.5) |
 | Collapse Field | Minelayer + Gravity Rounds | Mines pull enemies in before detonating |
 | Murmuration | Swarm + Seeker | Missiles become a persistent homing flock |
 | Quartet | Mirror + Rear Guard | Three wingmen in formation covering every quadrant |
