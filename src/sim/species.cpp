@@ -160,7 +160,37 @@ bool SpeciesTable::load() {
                 d.strikeBeats = num(m, "strikeBeats", k);
                 d.restBeats = num(m, "restBeats", k);
                 break;
-            default: break;  // Tracks 4 to 6's families: their motion comes with their behaviour (M5 part 4)
+            // M5 part 4.
+            case Family::Wyrm: {
+                float sg[2] = {};
+                if (doc.numbers("segments", sg, 2, m) != 2) k = false;
+                d.segmentsMin = static_cast<u32>(sg[0]);
+                d.segmentsMax = static_cast<u32>(sg[1]);
+                d.segmentSpacing = num(m, "segmentSpacing", k);
+                d.waveAmplitude = num(m, "waveAmplitude", k);
+                d.wavePeriodBeats = num(m, "wavePeriodBeats", k);
+                d.turnRate = num(m, "turnRate", k);
+                break;
+            }
+            case Family::Tether:
+                d.pairDistance = num(m, "pairDistance", k);
+                d.orbitTurnsPerBar = num(m, "orbitTurnsPerBar", k);
+                d.beamWidth = num(m, "beamWidth", k);
+                break;
+            case Family::Weaver:
+                d.curveTurnRate = num(m, "curveTurnRate", k);
+                d.trailBars = num(m, "trailBars", k);
+                d.trailSegments = static_cast<u32>(num(m, "trailSegments", k));
+                d.trailWidth = num(m, "trailWidth", k);
+                break;
+            case Family::Well:
+                d.pullRadius = num(m, "pullRadius", k);
+                d.pullPeakAt = num(m, "pullPeakAt", k);
+                d.pullSpeed = num(m, "pullSpeed", k);
+                d.shotBend = num(m, "shotBend", k);
+                break;
+            case Family::Mimic: d.beatStepWu = num(m, "beatStepWu", k); break;
+            default: break;
         }
         // Variants B and C (variants.<family>.B / .C; GAME_DESIGN 7.2): the numbers of the variants built so far.
         {
@@ -231,6 +261,33 @@ bool SpeciesTable::load() {
                 case Family::Sentry:
                     v.domeRadius = num(C, "domeRadius", k);
                     v.domeWithinWu = num(C, "shieldsNeighboursWithinWu", k);
+                    break;
+                // M5 part 4.
+                case Family::Wyrm:
+                    v.sideShotEverySteps = static_cast<u32>(num(B, "sideShotEverySteps", k));
+                    v.fromEveryNthSegment = static_cast<u32>(num(B, "fromEveryNthSegment", k));
+                    v.regrowHeadBeats = num(C, "regrowHeadBeats", k);
+                    break;
+                case Family::Tether:
+                    v.orbitB = num(B, "orbitTurnsPerBar", k);
+                    v.triad = C && doc.member(C, "triad") != nullptr;
+                    v.triadSideWu = num(C, "sideWu", k);
+                    break;
+                case Family::Weaver:
+                    v.loopEveryBars = num(B, "loopEveryBars", k);
+                    v.detonateOnBarLine = true;
+                    v.trailBlastWu = num(C, "blastRadius", k);
+                    break;
+                case Family::Well:
+                    v.returnOnBeat = num(B, "returnOnBeat", k);
+                    v.ringBullets = static_cast<u32>(num(B, "ringBullets", k));
+                    v.growPerShots = num(C, "growPerShotsSwallowed", k);
+                    v.burstAtScale = num(C, "burstAtScale", k);
+                    v.wellBurstBullets = static_cast<u32>(num(C, "burstBullets", k));
+                    break;
+                case Family::Mimic:
+                    v.everyNthShot = static_cast<u32>(num(B, "everyNthShot", k));
+                    v.copyDashAfterBeats = num(C, "copiesDashAfterBeats", k);
                     break;
                 default: break;
             }

@@ -204,6 +204,8 @@ enum class EventType : u8 {
     // M5 part 3: what the new upgrades do that is seen or heard (a = player, b = UpgradeFx, c = a count or level; x, y and
     // x2, y2 as each notes; f a radius or a value).
     Upgrade,
+    // M5 part 4: a Weaver C trail blows on the bar line (x, y: one of its points; tick).
+    TrailBlast,
 };
 enum UpgradeFx : u8 {
     kFxFork,          // a shot forked: x, y
@@ -506,6 +508,8 @@ struct PlayerState {
     u8 lanceNext = 0;
     double beamTick = -1e9;      // Beam: the last volley it fired
     u8 beamLanes = 1;
+    Vec2 lastDashFrom, lastDashTo;  // M5 part 4 (Mimic C copies it): the last Dash, and when it began
+    double lastDashTick = -1e9;
     Vec2 shockAt;                // Shockstep's ring: where, when, how far
     double shockTick = -1e9;
     float shockR = 0.0f, shockDamage = 0.0f;  // (damage > 0: its ring hurts this tick, once the grid is built)
@@ -802,6 +806,24 @@ public:
     Vec2 carouselBomb(u32 p, u32 k) const;                 // Carousel's six bombs round the ship
     float crescendo(u32 p) const;                          // the damage multiplier its clean bars give now
     bool afterparty(u32 p) const;                          // Afterparty: its Surge goes on (faster) now
+    // M5 part 4 (world_families4.cpp): the lethal lines (Tether beams; Weaver trails and Ram B's wake), the Wells' pull on a ship
+    // (the controller adds it), the multi-body creatures.
+    struct Trail {
+        static constexpr u32 kCap = 48;
+        u32 owner = 0;            // the handle of the body that lays it
+        u16 n = 0, head = 0;      // points alive; the next point's place
+        u8 kind = 0;              // 0 a Weaver's, 1 a Ram B's wake, 2 a Weaver C's (blows on the bar line)
+        float width = 5.0f;
+        double life = 0.0, blastTick = -1e9;
+        float x[kCap], y[kCap];
+        double t[kCap];
+    };
+    static constexpr u32 kTrails = 96;
+    const Trail* trails() const { return trails_; }
+    u32 tetherBeams(Vec2* a, Vec2* b, u32 cap) const;
+    Vec2 wellPull(Vec2 pos) const;
+    // Tests and pictures: a Wyrm's chain or a Tether's pair (triad) as the spawner makes them.
+    void spawnCreatureNow(u16 speciesIndex, Vec2 p, float heading, double landTick) { spawnCreature(speciesIndex, p, heading, landTick); }
 
     u64 hash() const;
     bool finite() const;  // no NaN or infinity in any position or velocity
@@ -911,6 +933,24 @@ private:
     void aegisBullets();
     void updateUpgradesM5(float dt);
     void updateRiffsM5(float dt);
+    // world_families4.cpp (M5 part 4)
+    struct Group {
+        static constexpr u32 kCap = 16;
+        u16 id = 0;
+        u8 n = 0;
+        u16 idx[kCap];
+        Vec2 centre;
+    };
+    void buildGroups();
+    const Group* groupOf(u16 id) const;
+    void spawnCreature(u16 speciesIndex, Vec2 p, float heading, double landTick);
+    void landFamily4(u32 i, const Species& s, const FamilyData& fd, Vec2 to);
+    void moveFamily4(u32 i, const Species& s, const FamilyData& fd, float dt, i32 tp, Vec2 to, bool engaged);
+    void updateTrails();
+    bool hazardHits(u32 p, Vec2& from) const;
+    void findWells();
+    void wellShots(float dt);
+    bool wellSwallow(u32 i, u32 k);
     // world_boss.cpp
     void updateBoss(float dt);
     void bossFire(double stepTick);
@@ -1040,6 +1080,14 @@ private:
     u8 flungMask_ = 0;
     u32 fxThisTick_ = 0;
     u8 songShift_ = 0;  // the song's bar index minus this world's, mod 4
+    // M5 part 4: the multi-body creatures this tick, the lethal trails, the Wells.
+    static constexpr u32 kMaxGroups = 128, kGroupSlots = 256, kMaxWells = 32;
+    Group groups_[kMaxGroups];
+    u16 groupSlot_[kGroupSlots] = {};
+    u32 groupCount_ = 0;
+    Trail trails_[kTrails];
+    u16 wellIdx_[kMaxWells] = {};
+    u32 wellCount_ = 0;
     // The loop's ramps this tick (GAME_DESIGN 8; 1 in the first pass): enemy speed, enemy bullet speed, shooters' counts.
     float loopSpeed_ = 1.0f, loopBulletSpeed_ = 1.0f, loopShooters_ = 1.0f;
     u32 shooterCount(u32 base, u32& rngState) const;  // a volley's bullets with the loop's ramp, inside the pool

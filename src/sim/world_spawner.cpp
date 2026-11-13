@@ -25,7 +25,11 @@ u32 packMax(Family f) {
         case Family::Skitter: return 3;
         case Family::Moth: return 6;
         case Family::Blink: return 2;
-        default: return 1;  // Sentry, Brood
+        // M5 part 4 (chosen): a Tether pack is pairs; Weavers come in threes, Mimics in twos; a Wyrm and a Well alone.
+        case Family::Tether: return 2;
+        case Family::Weaver: return 3;
+        case Family::Mimic: return 2;
+        default: return 1;  // Sentry, Brood, Wyrm, Well
     }
 }
 // Scatter of a pack around its anchor (wu).
@@ -40,6 +44,9 @@ float packSpread(Family f) {
         case Family::Skitter: return 60.0f;
         case Family::Moth: return 120.0f;
         case Family::Blink: return 80.0f;
+        case Family::Tether: return 220.0f;
+        case Family::Weaver: return 120.0f;
+        case Family::Mimic: return 160.0f;
         default: return 0.0f;
     }
 }
@@ -137,6 +144,10 @@ void World::spawnFormation(u16 speciesIndex, u32 count, Vec2 anchor, double land
                 if (lengthSq(dt) < keep * keep) p = tr.centre + normalizeOr(dt, Vec2{1.0f, 0.0f}) * keep;
             }
             heading = angleOf(p0.pos - p);
+        }
+        if (s.family == Family::Wyrm || s.family == Family::Tether) {
+            spawnCreature(speciesIndex, p, heading, landTick);  // M5 part 4: a chain, a pair or a triad
+            continue;
         }
         const i32 i = spawnEnemy(speciesIndex, p, heading, landTick);
         if (i < 0) return;  // the pool is full: stop spawning into it (TECH_SPEC 7.1)

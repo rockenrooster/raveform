@@ -71,7 +71,7 @@ void World::landFamily(u32 i, const Species& s, const FamilyData& fd, Vec2 to) {
             e.until[i] = (std::floor(m1_ / kTicksPerBeat) + 1.0) * kTicksPerBeat;
             break;
         }
-        default: break;
+        default: landFamily4(i, s, fd, to); break;  // M5 part 4
     }
     if (s.family == Family::Hound) e.b[i] = toward;  // Hound C: the shield faces the player
 }

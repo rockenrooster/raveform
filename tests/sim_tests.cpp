@@ -2112,6 +2112,102 @@ void testFamiliesM5() {
     }
 }
 
+// ---------------------------------------------------------------------------------------------- M5 part 4: families
+
+void testFamiliesM5b() {
+    g_test = "families (M5 part 4)";
+    const SpeciesTable& s = *g_species;
+    const double beat = kTicksPerBeat, bar = kTicksPerBar;
+    CHECK(familyBuilt(Family::Mimic) && s.family(Family::Wyrm).segmentsMax == 12 && s.family(Family::Tether).pairDistance == 160.0f &&
+          s.family(Family::Well).pullRadius == 200.0f && s.family(Family::Mimic).beatStepWu == 80.0f && s.family(Family::Tether).v.triad);
+    {
+        // Wyrm: a chain, each segment spacing behind the one before; C: cut in two, the rear half grows a head in two beats.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->spawnCreatureNow(SpeciesTable::index(Family::Wyrm, 1, kVariantC), Vec2{600.0f, 0.0f}, kPi, music);
+        runShip(*w, music, music + 2.0 * beat, Vec2{-800.0f, 0.0f});
+        const Enemies& e = w->enemies();
+        u32 n = 0, heads = 0;
+        float worst = 0.0f;
+        i32 mid = -1;
+        for (u32 i = 0; i < e.count; ++i) {
+            if (e.flags[i] & kFlagDead) continue;
+            ++n;
+            heads += e.a[i] > 0.5f ? 1u : 0u;
+            if (e.step[i] == 3) mid = static_cast<i32>(i);
+            for (u32 j = 0; j < e.count; ++j)
+                if (!(e.flags[j] & kFlagDead) && e.serial[j] + 1u == e.serial[i])
+                    worst = std::fmax(worst, std::fabs(length(Vec2{e.x[i] - e.x[j], e.y[i] - e.y[j]}) - s.family(Family::Wyrm).segmentSpacing));
+        }
+        CHECK_MSG(n >= 6 && n <= 12 && heads == 1 && worst < 3.0f, "segments %u, heads %u, spacing off by %.1f", n, heads, worst);
+        w->killEnemy(static_cast<u32>(mid), 0);
+        runShip(*w, music, music + 3.0 * beat, Vec2{-800.0f, 0.0f});
+        heads = 0;
+        for (u32 i = 0; i < e.count; ++i) heads += (!(e.flags[i] & kFlagDead) && e.a[i] > 0.5f) ? 1u : 0u;
+        CHECK_MSG(heads == 2, "heads after the cut %u", heads);
+        delete w;
+    }
+    {
+        // Tether: a pair joined by a lethal beam; one killed, the beam goes.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->spawnCreatureNow(SpeciesTable::index(Family::Tether, 1, kVariantA), Vec2{0.0f, -300.0f}, 0.0f, music);
+        runShip(*w, music, music + beat, Vec2{0.0f, 300.0f});
+        Vec2 a[4], b[4];
+        CHECK(w->tetherBeams(a, b, 4) == 1 && std::fabs(length(a[0] - b[0]) - s.family(Family::Tether).pairDistance) < 4.0f);
+        // The ship crossing the beam is hit.
+        const Vec2 mid = (a[0] + b[0]) * 0.5f;
+        const u32 cells = w->player(0).cells;
+        stepWorld(*w, music, mid);
+        CHECK(w->player(0).cells == cells - 1);
+        const Enemies& e = w->enemies();
+        for (u32 i = 0; i < e.count; ++i)
+            if (!(e.flags[i] & kFlagDead)) {
+                w->killEnemy(i, 0);
+                break;
+            }
+        stepWorld(*w, music, Vec2{0.0f, 900.0f});
+        CHECK(w->tetherBeams(a, b, 4) == 0);
+        delete w;
+    }
+    {
+        // Weaver: its trail is lethal for two bars; Well: it pulls a ship (none beyond its radius) and B returns what it
+        // swallowed as a ring on beat 1; Mimic: it steps on beats to where the player would be turned half round.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->spawnEnemy(SpeciesTable::index(Family::Weaver, 1, kVariantA), Vec2{-600.0f, 400.0f}, 0.0f, music);
+        runShip(*w, music, music + bar, Vec2{2000.0f, -1500.0f});
+        u32 points = 0;
+        for (u32 k = 0; k < World::kTrails; ++k) points += w->trails()[k].n;
+        CHECK_MSG(points >= 15, "trail points %u", points);
+        const i32 wl = w->spawnEnemy(SpeciesTable::index(Family::Well, 1, kVariantB), Vec2{1000.0f, 0.0f}, 0.0f, music);
+        stepWorld(*w, music, Vec2{2000.0f, -1500.0f});
+        CHECK(length(w->wellPull(Vec2{1100.0f, 0.0f})) > 1.0f && length(w->wellPull(Vec2{1300.0f, 0.0f})) == 0.0f);
+        (void)wl;
+        u32 bullets0 = w->bullets().count;
+        // Shots into it from beside it, then the bar line.
+        for (u32 k = 0; k < 30; ++k) stepWorld(*w, music, Vec2{850.0f, 0.0f}, 1);
+        runShip(*w, music, (std::floor(music / bar) + 1.0) * bar + 2.0, Vec2{2000.0f, -1500.0f});
+        CHECK_MSG(w->bullets().count >= bullets0 + 12, "bullets %u -> %u", bullets0, w->bullets().count);
+        delete w;
+    }
+    {
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 m = w->spawnEnemy(SpeciesTable::index(Family::Mimic, 1, kVariantA), Vec2{400.0f, 0.0f}, 0.0f, music);
+        runShip(*w, music, music + 2.0 * beat, Vec2{});
+        // The centre is (200, 0): with the ship at (-100, 0) its place is (500, 0).
+        runShip(*w, music, music + 8.0 * beat, Vec2{-100.0f, 0.0f});
+        const Enemies& e = w->enemies();
+        CHECK_MSG(std::fabs(e.x[m] - 500.0f) < 2.0f && std::fabs(e.y[m]) < 2.0f, "mimic at (%.0f, %.0f)", e.x[m], e.y[m]);
+        delete w;
+    }
+}
+
 // ---------------------------------------------------------------------------------------------- M5 part 3: upgrades
 
 u32 countFx(const World& w, u8 fx) {
@@ -2414,6 +2510,7 @@ int main() {
     testMinibosses();
     testFamiliesM5();
     testUpgradesM5();
+    testFamiliesM5b();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;
     return g_failures;

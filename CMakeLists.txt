@@ -220,6 +220,7 @@ add_library(raveform_sim STATIC
   src/sim/world_choir.cpp
   src/sim/world_enemies.cpp
   src/sim/world_families.cpp
+  src/sim/world_families4.cpp
   src/sim/world_longwave.cpp
   src/sim/world_miniboss.cpp
   src/sim/world_net.cpp

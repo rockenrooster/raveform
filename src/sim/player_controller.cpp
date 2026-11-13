@@ -106,6 +106,8 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
         }
         p.pos = p.pos + p.vel * dt;
     }
+    // M5 part 4 (GAME_DESIGN 7.2): Wells pull the ship toward them.
+    if (!p.dashing) p.pos = p.pos + world.wellPull(p.pos) * dt;
     // M5 (minibosses.md): the Pen's walls stop ships without hurting (inside stays inside, outside stays outside).
     {
         Vec2 to = p.pos;

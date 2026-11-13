@@ -373,6 +373,11 @@ void World::updateEnemies(float dt) {
             case Family::Moth:
             case Family::Brood:
             case Family::Blink: moveFamily(i, s, fd, dt, tp, to, engaged); break;  // M5 part 2 (world_families.cpp)
+            case Family::Wyrm:
+            case Family::Tether:
+            case Family::Weaver:
+            case Family::Well:
+            case Family::Mimic: moveFamily4(i, s, fd, dt, tp, to, engaged); break;  // M5 part 4 (world_families4.cpp)
             default: break;
         }
 

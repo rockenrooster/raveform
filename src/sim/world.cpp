@@ -45,6 +45,7 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask) {
     for (u32 s = 0; s < kMaxEnemies; ++s) e.freeSlots[s] = kMaxEnemies - 1 - s;  // slot 0 is taken first
     bullets_.count = shots_.count = shards_.count = 0;
     for (u32& n : shotsLive_) n = 0;
+    for (Trail& t : trails_) t.n = 0;  // M5 part 4
     serial_ = 0;
     dipS_ = 0.0f;
     allDownDipS_ = 0.0f;
@@ -147,12 +148,15 @@ void World::tick(const TickInput& in) {
     for (u32 i = 0; i < enemies_.count; ++i)
         solid_[i] = (enemies_.flags[i] & kFlagDead) == 0 && enemies_.state[i] != kWarping;
     grid_.build(enemies_.x, enemies_.y, enemies_.count, solid_);
+    buildGroups();  // M5 part 4: Wyrms' chains, Tethers' pairs
+    findWells();
 
     spawnShots(in);
     fireEchoes();  // M5: Echo's ghost volleys
     updateNovas();
 
     updateEnemies(dt * stretch_);
+    updateTrails();  // M5 part 4: Weaver trails, Ram B's wake
     updateBoss(dt);
     updateRiffs(dt);
     updateRiffsM5(dt);     // M5 part 3: Riffs 4-12
@@ -240,6 +244,9 @@ void World::applyPlayers(const TickInput& in) {
             ++pl.dashes;
             if (ps.perfectDash) ++pl.perfectDashes;
             dashExtras(p, ps.dashFrom, ps.dashTo, ps.perfectDash);  // M5: Afterimage, Shockstep
+            pl.lastDashFrom = ps.dashFrom;  // M5 part 4: Mimic C
+            pl.lastDashTo = ps.dashTo;
+            pl.lastDashTick = m1_;
             Event ev;
             ev.type = EventType::Dash;
             ev.a = static_cast<u8>(p);
@@ -430,6 +437,7 @@ void World::moveProjectiles(float dt) {
     }
     Shots& s = shots_;
     steerShots(dt);  // M5: Seeker, missiles, sparks
+    wellShots(dt);   // M5 part 4: Wells bend and swallow shots
     for (u32 i = 0; i < s.count; ++i) {
         if (s.dead[i]) continue;
         s.px[i] = s.x[i];
@@ -568,6 +576,7 @@ void World::collide() {
             }
         }
         if (best < 0) continue;
+        if (wellSwallow(static_cast<u32>(best), k)) continue;  // M5 part 4: Well B and C swallow shots
         if (!real) {
             s.dead[k] = 1;
             // M5: Gravity Rounds tug at a teammate's shot's hit too (the host moves the bodies; gravityTug).
@@ -654,6 +663,14 @@ void World::collide() {
         if (contact >= 0) {
             if (!haloBlocks(p, Vec2{e.x[contact], e.y[contact]})) hitPlayer(p, Vec2{e.x[contact], e.y[contact]});
             continue;
+        }
+        {
+            // M5 part 4: the lethal lines (Tether beams, Weaver trails, Ram B's wake).
+            Vec2 from{};
+            if (hazardHits(p, from)) {
+                if (!haloBlocks(p, from)) hitPlayer(p, from);
+                continue;
+            }
         }
         const float rb = species_->bulletRadius + kPlayerHitRadius;
         for (u32 b = 0; b < bullets_.count; ++b) {
