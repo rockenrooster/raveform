@@ -15,12 +15,17 @@ constexpr u16 kBeaconPort = 47777;  // TECH_SPEC 8.3 (discovery: stage B)
 enum Channel : u8 { kChReliable = 0, kChUnreliable = 1, kChControl = 2, kChannels = 3 };
 constexpr u32 kMaxLinkPeers = 4;
 constexpr u32 kMaxPacket = 4096;  // ENet's maximumPacketSize
+// A peer that has sent nothing for longer than this (every live peer sends 30 datagrams a second) is taken as gone or cut
+// off until it is heard again: resends back off and a client holds its poses and claims (docs/PROGRESS_m4_net.md).
+constexpr u32 kLinkSilentMs = 250;
 
 struct LinkPeerStats {
     bool connected = false;
     u32 rttMs = 0, rttVarMs = 0;
     float loss = 0.0f;  // ENet's mean loss of reliable packets
     u32 sent = 0, lostPackets = 0;
+    u32 silentMs = 0;   // since the last datagram from it
+    u32 inFlight = 0;   // reliable bytes sent and not yet acknowledged
 };
 
 class Link {
@@ -68,6 +73,7 @@ private:
     void* host_ = nullptr;     // ENetHost*
     void* holding_ = nullptr;  // ENetPacket* handed out by the last poll
     bool pumped_ = false;
+    u32 heard_[kMaxLinkPeers] = {};  // ENet's time (ms) a packet last came from each peer (0: never)
 };
 
 }  // namespace rf::net

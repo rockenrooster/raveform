@@ -504,6 +504,43 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             }
             return true;
         }
+        case Msg::Motions: {
+            const u16 run = r.u16v();
+            const double base = r.f64v();
+            const u32 n = r.u8v();
+            if (r.bad() || !finite(base) || n == 0 || n * 8u > r.left()) return false;
+            if (sink) sink->onMotions(run, base);
+            u32 prev = 0;
+            for (u32 k = 0; k < n; ++k) {
+                u32 step = 0;
+                for (u32 shift = 0;; shift += 7) {
+                    const u8 b = r.u8v();
+                    if (r.bad() || shift > 28) return false;
+                    step |= static_cast<u32>(b & 0x7Fu) << shift;
+                    if (!(b & 0x80u)) break;
+                }
+                NetMotion m;
+                if (step == 0 || step > 0xFFFFFFFFu - prev) return false;  // strictly increasing, no wrap
+                m.serial = prev + step;
+                prev = m.serial;
+                m.x = static_cast<float>(r.i16v()) * kPosQ;
+                m.y = static_cast<float>(r.i16v()) * kPosQ;
+                m.heading = angleF(r.u16v());
+                const u8 bits = r.u8v();
+                const u8 t = bits & 7u;
+                if (bits & 0xC0u || (t >= kMaxPlayers && t != 7u)) return false;
+                m.target = t < kMaxPlayers ? t : 0xFF;
+                m.engaged = (bits & 16u) != 0;
+                m.frozen = (bits & 32u) != 0;
+                if (bits & 8u) {
+                    m.kx = static_cast<float>(static_cast<i8>(r.u8v())) * kKnockQ;
+                    m.ky = static_cast<float>(static_cast<i8>(r.u8v())) * kKnockQ;
+                }
+                if (r.bad() || !inWorld(m.x, m.y)) return false;
+                if (sink) sink->onMotion(m);
+            }
+            return true;
+        }
         case Msg::Stats: {
             const u32 n = r.u8v();
             if (r.bad() || n < 1 || n > kMaxPlayers || n * kStatsBytes != r.left()) return false;
@@ -979,6 +1016,55 @@ u32 PacketWriter::putCorrections(u16 run, double base, const NetEnemyState* item
         u8v(s.step);
     }
     return n;
+}
+u32 PacketWriter::putMotions(u16 run, double base, const NetMotion* items, u32 n) {
+    // Item: varint (serial - previous serial, the first from 0), x i16, y i16, heading u16, bits u8 (0-2 the target, 7 none; 3
+    // knockback follows as two i8; 4 engaged; 5 frozen), [kx i8, ky i8]. Serials strictly increasing.
+    const auto varSize = [](u32 v) {
+        u32 b = 1;
+        while (v >= 0x80u) {
+            v >>= 7;
+            ++b;
+        }
+        return b;
+    };
+    const auto knocked = [](const NetMotion& m) { return q8(m.kx, kKnockQ) != 0 || q8(m.ky, kKnockQ) != 0; };
+    if (room() < kHeader + 11 + kMotionBytesMax) return 0;
+    const u32 budget = room() - kHeader - 11;
+    u32 size = 0, fit = 0, prev = 0;
+    for (; fit < n && fit < 255u; ++fit) {
+        const NetMotion& m = items[fit];
+        if (m.serial <= prev) break;  // (the caller sorts them)
+        const u32 sz = varSize(m.serial - prev) + 7u + (knocked(m) ? 2u : 0u);
+        if (size + sz > budget) break;
+        size += sz;
+        prev = m.serial;
+    }
+    if (!fit || !begin(Msg::Motions, 11 + size)) return 0;
+    u16v(run);
+    f64v(base);
+    u8v(static_cast<u8>(fit));
+    prev = 0;
+    for (u32 k = 0; k < fit; ++k) {
+        const NetMotion& m = items[k];
+        u32 v = m.serial - prev;
+        while (v >= 0x80u) {
+            u8v(static_cast<u8>(v | 0x80u));
+            v >>= 7;
+        }
+        u8v(static_cast<u8>(v));
+        prev = m.serial;
+        u16v(static_cast<u16>(q16(m.x, kPosQ)));
+        u16v(static_cast<u16>(q16(m.y, kPosQ)));
+        u16v(angleQ(m.heading));
+        const bool kb = knocked(m);
+        u8v(static_cast<u8>((m.target < kMaxPlayers ? m.target : 7u) | (kb ? 8u : 0u) | (m.engaged ? 16u : 0u) | (m.frozen ? 32u : 0u)));
+        if (kb) {
+            u8v(static_cast<u8>(q8(m.kx, kKnockQ)));
+            u8v(static_cast<u8>(q8(m.ky, kKnockQ)));
+        }
+    }
+    return fit;
 }
 bool PacketWriter::putStats(const MsgStats* st, u32 n) {
     if (n < 1 || n > kMaxPlayers || !begin(Msg::Stats, 1 + n * kStatsBytes)) return false;

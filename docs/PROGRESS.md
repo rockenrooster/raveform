@@ -1,5 +1,9 @@
 # RAVEFORM — Progress
 
+The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, the resend back-off, motion corrections for
+moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
+M5 part 4; protocol `0x52460505` holds both).
+
 ## M5 part 4 "Tracks 4 to 6" — 2026-11-13
 
 Tracks 4 (Aurora), 5 (Furnace) and 6 (Zenith) with everything the design gives them: the five families of their rosters
@@ -65,7 +69,7 @@ the loop begins after Feedback.
   engine lacks is written in each row (below).
 - **Co-op**: the fights' decisions that read where players stand are the host's (`kGeomHorizonBar`, `kGeomPolyHemiola`,
   `kGeomMothCourt`, `kGeomBlinkStar`); the Horizon's meal travels in the heartbeat's part slot; deaths and health steps as
-  always. Protocol `0x52460504` (the enemy states `kLane`, `kCourt`, `kEgg` and the new decisions). `src/net` change: the
+  always. Protocol `0x52460505` (the enemy states `kLane`, `kCourt`, `kEgg` and the new decisions; with the network follow-up's motion corrections, merged here). `src/net` change: the
   version in `protocol.h` only.
 - **Tools**: `--fight horizon|polyrhythm|feedback|moth_queen|brood_mother|blink_star|sentry_array[:phase[:hold]]` (a fight
   past the run's set list stretches it for that run); `scripts\review-m5.ps1 -Part part4` (34 pictures and 6 strips); the

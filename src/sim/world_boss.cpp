@@ -693,6 +693,26 @@ void World::bossGeom(u8 geom, Vec2 a, Vec2 b, double tick, bool host) {
         case kGeomLunge: s.lw.lungeDir = normalizeOr(b, s.lw.lungeDir); break;
         default: break;
     }
+    // M4 net follow-up (docs/PROGRESS_m4_net.md): the host's word reaches a client after the moment it was made. A Spear
+    // moves by charging on beats 1 and 3 of the bar (the host integrates it), so one that charged since then is carried on
+    // by the charge it made, instead of starting it again from where it stood (its darts were 61 wu RMS off on the soak's
+    // default seed). Clients only: the host and solo play are unchanged.
+    if (host && role_ == NetRole::Client && geom <= kGeomSpear1) {  // (the Hive's four: its shapes and its Spear's locks)
+        const u32 h = (geom == kGeomHive1 || geom == kGeomSpear1) ? 1u : 0u;
+        if (m.shape[h] == 1) {
+            double charged = 0.0;
+            const i64 k0 = static_cast<i64>(std::floor(tick / kTicksPerBeat)), k1 = static_cast<i64>(std::floor(m1_ / kTicksPerBeat));
+            for (i64 k = k0; k <= k1 && k - k0 < 16; ++k) {
+                const i64 b4 = ((k % 4) + 4) % 4;
+                if (b4 != 0 && b4 != 2) continue;
+                const double from = std::fmax(tick, static_cast<double>(k) * kTicksPerBeat);
+                const double to = std::fmin(m1_, static_cast<double>(k + 1) * kTicksPerBeat);
+                if (to > from) charged += to - from;
+            }
+            if (charged > 0.0)
+                m.shapeAt[h] = m.shapeAt[h] + m.shapeDir[h] * (prose::kHiveSpearSpeed * static_cast<float>(charged / static_cast<double>(ticksPerSecond())));
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------- Kaleidos

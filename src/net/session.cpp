@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "sim/species.h"
@@ -20,14 +21,25 @@ constexpr i64 kCensusEveryUs = 2000000;
 constexpr i64 kPingFastUs = 50000, kPingUs = 250000;  // TECH_SPEC 8.2: 4 Hz (20 Hz until 16 samples)
 constexpr i64 kInterpUs = 66000;        // remote players drawn ~66 ms behind
 constexpr i64 kExtrapMaxUs = 100000;
+// Predicted remote players (fillRemote): carried on from the newest pose for at most this long, a new pose's jump spread
+// over this long, and a jump larger than this (a revive, a new run) taken at once.
+constexpr i64 kPredictMaxUs = 150000;
+constexpr float kPoseSmoothS = 0.1f;
+constexpr float kPoseSnapWu = 120.0f;
+// A pose stamped further than this from the receiver's host time (ahead of it, behind it) is not used (onPose).
+constexpr i64 kPoseStampAheadUs = 1000000, kPoseStampBehindUs = 5000000;
 constexpr u32 kCorrPerPacket = 32;      // 32 x 30 bytes + headers: under 1,000 bytes a packet (the limit is 1,200)
+// Motion corrections (M4 net follow-up): at most this many in a packet (the packet stays under 1,200 bytes by bytes), and
+// every kFullEvery-th correction of an enemy is a full one.
+constexpr u32 kMotionsPerPacket = 96;
+constexpr u8 kFullEvery = 4;
 constexpr double kBar = 384.0, kBeat = 96.0;
 // TECH_SPEC 8.4: at most 250 kbit/s down per client. Everything sent to a client is counted on the wire against
 // 160 kbit/s with 1.5 KB saved at most; corrections fill what the rest leaves. The margin to 250 is for a reliable
 // burst (a wave's spawns, a Break's dissolve) on top of a full second, and for jitter bunching arrivals. (Play test 1,
 // second pass: 184 -> 160 kbit/s; the stronger build's runs reach the denser Tracks and kill faster, and its bursts
 // reached 264 kbit/s.)
-constexpr float kDownBytesPerS = 20000.0f, kDownBurstBytes = 1500.0f, kDatagramOverhead = 40.0f;
+constexpr float kDownBurstBytes = 1500.0f, kDatagramOverhead = 40.0f;  // (the rate: SessionConfig::downBytesPerS, 20,000)
 // The accumulator knows only the host's copies: a client asks (5 Hz, with its pose) for the enemies on its screen
 // that no correction has reached for this long, and the host sends those (and their schools) next.
 constexpr i64 kAttentionEveryUs = 200000;
@@ -50,6 +62,175 @@ u64 contentHash() {
     return (static_cast<u64>(kProtocolVersion) * 0x9E3779B97F4A7C15ull) ^ speciesDataDigest() ^ (bossDataDigest() << 1);
 }
 
+bool parseNetTune(const char* spec, SessionConfig& c) {
+    // "key=value,key=value": down (bytes a second), famN (family N's priority weight).
+    const char* p = spec;
+    while (p && *p) {
+        char key[16] = {};
+        u32 k = 0;
+        while (*p && *p != '=' && k + 1 < sizeof key) key[k++] = *p++;
+        if (*p != '=') return false;
+        ++p;
+        char* end = nullptr;
+        const float v = std::strtof(p, &end);
+        if (end == p || !(v >= 0.0f) || v > 1e6f) return false;
+        p = end;
+        if (std::strcmp(key, "down") == 0) {
+            c.downBytesPerS = v;
+        } else if (std::strcmp(key, "motion") == 0) {
+            c.motionCorrections = v != 0.0f;
+        } else if (std::strncmp(key, "fam", 3) == 0) {
+            const int f = std::atoi(key + 3);
+            if (f < 0 || f > 15) return false;
+            c.familyWeight[f] = v;
+        } else {
+            return false;
+        }
+        if (*p == ',') ++p;
+        else if (*p) return false;
+    }
+    return true;
+}
+
+float NetDiagBin::rms() const { return n ? static_cast<float>(std::sqrt(sum2 / static_cast<double>(n))) : 0.0f; }
+
+namespace {
+// "rms (share of all the squared error %, share of the samples %)"
+int binText(char* out, u32 size, const NetDiagBin& b, const NetDiagBin& all) {
+    const double e2 = all.sum2 > 0.0 ? 100.0 * b.sum2 / all.sum2 : 0.0;
+    const double n = all.n ? 100.0 * static_cast<double>(b.n) / static_cast<double>(all.n) : 0.0;
+    return std::snprintf(out, size, "%.1f (%.0f%%e2 %.0f%%n)", static_cast<double>(b.rms()), e2, n);
+}
+}  // namespace
+
+void mergeDiag(NetDiag& into, const NetDiag& d) {
+    const auto bin = [](NetDiagBin& a, const NetDiagBin& b) {
+        a.sum2 += b.sum2;
+        a.n += b.n;
+    };
+    bin(into.all, d.all);
+    for (u32 k = 0; k < 4; ++k) bin(into.byTarget[k], d.byTarget[k]);
+    bin(into.targetDiffers, d.targetDiffers);
+    bin(into.stateDiffers, d.stateDiffers);
+    for (u32 k = 0; k < 16; ++k) bin(into.byFamily[k], d.byFamily[k]);
+    for (u32 k = 0; k < 6; ++k) bin(into.byAge[k], d.byAge[k]);
+    bin(into.perp, d.perp);
+    into.tauSum += d.tauSum;
+    into.tau2Sum += d.tau2Sum;
+    into.tauN += d.tauN;
+    into.badPackets += d.badPackets;
+    for (u32 s = 0; s < 4; ++s) {
+        into.poses[s] += d.poses[s];
+        into.posesHeard[s] += d.posesHeard[s];
+        into.posesRelayed[s] += d.posesRelayed[s];
+        into.posesMisstamped[s] += d.posesMisstamped[s];
+        into.poseGapMaxMs[s] = std::fmax(into.poseGapMaxMs[s], d.poseGapMaxMs[s]);
+        into.poseGapsOver66[s] += d.poseGapsOver66[s];
+        into.poseGapsOver100[s] += d.poseGapsOver100[s];
+        into.poseAgeSumMs[s] += d.poseAgeSumMs[s];
+        into.poseAgeMinMs[s] = std::fmin(into.poseAgeMinMs[s], d.poseAgeMinMs[s]);
+        into.poseAgeMaxMs[s] = std::fmax(into.poseAgeMaxMs[s], d.poseAgeMaxMs[s]);
+        into.fills[s] += d.fills[s];
+        into.extrapolated[s] += d.extrapolated[s];
+        into.extrapSumMs[s] += d.extrapSumMs[s];
+        into.extrapMaxMs[s] = std::fmax(into.extrapMaxMs[s], d.extrapMaxMs[s]);
+    }
+    bin(into.songResidualMs, d.songResidualMs);
+    into.songResidualMaxMs = std::fmax(into.songResidualMaxMs, d.songResidualMaxMs);
+    into.corrGapMaxMs = std::fmax(into.corrGapMaxMs, d.corrGapMaxMs);
+    into.corrPackets += d.corrPackets;
+    into.frames += d.frames;
+    into.frameMaxMs = std::fmax(into.frameMaxMs, d.frameMaxMs);
+    for (u32 k = 0; k < 4; ++k) into.ticksPerFrame[k] += d.ticksPerFrame[k];
+    into.ticksSkipped += d.ticksSkipped;
+    into.timeDropped += d.timeDropped;
+    into.poseSendGapMaxMs = std::fmax(into.poseSendGapMaxMs, d.poseSendGapMaxMs);
+    into.poseSendGapsOver50 += d.poseSendGapsOver50;
+    bin(into.anchorResidualMs, d.anchorResidualMs);
+    into.anchorResidualMaxMs = std::fmax(into.anchorResidualMaxMs, d.anchorResidualMaxMs);
+    into.anchorsBackwards += d.anchorsBackwards;
+}
+
+u32 formatDiagCorrections(const NetDiag& d, char* out, u32 size) {
+    if (!size) return 0;
+    u32 w = 0;
+    const auto put = [&](int n) {
+        if (n > 0) w = w + static_cast<u32>(n) < size ? w + static_cast<u32>(n) : size - 1;
+    };
+    put(std::snprintf(out + w, size - w, "corr %.1f wu (%llu); target self ", static_cast<double>(d.all.rms()),
+                      static_cast<unsigned long long>(d.all.n)));
+    put(binText(out + w, size - w, d.byTarget[0], d.all));
+    put(std::snprintf(out + w, size - w, " host "));
+    put(binText(out + w, size - w, d.byTarget[1], d.all));
+    put(std::snprintf(out + w, size - w, " other "));
+    put(binText(out + w, size - w, d.byTarget[2], d.all));
+    put(std::snprintf(out + w, size - w, "; target differs "));
+    put(binText(out + w, size - w, d.targetDiffers, d.all));
+    put(std::snprintf(out + w, size - w, "; state differs "));
+    put(binText(out + w, size - w, d.stateDiffers, d.all));
+    put(std::snprintf(out + w, size - w, "; age"));
+    static const char* const kAge[6] = {"<.25", "<.5", "<1", "<2", "<4", ">4"};
+    for (u32 k = 0; k < 6; ++k) {
+        put(std::snprintf(out + w, size - w, " %s:", kAge[k]));
+        put(binText(out + w, size - w, d.byAge[k], d.all));
+    }
+    const double tm = d.tauN ? d.tauSum / static_cast<double>(d.tauN) : 0.0;
+    const double tr = d.tauN ? std::sqrt(d.tau2Sum / static_cast<double>(d.tauN)) : 0.0;
+    put(std::snprintf(out + w, size - w, "; along v: mean %+.1f ms, rms %.1f ms; across v %.1f wu; family", tm * 1e3, tr * 1e3,
+                      static_cast<double>(d.perp.rms())));
+    for (u32 f = 0; f < 16; ++f) {
+        if (!d.byFamily[f].n) continue;
+        put(std::snprintf(out + w, size - w, " %u:", f));
+        put(binText(out + w, size - w, d.byFamily[f], d.all));
+    }
+    return w;
+}
+
+u32 formatDiagTicks(const NetDiag& d, char* out, u32 size) {
+    if (!size) return 0;
+    const int n = std::snprintf(out, size,
+                                "frames %u, longest %.1f ms, ticks a frame 0/1/2/3: %u/%u/%u/%u, ticks skipped %u, time dropped %u; pose "
+                                "sends: longest gap %.1f ms, %u over 50 ms; song anchors set here %.2f ms rms, max %.2f (%llu), %u backwards",
+                                d.frames, static_cast<double>(d.frameMaxMs), d.ticksPerFrame[0], d.ticksPerFrame[1], d.ticksPerFrame[2],
+                                d.ticksPerFrame[3], d.ticksSkipped, d.timeDropped, static_cast<double>(d.poseSendGapMaxMs), d.poseSendGapsOver50,
+                                static_cast<double>(d.anchorResidualMs.rms()), static_cast<double>(d.anchorResidualMaxMs),
+                                static_cast<unsigned long long>(d.anchorResidualMs.n), d.anchorsBackwards);
+    return n < 0 ? 0u : (static_cast<u32>(n) < size ? static_cast<u32>(n) : size - 1);
+}
+
+u32 formatDiagPoses(const NetDiag& d, u32 seats, u32 self, char* out, u32 size) {
+    if (!size) return 0;
+    u32 w = 0;
+    const auto put = [&](int n) {
+        if (n > 0) w = w + static_cast<u32>(n) < size ? w + static_cast<u32>(n) : size - 1;
+    };
+    put(std::snprintf(out + w, size - w, "poses (bad packets %u)", d.badPackets));
+    for (u32 s = 0; s < seats && s < 4; ++s) {
+        if (s == self) continue;
+        if (!d.poses[s]) {
+            if (d.posesHeard[s] || d.posesRelayed[s] || d.fills[s])
+                put(std::snprintf(out + w, size - w, " | seat %u: none new (heard %u, misstamped %u, relayed %u, ticks %u)", s, d.posesHeard[s],
+                                  d.posesMisstamped[s], d.posesRelayed[s], d.fills[s]));
+            continue;
+        }
+        put(std::snprintf(out + w, size - w,
+                          " | seat %u: %u new of %u heard (misstamped %u, relayed %u), gap max %.0f ms, >66 %u, >100 %u, age %.0f/%.0f/%.0f ms, "
+                          "past newest %.1f%% (mean %.0f, max %.0f ms)",
+                          s, d.poses[s], d.posesHeard[s], d.posesMisstamped[s], d.posesRelayed[s], static_cast<double>(d.poseGapMaxMs[s]),
+                          d.poseGapsOver66[s],
+                          d.poseGapsOver100[s],
+                          static_cast<double>(d.poseAgeMinMs[s]), d.poseAgeSumMs[s] / static_cast<double>(d.poses[s]),
+                          static_cast<double>(d.poseAgeMaxMs[s]),
+                          d.fills[s] ? 100.0 * static_cast<double>(d.extrapolated[s]) / static_cast<double>(d.fills[s]) : 0.0,
+                          d.extrapolated[s] ? d.extrapSumMs[s] / static_cast<double>(d.extrapolated[s]) : 0.0,
+                          static_cast<double>(d.extrapMaxMs[s])));
+    }
+    put(std::snprintf(out + w, size - w, " | song anchors %.2f ms rms, max %.2f (%llu) | correction packets %u, gap max %.0f ms",
+                      static_cast<double>(d.songResidualMs.rms()), static_cast<double>(d.songResidualMaxMs),
+                      static_cast<unsigned long long>(d.songResidualMs.n), d.corrPackets, static_cast<double>(d.corrGapMaxMs)));
+    return w;
+}
+
 // ---------------------------------------------------------------------------------------------- set-up
 
 bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
@@ -59,6 +240,9 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     world_ = world;
     content_ = content;
     stats_ = SessionStats{};
+    diag_ = NetDiag{};
+    for (i64& t : poseArrivedUs_) t = 0;
+    corrArrivedUs_ = frameUs_ = poseSentUs_ = 0;
     clock_.reset();
     song_.reset();
     runOffset_ = 0.0;
@@ -69,6 +253,7 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     rel_.reset();
     havePrev_ = false;
     for (PoseRing& r : poses_) r = PoseRing{};
+    for (RemoteTrack& t : track_) t = RemoteTrack{};
     for (i32& s : peerSeat_) s = -1;
     for (i32& p : seatPeer_) p = -1;
     for (bool& w : welcomed_) w = false;
@@ -76,6 +261,8 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
         for (u32 i = 0; i < kMaxEnemies; ++i) {
             prio_[s][i] = 0.0f;
             prioSerial_[s][i] = 0;
+            motionRun_[s][i] = 0;
+            fullHp_[s][i] = 0.0f;
         }
     for (u32 i = 0; i < kMaxEnemies; ++i) {
         corrSerial_[i] = seenSerial_[i] = 0;
@@ -84,6 +271,7 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     nextAttentionUs_ = 0;
     pendClaimCount_ = 0;
     pendRun_ = 0;
+    hostQuiet_ = false;
     measureFrom_ = 0;
     lastWire_ = WireStats{};
     errSum_ = 0.0;
@@ -168,6 +356,27 @@ void Session::receive(i64 localUs) {
 
 i64 Session::nowLocal() const { return clockFn_ ? clockFn_(clockUser_) : localNow_; }
 
+void Session::setHostSong(const SongAnchor& a) {
+    if (song_.valid() && a.hostUs > song_.anchor().hostUs && a.tps > 0.0) {
+        // Diagnostics: the new anchor against the model it replaces, at its own host time.
+        const float r = static_cast<float>((a.song - song_.songAt(a.hostUs)) / a.tps * 1000.0);
+        diag_.anchorResidualMs.add(r);
+        if (std::fabs(r) > diag_.anchorResidualMaxMs) diag_.anchorResidualMaxMs = std::fabs(r);
+        if (a.song < song_.songAt(song_.anchor().hostUs)) ++diag_.anchorsBackwards;
+    }
+    song_.set(a);
+}
+
+void Session::noteFrame(i64 localUs, u32 ticks) {
+    ++diag_.frames;
+    if (frameUs_) {
+        const float ms = static_cast<float>(static_cast<double>(localUs - frameUs_) * 1e-3);
+        if (ms > diag_.frameMaxMs) diag_.frameMaxMs = ms;
+    }
+    frameUs_ = localUs;
+    ++diag_.ticksPerFrame[ticks < 3 ? ticks : 3];
+}
+
 void Session::service() {
     Link::Event ev;
     while (link_.poll(ev)) {
@@ -177,7 +386,10 @@ void Session::service() {
             case Link::Event::Receive:
                 fromPeer_ = ev.peer;
                 from_ = host() ? (ev.peer < kMaxLinkPeers ? peerSeat_[ev.peer] : -1) : 0;
-                if (!parsePacket(ev.data, ev.size, *this)) ++stats_.badPackets;
+                if (!parsePacket(ev.data, ev.size, *this)) {
+                    ++stats_.badPackets;
+                    ++diag_.badPackets;
+                }
                 from_ = -1;
                 break;
             default: break;
@@ -518,15 +730,29 @@ void Session::onPose(const MsgPose& m) {
         return;
     }
     if (m.player >= kMaxPlayers) return;
+    ++diag_.posesHeard[m.player];
+    // A pose is stamped in host time. One stamped far from this device's host time now was made on another clock (a
+    // client's pose before its clock had a sample: its own local time; a PC's clock was 6.5 days ahead of the Moto's) or
+    // is stale: it is dropped. Kept, it sorted as the newest for good, and the host relayed it in place of every later
+    // pose, so the other clients saw that player standing where it stood in the lobby for the whole run
+    // (docs/PROGRESS_m4_net.md, the cause of the on-screen error with the Moto hosting four).
+    if (!host() && !clock_.valid()) return;
+    {
+        const i64 ahead = m.stampUs - hostNow_;
+        if (ahead > kPoseStampAheadUs || ahead < -kPoseStampBehindUs) {
+            ++diag_.posesMisstamped[m.player];
+            return;
+        }
+    }
     // Into the ring in time order (packets arrive in any order); a repeat (the redundant previous state) is
     // skipped, and when the ring is full the oldest goes.
     PoseRing& r = poses_[m.player];
     const auto add = [&](i64 stamp, const PoseState& s) {
         u32 at = r.count;  // insertion place among the r.count samples (oldest first)
         while (at > 0 && r.s[(r.head + at - 1) % kPoseRing].stampUs > stamp) --at;
-        if (at > 0 && r.s[(r.head + at - 1) % kPoseRing].stampUs == stamp) return;
+        if (at > 0 && r.s[(r.head + at - 1) % kPoseRing].stampUs == stamp) return false;
         if (r.count == kPoseRing) {
-            if (at == 0) return;  // older than everything kept
+            if (at == 0) return false;  // older than everything kept
             r.head = (r.head + 1) % kPoseRing;
             --r.count;
             --at;
@@ -537,9 +763,27 @@ void Session::onPose(const MsgPose& m) {
         d = m;
         d.stampUs = stamp;
         d.cur = s;
+        return true;
     };
-    if (m.prevAgeMs >= 0) add(m.stampUs - static_cast<i64>(m.prevAgeMs) * 1000, m.prev);
-    add(m.stampUs, m.cur);
+    if (m.prevAgeMs > 0 && m.prevAgeMs <= 1000) add(m.stampUs - static_cast<i64>(m.prevAgeMs) * 1000, m.prev);
+    if (add(m.stampUs, m.cur)) {
+        // Diagnostics: a new sample of this player (a relayed pose the host had already sent is not one).
+        const u32 p = m.player;
+        const i64 local = nowLocal();
+        const i64 hostNow = host() ? local : clock_.hostAt(local);
+        if (poseArrivedUs_[p]) {
+            const float gap = static_cast<float>(static_cast<double>(local - poseArrivedUs_[p]) * 1e-3);
+            if (gap > diag_.poseGapMaxMs[p]) diag_.poseGapMaxMs[p] = gap;
+            if (gap > 66.0f) ++diag_.poseGapsOver66[p];
+            if (gap > 100.0f) ++diag_.poseGapsOver100[p];
+        }
+        poseArrivedUs_[p] = local;
+        const float age = static_cast<float>(static_cast<double>(hostNow - m.stampUs) * 1e-3);
+        ++diag_.poses[p];
+        diag_.poseAgeSumMs[p] += age;
+        if (age < diag_.poseAgeMinMs[p]) diag_.poseAgeMinMs[p] = age;
+        if (age > diag_.poseAgeMaxMs[p]) diag_.poseAgeMaxMs[p] = age;
+    }
 }
 
 void Session::onStats(const MsgStats& m) {
@@ -561,6 +805,13 @@ void Session::onStats(const MsgStats& m) {
 void Session::onCorrections(u16 run, double hostMusic) {
     corrRun_ = run;
     corrMusic_ = hostMusic;
+    const i64 local = nowLocal();
+    if (corrArrivedUs_) {
+        const float gap = static_cast<float>(static_cast<double>(local - corrArrivedUs_) * 1e-3);
+        if (gap > diag_.corrGapMaxMs) diag_.corrGapMaxMs = gap;
+    }
+    corrArrivedUs_ = local;
+    ++diag_.corrPackets;
 }
 
 void Session::onCorrection(const NetEnemyState& s) {
@@ -578,6 +829,7 @@ void Session::onCorrection(const NetEnemyState& s) {
     const Enemies& e = world_->enemies();
     const u32 slot = e.handle[i] & 0xFFFFu;
     if (corrSerial_[slot] == s.serial && corrMusic_ <= corrStamp_[slot]) return;
+    const double prevStamp = corrSerial_[slot] == s.serial ? corrStamp_[slot] : -1.0;
     corrSerial_[slot] = s.serial;
     corrStamp_[slot] = corrMusic_;
     if (!(e.flags[i] & kFlagDead) && e.state[i] != kWarping && s.state != kWarping) {
@@ -586,12 +838,33 @@ void Session::onCorrection(const NetEnemyState& s) {
         const Vec2 me = world_->player(seat_).pos;
         const float dx = e.x[i] + e.ox[i] - me.x, dy = e.y[i] + e.oy[i] - me.y;
         if (std::fabs(dx) <= tuning::kFrameHalfWWu && std::fabs(dy) <= tuning::kFrameHalfHWu) {
-            const float ds = clampf(static_cast<float>((world_->music() - corrMusic_) / static_cast<double>(world_->ticksPerSecond())), -0.25f, 0.25f);
-            const Vec2 h{s.x + (s.vx + s.kx) * ds, s.y + (s.vy + s.ky) * ds};
-            const float d = length(Vec2{e.x[i] + e.ox[i], e.y[i] + e.oy[i]} - h);
+            const float tps = static_cast<float>(world_->ticksPerSecond());
+            const float ds = clampf(static_cast<float>((world_->music() - corrMusic_) / static_cast<double>(tps)), -0.25f, 0.25f);
+            const Vec2 v{s.vx + s.kx, s.vy + s.ky};
+            const Vec2 h{s.x + v.x * ds, s.y + v.y * ds};
+            const Vec2 dv = Vec2{e.x[i] + e.ox[i], e.y[i] + e.oy[i]} - h;
+            const float d = length(dv);
             stats_.screenErrSum2 += static_cast<double>(d) * d;
             ++stats_.screenErrN;
             if (d > stats_.screenErrMax) stats_.screenErrMax = d;
+            // Diagnostics: what kind of divergence it is.
+            NetDiag& g = diag_;
+            g.all.add(d);
+            const u32 tc = s.target >= kMaxPlayers ? 3u : (s.target == seat_ ? 0u : (s.target == 0 ? 1u : 2u));
+            g.byTarget[tc].add(d);
+            if (e.target[i] != s.target) g.targetDiffers.add(d);
+            if (e.state[i] != s.state) g.stateDiffers.add(d);
+            g.byFamily[static_cast<u32>(world_->species().get(e.species[i]).family) & 15u].add(d);
+            const float age = prevStamp < 0.0 ? 1e9f : static_cast<float>((corrMusic_ - prevStamp) / static_cast<double>(tps));
+            g.byAge[age < 0.25f ? 0 : (age < 0.5f ? 1 : (age < 1.0f ? 2 : (age < 2.0f ? 3 : (age < 4.0f ? 4 : 5))))].add(d);
+            const float v2 = v.x * v.x + v.y * v.y;
+            if (v2 > 60.0f * 60.0f) {
+                const float tau = (dv.x * v.x + dv.y * v.y) / v2;
+                g.tauSum += tau;
+                g.tau2Sum += static_cast<double>(tau) * tau;
+                ++g.tauN;
+                g.perp.add(length(dv - v * tau));
+            }
         }
     }
     const float err = world_->netCorrect(s, corrMusic_);
@@ -604,6 +877,46 @@ void Session::onCorrection(const NetEnemyState& s) {
     errSum_ += static_cast<double>(err) * err;
     ++errN_;
     if (err > errMax_) errMax_ = err;
+}
+
+void Session::onMotion(const NetMotion& m) {
+    // A motion correction: the host's place, heading, target and knockback; the rest as this copy has it (a full
+    // correction carries it every few times). Applied as a correction like any other (netCorrect).
+    if (host() || corrRun_ != world_->runId()) {
+        if (!host()) ++stats_.corrOtherRun;
+        return;
+    }
+    const i32 i = world_->indexOfSerial(m.serial);
+    if (i < 0) {
+        ++stats_.corrUnknown;
+        return;
+    }
+    const Enemies& e = world_->enemies();
+    if (e.state[i] == kWarping || (e.flags[i] & kFlagDead)) return;  // (not landed here yet, or a death predicted here)
+    NetEnemyState s;
+    s.serial = m.serial;
+    s.x = m.x;
+    s.y = m.y;
+    // Its velocity: the host's heading at this copy's speed (the same species, so the same speed).
+    const Vec2 v = dirOf(m.heading) * std::sqrt(e.vx[i] * e.vx[i] + e.vy[i] * e.vy[i]);
+    s.vx = v.x;
+    s.vy = v.y;
+    s.kx = m.kx;
+    s.ky = m.ky;
+    s.heading = m.heading;
+    s.a = e.a[i];
+    s.b = e.b[i];
+    s.hp = e.hp[i];
+    s.until = e.until[i];
+    s.rng = e.rng[i];
+    s.state = e.state[i];
+    s.flags = static_cast<u8>((e.flags[i] & (kFlagArriving | kFlagCalled)) | (m.engaged ? kFlagEngaged : 0));
+    s.target = m.target;
+    s.far = e.far[i];
+    s.step = e.step[i];
+    s.frozen = m.frozen;
+    ++stats_.motions;
+    onCorrection(s);
 }
 
 void Session::onAttention(u16 run, const u32* serials, u32 n) {
@@ -673,6 +986,12 @@ void Session::onHeartbeat(const MsgHeartbeat& m) {
     a.tps = m.tps;
     a.nextBar = m.nextBar;
     a.tpsNext = m.tpsNext;
+    if (song_.valid() && a.hostUs > song_.anchor().hostUs && a.tps > 0.0) {
+        // Diagnostics: the new anchor against the model it replaces, at its own host time.
+        const float r = static_cast<float>((a.song - song_.songAt(a.hostUs)) / a.tps * 1000.0);
+        diag_.songResidualMs.add(r);
+        if (std::fabs(r) > diag_.songResidualMaxMs) diag_.songResidualMaxMs = std::fabs(r);
+    }
     song_.set(a);
     if (m.bossOn && m.run == world_->runId()) world_->netBossState(m.bossPart, m.bossParts, m.bossCore, Vec2{m.bossX, m.bossY});
 }
@@ -789,7 +1108,12 @@ void Session::hostPause(bool on) {
     const double tps = song_.tpsAt(hostNow_);
     if (on && !paused()) {
         const double runNow = song - runOffset_;
-        pauseAt_ = std::ceil((runNow + 0.12 * tps) / kBeat) * kBeat;
+        // M4 net follow-up: far enough ahead that the word reaches every client even after a loss and a resend (the worst
+        // client's resend timeout and a half); 120 ms alone let a client under 80 ms of jitter and 5% loss run past the
+        // beat before it heard (the soak's "every peer on the same tick: NO").
+        const double rto = (static_cast<double>(stats_.rttMs) + 4.0 * static_cast<double>(stats_.rttVarMs)) * 1e-3;
+        const double lead = std::fmin(std::fmax(0.12 + 1.5 * rto, 0.12), 0.6);
+        pauseAt_ = std::ceil((runNow + lead * tps) / kBeat) * kBeat;
         resumeAt_ = -1.0;
         MsgPause m;
         m.kind = kPauseAt;
@@ -816,14 +1140,22 @@ void Session::resumed() {
     pauseAt_ = resumeAt_ = -1.0;
 }
 
-void Session::fillRemote(TickInput& in, i64 hostUs) const {
-    const i64 at = hostUs - kInterpUs;
+void Session::fillRemote(TickInput& in, i64 hostUs) {
+    // TECH_SPEC 8.1 draws a remote player about 66 ms behind its newest pose (interpolated). Predicted (M4 net follow-up,
+    // docs/PROGRESS_m4_net.md): every device takes each remote player where it is at the tick's own host time, carried on
+    // from its newest pose by its velocity, so the enemies following a player follow the same place on every device (66 ms
+    // behind, the host's enemies chased a client's ship where it had been and the client's copies where it was). When a
+    // new pose moves that estimate, the ship keeps its place through an offset that decays over kPoseSmoothS.
     for (u32 s = 0; s < seats_ && s < kMaxPlayers; ++s) {
         if (s == seat_) continue;
+        const bool predict = cfg_.remotePoses == RemotePoses::Predict || (cfg_.remotePoses == RemotePoses::Direct && (host() || s == 0));
+        const i64 at = predict ? hostUs : hostUs - kInterpUs;
+        const i64 reach = predict ? kPredictMaxUs : kExtrapMaxUs;
         PlayerPose& p = in.players[s];
         const PoseRing& r = poses_[s];
         if (!(seatMask_ & (1u << s)) || !r.count) {
             p.present = false;
+            track_[s].valid = false;
             continue;
         }
         // The two samples around `at`; past the newest, carried on by its velocity for at most 100 ms.
@@ -835,6 +1167,14 @@ void Session::fillRemote(TickInput& in, i64 hostUs) const {
             else if (!b) b = &q;
         }
         PoseState st;
+        ++diag_.fills[s];
+        if (a && !b) {
+            // Diagnostics: past the newest sample (carried on by its velocity).
+            const float ahead = static_cast<float>(static_cast<double>(at - a->stampUs) * 1e-3);
+            ++diag_.extrapolated[s];
+            diag_.extrapSumMs[s] += ahead;
+            if (ahead > diag_.extrapMaxMs[s]) diag_.extrapMaxMs[s] = ahead;
+        }
         if (a && b) {
             const float t = static_cast<float>(static_cast<double>(at - a->stampUs) / static_cast<double>(b->stampUs - a->stampUs));
             st = b->cur;
@@ -846,12 +1186,36 @@ void Session::fillRemote(TickInput& in, i64 hostUs) const {
             st.heading = lerpAngle(a->cur.heading, b->cur.heading, t);
         } else if (a) {
             st = a->cur;
-            const i64 ahead = at - a->stampUs < kExtrapMaxUs ? at - a->stampUs : kExtrapMaxUs;
+            const i64 ahead = at - a->stampUs < reach ? at - a->stampUs : reach;
             const float dt = static_cast<float>(static_cast<double>(ahead) * 1e-6);
             st.x += st.vx * dt;
             st.y += st.vy * dt;
         } else {
             st = b->cur;
+        }
+        if (predict) {
+            RemoteTrack& t = track_[s];
+            const MsgPose& n = r.s[(r.head + r.count - 1) % kPoseRing];
+            if (!t.valid) {
+                t.off = Vec2{};
+                t.lastAt = at;
+            } else {
+                if (at > t.lastAt) t.off = t.off * std::exp(-static_cast<float>(static_cast<double>(at - t.lastAt) * 1e-6) / kPoseSmoothS);
+                t.lastAt = at;
+                if (n.stampUs != t.stamp) {
+                    // What the newest pose before this one said about this moment, against what this one says.
+                    const i64 ahead = at - t.stamp < 0 ? 0 : (at - t.stamp < reach ? at - t.stamp : reach);
+                    const float dt = static_cast<float>(static_cast<double>(ahead) * 1e-6);
+                    const Vec2 jump = Vec2{st.x, st.y} - (t.pos + t.vel * dt);
+                    t.off = lengthSq(jump) > kPoseSnapWu * kPoseSnapWu ? Vec2{} : t.off - jump;
+                }
+            }
+            t.valid = true;
+            t.stamp = n.stampUs;
+            t.pos = Vec2{n.cur.x, n.cur.y};
+            t.vel = Vec2{n.cur.vx, n.cur.vy};
+            st.x += t.off.x;
+            st.y += t.off.y;
         }
         p.present = true;
         p.pos = Vec2{st.x, st.y};
@@ -933,7 +1297,15 @@ void Session::afterTick() {
         if (log.claimCount && pendRun_ != run) writeClaims();  // a new run: the last one's go first
         pendRun_ = run;
         for (u32 k = 0; k < log.claimCount; ++k) {
-            if (pendClaimCount_ == kPendingClaims) writeClaims();
+            if (pendClaimCount_ == kPendingClaims) {
+                // The host has gone quiet (gone, or a long Wi-Fi hole) and kPendingClaims are waiting: the rest are not
+                // sent (they would only pile up in flight; their predicted kills come undone if the host returns).
+                if (hostQuiet_) {
+                    ++stats_.claimsDropped;
+                    continue;
+                }
+                writeClaims();
+            }
             pendClaims_[pendClaimCount_++] = log.claims[k];
         }
         for (u32 k = 0; k < log.bossClaimCount;) {
@@ -1099,6 +1471,7 @@ void Session::flushReliable() {
 void Session::sendTo(u32 peer, u8 channel, const PacketWriter& w, bool rel) {
     if (w.empty()) return;
     if (!link_.send(peer, channel, w.data(), w.size(), rel) && rel) ++stats_.droppedOutgoing;
+    if (channel < 3) chBytes_[channel] += static_cast<double>(w.size());
     if (host() && peer < kMaxLinkPeers) {
         // An estimate until it has left (refillBudgets() puts what the wire carried in its place).
         const float est = static_cast<float>(w.size()) + kDatagramOverhead;
@@ -1121,7 +1494,7 @@ void Session::refillBudgets(i64 localUs) {
         if (seat > 0) downBudget_[seat] += pending_[p] - wire;
         pending_[p] = 0.0f;
     }
-    for (float& b : downBudget_) b = std::fmin(b + kDownBytesPerS * (dt > 0.1f ? 0.1f : dt), kDownBurstBytes);
+    for (float& b : downBudget_) b = std::fmin(b + cfg_.downBytesPerS * (dt > 0.1f ? 0.1f : dt), kDownBurstBytes);
 }
 
 void Session::relayEvent(const MsgPlayerEvent& m, u32 exceptSeat) {
@@ -1163,20 +1536,36 @@ void Session::updatePriorities(float dt) {
             } else if (e.state[i] == kMoving && w.music() - e.until[i] >= 0.0 && w.music() - e.until[i] < landedRecently) {
                 wgt += 4.0f;
             }
+            wgt *= cfg_.familyWeight[static_cast<u32>(w.species().get(e.species[i]).family) & 15u];
             const float sp = std::fabs(e.vx[i]) + std::fabs(e.vy[i]) + std::fabs(e.kx[i]) + std::fabs(e.ky[i]);
             prio_[s][slot] += wgt * (1.0f + sp * (1.0f / 300.0f)) * dt;
         }
     }
 }
 
+static_assert(static_cast<u32>(Family::Shoal) == 2, "SessionConfig::familyWeight's default doubles index 2, the Shoals");
+
+bool Session::motionOnly(u32 seat, u32 i) const {
+    // A moving Shoal's correction is its motion (M4 net follow-up): what diverges in a boid is where it is and where it
+    // heads. Every kFullEvery-th correction of it, and the first after it took damage, is a full one.
+    if (!cfg_.motionCorrections) return false;
+    const World& w = *world_;
+    const Enemies& e = w.enemies();
+    const u32 slot = e.handle[i] & 0xFFFFu;
+    if (e.state[i] != kMoving || (e.flags[i] & kFlagCalled) || w.species().get(e.species[i]).family != Family::Shoal) return false;
+    return motionRun_[seat][slot] + 1u < kFullEvery && e.hp[i] >= fullHp_[seat][slot];
+}
+
 void Session::sendCorrections(u32 seat, double hostMusic) {
     const World& w = *world_;
     const Enemies& e = w.enemies();
-    // As many as the client's downlink budget allows this time (a burst of spawns leaves fewer).
-    const float room = downBudget_[seat] - kDatagramOverhead - 14.0f;
-    u32 cap = room > 0.0f ? static_cast<u32>(room / static_cast<float>(kCorrectionBytes)) : 0u;
-    if (cap > kCorrPerPacket) cap = kCorrPerPacket;
-    if (cap < 4) return;
+    // As many as the client's downlink budget allows this time (a burst of spawns leaves fewer), by bytes: a full
+    // correction costs kCorrectionBytes, a motion correction about a third of it.
+    const float room = downBudget_[seat] - kDatagramOverhead - 2.0f * static_cast<float>(kCorrectionsHeader);
+    if (room < 4.0f * static_cast<float>(kCorrectionBytes)) return;
+    const u32 maxBytes = static_cast<u32>(room) < kMaxPacketBytes - 2u * kCorrectionsHeader ? static_cast<u32>(room)
+                                                                                            : kMaxPacketBytes - 2u * kCorrectionsHeader;
+    const u32 cap = cfg_.motionCorrections ? kCorrPerPacket + kMotionsPerPacket : kCorrPerPacket;
     u32 n = 0;
     for (u32 i = 0; i < e.count; ++i) {
         if (e.flags[i] & kFlagDead) continue;
@@ -1199,21 +1588,51 @@ void Session::sendCorrections(u32 seat, double hostMusic) {
         for (u32 q = 0; q < ng; ++q) seen = seen || groups[q] == g;
         if (!seen) groups[ng++] = g;
     }
-    u32 m = 0;
+    u32 m = 0, mm = 0, bytes = 0;
+    bool full = false;  // the room is spent
     const auto take = [&](u32 i) {
         const u32 slot = e.handle[i] & 0xFFFFu;
-        if (m >= cap || prio_[seat][slot] < 0.0f) return;  // full, or taken already this time
-        if (!w.netSample(i, states_[m])) return;
+        if (full || prio_[seat][slot] < 0.0f) return;  // full, or taken already this time
+        if (motionOnly(seat, i)) {
+            // Its serial's step is at most 5 bytes; most are one or two (the bytes left over pay for that).
+            const u32 cost = 10u + ((e.kx[i] != 0.0f || e.ky[i] != 0.0f) ? 2u : 0u);
+            if (mm >= kMotionsPerPacket || bytes + cost > maxBytes) {
+                full = mm >= kMotionsPerPacket || bytes + 8u > maxBytes;
+                return;
+            }
+            NetMotion& o = motions_[mm];
+            o.serial = e.serial[i];
+            o.x = e.x[i];
+            o.y = e.y[i];
+            o.heading = e.heading[i];
+            o.kx = e.kx[i];
+            o.ky = e.ky[i];
+            o.target = e.target[i];
+            o.engaged = (e.flags[i] & kFlagEngaged) != 0;
+            o.frozen = e.frozenUntil[i] > w.music();
+            ++mm;
+            bytes += cost;
+            ++motionRun_[seat][slot];
+        } else {
+            if (m >= kCorrPerPacket || bytes + kCorrectionBytes > maxBytes) {
+                full = m >= kCorrPerPacket && !cfg_.motionCorrections ? true : bytes + 8u > maxBytes;
+                return;
+            }
+            if (!w.netSample(i, states_[m])) return;
+            ++m;
+            bytes += kCorrectionBytes;
+            motionRun_[seat][slot] = 0;
+            fullHp_[seat][slot] = e.hp[i];
+        }
         prio_[seat][slot] = -1.0f;
-        ++m;
     };
-    for (u32 j = 0; j < k && m < cap; ++j) {
+    for (u32 j = 0; j < k && !full; ++j) {
         take(picks_[j].i);
         const u16 g = e.group[picks_[j].i];
         bool school = false;
         for (u32 q = 0; q < ng; ++q) school = school || groups[q] == g;
         if (!g || !school) continue;
-        for (u32 i = 0; i < e.count && m < cap; ++i)
+        for (u32 i = 0; i < e.count && !full; ++i)
             if (e.group[i] == g && !(e.flags[i] & kFlagDead) && prioSerial_[seat][e.handle[i] & 0xFFFFu] == e.serial[i]) take(i);
         for (u32 q = 0; q < ng; ++q)
             if (groups[q] == g) groups[q] = 0;  // its members are in
@@ -1222,11 +1641,24 @@ void Session::sendCorrections(u32 seat, double hostMusic) {
         const i32 i = w.indexOfSerial(states_[j].serial);
         if (i >= 0) prio_[seat][e.handle[i] & 0xFFFFu] = 0.0f;
     }
+    for (u32 j = 0; j < mm; ++j) {
+        const i32 i = w.indexOfSerial(motions_[j].serial);
+        if (i >= 0) prio_[seat][e.handle[i] & 0xFFFFu] = 0.0f;
+    }
+    // Motion corrections go in serial order (each serial a step from the one before).
+    std::sort(motions_, motions_ + mm, [](const NetMotion& a, const NetMotion& b) { return a.serial < b.serial; });
     scratch_.reset();
-    scratch_.putCorrections(w.runId(), hostMusic, states_, m);
+    if (m) scratch_.putCorrections(w.runId(), hostMusic, states_, m);
+    u32 sentMotions = mm ? scratch_.putMotions(w.runId(), hostMusic, motions_, mm) : 0u;
+    for (u32 j = sentMotions; j < mm; ++j) {
+        // (did not fit: they keep a priority to go next time)
+        const i32 i = w.indexOfSerial(motions_[j].serial);
+        if (i >= 0) prio_[seat][e.handle[i] & 0xFFFFu] = 1000.0f;
+    }
     sendTo(static_cast<u32>(seatPeer_[seat]), kChUnreliable, scratch_, false);
-    corrCount_ += m;
-    stats_.corrections += m;
+    corrCount_ += m + sentMotions;
+    stats_.corrections += m + sentMotions;
+    stats_.motions += sentMotions;
 }
 
 void Session::send(i64 localUs, const PlayerPose& pose) {
@@ -1264,10 +1696,18 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
         readySent_ = true;
     }
     const bool live = state_ == SessionState::Running || state_ == SessionState::Lobby;
+    const bool hostQuiet = !host() && link_.peerStats(0).silentMs > kLinkSilentMs;
+    hostQuiet_ = hostQuiet;
     // Everything this device sends leaves with its pose (30 Hz): a frame sends one datagram to a peer, or none
     // (each datagram costs 32 bytes of headers). Acknowledgements are ENet's own.
     const bool poseFrame = live && localUs >= nextPoseUs_;
     if (poseFrame) {
+        if (poseSentUs_) {
+            const float gap = static_cast<float>(static_cast<double>(localUs - poseSentUs_) * 1e-3);
+            if (gap > diag_.poseSendGapMaxMs) diag_.poseSendGapMaxMs = gap;
+            if (gap > 50.0f) ++diag_.poseSendGapsOver50;
+        }
+        poseSentUs_ = localUs;
         // The own player: now and the last state (TECH_SPEC 8.1: unreliable, 30 Hz, two states).
         const PlayerState& me = w.player(seat_);
         MsgPose m;
@@ -1281,10 +1721,17 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
         m.cur.heading = pose.heading;
         m.cur.fire = me.alive ? pose.fire : 0;
         m.cur.flags = static_cast<u8>((pose.dashing ? 1u : 0u) | (me.alive ? 2u : 0u) | (me.down ? 4u : 0u));
-        m.prevAgeMs = havePrev_ ? static_cast<i16>((hostNow_ - ownPrev_.stampUs) / 1000) : -1;
-        if (havePrev_) m.prev = ownPrev_.cur;
-        ownPrev_ = m;
-        havePrev_ = true;
+        // A client stamps its pose in host time once its clock has settled on the host's (synced(): before that its
+        // "host time" is its own clock, which may be days off); until then it sends none.
+        // A client whose host has gone quiet (kLinkSilentMs: gone, or a Wi-Fi hole) holds its poses: nobody hears them.
+        const bool stamped = host() || (synced() && !hostQuiet);
+        const i64 prevAge = havePrev_ ? hostNow_ - ownPrev_.stampUs : -1;
+        m.prevAgeMs = prevAge > 0 && prevAge <= 1000000 ? static_cast<i16>(prevAge / 1000) : -1;
+        if (m.prevAgeMs >= 0) m.prev = ownPrev_.cur;
+        if (stamped) {
+            ownPrev_ = m;
+            havePrev_ = true;
+        }
         if (host()) {
             // The other players' newest poses, to each client (not its own back).
             MsgPose all[kMaxPlayers];
@@ -1296,6 +1743,7 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
                     const PoseRing& r = poses_[s];
                     if (s == c || !welcomed_[s] || !r.count) continue;
                     all[n++] = r.s[(r.head + r.count - 1) % kPoseRing];
+                    ++diag_.posesRelayed[s];
                 }
                 scratch_.reset();
                 scratch_.putPlayers(all, n);
@@ -1303,7 +1751,7 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
             }
         } else {
             scratch_.reset();
-            scratch_.putPose(m);
+            if (stamped) scratch_.putPose(m);
             if (state_ == SessionState::Running && localUs >= nextAttentionUs_) {
                 const u32 n = attention();
                 if (n && scratch_.putAttention(w.runId(), attention_, n)) stats_.attention += n;
@@ -1384,7 +1832,7 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
     }
     // Reliable data leaves with the pose (a packet that fills goes at once); before the lobby, every frame.
     if (poseFrame || !live) {
-        writeClaims();
+        if (!hostQuiet) writeClaims();  // (held while the host is quiet: kPendingClaims of them at most, then they go)
         flushReliable();
     }
     // A client's ping (TECH_SPEC 8.2: 4 Hz; 20 Hz until it has 16 samples), stamped as it leaves.
@@ -1416,6 +1864,11 @@ void Session::measure(i64 localUs) {
                         static_cast<double>(now.recvDatagrams - lastWire_.recvDatagrams) * kIpUdpHeaderBytes;
     stats_.upKbps = static_cast<float>(up * 8.0 / 1000.0 / s);
     stats_.downKbps = static_cast<float>(down * 8.0 / 1000.0 / s);
+    stats_.upRelKbps = static_cast<float>(chBytes_[kChReliable] * 8.0 / 1000.0 / s);
+    stats_.upUnrelKbps = static_cast<float>(chBytes_[kChUnreliable] * 8.0 / 1000.0 / s);
+    stats_.upCtrlKbps = static_cast<float>(chBytes_[kChControl] * 8.0 / 1000.0 / s);
+    stats_.upDatagrams = static_cast<u32>(now.sentDatagrams - lastWire_.sentDatagrams);
+    chBytes_[0] = chBytes_[1] = chBytes_[2] = 0.0;
     stats_.totalUpBytes += up;
     stats_.totalDownBytes += down;
     stats_.maxDatagram = now.maxDatagram;
@@ -1430,10 +1883,13 @@ void Session::measure(i64 localUs) {
     // The link.
     stats_.peers = 0;
     stats_.rttMs = stats_.rttVarMs = stats_.loss = 0.0f;
+    stats_.silentMs = stats_.inFlight = 0;
     for (u32 p = 0; p < kMaxLinkPeers; ++p) {
         const LinkPeerStats ps = link_.peerStats(p);
         if (!ps.connected) continue;
         ++stats_.peers;
+        if (ps.silentMs > stats_.silentMs) stats_.silentMs = ps.silentMs;
+        stats_.inFlight += ps.inFlight;
         if (static_cast<float>(ps.rttMs) > stats_.rttMs) stats_.rttMs = static_cast<float>(ps.rttMs);
         if (static_cast<float>(ps.rttVarMs) > stats_.rttVarMs) stats_.rttVarMs = static_cast<float>(ps.rttVarMs);
         if (ps.loss > stats_.loss) stats_.loss = ps.loss;

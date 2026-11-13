@@ -24,11 +24,17 @@ void configurePeer(ENetPeer* p) {
 // ENet doubles a reliable command's resend timeout at every loss (TCP's backoff). On a game's LAN link that turns a
 // few losses in a row into seconds of a stalled reliable stream (at 5% loss each way about one command in 10,000
 // fails four times: 0.24 + 0.47 + 0.95 + 1.9 s). Here a resend waits one round-trip timeout (ENet's own first one,
-// from the current estimate), never more; a dead link still ends by ENet's timeout limits (5 s at least).
-void capResendTimeouts(ENetHost* h) {
+// from the current estimate), never more, while the peer is heard from (it sends 30 times a second). A peer silent
+// for longer than kLinkSilentMs is gone or cut off: ENet's backoff then applies, so a link to a dead peer does not resend
+// everything unacknowledged every 50 ms until ENet's timeout (5 s at least) ends it (M4: a client whose host vanished
+// sent 300-764 kbit/s in its last second, docs/PROGRESS_m4_net.md). Heard again, the cap applies at the next flush. "Heard" is our own count of what arrived (Link::poll): ENet's lastReceiveTime moves only
+// with acknowledgements, so a peer that is sending plenty but has nothing of ours to acknowledge looked silent.
+void capResendTimeouts(ENetHost* h, const u32* heard) {
     for (size_t k = 0; k < h->peerCount; ++k) {
         ENetPeer& p = h->peers[k];
         if (p.state != ENET_PEER_STATE_CONNECTED || enet_list_empty(&p.sentReliableCommands)) continue;
+        const enet_uint32 silent = k < kMaxLinkPeers && heard[k] ? h->serviceTime - heard[k] : 0u;  // wrapping milliseconds
+        const bool gone = silent > kLinkSilentMs && silent < 0x80000000u;
         enet_uint32 cap = p.roundTripTime + 4 * p.roundTripTimeVariance;
         if (cap < 50) cap = 50;
         enet_uint32 next = 0;
@@ -36,7 +42,9 @@ void capResendTimeouts(ENetHost* h) {
         for (ENetListIterator it = enet_list_begin(&p.sentReliableCommands); it != enet_list_end(&p.sentReliableCommands);
              it = enet_list_next(it)) {
             ENetOutgoingCommand* c = reinterpret_cast<ENetOutgoingCommand*>(it);
-            if (c->roundTripTimeout > cap) c->roundTripTimeout = cap;
+            // Gone: ENet's own backoff (each resend waits twice as long), which also brings its timeout to an end (a
+            // resend timeout held at the silence's length moved the deadline on forever: the link never ended).
+            if (!gone && c->roundTripTimeout > cap) c->roundTripTimeout = cap;
             const enet_uint32 due = c->sentTime + c->roundTripTimeout;
             if (!have || static_cast<int>(due - next) < 0) {  // earlier (wrapping milliseconds)
                 next = due;
@@ -58,6 +66,7 @@ bool Link::listen(const char* bindIp, u16 port, u32 maxPeers, WireKind kind, con
     ENetHost* h = enet_host_create(&a, maxPeers > kMaxLinkPeers ? kMaxLinkPeers : maxPeers, kChannels, 0, 0);
     if (!h) return false;
     configure(h);
+    for (u32& v : heard_) v = 0;
     host_ = h;
     return true;
 }
@@ -85,6 +94,7 @@ bool Link::connect(const char* ip, u16 port, WireKind kind, const NetSim& sim, u
         return false;
     }
     // The throttle is configured once connected (poll): the handshake echoes the values it began with.
+    for (u32& v : heard_) v = 0;
     host_ = h;
     return true;
 }
@@ -129,11 +139,12 @@ bool Link::poll(Event& out) {
     const int r = enet_host_service(h, &ev, 0);
     if (r < 0) ++errors_;
     if (r <= 0) {
-        capResendTimeouts(h);
+        capResendTimeouts(h, heard_);
         pumped_ = false;  // the next poll (next frame) pumps again
         return false;
     }
     out.peer = static_cast<u32>(ev.peer - h->peers);
+    if (out.peer < kMaxLinkPeers && ev.type != ENET_EVENT_TYPE_DISCONNECT) heard_[out.peer] = h->serviceTime ? h->serviceTime : 1u;
     switch (ev.type) {
         case ENET_EVENT_TYPE_CONNECT:
             configurePeer(ev.peer);
@@ -174,7 +185,7 @@ bool Link::send(u32 peer, u8 channel, const void* data, u32 size, bool reliable)
 void Link::flush() {
     if (!host_) return;
     enet_host_flush(H(host_));
-    capResendTimeouts(H(host_));
+    capResendTimeouts(H(host_), heard_);
 }
 
 void Link::disconnect(u32 peer, u32 reason) {
@@ -201,6 +212,9 @@ LinkPeerStats Link::peerStats(u32 peer) const {
     s.loss = static_cast<float>(p.packetLoss) / static_cast<float>(ENET_PEER_PACKET_LOSS_SCALE);
     s.sent = p.packetsSent;
     s.lostPackets = p.packetsLost;
+    const enet_uint32 silent = peer < kMaxLinkPeers ? h->serviceTime - heard_[peer] : 0u;  // wrapping milliseconds
+    s.silentMs = s.connected && peer < kMaxLinkPeers && heard_[peer] && silent < 0x80000000u ? static_cast<u32>(silent) : 0u;
+    s.inFlight = p.reliableDataInTransit;
     return s;
 }
 

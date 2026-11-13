@@ -93,7 +93,10 @@ void NetPeer::frame(i64 trueUs) {
                 if (session_.resuming() && song >= session_.resumeSong()) session_.resumed();
                 double m1 = song - session_.runOffset();
                 if (session_.paused() && m1 > session_.pauseTick()) m1 = session_.pauseTick();
-                if (m1 <= music_) continue;  // paused (the run holds its place; the song goes on)
+                if (m1 <= music_) {  // paused (the run holds its place; the song goes on)
+                    if (!session_.paused()) session_.noteTickSkipped();
+                    continue;
+                }
                 const float bpm = static_cast<float>(60.0 / 96.0 * (m1 - music_) / (static_cast<double>(kTickUs) * 1e-6));
                 tick(m1, bpm > 1.0f ? bpm : 120.0f);
                 ++n;
@@ -102,7 +105,9 @@ void NetPeer::frame(i64 trueUs) {
             if (hostNow - simHostUs_ > 3 * kTickUs) {
                 simHostUs_ = hostNow - kTickUs / 2;  // TECH_SPEC 4: beyond three ticks a frame, drop time
                 ++stats_.dropped;
+                session_.noteTimeDropped();
             }
+            session_.noteFrame(local, n);
         }
     }
     session_.send(local, controller_.pose());

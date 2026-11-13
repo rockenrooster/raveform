@@ -280,6 +280,63 @@ void testRoundTrip() {
     CHECK(put == 38 && w.size() <= kMaxPacketBytes);  // M5: 31 bytes each (39 at 30)
     if (put != 38) std::printf("  corrections in a packet: %u (%u bytes)\n", put, static_cast<u32>(w.size()));
 
+    // M4 net follow-up: motion corrections (serials as varint steps, knockback only when there is some), after full ones
+    // in the same packet; a serial out of order ends what is written.
+    {
+        NetMotion mo[3];
+        mo[0].serial = 4242;
+        mo[0].x = -1234.5f;
+        mo[0].y = 678.25f;
+        mo[0].heading = 2.5f;
+        mo[0].target = 1;
+        mo[0].engaged = true;
+        mo[1] = mo[0];
+        mo[1].serial = 4243;
+        mo[1].kx = -40.0f;
+        mo[1].ky = 25.0f;
+        mo[1].target = 0xFF;
+        mo[1].frozen = true;
+        mo[2] = mo[0];
+        mo[2].serial = 70000;
+        w.reset();
+        CHECK(w.putCorrections(2, 10000.0, &s, 1) == 1);
+        const u32 before = w.size();
+        CHECK(w.putMotions(2, 10000.0, mo, 3) == 3);
+        CHECK(w.size() - before == 3 + 11 + (2 + 7) + (1 + 9) + (3 + 7));  // header, then steps of 2, 1 and 3 bytes
+        struct MotionSink : Count {
+            NetMotion got[4];
+            u32 n = 0;
+            u16 run = 0;
+            double music = 0.0;
+            void onMotions(u16 r, double m) override {
+                run = r;
+                music = m;
+            }
+            void onMotion(const NetMotion& m) override {
+                if (n < 4) got[n] = m;
+                ++n;
+            }
+        } ms;
+        CHECK(parsePacket(w.data(), w.size(), ms));
+        CHECK(ms.corrections == 1 && ms.n == 3 && ms.run == 2 && ms.music == 10000.0);
+        CHECK(ms.got[0].serial == 4242 && ms.got[1].serial == 4243 && ms.got[2].serial == 70000);
+        CHECK(std::fabs(ms.got[0].x - mo[0].x) <= 0.08f && std::fabs(ms.got[0].y - mo[0].y) <= 0.08f);
+        CHECK(std::fabs(std::remainder(ms.got[0].heading - 2.5f, kTau)) < 1e-3f && ms.got[0].target == 1 && ms.got[0].engaged);
+        CHECK(ms.got[0].kx == 0.0f && !ms.got[0].frozen);
+        CHECK(ms.got[1].kx == -40.0f && ms.got[1].ky == 25.0f && ms.got[1].target == 0xFF && ms.got[1].frozen && ms.got[1].engaged);
+        mo[2].serial = 10;  // out of order: not written
+        w.reset();
+        CHECK(w.putMotions(2, 10000.0, mo, 3) == 2);
+        NetMotion lots[200];
+        for (u32 k = 0; k < 200; ++k) {
+            lots[k] = mo[0];
+            lots[k].serial = 1000 + 3 * k;
+        }
+        w.reset();
+        const u32 fit = w.putMotions(2, 10000.0, lots, 200);
+        CHECK(fit > 100 && w.size() <= kMaxPacketBytes);  // about 8 bytes each
+    }
+
     // Poses and the heartbeat.
     MsgPose p;
     p.player = 3;
@@ -976,6 +1033,67 @@ void testDownRevive(const SpeciesTable& species) {
     delete w;
 }
 
+void testRelayClocks(const SpeciesTable& species) {
+    g_test = "relay";
+    // M4 net follow-up (docs/PROGRESS_m4_net.md): the host relays each client's pose to the others, whatever the clients'
+    // own clocks read. Client 1's clock runs 6.5 days ahead of the host's (the PC's against the Moto's); before the fix its
+    // lobby poses, stamped on its own clock, sorted as the newest for good and the host relayed only those, so clients 2
+    // and 3 saw player 1 stand where it stood in the lobby for the whole run. A host and three clients, 40 simulated s.
+    wireUseSimClock(true);
+    i64 t = 9000000000ll;
+    wireSetSimTimeUs(t);
+    auto* peers = new (std::nothrow) NetPeer[4];
+    static const i64 kOffsets[4] = {0, 560397120000ll, -777000, 3210};
+    for (u32 k = 0; k < 4; ++k) {
+        PeerConfig c;
+        c.session.role = k == 0 ? NetRole::Host : NetRole::Client;
+        c.session.seats = 4;
+        c.session.wire = WireKind::Loopback;
+        c.session.port = 47902;
+        std::snprintf(c.session.bindIp, sizeof c.session.bindIp, "%s", k == 0 ? "127.0.0.1" : "");
+        std::snprintf(c.session.joinIp, sizeof c.session.joinIp, "127.0.0.1");
+        c.clockOffsetUs = kOffsets[k];
+        c.botSeed = 31 + k;
+        CHECK(peers[k].start(c, &species));
+    }
+    float worst = 0.0f;
+    for (u32 step = 0; step < 40000; ++step) {
+        t += 1000;
+        wireSetSimTimeUs(t);
+        for (u32 k = 0; k < 4; ++k) wirePump(peers[k].session().link().socket());
+        for (u32 k = 0; k < 4; ++k)
+            if (step % 17 == k * 4) peers[k].frame(t);
+        if (step == 30000)
+            for (u32 k = 1; k < 4; ++k) peers[k].session().resetDiag();
+        if (step > 30000 && step % 500 == 0) {
+            // Each client's copy of every other client's player against that player's own position (within the 66 ms
+            // the copy is drawn behind and a ship's top speed).
+            for (u32 k = 1; k < 4; ++k)
+                for (u32 j = 1; j < 4; ++j) {
+                    if (j == k || !peers[j].world().player(j).alive) continue;
+                    const float d = length(peers[k].world().player(j).pos - peers[j].world().player(j).pos);
+                    if (d > worst) worst = d;
+                }
+        }
+    }
+    u32 heard = 0;
+    for (u32 k = 1; k < 4; ++k) {
+        CHECK(peers[k].session().running());
+        for (u32 j = 1; j < 4; ++j)
+            if (j != k) {
+                CHECK(peers[k].session().diag().poses[j] > 100);  // new poses of every other client arrived (30 Hz)
+                heard += peers[k].session().diag().poses[j];  // (a relay that repeats the newest still carries the one before)
+            }
+    }
+    CHECK(worst < 250.0f);
+    std::printf("  relay: with one client's clock 6.5 days ahead, each client heard the others' new poses (%u in 10 s); the farthest "
+                "copy of a teammate %.1f wu from the teammate itself\n",
+                heard, static_cast<double>(worst));
+    for (u32 k = 0; k < 4; ++k) peers[k].stop();
+    delete[] peers;
+    wireUseSimClock(false);
+}
+
 }  // namespace
 
 int main() {
@@ -993,6 +1111,7 @@ int main() {
     testRefusals(*species);
     testLeave(*species);
     testDownRevive(*species);
+    testRelayClocks(*species);
     std::printf("[net tests] %d checks, %d failures\n", g_checks, g_failures);
     delete species;
     return g_failures;
