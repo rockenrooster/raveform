@@ -164,9 +164,22 @@ except settings, local high scores and lifetime stats.
   while its ring fills. Flying through does nothing; leaving empties the ring. The others pop. The
   ring is the clock; if none is taken, the one nearest the ship is taken at the end of the Break.
   There is no pause and no menu. Layout: `design/screens.md`, "The Trio".
-- Trio options are drawn from Mods, new Riffs and Riff level-ups with weights. Guarantees: at least one
-  option affects weapons; if the player has fewer than four Riffs and none was offered in the last two
-  Trios, one is.
+- **How a Trio is dealt** (M5, 2026-11-13: with all 36 Mods and 12 Riffs in an even draw a build
+  spread thin, and the bots killed so slowly that the bosses' health had to be cut to a third).
+  Every Mod and Riff can be offered from the first Trio of a run: nothing is locked behind a Track.
+  - **The first orb is firepower.** It is drawn from what makes the build the player has hit
+    harder: the weapon and rhythm Mods they hold, the Riffs they hold, and the four staples (Split,
+    Double-Time, Overcharge, On-Beat Crit) whether held or not; whatever is at its cap is left out.
+    A player can always choose to hit harder. When none of these can grow it is drawn like the others.
+  - **The other orbs are the whole pool**, drawn by weight: a Mod not yet held 1, a Mod held and
+    under its cap 3, a new Riff 2 (none once four are held), a level of a held Riff 3. An ingredient
+    of a Fusion whose other ingredient the player holds counts double. The first orb uses the same
+    weights. No two orbs of a Trio are the same upgrade.
+  - With fewer than four Riffs and none offered in the last two Trios, one of the other orbs is a
+    new Riff (as before). Lucky Break's extra orbs are drawn like the other orbs.
+  - The weights are starting values. What they are for: a build deepens (by Track 3 a player who
+    wants it has two Mods at their cap) and a Fusion is reachable (the careful bot, which takes the
+    ingredient when it is offered, holds one by the end of Track 5 in half its runs).
 - **Fusion.** When both ingredients of a Fusion are maxed, it appears as a gold fourth orb.
 - **Shard levels** (play test 2, 2026-11-12: "upgrades need to happen more often, maybe scale by
   collected Shards"). Collected Shards fill a level meter under the Chain. Each time it fills the
@@ -307,6 +320,10 @@ Rhythm
   The first stack of any Mod or Riff at least doubles what it touches or adds a behaviour the ship
   did not have; no stack is a small percentage. The numbers of the first slice (Mods 1-4, 11, 17,
   25, 31; Riffs 1-3) were raised to this rule on that day; M5 writes the rest to the same scale.
+- **No pick is a trap** (M5). Measured by the simulation on one reference build, a stack of any
+  weapon or rhythm Mod and a level of any Riff is worth between 0.6 and 1.5 of a stack of Overcharge:
+  in kills a minute against a Groove's crowd, or in seconds to kill the Track's boss, whichever the
+  upgrade is made for. One outside the band has its numbers changed, not its odds of being offered.
 - No upgrade may break the entity caps (TECH_SPEC §7): effects that multiply projectiles carry their own caps.
 - First slice (M3): Mods 1–4, 11, 17, 25, 31, and 18 since play test 2; Riffs 1–3; Boosts 1, 2, 7, 8.
 

@@ -142,13 +142,14 @@ engine's mix state; the prototype renderer does not read it.
 
 ## Sound for M5 — `sound_m5.json`
 
-Everything the first slice did not have: what each of the other 27 Mods does to the lead, the
-instrument each of Riffs 4 to 12 brings and on which pattern, what each of the other 12 Boosts does
-for its bars, the 8 Fusions, and the one-shot recipes the fights and the arena ask for (tom, sub
-drop, gong, zap, glass, saw glide, woodblock, drone, a pad voice for each living thing and the
-rest). It is written in `conductor.json`'s own schema and is a separate file only until the audio
-engineer builds it. The sound of each boss, mini-boss, structure, event and trait is on its own
-page, in the words of that file's `recipes`.
+Everything the first slice did not have. What each of the other 27 Mods does to the lead, the
+instrument each of Riffs 4 to 12 brings and on which pattern, and what each of the other 12 Boosts
+does for its bars were written here and now live in `conductor.json` (`mods`, `riffs`, `boosts`),
+where the engine reads them. `sound_m5.json` keeps the 8 Fusions, the one-shot recipes the fights
+and the arena ask for (tom, sub drop, gong, zap, glass, saw glide, woodblock, drone, a pad voice for
+each living thing and the rest) and the rule that puts the effects in the Track's key. The sound of
+each boss, mini-boss, structure, event and trait is on its own page, in the words of that file's
+`recipes`.
 
 **Accepted by ear** (the user, 2026-11-13, after the engine's four listening sheets for Riffs, Mods,
 Boosts and Fusions: "all upgrade sounds are good"). They are as the engine rendered them at
