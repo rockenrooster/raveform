@@ -434,6 +434,7 @@ bool SpeciesTable::load() {
     // M5 part 1: Longwave, The Choir and the mini-bosses.
     if (!longwave.load()) ok = false;
     if (!choir.load()) ok = false;
+    if (!horizon.load()) ok = false;  // M5 part 4
     if (!minis.load()) ok = false;
     crowd.miniDrop = minis.crowdScale;
     return ok;

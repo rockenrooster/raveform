@@ -345,6 +345,11 @@ constexpr float kLongwaveHealthTune = 2.2f;  // 70 s with the careful bot (M5 pa
 constexpr float kChoirHealthTune = 4.2f;      // 65 s with the careful bot (part 3, the Trio dealt: 4.5 -> 4.2; 4.8 gave 70 s, with the above)
 constexpr float kMiniHealthTune[4] = {6.5f, 5.0f, 2.0f, 4.8f};  // Alpha Hound, The Hive, Battering Ram, Carom King: 25-35 s
 
+// M5 part 4, Event Horizon (horizon.md gives no number for these).
+constexpr float kHzJetLengthWu = 1800.0f;  // the jets reach past the frame's edge at the fight's zoom (0.8)
+constexpr float kHzJetHalfWu = 22.0f;      // a beam as wide as the Choir's held note
+constexpr float kHorizonHealthTune = 1.0f; // the page's 3,200 until the bot measures it (part 4)
+
 // ======================================================================================================
 // M4 STAGE A: co-op (GAME_DESIGN 10, TECH_SPEC 8). Quoted numbers are marked; the rest are chosen where the
 // documents give no number for scaling with the player count (listed in docs/PROGRESS.md, M4 stage A).

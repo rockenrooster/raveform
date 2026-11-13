@@ -1778,6 +1778,110 @@ void testChoir() {
     delete w;
 }
 
+// M5 part 4: Event Horizon (horizon.md): the pull, eating, the bar line's verdict, the lanes, the eruption, the wave, the
+// jets, the contact throw.
+u32 cuesUntil(World& w, double& music, double until, Vec2 ship, BossCue c) {
+    u32 n = 0;
+    while (music + kTicksPerSimTick <= until + 1e-9) {
+        stepWorld(w, music, ship);
+        n += cuesIn(w, c);
+    }
+    return n;
+}
+
+void testHorizon() {
+    g_test = "horizon";
+    const HorizonData& d = g_species->horizon;
+    CHECK(d.horizonRadius == 120.0f && d.photonRadius == 136.0f && d.phases[0].lanes == 2 && d.phases[1].lanes == 3 && d.phases[2].lanes == 4);
+    CHECK(d.phases[0].hunger == 5 && d.phases[1].hunger == 7 && d.phases[2].stream == 26 && d.phases[1].wave && !d.phases[0].wave);
+    CHECK(d.phases[2].jets && !d.phases[1].jets && d.phases[2].drift == 90.0f && d.phases[1].pullScale == 1.25f);
+    CHECK(d.pullShip == 260.0f && d.fed == 0.15f && d.starved == 1.0f && d.zoom == 0.8f && d.meterCells == 12);
+    CHECK(bossOfSong(3) == BossKind::EventHorizon && bossHomeTrack(BossKind::EventHorizon) == 4 && fightBuilt(BossKind::EventHorizon));
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    const Vec2 ship{600.0f, 0.0f};
+    stepWorld(*w, music, ship);
+    w->spawnBossNow(kTicksPerBar, Vec2{}, BossKind::EventHorizon);
+    const BossState& s = w->boss();
+    CHECK(s.kind == BossKind::EventHorizon && s.fightTick == 2.0 * kTicksPerBar && s.hz.shield);
+    runTo(*w, music, 2.0 * kTicksPerBar + 5.0, ship);
+    CHECK(w->horizonOn());
+    // The pull: 260 wu/s on the ship at the photon ring, falling off as (136 / distance)^1.2.
+    CHECK(std::fabs(w->horizonPullAt(s.pos + Vec2{136.0f, 0.0f}, d.pullShip) - 260.0f) < 0.5f);
+    CHECK(std::fabs(w->horizonPullAt(s.pos + Vec2{272.0f, 0.0f}, d.pullShip) - 260.0f * std::pow(0.5f, 1.2f)) < 0.5f);
+    {
+        const Vec2 pull = w->wellPull(ship);
+        CHECK_MSG(pull.x < -10.0f && std::fabs(pull.y) < 1e-3f, "pull %.1f %.1f", pull.x, pull.y);
+    }
+    // Fed (the shield, from the start): x 0.15.
+    CHECK(w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == d.fed);
+    // A body that crosses the horizon is eaten: a cell on the meter and the count's note.
+    w->spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), s.pos + Vec2{60.0f, 0.0f}, 0.0f, w->music());
+    stepWorld(*w, music, ship);
+    CHECK_MSG(s.hz.meal == 1 && cuesIn(*w, BossCue::HzEat) == 1, "meal %u", s.hz.meal);
+    // The lanes: the bar's stream walks in (Accretion: two lanes, ten bodies a bar).
+    u32 lane = 0;
+    runTo(*w, music, 2.0 * kTicksPerBar + 0.95 * kTicksPerBar, ship);
+    for (u32 i = 0; i < w->enemies().count; ++i) lane += w->enemies().state[i] == kLane && !(w->enemies().flags[i] & kFlagDead) ? 1u : 0u;
+    CHECK_MSG(lane >= 8 && lane <= 10, "%u on the lanes", lane);
+    // Starved (one body against a hunger of five): the gasp, and full damage for the bar.
+    CHECK(cuesUntil(*w, music, 3.0 * kTicksPerBar + 10.0, ship, BossCue::HzStarved) == 1);
+    CHECK_MSG(!s.hz.shield && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == d.starved, "shield %d", s.hz.shield ? 1 : 0);
+    // Fed: six bodies before the next bar line; the eruption (8 + 4 a body) leaves on two arms, one a sixteenth each.
+    for (u32 k = 0; k < 6; ++k)
+        w->spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), s.pos + dirOf(static_cast<float>(k)) * 50.0f, 0.0f, w->music());
+    stepWorld(*w, music, ship);
+    CHECK(s.hz.meal >= 6);
+    CHECK(cuesUntil(*w, music, 4.0 * kTicksPerBar + 2.0, ship, BossCue::HzFed) == 1);
+    CHECK_MSG(s.hz.shield && s.hz.eruptLeft >= 8 + 4 * 6 - 2, "erupt %u", s.hz.eruptLeft);
+    {
+        const u32 b0 = w->bullets().count;
+        runTo(*w, music, 4.0 * kTicksPerBar + 2.0 * kTicksPerStep + 10.0, ship);
+        CHECK_MSG(w->bullets().count - b0 >= 4, "%u bullets", w->bullets().count - b0);
+    }
+    // Touching the horizon: thrown 300 wu out (the controller takes the knock).
+    {
+        const u32 serial = w->player(0).knockSerial;
+        stepWorld(*w, music, s.pos + Vec2{100.0f, 0.0f});
+        const Vec2 k = w->player(0).knock;
+        CHECK_MSG(w->player(0).knockSerial == serial + 1 && k.x > 250.0f, "knock %.1f %.1f", k.x, k.y);
+    }
+    // Tidal (two thirds of its health): the wave on beat 3 of every bar.
+    w->bossHealthNow(0.6f);
+    stepWorld(*w, music, ship);
+    CHECK(s.hz.phase == 1);
+    {
+        const double line = (std::floor(w->music() / kTicksPerBar) + 1.0) * kTicksPerBar;
+        runTo(*w, music, line + 5.0, ship);
+        CHECK(cuesUntil(*w, music, line + 2.0 * kTicksPerBeat + 5.0, ship, BossCue::HzWave) == 1);
+    }
+    // Collapse: the jets burn on a fed bar line along the axis, which turns 45 degrees a bar; it drifts toward the players.
+    w->bossHealthNow(0.3f);
+    stepWorld(*w, music, ship);
+    CHECK(s.hz.phase == 2);
+    const Vec2 at0 = s.pos;
+    for (u32 k = 0; k < 12; ++k)
+        w->spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), s.pos + dirOf(static_cast<float>(k)) * 50.0f, 0.0f, w->music());
+    stepWorld(*w, music, ship);
+    {
+        const double line = (std::floor(w->music() / kTicksPerBar) + 1.0) * kTicksPerBar;
+        runTo(*w, music, line + 10.0, ship);
+        CHECK(s.hz.shield && w->music() >= s.hz.jetFrom && w->music() < s.hz.jetUntil);
+        Vec2 from;
+        const Vec2 along = s.pos + dirOf(s.hz.axis) * 500.0f, aside = s.pos + dirOf(s.hz.axis + 1.0f) * 500.0f;
+        CHECK(w->horizonJetHits(along, from) && !w->horizonJetHits(aside, from));
+        runTo(*w, music, line + 2.0 * kTicksPerBeat + 10.0, ship);
+        CHECK(!w->horizonJetHits(along, from));
+    }
+    CHECK(length(s.pos - at0) > 20.0f && (s.pos - at0).x > 0.0f);
+    // Its death: 300 Shards a player.
+    w->killBossNextTick(0, true);
+    stepWorld(*w, music, ship);
+    CHECK(s.dying);
+    delete w;
+}
+
 void testMinibosses() {
     g_test = "minibosses";
     const MiniData& md = g_species->minis;
@@ -2544,6 +2648,7 @@ int main() {
     testMiddleDrop();
     testLongwave();
     testChoir();
+    testHorizon();
     testMinibosses();
     testFamiliesM5();
     testUpgradesM5();

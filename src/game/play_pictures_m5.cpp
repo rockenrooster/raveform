@@ -16,6 +16,8 @@ using namespace sim;
 
 namespace {
 bool starts(const char* a, const char* b) { return std::strncmp(a, b, std::strlen(b)) == 0; }
+// Event Horizon's health for --fight horizon:<phase> (horizon.json phases: 100-66, 66-33, 33-0).
+float horizonShare(u8 phase) { return phase == 0 ? 1.0f : (phase == 1 ? 0.6f : 0.3f); }
 
 enum class Moment : u8 {
     Crest, Jaw, Lunge, Death,                                   // Longwave (Death: every fight)
@@ -24,6 +26,7 @@ enum class Moment : u8 {
     Tell, Ring, Spear, Wall,                                    // The Hive
     Lock, Rush, Stun,                                           // Battering Ram
     Bounce, Hot, Split,                                         // Carom King
+    HzLanes, HzStarved, HzFed, HzWave, HzJetsShown, HzJets,     // Event Horizon (M5 part 4)
 };
 
 struct Pic {
@@ -72,6 +75,15 @@ const Pic kPics[] = {
     {"carom_split", "carom_king", 2, Moment::Split, false},
     {"carom_death", "carom_king", 1, Moment::Death, false},
     {"carom_strip", "carom_king", 3, Moment::Bounce, true},
+    // M5 part 4 (-Part part4): Event Horizon.
+    {"hz_accretion", "horizon", 0, Moment::HzLanes, false},
+    {"hz_starved", "horizon", 0, Moment::HzStarved, false},
+    {"hz_fed", "horizon", 0, Moment::HzFed, false},
+    {"hz_tidal", "horizon", 1, Moment::HzWave, false},
+    {"hz_collapse", "horizon", 2, Moment::HzJetsShown, false},
+    {"hz_jets", "horizon", 2, Moment::HzJets, false},
+    {"hz_death", "horizon", 1, Moment::Death, false},
+    {"hz_strip", "horizon", 1, Moment::HzFed, true},
 };
 constexpr u32 kPicCount = sizeof(kPics) / sizeof(kPics[0]);
 
@@ -86,15 +98,16 @@ bool inFrame(Vec2 p, Vec2 ship, float zoom) {
 
 bool Play::setupFight(const char* id, u8 phase) {
     BossKind kind = BossKind::Kaleidos;
-    if (!bossFromId(id, kind) || static_cast<u32>(kind) > static_cast<u32>(BossKind::CaromKing)) {
-        RF_ERR("play: --fight '%s': no such fight built (kaleidos, longwave, choir, alpha_hound, the_hive, battering_ram, carom_king)", id);
+    if (!bossFromId(id, kind) || !fightBuilt(kind)) {
+        RF_ERR("play: --fight '%s': no such fight built (kaleidos, longwave, choir, alpha_hound, the_hive, battering_ram, carom_king, "
+               "horizon)", id);
         return false;
     }
     World& w = *world_;
-    // Its home Track: a boss's own, a mini-boss's the Track whose middle Drop draws it (minibosses.json common.pick).
-    u32 home = static_cast<u32>(kind) + 1u;
-    if (isMiniBoss(kind)) home = (kind == BossKind::AlphaHound || kind == BossKind::Hive) ? 2u : 3u;
-    if (home > w.setList()) home = w.setList();
+    // Its home Track: a boss's own, a mini-boss's the Track whose middle Drop draws it (minibosses.json common.pick). A fight
+    // past the run's set list (built before the Tracks between) stretches it to its Track, for this run.
+    const u32 home = bossHomeTrack(kind);
+    if (home > w.setList()) w.setSetList(home);
     w.directorMut().track = static_cast<u8>(home);
     if (isMiniBoss(kind)) w.forceMini(kind);
     w.spawner().mode = Spawner::Mode::Slice;
@@ -131,6 +144,7 @@ void Play::applyFightPhase() {
             break;
         }
         case BossKind::CaromKing: w.bossHealthNow(1.0f - 0.25f * static_cast<float>(ph < 3 ? ph : 3) - 0.01f); break;
+        case BossKind::EventHorizon: w.bossHealthNow(horizonShare(ph)); break;  // Tidal below 66%, Collapse below 33%
         default: w.bossHealthNow(0.49f); break;
     }
 }
@@ -141,6 +155,7 @@ void Play::holdFight() {
     if (!fightJump_ || !opt_.fightHold || !fightPhaseDone_ || !b.active || b.dying || b.kind != fightKind_) return;
     float share = 1.0f;
     if (b.kind == BossKind::CaromKing) share = 1.0f - 0.25f * static_cast<float>(fightPhase_ < 3 ? fightPhase_ : 3) - 0.01f;
+    else if (b.kind == BossKind::EventHorizon) share = horizonShare(fightPhase_);
     else if (isMiniBoss(b.kind) && fightPhase_) share = 0.49f;
     w.bossRefill(share);
 }
@@ -504,7 +519,7 @@ bool Play::scriptInputM5(StickInput& in) {
     if (pic.moment == Moment::Death) {
         // The death: killed on a beat after a bar of the fight, captured as it plays out.
         if (b.active && !b.dying && inBeat < 2.0) w.killBossNextTick(0, true);
-        const double after = b.kind == BossKind::Choir ? 0.6 : (b.kind == BossKind::Longwave ? 0.45 : 0.08);
+        const double after = b.kind == BossKind::Choir ? 0.6 : (b.kind == BossKind::Longwave ? 0.45 : (b.kind == BossKind::EventHorizon ? 0.5 : 0.08));
         go = b.dying && music >= b.deathTick + after * kTicksPerBar;
     } else if (b.active && !b.dying) {
         switch (pic.moment) {
@@ -547,6 +562,13 @@ bool Play::scriptInputM5(StickInput& in) {
             case Moment::Bounce: go = music < m.hot[0] && music > m.hot[0] - kTicksPerBeat + (pic.strip ? 0.0 : 6.0) && seen(b.body[0]); break;
             case Moment::Hot: go = music < m.hot[0] && music > m.hot[0] - 0.6 * kTicksPerBeat && seen(b.body[0]); break;
             case Moment::Split: go = m.splits >= 1 && b.alive != 0 && music > fightPhaseAt_ + 2.5 * kTicksPerBar; break;
+            // Event Horizon: the lanes walking with a meal under way; a gasp; a fed bar's eruption; the tidal wave; the jets.
+            case Moment::HzLanes: go = music > b.fightTick + kTicksPerBar && b.hz.meal >= 2 && b.hz.eruptLeft == 0 && inBar > 0.6 * kTicksPerBar && seen(b.pos); break;
+            case Moment::HzStarved: go = !b.hz.shield && music > b.fightTick + kTicksPerBar && inBar > 0.3 * kTicksPerBar && seen(b.pos); break;
+            case Moment::HzFed: go = b.hz.shield && b.hz.eruptLeft > 0 && music > b.fightTick + kTicksPerBar && inBar > (pic.strip ? 0.0 : 3.0 * kTicksPerStep) && seen(b.pos); break;
+            case Moment::HzWave: go = music - b.hz.waveTick > 1.2 * kTicksPerBeat && music - b.hz.waveTick < 1.4 * kTicksPerBeat && seen(b.pos); break;  // (~340 wu out)
+            case Moment::HzJetsShown: go = b.hz.phase == 2 && music > fightPhaseAt_ + kTicksPerBar && inBar > 2.5 * kTicksPerBeat && seen(b.pos); break;
+            case Moment::HzJets: go = music >= b.hz.jetFrom + 20.0 && music < b.hz.jetUntil && seen(b.pos); break;
             default: break;
         }
     }

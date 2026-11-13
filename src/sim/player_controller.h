@@ -47,6 +47,9 @@ private:
     double dashReadyAt_ = -1e18;  // musical tick at which the Dash has recharged
     double dashStartedAt_ = 0.0;
     u8 charges_ = 1;              // M5: Dash charges ready (Reserve holds more)
+    Vec2 knockTaken_;             // M5 part 4: how much of the world's knock (PlayerState::knock) the ship has taken,
+    u32 knockSerial_ = 0;         // as of this knock (a lower serial: the world started again; nothing is taken)
+    bool knockKnown_ = false;
     u32 targetHandle_ = 0;
 };
 

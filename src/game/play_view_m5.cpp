@@ -98,6 +98,7 @@ void PlayView::drawFight(FrameDraw& d, const ViewInput& in) {
         case BossKind::Kaleidos: drawBoss(d, in); break;
         case BossKind::Longwave: drawLongwave(d, in); break;
         case BossKind::Choir: drawChoir(d, in); break;
+        case BossKind::EventHorizon: drawHorizon(d, in); break;
         default: drawMini(d, in); break;
     }
 }
@@ -576,6 +577,23 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
             }
             if (cue == BossCue::LwWhip) addShockRings(at, 1, 300.0f, palette_->hue[2], whiteV(), t, 0.4f);
             if (cue == BossCue::HvShape) push(kImpBoss, at, 200.0f, 300.0f, t);
+            if (cue == BossCue::HzEat) {
+                // Event Horizon eats: the body folds into the horizon (a small white implosion), its cell flashes.
+                hzEatAt_ = t;
+                SparkReq r{};
+                r.at = at;
+                r.dir = normalizeOr(s.pos - at, Vec2{1.0f, 0.0f});
+                r.count = 10;
+                r.kind = 3;
+                r.a = palette_->hue[0];
+                r.b = whiteV();
+                r.t0 = t;
+                sparkRequest(r);
+            }
+            if (cue == BossCue::HzFed) addShockRings(s.pos, 1, w.species().horizon.ringRadius[2] + 120.0f, palette_->hue[1], whiteV(), t, 0.35f);
+            if (cue == BossCue::HzStarved)
+                addPool(s.pos, w.species().horizon.photonRadius, w.species().horizon.ringRadius[1], palettes_->player[3], reduceFlashing_ ? 0.2f : 0.45f, 0.0f, 0.25f,
+                        false, 1, false, false, t);
             break;
         }
         case EventType::BossPair: {
@@ -597,7 +615,8 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
         }
         case EventType::BossDeath: {
             // The boss break (three rings, 300 sparks, the 30 px distortion ring) for the bosses; a mini-boss dies as a large
-            // kill with its own rings.
+            // kill with its own rings. Event Horizon implodes first: its flash comes a bar and a beat later (drawHorizon).
+            if (static_cast<BossKind>(e.a) == BossKind::EventHorizon) break;
             const bool mini = isMiniBoss(static_cast<BossKind>(e.a));
             const Vec3 c = static_cast<BossKind>(e.a) == BossKind::Choir ? choirHue_[0] : palette_->hue[mini ? 2 : 1];
             addPool(at, 60.0f, mini ? 260.0f : 420.0f, whiteV(), reduceFlashing_ ? 0.45f : 0.9f, 0.0f, 0.12f, false, 1, false, false, t);

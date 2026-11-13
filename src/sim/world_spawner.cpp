@@ -468,7 +468,7 @@ void World::strayFodder() {
     Enemies& e = enemies_;
     const float sx = kFrameHalfWWu * c.strayFrameScale, sy = kFrameHalfHWu * c.strayFrameScale;
     for (u32 i = 0; i < e.count; ++i) {
-        if (e.flags[i] & kFlagDead) continue;
+        if ((e.flags[i] & kFlagDead) || e.state[i] == kLane) continue;  // (M5 part 4: Event Horizon's lanes walk in from afar)
         const Species& s = species_->get(e.species[i]);
         if (s.hue != 0) continue;
         bool near = false;

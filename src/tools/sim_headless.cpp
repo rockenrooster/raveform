@@ -537,6 +537,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 // M5: Longwave and the Choir hold their page's zoom for the whole fight (PlayView).
                 if (b.active && !b.dying && b.kind == BossKind::Longwave) zoomTo = species.longwave.zoom;
                 if (b.active && !b.dying && b.kind == BossKind::Choir) zoomTo = species.choir.zoom;
+                if (b.active && !b.dying && b.kind == BossKind::EventHorizon) zoomTo = species.horizon.zoom;
                 lean = lean + (leanTo - lean) * (1.0f - std::exp(-kDt / 0.5f));
                 zoom += (zoomTo - zoom) * (1.0f - std::exp(-kDt / 2.0f));
             }

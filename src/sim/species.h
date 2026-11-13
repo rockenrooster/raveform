@@ -163,6 +163,7 @@ public:
     BossData boss;
     LongwaveData longwave;
     ChoirData choir;
+    HorizonData horizon;  // M5 part 4
     MiniData minis;
 
 private:

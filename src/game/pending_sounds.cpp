@@ -74,6 +74,18 @@ const FightSound kRows[] = {
      0, 0},
     {BossCue::MiniDeath, "minibosses.md", "(its death is a large kill, Play)", nullptr, SoundPlay::None, 0, false, 0, 0, 0},
     {BossCue::MiniGone, "minibosses.md", "(it warps out without a sound)", nullptr, SoundPlay::None, 0, false, 0, 0, 0},
+    // ---- Event Horizon (horizon.md "Sound")
+    {BossCue::HzEat, "horizon.md", "each body eaten plays the next note of the Track's arp an octave down, bending down a fifth",
+     "the arp patch has no one-shot that bends: the pad voice plays the note and glides four scale steps down; the drone (a sub sine "
+     "on the root sinking a semitone for every three cells, springing back on the bar line) is not played: no sub sine voice",
+     SoundPlay::PadVoice, rc(Recipe::PadVoice), true, 0.45f, 0.5f, 0.5f, NoteRule::ArpCount, 0, -4.0f, 0.0f, 0.5f},
+    {BossCue::HzFed, "horizon.md", "fed: the impact and the gong on the bar line, louder the bigger the meal", nullptr, SoundPlay::Pair,
+     rc(Recipe::Impact), false, 0.9f, 0, 0, NoteRule::None, rc(Recipe::Gong)},
+    {BossCue::HzStarved, "horizon.md", "starved: the pads and the bass cut out for the first beat under a reversed cymbal",
+     "the band cannot cut its pads and bass for a beat: the reversed cymbal plays alone, over the first beat", SoundPlay::Recipe,
+     rc(Recipe::RevCymbal), false, 0.7f, 1, 0},
+    {BossCue::HzWave, "horizon.md", "the tidal wave rides in on the riser's last half-beat", nullptr, SoundPlay::Recipe, rc(Recipe::Whoosh), false,
+     0.6f, 0.5f, 0},
 };
 static_assert(sizeof(kRows) / sizeof(kRows[0]) == static_cast<u32>(BossCue::Count), "one row per BossCue, in its order");
 }  // namespace
@@ -97,6 +109,8 @@ void playFightCue(Band& band, FightVoices& voices, const sim::Event& e, double t
         for (i32 k = 0; k < 8; ++k)
             if (kSemis[k] == static_cast<i32>(std::lround(e.f))) degree = k;
         midi = audio::chordNote(degree, 3);
+    } else if (r.note == NoteRule::ArpCount) {
+        midi = audio::chordNote(static_cast<i32>(e.b % 4u) * 2, 3);  // root, third, fifth, seventh up the scale, an octave down
     } else if (r.note == NoteRule::WallTone) {
         // Carom King's walls: the chord tone of the wall (0 root, 1 third, 2 fifth, 3 seventh); Princes an octave up.
         midi = audio::chordNote(static_cast<i32>(std::lround(e.f)), 5 + (e.b ? 1 : 0), audio::NoteFrom::ChordTone);
@@ -133,10 +147,13 @@ void playFightCue(Band& band, FightVoices& voices, const sim::Event& e, double t
             }
             break;
         }
-        case SoundPlay::Pair:
-            band.playRecipe(static_cast<Recipe>(r.id), midi, r.gain, pan, tick, r.p1, r.p2);
-            band.playRecipe(static_cast<Recipe>(r.id2), midi, r.gain, pan, tick, r.p1, r.p2);
+        case SoundPlay::Pair: {
+            // Event Horizon fed: louder the bigger the meal (the cue's f, 0..1).
+            const float g = r.cue == BossCue::HzFed ? r.gain * std::fmin(std::fmax(e.f, 0.3f), 1.0f) : r.gain;
+            band.playRecipe(static_cast<Recipe>(r.id), midi, g, pan, tick, r.p1, r.p2);
+            band.playRecipe(static_cast<Recipe>(r.id2), midi, g, pan, tick, r.p1, r.p2);
             break;
+        }
         case SoundPlay::Hats: {
             // The Ring closing: quarters for half of it, eighths for a quarter, sixteenths for the last quarter.
             const double span = static_cast<double>(r.p1) * kTicksPerBeatD;

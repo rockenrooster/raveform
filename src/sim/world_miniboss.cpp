@@ -942,6 +942,7 @@ bool World::minionMotion(u32 i, float dt) {
     Enemies& e = enemies_;
     if (!(e.flags[i] & kFlagCalled)) return false;
     switch (e.state[i]) {
+        case kLane: return horizonLane(i, dt);  // M5 part 4: Event Horizon's lanes
         case kCharge: {
             // The pack's charge: along its line at 520 wu/s for two beats, through and past; then an ordinary Hound.
             e.vx[i] = e.a[i] * kAlphaChargeSpeed;

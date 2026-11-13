@@ -33,7 +33,9 @@ enum class SoundPlay : u8 {
 };
 // How a row's note is found: none (-1: the recipe's default), the cue's f as a MIDI note, or against the Track's chord
 // (audio::chordNote, resolved by the band at the tick it plays).
-enum class NoteRule : u8 { None, Midi, RunDegree, WallTone };
+// ArpCount (Event Horizon's count): the meal's next note of the arpeggio (chord tones up the scale: 0 2 4 6 steps) an
+// octave down, cue b = the meal.
+enum class NoteRule : u8 { None, Midi, RunDegree, WallTone, ArpCount };
 
 struct FightSound {
     sim::BossCue cue;

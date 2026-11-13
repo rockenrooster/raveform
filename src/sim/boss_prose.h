@@ -34,6 +34,7 @@ constexpr u32 kChFugueCageBars = 2;          // phases[2].cage.every: "second ba
 constexpr u32 kChHeldBars = 4;               // phases[3].heldNote.every: "fourth bar"
 constexpr double kChEntranceBars = 2.0;      // entrance: "firing starts on bar 3"
 constexpr double kChSingBeats = 1.0;         // singing: "open from the step it fires until one beat later"
+constexpr u32 kHzShards = 300;               // death: "a fountain of 300 Shards" (horizon.md Numbers: 300 Shards per player)
 constexpr u32 kChoirShards = 220;            // death: "then 220 Shards" (choir.md Numbers: 220 Shards per player)
 
 // ---- Mini-bosses (minibosses.md, minibosses.json) ----
@@ -75,5 +76,17 @@ constexpr float kKingSplitSpeed = 1.15f;                              // pattern
 constexpr u32 kPrinceCaroms = 2;                                      // pattern[2]
 constexpr double kCaromHotBeats = 1.0;                                // weakPoint
 constexpr u32 kCaromCap = 6, kCaromBulletCap = 60;                    // cap
+
+// ---- Event Horizon (design/bosses/horizon.md, horizon.json's prose; M5 part 4)
+constexpr float kHzLaneWu = 1300.0f;          // Lanes: "spiral arms 1,300 wu long ..."
+constexpr float kHzLaneWindDeg = 270.0f;      // "... that wind 270 degrees into the Well"
+constexpr float kHzWaveSpeed = 600.0f;        // Tidal: "a ring leaves the Well at 600 wu/s ..."
+constexpr float kHzWaveShove = 140.0f;        // "... and shoves ships and Shards 140 wu outward"
+constexpr float kHzThrowWu = 300.0f;          // contact: "the ship is thrown 300 wu out"
+constexpr float kHzArmTurnDeg = 12.0f;        // eruption: "each arm turning 12 degrees per bullet"
+constexpr u32 kHzEruptBase = 8, kHzEruptPer = 4, kHzEruptMax = 96;  // eruption: "8 + 4 per body eaten, at most 96"
+constexpr float kHzAxisTurnDeg = 45.0f;       // jets: "the axis turns 45 degrees every bar"
+constexpr u32 kHzShardsPerBody = 5;           // "five uncollected Shards that fall in count as one body"
+constexpr float kHzLatticeImpulse = 400.0f;   // Look: "a standing impulse of 400 at the horizon"
 
 }  // namespace rf::sim::prose

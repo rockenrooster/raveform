@@ -20,17 +20,30 @@ enum class BossKind : u8 {
     AlphaHound, Hive, BatteringRam, CaromKing,           // mini-bosses, batch 1
     MothQueen, BroodMother, BlinkStar, SentryArray,      // batch 2 (data only until M5 part 4)
     MirrorMimic, TwinTether, WeaverPrime, DeepWell,      // batch 3 (data only until M5 parts 4 and 6)
+    EventHorizon, Polyrhythm, Feedback,                   // M5 part 4: the bosses of Tracks 4 to 6
     Count
 };
 constexpr u32 kBossKinds = static_cast<u32>(BossKind::Count);
-inline bool isMiniBoss(BossKind k) { return k >= BossKind::AlphaHound; }
+inline bool isMiniBoss(BossKind k) { return k >= BossKind::AlphaHound && k <= BossKind::DeepWell; }
 const char* bossName(BossKind k);  // the name card: "KALEIDOS", "LONGWAVE", "THE CHOIR", "ALPHA HOUND", ...
 const char* bossId(BossKind k);    // "kaleidos", "longwave", "choir", "alpha_hound", ... (arguments, pictures, logs)
 bool bossFromId(const char* id, BossKind& out);
 // The bosses built so far (M5 part 1: three), in set-list order: Track t's boss in the first pass, and the loop's
-// boss for Track t is the one its song's Track had.
+// boss for Track t is the one its song's Track had. The set list is the Tracks with their fights (Play).
 constexpr u32 kBossesBuilt = 3;
-inline BossKind bossOfSong(u32 song) { return static_cast<BossKind>(song % kBossesBuilt); }
+// The set list's bosses, Track by Track (GAME_DESIGN 4.2, 7.6).
+inline BossKind bossOfSong(u32 song) {
+    constexpr BossKind k[6] = {BossKind::Kaleidos, BossKind::Longwave, BossKind::Choir, BossKind::EventHorizon, BossKind::Polyrhythm, BossKind::Feedback};
+    return k[song % 6u];
+}
+// The fights built so far (--fight takes these; a run's set list ends before the first Track without its fights).
+inline bool fightBuilt(BossKind k) { return k <= BossKind::CaromKing || k == BossKind::EventHorizon; }
+// A fight's home Track (1-based): a boss's own; a mini-boss's the Track whose middle Drop draws it (minibosses.json
+// common.pick).
+inline u32 bossHomeTrack(BossKind k) {
+    constexpr u8 kHome[kBossKinds] = {1, 2, 3, 2, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 8, 4, 5, 6};
+    return kHome[static_cast<u32>(k) < kBossKinds ? static_cast<u32>(k) : 0u];
+}
 
 // The fights' sounds (the pages' "Sound" sections), as the simulation calls them: a BossCue event names one, with the
 // musical tick it belongs to, the Voice or wave place (b) and a pitch (f: semitones above the chord root, or a MIDI note
@@ -51,6 +64,9 @@ enum class BossCue : u8 {
     CkBounce,
     // Every mini-boss: it arrives (its name card), it dies, it warps out.
     MiniEnter, MiniDeath, MiniGone,
+    // M5 part 4, Event Horizon: a body eaten (b = the meal so far), a fed bar line (b, f = the meal), a starved one, the
+    // tidal wave.
+    HzEat, HzFed, HzStarved, HzWave,
     Count
 };
 
@@ -156,6 +172,32 @@ struct LongwaveData {
 
 // ---------------------------------------------------------------------------------------------- The Choir
 
+// Event Horizon (design/bosses/horizon.json, M5 part 4).
+struct HorizonData {
+    float health = 3200, horizonRadius = 120, photonRadius = 136;
+    float ringRadius[3] = {190, 250, 320}, ringTurns[3] = {0.9f, -0.6f, 0.4f};
+    float starved = 1.0f, fed = 0.15f;
+    float pullRange = 1400, pullShip = 260, pullFodder = 340, pullBullets = 180, pullShots = 220, pullShards = 300;
+    float bulletSpeed = 200, bulletLife = 6;
+    u32 meterCells = 12;
+    struct Phase {
+        float healthLo = 0;  // the phase ends below this share
+        u32 lanes = 2, hunger = 5, stream = 10;
+        float pullScale = 1, drift = 0;
+        bool wave = false, jets = false;
+    } phases[3];
+    u32 jetTelegraphBars = 1, jetBurnBeats = 2;
+    float zoom = 0.8f;
+    // The look (parts.*): the photon ring's width, the rings' dashes, the meter, the core's star (drawn while starved).
+    float photonWidthPx = 2.0f;
+    u32 ringDashes[3] = {21, 28, 36};
+    float dashFraction = 0.6f;
+    float meterRadius = 152.0f, meterCellFraction = 0.72f, meterWidthPx = 4.0f;
+    u32 starPoints = 4;
+    float starOuter = 46.0f, starInner = 14.0f;
+    bool load();
+};
+
 struct ChoirData {
     static constexpr u32 kVoices = 8;
     static constexpr u32 kMaxPts = 16;
@@ -246,6 +288,24 @@ struct LongwaveState {
 };
 
 // The Choir (choir.md): eight Voices on the Round around `centre`.
+// Event Horizon: the meal this bar, the bar line's verdict, the eruption under way, the tidal wave, the jets.
+struct HorizonState {
+    u8 phase = 0;
+    u16 meal = 0;              // bodies eaten this bar (five Shards: one)
+    u16 shardsIn = 0;
+    bool shield = true;        // fed: the shield holds this bar (x fed); starved: x starved
+    double gaspTick = -1e9;    // the last starved bar line
+    u32 eaten = 0;             // the whole fight
+    u16 eruptLeft = 0;         // bullets still to leave (one a sixteenth on each arm)
+    u8 eruptArms = 2;
+    float eruptAngle = 0.0f;
+    double waveTick = -1e9;    // phase 2: the tidal wave left the Well
+    float axis = 0.0f;         // phase 3: the jets' axis
+    double jetFrom = -1e9, jetUntil = -1e9;
+    u32 laneSerial = 0;        // the lane the next body walks in
+    double payoutTick = -1.0;  // dying: its Shards come back with the flash, a bar and a beat after it implodes
+};
+
 struct ChoirState {
     Vec2 centre;
     float ring0 = 0.0f;          // the Round's angle at ringTick
@@ -333,6 +393,7 @@ struct BossState {
     LongwaveState lw;
     ChoirState ch;
     MiniState mini;
+    HorizonState hz;  // M5 part 4
     float scale = 1.0f;        // health scale it entered with (players, Track, loop)
     double geomTick[8] = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0};  // the moment of each BossGeom decision applied
 };
@@ -344,7 +405,7 @@ u32 bossScaledCount(u32 n, float scale, u32 least);
 // device's fight follows the host's.
 constexpr u8 kBossStepBase = 0x40;
 constexpr u8 kBossGeomBase = 0x50;
-enum BossGeom : u8 { kGeomHive0 = 0, kGeomHive1, kGeomSpear0, kGeomSpear1, kGeomAlphaLock, kGeomRamLock, kGeomLunge, kGeomCount };
+enum BossGeom : u8 { kGeomHive0 = 0, kGeomHive1, kGeomSpear0, kGeomSpear1, kGeomAlphaLock, kGeomRamLock, kGeomLunge, kGeomHorizonBar, kGeomCount };
 
 // A part of a boss as the hits see it (Longwave, the Choir and the mini-bosses; Kaleidos keeps its arms).
 struct BossPart {

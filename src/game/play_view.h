@@ -145,6 +145,11 @@ private:
     void drawChoir(FrameDraw& d, const ViewInput& in);
     void drawMini(FrameDraw& d, const ViewInput& in);
     void drawPen(FrameDraw& d, const ViewInput& in);
+    // M5 part 4 (play_view_m5b.cpp): Event Horizon, Polyrhythm, Feedback and mini-bosses batch 2.
+    void drawHorizon(FrameDraw& d, const ViewInput& in);
+    void horizonFlash(Vec2 at, float t);
+    double hzBeat_ = -1.0;      // the last beat the lattice was pulled into the Well
+    float hzEatAt_ = -1e9f;     // the last body eaten (view time): its cell flashes white
     void eventFight(const sim::World& w, const sim::Event& e, float t);
     void fightChevron(FrameDraw& d, const ViewInput& in, Vec2 at, Vec3 colour);
     // Lines a fight has shown (a pack's charge, the Hive's spear), each until its moment.

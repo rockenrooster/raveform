@@ -276,6 +276,8 @@ enum EnemyState : u8 {
     // then kTelegraph / kDash / kRest as a Ram's, a and b its line), a Skitter's sidestep (a, b = its direction).
     kHop,
     kDodge,
+    // M5 part 4: a body walking one of Event Horizon's lanes (a = its lane, b = its distance along it).
+    kLane,
     kStateCount
 };
 enum EnemyFlag : u8 { kFlagDead = 1, kFlagEngaged = 2, kFlagArriving = 4, kFlagPredicted = 8, kFlagCalled = 16 };  // arriving: crowd fodder on its way into the frame
@@ -508,6 +510,8 @@ struct PlayerState {
     u8 lanceNext = 0;
     double beamTick = -1e9;      // Beam: the last volley it fired
     u8 beamLanes = 1;
+    Vec2 knock;                  // M5 part 4: what the world has moved the ship by, all told (the controller takes the rest)
+    u32 knockSerial = 0;
     Vec2 lastDashFrom, lastDashTo;  // M5 part 4 (Mimic C copies it): the last Dash, and when it began
     double lastDashTick = -1e9;
     Vec2 shockAt;                // Shockstep's ring: where, when, how far
@@ -662,6 +666,11 @@ public:
     // note of Voice k (0, 1 its line, 2 its beam; *angle: where it points).
     bool choirSinging(u32 k, double t) const;
     u8 choirCage(double t) const;
+    // M5 part 4, Event Horizon (world_horizon.cpp): the pull's speed toward the Well at a point (max: the speed at the
+    // photon ring); the fight is on (past its entrance bar); a point inside the burning jets (from: where on the jet).
+    float horizonPullAt(Vec2 at, float max) const;
+    bool horizonOn() const;
+    bool horizonJetHits(Vec2 at, Vec2& from) const;
     u8 choirHeld(u32 k, double t, float* angle) const;
     float choirRingAngle(double t) const;
     // The Voices that sing on the eighth at song time t (this bar's caller and groups; the next bar's caller as it will move
@@ -973,6 +982,15 @@ private:
     void findWells();
     void wellShots(float dt);
     bool wellSwallow(u32 i, u32 k);
+    void bossPayout();  // a boss's Shards and Cells (world_boss.cpp)
+    // world_horizon.cpp (M5 part 4)
+    void enterHorizon(Vec2 centre);
+    float horizonScale() const;
+    void horizonBar(double t, bool fed, u32 meal);
+    void eatBody(u32 i);
+    bool horizonLane(u32 i, float dt);
+    void updateHorizon(float dt);
+    void knockPlayer(u32 p, Vec2 by);
     // world_boss.cpp
     void updateBoss(float dt);
     void bossFire(double stepTick);

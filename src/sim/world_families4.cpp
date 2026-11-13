@@ -500,6 +500,12 @@ Vec2 World::wellPull(Vec2 pos) const {
     // between ticks by the controller: every body is looked at.)
     const Enemies& e = enemies_;
     Vec2 v{};
+    if (horizonOn()) {
+        // M5 part 4: Event Horizon pulls the ship too (half its own speed at the photon ring; a Dash ignores it).
+        const Vec2 to = boss_.pos - pos;
+        const float l = length(to);
+        if (l > 1.0f) v = v + to * (horizonPullAt(pos, species_->horizon.pullShip) / l);
+    }
     for (u32 i = 0; i < e.count; ++i) {
         if ((e.flags[i] & kFlagDead) || e.state[i] == kWarping || species_->get(e.species[i]).family != Family::Well) continue;
         const FamilyData& fd = species_->family(Family::Well);

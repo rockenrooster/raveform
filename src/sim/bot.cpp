@@ -1,6 +1,9 @@
 #include "sim/bot.h"
 
 #include <cmath>
+#include <initializer_list>
+
+#include "sim/boss_prose.h"
 
 #include "sim/tuning.h"
 
@@ -347,6 +350,35 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                     const float mid = boss.ch.heldAim[k];
                     const float off = wrapAngle(angleOf(pos - from) - mid);
                     if (std::fabs(off) < 1.25f) force = force + perpOf(dirOf(mid)) * (off >= 0.0f ? 2.5f : -2.5f);
+                }
+                break;
+            }
+            case BossKind::EventHorizon: {
+                // Hold the lanes (horizon.md: what you leave alive feeds it): meet the next body coming in on its lane, at a
+                // working distance outside the rings; off the jets' axis (the burning one and the one shown for the next bar).
+                const HorizonData& H = w.species().horizon;
+                const HorizonState& hz = boss.hz;
+                const u32 lanes = H.phases[hz.phase < 3 ? hz.phase : 2].lanes;
+                constexpr float kHoldWu = 560.0f;
+                float soonest = 1e30f;
+                Vec2 goal = boss.pos + normalizeOr(pos - boss.pos, Vec2{1.0f, 0.0f}) * kHoldWu;
+                for (u32 i = 0; i < e.count; ++i) {
+                    if ((e.flags[i] & kFlagDead) || e.state[i] != kLane || e.b[i] < kHoldWu - 80.0f) continue;
+                    if (e.b[i] < soonest) {
+                        soonest = e.b[i];
+                        const float lane0 = kTau * e.a[i] / static_cast<float>(lanes ? lanes : 1u);
+                        const float wind = prose::kHzLaneWindDeg * kTau / 360.0f;
+                        goal = boss.pos + dirOf(lane0 + wind * (1.0f - kHoldWu / prose::kHzLaneWu)) * kHoldWu;
+                    }
+                }
+                const Vec2 to = goal - pos;
+                const float l = length(to);
+                if (l > 30.0f) force = force + to * (std::fmin(l / 250.0f, 1.4f) / l);
+                if (H.phases[hz.phase < 3 ? hz.phase : 2].jets) {
+                    for (float sgn : {1.0f, -1.0f}) {
+                        offLine(boss.pos, dirOf(hz.axis) * sgn, 110.0f);
+                        offLine(boss.pos, dirOf(hz.axis + prose::kHzAxisTurnDeg * kTau / 360.0f) * sgn, 110.0f);
+                    }
                 }
                 break;
             }
