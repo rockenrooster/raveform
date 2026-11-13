@@ -19,6 +19,7 @@ enum class BossKind : u8 {
     Kaleidos = 0, Longwave, Choir,                       // bosses (one a Track, in set-list order)
     AlphaHound, Hive, BatteringRam, CaromKing,           // mini-bosses, batch 1
     MothQueen, BroodMother, BlinkStar, SentryArray,      // batch 2 (data only until M5 part 4)
+    MirrorMimic, TwinTether, WeaverPrime, DeepWell,      // batch 3 (data only until M5 parts 4 and 6)
     Count
 };
 constexpr u32 kBossKinds = static_cast<u32>(BossKind::Count);
@@ -207,7 +208,8 @@ struct MiniData {
     Entry entries[kMax];
     u32 count = 0;
     // The rules common to every mini-boss.
-    float healthByTrack[8] = {};     // [2..6] (GAME_DESIGN 7.5: from Track 2 on)
+    static constexpr u32 kMaxHealthTracks = 12;
+    float healthByTrack[kMaxHealthTracks] = {};  // [2..10] (GAME_DESIGN 7.5: from Track 2 on)
     u32 healthTracks = 0;            // the last Track with a number
     float loopFactor = 1.25f;
     float crowdScale = 0.75f;

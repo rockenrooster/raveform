@@ -77,6 +77,9 @@ struct AppArgs {
     float fastForward = 0.0f;  // --fast-forward S: S seconds of the game before the first frame (pictures)
     bool noHits = false;       // --nohits: hits cost nothing (a measured run deep in the game, e.g. Track 3; C2)
     char picture[32] = {};     // --picture <name>: a scripted review scene (fire, kill_small, ..., sentry)
+    char fight[24] = {};       // --fight <id>[:<phase>] (M5): the run starts in the fight's home Track and plays on to it
+    u8 fightPhase = 0;         // ... with its parts taken down to that phase (0 its first; a mini-boss: 1 half health)
+    bool fightHold = false;    // --fight <id>:<phase>:hold (benchmarks): its health comes back, so it stays in that phase
     bool paletteSet = false;   // --palette given (else the game uses its Track's palette)
     // M3 end
     // M4 begin: co-op from the command line (stage A: no lobby screens)

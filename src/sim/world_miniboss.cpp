@@ -156,6 +156,7 @@ BossKind World::pickMini(u32 track) const {
     // minibosses.json common.pick: the run's seed draws one whose family the run has met, never the one met in the
     // Track before. Batch 1: Track 2 from Alpha Hound and The Hive, Track 3 from Battering Ram and Carom King; the loop's
     // Tracks draw from their song's pair (First Light's from all four).
+    if (forcedMini_ != 0xFF) return static_cast<BossKind>(forcedMini_);
     BossKind cand[4];
     u32 n = 0;
     switch (songOfTrack(track, director_.songs)) {
@@ -822,7 +823,7 @@ void World::updateRam(float dt) {
             m.stateUntil = beatLine(m1_) + (m.half ? kRamHalfStunBeats : kRamStunBeats) * kTicksPerBeat;
             m.winded = m.stateUntil;
             emitCue(BossCue::RmWall, m1_, 0, 0.0f, at);
-            emitCue(BossCue::RmStun, m1_, 1, 0.0f, at);
+            emitCue(BossCue::RmStun, m1_, 1, static_cast<float>(m.half ? kRamHalfStunBeats : kRamStunBeats), at);  // f: its beats
         }
         if (m.state != 2 && m.wake) m.wakeUntil = m1_ + kRamWakeBars * kTicksPerBar;
     }

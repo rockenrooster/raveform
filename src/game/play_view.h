@@ -95,6 +95,7 @@ public:
     float pxPerWu() const { return pxPerWu_; }
     float chainPulse(double t) const;  // HUD: 1 on a pickup, decaying
     float kick() const { return kick_; }
+    float beat() const { return beat_; }  // the clock's beat envelope (M5: "on the beat"; the kick is not every beat)
     float snare() const { return snare_; }
 
 private:
@@ -222,7 +223,7 @@ private:
     void push(u8 kind, Vec2 at, float amp, float radius, float t);
 
     // Beat envelopes (look.md §7).
-    float kick_ = 0.0f, snare_ = 0.0f, hat_ = 0.0f, bass_ = 0.0f;
+    float kick_ = 0.0f, snare_ = 0.0f, hat_ = 0.0f, bass_ = 0.0f, beat_ = 0.0f;
     double lastKickT_ = -10.0, prevKickT_ = -10.0, lastHatT_ = -10.0;  // view clock
 
     // Effect pools (allocated by init).

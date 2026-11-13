@@ -663,12 +663,14 @@ void Stage::envelopes() {
         lastKickT_ = at(kickFrame_);
         prevKickT_ = at(prevKickFrame_);
         lastHatT_ = at(v.lastFrame[static_cast<u32>(BeatKind::Hat)]);
+        lastBeatT_ = at(v.lastFrame[static_cast<u32>(BeatKind::Beat)]);  // M5: the clock's beat (no kick on every beat)
         return;
     }
     const float beat = beatLen(), t = songT_;
     const float b = std::floor(t / beat);
     lastKickT_ = b * beat;
     prevKickT_ = (b - 1.0f) * beat;
+    lastBeatT_ = lastKickT_;
     kick_ = std::exp(-(t - lastKickT_) * 1000.0f / look_->kickDecayMs);
     float snareT = -10.0f;
     for (int k = 0; k < 4; ++k) {
@@ -1624,7 +1626,7 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
         d.sparkles.glow(toScreen(drone), look_->soft.orbital.radius[0] * refPx_, player * look_->soft.orbital.intensity[0]);
     }
     if (playerShown) {  // Pulse Ring: every second beat (bench_mid), a double ring every beat (endgame); 250 wu in 0.4 s
-        const float sinceBeat = song - lastKickT_;
+        const float sinceBeat = song - lastBeatT_;
         const bool on = endgame || (beatIndex() % 2 == 0);
         for (u32 k = 0; k < (endgame ? 2u : 1u) && on; ++k) {
             const float age = sinceBeat - 0.1f * static_cast<float>(k);
@@ -1641,7 +1643,7 @@ void Stage::render(FrameDraw& d, FrameParams& params, Background& bg, float W, f
     if (endgame && playerShown) {
         // Lancer beam across the whole view every second beat (scenes.md §4: 6 px wide, intensity 4, 150 ms),
         // half player colour and half white, as in the endgame target (design/tools/crowd.py).
-        const float sinceBeat = song - lastKickT_;
+        const float sinceBeat = song - lastBeatT_;
         if ((beatIndex() % 2) == 1 && sinceBeat < 0.15f) {
             const Vec2 a = S, b = S + dir(aim) * 2400.0f;
             const Vec3 beam = (player * 0.5f + W1 * 0.5f) * 4.0f;

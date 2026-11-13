@@ -352,6 +352,7 @@ target_sources(raveform_core PRIVATE
   src/game/play.cpp
   src/game/play_hud.cpp
   src/game/play_pictures.cpp
+  src/game/play_pictures_m5.cpp
   src/game/play_view.cpp
   src/game/play_view_b.cpp
   src/game/play_view_m5.cpp

@@ -41,7 +41,8 @@ constexpr KindName kKinds[kBossKinds] = {
     {"kaleidos", "KALEIDOS"},         {"longwave", "LONGWAVE"},         {"choir", "THE CHOIR"},
     {"alpha_hound", "ALPHA HOUND"},   {"the_hive", "THE HIVE"},         {"battering_ram", "BATTERING RAM"},
     {"carom_king", "CAROM KING"},     {"moth_queen", "MOTH QUEEN"},     {"brood_mother", "BROOD MOTHER"},
-    {"blink_star", "BLINK STAR"},     {"sentry_array", "SENTRY ARRAY"},
+    {"blink_star", "BLINK STAR"},     {"sentry_array", "SENTRY ARRAY"}, {"mirror_mimic", "MIRROR MIMIC"},
+    {"twin_tether", "TWIN TETHER"},   {"weaver_prime", "WEAVER PRIME"}, {"deep_well", "DEEP WELL"},
 };
 
 // Lines [x0, y0, x1, y1, layer] from an array of arrays.
@@ -489,12 +490,12 @@ bool MiniData::load() {
         out = static_cast<float>(v);
     };
     healthTracks = 0;
-    // common.healthByTrack: an object keyed by Track number ("2" .. "6"), and its loop factor.
+    // common.healthByTrack: an object keyed by Track number ("2" .. "10"), and its loop factor.
     for (const JsonValue* v = doc.firstChild(doc.find("common.healthByTrack")); v; v = doc.nextSibling(v)) {
         const char* key = doc.key(v);
         if (v->type != JsonValue::Type::Number || key[0] < '0' || key[0] > '9') continue;
         const u32 t = static_cast<u32>(std::atoi(key));
-        if (t < 2 || t >= 8) continue;
+        if (t < 2 || t >= kMaxHealthTracks) continue;
         healthByTrack[t] = static_cast<float>(v->number);
         if (t > healthTracks) healthTracks = t;
     }

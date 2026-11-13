@@ -66,7 +66,7 @@ struct HudState {
     float dashCharge = 1.0f;
     bool alive = true;
     bool retryPending = false;
-    float kick = 0.0f;
+    float beat = 0.0f;  // the clock's beat envelope (M5: "on the beat", never the kick)
     bool showTouch = false;
     // M3 stage B (look.md 6): Track and tempo, the phrase bar, the pause ring, the band row (Riff slots and
     // Mods), active Boosts, the boss's bar and name card, a debut's name, the Trio's hint.

@@ -692,6 +692,8 @@ void PlayView::envelopes(const ViewInput& in) {
         using audio::BeatKind;
         const BeatView& v = *in.beat;
         kick_ = v.envelope(BeatKind::Kick, look_->kickDecayMs * 1e-3f);
+        // M5 (Tracks 7, 9 and 10 have no kick on every beat): "on the beat" is the clock's beat, never the kick.
+        beat_ = v.beat(look_->kickDecayMs * 1e-3f);
         snare_ = std::fmax(v.envelope(BeatKind::Clap, look_->snareDecayMs * 1e-3f), v.envelope(BeatKind::Snare, look_->snareDecayMs * 1e-3f));
         hat_ = v.envelope(BeatKind::Hat, look_->hatDecayMs * 1e-3f);
         bass_ = v.envelope(BeatKind::Bass, 0.18f);
@@ -709,7 +711,8 @@ void PlayView::envelopes(const ViewInput& in) {
     lastKickT_ = t - sinceBeat;
     prevKickT_ = lastKickT_ - 96.0f / tps;
     kick_ = std::exp(-sinceBeat * 1000.0f / look_->kickDecayMs);
-    const i64 b = static_cast<i64>(beat);
+    beat_ = kick_;  // (no band: the musical position's beat)
+    const i64 b =static_cast<i64>(beat);
     const i64 inBar = ((b % 4) + 4) % 4;
     const float sinceSnare = sinceBeat + ((inBar % 2) == 0 ? 96.0f / tps : 0.0f);  // the last of beats 2 and 4
     snare_ = b >= 1 ? std::exp(-sinceSnare * 1000.0f / look_->snareDecayMs) : 0.0f;

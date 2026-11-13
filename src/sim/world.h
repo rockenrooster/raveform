@@ -538,6 +538,8 @@ public:
     u32 bossParts(BossPart* out, u32 cap) const;          // the hittable circles now (not Kaleidos's arms)
     float bossDamageScale(u8 part, u8 index, double tick, Vec2 dir) const;  // the multiplier a hit would get (0: armour)
     BossKind pickMini(u32 track) const;                   // the mini-boss Track `track`'s middle Drop brings
+    // Pictures and benchmarks (--fight): every middle Drop brings this one (0xFF: the seed's draw, as in play).
+    void forceMini(BossKind k) { forcedMini_ = static_cast<u8>(k); }
     u32 miniNaturalEnd() const;                           // the run bar the middle Drop would end on without it
     // Longwave: the body's place k (0 the head, 1.. the live segments by rank, fractions between) at song time t with the
     // wave `shift` cycles behind (the echoes); its unit tangent and wave value (+1 the crest, -1 a trough).
@@ -567,6 +569,17 @@ public:
     void grantUpgrade(u32 p, u8 upgrade) { applyUpgrade(p, upgrade); }
     void grantBoost(u32 p, u8 boost) { activateBoost(p, boost); }
     void openTrioNow(u32 p, double closeTick, const u8* forced = nullptr, u8 kind = kTrioBreak);
+    // Benchmarks (M5, --fight <id>:<phase>:hold): every live part back to full health and the core to at least coreShare,
+    // so the fight stays in its phase while it is measured.
+    void bossRefill(float coreShare) {
+        for (u32 k = 0; k < kBossParts; ++k)
+            if (boss_.alive & (1u << k)) boss_.partHp[k] = boss_.partMax;
+        if (boss_.coreHp < boss_.coreMax * coreShare) boss_.coreHp = boss_.coreMax * coreShare;
+    }
+    // Pictures (M5): an open Trio takes its first orb now (so it does not cover the moment).
+    void closeTrioNow(u32 p) {
+        if (trio_[p].open) takeOrb(p, 0);
+    }
     // The fight `kind` enters on enterTick at pos (Longwave and the Choir: round that centre; a Pen fight raises its Pen
     // round penAt).
     void spawnBossNow(double enterTick, Vec2 pos, BossKind kind = BossKind::Kaleidos, Vec2 penAt = Vec2{});
@@ -836,6 +849,7 @@ private:
 
     const SpeciesTable* species_ = nullptr;
     u8 setList_ = kSongs;
+    u8 forcedMini_ = 0xFF;  // --fight (pictures, benchmarks): the mini-boss every middle Drop brings
     Rules rules_;
     Spawner spawner_;
     DirectorState director_;

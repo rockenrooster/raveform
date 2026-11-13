@@ -70,7 +70,7 @@ void PlayView::drawCoop(FrameDraw& d, const ViewInput& in) {
             const Vec2 B = pl.beacon;
             if (!visible(B, ringR + 40.0f)) {
                 // Off screen: its chevron carries a small ring at the tip and pulses on every beat.
-                edgeChevron(d, B, c, false, 1.0f + 0.2f * kick_, 1);
+                edgeChevron(d, B, c, false, 1.0f + 0.2f * beat_, 1);
                 continue;
             }
             // The dashed ring.
@@ -105,7 +105,7 @@ void PlayView::drawCoop(FrameDraw& d, const ViewInput& in) {
                   kGlyphPlayer, c, cd);
             // A thin vertical flare, 300 px tall, swelling 20% on every beat, so it is found across the frame.
             const Vec2 sb = toScene(B);
-            const float half = 0.5f * kBeaconFlarePx * refPx_ * (1.0f + kBeaconFlareSwell * kick_);
+            const float half = 0.5f * kBeaconFlarePx * refPx_ * (1.0f + kBeaconFlareSwell * beat_);
             d.scene.line(Vec2{sb.x, sb.y - half}, sb, 0.6f * refPx_, Vec3{}, c * kBeaconFlare, 0);
             d.scene.line(sb, Vec2{sb.x, sb.y + half}, 0.6f * refPx_, c * kBeaconFlare, Vec3{}, 0);
             d.pools.glow(sb, look_->soft.playerPool.radius[0] * pxPerWu_, c * (look_->soft.playerPool.intensity[0] * kMatePool));

@@ -451,9 +451,10 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 float nearPart = 1e9f;
                 for (u32 k = 0; k < pn; ++k) nearPart = std::fmin(nearPart, length(parts[k].pos - p.pos) - parts[k].radius);
                 std::printf("[boss] %6.1f s %s ph %u dist %4.0f part %4.0f near %3u in the line %2u bullets %3u cells %u novas %u parts %x core %4.0f hits %u "
-                            "taken body %u beam %u%s\n",
+                            "taken body %u beam %u%s%s\n",
                             t / 60.0f, bossId(b.kind), b.phase, L, pn ? nearPart : -1.0f, near300, between, bul, p.cells, p.novas, static_cast<unsigned>(b.alive),
-                            b.coreHp, b.hits, b.hitsBody, b.hitsBeam, p.alive ? "" : " DOWN");
+                            b.coreHp, b.hits, b.hitsBody, b.hitsBeam, p.alive ? "" : " DOWN",
+                            w.pen().up ? (w.penInside(p.pos, 0.0f) ? " in the Pen" : " OUTSIDE the Pen") : "");
             }
             if (p.hitsTaken < lastHits) lastHits = p.hitsTaken;  // a new run
             if (p.hitsTaken > lastHits) {

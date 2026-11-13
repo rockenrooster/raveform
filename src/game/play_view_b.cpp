@@ -289,7 +289,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
     const Vec3 gold = palettes_->player[3];
     const Vec3 accent = palette_->accent;
     const PlayerState& me = w.player(w.viewPlayer());
-    const float swell = 1.0f + 0.06f * kick_;  // screens.md: orbs swell 6% on the beat
+    const float swell = 1.0f + 0.06f * beat_;  // screens.md: orbs swell 6% on the beat (M5: the clock's beat)
     (void)W;
     (void)H;
     (void)deep;
@@ -307,7 +307,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
                 continue;
             }
             const Vec2 sp = toScene(p);
-            const float r = kBoostOrbWu * pxPerWu_ * (1.0f + 0.08f * kick_);
+            const float r = kBoostOrbWu * pxPerWu_ * (1.0f + 0.08f * beat_);
             if (icons_) icons_->draw(d, boostIcon_[bp.type[i] % kBoostCount], sp, r, fade * 1.1f);
             glyph(d.glyphs, gRing32_, false, p, 0.0f, 0.0f, kBoostOrbWu * 1.5f, 1.4f * fade, 0.5f, kGlyphFlat, gold, W1);
             d.pools.glow(sp, r * 2.6f, gold * (0.18f * fade));
@@ -330,10 +330,10 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             const float left = static_cast<float>((cp.born[i] + tuning::kCellLifeBars * kTicksPerBar - in.music) / kTicksPerBar);
             const float fade = clamp01(left);
             if (!visible(p, 70.0f)) {
-                if (me.alive && me.cells <= 1) edgeChevron(d, p, gold, false, 1.0f + 0.2f * kick_, 2);
+                if (me.alive && me.cells <= 1) edgeChevron(d, p, gold, false, 1.0f + 0.2f * beat_, 2);
                 continue;
             }
-            const float r = tuning::kCellRadiusWu * (1.0f + 0.15f * kick_);
+            const float r = tuning::kCellRadiusWu * (1.0f + 0.15f * beat_);
             const Vec2 sp = toScene(p);
             glyph(d.glyphs, gRing32_, false, p, 0.0f, 0.0f, r, 1.7f * fade, 0.75f, kGlyphFlat, gold, gold);
             const float arm = 0.55f * r;

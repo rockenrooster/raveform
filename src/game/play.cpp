@@ -113,6 +113,8 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
     markCount_ = 0;
     marks_[markCount_++] = Mark{0.0f, 0, 1};
     if (picture) scriptSetup();
+    // M5 --fight (benchmarks; the m5_ pictures set it up themselves): the run plays on to the fight.
+    if (opt.fight[0] && !picture && !setupFight(opt.fight, opt.fightPhase)) return false;
     if (bandDrives_) band->setIntensity(tuning::kIntensityFloor);
 
     // M4: co-op (the session takes the world over; the host starts the run once every seat is in).
@@ -126,7 +128,10 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
         const PlayOptions saved = opt_;
         opt_.fixedStep = true;
         ffRunning_ = true;
-        for (u32 k = 0; k < ticks; ++k) frame(kDt);
+        for (u32 k = 0; k < ticks; ++k) {
+            frame(kDt);
+            if (fightJump_ && fightReady()) break;  // M5 --fight: the fight is on (in its phase)
+        }
         ffRunning_ = false;
         opt_ = saved;
         bandDrives_ = drives;
@@ -321,15 +326,18 @@ void Play::pictureFrame() {
     scriptEvents();
     ++scriptTick_;
     if (captureFrom_ >= 0 && static_cast<i64>(frameNo_) >= captureFrom_) {
+        // (M5: a strip's frames can be stripStride_ apart, so eight of them cover a beat.)
         const u64 k = frameNo_ - static_cast<u64>(captureFrom_);
-        if (k < stripFrames_) {
-            captureNow_ = true;
-            captureIndex_ = static_cast<u32>(k);
+        if (k < static_cast<u64>(stripFrames_) * stripStride_) {
+            if (k % stripStride_ == 0) {
+                captureNow_ = true;
+                captureIndex_ = static_cast<u32>(k / stripStride_);
+            }
         } else {
             pictureDone_ = true;
         }
     }
-    if (scriptTick_ > 60u * 30u) pictureDone_ = true;  // a script that never triggers ends after 30 s
+    if (scriptTick_ > 60u * (m5Pic_ != 0xFF ? 75u : 30u)) pictureDone_ = true;  // a script that never triggers ends after 30 s (M5: 75)
 }
 
 void Play::runTick(double music0, double music1, bool firstOfFrame) {
@@ -370,6 +378,9 @@ void Play::runTick(double music0, double music1, bool firstOfFrame) {
 void Play::afterTick() {
     const World& w = *world_;
     view_.onEvents(w, tickEnd_);
+    holdFight();  // M5 --fight ...:hold (benchmarks)
+    // M5: the fights' held voices end on time, and all of them when no fight is on.
+    if (bandDrives_) updateFightVoices(*band_, fightVoices_, band_->view().heardTick, !w.boss().active || w.boss().dying);
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         switch (e.type) {
@@ -445,7 +456,8 @@ void Play::afterTick() {
                 if (bandDrives_ && e.tick != lastTellTick_) {
                     lastTellTick_ = e.tick;
                     band_->playSfx(audio::Sfx::Tick, 0.7f);
-                    if (w.species().get(e.species).ranged()) band_->sfxAt(audio::Sfx::EnemyShot, e.tick);
+                    // (M5: a fight's own lines carry kBossSpecies, no species.)
+                    if (e.species != kBossSpecies && w.species().get(e.species).ranged()) band_->sfxAt(audio::Sfx::EnemyShot, e.tick);
                 }
                 break;
             case EventType::Hit:
@@ -687,7 +699,7 @@ void Play::bossCue(const sim::Event& e) {
     const World& w = *world_;
     const double offset = coop() ? netBandOffset_ : clock_.offset();
     const float pan = clampf((e.x - w.player(seat_).pos.x) / 900.0f, -1.0f, 1.0f) * 0.7f;
-    playFightCue(*band_, e, e.tick + offset, pan);
+    playFightCue(*band_, fightVoices_, e, e.tick + offset, pan, postedBpm_);
 }
 
 // ---------------------------------------------------------------------------------------------- render
@@ -801,7 +813,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     hs.dashCharge = controller_.dashCharge(coop() ? netHeard_ : clock_.heardNow());
     hs.alive = p.alive;
     hs.retryPending = w.restartPending();
-    hs.kick = view_.kick();
+    hs.beat = view_.beat();
     // The run's HUD: in the run (and under pause); the screens draw their own.
     const bool runHud = !flow_ || screen_ == Screen::Run || screen_ == Screen::Paused;
     hs.showTouch = touch_.used() && runHud && p.alive;
@@ -1183,6 +1195,7 @@ enum ScriptFlag : u32 { kPressed = 1, kSpawned = 2 };
 }
 
 void Play::scriptSetup() {
+    if (scriptSetupM5()) return;
     if (scriptSetupB()) return;
     World& w = *world_;
     const SpeciesTable& s = *species_;
@@ -1230,6 +1243,7 @@ void Play::scriptInput(StickInput& in) {
     const double music = music1_;
     const float tpt = clock_.ticksPerSecond() * kDt;  // musical ticks per sim tick
     in.assist = false;
+    if (scriptInputM5(in)) return;
     if (scriptInputB(in)) return;
     if (is(p, "fire")) {
         // A stream into the middle one of the five (they take 60 shots each), so the shots land.
@@ -1287,6 +1301,7 @@ void Play::scriptInput(StickInput& in) {
 }
 
 void Play::scriptEvents() {
+    if (scriptEventsM5()) return;
     if (scriptEventsB()) return;
     if (captureFrom_ >= 0) return;
     const World& w = *world_;

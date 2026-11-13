@@ -287,7 +287,7 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
         d.hud.line({x1, yc - hh}, {x1, yc + hh}, ow, oc, oc, 0);
         const float fill = st.levelFull ? 1.0f : clampf(st.levelFill, 0.0f, 1.0f);
         if (fill > 0.0f) {
-            const float flash = st.levelFull ? 0.55f + 0.45f * st.kick : st.levelFlash;
+            const float flash = st.levelFull ? 0.55f + 0.45f * st.beat : st.levelFlash;
             const Vec3 fc = col(mix(gold, white, flash), 1.7f + 0.8f * flash);
             d.hud.line({x0 + ow, yc}, {x0 + ow + (x1 - x0 - 2.0f * ow) * fill, yc}, hh - ow, fc, fc, kFlatStart | kFlatEnd);
             d.pools.glow({x0 + 0.5f * (x1 - x0) * fill, yc}, 40.0f * s, gold * (0.06f + 0.10f * flash));

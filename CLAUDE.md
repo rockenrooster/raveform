@@ -32,7 +32,7 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | Audio match against the prototype: every Track × variant, match table, onset check, listening files | `scripts\render-audio.ps1 [-SkipRef] [-Only track03_club] [-NoListening]` (writes `captures\m2\`, `match_table.md`) |
 | Prototype references (musicproto.py as a library; writes nothing under `design/`) | `python -I -B scripts\audio_ref.py captures\m2\ref [track03 [club]]` |
 | Loudness calibration (after any music data or DSP change; `test.ps1` fails while it is stale) | `scripts\calibrate-audio.ps1 [-Check]`, then rebuild |
-| Offline renders of the band (headless, the same engine) | `build\desktop-dev\raveform_headless.exe --render staged\|mock\|sfx\|leads\|full\|surge [--track 1\|2\|3] [--sound club\|arcade\|velvet] --out x.wav [--pcm16] [--events x.csv] [--meta x.json] [--stems dir] [--random-bursts] [--profile] [--seconds S]` |
+| Offline renders of the band (headless, the same engine) | `build\desktop-dev\raveform_headless.exe --render staged\|mock\|sfx\|leads\|full\|surge\|medley [--track 1..10] [--sound club\|arcade\|velvet] --out x.wav [--pcm16] [--events x.csv] [--meta x.json] [--stems dir] [--random-bursts] [--profile] [--seconds S]` |
 | One-shots against the prototype's synthesis | `raveform_headless.exe --dump-samples captures\m2\samples`, then `python -I -B scripts\audio_samples.py captures\m2\samples` |
 | Audio scenes (desktop) | `scripts\run-desktop.ps1 -AppArgs '--scenario audio_test'` / `'--scenario sync'` |
 | Audio device jobs under the phone lock (deploys the last built APK) | `scripts\audio-device.ps1 -Run bench\|screenshot\|soak [-Seconds 60] [-Scenario bench_idle] [-AppArgs '--band full']` |
@@ -55,6 +55,10 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | M4 co-op benchmark (Moto hosting three in-process bot clients) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Warmup 600 -Seconds 120 -AppArgs '--host --loopback-bots 3' -Deploy` (the result's `net` object: the session, the bots' worker frame time) |
 | M4 stage B review set (every co-op screen and moment of `design/screens.md` "Co-op (M4)": the local network notice and its refusal, the join screen empty / with rooms / a code / an address, the refusals, the lobby from the host / a joiner / four seats, one moment from the host and a client, beacon on and off screen, revive, co-op HUD, shared pause and count-in, co-op game over from host and client, the host leaving; 2400x1080 with `.small.png`; exit 1 on validation messages or controls closer than 24 px) | `scripts\review-m4b.ps1 [-Out captures\m4b] [-Config debug\|dev] [-Only lobby_host,hud]` |
 | M4 stage B device checks (the phone and this PC on one Wi-Fi; lock name `m4b`; our APK deployed first): discovery and joining both ways (list, code, address), a client drop and the host quitting; the 15-minute runs | `scripts\coop-device.ps1 -Run discovery_pc_host\|discovery_moto_host\|long_pc_host\|long_moto_host [-Serial moto] [-Minutes 15] [-Impaired]` (`-Impaired`: 5% loss and 80 ms jitter on every peer; results in `captures\m4b\device\`) |
+| M5 review sets (one folder a part: `captures\m5\<part>\`, `.small.png` copies, a contact sheet a strip; Debug: exit 1 on validation messages) | `scripts\review-m5.ps1 -Part part1 [-Config debug\|dev] [-Only lw_chop,ch_cage]` (part 1: Longwave, the Choir and mini-bosses batch 1, every phase and moment; the pictures are scripted in `src/game/play_pictures_m5.cpp`) |
+| A fight, played or measured (M5): the run starts in the fight's home Track and the fast-forward plays on to it | `-AppArgs '--fight <id>[:<phase>[:hold]]'` (`kaleidos`, `longwave`, `choir`, `alpha_hound`, `the_hive`, `battering_ram`, `carom_king`; phase 1-3 takes its parts down to that phase, a mini-boss's 1 is half health; `:hold` gives its health back every tick so it stays there) |
+| A fight's densest moment on the Moto (M5) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Seconds 60 -Warmup 3 -AppArgs '--tier low --nohits --fight longwave:1:hold' -Deploy` (the Choir `choir:3:hold`; a mini-boss `alpha_hound:1:hold` ... `carom_king:3:hold` with `-Seconds 30`: its Drop's hold ends it) |
+| Every fight's numbers with the bots (M5) | `build\desktop-dev\raveform_headless.exe --sim crowd --seeds 20 --minutes 40 [--policy reckless] [--trace]` (the `fights` table: fought, won, lost, warped out, hits a fight by bullets / bodies / beams, seconds to kill by Track; `--trace`: a line a second of each fight and one a hit) |
 | M4 two peers' views of one moment (desktop, two windows started together) | `run-desktop.ps1 -NoBuild -Res 2400x1080 -Screenshot captures\m4\host.png -AppArgs '--host --players 2 --bind 127.0.0.1 --bot --net-capture-bar 40 [--net-overlay] [--net-view-seat 0]'` and `-Screenshot captures\m4\client.png -AppArgs '--join 127.0.0.1 --bind 127.0.0.1 --bot --net-capture-bar 40 ...'` (`--net-view-seat 0`: both cameras on the host's ship) |
 
 Desktop exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 benchmark aborted,
@@ -132,12 +136,19 @@ RB Nova, LB Dash, A or Start retry; touch: floating sticks (left half moves, rig
 NOVA and DASH buttons, tap to retry. With the aim idle the auto-aim assist fires at the nearest enemy on the
 half-rate grid. The game starts with the overlay off (F1) and has no tap gestures.
 
+M5 (`design/bosses/*`, `src/sim/world_longwave.cpp`, `world_choir.cpp`, `world_miniboss.cpp`, the view in `src/game/play_view_m5.cpp`): each
+Track ends in its own boss (Track 1 Kaleidos, 2 Longwave, 3 The Choir; round again in the loop) and from Track 2 on the middle
+cycle's Drop brings a mini-boss (Alpha Hound or The Hive in Track 2, Battering Ram or Carom King in Track 3, the last two in the
+Pen). The set list is the Tracks the game has fights for (`World::setSetList`; three until Tracks 4 to 10 have theirs) and the
+loop starts after it. Every fight's sound goes through `src/game/pending_sounds.cpp` (one row a cue; what the engine lacks is
+listed there and in PROGRESS). `--fight <id>[:<phase>[:hold]]` jumps a run to a fight (pictures, benchmarks).
+
 Audio (M2, `src/audio/audio_args.h`): `--scenario audio_test|sync` (the band on heard time with its
 controls; the sync calibration screen of `design/screens.md`), `--band off|play|staged|full|stress|metronome`
 (default: `play` in audio_test, `metronome` in sync, `full` in every `bench_*` unless pictures are taken, else
 off; `full` = the load test, every layer playing: Drop held, four players firing on the 1/16-triplet grid with
 one Split harmony, every Riff at level 2, kills every frame; `stress` = Split ×2), `--silent` (everything plays and is measured, the output is zeroed at the device: PC runs), `--no-audio` (no band in
-any scenario: M0's silent stream, as M1 measured; for comparison), `--track 1|2|3` (default 1; `bench_*`:
+any scenario: M0's silent stream, as M1 measured; for comparison), `--track 1..10` (default 1; `bench_*`:
 the palette's Track, Reef = 3 at the stage's 132 BPM), `--sound club|arcade|velvet`, `--intensity X`,
 `--section groove|build|drop|break`, `--hold`, `--fire`, `--haptics on|off` (default on in the audio scenes),
 `--sync-offset MS` (this run only). In real time the stages run on the band's heard clock and heard beat

@@ -153,7 +153,7 @@ private:
     u32 nextSixteenth_ = 0;
     float hitStopUntil_ = -1.0f;
     float kick_ = 0.0f, snare_ = 0.0f, hat_ = 0.0f, bass_ = 0.0f;
-    float lastKickT_ = -10.0f, prevKickT_ = -10.0f, lastHatT_ = -10.0f;
+    float lastKickT_ = -10.0f, prevKickT_ = -10.0f, lastHatT_ = -10.0f, lastBeatT_ = -10.0f;
     // The band's heard clock (setBeat).
     const BeatView* beat_ = nullptr;
     bool beatAnchored_ = false;

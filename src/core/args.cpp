@@ -142,6 +142,18 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
         } else if (is("--fast-forward") && next) {
             ok = parseFloat(next, a.fastForward) && a.fastForward >= 0.0f && a.fastForward <= 3600.0f;
             usedNext = true;
+        } else if (is("--fight") && next) {
+            // M5: --fight <id>[:<phase>] (sim/boss.h bossId: kaleidos, longwave, choir, alpha_hound, the_hive, ...).
+            ok = copyString(a.fight, sizeof a.fight, next);
+            if (ok) {
+                char* colon = std::strchr(a.fight, ':');
+                if (colon) {
+                    a.fightPhase = static_cast<u8>(std::atoi(colon + 1));
+                    a.fightHold = std::strstr(colon + 1, ":hold") != nullptr;
+                    *colon = 0;
+                }
+            }
+            usedNext = true;
         } else if (is("--picture") && next) {
             ok = copyString(a.picture, sizeof a.picture, next);
             usedNext = true;

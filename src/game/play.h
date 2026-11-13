@@ -16,6 +16,7 @@
 #include "content/palette.h"
 #include "game/music_clock.h"
 #include "game/play_hud.h"
+#include "game/pending_sounds.h"
 #include "game/play_view.h"
 #include "game/screens.h"
 #include "game/settings.h"
@@ -42,6 +43,9 @@ struct PlayOptions {
     u64 seed = 1;
     float fastForwardS = 0.0f;  // --fast-forward S: run S seconds of the game before the first frame
     bool noHits = false;        // C2: hits cost nothing (--nohits: a measured run deep in the game)
+    char fight[24] = {};        // M5 --fight <id>: the run starts in the fight's home Track and plays on to it (pictures, benchmarks)
+    u8 fightPhase = 0;          // ... its parts taken down to that phase once it fights
+    bool fightHold = false;     // ... and held there (its health comes back: a benchmark of the phase)
     char picture[32] = {};      // --picture <name>: a scripted scene for the review strips
     float pxPerMm = 0.0f;       // touch control sizes (0: scale with the screen height)
     bool autoplay = false;      // --autoplay: the screens as in play, the bot playing each run (taps start and retry)
@@ -231,7 +235,8 @@ private:
     void screenGameOverCoop(Ui& ui);
     // The band's slot of seat q (0 is this device's player; the others follow in seat order).
     u8 bandSlot(u32 q) const { return static_cast<u8>(q == seat_ ? 0u : (q < seat_ ? q + 1u : q)); }
-    void bossCue(const sim::Event& e);  // M5: a fight's sound, through the band
+    void bossCue(const sim::Event& e);  // M5: a fight's sound, through the band (game/pending_sounds.cpp)
+    FightVoices fightVoices_;           // M5: the held voices a fight started (the Choir's pads)
     bool coopAutoDone_ = false;
     float coopAutoT_ = 0.0f, coopShotT_ = 0.0f;
     float beaconDownS_ = 0.0f;  // --coop-shot beacon: how long a teammate has been down (its shatter gone after a second)
@@ -294,6 +299,21 @@ private:
     bool scriptInputB(sim::StickInput& in);
     bool scriptEventsB();
     float scriptFastForwardS_ = 0.0f;
+    // play_pictures_m5.cpp (M5): --fight and the m5_ review pictures. The run starts in the fight's home Track, the
+    // fast-forward plays on to the fight (fightReady stops it), and its parts are taken down to the phase asked for.
+    bool setupFight(const char* id, u8 phase);
+    bool fightReady();
+    void applyFightPhase();
+    void holdFight();  // --fight ...:hold: after each tick, its health comes back (it stays in its phase)
+    bool scriptSetupM5();
+    bool scriptInputM5(sim::StickInput& in);
+    bool scriptEventsM5();
+    bool fightJump_ = false, fightPhaseDone_ = false;
+    sim::BossKind fightKind_ = sim::BossKind::Kaleidos;
+    u8 fightPhase_ = 0;
+    double fightPhaseAt_ = -1.0;
+    u8 m5Pic_ = 0xFF;          // the m5_ picture being taken (play_pictures_m5.cpp kPics)
+    u32 stripStride_ = 1;      // a strip's frames this many frames apart (M5: 8 frames across a beat)
 
     PlayOptions opt_;
     const Look* look_ = nullptr;

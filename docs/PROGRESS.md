@@ -1,5 +1,290 @@
 # RAVEFORM — Progress
 
+## M5 part 1 "Longwave, The Choir, mini-bosses batch 1 and the Pen" — 2026-11-13
+
+Built on `main` (never pushed): `4c62506` (the previous content engineer's uncommitted tree, taken over: it built after two
+fixes and its tests passed), `abeb273` (the bots fight the new bosses, the singing hoods, one table of pending sounds),
+`f9f3ae8` (the merge of `m5-audio`: the ten Tracks), and the closing commit (`--fight`, the review set, the Moto, this
+section). Designs: `design/bosses/longwave.*`, `choir.*` (with the lead's ruling `94706dc`: only a singing hood hurts),
+`minibosses.*` (batch 1 and the Pen).
+
+### What was built
+
+- **Longwave** (Track 2's boss; `src/sim/world_longwave.cpp`, the view in `src/game/play_view_m5.cpp`). The head swims
+  the figure of eight round its anchor, segment k sits k x 100 wu behind it on the path and swings with the wave
+  (amplitude 150, eight segments a wavelength, tapered over the first three); the crest is the one live segment the sine
+  peaks on in a step and the only one that can be hurt; troughs fire square to the body on the same steps (a fan of three
+  in Chop); the jaw opens on beat 1 and for two beats after a lunge; dead segments close up and the crest skips on; a
+  phase change lands on the next beat line (the rates change, never the place); the whip on the downbeat after each one;
+  Whitecap and the bare head lunge (a line for a bar, a 700 wu dash on the downbeat); the bare head's rings on beats 2
+  and 4. Its look: the colour running along the body, the electric-blue accent on fins, crown, eyes, the spine's core and
+  the two echoes (kept on every tier), the white-hot crest with its flares and its warming neighbours, a pool under a
+  trough about to fire, the lattice impulse of 140 under each crest step; the death unravels tail-first, a segment a
+  sixteenth, then the head breaks.
+- **The Choir** (Track 3's boss; `src/sim/world_choir.cpp`). Eight Voices on the Round (radius 380, 300 in the Fugue),
+  each a note of D dorian (D4 to D5) and a hue 45 degrees from the next (kept 25 degrees off the danger colour); only a
+  singing Voice can be hurt, from its step for one beat; Unison (the caller on beats 1 and 3, the Voice opposite on 2 and
+  4, the caller one round each bar), Canon (the answer running round the ring an eighth apart, the cage every fourth
+  bar), Fugue (two callers' streams sweeping 80 degrees, mirrored the next bar by the others, the cage every second bar),
+  Solo (the last Voices circling the nearest player at 280 wu, rings of 16 on beats 2 and 4, the held note's 120-degree
+  beam every fourth bar, the last Voice x 1.5). A dead Voice is a rest; the Round turns once in 16 bars, follows the
+  players at 60 wu/s, stops a beat and turns back when a Voice dies. Its look: hoods, ribs, faces, lips that flare when
+  it sings, halos and strings in pearl, the call string (a standing wave of three antinodes from the singer to the
+  answerer, its hues to white), the answerer drawing breath, the gold core of the singer, the burning cage and the held
+  note on the threat layer; **a silent hood at 0.6 of its level**. The death: the outlines sing the last chord with every
+  string white for a bar, then shatter clockwise.
+- **Contact with the Choir** (the lead's ruling, `94706dc`, choir.json `numbers.contact.hoodHurts`): a hood hurts by touch
+  only while it sings; read from the json ("only while it sings", "always", "never").
+- **Mini-bosses batch 1** (`src/sim/world_miniboss.cpp`): on the downbeat of the middle cycle's Drop from Track 2 on, in
+  place of the mega-wave; drawn by the run's seed from the Track's pair, never the one met in the Track before (the loop's
+  Tracks from their song's pair); the Drop holds while it lives, at most 8 bars past its 16, then it warps out and leaves
+  nothing; health by Track from minibosses.json, x its factor, x 1.25 a loop Track, x (1 + 0.5 per extra player); a
+  Boost orb, 60 Shards and 25 times a tier-5 body's score; three quarters of the Drop's crowd, fodder only; its name card
+  for a bar and a health bar half a boss's height. **Alpha Hound** circles at 420 wu and howls a pack of six (two of five
+  from opposite sides from half health) as a chevron with its danger line on beat 1, the pack charging on beat 3, its own
+  lunge every fourth bar (third), winded x 2 for two beats after; at its death the pack flees for two bars with double
+  Shards. **The Hive**: 120 darts and the Queen (12 hatched a bar, up to 160, counted against the enemy cap), Ring, Spear
+  and Wall in turn every two bars with a beat of white flash before each, two hives of 60 with a white decoy from half
+  health; every dart falls as Shards at her death. **Battering Ram** in the Pen: turns, locks on beat 3, charges on the
+  next downbeat at 1,400 wu/s, cannot stop with a wall within 300 wu behind the mark: the wall rings 16 bullets and it is
+  stunned x 2 (three beats, two from half health, when it also charges twice and leaves a wake); its front 120 degrees
+  sheds every shot. **Carom King** in the Pen: legs trimmed so every bounce lands on a beat, 8% faster each (to x 1.6),
+  five bullets fanned 40 degrees from each bounce, gold x 2 for a beat after it; a Prince shed at 75%, 50% and 25% (12%
+  of its health, 1.3 x its speed, bouncing on the half beats; a dead Prince breaks into two Caroms).
+- **The Pen**: a square of white light walls, 1,400 wu, round the players' centre on the downbeat; ships and bodies stop
+  at it, shots pass; fodder outside dissolves; the crowd warps in inside; it falls when the fight ends.
+- **The set list as data** (GAME_DESIGN 4.2): the loop begins after the set list's last Track (`World::setSetList`, the
+  music's Tracks the game has content for: three until Tracks 4 to 10 have their fights); `songOfTrack`, `bpmOfTrack`,
+  `loopRamp`, the halo burn, the ENCORE card and the palettes count from it. Tested for N = 1, 2, 3, 5, 10 (the loop at
+  N + 1) and in a run (N = 2, 3, 4).
+- **Co-op** as Kaleidos: health by the players present; every pattern from the song on every device; on the wire
+  (`src/net`, the only changes there): the protocol version `0x52460501`; a fight's enter message carries which fight
+  and the Pen's centre; the heartbeat carries every part's health (24 for Longwave, 8 Voices, 3 Princes) and the point
+  that keeps the clients' fight in place (Longwave's anchor, the Round's centre, a mini-boss's body); the director's
+  message carries the middle Drop's hold; decisions that read where the players stand (a Hive shape's anchor, a lock, a
+  lunge's line) are the host's (`World::bossDecide`), a client guessing until it hears.
+- **The bots** (`src/sim/bot.cpp`): every fight's parts are aimed at where damage will count when the shot arrives; the
+  careful bot keeps off the bodies where they will be (against its own course, a fifth and two fifths of a second ahead)
+  and dashes from one about to touch, rides beside Longwave's crest, keeps inside the Choir's Round (in through a gap,
+  never back out across the ring), keeps out of every line shown and off the Pen's walls.
+- **Sounds**: every fight's cue goes through one table, `src/game/pending_sounds.cpp` (one row a cue: the page, its
+  words, what plays, and what the engine lacks), on the engine's recipes since the merge (below).
+- **The camera**: Longwave and the Choir pull it to their pages' 0.75 for the whole fight (below look.json's zoomMin; the
+  lead accepted it, GAME_DESIGN 9 now says so); Longwave without the lean toward the boss.
+- **HUD**: every fight's name (a mini-boss's card small and for one bar), the whole health in one bar, pips for the
+  Voices and the segments after it.
+- **Tools**: `--fight <id>[:<phase>[:hold]]` (the run starts in the fight's home Track and the fast-forward plays on to
+  it; the phase takes its parts down; `:hold` gives the health back every tick, for benchmarks); `scripts\review-m5.ps1`;
+  `raveform_headless --sim crowd` reports each fight (fought, won, lost, warped out, hits a fight by bullets, bodies and
+  beams, seconds to kill by Track) and `--trace` a line a second of each fight and one for each hit in it.
+
+### The merge of `m5-audio` (the lead's instruction)
+
+`f9f3ae8` merges the audio engineer's branch at `95e9e6c` (the ten Tracks, beats from the clock, `src/audio/cues.h`): no
+conflict. After it the tests found `minibosses.json`'s batch 3 (the lead's commit of the same hour) unknown to the loader:
+`BossKind` gained `MirrorMimic`, `TwinTether`, `WeaverPrime`, `DeepWell` (data only) and the health table holds Tracks 2
+to 10. "On the beat" now reads the clock's beat (`BeatView::beat`), never the kick: the Trio's and Boost orbs' swell,
+the Cells and their chevrons, the co-op chevron and beacon flare, the HUD's full level meter, and the bench stage's Pulse
+Ring and Lancer; the kick stays where the kick is meant (the halo, the pump, the lattice's ripple, the logo). The fights'
+sounds now use the engine's recipes (`Band::playRecipe`, `startVoice` / `stopVoice`, `lowPassBed`) where they can say
+what the page asks; the audio engineer's report follows this section.
+
+### Acceptance
+
+| Check | Result | Limit |
+|---|---|---|
+| Builds, tests | Desktop Debug and dev and the APK; `scripts\test.ps1` passes (audio 2,539 checks, sim, net; determinism; both 10-minute loopback soaks: clean 6.1 wu RMS, impaired 7.9 wu; 0 census mismatches, 0 allocations) | all pass |
+| The careful bot, 20 seeds x 40 min | median first death **35.95 min** (Track 9); none in the first pass; boss fights lost **4.5%** (Kaleidos 3 of 79, Longwave 3 of 68, the Choir 3 of 56) | 26-36 min, none, at most 1 in 10 |
+| The careless bot, 20 seeds x 40 min | median first death **19.91 min** (Track 6); none in the first pass; the Choir lost 3 of 43 | 17-25 min, none; the Choir at most 1 in 5 |
+| Time to kill, careful bot (home Track) | Longwave **89 s** (T2), the Choir **84 s** (T3); Alpha Hound **22 s**, The Hive **29 s** (T2), Battering Ram **24 s**, Carom King **26 s** (T3) | 70-100, 80-110; 25-35 |
+| Hits a fight (careful) [bullets / bodies / beams] | Kaleidos 0.41 [0.06/0.34/0], Longwave 0.50 [0.32/0.18/0], the Choir 0.32 [0.21/0.09/0.02]; Alpha 0.02, Hive 0.11, Ram 0.55 [0.23/0.20/0.12], Carom 0.59 [0.13/0.46/0] | |
+| Mini-bosses that warped out (careful) | Alpha 3 of 45, Hive 11 of 56, Ram 8 of 40, Carom 7 of 39 (mostly in the loop, where their health climbs 1.25 a Track) | |
+| Review set, Debug | 31 pictures and 6 strips, 0 validation messages | 0 |
+| The Moto in each fight's densest moment (shared phone; our APK deployed before each run, the lock; `bench_play --tier low --nohits --fight <id>:<phase>:hold`, the fight held in that phase) | Longwave Chop (60 s): panel missed **0.64%**, P95 1 period, max 26.5 ms, enemy bullets up to 384, sim tick P95 0.27 ms; the Choir Solo, two Voices (60 s): missed **0%**, max 19.8 ms; Alpha Hound half (30 s): 0%, 19.5 ms; The Hive half: 0%, 20.1 ms; Battering Ram half: 0%, 19.3 ms; Carom King with three Princes: 0%, 19.7 ms. GPU total P95 13.1-13.6 ms at the GPU governor's clock; main thread CPU P95 4.2-4.6 ms; 0 heap allocations, 0 audio underruns | P95 <= 16.9 ms, missed <= 5%, max <= 50 ms: **all pass** |
+| A crash found on the Moto | a fight's own danger lines (the Alpha's pack, the Hive's spear) carry no species; the band's telegraph tick looked one up (`play.cpp`, out of bounds): fixed before these runs | |
+
+### Decisions taken alone
+
+- **The Hive's x 2** (minibosses.md says every mini-boss has one, and the Hive's entry names only when the Queen is
+  open): the beat of white flash before each shape, when every dart is white.
+- **The loop's mini-bosses**: a loop Track draws its mini-boss from its song's pair (First
+  Light's loop Tracks from all four).
+- **Longwave's lunge** has a closing sweep (the page gives the lunge no sound).
+- **A mini-boss's entrance** plays the elite-arrives patch under its card (not on the page).
+- **The camera** at the pages' 0.75 (accepted by the lead); Longwave's fight crowd at its page's 30% (accepted).
+- **The careless bot and the Choir**: with every hood hurting it lost 29 of 56 Choir fights and 10 of 20 runs in the
+  first pass (median 14.0 min); the lead ruled that only a singing hood hurts, and that variant meets the targets (above).
+  With the hoods harmless always (measured on the way): careless median 19.4 min, none in the first pass, the Choir 3 of 43.
+
+### Numbers chosen (`src/sim/tuning.h` M5 block, `src/sim/boss_prose.h` for the pages' words)
+
+- Health with the bot (the pages ask for it): Longwave x 1.4 on the page's 60 / 600 (the careful bot's build at Track 2 is
+  far past the page's 30 damage a second), the Choir x 4.5 on 260 a Voice, the mini-bosses x 6.5 (Alpha), 5.0 (Hive),
+  2.0 (Ram), 4.8 (Carom) on minibosses.json's 600 / 1,100 by Track.
+- Shards: 4 a Longwave segment, 20 a Voice, 10 a Prince; the Voices move to their places at most 900 wu/s, the Hive's darts
+  too; the Ram turns at 4 rad/s, its wall fan is 160 degrees wide, its wake 22 wu; a Prince that drifts on after the King
+  keeps a quarter of its speed.
+- The fights' bullet density lever at 1 (the pages' counts; Kaleidos keeps play test 1's 0.7).
+- The Ram's stun low-passes the bed at 600 Hz for its beats.
+
+### Pending sounds (`src/game/pending_sounds.cpp`; for the audio engineer, through the lead)
+
+What the pages ask that the engine's recipes cannot say yet (each row plays the nearest it has):
+
+1. Longwave's run: a rubber-string voice (the bass patch an octave up, twice its decay) pitched in semitones above the
+   chord's root (0 2 3 5 7 8 10 12) a crest step. Now: a lead note.
+2. Longwave's whip and the Choir's cage burn: the impact (crash and sine) as a one-shot, the whip's a fifth up. Now: the
+   large kill.
+3. A Voice's death: its pad note gliding down a fourth over a beat into the reverb. Now: SawGlide down a fourth.
+4. The held note: a held pad note that rises an octave as the beam fires. Now: the pad note held for the bar.
+5. The Hive's Ring: closed hats on a grid that tightens as the Ring closes. Now: the telegraph tick.
+6. The Ram's lock: a tom roll that rises. Now: the snare roll. Its charge's driven kick. Now: the sub drop alone.
+7. The Carom King's rim shot pitched to a chord tone (root, third, fifth, seventh), Princes an octave up. Now: the enemy shot.
+8. A note relative to the chord's root for any recipe (Tom, Woodblock, Bell): the game knows scale degrees, not MIDI notes.
+
+### Not done or not verified
+
+- The fights in co-op on devices (the loopback soaks pass with them in the run; no device co-op run of a new fight).
+- By ear: none of the fights' sounds has been heard (the PC's runs are silent).
+- The tablet and the OnePlus: not attached.
+
+## M5 audio: the ten Tracks of the set list — 2026-11-13 (the audio engineer; merged in `f9f3ae8`)
+
+Branch `m5-audio` (worktree `Raveform-m5-audio`, cut from `737949e`), folded in here from `docs/PROGRESS_m5_audio.md` at the merge.
+Phone numbers come from the **shared** Moto One 5G Ace (`ZY22BXMJG3`), under the phone lock (`m5audio`), with this
+branch's APK deployed right before each run.
+
+| Done criterion (brief) | Status | Evidence |
+|---|---|---|
+| Ten Tracks embedded, loaded, selectable (`--track 1..10`); every Track-sized table holds ten; ten palettes | **Met** | `MusicData` / `SampleBank` / `FdnReverb` / calibration tables at `kMaxTracks = 10`; `Palettes::kMax` 12 (an error if the file lists more); tests "music data", "palettes" |
+| Nothing assumes a kick on every beat; beats and bars from the song clock; the sidechain from the pattern's kicks | **Met** (engine and band); game-side readers listed below | tests "no kick on the beat" (Tracks 7, 9, 10): beats, bars, kicks, the sidechain frame by frame, the Nova, the fill, the Build's roll, riser, swell, impact |
+| Every Track x variant matches the prototype; calibration regenerated; `scripts\test.ps1` passes | **Met**: 30 of 30 pass, every onset 0 samples off | `captures\m5audio\match_table.md`; `test.ps1` all passed (audio 2519 checks) |
+| Track changes at all nine boundaries; medley with its events | **Met** | test "the set list: nine Track changes"; `captures\m5audio\setlist_medley.{wav,mp3,events.csv,txt}` |
+| Moto: full band at Track 10 and at the heaviest Track inside M2's limits | **Met**: P95 22.4% (Track 10), 22.6% (Track 9), 0 underruns, 0 callback allocations | below |
+
+### What changed
+
+- **Ten Tracks** (`music_data.*`, CMake): `track04` to `track10` embedded like the first three; `kMaxTracks = 10` at
+  namespace scope, the calibration table sized by it (it was `[4][4]`). Every override the new Tracks carry is bound
+  (none is reported unused): `duck` (Afterglow's pad 0.7, Arcadia's bass 0.45), `patch.kick_hz`, `lead.length`,
+  `stab.length`, `delay.*`, `reverb.rt60`. One-shot bank (`bake.*`): risers sized for ten Tracks (it held 8 entries),
+  the swell tables initialised to -1 for every Track (only the first four were), 512 samples, cache version 2. 304
+  one-shots, 48.3 MB (30.1 MB for three Tracks), 2.0 s on the desktop; the phone bakes once and caches.
+- **Kicks are not beats**: Beat and Bar events were already the clock's (`onTick`) and the sidechain already followed
+  `playKick`; the tests now prove it on the three Tracks without a kick on every beat. Kick events carry the pattern's
+  velocity in `x`; haptics tick on the Track's kicks (GAME_DESIGN 11.5) but not on ghost kicks below half velocity
+  (Last Light's step 13); `BeatView::beat(decay)` is the clock's beat envelope for anything meant "on the beat".
+  Fills (the clap's pick-up, the hats doubling from `hat_16`), the Build's roll (clock divisions) and the risers
+  (baked per Track at its tempo) never read kicks. Risers also follow a tempo override now (`bpmOverride_`).
+- **Shard runs in key** (`bake.cpp`): a major pentatonic where the scale has no minor third (Afterglow, Arcadia,
+  Mirage); the minor one put a minor third and seventh over them. Tracks 1-6 and 10 unchanged.
+- **Found on the faster Tracks** (pre-existing since M2; Tracks 1-3 never reached them in the 20 s tests):
+  1. Voices were summed in slot order, and the slot a voice got depended on where the callbacks fell: random bursts
+     differed from fixed ones by float rounding, which the reverb carried on. Each pool now keeps its voices in start
+     order (start frame, then allocation) and is summed in that order; pending effects fire in planned order; the lead's
+     per-player cap is decided at the new note's frame.
+  2. The section gain's ramp across a bar line: the next section's first point was added only when its bar was planned,
+     so the 30 ms before each section change held the old gain and the ramp jumped half way at the downbeat (by how
+     much depended on the callbacks). The next point is now planned a section ahead (staged) or on the last bar
+     (conductor; replaced if the director chooses otherwise).
+  Since then random 1-1000-frame bursts render bit for bit like 192-frame ones on all ten Tracks.
+- **Cost** (the full band at 174 BPM has 40% more lead notes in flight than at 120): per-voice caches of each knot
+  interval's coefficients and envelopes (bit for bit the same values), the lead's and pads' PolyBLEPs four at a time
+  (`dsp.h` `polyBlep4`), a polynomial sine for the P3 bell and the bass's sub, and **a teammate's lead holds at most 8
+  notes** (the local player's 12): at 174 BPM every player reached 12 (48 lead voices against 33 at 120 BPM); the notes
+  cut short are past 0.23 s and more than 20 dB under the local lead's onsets. Staged renders never reach either cap.
+  A 4-lane lead kernel (four voices a vector) and two-voice interleaving were measured and dropped: no gain on the
+  A77 or the desktop.
+- **Why the rounding changed (kDspVersion 3 -> 5)**: the summation order (above) and the vector PolyBLEPs compute
+  `t * (1/dt)` where the scalar code divided `t / dt`, and sum the pads' saws pairwise; both move a sample by about one
+  float rounding step. The loudness calibration moved by at most 0.001 dB; Tracks 1-3's match is unchanged to two
+  decimals in every column (table below, identical to M2's), their loudness before the output gain too (-8.96 /
+  -8.92 / -8.25, -8.52 / -8.53 / -8.41, -9.23 / -9.19 / -9.00 LUFS).
+- **Tools**: `raveform_headless --render medley`, `--render full --track N` (it always played Track 1), `--timbre N`
+  (profiling), events with full-precision `x`; `--audio-profile` (app) adds the engine's time per stage, the lead per
+  timbre, to a benchmark's `audio_engine`; `audio_check.py tempo-onsets` (onsets against the tempo map rebuilt from the
+  log); `render-audio.ps1 -Out` and every `track??.json`; `audio-device.ps1 -LockName`.
+
+### Match against the prototype (`scripts\render-audio.ps1 -Out captures\m5audio`, final engine)
+
+| Render | LUFS engine | LUFS prototype | True peak dBFS | Worst band diff dB | Worst section diff dB | Onsets checked | Worst onset error | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| track01 club / arcade / velvet | -14.00 | -14.00 | -5.19 / -5.20 / -5.91 | 0.18 / 0.19 / 0.49 | 0.58 / 0.60 / 0.38 | 1226 | 0 | pass |
+| track02 | -14.00 | -14.00 | -5.58 / -5.59 / -5.70 | 0.42 / 0.39 / 0.31 | 0.28 / 0.36 / 0.32 | 1254 | 0 | pass |
+| track03 | -14.00 | -14.00 | -4.96 / -5.00 / -5.18 | 0.19 / 0.20 / 0.17 | 0.14 / 0.12 / 0.17 | 1329 | 0 | pass |
+| track04 | -14.00 | -14.00 | -5.29 / -5.16 / -5.44 | 0.09 / 0.12 / 0.17 | 0.31 / 0.32 / 0.27 | 1262 | 0 | pass |
+| track05 | -14.00 | -14.00 | -5.42 / -5.42 / -5.71 | 0.12 / 0.09 / 0.15 | 0.14 / 0.12 / 0.08 | 1301 | 0 | pass |
+| track06 | -14.00 | -14.00 | -5.74 / -5.74 / -5.62 | 0.19 / 0.22 / 0.29 | 0.57 / 0.51 / 0.55 | 1248 | 0 | pass |
+| track07 | -14.00 | -14.00 | -5.36 / -5.43 / -5.27 | 0.35 / 0.36 / 0.29 | 0.31 / 0.30 / 0.23 | 993 | 0 | pass |
+| track08 | -14.00 | -14.00 | -6.76 / -6.68 / -7.04 | 0.12 / 0.08 / 0.11 | 0.42 / 0.41 / 0.33 | 1337 | 0 | pass |
+| track09 | -14.00 | -14.00 | -5.79 / -5.78 / -5.65 | 0.13 / 0.15 / 0.13 | 0.09 / 0.10 / 0.10 | 1164 | 0 | pass |
+| track10 | -14.00 | -14.00 | -5.41 / -5.34 / -5.26 | 0.08 / 0.10 / 0.09 | 0.48 / 0.47 / 0.56 | 989 | 0 | pass |
+
+Worst sections are the Breaks (pad start phases, as in M2), except Afterglow's third Groove section (-0.31, its long
+room) and Mirage's second (-0.09). Loudness before the output gain within 0.14 LU of the prototype's on every render
+(Afterglow 0.14, Arcadia 0.12, the rest within 0.09).
+
+### Calibration (`src/audio/loudness_calibration.json`, kDspVersion 5)
+
+Tracks 1-3 unchanged (to 0.001 dB). New: track04 -5.216 / -4.996 / -5.387, track05 -5.336 / -5.327 / -5.642, track06
+-5.581 / -5.695 / -5.558, track07 -5.258 / -5.282 / -5.078, track08 -6.631 / -6.571 / -6.926 (the loudest raw render,
+-7.37 LUFS: Arcadia's square bass), track09 -5.479 / -5.532 / -5.383, track10 -5.099 / -5.115 / -4.997 dB
+(club / arcade / velvet).
+
+### Track changes and the medley
+
+The test drives the conductor bar by bar as `Play::conductBand` does (SetPhrase for the next bar, SetTrack with the
+Break's first bar): at all nine boundaries the Break is eight bars from the bar asked for, the tempo steps linearly
+bar by bar from the old Track's to the new one's (within 0.001 BPM), the Track changes on the Break's fifth bar, the
+Build runs at the new tempo with its 85% bar and the new Track's riser (baked four bars at that tempo, played at
+4 / (3 + 1/0.85)), the Drop lands at the new tempo; the main thread's mirrored tempo map agrees on every onset.
+
+`captures\m5audio\setlist_medley.mp3` (and `.wav`, 16-bit; `.events.csv`; `.txt` with the times): Track 1's Groove
+(2 bars) and Build, then about 20 s of every Track's Drop with the real change between them (8-bar Break, 4-bar Build),
+one player firing in Builds and Drops and resting in Breaks, three Riffs, intensity 1; 6:44 in all, -13.6 LUFS, peak
+-4.95 dBFS; 13,645 onsets on the tempo map's grid (0 samples off). Drops at 0:12 First Light, 0:56 Solar Wind, 1:39
+Reef, 2:21 Aurora, 3:02 Furnace, 3:42 Zenith, 4:22 Afterglow, 5:00 Arcadia, 5:38 Mirage, 6:15 Last Light.
+`raveform_headless --render medley --out x.wav --events x.csv`; check with `audio_check.py tempo-onsets x.csv`.
+
+### Moto (`bench_idle --band full`, our APK, the lock; shared phone)
+
+| Run | Callbacks | Load P50 / P95 / P99 / max | Callback us P50 / P95 / max | Underruns | Callback allocations | Voices peak |
+|---|---|---|---|---|---|---|
+| M2: Track 1, 30 s | | 0.237 at P95 | 900 / 1150 / 1290 | 0 | 0 | 72 |
+| M2: Track 3 contract run (bench_endgame) | | 0.234 at P95 (P99 0.289) | 1020 / 1130 / 1300 | 0 | 0 | 81 |
+| Before the cost work: Track 10, 120 s | 26,629 | 0.247 / **0.285** / 0.336 / 0.693 | 1210 / 1380 / 2300 | 0 | 0 | 84 |
+| **Final: Track 10, 120 s** | 26,628 | 0.192 / **0.224** / 0.286 / 0.625 | 950 / 1070 / 1320 | **0** | **0** | 72 |
+| **Final: Track 9, 120 s** (heaviest offline, with Track 10) | 26,629 | 0.194 / **0.226** / 0.284 / 0.736 | 960 / 1080 / 1260 | **0** | **0** | 74 |
+| Final: Track 1, 60 s | 13,314 | 0.172 / 0.206 / 0.270 / 0.700 | 840 / 990 / 1170 | 0 | 0 | 68 |
+| Final: Track 10, 10 minutes | see the soak line in the report | | | | | |
+
+Offline profile of the full band (`--render full --track N --profile`, ms of engine time a second of audio, before the
+teammates' cap): Track 1 29, Tracks 2-6 34-37, Tracks 7, 9, 10 38.2-39.8 (9 and 10 tie within noise). On the phone
+(`--audio-profile`, Track 10, us a callback): lead 707 (saw 177, square 171, bell 194, stab 165), pad 139, bass 67,
+master 64, reverb 63. P99 stays above 25% (as in M2, 0.265-0.289): the callbacks' tail is the phone's.
+
+### Game code that reads a kick as the beat (src/game, not changed here)
+
+`envelope(BeatKind::Kick)` is the pattern's kick (right for the kick pump, the halo, the lattice ripples, the logo:
+look.md and screens.md say "kick"). These say "on the beat" and read the kick, so on Afterglow, Mirage and Last Light
+they pulse on beat 1 and the and of 3 (and 2) only; `BeatView::beat(decay)` gives the clock's beat:
+`play_view_b.cpp` 276 (Trio orbs "swell 6% on the beat"), 294 (Boost orbs), 317 and 320 (chevron, Cells "swell on the
+beat"), `play_view_coop.cpp` 73 and 108 (chevron, beacon flare), `play_hud.cpp` 290 (the full meter's flash);
+`stage.cpp` 1627 and 1644 (the bench stage's Pulse Ring and Lancer "every second beat" from `lastKickT_`);
+`play_view.cpp` 706-719 (the no-band fallback synthesises a kick on every beat; fine for pictures of Tracks 1-6).
+
+### Not done or not verified
+
+- By ear: the user has not heard the engine's ten Tracks (the match is by numbers; the medley is for that).
+- The fixed-pitch effects of sfxproto (Boost A arpeggio, Upgrade Am9, Elite A-E fifth, game over A) are in A minor on
+  every Track; on Solar Wind, Furnace, Afterglow and Mirage they are out of key (a design question, unchanged).
+- The game's director still plays three songs and the loop (`kSongs = 3`, the other engineer's).
+- `CLAUDE.md` still says `--track 1|2|3`.
+- The one-shot bank is 48.3 MB in memory and in the cache file; the four-bar risers are half of it (int16 risers or
+  baking per Track on demand would halve it). First-launch bake time on the Moto not measured (2.5 s for three Tracks
+  in M2; about 2.2 times the desktop's work now).
+- 12R and tablet: not attached, no numbers.
+
 ## M4 stage B "LAN co-op: the lobby, the screens, the devices" — 2026-11-12
 
 Built on `main` (never pushed): `988f718`, `d72f845`, `8dbcd3b` (the first engineer: the co-op picture in the owners'
