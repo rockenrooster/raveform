@@ -24,6 +24,9 @@
 namespace rf::net {
 
 enum class SessionState : u8 { Idle, Connecting, Lobby, Running, Ended };
+// Where a remote player is taken for a tick (fillRemote): ~66 ms behind its newest pose, interpolated (TECH_SPEC 8.1 as
+// written), or at the tick's own time, carried on from its newest pose (docs/PROGRESS_m4_net.md).
+enum class RemotePoses : u8 { Interpolate, Predict };
 
 struct SessionConfig {
     sim::NetRole role = sim::NetRole::Host;
@@ -41,6 +44,7 @@ struct SessionConfig {
     bool autoStart = true;
     bool autoRestart = true;
     bool beacon = false;
+    RemotePoses remotePoses = RemotePoses::Interpolate;
 };
 
 // What the net overlay and the soak report show (per second where it says so).
@@ -96,6 +100,10 @@ struct NetDiag {
     // stamp: one-way delay, the frame it waited for and the clock estimate's error), and how far fillRemote reached past
     // the newest sample (extrapolated).
     u32 poses[4] = {};
+    u32 posesHeard[4] = {};    // every pose of that seat parsed, repeats and the redundant previous state included
+    u32 posesRelayed[4] = {};  // host: poses of that seat relayed to the other clients
+    u32 posesMisstamped[4] = {};  // dropped: stamped too far from this device's host time (another clock, or stale)
+    u32 badPackets = 0;
     float poseGapMaxMs[4] = {};
     u32 poseGapsOver66[4] = {}, poseGapsOver100[4] = {};
     double poseAgeSumMs[4] = {};
@@ -186,7 +194,7 @@ public:
     void sendBed(u32 bar, u8 level);          // host
     bool bedLevel(u32 bar, u8& level) const;  // client: the host's level for that bar, when it has come
     // The remote players for a tick ending at host time `hostUs` (drawn ~66 ms behind, TECH_SPEC 8.1).
-    void fillRemote(sim::TickInput& in, i64 hostUs) const;
+    void fillRemote(sim::TickInput& in, i64 hostUs);
     void afterTick();
     void send(i64 localUs, const sim::PlayerPose& pose);
     // The device's clock at this moment (microseconds), for the time-sync stamps; without it the frame's time.
@@ -300,6 +308,12 @@ private:
     } poses_[sim::kMaxPlayers];
     MsgPose ownPrev_;
     bool havePrev_ = false;
+    // Predicted remote players: the newest pose each estimate came from and the offset that spreads a new pose's jump.
+    struct RemoteTrack {
+        bool valid = false;
+        i64 stamp = 0, lastAt = 0;
+        Vec2 pos, vel, off;
+    } track_[sim::kMaxPlayers];
 
     // Outgoing.
     PacketWriter rel_;      // reliable, being filled

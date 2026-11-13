@@ -20,6 +20,13 @@ constexpr i64 kCensusEveryUs = 2000000;
 constexpr i64 kPingFastUs = 50000, kPingUs = 250000;  // TECH_SPEC 8.2: 4 Hz (20 Hz until 16 samples)
 constexpr i64 kInterpUs = 66000;        // remote players drawn ~66 ms behind
 constexpr i64 kExtrapMaxUs = 100000;
+// Predicted remote players (fillRemote): carried on from the newest pose for at most this long, a new pose's jump spread
+// over this long, and a jump larger than this (a revive, a new run) taken at once.
+constexpr i64 kPredictMaxUs = 150000;
+constexpr float kPoseSmoothS = 0.1f;
+constexpr float kPoseSnapWu = 120.0f;
+// A pose stamped further than this from the receiver's host time (ahead of it, behind it) is not used (onPose).
+constexpr i64 kPoseStampAheadUs = 1000000, kPoseStampBehindUs = 5000000;
 constexpr u32 kCorrPerPacket = 32;      // 32 x 30 bytes + headers: under 1,000 bytes a packet (the limit is 1,200)
 constexpr double kBar = 384.0, kBeat = 96.0;
 // TECH_SPEC 8.4: at most 250 kbit/s down per client. Everything sent to a client is counted on the wire against
@@ -76,8 +83,12 @@ void mergeDiag(NetDiag& into, const NetDiag& d) {
     into.tauSum += d.tauSum;
     into.tau2Sum += d.tau2Sum;
     into.tauN += d.tauN;
+    into.badPackets += d.badPackets;
     for (u32 s = 0; s < 4; ++s) {
         into.poses[s] += d.poses[s];
+        into.posesHeard[s] += d.posesHeard[s];
+        into.posesRelayed[s] += d.posesRelayed[s];
+        into.posesMisstamped[s] += d.posesMisstamped[s];
         into.poseGapMaxMs[s] = std::fmax(into.poseGapMaxMs[s], d.poseGapMaxMs[s]);
         into.poseGapsOver66[s] += d.poseGapsOver66[s];
         into.poseGapsOver100[s] += d.poseGapsOver100[s];
@@ -158,12 +169,21 @@ u32 formatDiagPoses(const NetDiag& d, u32 seats, u32 self, char* out, u32 size) 
     const auto put = [&](int n) {
         if (n > 0) w = w + static_cast<u32>(n) < size ? w + static_cast<u32>(n) : size - 1;
     };
-    put(std::snprintf(out + w, size - w, "poses"));
+    put(std::snprintf(out + w, size - w, "poses (bad packets %u)", d.badPackets));
     for (u32 s = 0; s < seats && s < 4; ++s) {
-        if (s == self || !d.poses[s]) continue;
+        if (s == self) continue;
+        if (!d.poses[s]) {
+            if (d.posesHeard[s] || d.posesRelayed[s] || d.fills[s])
+                put(std::snprintf(out + w, size - w, " | seat %u: none new (heard %u, misstamped %u, relayed %u, ticks %u)", s, d.posesHeard[s],
+                                  d.posesMisstamped[s], d.posesRelayed[s], d.fills[s]));
+            continue;
+        }
         put(std::snprintf(out + w, size - w,
-                          " | seat %u: %u, gap max %.0f ms, >66 %u, >100 %u, age %.0f/%.0f/%.0f ms, past newest %.1f%% (mean %.0f, max %.0f ms)",
-                          s, d.poses[s], static_cast<double>(d.poseGapMaxMs[s]), d.poseGapsOver66[s], d.poseGapsOver100[s],
+                          " | seat %u: %u new of %u heard (misstamped %u, relayed %u), gap max %.0f ms, >66 %u, >100 %u, age %.0f/%.0f/%.0f ms, "
+                          "past newest %.1f%% (mean %.0f, max %.0f ms)",
+                          s, d.poses[s], d.posesHeard[s], d.posesMisstamped[s], d.posesRelayed[s], static_cast<double>(d.poseGapMaxMs[s]),
+                          d.poseGapsOver66[s],
+                          d.poseGapsOver100[s],
                           static_cast<double>(d.poseAgeMinMs[s]), d.poseAgeSumMs[s] / static_cast<double>(d.poses[s]),
                           static_cast<double>(d.poseAgeMaxMs[s]),
                           d.fills[s] ? 100.0 * static_cast<double>(d.extrapolated[s]) / static_cast<double>(d.fills[s]) : 0.0,
@@ -198,6 +218,7 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     rel_.reset();
     havePrev_ = false;
     for (PoseRing& r : poses_) r = PoseRing{};
+    for (RemoteTrack& t : track_) t = RemoteTrack{};
     for (i32& s : peerSeat_) s = -1;
     for (i32& p : seatPeer_) p = -1;
     for (bool& w : welcomed_) w = false;
@@ -327,7 +348,10 @@ void Session::service() {
             case Link::Event::Receive:
                 fromPeer_ = ev.peer;
                 from_ = host() ? (ev.peer < kMaxLinkPeers ? peerSeat_[ev.peer] : -1) : 0;
-                if (!parsePacket(ev.data, ev.size, *this)) ++stats_.badPackets;
+                if (!parsePacket(ev.data, ev.size, *this)) {
+                    ++stats_.badPackets;
+                    ++diag_.badPackets;
+                }
                 from_ = -1;
                 break;
             default: break;
@@ -668,6 +692,20 @@ void Session::onPose(const MsgPose& m) {
         return;
     }
     if (m.player >= kMaxPlayers) return;
+    ++diag_.posesHeard[m.player];
+    // A pose is stamped in host time. One stamped far from this device's host time now was made on another clock (a
+    // client's pose before its clock had a sample: its own local time; a PC's clock was 6.5 days ahead of the Moto's) or
+    // is stale: it is dropped. Kept, it sorted as the newest for good, and the host relayed it in place of every later
+    // pose, so the other clients saw that player standing where it stood in the lobby for the whole run
+    // (docs/PROGRESS_m4_net.md, the cause of the on-screen error with the Moto hosting four).
+    if (!host() && !clock_.valid()) return;
+    {
+        const i64 ahead = m.stampUs - hostNow_;
+        if (ahead > kPoseStampAheadUs || ahead < -kPoseStampBehindUs) {
+            ++diag_.posesMisstamped[m.player];
+            return;
+        }
+    }
     // Into the ring in time order (packets arrive in any order); a repeat (the redundant previous state) is
     // skipped, and when the ring is full the oldest goes.
     PoseRing& r = poses_[m.player];
@@ -689,7 +727,7 @@ void Session::onPose(const MsgPose& m) {
         d.cur = s;
         return true;
     };
-    if (m.prevAgeMs >= 0) add(m.stampUs - static_cast<i64>(m.prevAgeMs) * 1000, m.prev);
+    if (m.prevAgeMs > 0 && m.prevAgeMs <= 1000) add(m.stampUs - static_cast<i64>(m.prevAgeMs) * 1000, m.prev);
     if (add(m.stampUs, m.cur)) {
         // Diagnostics: a new sample of this player (a relayed pose the host had already sent is not one).
         const u32 p = m.player;
@@ -1019,14 +1057,22 @@ void Session::resumed() {
     pauseAt_ = resumeAt_ = -1.0;
 }
 
-void Session::fillRemote(TickInput& in, i64 hostUs) const {
-    const i64 at = hostUs - kInterpUs;
+void Session::fillRemote(TickInput& in, i64 hostUs) {
+    // TECH_SPEC 8.1 draws a remote player about 66 ms behind its newest pose (interpolated). Predicted (M4 net follow-up,
+    // docs/PROGRESS_m4_net.md): every device takes each remote player where it is at the tick's own host time, carried on
+    // from its newest pose by its velocity, so the enemies following a player follow the same place on every device (66 ms
+    // behind, the host's enemies chased a client's ship where it had been and the client's copies where it was). When a
+    // new pose moves that estimate, the ship keeps its place through an offset that decays over kPoseSmoothS.
+    const bool predict = cfg_.remotePoses == RemotePoses::Predict;
+    const i64 at = predict ? hostUs : hostUs - kInterpUs;
+    const i64 reach = predict ? kPredictMaxUs : kExtrapMaxUs;
     for (u32 s = 0; s < seats_ && s < kMaxPlayers; ++s) {
         if (s == seat_) continue;
         PlayerPose& p = in.players[s];
         const PoseRing& r = poses_[s];
         if (!(seatMask_ & (1u << s)) || !r.count) {
             p.present = false;
+            track_[s].valid = false;
             continue;
         }
         // The two samples around `at`; past the newest, carried on by its velocity for at most 100 ms.
@@ -1057,12 +1103,36 @@ void Session::fillRemote(TickInput& in, i64 hostUs) const {
             st.heading = lerpAngle(a->cur.heading, b->cur.heading, t);
         } else if (a) {
             st = a->cur;
-            const i64 ahead = at - a->stampUs < kExtrapMaxUs ? at - a->stampUs : kExtrapMaxUs;
+            const i64 ahead = at - a->stampUs < reach ? at - a->stampUs : reach;
             const float dt = static_cast<float>(static_cast<double>(ahead) * 1e-6);
             st.x += st.vx * dt;
             st.y += st.vy * dt;
         } else {
             st = b->cur;
+        }
+        if (predict) {
+            RemoteTrack& t = track_[s];
+            const MsgPose& n = r.s[(r.head + r.count - 1) % kPoseRing];
+            if (!t.valid) {
+                t.off = Vec2{};
+                t.lastAt = at;
+            } else {
+                if (at > t.lastAt) t.off = t.off * std::exp(-static_cast<float>(static_cast<double>(at - t.lastAt) * 1e-6) / kPoseSmoothS);
+                t.lastAt = at;
+                if (n.stampUs != t.stamp) {
+                    // What the newest pose before this one said about this moment, against what this one says.
+                    const i64 ahead = at - t.stamp < 0 ? 0 : (at - t.stamp < reach ? at - t.stamp : reach);
+                    const float dt = static_cast<float>(static_cast<double>(ahead) * 1e-6);
+                    const Vec2 jump = Vec2{st.x, st.y} - (t.pos + t.vel * dt);
+                    t.off = lengthSq(jump) > kPoseSnapWu * kPoseSnapWu ? Vec2{} : t.off - jump;
+                }
+            }
+            t.valid = true;
+            t.stamp = n.stampUs;
+            t.pos = Vec2{n.cur.x, n.cur.y};
+            t.vel = Vec2{n.cur.vx, n.cur.vy};
+            st.x += t.off.x;
+            st.y += t.off.y;
         }
         p.present = true;
         p.pos = Vec2{st.x, st.y};
@@ -1498,10 +1568,16 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
         m.cur.heading = pose.heading;
         m.cur.fire = me.alive ? pose.fire : 0;
         m.cur.flags = static_cast<u8>((pose.dashing ? 1u : 0u) | (me.alive ? 2u : 0u) | (me.down ? 4u : 0u));
-        m.prevAgeMs = havePrev_ ? static_cast<i16>((hostNow_ - ownPrev_.stampUs) / 1000) : -1;
-        if (havePrev_) m.prev = ownPrev_.cur;
-        ownPrev_ = m;
-        havePrev_ = true;
+        // A client stamps its pose in host time once its clock has settled on the host's (synced(): before that its
+        // "host time" is its own clock, which may be days off); until then it sends none.
+        const bool stamped = host() || synced();
+        const i64 prevAge = havePrev_ ? hostNow_ - ownPrev_.stampUs : -1;
+        m.prevAgeMs = prevAge > 0 && prevAge <= 1000000 ? static_cast<i16>(prevAge / 1000) : -1;
+        if (m.prevAgeMs >= 0) m.prev = ownPrev_.cur;
+        if (stamped) {
+            ownPrev_ = m;
+            havePrev_ = true;
+        }
         if (host()) {
             // The other players' newest poses, to each client (not its own back).
             MsgPose all[kMaxPlayers];
@@ -1513,6 +1589,7 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
                     const PoseRing& r = poses_[s];
                     if (s == c || !welcomed_[s] || !r.count) continue;
                     all[n++] = r.s[(r.head + r.count - 1) % kPoseRing];
+                    ++diag_.posesRelayed[s];
                 }
                 scratch_.reset();
                 scratch_.putPlayers(all, n);
@@ -1520,7 +1597,7 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
             }
         } else {
             scratch_.reset();
-            scratch_.putPose(m);
+            if (stamped) scratch_.putPose(m);
             if (state_ == SessionState::Running && localUs >= nextAttentionUs_) {
                 const u32 n = attention();
                 if (n && scratch_.putAttention(w.runId(), attention_, n)) stats_.attention += n;

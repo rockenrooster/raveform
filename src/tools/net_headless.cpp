@@ -135,6 +135,9 @@ bool flag(int argc, char** argv, const char* name) {
     return false;
 }
 
+// --remote-poses interp|predict: where every peer of this process takes a remote player for a tick (net/session.h).
+RemotePoses g_remotePoses = SessionConfig{}.remotePoses;
+
 u32 overflowOf(const World& w) {
     const WorldCounters& c = w.counters();
     return c.enemiesDropped + c.bulletsDropped + c.shotsDropped + c.shardsDropped + c.eventsDropped + c.netOpsDropped + c.netLogDropped;
@@ -188,6 +191,7 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
         std::snprintf(c.session.name, sizeof c.session.name, k == 0 ? "HOST" : "BOT%u", k);
         c.session.sim = sim;
         c.session.sim.seed = sim.seed * 7919u + k * 104729u + 1u;
+        c.session.remotePoses = g_remotePoses;
         c.session.seed = seed;
         c.botSeed = seed * 31 + k;
         c.clockOffsetUs = kOffsets[k];
@@ -543,6 +547,7 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
 int runPeer(const SpeciesTable& species, bool host, int argc, char** argv) {
     PeerConfig c;
     c.session.role = host ? NetRole::Host : NetRole::Client;
+    c.session.remotePoses = g_remotePoses;
     const char* v = nullptr;
     c.session.seats = (v = arg(argc, argv, "--players")) ? static_cast<u32>(std::atoi(v)) : 4u;
     c.session.port = (v = arg(argc, argv, "--port")) ? static_cast<u16>(std::atoi(v)) : kGamePort;
@@ -760,6 +765,15 @@ int netHeadlessMain(int argc, char** argv) {
     auto* species = new (std::nothrow) SpeciesTable;
     if (!species || !species->load()) return 2;
     int code = 2;
+    if (const char* rp = arg(argc, argv, "--remote-poses")) {
+        if (std::strcmp(rp, "predict") == 0) g_remotePoses = RemotePoses::Predict;
+        else if (std::strcmp(rp, "interp") == 0) g_remotePoses = RemotePoses::Interpolate;
+        else {
+            std::printf("[net] --remote-poses interp|predict\n");
+            delete species;
+            return 2;
+        }
+    }
     if (std::strcmp(mode, "soak") == 0) {
         const char* v = nullptr;
         const float minutes = (v = arg(argc, argv, "--minutes")) ? static_cast<float>(std::atof(v)) : 10.0f;

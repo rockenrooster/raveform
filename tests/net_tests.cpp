@@ -976,6 +976,67 @@ void testDownRevive(const SpeciesTable& species) {
     delete w;
 }
 
+void testRelayClocks(const SpeciesTable& species) {
+    g_test = "relay";
+    // M4 net follow-up (docs/PROGRESS_m4_net.md): the host relays each client's pose to the others, whatever the clients'
+    // own clocks read. Client 1's clock runs 6.5 days ahead of the host's (the PC's against the Moto's); before the fix its
+    // lobby poses, stamped on its own clock, sorted as the newest for good and the host relayed only those, so clients 2
+    // and 3 saw player 1 stand where it stood in the lobby for the whole run. A host and three clients, 40 simulated s.
+    wireUseSimClock(true);
+    i64 t = 9000000000ll;
+    wireSetSimTimeUs(t);
+    auto* peers = new (std::nothrow) NetPeer[4];
+    static const i64 kOffsets[4] = {0, 560397120000ll, -777000, 3210};
+    for (u32 k = 0; k < 4; ++k) {
+        PeerConfig c;
+        c.session.role = k == 0 ? NetRole::Host : NetRole::Client;
+        c.session.seats = 4;
+        c.session.wire = WireKind::Loopback;
+        c.session.port = 47902;
+        std::snprintf(c.session.bindIp, sizeof c.session.bindIp, "%s", k == 0 ? "127.0.0.1" : "");
+        std::snprintf(c.session.joinIp, sizeof c.session.joinIp, "127.0.0.1");
+        c.clockOffsetUs = kOffsets[k];
+        c.botSeed = 31 + k;
+        CHECK(peers[k].start(c, &species));
+    }
+    float worst = 0.0f;
+    for (u32 step = 0; step < 40000; ++step) {
+        t += 1000;
+        wireSetSimTimeUs(t);
+        for (u32 k = 0; k < 4; ++k) wirePump(peers[k].session().link().socket());
+        for (u32 k = 0; k < 4; ++k)
+            if (step % 17 == k * 4) peers[k].frame(t);
+        if (step == 30000)
+            for (u32 k = 1; k < 4; ++k) peers[k].session().resetDiag();
+        if (step > 30000 && step % 500 == 0) {
+            // Each client's copy of every other client's player against that player's own position (within the 66 ms
+            // the copy is drawn behind and a ship's top speed).
+            for (u32 k = 1; k < 4; ++k)
+                for (u32 j = 1; j < 4; ++j) {
+                    if (j == k || !peers[j].world().player(j).alive) continue;
+                    const float d = length(peers[k].world().player(j).pos - peers[j].world().player(j).pos);
+                    if (d > worst) worst = d;
+                }
+        }
+    }
+    u32 heard = 0;
+    for (u32 k = 1; k < 4; ++k) {
+        CHECK(peers[k].session().running());
+        for (u32 j = 1; j < 4; ++j)
+            if (j != k) {
+                CHECK(peers[k].session().diag().poses[j] > 100);  // new poses of every other client arrived (30 Hz)
+                heard += peers[k].session().diag().poses[j];
+            }
+    }
+    CHECK(worst < 250.0f);
+    std::printf("  relay: with one client's clock 6.5 days ahead, each client heard the others' new poses (%u in 10 s); the farthest "
+                "copy of a teammate %.1f wu from the teammate itself\n",
+                heard, static_cast<double>(worst));
+    for (u32 k = 0; k < 4; ++k) peers[k].stop();
+    delete[] peers;
+    wireUseSimClock(false);
+}
+
 }  // namespace
 
 int main() {
@@ -993,6 +1054,7 @@ int main() {
     testRefusals(*species);
     testLeave(*species);
     testDownRevive(*species);
+    testRelayClocks(*species);
     std::printf("[net tests] %d checks, %d failures\n", g_checks, g_failures);
     delete species;
     return g_failures;
