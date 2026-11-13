@@ -492,9 +492,9 @@ void testDirectorCycle() {
     CHECK(phraseAt(d, 82 + 72 + 16).bossDrop && phraseAt(d, 82 + 72 + 16).cycle == 3);
     CHECK(phraseAt(d, 82 + 36 + 16).section == Section::Drop && !phraseAt(d, 82 + 36 + 16).bossDrop);
     // Track 3 is Reef (three Standard cycles at 132 BPM); then the loop over all three, 4 BPM a Track faster.
-    CHECK(bpmOfTrack(3) == 132.0f && bpmOfTrack(4) == 136.0f && bpmOfTrack(5) == 140.0f && bpmOfTrack(40) == 174.0f);
-    CHECK(songOfTrack(3) == 2 && cyclesOfTrack(3) == 3 && formOfTrack(3) == 1);
-    CHECK(songOfTrack(4) == 0 && cyclesOfTrack(4) == 3 && formOfTrack(4) == 0 && songOfTrack(5) == 1 && songOfTrack(6) == 2);
+    CHECK(bpmOfTrack(3, 3) == 132.0f && bpmOfTrack(4, 3) == 136.0f && bpmOfTrack(5, 3) == 140.0f && bpmOfTrack(40, 3) == 174.0f);
+    CHECK(songOfTrack(3, 3) == 2 && cyclesOfTrack(3) == 3 && formOfTrack(3, 3) == 1);
+    CHECK(songOfTrack(4, 3) == 0 && cyclesOfTrack(4) == 3 && formOfTrack(4, 3) == 0 && songOfTrack(5, 3) == 1 && songOfTrack(6, 3) == 2);
     // Budgets (species.json firstSlice, threats only), rising past the data; section scales (GAME_DESIGN 8).
     const float(*b)[8] = g_species->budget;
     CHECK(baseBudget(b, g_species->budgetCycles, 1, 1) == 2.0f && baseBudget(b, g_species->budgetCycles, 1, 2) == 3.5f &&
@@ -842,7 +842,7 @@ void testAutoNova() {
         double music = 0.0;
         stepWorld(*w, music, Vec2{});
         w->spawnBossNow(kTicksPerBar, Vec2{600.0f, 0.0f});
-        CHECK(std::fabs(w->boss().pairMax - 0.7f * g_species->boss.pairHealth) < 1e-3f);
+        CHECK(std::fabs(w->boss().partMax - 0.7f * g_species->boss.pairHealth) < 1e-3f);
         CHECK(std::fabs(w->boss().coreMax - 0.7f * g_species->boss.coreHealth) < 1e-3f);
         delete w;
     }
@@ -1092,15 +1092,15 @@ void testBoss() {
             return std::pair<Vec2, Vec2>{s.pos + d * from, s.pos + d * to};
         };
         // Arm 0 (pair A) rests in fight bar 0: x3.
-        const float a0 = s.pairHp[0];
+        const float a0 = s.partHp[0];
         auto seg = along(0, 400.0f, 180.0f);
         CHECK(w->shootBoss(seg.first, seg.second, 1.0f) == 2);
-        CHECK_MSG(std::fabs((a0 - s.pairHp[0]) - 3.0f) < 1e-3f, "resting damage %.3f", a0 - s.pairHp[0]);
+        CHECK_MSG(std::fabs((a0 - s.partHp[0]) - 3.0f) < 1e-3f, "resting damage %.3f", a0 - s.partHp[0]);
         // Arm 1 (pair B) fires: x1/3.
-        const float b0 = s.pairHp[1];
+        const float b0 = s.partHp[1];
         seg = along(1, 400.0f, 180.0f);
         CHECK(w->shootBoss(seg.first, seg.second, 1.0f) == 2);
-        CHECK(std::fabs((b0 - s.pairHp[1]) - 1.0f / 3.0f) < 1e-3f);
+        CHECK(std::fabs((b0 - s.partHp[1]) - 1.0f / 3.0f) < 1e-3f);
         // Between the arms, at the lens ring, on a live pair's plate: stopped, no damage.
         const Vec2 d0 = dirOf(w->bossArmAngle(0) + 0.2f);
         const float core0 = s.coreHp;
@@ -1316,8 +1316,8 @@ void testPlayTest2() {
         // The loop ramps (GAME_DESIGN 8, the lead's review of play test 2): nothing through Track 3, then a factor a Track,
         // compounding. An enemy spawned in Track 5 has kLoopHealthRamp^2 of its health; a Cell clock runs kLoopCellRamp^2
         // slower; the threat budget and the boss's health and bullets ramp the same way (their code reads loopRamp).
-        CHECK(loopRamp(1.3f, 1) == 1.0f && loopRamp(1.3f, 3) == 1.0f && std::fabs(loopRamp(1.3f, 4) - 1.3f) < 1e-6f &&
-              std::fabs(loopRamp(1.3f, 6) - 1.3f * 1.3f * 1.3f) < 1e-5f);
+        CHECK(loopRamp(1.3f, 1, 3) == 1.0f && loopRamp(1.3f, 3, 3) == 1.0f && std::fabs(loopRamp(1.3f, 4, 3) - 1.3f) < 1e-6f &&
+              std::fabs(loopRamp(1.3f, 6, 3) - 1.3f * 1.3f * 1.3f) < 1e-5f);
         CHECK(kLoopThreatRamp >= 1.15f && kLoopThreatRamp <= 1.5f && kLoopHealthRamp >= 1.15f && kLoopHealthRamp <= 1.5f &&
               kLoopCellRamp >= 1.15f && kLoopCellRamp <= 1.5f);
         auto* w = new (std::nothrow) World;
@@ -1361,7 +1361,7 @@ void testPlayTest2() {
         w->playerMut(0).novas = 1;
         u32 refills = 0, bars = 0;
         // Track 7 is First Light again (Short cycles): its first Break at bar 20.
-        CHECK(songOfTrack(7) == 0);
+        CHECK(songOfTrack(7, 3) == 0);
         while (music < 21.0 * kTicksPerBar) {
             stepWorld(*w, music, Vec2{});
             refills += countEvents(*w, EventType::Refill);
@@ -1401,7 +1401,7 @@ void testPlayTest2() {
         stepWorld(*w, music, Vec2{});
         w->directorMut().changeBar = 2;
         u32 burns = 0, expectCap0 = 8;
-        const u32 burnFrom = kLoopHaloBurnFrom;
+        const u32 burnFrom = w->setList() + kLoopHaloBurnFrom;
         for (u32 track = 4; track <= 8; ++track) {
             const double line = w->tickOfBar(w->director().changeBar + kTrackChangeBars);
             while (music + kTicksPerSimTick < line - 0.5) {  // (stop short of the line: a step must not cross it)
@@ -1487,6 +1487,429 @@ void testPlayTest2() {
     }
 }
 
+// ---------------------------------------------------------------------------------------------- M5 part 1
+
+// Steps to `until` (musical ticks), the ship at `ship`; returns the events of type `t` seen on the way.
+u32 runTo(World& w, double& music, double until, Vec2 ship, EventType t = EventType::Restart) {
+    u32 n = 0;
+    while (music + kTicksPerSimTick <= until + 1e-9) {
+        stepWorld(w, music, ship);
+        n += countEvents(w, t);
+    }
+    return n;
+}
+
+u32 cuesIn(const World& w, BossCue c) {
+    u32 n = 0;
+    for (u32 i = 0; i < w.eventCount(); ++i) n += w.events()[i].type == EventType::BossCue && w.events()[i].a == static_cast<u8>(c) ? 1u : 0u;
+    return n;
+}
+
+void testSetList() {
+    g_test = "set list";
+    // The lead's decision (GAME_DESIGN 4.2): a set list of N Tracks starts the loop at Track N + 1, whatever N is.
+    for (u32 n : {1u, 2u, 3u, 5u, 10u}) {
+        CHECK_MSG(!inLoop(n, n) && inLoop(n + 1, n), "N %u", n);
+        CHECK_MSG(loopRamp(1.3f, n, n) == 1.0f && std::fabs(loopRamp(1.3f, n + 1, n) - 1.3f) < 1e-6f, "N %u", n);
+        CHECK_MSG(songOfTrack(n + 1, n) == 0 && songOfTrack(n, n) == n - 1, "N %u", n);
+        CHECK_MSG(std::fabs(bpmOfTrack(n + 1, n) - std::fmin(tuning::kTrackBpm[n - 1] + tuning::kEndlessBpmStep, tuning::kEndlessBpmCap)) < 1e-4f, "N %u", n);
+    }
+    // In a run: the first downbeat of Track N + 1 burns the halo (the loop's first Track), not before.
+    for (u32 n : {2u, 3u}) {
+        World* w = quietWorld();
+        w->setSetList(n);
+        w->resetRun(7, 0.0, 1);
+        w->playerMut(0).cellCap = w->playerMut(0).cells = 8;
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->directorMut().track = static_cast<u8>(n);  // the set list's last Track, its boss dead: the Track-change Break
+        w->directorMut().bossSpawned = true;
+        w->directorMut().changeBar = 2;
+        const u32 burns = runTo(*w, music, w->tickOfBar(2 + kTrackChangeBars) + 2.0 * kTicksPerSimTick, Vec2{}, EventType::HaloBurn);
+        CHECK_MSG(w->phrase().track == n + 1 && inLoop(w->phrase().track, w->setList()) && burns == 1 && w->player(0).cellCap == 6,
+                  "N %u: Track %u, burns %u, capacity %u", n, w->phrase().track, burns, w->player(0).cellCap);
+        delete w;
+    }
+    {
+        // A set list of four: Track 4 is still the first pass (no burn on its first downbeat).
+        World* w = quietWorld();
+        w->setSetList(4);
+        w->resetRun(7, 0.0, 1);
+        w->playerMut(0).cellCap = w->playerMut(0).cells = 8;
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->directorMut().track = 3;
+        w->directorMut().bossSpawned = true;
+        w->directorMut().changeBar = 2;
+        const u32 burns = runTo(*w, music, w->tickOfBar(2 + kTrackChangeBars) + 2.0 * kTicksPerSimTick, Vec2{}, EventType::HaloBurn);
+        CHECK(w->phrase().track == 4 && !inLoop(4, w->setList()) && burns == 0 && w->player(0).cellCap == 8);
+        delete w;
+    }
+    // Each Track ends in its own boss, round again in the loop.
+    CHECK(bossOfSong(0) == BossKind::Kaleidos && bossOfSong(1) == BossKind::Longwave && bossOfSong(2) == BossKind::Choir);
+    CHECK(bossOfSong(songOfTrack(5, 3)) == BossKind::Longwave && bossOfSong(songOfTrack(6, 3)) == BossKind::Choir);
+}
+
+void testMiddleDrop() {
+    g_test = "middle drop";
+    // minibosses.md: from Track 2 on the middle cycle's Drop brings a mini-boss and holds while it lives, at most 8 bars past
+    // its 16; the bars after it move by the hold.
+    DirectorState d;
+    d.songs = 3;
+    d.track = 2;
+    d.trackBar = 0;
+    const u32 cycle = 12 + 4 + 16 + 4, dropAt = cycle + 12 + 4, natural = dropAt + 16;
+    Phrase p = phraseAt(d, dropAt);
+    CHECK(p.section == Section::Drop && p.miniDrop && !p.held && p.cycle == 2);
+    d.midHolding = true;  // it lives: open-ended up to the cap
+    p = phraseAt(d, natural + 7);
+    CHECK(p.section == Section::Drop && p.held && p.miniDrop);
+    p = phraseAt(d, natural + 8);
+    CHECK(p.section == Section::Break && p.cycle == 2);
+    d.midHolding = false;
+    d.midHold = 3;  // it died in the third held bar
+    p = phraseAt(d, natural + 2);
+    CHECK(p.section == Section::Drop && p.held);
+    p = phraseAt(d, natural + 3);
+    CHECK(p.section == Section::Break && p.sectionBar == 0);
+    p = phraseAt(d, 2 * cycle + 3);
+    CHECK(p.cycle == 3 && p.section == Section::Groove && p.sectionBar == 0);
+    d.midHold = 0;
+    p = phraseAt(d, natural);
+    CHECK(p.section == Section::Break);
+    // Track 1 has none.
+    d.track = 1;
+    CHECK(!phraseAt(d, 8 + 8 + 4 + 2).miniDrop);
+    // The pick: Track 2 from Alpha Hound and The Hive, Track 3 from Battering Ram and Carom King, both drawn over seeds, never
+    // the one met in the Track before.
+    World* w = quietWorld();
+    u32 seen[kBossKinds] = {};
+    for (u64 seed = 1; seed <= 24; ++seed) {
+        w->resetRun(seed, 0.0, 1);
+        ++seen[static_cast<u32>(w->pickMini(2))];
+        ++seen[static_cast<u32>(w->pickMini(3))];
+    }
+    CHECK(seen[static_cast<u32>(BossKind::AlphaHound)] && seen[static_cast<u32>(BossKind::Hive)] && seen[static_cast<u32>(BossKind::BatteringRam)] &&
+          seen[static_cast<u32>(BossKind::CaromKing)] && seen[static_cast<u32>(BossKind::Kaleidos)] == 0);
+    CHECK(seen[static_cast<u32>(BossKind::AlphaHound)] + seen[static_cast<u32>(BossKind::Hive)] == 24);
+    w->directorMut().lastMini = static_cast<u8>(BossKind::Hive);
+    CHECK(w->pickMini(5) == BossKind::AlphaHound);
+    w->directorMut().lastMini = static_cast<u8>(BossKind::CaromKing);
+    CHECK(w->pickMini(4) != BossKind::CaromKing);
+    delete w;
+}
+
+void testLongwave() {
+    g_test = "longwave";
+    const LongwaveData& d = g_species->longwave;
+    CHECK(d.segments == 24 && d.segHealth == 60.0f && d.headHealth == 600.0f && d.wavelength == 8 && d.taper == 3);
+    CHECK(d.phases[0].stepTicks == 48.0 && d.phases[1].stepTicks == 32.0 && d.phases[2].stepTicks == 24.0);
+    CHECK(d.phases[0].perSide == 1 && d.phases[1].perSide == 3 && d.phases[2].perSide == 1 && d.phases[3].headBurst == 16 && d.whipCount == 32);
+    CHECK(d.phaseOf(24) == 0 && d.phaseOf(17) == 0 && d.phaseOf(16) == 1 && d.phaseOf(9) == 1 && d.phaseOf(8) == 2 && d.phaseOf(1) == 2 && d.phaseOf(0) == 3);
+    CHECK(d.lapLength > 6000.0f && d.lapLength < 9000.0f);
+    for (double p : {0.3, 2.0, 7.5}) CHECK_MSG(std::fabs(d.paramOf(d.arcOf(p)) - p) < 1e-3, "p %.2f", p);
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    const Vec2 ship{0.0f, 1500.0f};
+    stepWorld(*w, music, ship);
+    w->directorMut().track = 2;  // its own Track (the health is the page's there)
+    w->spawnBossNow(kTicksPerBar, Vec2{}, BossKind::Longwave);
+    const BossState& s = w->boss();
+    CHECK(s.kind == BossKind::Longwave && s.alive == 0xFFFFFFu && s.fightTick == 3.0 * kTicksPerBar && w->bossSegmentsAlive() == 24);
+    CHECK(std::fabs(s.partMax - d.segHealth * tuning::kLongwaveHealthTune) < 1e-3f && std::fabs(s.coreMax - d.headHealth * tuning::kLongwaveHealthTune) < 1e-3f);
+    runTo(*w, music, 3.0 * kTicksPerBar + kTicksPerBeat + 10.0, ship);  // beat 2 of the fight's first bar: the jaw is shut
+    // Rule 2: three crests on the whole body (eight segments to a wave), each the place k = n + 2 (mod 8) for step n.
+    double t = w->music();
+    const i64 n = static_cast<i64>(std::floor(w->longwaveSteps(t)));
+    u32 crests = 0, crest = 99, trough = 99;
+    for (u32 k = 0; k < 24; ++k) {
+        if (w->longwaveCrest(k, t) >= 0) {
+            ++crests;
+            if (crest == 99) crest = k;
+            CHECK_MSG((static_cast<i64>(k) + 1 - n - 2) % 8 == 0, "crest %u at step %lld", k, static_cast<long long>(n));
+        }
+        if (trough == 99 && (((static_cast<i64>(k) + 1 - n - 6) % 8) + 8) % 8 == 0) trough = k;
+    }
+    CHECK_MSG(crests == 3, "%u crests", crests);
+    // A shot into the crest counts (x 1); into a trough it sparks off the armour.
+    {
+        Vec2 tan;
+        const Vec2 c = w->longwavePoint(t, static_cast<float>(crest + 1), 0.0f, &tan);
+        const Vec2 nrm{-tan.y, tan.x};
+        const float hp = s.partHp[crest];
+        CHECK(w->shootBoss(c + nrm * 140.0f, c, 7.0f) == 2);
+        CHECK_MSG(std::fabs(hp - s.partHp[crest] - 7.0f) < 1e-3f, "crest took %.2f", hp - s.partHp[crest]);
+        const Vec2 q = w->longwavePoint(t, static_cast<float>(trough + 1), 0.0f, &tan);
+        const float hq = s.partHp[trough];
+        w->shootBoss(q - Vec2{-tan.y, tan.x} * 140.0f, q, 7.0f);
+        CHECK(s.partHp[trough] == hq);
+        CHECK(w->bossDamageScale(2, static_cast<u8>(trough), t, Vec2{1.0f, 0.0f}) == 0.0f);
+    }
+    // Rule 5: the jaw opens for beat 1 only.
+    CHECK(!w->longwaveJawOpen(t) && w->longwaveJawOpen(4.0 * kTicksPerBar + 10.0) && w->bossDamageScale(3, 0, t, Vec2{1.0f, 0.0f}) == 0.0f);
+    // Rule 4: the troughs fire on every step: one bullet to each side in the Swell (three troughs, six bullets a step).
+    {
+        const u32 b0 = w->bullets().count;
+        const double next = (std::floor(w->longwaveSteps(w->music())) + 1.0 - s.lw.s0) * s.lw.stepTicks + s.lw.sTick;
+        runTo(*w, music, next + 0.5, ship);
+        CHECK_MSG(w->bullets().count - b0 == 6, "%u bullets on a step", w->bullets().count - b0);
+    }
+    // Rule 6 and the phases: eight segments down, the Chop begins on the next beat line (the crest on 1/8 triplets), the
+    // whip's ring of 32 on the downbeat after; a dead segment closes up (the next one takes its place on the path).
+    w->killBossNextTick(0xFFu, false);
+    stepWorld(*w, music, ship);
+    CHECK(w->bossSegmentsAlive() == 16 && s.lw.phase == 0 && s.lw.pendingPhaseTick > w->music() - kTicksPerSimTick);
+    const double beat = s.lw.pendingPhaseTick;
+    runTo(*w, music, beat + 1.0, ship);
+    CHECK(s.lw.phase == 1 && s.phase == 1 && s.lw.stepTicks == 32.0 && s.lw.whipTick == (std::floor(beat / kTicksPerBar) + 1.0) * kTicksPerBar);
+    t = w->music();
+    CHECK(length(s.body[1 + 8] - w->longwavePoint(t, 1.0f, 0.0f)) < 1.0f);
+    {
+        u32 whip = 0;
+        while (music + kTicksPerSimTick <= s.lw.whipTick + kTicksPerSimTick + 1e-9) {
+            stepWorld(*w, music, ship);
+            whip += cuesIn(*w, BossCue::LwWhip);
+        }
+        CHECK(whip == 1);
+    }
+    // The bare head: every segment down, its open jaw takes x 3.
+    w->killBossNextTick(0xFFFFFFu, false);
+    stepWorld(*w, music, ship);
+    runTo(*w, music, (std::floor(w->music() / kTicksPerBar) + 1.0) * kTicksPerBar + 5.0, ship);
+    CHECK(s.lw.phase == 3 && w->bossSegmentsAlive() == 0);
+    t = w->music();
+    CHECK_MSG(w->longwaveJawOpen(t) && w->bossDamageScale(3, 0, t, Vec2{1.0f, 0.0f}) == d.dmgJawBare, "scale %.2f", w->bossDamageScale(3, 0, t, Vec2{1.0f, 0.0f}));
+    delete w;
+}
+
+void testChoir() {
+    g_test = "choir";
+    const ChoirData& d = g_species->choir;
+    CHECK(d.voiceHealth == 260.0f && d.midi[0] == 62 && d.midi[7] == 74 && d.unisonCall == 5 && d.canonAnswer == 3 && d.soloRing == 16);
+    CHECK(d.ringRadius == 380.0f && d.ringFugue == 300.0f && d.dmgLast == 1.5f && d.orbitRadius == 280.0f);
+    CHECK(World::choirPhaseOf(0xFF) == 0 && World::choirPhaseOf(0x3F) == 1 && World::choirPhaseOf(0x0F) == 2 && World::choirPhaseOf(0x03) == 3);
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    const Vec2 ship{0.0f, 0.0f};
+    stepWorld(*w, music, ship);
+    w->spawnBossNow(kTicksPerBar, ship, BossKind::Choir);
+    const BossState& s = w->boss();
+    CHECK(s.kind == BossKind::Choir && s.alive == 0xFFu && s.fightTick == 3.0 * kTicksPerBar);
+    // Unison: the caller (Voice 0 in the first bar) on beats 1 and 3, the Voice opposite on 2 and 4; a fan of five each.
+    const u32 b0 = w->bullets().count;
+    runTo(*w, music, 3.0 * kTicksPerBar + 10.0, ship);
+    double t = w->music();
+    CHECK(w->choirSinging(0, t) && !w->choirSinging(4, t) && !w->choirSinging(1, t));
+    CHECK_MSG(w->bullets().count - b0 == 5, "%u bullets", w->bullets().count - b0);
+    // Rule 2: a singing Voice takes x 1; a silent one sparks.
+    {
+        const Vec2 v0 = s.body[1], v2 = s.body[3];
+        const float h0 = s.partHp[0], h2 = s.partHp[2];
+        w->shootBoss(s.ch.centre + (v0 - s.ch.centre) * 0.5f, v0, 9.0f);
+        w->shootBoss(s.ch.centre + (v2 - s.ch.centre) * 0.5f, v2, 9.0f);
+        CHECK_MSG(std::fabs(h0 - s.partHp[0] - 9.0f) < 1e-3f && s.partHp[2] == h2, "%.2f %.2f", h0 - s.partHp[0], h2 - s.partHp[2]);
+    }
+    runTo(*w, music, 3.0 * kTicksPerBar + kTicksPerBeat + 10.0, ship);
+    t = w->music();
+    CHECK(w->choirSinging(4, t));  // the answer
+    // Rule 4: a dead Voice is a rest. Voice 1 calls the second bar: with it dead nothing sings on its beats, and the Round
+    // turns the other way.
+    const float dir = s.ch.ringDir;
+    w->killBossNextTick(1u << 1, false);
+    stepWorld(*w, music, ship);
+    CHECK(!(s.alive & 2u) && s.ch.ringDir == -dir);
+    {
+        u32 voices = 0;
+        while (music + kTicksPerSimTick <= 4.0 * kTicksPerBar + 20.0) {
+            stepWorld(*w, music, ship);
+            if (w->music() >= 4.0 * kTicksPerBar) voices += cuesIn(*w, BossCue::ChVoice);
+        }
+        CHECK_MSG(voices == 0 && s.ch.caller == 1, "voices %u caller %u", voices, s.ch.caller);
+    }
+    // The Canon (six left) from the next bar line; its cage every fourth bar: a bar of dashes, then two beats burning.
+    w->killBossNextTick((1u << 3) | (1u << 5), false);
+    stepWorld(*w, music, ship);
+    runTo(*w, music, 5.0 * kTicksPerBar + 10.0, ship);
+    CHECK(s.ch.phase == 1);
+    const double phase0 = 5.0 * kTicksPerBar;
+    CHECK(w->choirCage(phase0 + 3.0 * kTicksPerBar + 50.0) == 1 && w->choirCage(phase0 + 4.0 * kTicksPerBar + 50.0) == 2 &&
+          w->choirCage(phase0 + 4.0 * kTicksPerBar + 2.5 * kTicksPerBeat) == 0 && w->choirCage(phase0 + 1.0 * kTicksPerBar + 50.0) == 0);
+    // The last Voice takes x 1.5 while it sings (Solo: beats 2 and 4).
+    w->killBossNextTick(0xFFu & ~1u, false);
+    stepWorld(*w, music, ship);
+    const double line = (std::floor(w->music() / kTicksPerBar) + 1.0) * kTicksPerBar;
+    runTo(*w, music, line + kTicksPerBeat + 10.0, ship);
+    t = w->music();
+    CHECK_MSG(s.ch.phase == 3 && w->choirSinging(0, t) && w->bossDamageScale(2, 0, t, Vec2{1.0f, 0.0f}) == d.dmgLast, "phase %u singing %d",
+              s.ch.phase, w->choirSinging(0, t) ? 1 : 0);
+    // Its death is the fight's.
+    w->killBossNextTick(1u, false);
+    stepWorld(*w, music, ship);
+    CHECK(s.dying);
+    delete w;
+}
+
+void testMinibosses() {
+    g_test = "minibosses";
+    const MiniData& md = g_species->minis;
+    CHECK(md.healthByTrack[2] == 600.0f && md.healthByTrack[3] == 1100.0f && md.healthTracks >= 6 && md.loopFactor == 1.25f);
+    CHECK(md.crowdScale == 0.75f && md.rewardOrbs == 1 && md.rewardShards == 60 && md.penSide == 1400.0f);
+    CHECK(md.find(BossKind::BatteringRam)->pen && md.find(BossKind::CaromKing)->pen && !md.find(BossKind::AlphaHound)->pen && !md.find(BossKind::Hive)->pen);
+    CHECK(md.find(BossKind::Hive)->healthFactor == 0.8f && md.find(BossKind::BatteringRam)->healthFactor == 1.2f);
+    // The Pen: rises with the fight round the players' centre; its walls stop ships and bodies both ways; fodder caught
+    // outside dissolves; what spawns while it stands lands inside.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 out = w->spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), Vec2{1200.0f, 0.0f}, 0.0f, 0.0);
+        const i32 in = w->spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), Vec2{400.0f, 300.0f}, 0.0f, 0.0);
+        CHECK(out >= 0 && in >= 0);
+        w->spawnBossNow(kTicksPerBar, Vec2{300.0f, 0.0f}, BossKind::BatteringRam, Vec2{});
+        const PenState& pen = w->pen();
+        CHECK(pen.up && std::fabs(pen.half - 700.0f) < 1e-3f && (w->enemies().flags[out] & kFlagDead) && !(w->enemies().flags[in] & kFlagDead));
+        Vec2 to{900.0f, 0.0f};
+        CHECK(w->penKeep(Vec2{0.0f, 0.0f}, to, 14.0f) == 1 && std::fabs(to.x - 686.0f) < 1e-3f);
+        to = Vec2{650.0f, 0.0f};
+        CHECK(w->penKeep(Vec2{1000.0f, 0.0f}, to, 14.0f) == 1 && std::fabs(to.x - 714.0f) < 1e-3f);
+        const i32 late = w->spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), Vec2{3000.0f, 0.0f}, 0.0f, 0.0);
+        CHECK(late >= 0 && w->penInside(Vec2{w->enemies().x[late], w->enemies().y[late]}, 0.0f));
+        // Battering Ram: its horns shed every shot; it locks on beat 3, charges on the next downbeat, and a wall within 300 wu
+        // behind the lock stuns it (x 2 from every side) with a ring of 16 from the wall.
+        const Vec2 ship{-560.0f, 0.0f};
+        const BossState& s = w->boss();
+        u32 walls = 0, bullets = 0;
+        double stunned = -1.0;
+        while (music < s.fightTick + 4.0 * kTicksPerBar) {
+            const u32 b0 = w->bullets().count;
+            stepWorld(*w, music, ship);
+            if (cuesIn(*w, BossCue::RmWall)) {
+                ++walls;
+                bullets += w->bullets().count - b0;
+            }
+            if (s.mini.state == 4 && stunned < 0.0) stunned = w->music();
+        }
+        CHECK_MSG(walls >= 1 && bullets >= 16 && stunned > 0.0, "walls %u bullets %u", walls, bullets);
+        const Vec2 face = s.mini.face;
+        CHECK(w->bossDamageScale(3, 0, w->music(), face * -1.0f) == (s.mini.state == 4 ? 2.0f : 0.0f));
+        CHECK(w->bossDamageScale(3, 0, w->music(), face) == (s.mini.state == 4 ? 2.0f : 1.0f));
+        // Its death: the Pen falls, a Boost orb and 60 Shards for the player, the middle Drop's hold decided.
+        w->killBossNextTick(0, true);
+        stepWorld(*w, music, ship);
+        CHECK_MSG(!w->pen().up && w->boostPickups().count + w->player(0).boostsTaken == 1 && !w->director().midHolding && s.dying, "pen %d orbs %u holding %d dying %d active %d",
+                  w->pen().up ? 1 : 0, w->boostPickups().count, w->director().midHolding ? 1 : 0, s.dying ? 1 : 0, s.active ? 1 : 0);
+        delete w;
+    }
+    // Alpha Hound: never more than 30 called Hounds alive; winded (x 2) for two beats after its lunge.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->spawnBossNow(kTicksPerBar, Vec2{420.0f, 0.0f}, BossKind::AlphaHound);
+        const BossState& s = w->boss();
+        u32 most = 0, howls = 0;
+        bool winded = false;
+        while (music < s.fightTick + 12.0 * kTicksPerBar) {
+            stepWorld(*w, music, Vec2{});
+            howls += cuesIn(*w, BossCue::AlHowl);
+            u32 n = 0;
+            for (u32 i = 0; i < w->enemies().count; ++i)
+                n += !(w->enemies().flags[i] & kFlagDead) && (w->enemies().flags[i] & kFlagCalled) ? 1u : 0u;
+            if (n > most) most = n;
+            if (s.mini.state == 3) winded = winded || w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 2.0f;
+        }
+        CHECK_MSG(most <= 30 && most >= 6 && howls >= 10 && winded, "most %u howls %u", most, howls);
+        delete w;
+    }
+    // The Hive: at most 160 darts; the Queen takes x 2 on the tell's beat only.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->spawnBossNow(kTicksPerBar, Vec2{500.0f, 0.0f}, BossKind::Hive);
+        const BossState& s = w->boss();
+        u32 most = 0, doubled = 0;
+        while (music < s.fightTick + 10.0 * kTicksPerBar) {
+            stepWorld(*w, music, Vec2{});
+            u32 n = 0;
+            for (u32 i = 0; i < w->enemies().count; ++i)
+                n += !(w->enemies().flags[i] & kFlagDead) && (w->enemies().flags[i] & kFlagCalled) ? 1u : 0u;
+            if (n > most) most = n;
+            doubled += w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 2.0f ? 1u : 0u;
+        }
+        const double perBeat = kTicksPerBeat / kTicksPerSimTick;
+        CHECK_MSG(most == 160 && doubled > 0 && static_cast<double>(doubled) < 6.0 * perBeat, "darts %u, ticks at x 2 %u", most, doubled);
+        // Half health: two hives, one with a white decoy.
+        w->bossHealthNow(0.45f);
+        stepWorld(*w, music, Vec2{});
+        CHECK(s.mini.half && s.mini.hives == 2);
+        delete w;
+    }
+    // Carom King: every bounce on a beat (a Prince's on a half beat), at most 60 of its bullets, three Princes at 75, 50, 25%.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->spawnBossNow(kTicksPerBar, Vec2{200.0f, 100.0f}, BossKind::CaromKing, Vec2{});
+        const BossState& s = w->boss();
+        u32 offBeat = 0, bounces = 0, mostBullets = 0;
+        bool hot = false;
+        while (music < s.fightTick + 8.0 * kTicksPerBar) {
+            stepWorld(*w, music, Vec2{});
+            for (u32 i = 0; i < w->eventCount(); ++i) {
+                const Event& e = w->events()[i];
+                if (e.type != EventType::BossCue || e.a != static_cast<u8>(BossCue::CkBounce)) continue;
+                ++bounces;
+                const double grid = e.b ? kTicksPerBeat / 2.0 : kTicksPerBeat;
+                if (std::fabs(e.tick - std::floor(e.tick / grid + 0.5) * grid) > 1e-6) ++offBeat;
+                hot = hot || w->bossDamageScale(3, 0, e.tick + 10.0, Vec2{1.0f, 0.0f}) == 2.0f;
+            }
+            if (w->bullets().count > mostBullets) mostBullets = w->bullets().count;
+            if (music > s.fightTick + 2.0 * kTicksPerBar && s.mini.splits == 0) w->bossHealthNow(0.7f);
+            if (music > s.fightTick + 4.0 * kTicksPerBar && s.mini.splits == 1) w->bossHealthNow(0.2f);
+        }
+        CHECK_MSG(bounces >= 8 && offBeat == 0 && mostBullets <= 60 && hot && s.mini.splits == 3 && (s.alive & 7u) == 7u,
+                  "bounces %u off the beat %u bullets %u splits %u", bounces, offBeat, mostBullets, s.mini.splits);
+        // A dead Prince breaks into two ordinary Caroms.
+        const u32 e0 = w->enemies().count;
+        w->killBossNextTick(1u, false);
+        stepWorld(*w, music, Vec2{});
+        CHECK(w->enemies().count == e0 + 2 && !(s.alive & 1u));
+        delete w;
+    }
+    // In a run: the middle Drop of Track 2 brings one, in place of the mega-wave, and its end moves the Break.
+    {
+        World* w = new (std::nothrow) World;
+        w->init(g_species);
+        w->resetRun(3, 0.0, 1);
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->directorMut().track = 2;
+        w->directorMut().trackBar = 0;
+        const u32 cycle = 36, dropAt = cycle + 16;
+        runTo(*w, music, w->tickOfBar(dropAt) + 2.0 * kTicksPerSimTick, Vec2{});
+        const BossState& s = w->boss();
+        CHECK_MSG(s.active && isMiniBoss(s.kind) && w->director().midHolding && w->phrase().miniDrop, "kind %u", static_cast<u32>(s.kind));
+        CHECK(s.kind == BossKind::AlphaHound || s.kind == BossKind::Hive);
+        runTo(*w, music, w->tickOfBar(dropAt + 18) + 10.0, Vec2{});
+        CHECK(w->phrase().held && w->phrase().section == Section::Drop);
+        w->killBossNextTick(0, true);
+        stepWorld(*w, music, Vec2{});
+        const u32 end = w->runBar() + 1u + (w->music() - w->tickOfBar(w->runBar()) > 0.5 * kTicksPerBar ? 1u : 0u);
+        CHECK_MSG(w->director().midHold == end - (dropAt + 16) && !w->director().midHolding, "hold %u end %u", w->director().midHold, end);
+        runTo(*w, music, w->tickOfBar(end) + 5.0, Vec2{});
+        CHECK(w->phrase().section == Section::Break && w->phrase().cycle == 2);
+        delete w;
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -1511,6 +1934,11 @@ int main() {
     testAutoNova();
     testBoss();
     testPlayTest2();
+    testSetList();
+    testMiddleDrop();
+    testLongwave();
+    testChoir();
+    testMinibosses();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;
     return g_failures;

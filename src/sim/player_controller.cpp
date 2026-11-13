@@ -69,6 +69,7 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
     dashHeld_ = in.dash;
 
     // ---- Movement (GAME_DESIGN 5): 520 wu/s, near-instant acceleration, a slight glide on release.
+    const Vec2 was = p.pos;
     if (dashLeftS_ > 0.0f) {
         const float step = dashLeftS_ < dt ? dashLeftS_ : dt;
         p.pos = p.pos + dashDir_ * (kDashWu / kDashS * step);
@@ -89,6 +90,16 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
             p.vel = p.vel * std::exp(-dt / kGlideTau);
         }
         p.pos = p.pos + p.vel * dt;
+    }
+    // M5 (minibosses.md): the Pen's walls stop ships without hurting (inside stays inside, outside stays outside).
+    {
+        Vec2 to = p.pos;
+        const u8 hit = world.penKeep(was, to, kPlayerVisualRadius);
+        if (hit) {
+            p.pos = to;
+            if (hit & 1u) p.vel.x = 0.0f;
+            if (hit & 2u) p.vel.y = 0.0f;
+        }
     }
     // The walls (GAME_DESIGN 9).
     const float lx = kArenaHalfW - kPlayerVisualRadius, ly = kArenaHalfH - kPlayerVisualRadius;

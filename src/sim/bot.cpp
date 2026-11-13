@@ -69,9 +69,47 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     // (a dead pair's direction) at the core; else at the resting pair's nearer arm; else at any arm.
     const BossState& boss = w.boss();
     const bool bossFight = boss.active && !boss.dying && musicTick >= boss.fightTick;
+    const bool kaleidos = boss.kind == BossKind::Kaleidos;
     Vec2 bossAimPoint{};
     bool openSector = false;
-    if (bossFight && lengthSq(pos - boss.pos) < kBossAimWu * kBossAimWu && (target < 0 || targetD > kBossFodderWu * kBossFodderWu)) {
+    // M5: the other fights are circles with a multiplier each (sim/boss.h BossPart): aim at the one where damage will count
+    // when the shot arrives (the crest coming, the Voice about to sing), nearest first; keep their bodies in mind below.
+    BossPart parts[kBossBodies + 4];
+    const u32 partCount = kaleidos ? 0u : w.bossParts(parts, kBossBodies + 4);
+    Vec2 bossNear = boss.pos;  // the fight's nearest body (the working distance and the dodging)
+    float bossNearD = 1e30f;
+    for (u32 k = 0; k < partCount; ++k) {
+        const float d = lengthSq(parts[k].pos - pos);
+        if (d < bossNearD) {
+            bossNearD = d;
+            bossNear = parts[k].pos;
+        }
+    }
+    if (bossFight && !kaleidos && (target < 0 || targetD > kBossFodderWu * kBossFodderWu)) {
+        float best = -1.0f;
+        for (u32 k = 0; k < partCount; ++k) {
+            const BossPart& q = parts[k];
+            if (q.part == 1) continue;
+            const float d = length(q.pos - pos);
+            if (d > kBossAimWu) continue;
+            const float flight = d / kShotSpeed;
+            const u32 b = q.part == 3 ? 0u : 1u + q.index;
+            const Vec2 vel = (boss.body[b] - boss.bodyPrev[b]) * (1.0f / kDt);
+            const Vec2 at = q.pos + vel * flight;
+            const float scale = w.bossDamageScale(q.part, q.index, musicTick + static_cast<double>(flight) * w.ticksPerSecond(),
+                                                  normalizeOr(at - pos, Vec2{1.0f, 0.0f}));
+            const float score = scale * 1000.0f - d * 0.1f;
+            if (scale > 0.0f && score > best) {
+                best = score;
+                bossAimPoint = at;
+            }
+        }
+        if (best > 0.0f) {
+            in.aim = bossAimPoint - pos;
+            in.aimActive = lengthSq(in.aim) > 1e-6f;
+        }
+    }
+    if (bossFight && kaleidos && lengthSq(pos - boss.pos) < kBossAimWu * kBossAimWu && (target < 0 || targetD > kBossFodderWu * kBossFodderWu)) {
         const Vec2 rel = pos - boss.pos;
         const float myAngle = angleOf(rel);
         for (u32 k = 0; k < 6; ++k) {
@@ -134,7 +172,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
             continue;
         }
         float weight = 1.0f;
-        if (e.state[i] == kTelegraph || e.state[i] == kDash) {
+        if (e.state[i] == kTelegraph || e.state[i] == kDash || e.state[i] == kCharge) {
             // A Ram's path: step sideways off its line.
             const Vec2 line{e.a[i], e.b[i]};
             const float along = -dot(d, line);
@@ -193,13 +231,89 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     }
     // The boss: within a working distance during the fight (both bots).
     if (bossFight) {
-        const Vec2 rel = pos - boss.pos;
+        const Vec2 rel = pos - (kaleidos ? boss.pos : bossNear);
         const float dist = length(rel);
         if (dist > kBossWorkFarWu) force = force - rel * (0.9f * std::fmin((dist - kBossWorkFarWu) / 300.0f, 1.0f) / dist);
     }
+    // M5: the other fights: keep off their bodies, out of every line they have shown, inside the Choir's Round when its cage
+    // shows, and beside Longwave's crest.
+    if (boss.active && !boss.dying && careful && !kaleidos) {
+        for (u32 k = 0; k < partCount; ++k) {
+            const Vec2 d = pos - parts[k].pos;
+            const float dist = length(d);
+            const float keep = parts[k].radius + 110.0f;
+            if (dist < keep && dist > 1e-3f) force = force + d * (2.5f * (keep - dist) / keep / dist);
+        }
+        const auto offLine = [&](Vec2 from, Vec2 dir, float width) {
+            const Vec2 rel = pos - from;
+            const float along = dot(rel, dir);
+            const Vec2 side = rel - dir * along;
+            const float off = length(side);
+            if (along > -60.0f && off < width) force = force + normalizeOr(side, perpOf(dir)) * (4.0f * (width - off) / width);
+        };
+        const MiniState& m = boss.mini;
+        const LongwaveState& L = boss.lw;
+        switch (boss.kind) {
+            case BossKind::Longwave: {
+                if (L.lungeArmed && musicTick >= L.lungeTelegraph - 96.0) offLine(boss.body[0], L.lungeDir, 140.0f);
+                // Ride beside the nearest crest coming (rule 3: fly along with it), on the side the bot is on.
+                float bestD = 1e30f;
+                Vec2 goal{};
+                bool any = false;
+                const double ahead = musicTick + 0.5 * kTicksPerBeat;
+                for (u32 k = 0; k < kBossParts; ++k) {
+                    if (!(boss.alive & (1u << k)) || w.longwaveCrest(k, ahead) < 0) continue;
+                    const Vec2 c = boss.body[1 + k];
+                    const Vec2 n = perpOf(dirOf(boss.bodyAng[1 + k]));
+                    const Vec2 g = c + n * (dot(pos - c, n) >= 0.0f ? 240.0f : -240.0f);
+                    const float d = lengthSq(g - pos);
+                    if (d < bestD) {
+                        bestD = d;
+                        goal = g;
+                        any = true;
+                    }
+                }
+                if (!any && boss.alive == 0) goal = boss.body[0] + normalizeOr(pos - boss.body[0], Vec2{1.0f, 0.0f}) * 380.0f;
+                if (any || boss.alive == 0) {
+                    const Vec2 d = goal - pos;
+                    const float l = length(d);
+                    if (l > 30.0f) force = force + d * (std::fmin(l / 200.0f, 1.2f) / l);
+                }
+                break;
+            }
+            case BossKind::Choir: {
+                const Vec2 c = boss.ch.centre;
+                const float dc = length(pos - c);
+                const bool cage = w.choirCage(musicTick + kTicksPerBeat) != 0;
+                const float want = cage ? 120.0f : 180.0f;
+                if (boss.ch.phase < 3 && dc > want) force = force + (c - pos) * ((cage ? 1.8f : 0.8f) * std::fmin((dc - want) / 150.0f, 1.0f) / dc);
+                for (u32 k = 0; k < ChoirData::kVoices; ++k) {
+                    float a = 0.0f;
+                    if (w.choirHeld(k, musicTick + kTicksPerBeat, &a) == 0) continue;
+                    // The held note sweeps 120 degrees: keep out of its whole fan.
+                    const Vec2 from = boss.body[1 + k];
+                    const float mid = boss.ch.heldAim[k];
+                    const float off = wrapAngle(angleOf(pos - from) - mid);
+                    if (std::fabs(off) < 1.25f) force = force + perpOf(dirOf(mid)) * (off >= 0.0f ? 2.5f : -2.5f);
+                }
+                break;
+            }
+            case BossKind::AlphaHound:
+                if (m.state == 1 || m.state == 2) offLine(boss.body[0], m.lockDir, 140.0f);
+                break;
+            case BossKind::BatteringRam:
+                if (m.state == 1 || m.state == 2) offLine(boss.body[0], m.lockDir, 170.0f);
+                break;
+            case BossKind::Hive:
+                for (u32 h = 0; h < m.hives; ++h)
+                    if (m.shape[h] == 1) offLine(m.shapeAt[h], m.shapeDir[h], 110.0f);
+                break;
+            default: break;
+        }
+    }
     // The boss: keep off its arms and core, step out of a telegraphed beam's line, and circle with the
     // wheel toward an open sector.
-    if (boss.active && !boss.dying && careful) {
+    if (boss.active && !boss.dying && careful && kaleidos) {
         const Vec2 rel = pos - boss.pos;
         const float dist = length(rel);
         if (dist > 1e-3f) {
@@ -297,6 +411,17 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     wall(pos.x + kArenaHalfW, Vec2{1.0f, 0.0f});
     wall(kArenaHalfW - pos.x, Vec2{-1.0f, 0.0f});
     wall(pos.y + kArenaHalfH, Vec2{0.0f, 1.0f});
+    // M5: the Pen's walls, from inside (a shorter reach: the Pen is small).
+    const PenState& pen = w.pen();
+    if (pen.up && w.penInside(pos, 0.0f)) {
+        const auto penWall = [&](float d, Vec2 inward) {
+            if (d < 220.0f) force = force + inward * (1.6f * (220.0f - d) / 220.0f);
+        };
+        penWall(pos.x - (pen.centre.x - pen.half), Vec2{1.0f, 0.0f});
+        penWall((pen.centre.x + pen.half) - pos.x, Vec2{-1.0f, 0.0f});
+        penWall(pos.y - (pen.centre.y - pen.half), Vec2{0.0f, 1.0f});
+        penWall((pen.centre.y + pen.half) - pos.y, Vec2{0.0f, -1.0f});
+    }
     wall(kArenaHalfH - pos.y, Vec2{0.0f, -1.0f});
     // A slow wander so an empty arena still gets crossed.
     wander_ += rng_.range(-0.35f, 0.35f);

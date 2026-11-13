@@ -231,6 +231,7 @@ private:
     void screenGameOverCoop(Ui& ui);
     // The band's slot of seat q (0 is this device's player; the others follow in seat order).
     u8 bandSlot(u32 q) const { return static_cast<u8>(q == seat_ ? 0u : (q < seat_ ? q + 1u : q)); }
+    void bossCue(const sim::Event& e);  // M5: a fight's sound, through the band
     bool coopAutoDone_ = false;
     float coopAutoT_ = 0.0f, coopShotT_ = 0.0f;
     float beaconDownS_ = 0.0f;  // --coop-shot beacon: how long a teammate has been down (its shatter gone after a second)

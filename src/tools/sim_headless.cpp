@@ -314,6 +314,15 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     u64 hitsBy[kFamilyCount + 1] = {}, hitsInBossFight = 0, hitsBySection[4] = {};
     u64 bossWon = 0, bossLost = 0;
     double bossWonTicks = 0.0;
+    // M5 part 1: every fight by its kind: fights, won, lost (the run ended in it), warped out (a mini-boss's hold ran out),
+    // the time to kill by Track, the hits the ship took in it.
+    struct FightStat {
+        u32 fights = 0, won = 0, lost = 0, gone = 0, hits = 0;
+        double wonSecs[16] = {};
+        u32 wonAt[16] = {};
+    };
+    static FightStat fightStat[kBossKinds];
+    for (FightStat& f : fightStat) f = FightStat{};
     // Play test 2: the Shard level pace by Track (alive time and levels in each), and the levels and upgrades held at
     // minutes 3, 6 and 10 in the first run (the runs still in it then).
     double paceTicks[4] = {}, paceLevels[4] = {}, paceShards[4] = {};
@@ -338,7 +347,8 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         maxTrack[s] = 1;
         u32 lastHits = 0, lastBar = 0xFFFFFFFFu, killsAtBar = 0;
         bool bossOn = false;
-        u32 bossFrom = 0;
+        u32 bossFrom = 0, bossTrack = 1, bossHits0 = 0;
+        BossKind bossKind = BossKind::Kaleidos;
         // The camera as PlayView draws it (GAME_DESIGN 9, play test 1): a lead along the ship's velocity (at most
         // cruise speed x 0.125 s) and 30 wu along its aim while firing, eased over 0.25 s; 0.85x and a lean of 30% (at
         // most 320 wu) toward the boss while it lives within 1,800 wu. In view is that camera's frame.
@@ -375,15 +385,35 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     for (u32 r = 0; r < kRiffCount; ++r) riffsAt[m] += p.loadout.riffs[r];
                 }
             {
-                // Boss fights: from its entrance to its death (won) or to the run's end (lost).
+                // Boss fights: from its entrance to its death (won) or to the run's end (lost); a mini-boss whose hold ran
+                // out warped out (M5). "Boss fights" (GAME_DESIGN 8's target) are the Tracks' bosses; the mini-bosses apart.
                 const bool on = w.boss().active && !w.boss().dying;
-                if (on && !bossOn) bossFrom = t;
+                if (on && !bossOn) {
+                    bossFrom = t;
+                    bossKind = w.boss().kind;
+                    bossTrack = ph.track;
+                    bossHits0 = p.hitsTaken;
+                    ++fightStat[static_cast<u32>(bossKind)].fights;
+                }
                 if (!on && bossOn) {
+                    FightStat& f = fightStat[static_cast<u32>(bossKind)];
+                    bool gone = false;
+                    for (u32 k = 0; k < w.eventCount(); ++k) gone = gone || w.events()[k].type == EventType::BossGone;
+                    f.hits += p.hitsTaken >= bossHits0 ? p.hitsTaken - bossHits0 : p.hitsTaken;
                     if (w.boss().dying) {
-                        ++bossWon;
-                        bossWonTicks += static_cast<double>(t - bossFrom);
+                        ++f.won;
+                        const u32 tr = bossTrack < 16 ? bossTrack : 15u;
+                        f.wonSecs[tr] += static_cast<double>(t - bossFrom) / 60.0;
+                        ++f.wonAt[tr];
+                        if (!isMiniBoss(bossKind)) {
+                            ++bossWon;
+                            bossWonTicks += static_cast<double>(t - bossFrom);
+                        }
+                    } else if (gone) {
+                        ++f.gone;
                     } else {
-                        ++bossLost;
+                        ++f.lost;
+                        if (!isMiniBoss(bossKind)) ++bossLost;
                     }
                 }
                 bossOn = on;
@@ -580,6 +610,19 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     std::printf("[sim]   kills a minute %.0f, deaths a run %.1f; overflow %llu, NaN runs %u, heap allocations in the loops %llu\n",
                 static_cast<double>(kills) / (static_cast<double>(n) * minutes), static_cast<double>(deaths) / n,
                 static_cast<unsigned long long>(overflow), nan, static_cast<unsigned long long>(allocs));
+    // M5 part 1: every fight by its kind (seconds to kill by the Track it came in).
+    std::printf("[sim]   fights (kind: fought, won, lost, warped out, hits taken a fight; seconds to kill by Track):\n");
+    for (u32 k = 0; k < kBossKinds; ++k) {
+        const FightStat& f = fightStat[k];
+        if (!f.fights) continue;
+        std::printf("[sim]     %-13s %3u %3u %3u %3u  %5.2f ", bossId(static_cast<BossKind>(k)), f.fights, f.won, f.lost, f.gone,
+                    f.fights ? static_cast<double>(f.hits) / f.fights : 0.0);
+        for (u32 tr = 1; tr < 16; ++tr)
+            if (f.wonAt[tr]) std::printf(" T%u %.0f s (%u)", tr, f.wonSecs[tr] / f.wonAt[tr], f.wonAt[tr]);
+        std::printf("\n");
+        logTagged("RFSIM", "{\"test\":\"fight\",\"kind\":\"%s\",\"fights\":%u,\"won\":%u,\"lost\":%u,\"gone\":%u,\"hits\":%u}", bossId(static_cast<BossKind>(k)),
+                  f.fights, f.won, f.lost, f.gone, f.hits);
+    }
     std::printf("[sim]   boss fights lost %.1f%%; shots alive at most %u (pool %u), held back by a player's cap %llu\n",
                 bossWon + bossLost ? 100.0 * static_cast<double>(bossLost) / static_cast<double>(bossWon + bossLost) : 0.0, shotsPeak,
                 Shots::kCap, static_cast<unsigned long long>(capped));

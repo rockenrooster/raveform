@@ -10,7 +10,7 @@
 
 namespace rf::net {
 
-constexpr u32 kProtocolVersion = 0x52460404u;  // 'R' 'F', M4 stage B (play test 2: Regen renumbers the Riffs, Boost orbs)
+constexpr u32 kProtocolVersion = 0x52460501u;  // 'R' 'F', M5 part 1 (the fights: which one, its parts, the Pen, the held Drop)
 constexpr u32 kMaxPacketBytes = 1200;
 
 enum class Msg : u8 {
@@ -60,8 +60,10 @@ struct MsgBed {
 };
 struct MsgBoss {
     u16 run = 0;
-    u8 kind = 0, pair = 0, killer = 0xFF;  // 0 enters, 1 a pair dies, 2 the boss dies
+    u8 kind = 0, pair = 0, killer = 0xFF;  // 0 enters, 1 a part dies (or a step its health decided), 2 the fight ends
+    u8 boss = 0;                           // M5: which fight (sim::BossKind)
     float x = 0.0f, y = 0.0f;
+    float x2 = 0.0f, y2 = 0.0f;            // M5: the Pen's centre
     double tick = 0.0;
     u32 changeBar = 0;
 };
@@ -121,7 +123,8 @@ struct MsgHeartbeat {
     double runOffset = 0.0;
     u8 state = 0;            // 0 lobby, 1 running, 2 paused
     u8 bossOn = 0;
-    float bossPair[3] = {}, bossCore = 0.0f, bossX = 0.0f, bossY = 0.0f;
+    u8 bossParts = 0;  // M5: the fight's parts with health (Kaleidos 3, Longwave 24, the Choir 8, the Carom King's Princes 3)
+    float bossPart[sim::kBossParts] = {}, bossCore = 0.0f, bossX = 0.0f, bossY = 0.0f;
 };
 
 // The receiving side: one call per message (and per item of a list).

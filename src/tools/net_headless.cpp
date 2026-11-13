@@ -171,7 +171,12 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     i64 windowFrom = 0;
     double winSum2 = 0.0;
     u64 winN = 0;
+    double calledSum2 = 0.0;  // M5: the part of it a mini-boss's called bodies make (the pack, the darts)
+    u64 calledN = 0;
+    double stateSum2[16] = {}, famSum2[16] = {};  // the window's error by enemy state and family (diagnostics)
+    u64 stateN[16] = {}, famN[16] = {};
     float winMax = 0.0f;
+    char worst[200] = {};  // the window's worst sample (diagnostics)
     for (;;) {
         G += 1000;
         wireSetSimTimeUs(G);
@@ -208,10 +213,34 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
             const SessionStats& s1 = peers[1].session().stats();
             u32 present = 0;
             for (u32 q = 0; q < kMaxPlayers; ++q) present += peers[0].world().player(q).present ? 1u : 0u;
+            const World& hw0 = peers[0].world();
             std::printf("[net] %5.0f s: on-screen error (true, against the host) RMS %.2f wu, max %.1f (%llu samples); client 1's "
-                        "corrections' error %.1f wu RMS (last second); players present on the host %u\n",
+                        "corrections' error %.1f wu RMS (last second); players present on the host %u; Track %u %s%s %s\n",
                         static_cast<double>(t) * 1e-6, winN ? std::sqrt(winSum2 / static_cast<double>(winN)) : 0.0, static_cast<double>(winMax),
-                        static_cast<unsigned long long>(winN), static_cast<double>(s1.errRmsWu), present);
+                        static_cast<unsigned long long>(winN), static_cast<double>(s1.errRmsWu), present, hw0.phrase().track,
+                        sectionLabel(hw0.phrase().section), hw0.phrase().held ? " (held)" : "",
+                        hw0.boss().active ? bossId(hw0.boss().kind) : "");
+            {
+                u32 hc = 0, cc = 0, cf = 0;
+                const Enemies& he0 = peers[0].world().enemies();
+                const Enemies& ce1 = peers[1].world().enemies();
+                for (u32 i = 0; i < he0.count; ++i) hc += !(he0.flags[i] & kFlagDead) && (he0.flags[i] & kFlagCalled) ? 1u : 0u;
+                for (u32 i = 0; i < ce1.count; ++i) {
+                    cc += !(ce1.flags[i] & kFlagDead) && (ce1.flags[i] & kFlagCalled) ? 1u : 0u;
+                    cf += !(ce1.flags[i] & kFlagDead) && ce1.state[i] == kFormation ? 1u : 0u;
+                }
+                std::printf("[net]          called: host %u, client 1 %u (in formation %u)\n", hc, cc, cf);
+            }
+            std::printf("[net]          worst: %s\n", worst);
+            worst[0] = 0;
+            std::printf("[net]          by state:");
+            for (u32 q = 0; q < 16; ++q)
+                if (stateN[q]) std::printf(" %u: %.1f (%llu)", q, std::sqrt(stateSum2[q] / static_cast<double>(stateN[q])), static_cast<unsigned long long>(stateN[q]));
+            std::printf("; by family:");
+            for (u32 q = 0; q < 16; ++q)
+                if (famN[q]) std::printf(" %u: %.1f (%llu)", q, std::sqrt(famSum2[q] / static_cast<double>(famN[q])), static_cast<unsigned long long>(famN[q]));
+            std::printf("\n");
+            for (u32 q = 0; q < 16; ++q) stateSum2[q] = famSum2[q] = 0.0, stateN[q] = famN[q] = 0;
             windowFrom = t;
             winSum2 = 0.0;
             winN = 0;
@@ -282,9 +311,22 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                 }
                 const float err = length(drawn - Vec2{he.x[j], he.y[j]});
                 hist->add(err);
+                if (ce.flags[i] & kFlagCalled) {
+                    calledSum2 += static_cast<double>(err) * err;
+                    ++calledN;
+                }
+                stateSum2[ce.state[i] & 15u] += static_cast<double>(err) * err;
+                ++stateN[ce.state[i] & 15u];
+                const u32 fam = static_cast<u32>(cw.species().get(ce.species[i]).family) & 15u;
+                famSum2[fam] += static_cast<double>(err) * err;
+                ++famN[fam];
                 winSum2 += static_cast<double>(err) * err;
                 ++winN;
-                if (err > winMax) winMax = err;
+                if (err > winMax) {
+                    winMax = err;
+                    std::snprintf(worst, sizeof worst, "serial %u species %u state %u/%u flags %u/%u client (%.0f %.0f) host (%.0f %.0f)", ce.serial[i],
+                                  ce.species[i], ce.state[i], he.state[j], ce.flags[i], he.flags[j], ce.x[i], ce.y[i], he.x[j], he.y[j]);
+                }
             }
         }
     }
@@ -364,6 +406,8 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                 disconnects, stalls, census, mismatches, predicted, confirmed, undone, late, unknown, static_cast<unsigned long long>(missing));
     std::printf("[net]   on-screen enemy position error against the host: RMS %.2f wu, P95 %.2f, max %.1f (%llu samples; limit RMS %.0f)\n",
                 errRms, errP95, hist->max, static_cast<unsigned long long>(hist->n), kMaxErrRmsWu);
+    std::printf("[net]   of which a mini-boss's called bodies: RMS %.2f wu (%llu samples)\n", calledN ? std::sqrt(calledSum2 / static_cast<double>(calledN)) : 0.0,
+                static_cast<unsigned long long>(calledN));
     std::printf("[net]   the same as each correction lands (drawn against the host's sample): RMS %.2f wu, max %.1f (%llu)\n", scrRms,
                 scrMax, static_cast<unsigned long long>(scrN));
     std::printf("[net]   song clock offset against the host: RMS %.2f ms, max %.2f ms (limit %.0f)\n", songRms, songMax, kMaxSongOffsetMs);

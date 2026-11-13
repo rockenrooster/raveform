@@ -15,7 +15,7 @@ enum class Family : u8 { Drifter, Hound, Shoal, Ram, Carom, Sentry, Count };
 constexpr u32 kFamilyCount = static_cast<u32>(Family::Count);
 const char* familyName(Family f);  // "drifter", ... (also the glyph family in design/glyphs.json)
 u64 speciesDataDigest();  // a digest of the embedded species.json (M4: peers must match)
-u64 bossDataDigest();     // ... and of kaleidos.json
+u64 bossDataDigest();     // ... and of the boss pages (design/bosses/*.json)
 
 enum Variant : u8 { kVariantA = 0, kVariantB = 1, kVariantC = 2 };
 
@@ -82,6 +82,7 @@ public:
         u32 targetCycles[3] = {};
         float loopStep = 20.0f, max = 400.0f;
         float groove = 1.0f, build[2] = {1.0f, 1.3f}, drop[2] = {1.6f, 1.2f}, breakScale = 0.0f, bossDrop = 0.5f;
+        float miniDrop = 0.75f;  // M5 (minibosses.json common.crowd.sectionScale): the mini-boss's Drop keeps this share
         float countFrameScale = 1.25f;  // count: the frame grown this much each way
         float floodOutsideWu[2] = {120.0f, 320.0f}, ringFrameScale = 1.15f, cornerOutsideWu = 150.0f;  // arrive
         float refillBars = 2.0f;
@@ -93,8 +94,12 @@ public:
     // (species.json note, GAME_DESIGN 4).
     static constexpr u32 kCycleBars[2] = {24, 36};
 
-    // The first slice's boss (design/bosses/kaleidos.json), loaded with the species.
+    // The bosses (design/bosses/*.json), loaded with the species: Kaleidos (the first slice's), and since M5 part 1
+    // Longwave, The Choir and the mini-bosses.
     BossData boss;
+    LongwaveData longwave;
+    ChoirData choir;
+    MiniData minis;
 
 private:
     FamilyData families_[kFamilyCount];

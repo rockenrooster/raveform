@@ -51,6 +51,18 @@ u32 World::barOf(double tick) const {
     return rel > 0.0 ? static_cast<u32>(std::floor(rel + 1e-9)) : 0u;
 }
 
+Vec2 World::playersCentre() const {
+    // The centre of the players standing (M5: the Pen, Longwave's path, the Choir's Round are round it).
+    Vec2 sum{};
+    u32 n = 0;
+    for (u32 p = 0; p < playerCount_; ++p)
+        if (players_[p].alive) {
+            sum = sum + players_[p].pos;
+            ++n;
+        }
+    return n ? sum * (1.0f / static_cast<float>(n)) : players_[0].pos;
+}
+
 Vec2 World::spawnAnchor(Vec2 player) {
     // On a band around the player, squashed to the 20:9 screen, never within 260 wu of the player and
     // never inside the central third of the view (GAME_DESIGN 8 fairness; 450 wu is outside it).
@@ -452,7 +464,7 @@ void World::megaWave(double landTick) {
     DirectorState& d = director_;
     const Phrase next = phraseAt(d, barOf(landTick + 1.0));
     const float base = baseBudget(species_->budget, species_->budgetCycles, next.track, next.cycle);
-    float wave = kMegaWaveBars * base * kDropScaleStart * d.assist * coopBudgetScale() * loopRamp(kLoopThreatRamp, next.track);
+    float wave = kMegaWaveBars * base * kDropScaleStart * d.assist * coopBudgetScale() * loopRamp(kLoopThreatRamp, next.track, d.songs);
     for (u32 formations = 0; formations < 16 && wave > 0.0f; ++formations) {
         if (enemies_.count >= aliveCap()) return;
         const i32 sp = pickSpecies(2);  // threats (the crowd brings the Drop's fodder)
@@ -479,7 +491,7 @@ void World::megaWave(double landTick) {
 void World::spotlight(double landTick, const Phrase& next) {
     // GAME_DESIGN 8: each debut gets a spotlight at the end of a Break, a small group alone with its name
     // on screen, before it joins the pool. It warps in over the Break's last two beats.
-    if (next.track >= 3) return;  // the loop has no debuts
+    if (inLoop(next.track, director_.songs)) return;  // the loop has no debuts
     const Vec2 p0 = formationCentre();  // solo: player 0
     float side = p0.x > 0.0f ? -1.0f : 1.0f;
     for (u32 k = 0; k < species_->rosterCount; ++k) {
@@ -534,14 +546,18 @@ void World::directorBar(double barTick, u32 bar) {
         d.trackBar = d.changeBar + kTrackChangeBars;
         d.changeBar = kNoBar;
         d.bossSpawned = false;
+        d.miniSpawned = false;  // M5: the new Track's middle Drop brings its own mini-boss
+        d.midHold = 0;
+        d.midHolding = false;
     }
     phrase_ = phraseAt(d, bar);
     const Phrase& ph = phrase_;
     bool anyAlive = false;
     for (u32 p = 0; p < playerCount_; ++p) anyAlive = anyAlive || players_[p].alive;
-    // GAME_DESIGN 8 (the halo burns down): on the first downbeat of every loop Track from kLoopHaloBurnFrom (not in its
+    // GAME_DESIGN 8 (the halo burns down): on the first downbeat of every loop Track from its kLoopHaloBurnFrom-th (M5: counted
+    // from the set list's length, never from a fixed Track number; not in its
     // Track-change Break), once a Track. A client follows the host's Track the same way.
-    if (ph.track >= kLoopHaloBurnFrom && !ph.trackChange && ph.track > d.burnedTrack) {
+    if (ph.track >= d.songs + kLoopHaloBurnFrom && !ph.trackChange && ph.track > d.burnedTrack) {
         d.burnedTrack = ph.track;
         burnHalos();
     }
@@ -572,12 +588,23 @@ void World::directorBar(double barTick, u32 bar) {
                 break;
             case Section::Drop:
                 if (ph.bossDrop && !d.bossSpawned && spawner_.mode == Spawner::Mode::Slice && anyAlive && role_ != NetRole::Client) {
-                    // The boss enters on the last Drop's downbeat, toward the arena's centre from the
-                    // nearest player (kaleidos.md). Co-op: from the first player standing; the host's call.
+                    // The Track's own boss enters on the last Drop's downbeat (M5: Kaleidos, Longwave, The Choir, round
+                    // again in the loop). Kaleidos toward the arena's centre from the nearest player (kaleidos.md);
+                    // Longwave and the Choir round the players' centre. Co-op: from the first player standing; the host's
+                    // call.
                     const i32 fp = coop() ? firstAlive() : 0;
                     const Vec2 pl = players_[fp >= 0 ? fp : 0].pos;
                     const Vec2 toCentre = normalizeOr(Vec2{} - pl, Vec2{1.0f, 0.0f});
-                    spawnBossNow(barTick, pl + toCentre * kBossEnterWu);
+                    const BossKind kind = bossOfSong(ph.song);
+                    spawnBossNow(barTick, kind == BossKind::Kaleidos ? pl + toCentre * kBossEnterWu : playersCentre(), kind);
+                }
+                if (ph.miniDrop && !d.miniSpawned && spawner_.mode == Spawner::Mode::Slice && anyAlive && role_ != NetRole::Client) {
+                    // M5 (minibosses.md): the middle cycle's Drop from Track 2 on brings a mini-boss on its downbeat, in place
+                    // of the mega-wave; a Pen fight raises its Pen round the players' centre.
+                    const i32 fp = coop() ? firstAlive() : 0;
+                    const Vec2 pl = players_[fp >= 0 ? fp : 0].pos;
+                    const Vec2 toCentre = normalizeOr(Vec2{} - pl, Vec2{1.0f, 0.0f});
+                    spawnBossNow(barTick, pl + toCentre * kBossEnterWu, pickMini(ph.track), playersCentre());
                 }
                 break;
             case Section::Break:
@@ -585,7 +612,7 @@ void World::directorBar(double barTick, u32 bar) {
                 // loop's first Track on, none (GAME_DESIGN 8: the loop is where a run ends).
                 for (u32 p = 0; p < playerCount_; ++p) {
                     PlayerState& pl = players_[p];
-                    if (!pl.present || !pl.alive || (ph.track > kSongs && !kLoopBreakRefills)) continue;
+                    if (!pl.present || !pl.alive || (inLoop(ph.track, d.songs) && !kLoopBreakRefills)) continue;
                     if (pl.cells < pl.cellCap) ++pl.cells;
                     if (pl.novas < pl.novaCap) ++pl.novas;
                     Event ev;
@@ -638,8 +665,9 @@ void World::directorBar(double barTick, u32 bar) {
     const float base = baseBudget(species_->budget, species_->budgetCycles, ph.track, ph.cycle ? ph.cycle : 1u);
     // Play test 1: the threat budget's lever (tuning::kThreatBudgetScale, 1 = the first slice's numbers); play test 2's review:
     // the loop ramps it a Track at a time (GAME_DESIGN 8).
-    d.budgetPerBar = ph.bossDrop ? 0.0f
-                                 : base * sectionScale(ph) * d.assist * coopBudgetScale() * kThreatBudgetScale * loopRamp(kLoopThreatRamp, ph.track);
+    const bool miniFight = boss_.active && !boss_.dying && isMiniBoss(boss_.kind);  // M5: fodder only while it lives
+    d.budgetPerBar = ph.bossDrop || miniFight ? 0.0f
+                                 : base * sectionScale(ph) * d.assist * coopBudgetScale() * kThreatBudgetScale * loopRamp(kLoopThreatRamp, ph.track, d.songs);
     if (d.budgetPerBar <= 0.0f) return;
     d.bank = std::fmin(d.bank + d.budgetPerBar, d.budgetPerBar * kBankBars);
     spendBudget(land);
@@ -687,7 +715,7 @@ void World::directorBeat(double beatTick) {
     if (std::fabs(inBar - 2.0 * kTicksPerBeat) > 1.0) return;
     const double land = tickOfBar(bar + 1);
     if (cur.section == Section::Build && next.section == Section::Drop && !next.bossDrop) {
-        megaWave(land);
+        if (!next.miniDrop) megaWave(land);  // M5: a mini-boss comes in place of the mega-wave
         spendCrowd(land, next);  // C2: the Drop's crowd lands on its downbeat, with the mega-wave
     }
     if (cur.section == Section::Break && next.section == Section::Groove) spotlight(land, next);

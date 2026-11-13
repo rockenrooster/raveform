@@ -160,7 +160,7 @@ void World::applyNetOp(const NetOp& op) {
             const i32 i = spawnEnemyAs(op.species, Vec2{op.x, op.y}, op.f, op.tick, op.serial);
             if (i >= 0) {
                 e.group[i] = op.group;
-                e.flags[i] = static_cast<u8>(e.flags[i] | (op.a & kFlagArriving));
+                e.flags[i] = static_cast<u8>(e.flags[i] | (op.a & (kFlagArriving | kFlagCalled)));
             }
             break;
         }
@@ -205,15 +205,28 @@ void World::applyNetOp(const NetOp& op) {
                 damageBossFinal(op.a, op.b, op.f, op.player, boss_.pos, Vec2{1.0f, 0.0f}, -1.0f);
             break;
         case NetOp::BossEnter:
-            if (role_ == NetRole::Client && !boss_.active) spawnBossNow(op.tick, Vec2{op.x, op.y});
+            if (role_ == NetRole::Client && (!boss_.active || boss_.dying) && op.c < kBossKinds)
+                spawnBossNow(op.tick, Vec2{op.x, op.y}, static_cast<BossKind>(op.c), Vec2{op.x2, op.y2});
             break;
         case NetOp::BossPair:
-            if (role_ == NetRole::Client && boss_.active && !boss_.dying && op.a < 3) killBossPair(op.a, op.b);
+            if (role_ != NetRole::Client || !boss_.active || boss_.dying) break;
+            if (op.a < kBossParts) killBossPart(op.a, op.b);
+            else if (op.a >= kBossGeomBase) bossGeom(static_cast<u8>(op.a - kBossGeomBase), Vec2{op.x, op.y}, Vec2{op.x2, op.y2}, op.tick, true);
+            else if (op.a >= kBossStepBase) bossStep(static_cast<u8>(op.a - kBossStepBase), op.b);
             break;
         case NetOp::BossDeath:
             if (role_ == NetRole::Client && boss_.active && !boss_.dying) {
+                const bool mini = isMiniBoss(boss_.kind);
                 killBoss(op.b);
-                director_.changeBar = op.u;  // the host's bar line, not this device's reading of it
+                // The host's bar line, not this device's reading of it.
+                if (!mini) {
+                    director_.changeBar = op.u;
+                } else {
+                    const u32 natural = miniNaturalEnd();
+                    const u32 hold = op.u > natural ? op.u - natural : 0u;
+                    director_.midHold = static_cast<u8>(hold < 8u ? hold : 8u);
+                    director_.midHolding = false;
+                }
             }
             break;
         case NetOp::BoostDrop:
@@ -232,6 +245,10 @@ void World::applyNetOp(const NetOp& op) {
                 d.track = op.a;
                 d.bossSpawned = op.b != 0;
                 d.assist = op.f;
+                d.midHold = op.c;
+                d.midHolding = op.opts[0] != 0;
+                d.miniSpawned = op.opts[1] != 0;
+                d.lastMini = op.opts[2];
                 netDirector(d);
             }
             break;
@@ -530,7 +547,7 @@ void World::finishNetLog() {
         const u32 i = l.spawnIndex[k];
         if (i < enemies_.count && enemies_.serial[i] == l.spawns[k].serial) {
             l.spawns[k].group = enemies_.group[i];
-            l.spawns[k].flags = static_cast<u8>(enemies_.flags[i] & kFlagArriving);
+            l.spawns[k].flags = static_cast<u8>(enemies_.flags[i] & (kFlagArriving | kFlagCalled));
         }
     }
     l.spawnFinished = l.spawnCount;
@@ -581,7 +598,7 @@ bool World::netSample(u32 i, NetEnemyState& s) const {
     s.until = e.until[i];
     s.rng = e.rng[i];
     s.state = e.state[i];
-    s.flags = static_cast<u8>(e.flags[i] & (kFlagEngaged | kFlagArriving));
+    s.flags = static_cast<u8>(e.flags[i] & (kFlagEngaged | kFlagArriving | kFlagCalled));
     s.target = e.target[i];
     s.far = e.far[i];
     return true;
@@ -632,7 +649,7 @@ float World::netCorrect(const NetEnemyState& s, double hostMusic) {
         e.rng[i] = s.rng;
         e.far[i] = s.far;
         e.target[i] = s.target;
-        e.flags[i] = static_cast<u8>((e.flags[i] & ~(kFlagEngaged | kFlagArriving)) | (s.flags & (kFlagEngaged | kFlagArriving)));
+        e.flags[i] = static_cast<u8>((e.flags[i] & ~(kFlagEngaged | kFlagArriving | kFlagCalled)) | (s.flags & (kFlagEngaged | kFlagArriving | kFlagCalled)));
     }
     // Health: never above what this device has already taken off (its own claims may still be on their way).
     if (s.hp < e.hp[i]) e.hp[i] = s.hp;
@@ -647,6 +664,10 @@ World::DirectorSync World::directorSync() const {
     d.changeBar = director_.changeBar;
     d.bossSpawned = director_.bossSpawned;
     d.assist = director_.assist;
+    d.midHold = director_.midHold;
+    d.midHolding = director_.midHolding;
+    d.miniSpawned = director_.miniSpawned;
+    d.lastMini = director_.lastMini;
     return d;
 }
 
@@ -658,6 +679,10 @@ void World::netDirector(const DirectorSync& d) {
     s.changeBar = d.changeBar;
     s.bossSpawned = d.bossSpawned;
     s.assist = d.assist;
+    s.midHold = d.midHold;
+    s.midHolding = d.midHolding;
+    s.miniSpawned = d.miniSpawned;
+    s.lastMini = d.lastMini;
     if (s.lastBar != kNoBar) {
         // The bar being played, as the host's state places it (a boss death moved the Track's end).
         const u32 bar = barOf(m1_);
@@ -666,13 +691,40 @@ void World::netDirector(const DirectorSync& d) {
     }
 }
 
-void World::netBossState(const float pairHp[3], float coreHp, Vec2 pos) {
+void World::netBossState(const float* partHp, u32 parts, float coreHp, Vec2 pos) {
     BossState& b = boss_;
     if (!b.active || b.dying) return;
-    for (u32 k = 0; k < 3; ++k)
-        if ((b.alive & (1u << k)) && pairHp[k] < b.pairHp[k]) b.pairHp[k] = pairHp[k] > 0.0f ? pairHp[k] : 0.0f;
+    for (u32 k = 0; k < parts && k < kBossParts; ++k)
+        if ((b.alive & (1u << k)) && partHp[k] < b.partHp[k]) b.partHp[k] = partHp[k] > 0.0f ? partHp[k] : 0.0f;
     if (coreHp < b.coreHp) b.coreHp = coreHp > 0.0f ? coreHp : 0.0f;
-    b.pos = pos;
+    // The point that keeps this device's fight where the host's is (bossSyncPoint).
+    switch (b.kind) {
+        case BossKind::Kaleidos: b.pos = pos; break;
+        case BossKind::Longwave: b.lw.anchor = pos; break;
+        case BossKind::Choir: b.ch.centre = pos; break;
+        case BossKind::AlphaHound:
+        case BossKind::BatteringRam: b.body[0] = pos; break;
+        default: break;  // the Hive's Queen and the Carom King follow their song-time paths
+    }
+}
+
+u32 World::bossPartCount() const {
+    switch (boss_.kind) {
+        case BossKind::Kaleidos: return 3;
+        case BossKind::Longwave: return species_->longwave.segments;
+        case BossKind::Choir: return ChoirData::kVoices;
+        case BossKind::CaromKing: return 3;
+        default: return 0;
+    }
+}
+
+Vec2 World::bossSyncPoint() const {
+    switch (boss_.kind) {
+        case BossKind::Longwave: return boss_.lw.anchor;
+        case BossKind::Choir: return boss_.ch.centre;
+        case BossKind::Kaleidos: return boss_.pos;
+        default: return boss_.body[0];
+    }
 }
 
 void World::netSetPresent(u32 p, bool present) {

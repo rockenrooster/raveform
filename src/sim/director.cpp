@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "sim/boss_prose.h"
 #include "sim/tuning.h"
 
 namespace rf::sim {
@@ -18,16 +19,19 @@ const char* sectionLabel(Section s) {
     return "?";
 }
 
-float bpmOfTrack(u32 track) {
+float bpmOfTrack(u32 track, u32 songs) {
+    const u32 n = songs < 1 ? 1u : (songs > kMaxSongs ? kMaxSongs : songs);
     if (track <= 1) return kTrackBpm[0];
-    if (track <= kSongs) return kTrackBpm[track - 1];
-    const float b = kTrackBpm[kSongs - 1] + kEndlessBpmStep * static_cast<float>(track - kSongs);
+    if (track <= n) return kTrackBpm[track - 1];
+    const float b = kTrackBpm[n - 1] + kEndlessBpmStep * static_cast<float>(track - n);
     return b < kEndlessBpmCap ? b : kEndlessBpmCap;
 }
 
 const char* songName(u32 song) {
-    static const char* const kNames[kSongs] = {"FIRST LIGHT", "SOLAR WIND", "REEF"};
-    return kNames[song % kSongs];
+    // GAME_DESIGN 4.2 (quoted): the ten Tracks of the set list.
+    static const char* const kNames[kMaxSongs] = {"FIRST LIGHT", "SOLAR WIND", "REEF",     "AURORA", "FURNACE",
+                                                  "ZENITH",      "AFTERGLOW",  "ARCADIA",  "MIRAGE", "LAST LIGHT"};
+    return kNames[song % kMaxSongs];
 }
 
 Phrase phraseAt(const DirectorState& d, u32 bar) {
@@ -48,45 +52,58 @@ Phrase phraseAt(const DirectorState& d, u32 bar) {
             return phraseAt(n, bar);
         }
         p.track = static_cast<u8>(next);
-        p.song = songOfTrack(next);
+        p.song = songOfTrack(next, d.songs);
         p.cycle = 0;
         p.cycles = static_cast<u8>(cyclesOfTrack(next));
         p.section = Section::Break;
         p.sectionBar = static_cast<u16>(in);
         p.sectionBars = kTrackChangeBars;
         p.trackChange = true;
-        const float from = bpmOfTrack(d.track), to = bpmOfTrack(next);
+        const float from = bpmOfTrack(d.track, d.songs), to = bpmOfTrack(next, d.songs);
         const float u = static_cast<float>(in < kTrackChangeBars ? in : kTrackChangeBars - 1) / static_cast<float>(kTrackChangeBars - 1);
         p.bpm = from + (to - from) * u;
         p.trackBpm = to;
         return p;
     }
-    const u32 form = formOfTrack(d.track);
+    const u32 form = formOfTrack(d.track, d.songs);
     const u32* len = kSectionBars[form];
     const u32 cycleBars = len[0] + len[1] + len[2] + len[3];
     const u32 cycles = cyclesOfTrack(d.track);
     p.track = d.track;
-    p.song = songOfTrack(d.track);
+    p.song = songOfTrack(d.track, d.songs);
     p.cycles = static_cast<u8>(cycles);
-    p.trackBpm = bpmOfTrack(d.track);
+    p.trackBpm = bpmOfTrack(d.track, d.songs);
     p.bpm = p.trackBpm;
-    const u32 rel = bar >= d.trackBar ? bar - d.trackBar : 0;
-    u32 c = rel / cycleBars;
-    if (c >= cycles) c = cycles - 1;  // past the last cycle: the boss's held Drop
-    u32 off = rel - c * cycleBars;
+    // M5 part 1 (minibosses.md): from Track 2 on the middle cycle's Drop brings a mini-boss and holds while it lives, at most
+    // kMiniHoldBars past its length (open-ended up to the cap while it lives; then the bars it was held).
+    const bool minis = d.track >= 2 && cycles >= 3;
+    const u32 mid = cycles / 2;
+    const u32 maxHold = static_cast<u32>(prose::kMiniHoldBars);
+    const u32 hold = !minis ? 0u : (d.midHolding ? maxHold : (d.midHold < maxHold ? d.midHold : maxHold));
+    u32 off = bar >= d.trackBar ? bar - d.trackBar : 0;
+    u32 c = 0;
+    for (;;) {
+        const u32 cl = cycleBars + (c == mid ? hold : 0u);
+        if (c + 1 >= cycles || off < cl) break;  // past the last cycle: the boss's held Drop
+        off -= cl;
+        ++c;
+    }
     p.cycle = static_cast<u8>(c + 1);
     const bool last = c + 1 == cycles;
+    const u32 dropLen = len[2] + (c == mid ? hold : 0u);
     if (off < len[0]) {
         p.section = Section::Groove;
     } else if ((off -= len[0]) < len[1]) {
         p.section = Section::Build;
-    } else if ((off -= len[1]) < len[2] || last) {
+    } else if ((off -= len[1]) < dropLen || last) {
         // The last cycle's Drop is the boss's: it is held while the boss lives (the band holds it too),
-        // so it keeps counting past its length.
+        // so it keeps counting past its length. The middle one's is the mini-boss's (M5), held the same way.
         p.section = Section::Drop;
         p.bossDrop = last;
+        p.miniDrop = minis && c == mid;
+        p.held = p.miniDrop && off >= len[2];
     } else {
-        off -= len[2];
+        off -= dropLen;
         p.section = Section::Break;
     }
     p.sectionBar = static_cast<u16>(off < 0xFFFFu ? off : 0xFFFFu);
@@ -103,31 +120,33 @@ float tempoAt(const DirectorState& d, double tick) {
 
 float baseBudget(const float budget[3][8], const u32 budgetCycles[3], u32 track, u32 cycle) {
     if (cycle < 1) cycle = 1;
-    if (track >= 1 && track <= kSongs) {
+    constexpr u32 kData = 3;  // the Tracks species.json gives budgets for
+    if (track >= 1 && track <= kData) {
         const u32 t = track - 1;
         const u32 n = budgetCycles[t];
         if (n == 0) return 1.0f;
         return budget[t][(cycle <= n ? cycle : n) - 1];
     }
-    // Past the data (the loop): Track 3's last value, rising a step per cycle played since.
-    const u32 n3 = budgetCycles[kSongs - 1];
-    const float last = n3 ? budget[kSongs - 1][n3 - 1] : 1.0f;
+    // Past the data: its last value, rising a step per cycle played since (the loop multiplies on top, World).
+    const u32 n3 = budgetCycles[kData - 1];
+    const float last = n3 ? budget[kData - 1][n3 - 1] : 1.0f;
     u32 cyclesSince = 0;
-    for (u32 t = kSongs + 1; t < track; ++t) cyclesSince += cyclesOfTrack(t);
+    for (u32 t = kData + 1; t < track; ++t) cyclesSince += cyclesOfTrack(t);
     cyclesSince += cycle;
     return last + kEndlessBudgetStep * static_cast<float>(cyclesSince);
 }
 
 float crowdTarget(const SpeciesTable::Crowd& c, u32 track, u32 cycle) {
     if (cycle < 1) cycle = 1;
+    constexpr u32 kData = 3;
     float v = 0.0f;
-    if (track >= 1 && track <= kSongs) {
+    if (track >= 1 && track <= kData) {
         const u32 t = track - 1;
         const u32 n = c.targetCycles[t];
         v = n ? c.target[t][(cycle <= n ? cycle : n) - 1] : 0.0f;
     } else {
-        const u32 n3 = c.targetCycles[kSongs - 1];
-        v = (n3 ? c.target[kSongs - 1][n3 - 1] : 0.0f) + c.loopStep * static_cast<float>(track - kSongs);
+        const u32 n3 = c.targetCycles[kData - 1];
+        v = (n3 ? c.target[kData - 1][n3 - 1] : 0.0f) + c.loopStep * static_cast<float>(track - kData);
     }
     return v < c.max ? v : c.max;
 }
@@ -138,7 +157,7 @@ float crowdScale(const SpeciesTable::Crowd& c, const Phrase& p) {
     switch (p.section) {
         case Section::Groove: return c.groove;
         case Section::Build: return c.build[0] + (c.build[1] - c.build[0]) * u;
-        case Section::Drop: return p.bossDrop ? c.bossDrop : c.drop[0] + (c.drop[1] - c.drop[0]) * u;
+        case Section::Drop: return p.bossDrop ? c.bossDrop : (c.drop[0] + (c.drop[1] - c.drop[0]) * u) * (p.miniDrop ? c.miniDrop : 1.0f);
         case Section::Break: return c.breakScale;
     }
     return 1.0f;

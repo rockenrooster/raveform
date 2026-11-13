@@ -107,7 +107,7 @@ constexpr float kAssistStep = 0.1f, kAssistMin = 0.8f, kAssistMax = 1.3f;  // GA
 constexpr float kBoostEveryLoS = 20.0f, kBoostEveryHiS = 30.0f;            // GAME_DESIGN 6.1 (quoted)
 constexpr float kSpotlightWu = 560.0f;       // a debut's group lands this far from the ship
 constexpr float kEndlessBpmStep = 4.0f, kEndlessBpmCap = 174.0f;           // GAME_DESIGN 4.2 (quoted)
-constexpr float kTrackBpm[3] = {120.0f, 126.0f, 132.0f};                   // GAME_DESIGN 4.2 (quoted)
+constexpr float kTrackBpm[10] = {120.0f, 126.0f, 132.0f, 138.0f, 144.0f, 150.0f, 156.0f, 162.0f, 168.0f, 174.0f};  // GAME_DESIGN 4.2 (quoted)
 
 // ---- Trio (GAME_DESIGN 6.1, screens.md "The Trio": ring 170 wu, orbs 38 wu, Riffs x1.14 quoted) ----
 constexpr float kTrioRingWu = 170.0f;
@@ -198,11 +198,12 @@ constexpr float kLoopThreatRamp = 1.3f, kLoopHealthRamp = 1.25f, kLoopCellRamp =
 // enemy bullet pool has a quarter free). Each compounding; tuned within a third of the design's step (docs/PROGRESS.md).
 constexpr bool kLoopBreakRefills = false;  // the lead: the loop's Breaks give back no cell and no Nova
 // The halo burns down (GAME_DESIGN 8, `daec945`, the last pass on the loop): on the first downbeat of every Track of the loop
-// from kLoopHaloBurnFrom on, every ship loses kLoopHaloBurn cells of capacity (never below one); in the loop no kill
+// from the loop's kLoopHaloBurnFrom-th Track on (1: its first, the set list's length + 1; never a fixed Track number, M5),
+// every ship loses kLoopHaloBurn cells of capacity (never below one); in the loop no kill
 // drops a Cell and Regen stops (a boss's two Cells, a Halo, Extra Cell picks inside the burnt capacity and the Novas in
 // stock remain). The knob the lead allows: one or two cells, from the loop's first or second Track (docs/PROGRESS.md).
 constexpr u32 kLoopHaloBurn = 2;
-constexpr u32 kLoopHaloBurnFrom = 4;
+constexpr u32 kLoopHaloBurnFrom = 1;  // the loop's first Track (Track 4 while the set list had three)
 constexpr float kLoopRegenStretch = 1.5f;
 constexpr float kLoopEnemySpeedRamp = 1.06f, kLoopEnemySpeedMax = 1.6f;
 constexpr float kLoopBulletSpeedRamp = 1.06f, kLoopBulletSpeedMax = 1.5f;
@@ -239,6 +240,28 @@ constexpr float kBossNovaDamage = 60.0f;      // a Nova's blast: to each pair, a
 constexpr float kBossArmInner = 78.0f;        // the arms' hit shape: from the first facet's inner point ...
 constexpr float kBossArmOuter = 274.0f;       // ... to past the tip star
 constexpr float kBossEnterWu = 500.0f;        // kaleidos.md (quoted): enters 500 wu from the nearest player
+
+// ======================================================================================================
+// M5 PART 1: Longwave, the Choir, mini-bosses batch 1 and the Pen. The pages give the fights (sim/boss.cpp parses their
+// json, sim/boss_prose.h quotes what they say in words); chosen here (docs/PROGRESS.md, M5 part 1, "Numbers chosen").
+// ======================================================================================================
+constexpr float kBossBulletScaleM5 = 1.0f;    // the new fights' bullet density lever (1 = the pages' counts; Kaleidos keeps 0.7)
+constexpr float kBossNovaShareM5 = 1.0f;      // a Nova's blast on each part of theirs it can hurt (x kBossNovaDamage)
+constexpr u32 kLwSegmentShards = 4;           // Shards a Longwave segment drops (24 of them)
+constexpr u32 kChoirVoiceShards = 20;         // Shards a Voice drops (as Kaleidos's pair)
+constexpr float kChoirMoveWu = 900.0f;        // wu/s: a Voice moves to its place at most this fast (the Fugue's shrink, Solo)
+constexpr u32 kPrinceShards = 10;             // Shards a Carom Prince drops
+constexpr float kPrinceDrift = 0.25f;         // the speed factor of a Prince that drifts on as a Carom after the King's death
+constexpr float kRamTurnRate = 4.0f;          // rad/s: Battering Ram turns to face the nearest player
+constexpr float kRamWallFanDeg = 160.0f;      // the wall's 16 bullets fan this wide from the point of impact, inward
+constexpr float kRamWakeWu = 22.0f;           // the wake's half-width (contact)
+constexpr float kHiveDartSpeed = 900.0f;      // wu/s: a Hive dart (and the Queen) moves to its place at most this fast
+// The pages leave the health to the bot ("tune the segment health with the bot once it can surf", "tune the Voice health
+// with the bot", minibosses.md "25 to 35 seconds of fire ... tune with the bot"): the careful bot's time to kill each at its
+// home Track (8 seeds) brought into the page's window by these factors on the page's health (docs/PROGRESS.md, M5 part 1).
+constexpr float kLongwaveHealthTune = 1.6f;   // 52 s at 1 -> the page's 70-100 s
+constexpr float kChoirHealthTune = 4.0f;      // 33 s at 1 -> the page's 80-110 s
+constexpr float kMiniHealthTune[4] = {6.5f, 7.5f, 2.7f, 6.0f};  // Alpha Hound 9 s, The Hive 6, Battering Ram 16, Carom King 5 at 1 -> 25-35 s
 
 // ======================================================================================================
 // M4 STAGE A: co-op (GAME_DESIGN 10, TECH_SPEC 8). Quoted numbers are marked; the rest are chosen where the

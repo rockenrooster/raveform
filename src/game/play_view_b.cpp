@@ -185,6 +185,10 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
                 shatterArcs(at, e.c < 8 ? e.c : 8u, e.b, e.c < 8 ? e.c : 8u, mix(palettes_->player[e.a], whiteV(), 0.3f) * 2.0f, t);
             break;
         case EventType::BossPair: {
+            if (static_cast<BossKind>(e.c) != BossKind::Kaleidos) {
+                eventFight(w, e, t);
+                break;
+            }
             // kaleidos.md: both arms shatter outward along their axis in mirror image; the lens plates
             // crack and fall inward; the wheel flinches.
             const Vec3 hue = palette_->hue[e.a % 3], partner = palette_->partner[e.a % 3];
@@ -208,6 +212,10 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
             break;
         }
         case EventType::BossDeath: {
+            if (static_cast<BossKind>(e.a) != BossKind::Kaleidos) {
+                eventFight(w, e, t);
+                break;
+            }
             // Iris wide open, the clamped white flash, facets tumbling outward in six-fold symmetry, three
             // rings, 300 sparks, the 30 px distortion ring; Play holds the action 50 ms. M3 stage C: the white
             // flash is clamped (0.9, like the M1 boss break) and peaks for 0.12 s; the accent glow stays after it.
@@ -243,8 +251,16 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
             }
             break;
         }
+        case EventType::BossCue:
+        case EventType::BossGone:
+        case EventType::BossEnter:
+        case EventType::Telegraph:
+            eventFight(w, e, t);
+            break;
         case EventType::Impact:
-            if (e.species == kBossSpecies) {
+            if (e.species == kBossSpecies && w.boss().kind != BossKind::Kaleidos) {
+                eventFight(w, e, t);
+            } else if (e.species == kBossSpecies) {
                 SparkReq r{};
                 r.at = at;
                 r.dir = Vec2{-e.x2, -e.y2};
@@ -390,7 +406,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
     }
 
     // ---- Kaleidos.
-    drawBoss(d, in);
+    drawFight(d, in);  // M5: the fight of the moment (Kaleidos is drawBoss), and the Pen
 
     // ---- The Trio (screens.md): the ring is the clock; three orbs with icon, name, effect words, pips. Play test 1:
     // locked for two beats (the ring draws itself in one, the orbs fade in as outlines over the next, their words

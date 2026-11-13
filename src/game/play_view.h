@@ -86,7 +86,7 @@ public:
     const ViewStats& stats() const { return stats_; }
     // M4 stage B (the lead's question on frame_client): what pushed the lattice in the last second, by source, inside
     // this frame (impulses are what heats it), with the crowd gain and the kick ripples now. One line of text.
-    enum ImpulseKind : u8 { kImpKill, kImpHit, kImpShipDown, kImpDeath, kImpNova, kImpDash, kImpDropWave, kImpKinds };
+    enum ImpulseKind : u8 { kImpKill, kImpHit, kImpShipDown, kImpDeath, kImpNova, kImpDash, kImpDropWave, kImpBoss, kImpKinds };
     void latticeTrace(char* out, u32 capacity) const;
 
     // The camera of the last rendered frame (logical pixels).
@@ -138,6 +138,29 @@ private:
     void eventB(const sim::World& w, const sim::Event& e, float t);
     void drawStageB(FrameDraw& d, const ViewInput& in, float W, float H);
     void drawBoss(FrameDraw& d, const ViewInput& in);
+    // M5 part 1 (play_view_m5.cpp): Longwave, the Choir, the mini-bosses and the Pen, and their events.
+    void drawFight(FrameDraw& d, const ViewInput& in);
+    void drawLongwave(FrameDraw& d, const ViewInput& in);
+    void drawChoir(FrameDraw& d, const ViewInput& in);
+    void drawMini(FrameDraw& d, const ViewInput& in);
+    void drawPen(FrameDraw& d, const ViewInput& in);
+    void eventFight(const sim::World& w, const sim::Event& e, float t);
+    void fightChevron(FrameDraw& d, const ViewInput& in, Vec2 at, Vec3 colour);
+    // Lines a fight has shown (a pack's charge, the Hive's spear), each until its moment.
+    struct FightLine {
+        Vec2 from, dir;
+        double until = -1.0;
+        float length = 0.0f;
+    };
+    static constexpr u32 kFightLines = 16;
+    FightLine fightLines_[kFightLines];
+    u32 fightLineNext_ = 0;
+    // The Choir's eight hues (choir.md: 45 degrees apart from the Track's first enemy hue, clear of the danger band), for the
+    // palette they were made from; the death's shown parts (Longwave's segments unravelled, the Choir's hoods shattered).
+    Vec3 choirHue_[8];
+    const Palette* choirHueFor_ = nullptr;
+    u32 deathShown_ = 0;
+    double deathSeenTick_ = -1.0;
     // Edge indicator (look.md §6, M3 stage C): a chevron inside the screen edge pointing at world, on a dark
     // disc, in the threat layer; oss: the larger double chevron, scaled by swell.
     // tip: 1 a small ring at its tip (a downed teammate, M4), 2 a plus (a Cell while its player is on the last cell, play

@@ -392,8 +392,8 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
     {
         const float bw = 520.0f * s, x0 = cx - 0.5f * bw, y = top + 58.0f * s;
         const Vec3 segCol[4] = {palette.hue[1], gold, accent, palette.hue[2]};
-        const u32 len[4] = {kSectionBars[formOfTrack(ph.track)][0], kSectionBars[formOfTrack(ph.track)][1],
-                            kSectionBars[formOfTrack(ph.track)][2], kSectionBars[formOfTrack(ph.track)][3]};
+        const u32 form = formOfTrack(ph.track, w.setList());
+        const u32 len[4] = {kSectionBars[form][0], kSectionBars[form][1], kSectionBars[form][2], kSectionBars[form][3]};
         const u32 total = len[0] + len[1] + len[2] + len[3];
         const double barStart = w.tickOfBar(ph.bar);
         const float inBar = clampf(static_cast<float>((st.music - barStart) / kTicksPerBar), 0.0f, 1.0f);
@@ -540,8 +540,8 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             // GAME_DESIGN 8 (the loop is where a run ends): the loop's first Track card says so, ENCORE above the name and
             // NO MORE REFILLS under it; once the halo burns down its last line is HALO n (the capacity the burn left; the first
             // card that burns shows both lines), all at the size of the TRACK n line.
-            const bool encore = ph.track == sim::kSongs + 1;
-            const bool burnt = ph.track >= sim::tuning::kLoopHaloBurnFrom;
+            const bool encore = ph.track == w.setList() + 1;  // M5: the loop's first Track, after the set list
+            const bool burnt = ph.track >= w.setList() + sim::tuning::kLoopHaloBurnFrom;
             char halo[16];
             std::snprintf(halo, sizeof halo, "HALO %u", static_cast<u32>(w.player(w.viewPlayer()).cellCap));
             const float under = 28.0f * s + 26.0f * s;  // a small line and its gap
@@ -626,7 +626,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         d.hud.line({x0, y}, {x0 + bw, y}, 1.0f * s, col(white, 0.18f), col(white, 0.18f), 0);
         if (f > 0.0f) d.hud.line({x0, y}, {x0 + bw * f, y}, 2.0f * s, col(gold, 1.8f), col(amber, 1.8f), 0);
         for (u32 p = 0; p < 3; ++p) {
-            const float pf = boss.pairMax > 0.0f ? clampf(boss.pairHp[p] / boss.pairMax, 0.0f, 1.0f) : 0.0f;
+            const float pf = boss.partMax > 0.0f ? clampf(boss.partHp[p] / boss.partMax, 0.0f, 1.0f) : 0.0f;
             const float px = x0 + bw + 20.0f * s + static_cast<float>(p) * 30.0f * s;
             d.hud.line({px, y}, {px + 22.0f * s, y}, 0.8f * s, col(palette.hue[p], 0.3f), col(palette.hue[p], 0.3f), 0);
             if (pf > 0.0f) d.hud.line({px, y}, {px + 22.0f * s * pf, y}, 1.8f * s, col(palette.hue[p], 1.6f), col(palette.hue[p], 1.6f), 0);

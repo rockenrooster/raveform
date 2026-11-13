@@ -176,11 +176,33 @@ add_custom_command(OUTPUT ${RF_GEN}/species.json.inc
   COMMENT "embed species.json"
   JOB_POOL rf_jobs
   VERBATIM)
+# M5: every boss page is embedded the same way.
 add_custom_command(OUTPUT ${RF_GEN}/kaleidos.json.inc
   COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/kaleidos.json -DOUT=${RF_GEN}/kaleidos.json.inc
           -P ${RF_ROOT}/cmake/EmbedText.cmake
   DEPENDS ${RF_ROOT}/design/bosses/kaleidos.json ${RF_ROOT}/cmake/EmbedText.cmake
   COMMENT "embed kaleidos.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
+add_custom_command(OUTPUT ${RF_GEN}/longwave.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/longwave.json -DOUT=${RF_GEN}/longwave.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/bosses/longwave.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed longwave.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
+add_custom_command(OUTPUT ${RF_GEN}/choir.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/choir.json -DOUT=${RF_GEN}/choir.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/bosses/choir.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed choir.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
+add_custom_command(OUTPUT ${RF_GEN}/minibosses.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/minibosses.json -DOUT=${RF_GEN}/minibosses.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/bosses/minibosses.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed minibosses.json"
   JOB_POOL rf_jobs
   VERBATIM)
 add_library(raveform_sim STATIC
@@ -194,12 +216,18 @@ add_library(raveform_sim STATIC
   src/sim/upgrades.cpp
   src/sim/world.cpp
   src/sim/world_boss.cpp
+  src/sim/world_choir.cpp
   src/sim/world_enemies.cpp
+  src/sim/world_longwave.cpp
+  src/sim/world_miniboss.cpp
   src/sim/world_net.cpp
   src/sim/world_spawner.cpp
   src/sim/world_upgrades.cpp
   ${RF_GEN}/species.json.inc
-  ${RF_GEN}/kaleidos.json.inc)
+  ${RF_GEN}/kaleidos.json.inc
+  ${RF_GEN}/longwave.json.inc
+  ${RF_GEN}/choir.json.inc
+  ${RF_GEN}/minibosses.json.inc)
 target_include_directories(raveform_sim PUBLIC ${RF_ROOT}/src ${RF_GEN})
 target_compile_options(raveform_sim PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti> -fno-math-errno)
 target_compile_options(raveform_sim PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror $<$<CONFIG:Debug>:-O2>)
@@ -325,6 +353,7 @@ target_sources(raveform_core PRIVATE
   src/game/play_pictures.cpp
   src/game/play_view.cpp
   src/game/play_view_b.cpp
+  src/game/play_view_m5.cpp
   src/game/play_view_shots.cpp
   src/game/screens.cpp
   src/game/settings.cpp)

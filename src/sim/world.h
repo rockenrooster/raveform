@@ -110,10 +110,11 @@ struct NetLog {
     NetDeath deaths[kDeaths];
     NetClaim claims[kClaims];
     NetBossClaim bossClaims[kBossClaims];
-    // The host's boss: 0 enters (x, y, tick = the entrance), 1 a pair dies (pair, killer), 2 dies (killer, changeBar).
+    // The host's boss: 0 enters (boss = its BossKind, x, y, tick = the entrance, x2, y2 = the Pen's centre), 1 a part
+    // dies (pair = the part, killer) or a step its health decided (pair = kBossStepBase + step), 2 dies (killer, changeBar).
     struct Boss {
-        u8 kind = 0, pair = 0, killer = 0xFF;
-        float x = 0.0f, y = 0.0f;
+        u8 kind = 0, pair = 0, killer = 0xFF, boss = 0;
+        float x = 0.0f, y = 0.0f, x2 = 0.0f, y2 = 0.0f;
         double tick = 0.0;
         u32 changeBar = 0;
     } boss[kBoss];
@@ -194,7 +195,13 @@ enum class EventType : u8 {
     CellDrop,    // a Cell (health pickup) fell: a = its owner; x, y
     CellTake,    // a cell came back: a = player, b = cells now, c = 1 grown back by Regen (0: a Cell taken); x, y
     HaloBurn,    // GAME_DESIGN 8, the loop: a = player, b = its capacity now, c = cells held before; x, y (the arcs shatter)
+    // M5 part 1: the fights' sounds (a = BossCue, b = Voice / wave place / wall, f = pitch; tick = its moment; x, y), and a
+    // mini-boss that warped out at the end of its hold (a = BossKind; x, y).
+    BossCue,
+    BossGone,
 };
+// M5: BossEnter carries a = the BossKind; BossPair c = the BossKind (a = the part: a pair, a segment, a Voice, a Prince);
+// BossDeath a = the BossKind, b = the killer, tick = the bar line the Track (or the mini-boss's Drop) ends on.
 // Impact events on the boss carry this species, with c = 1 lens plate, 2 arm, 3 core. Play test 2: every Impact carries
 // b = the shooter (0xFF: none); an enemy's Impact c = a Prism lane + 3 (1..5; 0: none).
 constexpr u16 kBossSpecies = 0xFFFF;
@@ -219,8 +226,13 @@ enum EnemyState : u8 {
     kTelegraph,    // a Ram's telegraph (one beat)
     kDash,         // a Ram's dash (one beat)
     kRest,         // a Ram's rest
+    // M5 part 1: a mini-boss's called bodies (kFlagCalled).
+    kCharge,       // a pack Hound's charge along its line (a, b = the direction)
+    kFormation,    // a Hive dart following its place in its hive's shape (a = its slot, b = its hive)
+    kFlee,         // the pack scatters when the Alpha dies (double Shards)
 };
-enum EnemyFlag : u8 { kFlagDead = 1, kFlagEngaged = 2, kFlagArriving = 4, kFlagPredicted = 8 };  // arriving: crowd fodder on its way into the frame
+enum EnemyFlag : u8 { kFlagDead = 1, kFlagEngaged = 2, kFlagArriving = 4, kFlagPredicted = 8, kFlagCalled = 16 };  // arriving: crowd fodder on its way into the frame
+// kFlagCalled (M5): a mini-boss called it (the Alpha's pack, the Hive's darts); sent with its spawn.
 // kFlagPredicted (co-op client, with kFlagDead): its own hit killed it and the host has not answered yet; it
 // stays in the pool (gone for everything else) until the host confirms the death, or comes back after 300 ms.
 
@@ -454,6 +466,10 @@ public:
     bool restartPending() const { return restartPending_; }
     double restartTick() const { return restartAt_; }
 
+    // M5 (GAME_DESIGN 4.2, the lead's decision): the set list's length, the Tracks a run plays before the loop begins
+    // (data: the music's Tracks the simulation has content for). Kept across runs; from the next run on, 1..kMaxSongs.
+    void setSetList(u32 songs);
+    u32 setList() const { return setList_; }
     Rules& rules() { return rules_; }
     Spawner& spawner() { return spawner_; }
     const Spawner& spawner() const { return spawner_; }
@@ -513,6 +529,37 @@ public:
     }
     const BossState& boss() const { return boss_; }
     const BossData& bossData() const { return species_->boss; }
+    // M5 part 1: the Pen (minibosses.md) and the fights' geometry for the view, the band, the bots and tests.
+    const PenState& pen() const { return pen_; }
+    bool penInside(Vec2 p, float r) const;
+    // The Pen's walls: what was inside stays inside, what was outside stays outside (bit 1: x clamped, bit 2: y).
+    u8 penKeep(Vec2 from, Vec2& to, float r) const;
+    bool bossOn() const;                                  // a fight is on: entered, not dying, past its entrance
+    u32 bossParts(BossPart* out, u32 cap) const;          // the hittable circles now (not Kaleidos's arms)
+    float bossDamageScale(u8 part, u8 index, double tick, Vec2 dir) const;  // the multiplier a hit would get (0: armour)
+    BossKind pickMini(u32 track) const;                   // the mini-boss Track `track`'s middle Drop brings
+    u32 miniNaturalEnd() const;                           // the run bar the middle Drop would end on without it
+    // Longwave: the body's place k (0 the head, 1.. the live segments by rank, fractions between) at song time t with the
+    // wave `shift` cycles behind (the echoes); its unit tangent and wave value (+1 the crest, -1 a trough).
+    Vec2 longwavePoint(double t, float k, float shift, Vec2* tangent = nullptr, float* wave = nullptr) const;
+    double longwaveSteps(double t) const;                 // the wave's grid steps at song time t
+    i32 longwaveCrest(u32 segment, double t) const;       // its place in the wave (0..7) when it is a crest, else -1
+    bool longwaveJawOpen(double t) const;
+    u32 bossSegmentsAlive() const;
+    // The Choir: a Voice sings (its mouth open, it can be hurt); the cage (0 none, 1 telegraph, 2 burning); the held
+    // note of Voice k (0, 1 its line, 2 its beam; *angle: where it points).
+    bool choirSinging(u32 k, double t) const;
+    u8 choirCage(double t) const;
+    u8 choirHeld(u32 k, double t, float* angle) const;
+    float choirRingAngle(double t) const;
+    // The Voices that sing on the eighth at song time t (this bar's caller and groups; the next bar's caller as it will move
+    // on): the view's telegraph (who draws breath) and the call string.
+    u8 choirSingers(double t) const;
+    static u8 choirPhaseOf(u32 alive);
+    // The Hive: where hive h's dart `slot` (or its Queen) stands at song time t.
+    Vec2 hiveSlot(u32 h, float slot, double t, bool queen) const;
+    // Battering Ram: its wake burns (half health).
+    bool ramWakeHit(Vec2 at) const;
     // The lead grid (musical ticks per shot) a player fires on now: 1/16, moved along by Double-Time and
     // the Surge's gear (capped at 1/32), halved by Hyper (GAME_DESIGN 4.1, 6.2, 6.4).
     double leadGrid(u32 p) const;
@@ -520,7 +567,9 @@ public:
     void grantUpgrade(u32 p, u8 upgrade) { applyUpgrade(p, upgrade); }
     void grantBoost(u32 p, u8 boost) { activateBoost(p, boost); }
     void openTrioNow(u32 p, double closeTick, const u8* forced = nullptr, u8 kind = kTrioBreak);
-    void spawnBossNow(double enterTick, Vec2 pos);
+    // The fight `kind` enters on enterTick at pos (Longwave and the Choir: round that centre; a Pen fight raises its Pen
+    // round penAt).
+    void spawnBossNow(double enterTick, Vec2 pos, BossKind kind = BossKind::Kaleidos, Vec2 penAt = Vec2{});
     void dropBoost(Vec2 pos, u8 type);
     // Boss geometry for the view, the band and tests.
     float bossArmAngle(u32 arm) const;                // arm k (0..5) now
@@ -536,9 +585,15 @@ public:
     // Tests and pictures (M4 stage B, --coop-down-at): player p takes a hit inside the next tick, as from a bullet (Auto
     // Nova, the Halo Boost and a level-up Trio's shelter do not stop it).
     void hitNextTick(u32 p) { scriptHits_ = static_cast<u8>(scriptHits_ | (1u << (p & 3u))); }
-    void killBossNextTick(u8 pairs, bool core) {
-        scriptKillPairs_ = pairs;
+    void killBossNextTick(u32 parts, bool core) {
+        scriptKillParts_ = parts;
         scriptKillCore_ = core;
+    }
+    // Tests and pictures: take a fight's core down to this share of its health (a mini-boss's half, the King's splits) as
+    // the host's verdict would.
+    void bossHealthNow(float share) {
+        boss_.coreHp = boss_.coreMax * share;
+        if (isMiniBoss(boss_.kind) && role_ != NetRole::Client) miniHealthSteps();
     }
 
     // ---- M4 co-op (TECH_SPEC 8.1, GAME_DESIGN 10; world_net.cpp) ----------------------------------------
@@ -573,15 +628,24 @@ public:
         u8 track = 1;
         bool bossSpawned = false;
         float assist = 1.0f;
+        // M5 part 1: the middle Drop's hold for its mini-boss.
+        u8 midHold = 0;
+        bool midHolding = false, miniSpawned = false;
+        u8 lastMini = 0xFF;
         bool operator==(const DirectorSync& o) const {
             return startTick == o.startTick && trackBar == o.trackBar && changeBar == o.changeBar && track == o.track &&
-                   bossSpawned == o.bossSpawned && assist == o.assist;
+                   bossSpawned == o.bossSpawned && assist == o.assist && midHold == o.midHold && midHolding == o.midHolding &&
+                   miniSpawned == o.miniSpawned && lastMini == o.lastMini;
         }
     };
     DirectorSync directorSync() const;
     void netDirector(const DirectorSync& d);  // client
     // Client: the boss as the host has it (health never above what this device has already taken off).
-    void netBossState(const float pairHp[3], float coreHp, Vec2 pos);
+    void netBossState(const float* partHp, u32 parts, float coreHp, Vec2 pos);
+    // Host: the parts with health the heartbeat carries, and the point that keeps the clients' fight in place (Kaleidos's
+    // wheel, Longwave's path anchor, the Choir's Round, a mini-boss's body).
+    u32 bossPartCount() const;
+    Vec2 bossSyncPoint() const;
     // A player whose device left: out of the run (enemies forget it, its frame stops counting).
     void netSetPresent(u32 p, bool present);
     // Every enemy alive (and every predicted death the host has not answered) as an order-free digest: equal on
@@ -631,6 +695,7 @@ private:
     void directorBar(double barTick, u32 bar);
     void directorBeat(double beatTick);
     void spendBudget(double landTick);
+    Vec2 playersCentre() const;
     void spendCrowd(double landTick, const Phrase& ph);
     void spawnCrowd(u16 species, u32 count, double landTick, Vec2 frameCentre, u32 framePlayer = 0);
     i32 spawnEnemyAs(u16 species, Vec2 pos, float heading, double landTick, u32 serial);  // serial 0: the next one
@@ -678,8 +743,70 @@ private:
     void damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir);
     void damageBossFinal(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir, float scale);  // the multiplier applied
     void bossContact();
-    void killBossPair(u8 pair, u8 owner);
+    void killBossPart(u8 index, u8 owner);
     void killBoss(u8 owner);
+    // M5 part 1 (world_boss.cpp): what every fight shares.
+    float bossHealthScale(BossKind kind) const;
+    float bossBulletDensity() const;
+    void bossNova(u32 p);
+    void bossHitPlayer(u32 p, Vec2 from);
+    bool bossBeamsHit(Vec2 at, Vec2& from) const;
+    void bossStep(u8 step, u8 owner);
+    // A decision that reads where the players stand, made at musical tick `tick`: the host's is applied and sent; a client
+    // applies its own guess until the host's arrives, and the host's for the same moment always wins (bossGeom).
+    void bossDecide(u8 geom, Vec2 a, Vec2 b, double tick);
+    void bossGeom(u8 geom, Vec2 a, Vec2 b, double tick, bool host);
+    void emitCue(BossCue c, double tick, u8 b, float f, Vec2 at);
+    // world_longwave.cpp
+    void enterLongwave(Vec2 centre);
+    void placeLongwave(double t);
+    void longwavePhaseAt(double t);
+    void longwavePartDied(u8 index, Event& ev);
+    void longwaveFire(double t, i64 step);
+    void updateLongwave(float dt);
+    Vec2 longwaveAnchor(double t) const;
+    float longwaveScale(u8 part, u8 index, double t) const;
+    // world_choir.cpp
+    void enterChoir(Vec2 centre);
+    void choirPartDied(u8 index, Event& ev);
+    void choirBar(double t);
+    void choirEighth(double t);
+    void choirSing(u32 k, double t, u32 bullets, float spreadDeg, float aim);
+    Vec2 choirAimFrom(Vec2 from) const;
+    u32 choirPhaseBar(double t) const;
+    bool choirBeamsHit(Vec2 at) const;
+    float choirScale(u8 part, u8 index, double t) const;
+    void updateChoir(float dt);
+    // world_miniboss.cpp
+    void penRise(Vec2 centre, double tick);
+    void penFall(double tick);
+    Vec2 penPlace(Vec2 p, float r);
+    void updatePen();
+    float miniScore() const;
+    u16 miniTierSpecies(Family f) const;
+    void enterMini(Vec2 pos, Vec2 penAt);
+    void miniHealthSteps();
+    void miniStep(u8 step);
+    void miniPartDied(u8 index, u8 owner, Event& ev);
+    void miniDied(u8 owner, u32 endBar);
+    void miniRelease(bool killed);
+    void miniGone();
+    u32 miniParts(BossPart* out, u32 cap) const;
+    float miniScale(u8 part, u8 index, double t, Vec2 dir) const;
+    void updateMini(float dt);
+    void alphaHowl(double t);
+    void updateAlpha(float dt);
+    void hiveHatch(u32 n, double land);
+    void hiveReslot();
+    void hiveShapeStart(double t);
+    void updateHive(float dt);
+    void ramCharge(double t);
+    void updateRam(float dt);
+    void caromLeg(u32 k, Vec2 from, Vec2 dir, double t, bool halfBeats);
+    void caromBounce(u32 k, double t);
+    void updateCarom(float dt);
+    bool minionMotion(u32 i, float dt);
+    void minionLand(u32 i);
     // world_net.cpp (M4)
     bool coop() const { return playerCount_ > 1; }
     u32 presentCount() const;
@@ -708,6 +835,7 @@ private:
     i32 idSlot(u32 serial) const;
 
     const SpeciesTable* species_ = nullptr;
+    u8 setList_ = kSongs;
     Rules rules_;
     Spawner spawner_;
     DirectorState director_;
@@ -716,6 +844,8 @@ private:
     BoostPickups boostPickups_;
     CellPickups cellPickups_;
     BossState boss_;
+    PenState pen_;
+    u32 hiveIdx_[192] = {};  // the Hive's darts by spawn number (hiveReslot's scratch)
     u8 hitShotFlags_ = 0;  // play test 2: the flags of the shot whose hit hitEnemy() is applying (its Impact's Prism lane)
     // The loop's ramps this tick (GAME_DESIGN 8; 1 in the first pass): enemy speed, enemy bullet speed, shooters' counts.
     float loopSpeed_ = 1.0f, loopBulletSpeed_ = 1.0f, loopShooters_ = 1.0f;
@@ -737,7 +867,7 @@ private:
     float crowdGoal_ = 0.0f;
     bool restartPending_ = false;
     double restartAt_ = 0.0;
-    u8 scriptKillPairs_ = 0;
+    u32 scriptKillParts_ = 0;
     u8 scriptHits_ = 0;
     bool scriptKillCore_ = false;
     bool restarted_ = false;  // this tick began a new run

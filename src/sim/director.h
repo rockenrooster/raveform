@@ -5,6 +5,10 @@
 // formations from it (sim/world_spawner.cpp) and the band is told where it is (game/play.cpp), so the
 // sim is the one source of the form and the music follows it on bar lines.
 //
+// M5 part 1: each Track ends in its own boss (Kaleidos, Longwave, The Choir; sim/boss.h bossOfSong) and from Track 2 on
+// the middle cycle's Drop brings a mini-boss and holds while it lives (at most 8 bars past its 16). The loop begins
+// after the last Track of the set list (DirectorState::songs), never at a fixed Track number.
+//
 // Track 1 "First Light" plays three Short cycles (8/4/8/4 bars; play test 2: it had four); its third Drop
 // brings Kaleidos and is held while Kaleidos lives. Its death schedules the Track-change Break (eight bars:
 // tempo, key and palette cross-fade, conductor.json trackChange) into Track 2 "Solar Wind", three Standard
@@ -24,19 +28,28 @@ constexpr u32 kSectionBars[2][4] = {{8, 4, 8, 4}, {12, 4, 16, 4}};  // GAME_DESI
 constexpr u32 kTrackChangeBars = 8;  // the band's Track-change Break (conductor.json trackChange)
 constexpr u32 kNoBar = 0xFFFFFFFFu;
 
-// The song a run Track plays (0 First Light, 1 Solar Wind, 2 Reef; then the loop over all three), its form,
-// cycles and tempo (2026-11-12: Reef is Track 3, three Standard cycles at 132 BPM).
+// The set list (GAME_DESIGN 4.2, the lead's decision of 2026-11-12): a run plays every Track the game has, in order,
+// and the loop (section 8: ramps, no refills, the halo burn, the ENCORE card) begins after the last of them. Its
+// length is data (World::setSetList: the music's Tracks the simulation has content for), never a fixed number;
+// kSongs is only the length when nothing says otherwise (the first slice's three). kMaxSongs: GAME_DESIGN 4.2's ten.
 constexpr u32 kSongs = 3;
-inline u8 songOfTrack(u32 track) { return static_cast<u8>((track + kSongs - 1) % kSongs); }
-inline u32 formOfTrack(u32 track) { return songOfTrack(track) == 0 ? 0u : 1u; }  // First Light Short, the others Standard
+constexpr u32 kMaxSongs = 10;
+// The song a run Track plays (0 First Light, 1 Solar Wind, 2 Reef, ...; then the loop over all of them), its form,
+// cycles and tempo, for a set list of `songs` Tracks.
+inline u8 songOfTrack(u32 track, u32 songs) {
+    const u32 n = songs ? songs : 1u;
+    return static_cast<u8>((track + n - 1) % n);
+}
+inline u32 formOfTrack(u32 track, u32 songs) { return songOfTrack(track, songs) == 0 ? 0u : 1u; }  // First Light Short
 inline u32 cyclesOfTrack(u32 /*track*/) { return 3u; }  // GAME_DESIGN 4.2 (play test 2: Track 1 too)
-float bpmOfTrack(u32 track);  // 120, 126, 132, then +4 per Track up to 174 (GAME_DESIGN 4.2)
-const char* songName(u32 song);  // "FIRST LIGHT", "SOLAR WIND", "REEF"
+inline bool inLoop(u32 track, u32 songs) { return track > songs; }
+float bpmOfTrack(u32 track, u32 songs);  // the set list's tempi, then +4 per Track up to 174 (GAME_DESIGN 4.2)
+const char* songName(u32 song);  // "FIRST LIGHT", "SOLAR WIND", "REEF", ... (GAME_DESIGN 4.2's ten)
 // The loop ramps (GAME_DESIGN 8, "The loop is where a run ends", play test 2): a factor once for every Track after the
-// first pass (Track 4 on), compounding: factor^(track - 3), 1 through Track 3.
-inline float loopRamp(float factor, u32 track) {
+// first pass (the loop's first Track on), compounding: factor^(track - songs), 1 through the last Track of the set list.
+inline float loopRamp(float factor, u32 track, u32 songs) {
     float r = 1.0f;
-    for (u32 t = kSongs + 1; t <= track && t < 256; ++t) r *= factor;
+    for (u32 t = songs + 1; t <= track && t < 256; ++t) r *= factor;
     return r;
 }
 
@@ -49,6 +62,8 @@ struct Phrase {
     u16 sectionBar = 0, sectionBars = 8;  // a held boss Drop keeps counting past sectionBars
     bool trackChange = false;  // the Break after a boss: into `track`
     bool bossDrop = false;     // the Track's last Drop: the boss enters on its downbeat and holds it
+    bool miniDrop = false;     // M5: the middle cycle's Drop from Track 2 on: a mini-boss enters on its downbeat
+    bool held = false;         // M5: a bar of the middle Drop past its length, held for the mini-boss
     float bpm = 120.0f;        // this bar's tempo (the Build's last bar at 85%; the Track change ramps)
     float trackBpm = 120.0f;   // the Track's own tempo
 
@@ -86,6 +101,14 @@ struct DirectorState {
     u32 lastBar = kNoBar;      // the last bar the director planned
     float crowdDebtP[kMaxPlayers] = {};  // M4 co-op: each player's frame keeps its own debt
     u8 burnedTrack = 0;        // GAME_DESIGN 8 (the halo burns down): the last loop Track whose first downbeat burnt the halos
+    u8 songs = kSongs;         // the set list's length (World::setSetList); the loop begins at Track songs + 1
+    // M5 part 1 (minibosses.md): the middle cycle's Drop holds while its mini-boss lives, at most kMiniHoldBars past its
+    // length. midHolding: the mini-boss lives (the Drop is open-ended up to the cap); midHold: the bars it was held,
+    // once its end is known (the run bars after it move by that much).
+    bool midHolding = false;
+    u8 midHold = 0;
+    bool miniSpawned = false;  // this Track's mini-boss has entered
+    u8 lastMini = 0xFF;        // the mini-boss met in the Track before (BossKind; 0xFF none)
 };
 
 // Where bar `bar` of the run sits, given what the director knows now.

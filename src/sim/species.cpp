@@ -229,6 +229,11 @@ bool SpeciesTable::load() {
                rosterCount, budgetCycles[0], budgetCycles[1], budgetCycles[2], crowd.target[0][0], crowd.target[2][crowd.targetCycles[2] ? crowd.targetCycles[2] - 1 : 0]);
     }
     if (!boss.load()) ok = false;
+    // M5 part 1: Longwave, The Choir and the mini-bosses.
+    if (!longwave.load()) ok = false;
+    if (!choir.load()) ok = false;
+    if (!minis.load()) ok = false;
+    crowd.miniDrop = minis.crowdScale;
     return ok;
 }
 

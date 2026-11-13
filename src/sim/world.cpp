@@ -70,6 +70,7 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask) {
     // M3 stage B: the director starts the run on Track 1's first Groove; no Trio, Boost or boss yet.
     upgradeRng_.reseed(seed * 0xD1B54A32D192ED03ull + 0x8CB92BA72F3D8DD7ull);
     director_ = DirectorState{};
+    director_.songs = setList_;  // M5: the set list outlives the run
     director_.startTick = startTick;
     director_.lastBar = kNoBar;
     director_.boostTicks = static_cast<i32>(rng_.range(kBoostEveryLoS, kBoostEveryHiS) / kDt);
@@ -78,6 +79,7 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask) {
     boostPickups_.count = 0;
     cellPickups_.count = 0;
     boss_ = BossState{};
+    pen_ = PenState{};
     rules_.scoreMultiplier = rules_.magnetMultiplier = 1.0f;
     // M4: the co-op bookkeeping (nothing in solo reads it).
     restartSeed_ = seed;
@@ -127,9 +129,9 @@ void World::tick(const TickInput& in) {
     if (role_ != NetRole::Solo) updateDowned();
     runSpawner();  // the director first: the phrase this tick plays in (Surge, the Build's last bar)
     // The loop's ramps this tick (GAME_DESIGN 8, "The loop is where a run ends"): 1 through Track 3.
-    loopSpeed_ = std::fmin(loopRamp(kLoopEnemySpeedRamp, phrase_.track), kLoopEnemySpeedMax);
-    loopBulletSpeed_ = std::fmin(loopRamp(kLoopBulletSpeedRamp, phrase_.track), kLoopBulletSpeedMax);
-    loopShooters_ = std::fmin(loopRamp(kLoopShooterRamp, phrase_.track), kLoopShooterMax);
+    loopSpeed_ = std::fmin(loopRamp(kLoopEnemySpeedRamp, phrase_.track, director_.songs), kLoopEnemySpeedMax);
+    loopBulletSpeed_ = std::fmin(loopRamp(kLoopBulletSpeedRamp, phrase_.track, director_.songs), kLoopBulletSpeedMax);
+    loopShooters_ = std::fmin(loopRamp(kLoopShooterRamp, phrase_.track, director_.songs), kLoopShooterMax);
     const float dt = kDt * timeScale();
     if (dipS_ > 0.0f) dipS_ -= kDt;
     spawnShots(in);
@@ -166,6 +168,12 @@ void World::tick(const TickInput& in) {
     if (role_ == NetRole::Client) updatePredictions();
     if (role_ == NetRole::Host) finishNetLog();
     compact();
+}
+
+void World::setSetList(u32 songs) {
+    // GAME_DESIGN 4.2: the loop begins after the last Track of the set list (from the next run on).
+    setList_ = static_cast<u8>(songs < 1 ? 1u : (songs > kMaxSongs ? kMaxSongs : songs));
+    director_.songs = setList_;
 }
 
 void World::requestRestart() {
@@ -350,26 +358,8 @@ void World::updateNovas() {
             ev.age = pl.novaFrontAge;
             ev.tick = pl.novaBlastTick;
             emit(ev);
-            // GAME_DESIGN 5: heavy damage to bosses (in view): each living pair, and the core once open. Co-op:
-            // the Nova's owner deals it (a client claims it from the host).
-            if (isLocal(p) && boss_.active && !boss_.dying && m1_ >= boss_.fightTick &&
-                std::fabs(boss_.pos.x - pl.pos.x) <= kNovaViewHalfW + 270.0f && std::fabs(boss_.pos.y - pl.pos.y) <= kNovaViewHalfH + 270.0f) {
-                if (role_ == NetRole::Client) {
-                    for (u8 k = 0; k < 3; ++k)
-                        if (boss_.alive & (1u << k)) damageBossFinal(2, k, kBossNovaDamage, static_cast<u8>(p), boss_.pos, Vec2{1.0f, 0.0f}, -1.0f);
-                    if (boss_.alive != 0x7) damageBossFinal(3, 0, kBossNovaDamage, static_cast<u8>(p), boss_.pos, Vec2{1.0f, 0.0f}, -1.0f);
-                } else {
-                    for (u8 k = 0; k < 3; ++k) {
-                        if (!(boss_.alive & (1u << k))) continue;
-                        boss_.pairHp[k] -= kBossNovaDamage;
-                        if (boss_.pairHp[k] <= 0.0f) killBossPair(k, static_cast<u8>(p));
-                    }
-                    if (boss_.alive != 0x7 && !boss_.dying) {
-                        boss_.coreHp -= kBossNovaDamage;
-                        if (boss_.coreHp <= 0.0f) killBoss(static_cast<u8>(p));
-                    }
-                }
-            }
+            // GAME_DESIGN 5: heavy damage to bosses (in view). Co-op: the Nova's owner deals it (a client claims it).
+            bossNova(p);
         } else if (!pl.novaPending && pl.novaInvulS > 0.0f) {
             pl.novaInvulS -= kDt;
         }
@@ -789,6 +779,7 @@ void World::dropShards(u32 i, u8 killer) {
         // Play test 2 (GAME_DESIGN 6.1): a kill (not a Break's dissolve) near a hurt player drops its Cell when one is due.
         if (killer != 0xFF) dropCellFor(p, Vec2{e.x[i], e.y[i]}, e.rng[i]);
         u32 n = players_[p].boost(kMagnetStorm) ? 2u * s.shards : s.shards;
+        if (e.state[i] == kFlee) n *= 2u;  // M5: the Alpha's pack, scattering, drops double Shards
         // Play test 1: while the Shard pool is crowded a death drops one, and none in its last 64 places (the
         // stronger build's bursts: a Drop's mega-wave, a boss's 200), so the pool never overflows.
         if (shards_.count > kShardsCrowded && n > 1) n = 1;
@@ -825,13 +816,15 @@ i32 World::spawnEnemyAs(u16 speciesIndex, Vec2 pos, float heading, double landTi
     const u32 i = e.count++;
     e.denseOf[slot] = i;
     e.handle[i] = (static_cast<u32>(e.gen[slot]) << 16) | slot;
+    // M5: while the Pen stands the director's spawns land inside it (a client takes the host's places as they are).
+    if (pen_.up && !serial) pos = penPlace(pos, s.radius);
     pos.x = clampf(pos.x, -kArenaHalfW + s.radius, kArenaHalfW - s.radius);
     pos.y = clampf(pos.y, -kArenaHalfH + s.radius, kArenaHalfH - s.radius);
     e.x[i] = e.px[i] = pos.x;
     e.y[i] = e.py[i] = pos.y;
     e.vx[i] = e.vy[i] = e.kx[i] = e.ky[i] = 0.0f;
     e.heading[i] = e.pheading[i] = heading;
-    e.hp[i] = s.health * loopRamp(kLoopHealthRamp, phrase_.track);  // the loop ramps health (GAME_DESIGN 8, play test 2)
+    e.hp[i] = s.health * loopRamp(kLoopHealthRamp, phrase_.track, director_.songs);  // the loop ramps health (GAME_DESIGN 8, play test 2)
     e.radius[i] = s.radius;
     e.a[i] = e.b[i] = 0.0f;
     e.species[i] = speciesIndex;
@@ -1075,10 +1068,25 @@ u64 World::hash() const {
     val(boss_.phaseTick);
     val(boss_.angle0);
     val(boss_.angle);
-    mix(boss_.pairHp, sizeof boss_.pairHp);
+    mix(boss_.partHp, sizeof boss_.partHp);
     val(boss_.coreHp);
     val(boss_.pos.x);
     val(boss_.pos.y);
+    // M5 part 1: which fight, its bodies, the Pen, the mini-boss's hold.
+    val(boss_.kind);
+    mix(boss_.body, sizeof boss_.body);
+    val(boss_.mini.state);
+    val(boss_.mini.half);
+    val(boss_.mini.splits);
+    val(boss_.lw.phase);
+    val(boss_.ch.caller);
+    val(pen_.up);
+    val(pen_.centre.x);
+    val(pen_.centre.y);
+    val(director_.midHold);
+    val(director_.midHolding);
+    val(director_.miniSpawned);
+    val(director_.songs);
     const Enemies& e = enemies_;
     const u32 n = e.count;
     val(n);

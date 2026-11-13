@@ -216,7 +216,8 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 s.y = static_cast<float>(r.i16v()) * kPosQ;
                 s.heading = angleF(r.u16v());
                 if (!(h & 8u)) landQ = r.i16v();
-                s.flags = static_cast<u8>(h >> 4);
+                // M5: the enemy's flags as two bits: 4 crowd fodder arriving, 5 called by a mini-boss.
+                s.flags = static_cast<u8>(((h & 0x10u) ? kFlagArriving : 0u) | ((h & 0x20u) ? kFlagCalled : 0u));
                 s.land = base + static_cast<double>(static_cast<float>(landQ) * kUntilQ);
                 if (r.bad() || s.serial == 0 || s.species >= SpeciesTable::kCount || !inWorld(s.x, s.y)) return false;
                 if (sink) sink->onSpawn(run, s);
@@ -298,7 +299,7 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 c.part = r.u8v();
                 c.pair = r.u8v();
                 c.damage = r.f32v();
-                if (r.bad() || c.part < 1 || c.part > 3 || c.pair > 2 || !finite(c.damage) || c.damage < 0.0f || c.damage > 1e6f)
+                if (r.bad() || c.part < 1 || c.part > 3 || c.pair >= sim::kBossParts || !finite(c.damage) || c.damage < 0.0f || c.damage > 1e6f)
                     return false;
                 if (sink) sink->onBossClaim(run, c);
             }
@@ -310,11 +311,18 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             m.kind = r.u8v();
             m.pair = r.u8v();
             m.killer = r.u8v();
+            m.boss = r.u8v();
             m.x = r.f32v();
             m.y = r.f32v();
+            m.x2 = r.f32v();
+            m.y2 = r.f32v();
             m.tick = r.f64v();
             m.changeBar = r.u32v();
-            if (r.bad() || m.kind > 2 || m.pair > 2 || !killerOk(m.killer) || !inWorld(m.x, m.y) || !finite(m.tick)) return false;
+            const bool partOk = m.pair < sim::kBossParts || (m.pair >= sim::kBossStepBase && m.pair < sim::kBossStepBase + 8) ||
+                                (m.pair >= sim::kBossGeomBase && m.pair < sim::kBossGeomBase + sim::kGeomCount);
+            if (r.bad() || m.kind > 2 || !partOk || m.boss >= sim::kBossKinds || !killerOk(m.killer) || !inWorld(m.x, m.y) ||
+                !inWorld(m.x2, m.y2) || !finite(m.tick))
+                return false;
             if (sink) sink->onBoss(m);
             return true;
         }
@@ -337,6 +345,10 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             m.d.track = r.u8v();
             m.d.bossSpawned = r.u8v() != 0;
             m.d.assist = r.f32v();
+            m.d.midHold = r.u8v();
+            m.d.midHolding = r.u8v() != 0;
+            m.d.miniSpawned = r.u8v() != 0;
+            m.d.lastMini = r.u8v();
             if (r.bad() || !finite(m.d.startTick) || m.d.track < 1 || !finite(m.d.assist) || m.d.assist < 0.1f || m.d.assist > 10.0f)
                 return false;
             if (sink) sink->onDirector(m);
@@ -478,11 +490,11 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 s.until = base + static_cast<double>(r.i16v()) * kUntilQ;
                 s.rng = r.u32v();
                 const u8 packed = r.u8v();
-                s.state = packed & 7u;
-                s.flags = static_cast<u8>(((packed & 8u) ? kFlagEngaged : 0) | ((packed & 16u) ? kFlagArriving : 0));
+                s.state = packed & 15u;  // M5: the called bodies' states need four bits
+                s.flags = static_cast<u8>(((packed & 16u) ? kFlagEngaged : 0) | ((packed & 32u) ? kFlagArriving : 0) | ((packed & 64u) ? kFlagCalled : 0));
                 s.target = r.u8v();
                 s.far = 0;
-                if (r.bad() || s.serial == 0 || !finite(s.a) || !finite(s.b) || !finite(s.hp) || s.state > kRest || packed > 31 ||
+                if (r.bad() || s.serial == 0 || !finite(s.a) || !finite(s.b) || !finite(s.hp) || s.state > kFlee || packed > 127 ||
                     !(s.target < kMaxPlayers || s.target == 0xFF) || s.rng == 0)
                     return false;
                 if (sink) sink->onCorrection(s);
@@ -530,13 +542,19 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             m.runOffset = r.f64v();
             m.state = r.u8v();
             m.bossOn = r.u8v();
-            for (float& h : m.bossPair) h = r.f32v();
+            m.bossParts = r.u8v();
+            if (m.bossParts > sim::kBossParts) return false;
+            bool partsOk = true;
+            for (u32 k = 0; k < m.bossParts; ++k) {
+                m.bossPart[k] = r.f32v();
+                partsOk = partsOk && finite(m.bossPart[k]);
+            }
             m.bossCore = r.f32v();
             m.bossX = r.f32v();
             m.bossY = r.f32v();
             const auto tpsOk = [](float t) { return finite(t) && t > 1.0f && t < 2000.0f; };
             if (r.bad() || !finite(m.song) || !tpsOk(m.tps) || !finite(m.nextBar) || !tpsOk(m.tpsNext) || !finite(m.runOffset) || m.state > 2 ||
-                !finite(m.bossPair[0]) || !finite(m.bossPair[1]) || !finite(m.bossPair[2]) || !finite(m.bossCore) || !inWorld(m.bossX, m.bossY))
+                !partsOk || !finite(m.bossCore) || !inWorld(m.bossX, m.bossY))
                 return false;
             if (sink) sink->onHeartbeat(m);
             return true;
@@ -668,7 +686,7 @@ u32 PacketWriter::putSpawns(u16 run, double base, const NetSpawn* items, u32 n) 
     // enemy (it was 17).
     const auto landQ = [&](const NetSpawn& s) { return q16(static_cast<float>(s.land - base), kUntilQ); };
     const auto head = [&](u32 k) -> u8 {
-        u8 h = static_cast<u8>((items[k].flags & 0xFu) << 4);
+        u8 h = static_cast<u8>(((items[k].flags & kFlagArriving) ? 0x10u : 0u) | ((items[k].flags & kFlagCalled) ? 0x20u : 0u));
         if (k == 0) return h;
         const NetSpawn &s = items[k], &p = items[k - 1];
         if (s.serial == p.serial + 1u) h |= 1u;
@@ -813,13 +831,16 @@ u32 PacketWriter::putBossClaims(u16 run, const NetBossClaim* items, u32 n) {
     return n;
 }
 bool PacketWriter::putBoss(const MsgBoss& m) {
-    if (!begin(Msg::Boss, 25)) return false;
+    if (!begin(Msg::Boss, 34)) return false;
     u16v(m.run);
     u8v(m.kind);
     u8v(m.pair);
     u8v(m.killer);
+    u8v(m.boss);
     f32v(m.x);
     f32v(m.y);
+    f32v(m.x2);
+    f32v(m.y2);
     f64v(m.tick);
     u32v(m.changeBar);
     return true;
@@ -833,7 +854,7 @@ bool PacketWriter::putBoostDrop(const MsgBoostDrop& m) {
     return true;
 }
 bool PacketWriter::putDirector(const MsgDirector& m) {
-    if (!begin(Msg::Director, 24)) return false;
+    if (!begin(Msg::Director, 28)) return false;
     u16v(m.run);
     f64v(m.d.startTick);
     u32v(m.d.trackBar);
@@ -841,6 +862,10 @@ bool PacketWriter::putDirector(const MsgDirector& m) {
     u8v(m.d.track);
     u8v(m.d.bossSpawned ? 1 : 0);
     f32v(m.d.assist);
+    u8v(m.d.midHold);
+    u8v(m.d.midHolding ? 1 : 0);
+    u8v(m.d.miniSpawned ? 1 : 0);
+    u8v(m.d.lastMini);
     return true;
 }
 bool PacketWriter::putPlayerEvent(const MsgPlayerEvent& m) {
@@ -945,7 +970,8 @@ u32 PacketWriter::putCorrections(u16 run, double base, const NetEnemyState* item
         // The state's end matters only in timed states (a few beats either side); far ends are clamped.
         u16v(static_cast<u16>(q16(static_cast<float>(s.until - base), kUntilQ)));
         u32v(s.rng);
-        u8v(static_cast<u8>((s.state & 7u) | ((s.flags & kFlagEngaged) ? 8u : 0u) | ((s.flags & kFlagArriving) ? 16u : 0u)));
+        u8v(static_cast<u8>((s.state & 15u) | ((s.flags & kFlagEngaged) ? 16u : 0u) | ((s.flags & kFlagArriving) ? 32u : 0u) |
+                            ((s.flags & kFlagCalled) ? 64u : 0u)));
         u8v(s.target);
     }
     return n;
@@ -973,7 +999,8 @@ bool PacketWriter::putAttention(u16 run, const u32* serials, u32 n) {
 }
 
 bool PacketWriter::putHeartbeat(const MsgHeartbeat& m) {
-    if (!begin(Msg::Heartbeat, 68)) return false;
+    const u32 parts = m.bossParts < sim::kBossParts ? m.bossParts : sim::kBossParts;
+    if (!begin(Msg::Heartbeat, 57 + 4 * parts)) return false;
     u16v(m.run);
     u64v(static_cast<u64>(m.hostUs));
     f64v(m.song);
@@ -983,7 +1010,8 @@ bool PacketWriter::putHeartbeat(const MsgHeartbeat& m) {
     f64v(m.runOffset);
     u8v(m.state);
     u8v(m.bossOn);
-    for (float h : m.bossPair) f32v(h);
+    u8v(static_cast<u8>(parts));
+    for (u32 k = 0; k < parts; ++k) f32v(m.bossPart[k]);
     f32v(m.bossCore);
     f32v(m.bossX);
     f32v(m.bossY);

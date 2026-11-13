@@ -50,6 +50,12 @@ void World::landEnemy(u32 i) {
     e.until[i] = m1_;
     const i32 tp = nearestPlayer(e.x[i], e.y[i]);
     if (coop()) e.target[i] = tp >= 0 ? static_cast<u8>(tp) : 0xFF;  // M4: its first player is the nearest
+    if (e.flags[i] & kFlagCalled) {
+        // M5: a mini-boss's called body (the Alpha's pack, the Hive's darts) starts what it was called for.
+        minionLand(i);
+        e.pheading[i] = e.heading[i];
+        return;
+    }
     const Vec2 to = tp >= 0 ? players_[tp].pos - Vec2{e.x[i], e.y[i]} : dirOf(e.heading[i]);
     const float toward = angleOf(to);
     switch (s.family) {
@@ -94,7 +100,7 @@ void World::flock(u32 i, const Species& s, float dt) {
         Vec2 centre{}, align{}, push{};
         u32 n = 0;
         grid_.query(x - R, y - R, x + R, y + R, [&](u32 j) {
-            if (j == i || (e.flags[j] & kFlagDead)) return;
+            if (j == i || (e.flags[j] & (kFlagDead | kFlagCalled))) return;  // M5: the Hive's darts are not a school
             if (species_->get(e.species[j]).family != Family::Shoal) return;
             const float dx = e.x[j] - x, dy = e.y[j] - y;
             const float d2 = dx * dx + dy * dy;
@@ -172,7 +178,7 @@ void World::updateEnemies(float dt) {
         e.flags[i] = static_cast<u8>(engaged ? (e.flags[i] | kFlagEngaged) : (e.flags[i] & ~kFlagEngaged));
         if (p0.alive && std::fabs(x - p0.pos.x) <= kFrameHalfWWu && std::fabs(y - p0.pos.y) <= kFrameHalfHWu) threatInView_ += s.threat;
 
-        switch (s.family) {
+        switch (minionMotion(i, dt) ? Family::Count : s.family) {
             case Family::Drifter: {
                 // Wander (a new turn rate each beat), leaning a little toward the nearest player.
                 if (beat) e.a[i] = randRange(e.rng[i], -fd.wanderTurn, fd.wanderTurn);
@@ -362,11 +368,28 @@ void World::updateEnemies(float dt) {
         }
 
         // Integrate (own motion, faster in the loop (GAME_DESIGN 8), plus the decaying knockback), then the walls.
+        const Vec2 was{e.x[i], e.y[i]};
         e.x[i] += (e.vx[i] * loopSpeed_ + e.kx[i]) * dt;
         e.y[i] += (e.vy[i] * loopSpeed_ + e.ky[i]) * dt;
         e.kx[i] *= knock;
         e.ky[i] *= knock;
         const float r = e.radius[i];
+        if (pen_.up) {
+            // M5: the Pen's walls stop bodies without hurting (a Carom reflects off them).
+            Vec2 to{e.x[i], e.y[i]};
+            const u8 hit = penKeep(was, to, r);
+            if (hit) {
+                e.x[i] = to.x;
+                e.y[i] = to.y;
+                if (s.family == Family::Carom) {
+                    if (hit & 1u) e.vx[i] = -e.vx[i];
+                    if (hit & 2u) e.vy[i] = -e.vy[i];
+                } else {
+                    if (hit & 1u) e.kx[i] = 0.0f;
+                    if (hit & 2u) e.ky[i] = 0.0f;
+                }
+            }
+        }
         const float lx = kArenaHalfW - r, ly = kArenaHalfH - r;
         const bool hitX = e.x[i] < -lx || e.x[i] > lx;
         const bool hitY = e.y[i] < -ly || e.y[i] > ly;

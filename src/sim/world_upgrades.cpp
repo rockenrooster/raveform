@@ -762,7 +762,7 @@ void World::cellClock() {
     for (u32 p = 0; p < playerCount_; ++p) {
         PlayerState& pl = players_[p];
         // GAME_DESIGN 8 (the halo burns down): in the loop no kill drops a Cell (a boss's two remain).
-        if (!pl.present || !pl.alive || !isLocal(p) || pl.cells >= pl.cellCap || phrase_.track > kSongs) {
+        if (!pl.present || !pl.alive || !isLocal(p) || pl.cells >= pl.cellCap || inLoop(phrase_.track, director_.songs)) {
             pl.cellDue = 0.0f;
             continue;
         }
@@ -771,7 +771,7 @@ void World::cellClock() {
             const float u = static_cast<float>(pl.cells - 1u) / static_cast<float>(pl.cellCap - 2u);  // 0 the last cell, 1 one missing
             every = kCellEveryLastS + (kCellEveryOneMissingS - kCellEveryLastS) * clampf(u, 0.0f, 1.0f);
         }
-        every *= loopRamp(kLoopCellRamp, phrase_.track);  // the loop stretches the clock (GAME_DESIGN 8)
+        every *= loopRamp(kLoopCellRamp, phrase_.track, director_.songs);  // the loop stretches the clock (GAME_DESIGN 8)
         pl.cellDue = std::fmin(pl.cellDue + kDt / every, 1.0f);
     }
 }
@@ -886,8 +886,8 @@ u32 World::regenPeriod(u32 p) const {
     // Regen's period by stacks (16, 8, 4 bars); in the loop Regen stops (GAME_DESIGN 8, the halo burns down: no more refills
     // means all of them), which leaves kLoopRegenStretch nothing to stretch.
     const u32 every = p < kMaxPlayers ? regenEveryBars(players_[p].loadout.mods[kRegen]) : 0u;
-    if (!every || phrase_.track > kSongs) return 0;
-    return static_cast<u32>(std::ceil(static_cast<float>(every) * loopRamp(kLoopRegenStretch, phrase_.track) - 1e-3f));
+    if (!every || inLoop(phrase_.track, director_.songs)) return 0;
+    return static_cast<u32>(std::ceil(static_cast<float>(every) * loopRamp(kLoopRegenStretch, phrase_.track, director_.songs) - 1e-3f));
 }
 
 void World::burnHalos() {

@@ -405,6 +405,9 @@ void Session::onBoss(const MsgBoss& m) {
     op.b = m.killer;
     op.x = m.x;
     op.y = m.y;
+    op.x2 = m.x2;
+    op.y2 = m.y2;
+    op.c = m.boss;
     op.tick = m.tick;
     op.u = m.changeBar;
     if (m.kind == 2) op.b = m.killer;
@@ -433,6 +436,10 @@ void Session::onDirector(const MsgDirector& m) {
     op.a = m.d.track;
     op.b = m.d.bossSpawned ? 1 : 0;
     op.f = m.d.assist;
+    op.c = m.d.midHold;
+    op.opts[0] = m.d.midHolding ? 1 : 0;
+    op.opts[1] = m.d.miniSpawned ? 1 : 0;
+    op.opts[2] = m.d.lastMini;
     pushOp(op);
 }
 
@@ -667,7 +674,7 @@ void Session::onHeartbeat(const MsgHeartbeat& m) {
     a.nextBar = m.nextBar;
     a.tpsNext = m.tpsNext;
     song_.set(a);
-    if (m.bossOn && m.run == world_->runId()) world_->netBossState(m.bossPair, m.bossCore, Vec2{m.bossX, m.bossY});
+    if (m.bossOn && m.run == world_->runId()) world_->netBossState(m.bossPart, m.bossParts, m.bossCore, Vec2{m.bossX, m.bossY});
 }
 
 // ---------------------------------------------------------------------------------------------- the run
@@ -893,8 +900,11 @@ void Session::afterTick() {
             m.kind = log.boss[k].kind;
             m.pair = log.boss[k].pair;
             m.killer = log.boss[k].killer;
+            m.boss = log.boss[k].boss;
             m.x = log.boss[k].x;
             m.y = log.boss[k].y;
+            m.x2 = log.boss[k].x2;
+            m.y2 = log.boss[k].y2;
             m.tick = log.boss[k].tick;
             m.changeBar = log.boss[k].changeBar;
             reliable([&](PacketWriter& pw) { return pw.putBoss(m); });
@@ -1326,10 +1336,12 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
             m.state = paused() ? 2 : (state_ == SessionState::Running ? 1 : 0);
             const BossState& b = w.boss();
             m.bossOn = b.active && !b.dying ? 1 : 0;
-            for (u32 k = 0; k < 3; ++k) m.bossPair[k] = b.pairHp[k];
+            m.bossParts = static_cast<u8>(w.bossPartCount());
+            for (u32 k = 0; k < m.bossParts; ++k) m.bossPart[k] = b.partHp[k];
             m.bossCore = b.coreHp;
-            m.bossX = b.pos.x;
-            m.bossY = b.pos.y;
+            const Vec2 sync = w.bossSyncPoint();
+            m.bossX = sync.x;
+            m.bossY = sync.y;
             scratch_.reset();
             scratch_.putHeartbeat(m);
             // Every player's numbers ride with it.

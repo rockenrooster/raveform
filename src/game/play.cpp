@@ -65,12 +65,21 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
 
     // The Track's tempo (stage A plays Track 1): from the band, or from the music data when it is off.
     float bpm = 120.0f;
+    u32 songs = sim::kSongs;
     if (band && band->active()) {
         bpm = band->music().tracks[band->track()].bpm;
+        songs = band->music().trackCount;
     } else if (auto* md = new (std::nothrow) audio::MusicData) {
-        if (md->load() && md->trackCount) bpm = md->tracks[0].bpm;
+        if (md->load() && md->trackCount) {
+            bpm = md->tracks[0].bpm;
+            songs = md->trackCount;
+        }
         delete md;
     }
+    // M5 (GAME_DESIGN 4.2): the set list is every Track the music has that the game has content for (its own boss); the
+    // loop begins after the last of them.
+    world_->setSetList(songs < sim::kBossesBuilt ? songs : sim::kBossesBuilt);
+    RF_LOG("play: the set list has %u Tracks (the music %u, the fights built %u)", world_->setList(), songs, sim::kBossesBuilt);
     clock_.reset(bpm, 0.0);
 
     const bool picture = opt.picture[0] != 0;
@@ -495,19 +504,28 @@ void Play::afterTick() {
                     band_->leadNote(bandSlot(e.a), 2, 0.8f, clampf((e.x - w.player(seat_).pos.x) / 800.0f, -1.0f, 1.0f) * 0.6f);
                 break;
             case EventType::BossEnter:
-                RF_LOG("play: Kaleidos enters (Track %u, bar %u)", w.phrase().track, w.phrase().bar);
+                RF_LOG("play: %s enters (Track %u, bar %u)", bossName(static_cast<BossKind>(e.a)), w.phrase().track, w.phrase().bar);
                 if (bandDrives_) band_->playSfx(audio::Sfx::Elite);
                 break;
             case EventType::BossPair:
                 // kaleidos.md: that voice leaves the chord; a low growl (the elite-arrives patch) enters, an octave
-                // down (M3 stage C).
-                if (bandDrives_) band_->playSfx(audio::Sfx::Elite, 1.2f, 0.5f);
+                // down (M3 stage C). M5: a segment, a Voice (its own cue), a Prince.
+                if (bandDrives_ && static_cast<BossKind>(e.c) != BossKind::Choir) band_->playSfx(audio::Sfx::Elite, 1.2f, 0.5f);
                 break;
-            case EventType::BossDeath:
-                RF_LOG("play: Kaleidos falls (Track %u, run %.1f s)", w.phrase().track, runSeconds_);
+            case EventType::BossDeath: {
+                const BossKind kind = static_cast<BossKind>(e.a);
+                RF_LOG("play: %s falls (Track %u, run %.1f s)", bossName(kind), w.phrase().track, runSeconds_);
+                if (bandDrives_) band_->kill(2, isMiniBoss(kind) ? 3 : 6);
+                if (isMiniBoss(kind)) break;  // the Track goes on
                 if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 1, 0};
-                if (bandDrives_) band_->kill(2, 6);
                 hitStopUntil_ = clock_.simTime() + static_cast<double>(look_->boom.bossHitStopMs) * 0.001;
+                break;
+            }
+            case EventType::BossGone:
+                RF_LOG("play: %s warps out (Track %u, run %.1f s)", bossName(static_cast<BossKind>(e.a)), w.phrase().track, runSeconds_);
+                break;
+            case EventType::BossCue:
+                if (bandDrives_) bossCue(e);
                 break;
             default: break;
         }
@@ -594,8 +612,8 @@ void Play::conductBand() {
     if (w.restartPending() && std::fabs(w.restartTick() + offset - nextLine) < 1.0) {
         // A new run on that line: Track 1 at its tempo, Short form, its first Groove.
         band_->setHold(false);
-        band_->changeTrack(0, bpmOfTrack(1), true);
-        postedBpm_ = bpmOfTrack(1);
+        band_->changeTrack(0, bpmOfTrack(1, w.setList()), true);
+        postedBpm_ = bpmOfTrack(1, w.setList());
         band_->setForm(audio::Form::Short);
         band_->setPhrase(audio::Section::Groove, 0, kSectionBars[0][0]);
         off();
@@ -638,10 +656,11 @@ void Play::conductBand() {
     if (next.sectionBar == 0)
         RF_LOG("play: band told: run bar %u (band tick %.0f) %s, %u bars, Track %u cycle %u%s", next.bar, nextLine, sectionLabel(next.section),
                next.sectionBars, next.track, next.cycle, next.trackChange ? " (Track change)" : (next.bossDrop ? " (boss)" : ""));
-    // The boss's bar: which pairs fire on which beats (their bells), the iris's gong, a beam's riser and stab.
+    // The boss's bar: which pairs fire on which beats (their bells), the iris's gong, a beam's riser and stab (Kaleidos; the
+    // other fights speak through their cues, bossCue).
     const BossState& b = w.boss();
     const double simLine = nextLine - offset;
-    if (!b.active || b.dying || simLine < b.fightTick) {
+    if (!b.active || b.dying || simLine < b.fightTick || b.kind != BossKind::Kaleidos) {
         off();
         return;
     }
@@ -659,6 +678,46 @@ void Play::conductBand() {
     }
     band_->setBoss(mask, b.phase == 2, beats, flags);
     bossPosted_ = true;
+}
+
+void Play::bossCue(const sim::Event& e) {
+    // M5 part 1: the fights' sounds as their pages give them (longwave.md, choir.md, minibosses.md "Sound"). The engine has
+    // no boss voices yet (the rubber-string run, the Choir's pad voices, the toms, the gong, the rim shots: the sound brief
+    // for the audio engineer); until it has, each cue plays the nearest effect the band has, on its own tick, panned to
+    // where it happens. docs/PROGRESS.md (M5 part 1) lists the mapping and what each cue should become.
+    const World& w = *world_;
+    const double offset = coop() ? netBandOffset_ : clock_.offset();
+    const double tick = e.tick + offset;
+    const float pan = clampf((e.x - w.player(seat_).pos.x) / 900.0f, -1.0f, 1.0f) * 0.7f;
+    using audio::Sfx;
+    switch (static_cast<BossCue>(e.a)) {
+        case BossCue::LwRun: band_->leadNote(0, static_cast<u8>(e.b % 3u), 0.45f, pan, tick, 3); break;  // a scale running up
+        case BossCue::LwTrough: band_->sfxAt(Sfx::Tick, tick, 0.45f, pan); break;                       // the telegraph tick
+        case BossCue::LwJaw: band_->sfxAt(Sfx::Elite, tick, 0.6f, pan); break;                          // the elite-arrives patch
+        case BossCue::LwLunge: band_->sfxAt(Sfx::Dash, tick, 0.9f, pan); break;
+        case BossCue::LwWhip: band_->sfxAt(Sfx::KillLarge, tick, 0.8f, pan); break;                     // the impact
+        case BossCue::ChVoice: band_->leadNote(0, static_cast<u8>(e.b % 3u), 0.5f, pan, tick, static_cast<u8>(e.b % 4u)); break;
+        case BossCue::ChDeath: band_->sfxAt(Sfx::KillMedium, tick, 0.8f, pan); break;
+        case BossCue::ChCageTick: band_->sfxAt(Sfx::Tick, tick, 0.6f, pan); break;
+        case BossCue::ChCageBurn: band_->sfxAt(Sfx::KillLarge, tick, 0.7f, pan); break;
+        case BossCue::ChHeld: band_->leadNote(0, 3, 0.6f, pan, tick, static_cast<u8>(e.b % 4u)); break;
+        case BossCue::AlHowl: band_->sfxAt(Sfx::Elite, tick, 0.7f, pan); break;
+        case BossCue::AlCharge: band_->sfxAt(Sfx::Spawn, tick, 0.7f, pan); break;
+        case BossCue::AlLunge: band_->sfxAt(Sfx::Dash, tick, 0.9f, pan); break;
+        case BossCue::HvShape: band_->sfxAt(Sfx::Spawn, tick, 0.6f, pan); break;
+        case BossCue::HvRing:
+        case BossCue::HvSpear:
+        case BossCue::HvWall: band_->sfxAt(Sfx::Tick, tick, 0.5f, pan); break;
+        case BossCue::RmLock: band_->sfxAt(Sfx::Tick, tick, 0.6f, pan); break;
+        case BossCue::RmCharge: band_->sfxAt(Sfx::Dash, tick, 1.0f, pan); break;
+        case BossCue::RmWall: band_->sfxAt(Sfx::KillLarge, tick, 1.0f, pan); break;  // the gong
+        case BossCue::RmStun: band_->setMuffle(e.b != 0); break;                      // the bed low-passed while it is stunned
+        case BossCue::CkBounce: band_->sfxAt(Sfx::EnemyShot, tick, e.b ? 0.35f : 0.6f, pan); break;  // the rim shot
+        case BossCue::MiniEnter: band_->sfxAt(Sfx::Elite, tick, 0.9f, pan); break;
+        case BossCue::MiniDeath:
+        case BossCue::MiniGone: band_->setMuffle(false); break;
+        default: break;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------- render
@@ -823,7 +882,7 @@ void Play::updatePalette(double music) {
         view_.setPalette(*to);
         return;
     }
-    const Palette* from = forSong((ph.song + kSongs - 1u) % kSongs);
+    const Palette* from = forSong((ph.song + world_->setList() - 1u) % world_->setList());
     const double inBar = (music - world_->tickOfBar(ph.bar)) / kTicksPerBar;
     float u = clampf((static_cast<float>(ph.sectionBar) + static_cast<float>(inBar)) / static_cast<float>(ph.sectionBars), 0.0f, 1.0f);
     u = u * u * (3.0f - 2.0f * u);

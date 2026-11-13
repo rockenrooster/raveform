@@ -26,8 +26,8 @@ struct UiColour {
     const Ui* ui;
 };
 Vec3 uiColourFn(const void* user, Vec3 c, float i) { return static_cast<const UiColour*>(user)->ui->col(c, i); }
-Vec3 trackAccent(const Palettes& p, u32 track) {
-    const u32 want = sim::songOfTrack(track) + 1u;  // the Track's song's palette (ultraviolet, solar, reef)
+Vec3 trackAccent(const Palettes& p, u32 track, u32 songs) {
+    const u32 want = sim::songOfTrack(track, songs) + 1u;  // the Track's song's palette (ultraviolet, solar, reef, ...)
     for (u32 i = 0; i < p.count; ++i)
         if (p.list[i].track == want) return p.list[i].accent;
     return p.list[0].accent;
@@ -600,12 +600,12 @@ void Play::drawSetList(Ui& ui, float y) {
                 const float ta = segStart < markCount_ ? marks_[segStart].t : 0.0f;
                 const float tb = end ? total : marks_[k].t;
                 const u8 track = segStart < markCount_ ? marks_[segStart].a : 1;
-                const Vec3 c = trackAccent(*palettes_, track);
+                const Vec3 c = trackAccent(*palettes_, track, world_->setList());
                 const float xa = xAt(ta), xb = xAt(tb);
                 if (xb > xa + 2.0f) {
                     ui.draw().hud.line({xa + 2.0f * s, y}, {xb - 2.0f * s, y}, 5.0f * s, ui.col(c, 1.3f), ui.col(c, 1.3f), 0);
                     char name[40];
-                    std::snprintf(name, sizeof name, "%u %s", track, sim::songName(sim::songOfTrack(track)));
+                    std::snprintf(name, sizeof name, "%u %s", track, sim::songName(sim::songOfTrack(track, world_->setList())));
                     if (xb - xa > 200.0f * s) ui.text({xa + 4.0f * s, y + 34.0f * s}, 12.0f * s, c, 1.2f, name, 0.0f);
                 }
             }
