@@ -64,7 +64,7 @@
   ],
   "damageScale": {
    "starved": 1.0,
-   "fed": 0.15
+   "fed": 0.25
   },
   "contact": "the horizon takes a Shield cell and throws the ship 300 wu outward; nothing else about the Well touches",
   "pull": {

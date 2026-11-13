@@ -1,5 +1,9 @@
 # EVENT HORIZON — boss of Track 4
 
+> **M5, 2026-11-13.** Armour takes a quarter: the fed Well (0.15 before) takes 0.25 of a shot's damage, where this
+> page says none (`damageScale` in the data; GAME_DESIGN 7.6, "A boss's rule is a bonus, not a wall").
+> Hint line (screens.md): `STARVE IT: KILL ITS FOOD`. The health is tuned with the novice bot.
+
 A well: a disc of true black 240 wu across, ringed by light, that pulls in everything near it — the
 crowd, bullets, Shards, the players' own shots and the grid itself. It arrives on the last Drop of
 Track 4 "Aurora" (138 BPM, E minor) and stays until it is dead; the music holds its Drop section for

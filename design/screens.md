@@ -245,6 +245,22 @@ whichever is wider). Part 3's pictures had `SUPERNOVA ROUNDS` running into `CHAI
 `FREEZE FRAME` into `RICOCHET FEVER`. A pair wider than 900 px drops its words and keeps icons and
 names.
 
+**Boss hint (HUD, M5).** Every boss has one line that says its rule in plain words (GAME_DESIGN 7.6).
+It sits under the boss's name in the HUD's small size, in white at 0.8, for the first four bars of
+the fight, fading over the last bar; it comes back for two bars whenever this player's shots have
+met only armour for two bars running, at most once every eight bars. At most 26 characters, the
+words' rules as for upgrades. In co-op each player sees it by their own shots.
+
+| Boss | Hint | | Boss | Hint |
+|---|---|---|---|---|
+| Kaleidos | `HIT THE ARMS NOT FIRING` | | Feedback | `STOP FIRING TO OPEN IT` |
+| Longwave | `SHOOT THE WHITE SEGMENT` | | Cadence | `SHOOT THE SILENT ONE` |
+| The Choir | `SHOOT THE ONE THAT SINGS` | | Arpeggiator | `SHOOT IT AS IT LOADS` |
+| Event Horizon | `STARVE IT: KILL ITS FOOD` | | Fata Morgana | `SHOOT WHERE THE WALL THINS` |
+| Polyrhythm | `SHOOT THROUGH THE GAPS` | | Kaleidos, Reprise | `SHOOT THE ARMS OFF` |
+
+A mini-boss with an armoured part gets a line the same way; they are written as each is reviewed.
+
 ## Track name card (M3)
 
 A new Track announces itself like a boss does. On the first downbeat after a Track-change Break the

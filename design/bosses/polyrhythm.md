@@ -1,5 +1,9 @@
 # POLYRHYTHM — boss of Track 5
 
+> **M5, 2026-11-13.** Armour takes a quarter: a rotor's corners and body takes 0.25 of a shot's damage, where this
+> page says none (`damageScale` in the data; GAME_DESIGN 7.6, "A boss's rule is a bonus, not a wall").
+> Hint line (screens.md): `SHOOT THROUGH THE GAPS`. The health is tuned with the novice bot.
+
 Two rotors joined by a ruled line of light: **Three**, a cyan triangle, and **Four**, an amber
 square, 720 wu apart. Three fires three times a bar, Four fires four times a bar, and what they
 fire is walls. It arrives on the last Drop of Track 5 "Furnace" (144 BPM, G phrygian) and stays

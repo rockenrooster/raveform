@@ -298,10 +298,10 @@
   "headHealth": 600,
   "damageScale": {
    "crest": 1.0,
-   "elsewhere": 0.0,
+   "elsewhere": 0.25,
    "headJawOpen": 1.0,
    "headJawOpenBare": 3.0,
-   "headJawClosed": 0.0
+   "headJawClosed": 0.25
   },
   "wave": {
    "amplitude": 150.0,
@@ -410,7 +410,7 @@
   },
   "jaw": {
    "open": "the whole of beat 1 of every bar",
-   "note": "the head is hurt only through the open jaw; a horn marks it"
+   "note": "the head takes full damage through the open jaw and a quarter on the closed one; a horn marks the opening"
   },
   "music": {
    "layer": "a rubber-string run: the bass patch one octave up with decay x 2, one note on every crest step",

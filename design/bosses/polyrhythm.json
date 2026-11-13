@@ -83,8 +83,8 @@
   ],
   "damageScale": {
    "face": 1.0,
-   "corner": 0.0,
-   "body": 0.0
+   "corner": 0.25,
+   "body": 0.25
   },
   "contact": "a rotor hurts; the link does not, except while it burns",
   "music": {
