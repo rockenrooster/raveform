@@ -345,6 +345,7 @@ private:
     PacketWriter rel_;      // reliable, being filled
     PacketWriter scratch_;  // one-off packets
     i64 nextPoseUs_ = 0, nextBeatUs_ = 0, nextCensusUs_ = 0, nextCorrUs_[sim::kMaxPlayers] = {};
+    u8 beatBossPhase_ = 0xFF;  // host: the boss's phase the last heartbeat carried (0xFF none); a change sends one at once
     sim::World::DirectorSync sentDirector_;
     bool directorSent_ = false;
     u32 directorRun_ = 0xFFFFFFFFu;

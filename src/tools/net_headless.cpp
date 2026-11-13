@@ -75,6 +75,10 @@ struct TrueDiag {
     NetDiagBin byTrack[16], byBoss[32];   // the host's Track then; the fight then (a boss or a mini-boss, by kind)
     NetDiagBin byTarget[4];  // the host's copy follows: 0 this client's player, 1 the host's, 2 another client's, 3 none
     NetDiagBin perp;
+    NetDiagBin hzLane, hzOther, hzPhaseDiffers, hzPosDiffers;  // Event Horizon: lane walkers, the rest; the Well's phase or place differs
+    NetDiagBin fbTarget, fbState, fbCalled, fbKnocked, fbFamily[16];  // Feedback's fight: the kinds and the families
+    double hzPosSum2 = 0.0;
+    u64 hzPosN = 0;
     double tauSum = 0.0, tau2Sum = 0.0;
     u64 tauN = 0;
     void print(const char* title) const {
@@ -124,6 +128,20 @@ struct TrueDiag {
         for (u32 k = 0; k < 16; ++k) {
             std::snprintf(name, sizeof name, "%u", k);
             b(name, byState[k]);
+        }
+        std::printf("\n[net]     Event Horizon:");
+        b("lane", hzLane);
+        b("rest", hzOther);
+        b("phase-differs", hzPhaseDiffers);
+        b("well-off>10wu", hzPosDiffers);
+        std::printf("; the Well's place against the host's RMS %.1f wu\n[net]     Feedback:", hzPosN ? std::sqrt(hzPosSum2 / static_cast<double>(hzPosN)) : 0.0);
+        b("target-differs", fbTarget);
+        b("state-differs", fbState);
+        b("called", fbCalled);
+        b("knocked", fbKnocked);
+        for (u32 k = 0; k < 16; ++k) {
+            std::snprintf(name, sizeof name, "f%u", k);
+            b(name, fbFamily[k]);
         }
         std::printf("\n");
     }
@@ -508,6 +526,21 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                     g.all.add(err);
                     g.byTrack[hw.phrase().track & 15u].add(err);
                     if (hw.boss().active) g.byBoss[static_cast<u32>(hw.boss().kind) & 31u].add(err);
+                    if (hw.boss().active && hw.boss().kind == BossKind::EventHorizon && cw.boss().active && cw.boss().kind == BossKind::EventHorizon) {
+                        (ce.state[i] == kLane ? g.hzLane : g.hzOther).add(err);
+                        if (cw.boss().hz.phase != hw.boss().hz.phase) g.hzPhaseDiffers.add(err);
+                        const float wellOff = length(cw.boss().pos - hw.boss().pos);
+                        if (wellOff > 10.0f) g.hzPosDiffers.add(err);
+                        g.hzPosSum2 += static_cast<double>(wellOff) * wellOff;
+                        ++g.hzPosN;
+                    }
+                    if (hw.boss().active && hw.boss().kind == BossKind::Feedback) {
+                        if (ce.target[i] != he.target[j]) g.fbTarget.add(err);
+                        if (ce.state[i] != he.state[j]) g.fbState.add(err);
+                        if (ce.flags[i] & kFlagCalled) g.fbCalled.add(err);
+                        if (std::fabs(ce.kx[i]) + std::fabs(ce.ky[i]) + std::fabs(he.kx[j]) + std::fabs(he.ky[j]) > 20.0f) g.fbKnocked.add(err);
+                        g.fbFamily[static_cast<u32>(cw.species().get(ce.species[i]).family) & 15u].add(err);
+                    }
                     g.simPos.add(length(Vec2{ce.x[i] + (ce.vx[i] + ce.kx[i]) * dx, ce.y[i] + (ce.vy[i] + ce.ky[i]) * dx} - Vec2{he.x[j], he.y[j]}));
                     g.byFamily[static_cast<u32>(cw.species().get(ce.species[i]).family) & 15u].add(err);
                     g.byState[ce.state[i] & 15u].add(err);

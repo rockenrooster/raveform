@@ -719,6 +719,8 @@ public:
     // photon ring); the fight is on (past its entrance bar); a point inside the burning jets (from: where on the jet).
     float horizonPullAt(Vec2 at, float max) const;
     bool horizonOn() const;
+    Vec2 horizonLanePoint(float lane, float b) const;                        // M4 net: a lane walker's place
+    float horizonLaneCarry(u16 species, float lane, float b, float ds) const;  // M4 net: its distance after ds seconds
     bool horizonJetHits(Vec2 at, Vec2& from) const;
     // Polyrhythm (world_polyrhythm.cpp): the link's direction (Three to Four), a rotor's place and the direction of one of
     // its faces at a moment, a ring's radius, whether a point is on a wall, the link's burn (0 none, 1 its dashes, 2 burning).

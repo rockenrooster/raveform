@@ -637,6 +637,23 @@ float World::netCorrect(const NetEnemyState& s, double hostMusic) {
     const bool hostWarping = s.state == kWarping;
     Vec2 h{s.x, s.y};
     if (!hostWarping) h = h + Vec2{s.vx + s.kx, s.vy + s.ky} * ds;
+    if (!hostWarping && s.state != kLane && !s.frozen && horizonOn()) {
+        // M4 net (clients only): Event Horizon's pull moves a body without its velocity, up to hundreds of wu/s near the
+        // Well, so the host's sample is carried by the pull too, a tick at a time (the pull grows toward the Well).
+        const HorizonData& hd = species_->horizon;
+        const float sign = ds < 0.0f ? -1.0f : 1.0f;
+        for (float left = std::fabs(ds); left > 0.0f; left -= kDt) {
+            const Vec2 to = boss_.pos - h;
+            const float l = length(to);
+            if (l > hd.pullRange || l < hd.horizonRadius) break;
+            h = h + to * (sign * horizonPullAt(h, hd.pullFodder) * std::fmin(left, kDt) / l);
+        }
+    }
+    // M4 net (clients only): an Event Horizon lane walker's place is its lane and its distance along it (horizonLane draws
+    // it from them every tick), so it takes the host's, the distance carried by the walk to this time, beat or not.
+    const bool lane = s.state == kLane && horizonOn();
+    const float laneB = lane ? horizonLaneCarry(e.species[i], s.a, s.b, ds) : 0.0f;
+    if (lane) h = horizonLanePoint(s.a, laneB);
     const Vec2 c{e.x[i], e.y[i]};
     const Vec2 d = h - c;
     const float err = length(d);
@@ -676,6 +693,12 @@ float World::netCorrect(const NetEnemyState& s, double hostMusic) {
         e.step[i] = s.step;
         e.target[i] = s.target;
         e.flags[i] = static_cast<u8>((e.flags[i] & ~(kFlagEngaged | kFlagArriving | kFlagCalled)) | (s.flags & (kFlagEngaged | kFlagArriving | kFlagCalled)));
+    }
+    if (lane) {
+        e.state[i] = kLane;
+        e.a[i] = s.a;
+        e.b[i] = laneB;
+        e.flags[i] |= kFlagCalled;
     }
     // Health: never above what this device has already taken off (its own claims may still be on their way).
     if (s.hp < e.hp[i]) e.hp[i] = s.hp;

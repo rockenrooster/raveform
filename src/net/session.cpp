@@ -1815,8 +1815,13 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
         nextBeatUs_ = localUs + kBeatEveryUs;
     }
     if (host() && poseFrame) {
-        // The song clock (4 Hz) with the boss's health.
-        if (localUs >= nextBeatUs_ && song_.valid()) {
+        // The song clock (4 Hz) with the boss's health; at once when the boss's phase changes (a client's phase follows the
+        // health it hears, and Event Horizon's lanes all turn with its phase: measured, docs/PROGRESS_m4_net.md).
+        const BossState& bb = w.boss();
+        const u8 bossPhase = bb.active && !bb.dying ? static_cast<u8>(bb.phase) : 0xFFu;
+        const bool phaseNow = bossPhase != beatBossPhase_;
+        if ((localUs >= nextBeatUs_ || phaseNow) && song_.valid()) {
+            beatBossPhase_ = bossPhase;
             MsgHeartbeat m;
             m.run = w.runId();
             const SongAnchor& a = song_.anchor();

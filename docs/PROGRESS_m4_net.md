@@ -207,6 +207,73 @@ both modes jump (to 278-344 wu); direct jumps further on direct links. The fallb
 age or jitter threshold interpolating by itself) is **not built yet**; the threshold from these numbers would be a pose
 age above about 60 ms or its spread above 30 ms (clean links: 8-11 ms, impaired: 26-213 ms).
 
+## Round 3 (after main 3b2f03b was merged back: `f92ab51`)
+
+### A direct link falls back to interpolation by itself (point 2)
+
+`Session::fillRemote` keeps, per directly linked seat, an average of the pose's age when it lands and of its spread (EMA).
+A link interpolates (66 ms behind, as relayed seats do) while the age is above 50 ms or the spread above 15 ms, and
+predicts again once both are back under 35 ms and 10 ms (`kFreshAgeMs`, `kFreshDevMs`, `kFreshAgeBackMs`,
+`kFreshDevBackMs`; clean links measure 8-11 ms of age, the impaired profile 44-109 ms). `net: diag` counts the ticks
+each direct link spent interpolated. Clean runs never fall back (the clean seeds are bit-identical to round 2's).
+Default seed, impaired, ten minutes (`captures\m4net\seeds\r3_imp` without, `r3b_imp` with):
+
+| impaired, seed 1 | host's view of a client | client's view of the host | client's view of a relayed client |
+|---|---|---|---|
+| direct, no fallback: RMS / P95 / max; unexplained step max, frames over 14 wu | 20.7 / 38.5 / 231; 227, 528 of 40,059 | 24.1 / 43.5 / 248; 264, 675 of 23,411 | 40.2 / 57.5 / 277; 296, 6,715 of 85,970 |
+| direct with the fallback | 31.5 / 40.3 / 196; **62.5**, 357 of 40,446 | 35.2 / 40.8 / 198; **114**, 470 of 22,911 | 40.7 / 58.5 / 281; 344, 7,068 of 86,428 |
+
+The fallback trades closeness (RMS 21-24 -> 31-35 wu, interpolation's) for steadiness on the links it covers (largest
+unexplained step 227-264 -> 62-114 wu). A relayed seat was already interpolated; its jumps are the relay's jitter
+(80 ms on two hops) and are unchanged. Ten seeds: impaired mean 7.21 wu (worst 10.38; without the fallback 5.95 /
+7.43), clean 4.87 (8.33), 20 of 20 pass. The impaired means differ within the seeds' spread (one soak's error swings
+with what its run did). TECH_SPEC 8.1 deviation, recorded: remote players are drawn predicted (extrapolated from their
+newest pose, its offset smoothed over 0.1 s) on direct links, interpolated on relayed ones and on a direct link that is
+late or uneven.
+
+### Point 5: Tracks 4-6 and the new fights in co-op (40-minute soaks, `captures\m4net\part5\`, round 3 code)
+
+The soak plays the set list of six Tracks, then the loop; the on-screen error (true, at the same song time) by the
+host's Track and by fight, seeds 1 and 2, in wu RMS (limit 12 for the whole run):
+
+| | clean s1 | clean s2 | impaired s1 | impaired s2 |
+|---|---|---|---|---|
+| Track 4 / 5 / 6 | 5.4 / 5.8 / 8.3 | 8.5 / 5.3 / 8.0 | 15.2 / 9.3 / 11.1 | 15.9 / 11.7 / 14.3 |
+| loop, Tracks 7-11 | 13.7-20.9 | 10.1-15.9 | 12.1-19.4 | 12.1-25.9 |
+| Feedback | 6.7 | 9.9 | 12.0 | 13.7 |
+| Polyrhythm | 10.3 | 8.1 | 13.7 | 16.2 |
+| **Event Horizon** | 14.2 | 26.6 | **77.5** | **82.1** |
+| Moth Queen | 13.5 | 13.9 | 14.5 | 18.9 |
+| Brood Mother | not reached | not reached | not reached | not reached |
+| Blink Star | 9.9 | 15.2 | 13.8 | 28.3 |
+| Sentry Array | 8.4 | 6.0 | 11.2 | 19.1 |
+| whole run (RMS; at correction) | 9.35; 12.3 FAIL | 7.88; 11.0 FAIL | 11.1; 21.7 FAIL | 14.9; 21.4 FAIL |
+| worst second down / up (kbit/s; limits 250 / 60) | 224 / **89.4** | 226 / **77.4** | 235 / **93.5** | **255** / **84.2** |
+
+- **Event Horizon** was the worst by far. Broken down (the soak's new `Event Horizon:` line: lane walkers, the rest,
+  copies whose Well is in another phase, the Well's place against the host's), three causes, each fixed on clients only
+  (`world_net.cpp` `netCorrect`, `world_horizon.cpp` two helpers, `session.cpp` the heartbeat); solo, the host and the
+  determinism hashes are unchanged:
+  1. **Lane walkers** (95-107 wu RMS): `horizonLane` draws a walker every tick from its lane and its distance along it
+     (`e.a`, `e.b`), so a correction's x/y was undone the next tick; the distance came only when no beat lay between
+     and was never carried to the client's time (the walk is 100-500 wu/s near the Well). Now a walker always takes the
+     host's lane and distance, the distance carried by the walk (speed plus pull, a tick at a time): 95-107 -> 4-16 wu.
+  2. **The phase change** (550-630 wu RMS while it lasts): the Well's lanes go from two to three to four with its phase
+     and every walker turns with them; a client changed phase on its own copy of the health, up to a heartbeat (250 ms)
+     plus the latency away from the host. The host now sends its heartbeat (the boss's health) at once when a boss's
+     phase changes: no sample left with the phases apart.
+  3. **The pull on the rest** is not in a body's velocity, so a correction is now carried by the pull too (small).
+  The Well itself agrees (its place 0-3 wu RMS from the host's). 25-minute soaks, the Horizon fight's error: impaired
+  seed 1 79.9 -> 76.7 (lanes) -> **7.1** (phase); clean seed 2 52.3 (lanes fixed, phase not) -> **9.8**; impaired
+  seed 2 96.9 -> **9.4** (lanes; its phase changes did not fall apart). `captures\m4net\part5c` .. `part5f`.
+- **Feedback** (the lead's first): no mechanism of its own shows. Its error is the crowd's in a dense fight (17% of
+  the impaired seed 2 samples): Shoals 19.1 and family 4 20.1 wu RMS, a copy following another player 60.8 (9% of the
+  squared error), knocked bodies 25.8 (7%); its own states never differ. Clean 8.7-9.7, impaired 13.3-17.3.
+- The loop's Tracks (7-11, past 15-25 minutes of play) carry most of the whole run's error and all of the uplink's
+  worst seconds: kill claims at loop densities. Tracks 1-6 alone stay at 1.1-8.5 clean and 2.7-15.9 impaired.
+- Feedback, Polyrhythm, Moth Queen, Blink Star and Sentry Array sit at 6-19 wu, near or above the limit under the
+  impaired profile; not yet broken down.
+
 ## The jumpy player shots the user saw on the Moto (the lead's question)
 
 The phone's runs this afternoon (PC local times, `captures\m4net\device\<tag>_*`, bench results `captures\bench\`):
@@ -239,9 +306,24 @@ What can make player shots jump on the host's screen, with the evidence:
 - **(e) The frame's time base**: co-op ticks and interpolates on CPU frame time (`wireNowUs()` at the frame's start);
   solo play's band clock is the same CPU time plus a constant lead, so a solo `bench_play` would show the same.
   **Not measured on the phone.**
-- **Not done**: the phone-side numbers of the lead's point 3 (shots first drawn more than a tick's travel from the
-  muzzle, frames whose drawn step is more than a quarter off velocity x frame time, split host's own / remote) and the
-  strips; they need a counter in the game's view on the phone.
+- **Split by owner on the host's screen** (round 3: `net: diag shots` every 20 s in the game's log, `play_net.cpp`):
+  frames whose drawn step is more than a quarter off the panel's period, and live player shots whose last tick bent more
+  than a quarter from a straight step at their speed, own player's against the remote players'. A remote player's shot
+  has **no late start and no carry** by construction: every device spawns it on its own tick from its copy of that
+  ship and its aim, so what can differ from the owner's screen is where the copy is (the remote ships above), not the
+  shot's flight. Desktop host with three bots, Track 1 Drop (bar 40), 4 x 20 s each:
+
+  | | frames off the period | own shots bent | remote shots bent | most alive own / remote |
+  |---|---|---|---|---|
+  | clean, loopback bots | 7-47 of 1,200 (PC timing) | 0 of 3,557-12,970 | 0 of 10,935-84,936 | 26 / 123 |
+  | impaired (5% loss, 80 ms jitter on all four; three headless joiners over UDP) | 9-38 of 1,200 | 0 of 5,108-11,268 | 0 of 16,654-34,303 | 23 / 67 |
+
+  On a clean LAN the host draws remote players' shots no worse than its own. Wave, Helix Array and Seek were not in
+  these loadouts (minute 1-2): the phone run below covers 15 minutes.
+- **Strips** (`captures\m4net\strip\coop_clean_*.png`, `coop_impaired_*.png`, `*_sheet.small.png`): eight frames from
+  bar 40 on the host's screen (`--net-capture-bar 40 --strip 8`, new: the bar's picture and the next seven frames).
+  Co-op runs on the wall clock, so saving each 2400x1080 PNG skips one or two ticks between strip frames (ticks 4483,
+  4486, 4487, ...); the steps between frames are not one tick's.
 
 ## Numbers before and after (the Moto's are from a shared phone; our APK deployed before each run)
 
@@ -257,12 +339,16 @@ What can make player shots jump on the host's screen, with the evidence:
 
 ## Changes outside src/net (for the merge)
 
-- `src/game/play_net.cpp`: diagnostics only (`noteFrame`, `noteTickSkipped`, `noteTimeDropped`, the `net: diag` lines).
+- `src/game/play_net.cpp`: diagnostics only (`noteFrame`, `noteTickSkipped`, `noteTimeDropped`, the `net: diag` lines,
+  round 3's `net: diag shots`).
+- `src/platform/app.cpp`, `app.h` (round 3): `--net-capture-bar B --strip N` takes the bar's picture and the next N-1
+  frames (`<name>_<k>.png`); without `--strip` as before.
 - `src/sim/world.h`: `NetLog::kClaims` 512 -> `kMaxEnemies`; `World::firstHand()`.
 - `src/sim/world.cpp`: the hit's dip does not slow the co-op simulation.
 - `src/sim/world_boss.cpp`: `bossGeom`, clients only: a late Spear decision carried on by the charge since.
 - `src/sim/world_net.cpp`: `targetOf` keeps a client's choice; `netCorrect` always takes the host's target; the
-  panic pulse's shove only where `firstHand`.
+  panic pulse's shove only where `firstHand`; round 3: `netCorrect` carries the host's sample by Event Horizon's pull
+  as well as by its velocity (clients only).
 - `src/sim/world_upgrades_m5.cpp`: Kick Pulse's shove, Colossus's shove, Black Hole's, Singularity's and Collapse
   Field's pulls only where `firstHand`.
 - `src/tools/net_headless.cpp`, `tests/net_tests.cpp`, `scripts/coop-device.ps1`, `scripts/net-seeds.ps1` (new).
@@ -290,4 +376,7 @@ What can make player shots jump on the host's screen, with the evidence:
 - `raveform_headless --net soak|host|join ... [--remote-poses interp|predict|direct] [--net-tune down=B,famN=W,motion=0|1]`;
   the soak prints the true error broken down, the remote ships and aims against the truth, and the worst up second's
   makeup; `join`/`host` print `corr`, `poses`, `frames` diagnostics every 10 s; the game logs `net: diag` every 20 s.
-- Protocol `0x52460504` on this branch (main's part 4 takes `0x52460505` at the merge).
+- Protocol `0x52460505` (main's part 4 with this branch's motion corrections).
+- `--net-capture-bar B --strip N`: the picture at bar B and the next N-1 frames (`<name>_<k>.png`; co-op runs on the
+  wall clock, so a strip's frames are one to three ticks apart).
+- The game's log: `net: diag shots` every 20 s (frames off the panel's period; player shots bent, own and remote).

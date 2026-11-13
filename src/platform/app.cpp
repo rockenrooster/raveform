@@ -941,9 +941,12 @@ void App::frame(u64 loopStartNs) {
         // M4: every peer takes its picture as its run reaches the bar (the same musical moment on each).
         capture = true;
         netShotDone_ = true;
+        netShotLeft_ = args_.strip > 1 ? args_.strip : 1;  // M4 net: with --strip N, N frames in a row from the bar on
         char trace[768];
         play_.latticeTrace(trace, sizeof trace);
         RF_LOG("view: %s", trace);
+    } else if (content_ == Content::Play && args_.netCaptureBar && netShotLeft_ > 0) {
+        capture = true;  // M4 net: the rest of the strip
     }
     if (content_ == Content::Play && args_.coopShot[0] && args_.screenshot[0] && !netShotDone_ && play_.coopShotNow()) {
         // M4 stage B: --coop-shot, the co-op moment it names (a screen, the beacon, the revive, the shared pause).
@@ -1101,13 +1104,19 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
             resolveOutputPath(name, path, sizeof path);
         } else if (content_ == Content::Play && playPicture_) {
             captureName(path, sizeof path, play_.captureIndex());  // M3: the scripted strip's frame
+        } else if (content_ == Content::Play && args_.netCaptureBar && netShotLeft_ > 0) {
+            captureName(path, sizeof path, netShotIndex_++);  // M4 net: the bar's strip, 0 = the bar's frame
         } else {
             const u64 firstShot = args_.frames > args_.strip ? args_.frames - (args_.strip ? args_.strip - 1 : 0) : 1;
             captureName(path, sizeof path, static_cast<u32>(frames_ >= firstShot ? frames_ - firstShot : 0));
         }
         if (!renderer_.saveCapture(path) && !screenshotRequested_) exitCode_ = 5;
         screenshotRequested_ = false;
-        if (netShotDone_) quit_ = true;  // M4: --net-capture-bar
+        if (args_.netCaptureBar && netShotLeft_ > 0) {
+            if (--netShotLeft_ == 0) quit_ = true;  // M4: --net-capture-bar (and its strip)
+        } else if (netShotDone_) {
+            quit_ = true;  // M4: --coop-shot
+        }
         if (content_ == Content::Play) {  // M3: what the picture holds
             const Play::Stats& ps = play_.stats();
             const ViewStats& vs = play_.viewStats();
