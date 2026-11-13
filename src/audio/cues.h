@@ -92,14 +92,14 @@ enum class Recipe : u8 {
     Glass,      // three sines at 3, 4.2, 5.4 x a note in the seventh octave (default the chord's root), 60 ms
     SawGlide,   // a detuned saw pair through the lead's low-pass; p1 = interval in semitones (+ up), p2 = beats (Alpha: 7, 1)
     Sweep,      // the Dash's noise through a low-pass; p1 = +1 opening / -1 closing, p2 = beats (0: the Dash's 110 ms)
-    RevCymbal,  // the impact's crash reversed; p1 = beats long (1 or 4); it ENDS on the tick given (or the next beat)
+    RevCymbal,  // the impact's crash reversed; p1 = beats long (1 or 4); it ENDS on the tick given (without one: p1 beats on)
     Woodblock,  // 1 kHz -> 700 Hz in 8 ms, 35 ms, a 3 kHz click; `midi` >= 0 pitches it (by scale step on the page)
     Chirp,      // the Shard's chirp at a note
     Drone,      // voice: a detuned saw pair an octave under the bass; setVoice param = low-pass cutoff in Hz
     PadVoice,   // voice: one note of the pad patch, held
     Crackle,    // voice: 5 ms bursts of 2-6 kHz noise; setVoice param = bursts a second
     Whoosh,     // noise through a band-pass sweeping 400 Hz -> 3 kHz over p1 beats (default 1); p2 = 1: and back
-    Roll,       // the Build's snare roll over p1 beats, ending on the tick given
+    Roll,       // the Build's snare roll over p1 beats (default 4), ending on the tick given (without one: p1 beats on)
     Count
 };
 constexpr u32 kRecipeCount = static_cast<u32>(Recipe::Count);

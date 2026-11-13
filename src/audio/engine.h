@@ -204,6 +204,26 @@ private:
     // Commands and planning.
     void applyCommand(const Command& c);
     void applyContentCommand(const Command& c);  // M5: cues, recipes, held voices, the timed low-pass (content_sound.cpp)
+    // M5 (content_sound.cpp): recipes as one-shots at a frame (p1, p2 as cues.h says), the live voices, the cues'
+    // aggregation per 1/32 step.
+    struct ContentVoice;
+    bool initContent();
+    void freeContent();
+    void stopContent();
+    void playRecipeAt(Recipe r, i32 midi, float gain, float pan, i64 frame, double tick, float p1, float p2);
+    void startContentVoice(ContentVoice& v, Recipe r, i32 midi, float gain, float pan, float param, float p1, float p2);
+    void renderContent(float* L, float* R, u32 n);
+    void flushCues(i64 tick);
+    i32 chordRootMidi(i32 octave) const;  // the bar's chord root in an octave (4: MIDI 60..71)
+    const Chord& currentChord() const;
+    i32 playerLastNote(u32 p) const;
+    Timbre playerTimbre(u32 p) const;
+    bool playerBoost(u32 p, Boost b) const;
+    ContentVoice* content_ = nullptr;  // kRecipeVoices held slots, then the one-shot SawGlides
+    u8 cueCount_[kMaxPlayers][kCueCount] = {};
+    float cueValue_[kMaxPlayers][kCueCount] = {}, cuePan_[kMaxPlayers][kCueCount] = {};
+    u32 arcStep_ = 0, stormStep_ = 0;
+    i64 bedFramesLeft_ = 0;  // recipes.low_pass_bed: frames until the bus opens again
     void startMode(Mode m, u32 track, bool loop);
     void applyParams();
     void onTick(i64 tick);
@@ -223,7 +243,7 @@ private:
     i64 frameOf(double tick) const { return tempo_.gridFrame(tick); }
     void emit(BeatKind k, i64 frame, double tick, u8 a = 0, u8 b = 0, u8 c = 0, float value = 0.0f, u32 index = 0,
               double x = 0.0);
-    void playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate = 1.0f);
+    void playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate = 1.0f, double from = 0.0);
     void playLead(u8 player, Timbre timbre, float midi, float vel, float gain, float pan, i64 frame, float lengthScale = 1.0f,
                   float drive = 0.0f);
     void playBass(float midi, float vel, float steps, i64 frame);

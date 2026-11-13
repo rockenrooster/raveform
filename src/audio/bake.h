@@ -3,6 +3,7 @@
 // design/tools/musicproto.py and the sound effects of design/tools/sfxproto.py, rendered with the same
 // recipes into float buffers that the sampler plays. Load time only: allocates with malloc.
 
+#include "audio/cues.h"
 #include "audio/music_data.h"
 #include "core/types.h"
 
@@ -67,6 +68,10 @@ public:
     i32 swellBar(u32 track) const { return swellBar_[track]; }
     // The nearest baked note of a pitched effect (or the effect itself when unpitched); -1: none.
     i32 sfx(Sfx kind, i32 midi = -1) const;
+    // M5: a recipe's baked one-shot nearest `midi` (any when it has no pitch); -1 when it is not baked (held voices,
+    // Chirp: the Shard's, Roll: the snare's). The sample's `midi` says the note it was baked at; `tag` 1 for the
+    // closing / returning version of Sweep and Whoosh.
+    i32 recipe(Recipe r, i32 midi = -1, u16 tag = 0) const;
     // M5: the major-third variant of an effect written in A minor (Boost, Upgrade, Game over), else -1.
     i32 sfxMajor(Sfx kind) const { return sfxMajor_[static_cast<u32>(kind)]; }
     // Nova inhale lasting `steps32` thirty-second notes of `track`'s tempo (1..8).
@@ -94,6 +99,8 @@ private:
     i32 sfxFirst_[kSfxCount] = {};
     u32 sfxCount_[kSfxCount] = {};
     i32 sfxMajor_[kSfxCount] = {};
+    i32 recipeFirst_[kRecipeCount] = {};
+    u32 recipeCount_[kRecipeCount] = {};
     i32 inhale_[MusicData::kMaxTracks][9] = {};
     u8 shardScale_[MusicData::kMaxTracks][10] = {};
 };

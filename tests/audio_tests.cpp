@@ -977,6 +977,59 @@ void testEffectsInKey() {
     }
 }
 
+// M5 (sound_m5.json): every recipe and every cue sounds, held voices start, follow their parameter and stop, nothing
+// allocates; in the conductor with the full bed playing.
+void testRecipesAndCues() {
+    const auto energy = [](const Capture& c, u64 from, u64 to) {
+        double e = 0.0;
+        for (u64 i = from * 2; i < to * 2 && i < c.frames * 2; ++i) e += static_cast<double>(c.out[i]) * c.out[i];
+        return e;
+    };
+    u32 silent = 0, allocs = 0;
+    for (u32 k = 0; k < kRecipeCount + kCueCount; ++k) {
+        const bool isRecipe = k < kRecipeCount;
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), 6, 0));  // Afterglow: Db major, 156 BPM
+        Command c;
+        if (isRecipe) {
+            const Recipe r = static_cast<Recipe>(k);
+            const bool held = r == Recipe::Drone || r == Recipe::PadVoice || r == Recipe::Crackle;
+            c = cmd(held ? CmdType::VoiceStart : CmdType::Recipe, held ? 5 : static_cast<u8>(r), held ? static_cast<u8>(r) : 0, 255, 1.0f);
+            c.z = r == Recipe::Crackle ? 40.0f : (r == Recipe::Drone ? 800.0f : 1.0f);
+            c.level = r == Recipe::SawGlide || r == Recipe::Sweep ? 1.0f : 0.0f;
+            c.when = Timing::Next32;
+        } else {
+            c = cmd(CmdType::Cue, static_cast<u8>(k - kRecipeCount), 0, 3, 2.0f);
+            c.when = Timing::Next32;
+        }
+        e.post(c);
+        Capture cap;
+        runEngine(e, cap, static_cast<u64>(kRate) * 4, 256);
+        if (isRecipe) {
+            const Recipe r = static_cast<Recipe>(k);
+            if (r == Recipe::Drone || r == Recipe::PadVoice || r == Recipe::Crackle) {
+                // Stop it: the voice releases to silence.
+                e.post(cmd(CmdType::VoiceStop, 5, 0, 0, 0.1f));
+                Capture tail;
+                runEngine(e, tail, static_cast<u64>(kRate) * 2, 256);
+                CHECK_MSG(energy(tail, kRate, kRate * 2) < 1e-9, "recipe %u still sounds after its stop", k);
+                allocs += static_cast<u32>(tail.allocs);
+                freeCapture(tail);
+            }
+        }
+        const Cue cue = static_cast<Cue>(k >= kRecipeCount ? k - kRecipeCount : 0);
+        const bool quietByDesign = !isRecipe && cue == Cue::PlayerHit;  // Crescendo's fall: no sound of its own
+        if (!quietByDesign && energy(cap, 0, cap.frames) <= 1e-8) {
+            ++silent;
+            std::printf("  silent: %s %u\n", isRecipe ? "recipe" : "cue", isRecipe ? k : k - kRecipeCount);
+        }
+        allocs += static_cast<u32>(cap.allocs);
+        freeCapture(cap);
+    }
+    CHECK_MSG(silent == 0 && allocs == 0, "%u silent, %u allocations", silent, allocs);
+}
+
 // All ten palettes load, one for each Track of the set list (design/palettes.json "track").
 void testPalettes() {
     auto* p = new Palettes;
@@ -1085,6 +1138,7 @@ int main() {
         {"the full band on every Track (M5)", testFullBandEveryTrack},
         {"Shard runs in each Track's scale (M5)", testShardScales},
         {"A-minor effects in each Track's key (M5)", testEffectsInKey},
+        {"recipes, held voices and cues sound, stop and do not allocate (M5)", testRecipesAndCues},
     };
     for (const Test& t : tests) {
         g_test = t.name;

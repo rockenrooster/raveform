@@ -650,7 +650,190 @@ float* sfxGameOver(double sr, u32& n, bool major = false) {
     return x;
 }
 
+// ---------------------------------------------------------------- M5: sound_m5.json "recipes"
+
+// tom: the pulse voice at a note: a sine from 4.8 x the note to the note in 45 ms, 130 ms decay, with its noise tick.
+float* recTom(double hz, double sr, u32& n) {
+    n = framesFor(0.36, sr);
+    float* x = alloc(n);
+    if (!x || !noise(x, n, 5, SpectralShape::bandpass(1500.0, 5000.0), sr)) {
+        std::free(x);
+        return nullptr;
+    }
+    PhaseSine s;
+    for (u32 i = 0; i < n; ++i) {
+        const double t = i / sr;
+        double v = s.next(hz + 3.8 * hz * std::exp(-t / 0.045), sr) * std::exp(-t / 0.13);
+        v += 0.25 * x[i] * std::exp(-t / 0.03);
+        x[i] = static_cast<float>(std::tanh(1.5 * v));
+    }
+    normPeak(x, n);
+    fadeOut(x, n, 0.008, sr);
+    return x;
+}
+
+// Gravity Rounds' thup: a soft low sine from 180 to 120 Hz, 40 ms.
+float* recThup(double sr, u32& n) {
+    n = framesFor(0.2, sr);
+    float* x = alloc(n);
+    if (!x) return nullptr;
+    PhaseSine s;
+    for (u32 i = 0; i < n; ++i) {
+        const double t = i / sr;
+        x[i] = static_cast<float>(s.next(120.0 + 60.0 * std::exp(-t / 0.015), sr) * std::exp(-t / 0.04) * (t / 0.002 < 1.0 ? t / 0.002 : 1.0));
+    }
+    normPeak(x, n);
+    fadeOut(x, n, 0.008, sr);
+    return x;
+}
+
+// sub_drop: the impact's sine alone, 120 -> 38 Hz, 700 ms.
+float* recSubDrop(double sr, u32& n) {
+    n = framesFor(2.4, sr);
+    float* x = alloc(n);
+    if (!x) return nullptr;
+    PhaseSine s;
+    for (u32 i = 0; i < n; ++i) {
+        const double t = i / sr;
+        x[i] = static_cast<float>(s.next(38.0 + 82.0 * std::exp(-t / 0.25), sr) * std::exp(-t / 0.7));
+    }
+    normPeak(x, n);
+    fadeOut(x, n, 0.05, sr);
+    return x;
+}
+
+// zap: the medium kill without its noise: a sine from twice the pitch to the pitch, 90 ms, ring-modulated at 2.76 x.
+float* recZap(double hz, double sr, u32& n) {
+    n = framesFor(0.30, sr);
+    float* x = alloc(n);
+    if (!x) return nullptr;
+    addSweep(x, n, hz * 2.0, hz, 0.02, sr);
+    for (u32 i = 0; i < n; ++i) {
+        const double t = i / sr;
+        const double b = x[i] * std::exp(-t / 0.09);
+        x[i] = static_cast<float>(std::tanh(1.4 * (b + b * std::sin(kTau * hz * 2.76 * t) * 0.3)));
+    }
+    normPeak(x, n);
+    fadeOut(x, n, 0.008, sr);
+    return x;
+}
+
+// glass: three sines at 3, 4.2 and 5.4 x a note of the seventh octave, 60 ms.
+float* recGlass(double hz, double sr, u32& n) {
+    n = framesFor(0.25, sr);
+    float* x = alloc(n);
+    if (!x) return nullptr;
+    for (u32 i = 0; i < n; ++i) {
+        const double t = i / sr;
+        double v = 0.0;
+        for (double m : {3.0, 4.2, 5.4}) v += hz * m < 0.45 * sr ? std::sin(kTau * hz * m * t) : 0.0;
+        x[i] = static_cast<float>(v * std::exp(-t / 0.06) * (t / 0.001 < 1.0 ? t / 0.001 : 1.0));
+    }
+    normPeak(x, n);
+    fadeOut(x, n, 0.004, sr);
+    return x;
+}
+
+// woodblock: a sine falling from 1 kHz to 700 Hz in 8 ms, 35 ms decay, with a 3 kHz click.
+float* recWoodblock(double sr, u32& n) {
+    n = framesFor(0.15, sr);
+    float* x = alloc(n);
+    float* click = alloc(n);
+    if (!x || !click || !noise(click, n, 46, SpectralShape::bandpass(2500.0, 3600.0), sr)) {
+        std::free(x);
+        std::free(click);
+        return nullptr;
+    }
+    addSweep(x, n, 1000.0, 700.0, 0.008 / 3.0, sr);
+    for (u32 i = 0; i < n; ++i) {
+        const double t = i / sr;
+        x[i] = static_cast<float>(x[i] * std::exp(-t / 0.035) + 0.5 * click[i] * std::exp(-t / 0.002));
+    }
+    std::free(click);
+    normPeak(x, n);
+    fadeOut(x, n, 0.004, sr);
+    return x;
+}
+
+// sweep: the Dash's noise through a low-pass opening (600 Hz -> 6 kHz) or closing over one second (stretched to the
+// time asked for by the playback rate).
+float* recSweep(bool closing, double sr, u32& n) {
+    n = framesFor(1.0, sr);
+    float* x = alloc(n);
+    if (!x) return nullptr;
+    Random rng(closing ? 48 : 47);
+    SvfLowpass f;
+    const float k = static_cast<float>(1.0 / 1.2);
+    for (u32 i = 0; i < n; ++i) {
+        const double u = static_cast<double>(i) / n;
+        const double fc = closing ? 6000.0 * std::pow(0.1, u) : 600.0 * std::pow(10.0, u);
+        const double env = closing ? std::exp(-u * 3.0) : std::min(1.0, (1.0 - u) * 20.0) * (0.3 + 0.7 * u);
+        x[i] = f.tick(static_cast<float>(rng.gaussian() * env), svfG(static_cast<float>(fc), static_cast<float>(sr)), k);
+    }
+    normPeak(x, n);
+    fadeOut(x, n, 0.008, sr);
+    return x;
+}
+
+// rev_cymbal: the impact's crash reversed (it ends at full level, faded in from silence).
+float* recRevCymbal(double sr, u32& n) {
+    n = framesFor(2.4, sr);
+    float* c = alloc(n);
+    float* x = alloc(n);
+    if (!c || !x || !noise(c, n, 7, SpectralShape::bandpass(3500.0, 11000.0), sr)) {
+        std::free(c);
+        std::free(x);
+        return nullptr;
+    }
+    for (u32 i = 0; i < n; ++i) x[n - 1 - i] = static_cast<float>(c[i] * std::exp(-(i / sr) / 0.65));
+    std::free(c);
+    normPeak(x, n);
+    return x;
+}
+
+// whoosh: noise through a band-pass sweeping 400 Hz -> 3 kHz over a second (and back over another for a return).
+float* recWhoosh(bool back, double sr, u32& n) {
+    n = framesFor(back ? 2.0 : 1.0, sr);
+    float* x = alloc(n);
+    if (!x) return nullptr;
+    Random rng(back ? 50 : 49);
+    float ic1 = 0.0f, ic2 = 0.0f;
+    const float k = 1.0f / 1.5f;
+    for (u32 i = 0; i < n; ++i) {
+        const double t = i / sr;
+        const double u = back ? (t < 1.0 ? t : 2.0 - t) : t;  // 0..1 (..0)
+        const double fc = 400.0 * std::pow(3000.0 / 400.0, u);
+        const SvfCoefs c = svfCoefs(svfG(static_cast<float>(fc), static_cast<float>(sr)), k);
+        const float v0 = static_cast<float>(rng.gaussian());
+        const float v3 = v0 - ic2, v1 = c.a1 * ic1 + c.a2 * v3, v2 = ic2 + c.a2 * ic1 + c.a3 * v3;
+        ic1 = 2.0f * v1 - ic1;
+        ic2 = 2.0f * v2 - ic2;
+        const double env = std::sin(kPiD * (back ? t / 2.0 : t));  // swells and fades with the pass
+        x[i] = static_cast<float>(v1 * env);
+    }
+    normPeak(x, n);
+    fadeOut(x, n, 0.008, sr);
+    return x;
+}
+
 }  // namespace
+
+i32 SampleBank::recipe(Recipe r, i32 midi, u16 tag) const {
+    const u32 k = static_cast<u32>(r);
+    if (k >= kRecipeCount || !recipeCount_[k]) return -1;
+    i32 best = -1;
+    i32 bestDist = 1 << 30;
+    for (u32 i = 0; i < recipeCount_[k]; ++i) {
+        const i32 id = recipeFirst_[k] + static_cast<i32>(i);
+        if (samples_[id].tag != tag) continue;
+        const i32 d = midi < 0 || samples_[id].midi < 0 ? 0 : std::abs(samples_[id].midi - midi);
+        if (d < bestDist) {
+            bestDist = d;
+            best = id;
+        }
+    }
+    return best;
+}
 
 float* bakeKickWithSeed(const SoundParams& params, double sampleRate, u64 seed, u32& frames) {
     return makeKick(params, sampleRate, frames, seed);
@@ -888,6 +1071,50 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate) {
     sfxMajor_[static_cast<u32>(Sfx::Upgrade)] = put(sfxUpgrade(sr, n, true));
     std::snprintf(label, sizeof label, "game_over_major");
     sfxMajor_[static_cast<u32>(Sfx::GameOver)] = put(sfxGameOver(sr, n, true));
+
+    // M5: the recipes (sound_m5.json). Pitched ones on a grid of notes three semitones apart (the engine plays the
+    // nearest at a rate, at most 1.5 semitones off), the rest once; Chirp is the Shard's, Roll the snare's, and the
+    // held voices (Drone, PadVoice, Crackle) and SawGlide are synthesised live.
+    const auto recipeGrid = [&](Recipe r, i32 lo, i32 hi, auto&& make) {
+        recipeFirst_[static_cast<u32>(r)] = static_cast<i32>(count_);
+        for (i32 m = lo; m <= hi; m += 3) {
+            std::snprintf(label, sizeof label, "recipe%u_%d", static_cast<u32>(r), m);
+            put(make(midiHz(m)), 1, static_cast<i16>(m));
+            ++recipeCount_[static_cast<u32>(r)];
+        }
+    };
+    const auto recipeOnce = [&](Recipe r, float* data, u8 channels, i16 midi, u16 tag) {
+        if (!recipeCount_[static_cast<u32>(r)]) recipeFirst_[static_cast<u32>(r)] = static_cast<i32>(count_);
+        std::snprintf(label, sizeof label, "recipe%u_%u", static_cast<u32>(r), tag);
+        put(data, channels, midi, tag);
+        ++recipeCount_[static_cast<u32>(r)];
+    };
+    recipeGrid(Recipe::Tom, 36, 84, [&](double hz) { return recTom(hz, sr, n); });
+    recipeOnce(Recipe::Tom, recThup(sr, n), 1, -1, 2);  // tag 2: Gravity Rounds' thup (sine 180 -> 120 Hz, 40 ms)
+    recipeGrid(Recipe::Bell, 48, 96, [&](double hz) {
+        n = framesFor(0.36, sr);
+        float* x = alloc(n);
+        if (x) addBell(x, n, 0, hz, 0.36, 2.0, 2.4, sr, 1.0f);
+        return x;
+    });
+    recipeGrid(Recipe::Gong, 42, 54, [&](double hz) {  // the bell two octaves under the note asked for
+        n = framesFor(2.5, sr);
+        float* x = alloc(n);
+        if (x) {
+            addBell(x, n, 0, hz, 2.5, 1.4, 3.0, sr, 1.0f);
+            normPeak(x, n);
+        }
+        return x;
+    });
+    recipeGrid(Recipe::Zap, 48, 96, [&](double hz) { return recZap(hz, sr, n); });
+    recipeGrid(Recipe::Glass, 96, 105, [&](double hz) { return recGlass(hz, sr, n); });
+    recipeOnce(Recipe::SubDrop, recSubDrop(sr, n), 1, -1, 0);
+    recipeOnce(Recipe::Woodblock, recWoodblock(sr, n), 1, 83, 0);  // 1 kHz is near B5 (83.2)
+    recipeOnce(Recipe::Sweep, recSweep(false, sr, n), 1, -1, 0);
+    recipeOnce(Recipe::Sweep, recSweep(true, sr, n), 1, -1, 1);
+    recipeOnce(Recipe::RevCymbal, recRevCymbal(sr, n), 1, -1, 0);
+    recipeOnce(Recipe::Whoosh, recWhoosh(false, sr, n), 1, -1, 0);
+    recipeOnce(Recipe::Whoosh, recWhoosh(true, sr, n), 1, -1, 1);
     // Nova inhale: from the press to the next beat, 1..8 thirty-seconds of each Track's tempo.
     sfxFirst_[static_cast<u32>(Sfx::NovaInhale)] = static_cast<i32>(count_);
     for (u32 t = 0; t < music.trackCount; ++t) {
@@ -912,7 +1139,7 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate) {
 
 namespace {
 constexpr u32 kCacheMagic = 0x42534652u;  // "RFSB"
-constexpr u32 kCacheVersion = 3;  // M5: tables sized for ten Tracks; the major-third effects
+constexpr u32 kCacheVersion = 4;  // M5: tables sized for ten Tracks; the major-third effects; the recipes
 template <typename T>
 bool put(FILE* f, const T& v) { return std::fwrite(&v, sizeof v, 1, f) == 1; }
 template <typename T>
@@ -933,7 +1160,7 @@ bool SampleBank::saveCache(const char* path, u64 key) const {
     }
     ok = ok && put(f, kits_) && put(f, clap_) && put(f, snare_) && put(f, shaker_) && put(f, pulse_) && put(f, impact_) && put(f, risers_) &&
          put(f, riserCount_) && put(f, swellHalf_) && put(f, swellBar_) && put(f, sfxFirst_) && put(f, sfxCount_) && put(f, inhale_) &&
-         put(f, shardScale_) && put(f, sfxMajor_) && put(f, kCacheMagic);
+         put(f, shardScale_) && put(f, sfxMajor_) && put(f, recipeFirst_) && put(f, recipeCount_) && put(f, kCacheMagic);
     ok = (std::fclose(f) == 0) && ok;
     if (!ok) {
         std::remove(tmp);
@@ -965,7 +1192,8 @@ bool SampleBank::loadCache(const char* path, u64 key) {
     u32 tail = 0;
     ok = ok && get(f, kits_) && get(f, clap_) && get(f, snare_) && get(f, shaker_) && get(f, pulse_) && get(f, impact_) && get(f, risers_) &&
          get(f, riserCount_) && get(f, swellHalf_) && get(f, swellBar_) && get(f, sfxFirst_) && get(f, sfxCount_) && get(f, inhale_) &&
-         get(f, shardScale_) && get(f, sfxMajor_) && get(f, tail) && tail == kCacheMagic;
+         get(f, shardScale_) && get(f, sfxMajor_) && get(f, recipeFirst_) && get(f, recipeCount_) && get(f, tail) &&
+         tail == kCacheMagic;
     std::fclose(f);
     if (!ok) {
         release();
