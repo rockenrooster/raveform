@@ -177,7 +177,55 @@ struct ConductorRules {
     float critLevel = 0.5f;
     float prismLevel = 0.4f;
     u32 pulseRingEveryBeatFrom = 2;
+
+    // M5: the other Mods, Riffs 4-12 and the other Boosts (conductor.json "mods", "riffs", "boosts": the blocks that came
+    // from sound_m5.json). Levels are linear, relative to the voice's own mix level; steps are sixteenths; ticks 96 a beat.
+    // Riffs.
+    float lancerPattern[16] = {}, lancerFastPattern[16] = {};  // level 1; from lancerFastFrom: the beats of "says"
+    float lancerLength = 2.0f, lancerLevel = 1.0f, lancerSwell = 0.3f;
+    u32 lancerFastFrom = 3;
+    float minePattern[16] = {};
+    float mineClap = 0.8f, mineImpact = 0.4f;
+    u32 mineHatStep = 8;
+    float stormLevel = 0.25f;
+    u32 swarmGridTicks = 12, swarmFrom = 0;
+    u32 swarmCount[5] = {8, 12, 16, 20, 24};
+    float swarmLevel = 0.3f;
+    u32 singEveryBars = 4, singSwellBeats = 3;
+    float singSwell = 0.5f, singImpact = 0.8f;
+    i32 mirrorTranspose = 12;
+    float mirrorLevel[5] = {0.4f, 0.5f, 0.55f, 0.6f, 0.7f};
+    float cometPattern[16] = {};
+    float cometLevel = 0.3f;
+    float sweepCutLo = 300.0f, sweepCutHi = 2400.0f, sweepLevel = 0.2f;
+    u32 sweepTurnBars = 2;
+    float flakPattern[16] = {};
+    float flakLevel = 0.5f;
+    u32 flakClapFrom = 4, flakClapTicks = 12;
+    // Mods.
+    u32 forkTicks = 12;
+    float forkLevel = 0.4f;
+    float seekerMs = 12.0f;
+    u32 heavyEvery = 4, heavyAt = 3;  // lead steps k with k % heavyEvery == heavyAt
+    float heavyLevel = 0.8f, heavyThud = 0.5f;
+    float accentLevel = 1.4f, accentStab = 0.3f;
+    float echoMix = 0.15f;
+    float waveHz = 5.5f, waveCents = 18.0f;
+    u8 rearSteps[4] = {2, 6, 10, 14}, rearSteps2[2] = {1, 9};
+    float rearLevel = 0.5f;
+    float burnLevel = 0.08f, shatterLevel = 0.25f, gravityLevel = 0.15f, aegisDb = 6.0f, lastLightLevel = 0.6f;
+    float syncLouder = 0.3f, barLineStab = 0.5f, crescendoDbPerBar = 0.2f, crescendoMaxDb = 2.0f, kickPulseLevel = 0.2f;
+    // Boosts.
+    float supernovaLevel = 0.3f, colossusLevel = 0.5f, freezeHz = 800.0f, chainStormLevel = 0.35f, chorusLevel = 0.4f;
+    u32 fractalTicks = 12;
+    float fractalOctave = 0.3f, fractalDouble = 0.15f;
 };
+
+// M5: the lead's grid index (into ConductorRules::gridTicks) for a player's Double-Time stacks and Afterparty stacks in a
+// bar of a section, as the engine plays it and the main thread mirrors it for the lead rule (Band::computeShots): the
+// Surge (the first half of the Drop) moves it one step along in its first half and two in its second; Afterparty makes
+// the Surge two bars longer a stack (the second gear held) and moves its grid one step further; capped at the last.
+u32 leadGridIndex(const u32 surgeSteps[2], u32 doubleTime, u32 afterparty, Section section, u32 sectionBar, u32 sectionBars);
 
 // Loudness calibration (src/audio/loudness_calibration.json, written by raveform_headless --calibrate):
 // the output gain that puts each Track x variant's staged arrangement at target_lufs, as the prototype

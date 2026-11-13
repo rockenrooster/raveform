@@ -26,6 +26,24 @@ inline float sinTurns(float t) {
     return x * (1.0f + x2 * (-1.0f / 6.0f + x2 * (1.0f / 120.0f + x2 * (-1.0f / 5040.0f + x2 * (1.0f / 362880.0f + x2 * (-1.0f / 39916800.0f))))));
 }
 
+// M5 (cost): tanh without a libm call, Lambert's continued fraction to x^7 / x^6 (off by less than 2e-5 for |x| < 4.97,
+// where it reaches 1; clamped beyond). For the lead's drive (Overcharge), which ran a libm tanh a sample a voice.
+inline float fastTanh(float x) {
+    if (x > 4.97f) return 1.0f;
+    if (x < -4.97f) return -1.0f;
+    const float x2 = x * x;
+    return x * (135135.0f + x2 * (17325.0f + x2 * (378.0f + x2))) / (135135.0f + x2 * (62370.0f + x2 * (3150.0f + 28.0f * x2)));
+}
+
+// M5 (cost): 2^x without a libm call, for the lead's bends (Seeker, Wave) at the control rate: the fraction's Taylor
+// polynomial to the fifth power (within 0.3 cents), times the power of two built in the exponent bits. |x| < 100.
+inline float fastExp2(float x) {
+    const float fl = std::floor(x);
+    const float f = x - fl;
+    const float p = 1.0f + f * (0.69314718f + f * (0.24022651f + f * (0.05550411f + f * (0.00961813f + f * 0.00133336f))));
+    return p * __builtin_bit_cast(float, static_cast<u32>(static_cast<i32>(fl) + 127) << 23);
+}
+
 // musicproto.polyblep: t is the phase in [0, 1), dt the phase increment per sample.
 inline float polyBlep(float t, float dt) {
     if (t < dt) {

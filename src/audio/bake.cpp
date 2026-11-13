@@ -793,17 +793,19 @@ float* recRevCymbal(double sr, u32& n) {
     return x;
 }
 
-// whoosh: noise through a band-pass sweeping 400 Hz -> 3 kHz over a second (and back over another for a return).
-float* recWhoosh(bool back, double sr, u32& n) {
+// whoosh: noise through a band-pass sweeping 400 Hz -> 3 kHz over a second (and back over another for a return; M5, the
+// Comet: mode 2 is the return alone, 3 kHz -> 400 Hz).
+float* recWhoosh(int mode, double sr, u32& n) {
+    const bool back = mode == 1;
     n = framesFor(back ? 2.0 : 1.0, sr);
     float* x = alloc(n);
     if (!x) return nullptr;
-    Random rng(back ? 50 : 49);
+    Random rng(mode == 0 ? 49 : (mode == 1 ? 50 : 51));
     float ic1 = 0.0f, ic2 = 0.0f;
     const float k = 1.0f / 1.5f;
     for (u32 i = 0; i < n; ++i) {
         const double t = i / sr;
-        const double u = back ? (t < 1.0 ? t : 2.0 - t) : t;  // 0..1 (..0)
+        const double u = back ? (t < 1.0 ? t : 2.0 - t) : (mode == 2 ? 1.0 - t : t);  // 0..1 (..0)
         const double fc = 400.0 * std::pow(3000.0 / 400.0, u);
         const SvfCoefs c = svfCoefs(svfG(static_cast<float>(fc), static_cast<float>(sr)), k);
         const float v0 = static_cast<float>(rng.gaussian());
@@ -1130,8 +1132,9 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers) 
     recipeOnce(Recipe::Sweep, recSweep(false, sr, n), 1, -1, 0);
     recipeOnce(Recipe::Sweep, recSweep(true, sr, n), 1, -1, 1);
     recipeOnce(Recipe::RevCymbal, recRevCymbal(sr, n), 1, -1, 0);
-    recipeOnce(Recipe::Whoosh, recWhoosh(false, sr, n), 1, -1, 0);
-    recipeOnce(Recipe::Whoosh, recWhoosh(true, sr, n), 1, -1, 1);
+    recipeOnce(Recipe::Whoosh, recWhoosh(0, sr, n), 1, -1, 0);
+    recipeOnce(Recipe::Whoosh, recWhoosh(1, sr, n), 1, -1, 1);
+    recipeOnce(Recipe::Whoosh, recWhoosh(2, sr, n), 1, -1, 2);  // M5: the Comet's return alone
     // Nova inhale: from the press to the next beat, 1..8 thirty-seconds of each Track's tempo.
     sfxFirst_[static_cast<u32>(Sfx::NovaInhale)] = static_cast<i32>(count_);
     for (u32 t = 0; t < music.trackCount; ++t) {
@@ -1185,7 +1188,7 @@ bool SampleBank::complete() const {
 
 namespace {
 constexpr u32 kCacheMagic = 0x42534652u;  // "RFSB"
-constexpr u32 kCacheVersion = 5;  // M5: tables sized for ten Tracks; the major-third effects; the recipes
+constexpr u32 kCacheVersion = 6;  // M5: tables sized for ten Tracks; the major-third effects; the recipes; (6) the upgrades' one-shots
 template <typename T>
 bool put(FILE* f, const T& v) { return std::fwrite(&v, sizeof v, 1, f) == 1; }
 template <typename T>

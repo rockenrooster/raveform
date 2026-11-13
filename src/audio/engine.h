@@ -126,6 +126,7 @@ struct Command {
 struct EngineStats {
     std::atomic<u32> voices{0};       // active now
     std::atomic<u32> voicesPeak{0};
+    std::atomic<u32> leadPeak{0};     // M5: the lead voices' peak (of voicesPeak)
     std::atomic<u32> steals{0};       // a pool was full and the oldest voice gave way
     std::atomic<u32> bar{0};
     std::atomic<u8> section{0};
@@ -138,6 +139,14 @@ struct EngineStats {
     std::atomic<float> intensity{0.0f};
     std::atomic<float> masterPeak{0.0f};  // since the last read-and-reset by the reader
 };
+
+// M5, the worst case for the phone (--band max; raveform_headless --render max): the full band's load test (the Drop held,
+// four players firing, intensity 1) with every Riff at level 5 among the four players (and Mirror for each), the heaviest
+// Mods at their caps and a Boost each (content_sound.cpp says which). maxLoadSetup: the commands that set it up (after
+// SetMode); maxLoadFrame: the game's events of one 1/60 s frame (kills, Shards, the Mods' and Riffs' cues). Each returns how
+// many it wrote (at most `cap`).
+u32 maxLoadSetup(Command* out, u32 cap);
+u32 maxLoadFrame(u32 frame, Command* out, u32 cap);
 
 // Offline profiling: nanoseconds spent per stage of renderBlock (set with Engine::setProfile).
 // M5: the lead per timbre (each voice timed: a few percent of overhead, profiling runs only).
@@ -212,20 +221,57 @@ private:
     void stopContent();
     void playRecipeAt(Recipe r, i32 midi, float gain, float pan, i64 frame, double tick, float p1, float p2);
     void startContentVoice(ContentVoice& v, Recipe r, i32 midi, float gain, float pan, float param, float p1, float p2);
-    void renderContent(float* L, float* R, u32 n);
+    void renderContent(u32 n);
     void flushCues(i64 tick);
     i32 chordRootMidi(i32 octave) const;  // the bar's chord root in an octave (4: MIDI 60..71)
     const Chord& currentChord() const;
     i32 playerLastNote(u32 p) const;
     Timbre playerTimbre(u32 p) const;
     bool playerBoost(u32 p, Boost b) const;
-    ContentVoice* content_ = nullptr;  // kRecipeVoices held slots, then the one-shot SawGlides
+    bool playerFusion(u32 p, Fusion f) const;
+    ContentVoice* content_ = nullptr;  // kRecipeVoices held slots, then the one-shot SawGlides, Burn, the upgrades' voices
     u8 cueCount_[kMaxPlayers][kCueCount] = {};
     float cueValue_[kMaxPlayers][kCueCount] = {}, cuePan_[kMaxPlayers][kCueCount] = {};
     u32 arcStep_ = 0, stormStep_ = 0;
     i64 bedFramesLeft_ = 0;  // recipes.low_pass_bed: frames until the bus opens again
+
+    // M5 (content_sound.cpp): the patterned sound of the upgrades (conductor.json "mods", "riffs", "boosts"; sound_m5.json
+    // "fusions"), on the band's own clock from each player's loadout. Nothing here runs unless someone owns an upgrade.
+    void upgradeBar();                                   // the end of planConductorBar: what the bar plays
+    void upgradeStep(i64 tick, i64 inBar);               // each scanned tick of a conductor bar: Riffs 4-12, patterned Boosts
+    void leadUpgrades(u32 player, i64 tick, i64 inBar, u32 k, u8 note, float vel, float gain, float pan, float scale,
+                      float drive, float level, float glideFrom);  // after a fired lead note: the Mods' and Boosts' extra notes
+    void rearGuardStep(u32 player, i64 tick, i64 inBar, float gain, float level);
+    void kickUpgrades(float velocity, i64 frame, double tick);  // Kick Pulse: a tom with each kick the pattern plays
+    void boostChanged(u32 player, Boost b, bool on);     // a Boost started or ended (Freeze Frame's glass chord and filter)
+    void flushStabs(i64 frame);                          // the stabs the Mods asked for on this tick, as one voice
+    LeadVoice* bendLead(LeadVoice* v, u32 player, float glideFrom, bool opposite);  // Seeker's glide, Wave's vibrato
+    void crescendoHit(u32 player);                       // Crescendo: a hit drops the lead's rise and the pad's opening
+    i32 chordTone(const Chord& ch, u32 k, i32 octave) const;  // k 0 root, 1 third, 2 fifth, 3 seventh, 4 octave
+    float scaleStep(float base, i32 degrees) const;      // `degrees` steps of the Track's scale from a note (negative: down)
+    // A recipe's baked one-shot at a note (-1: unpitched) on a bus, at an absolute gain; recipeGain: the recipe's own level.
+    void recipeShot(Recipe r, i32 note, float gain, float pan, i64 frame, Bus bus, u16 tag = 0, float rate = 1.0f, double from = 0.0);
+    float recipeGain(Recipe r) const;
+    void swellInto(double endTick, double startTick, float gain);  // the Track's reverse swell over a span, ending on a tick
+    // A held Drone of the upgrades (content slot): on from `frame` at a note (retuned there, over 20 ms, when it sounds
+    // already), or released there; mode 1: its cutoff follows the Sweeper's arm.
+    void holdDrone(u32 slot, bool on, i32 midi, float cutoff, float gain, u8 mode, i64 frame);
+    float playerLevel(u32 player) const;  // a player's lead level in this device's mix (1: its own; conductor.json lead.others)
+    i32 echoPending_ = -1;            // Echo: the stacks the delay takes on at echoAt_ (the bar line's frame)
+    i64 echoAt_ = -1;
+    u8 crescBars_[kMaxPlayers] = {};  // Crescendo: bars without a hit
+    u32 stretchBar_ = 0;               // Time Stretch: bars it has run (the half of its two-bar drum pattern)
+    bool mineArmed_ = false;           // Minelayer: a mine was laid in the last bar
+    bool singArmed_ = false;           // Singularity: a well is pulling (its swell played)
+    u32 echo_ = 0;                     // Echo: the stacks the lead's delay is set for
+    bool kickPulse_ = false;           // Kick Pulse: someone owns it
+    float stabAcc_ = 0.0f;             // Accent and Bar Line: stab velocity asked for on this tick (one stab, summed)
+    u32 haloTick_ = 0, standNext_ = 0;
+    float freezeMix_ = 0.0f, freezeTarget_ = 0.0f;  // Freeze Frame: the music bus's high-pass, 0..1
+    Biquad freezeHp_[2];
     void startMode(Mode m, u32 track, bool loop);
     void applyParams();
+    void applyDelay();  // the lead's ping-pong delay (M5: Echo makes it a beat long and louder)
     void onTick(i64 tick);
     void planBar(i64 barTick);
     void planStagedBar(i64 barTick);
@@ -244,10 +290,11 @@ private:
     void emit(BeatKind k, i64 frame, double tick, u8 a = 0, u8 b = 0, u8 c = 0, float value = 0.0f, u32 index = 0,
               double x = 0.0);
     void playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate = 1.0f, double from = 0.0);
-    void playLead(u8 player, Timbre timbre, float midi, float vel, float gain, float pan, i64 frame, float lengthScale = 1.0f,
-                  float drive = 0.0f);
-    void playBass(float midi, float vel, float steps, i64 frame);
-    void playStab(const Chord& chord, float vel, float pan, i64 frame);
+    LeadVoice* playLead(u8 player, Timbre timbre, float midi, float vel, float gain, float pan, i64 frame, float lengthScale = 1.0f,
+                        float drive = 0.0f);
+    // M5: decayScale (the rubber string: x 2), lengthS (> 0: the voice's length; Heavy Step's short notes), the bus.
+    void playBass(float midi, float vel, float steps, i64 frame, float decayScale = 1.0f, float lengthS = -1.0f, Bus bus = Bus::Bass);
+    void playStab(const Chord& chord, float vel, float pan, i64 frame, float lengthScale = 1.0f);
     void playPad(const Chord& chord, float level, float bright, i64 frame);
     void playKick(float gain, float velocity, i64 frame, double tick);
     void playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, double tick, float rateMul = 1.0f);

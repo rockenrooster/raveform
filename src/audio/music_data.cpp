@@ -5,10 +5,24 @@
 #include <cstring>
 #include <initializer_list>
 
+#include "audio/tempo_map.h"
 #include "core/json_doc.h"
 #include "core/log.h"
 
 namespace rf::audio {
+
+u32 leadGridIndex(const u32 surgeSteps[2], u32 doubleTime, u32 afterparty, Section section, u32 sectionBar, u32 sectionBars) {
+    u32 idx = doubleTime;
+    if (section == Section::Drop) {
+        const u32 half = sectionBars / 2;
+        if (sectionBar < half) {
+            idx += surgeSteps[sectionBar < sectionBars / 4 ? 0 : 1] + afterparty;
+        } else if (afterparty && sectionBar < half + 2 * afterparty) {
+            idx += surgeSteps[1] + afterparty;  // Afterparty: the Surge's second gear held for two more bars a stack
+        }
+    }
+    return idx > 2 ? 2 : idx;
+}
 
 namespace {
 
@@ -456,6 +470,148 @@ bool loadTrack(const char* text, const char* file, Track& t, ParamTable& overrid
     return ok;
 }
 
+// M5: the other Mods, Riffs 4-12 and the other Boosts (conductor.json's "mods", "riffs" and "boosts" blocks, moved there
+// from sound_m5.json). Structured numbers are read as they are; the ones in sentences through ProseReader, with a check of
+// how many each sentence holds. Numbers written as words ("two scale degrees", "three beats") are the engine's reading of
+// the sentence and are noted where they are used.
+bool loadUpgrades(const JsonDoc& doc, ProseReader& prose, ConductorRules& c) {
+    bool ok = true;
+    const auto num = [&](const char* path, float& out) {
+        bool found = true;
+        const double v = doc.number(path, 0.0, &found);
+        if (!found) {
+            RF_ERR("music: conductor.json has no number at '%s'", path);
+            ok = false;
+            return;
+        }
+        out = static_cast<float>(v);
+    };
+    const auto numU = [&](const char* path, u32& out) {
+        float v = static_cast<float>(out);
+        num(path, v);
+        out = static_cast<u32>(v + 0.5f);
+    };
+    const auto list = [&](const char* path, float* out, u32 n) {
+        if (doc.numbers(path, out, n) != n) {
+            RF_ERR("music: conductor.json '%s' needs %u numbers", path, n);
+            ok = false;
+        }
+    };
+    // A 16-step pattern ('.' rest, digits velocity ninths) from a string, or from the first quoted 16 characters of one.
+    const auto pattern = [&](const char* path, float* out, bool quoted) {
+        const JsonValue* v = doc.find(path);
+        const char* s = v ? doc.string(v) : "";
+        if (quoted) {
+            s = std::strchr(s, '\'');
+            s = s ? s + 1 : "";
+        }
+        u32 n = 0;
+        while (n < 16 && (s[n] == '.' || (s[n] >= '1' && s[n] <= '9'))) {
+            out[n] = s[n] == '.' ? 0.0f : (s[n] - '0') / 9.0f;
+            ++n;
+        }
+        if (n != 16 || (!quoted && s[16] != '\0')) {
+            RF_ERR("music: conductor.json '%s' needs a 16-step pattern", path);
+            ok = false;
+        }
+    };
+    float v[16];
+    // Riffs.
+    pattern("riffs.lancer.pattern", c.lancerPattern, false);
+    num("riffs.lancer.length", c.lancerLength);
+    num("riffs.lancer.level", c.lancerLevel);
+    if (prose.read("riffs.lancer.charge", v, 1)) c.lancerSwell = v[0];
+    // "beat 4 ... from level 3 on beats 2 and 4 ('....9.......9...')": the level is the second number; the quoted pattern's
+    // two nines count too.
+    if (prose.read("riffs.lancer.says", v, 6)) c.lancerFastFrom = static_cast<u32>(v[1]);
+    pattern("riffs.lancer.says", c.lancerFastPattern, true);
+    pattern("riffs.minelayer.pattern", c.minePattern, false);
+    num("riffs.minelayer.level.clap", c.mineClap);
+    num("riffs.minelayer.level.impact", c.mineImpact);
+    if (prose.read("riffs.minelayer.drop", v, 1)) c.mineHatStep = static_cast<u32>(v[0]);
+    num("riffs.storm_coil.level", c.stormLevel);
+    if (prose.read("riffs.swarm.grid", v, 2) && v[1] > 0.0f) c.swarmGridTicks = static_cast<u32>(kTicksPerBar * v[0] / v[1] + 0.5f);
+    numU("riffs.swarm.from", c.swarmFrom);
+    list("riffs.swarm.count", v, 5);
+    for (u32 i = 0; i < 5; ++i) c.swarmCount[i] = static_cast<u32>(v[i]);
+    num("riffs.swarm.level", c.swarmLevel);
+    numU("riffs.singularity.everyBars", c.singEveryBars);
+    numU("riffs.singularity.swellBeats", c.singSwellBeats);
+    num("riffs.singularity.level.swell", c.singSwell);
+    num("riffs.singularity.level.impact", c.singImpact);
+    {
+        float t = 12.0f;
+        num("riffs.mirror.transpose", t);
+        c.mirrorTranspose = static_cast<i32>(t);
+    }
+    list("riffs.mirror.level", c.mirrorLevel, 5);
+    pattern("riffs.comet.pattern", c.cometPattern, false);
+    num("riffs.comet.level", c.cometLevel);
+    list("riffs.sweeper.cutoffHz", v, 2);
+    c.sweepCutLo = v[0];
+    c.sweepCutHi = v[1];
+    numU("riffs.sweeper.turnBars", c.sweepTurnBars);
+    num("riffs.sweeper.level", c.sweepLevel);
+    pattern("riffs.flak.pattern", c.flakPattern, false);
+    num("riffs.flak.level", c.flakLevel);
+    if (prose.read("riffs.flak.says", v, 3) && v[2] > 0.0f) {  // "from level 4 a clap a 1/32 after it"
+        c.flakClapFrom = static_cast<u32>(v[0]);
+        c.flakClapTicks = static_cast<u32>(kTicksPerBar * v[1] / v[2] + 0.5f);
+    }
+    // Mods.
+    if (prose.read("mods.fork.perStack", v, 3) && v[1] > 0.0f) {  // "a 1/32 later by the fifth above at 0.4"
+        c.forkTicks = static_cast<u32>(kTicksPerBar * v[0] / v[1] + 0.5f);
+        c.forkLevel = v[2];
+    }
+    if (prose.read("mods.seeker.perStack", v, 1)) c.seekerMs = v[0];
+    if (prose.read("mods.heavy_step.perStack", v, 6) && v[1] > v[0]) {  // "(3, 7, 11, 15) ... at 0.8; ... thud at 0.5"
+        c.heavyEvery = static_cast<u32>(v[1] - v[0]);
+        c.heavyAt = static_cast<u32>(v[0]) % c.heavyEvery;
+        c.heavyLevel = v[4];
+        c.heavyThud = v[5];
+    }
+    if (prose.read("mods.accent.perStack", v, 5)) {  // "(beat 1; then 1 and 3; then every beat) plays at 1.4 ... at 0.3"
+        c.accentLevel = v[3];
+        c.accentStab = v[4];
+    }
+    if (prose.read("mods.echo.perStack", v, 1)) c.echoMix = v[0];
+    if (prose.read("mods.wave.perStack", v, 2)) {
+        c.waveHz = v[0];
+        c.waveCents = v[1];
+    }
+    if (prose.read("mods.rear_guard.perStack", v, 7)) {  // "(steps 2, 6, 10, 14) at 0.5; ... on steps 1 and 9"
+        for (u32 i = 0; i < 4; ++i) c.rearSteps[i] = static_cast<u8>(v[i]);
+        c.rearLevel = v[4];
+        c.rearSteps2[0] = static_cast<u8>(v[5]);
+        c.rearSteps2[1] = static_cast<u8>(v[6]);
+    }
+    if (prose.read("mods.burn.perStack", v, 1)) c.burnLevel = v[0];
+    if (prose.read("mods.shatter.perStack", v, 1)) c.shatterLevel = v[0];
+    if (prose.read("mods.gravity_rounds.perStack", v, 4)) c.gravityLevel = v[3];  // "(sine 180 to 120 Hz, 40 ms) at 0.15"
+    if (prose.read("mods.aegis.perStack", v, 3)) c.aegisDb = v[0];               // "6 dB under the Shard chirp"
+    if (prose.read("mods.last_light.perStack", v, 1)) c.lastLightLevel = v[0];
+    if (prose.read("mods.syncopation.perStack", v, 1)) c.syncLouder = v[0];
+    if (prose.read("mods.bar_line.perStack", v, 1)) c.barLineStab = v[0];
+    if (prose.read("mods.crescendo.perStack", v, 2)) {
+        c.crescendoDbPerBar = v[0];
+        c.crescendoMaxDb = v[1];
+    }
+    if (prose.read("mods.kick_pulse.perStack", v, 1)) c.kickPulseLevel = v[0];
+    // Boosts.
+    if (prose.read("boosts.supernova_rounds", v, 1)) c.supernovaLevel = v[0];
+    if (prose.read("boosts.colossus", v, 1)) c.colossusLevel = v[0];
+    if (prose.read("boosts.freeze_frame", v, 1)) c.freezeHz = v[0];
+    if (prose.read("boosts.chain_storm", v, 1)) c.chainStormLevel = v[0];
+    if (prose.read("boosts.chorus", v, 1)) c.chorusLevel = v[0];
+    if (prose.read("boosts.fractal", v, 4) && v[1] > 0.0f) {  // "a 1/32 apart by its octave at 0.3 and its double octave at 0.15"
+        c.fractalTicks = static_cast<u32>(kTicksPerBar * v[0] / v[1] + 0.5f);
+        c.fractalOctave = v[2];
+        c.fractalDouble = v[3];
+    }
+    prose.read("boosts.carousel", v, 2);  // "on beats 1 to 4": a tom on every beat of the bar
+    return ok;
+}
+
 bool loadConductor(ConductorRules& c) {
     JsonDoc doc;
     if (!doc.parse(kConductorJson, std::strlen(kConductorJson), "conductor.json")) return false;
@@ -558,7 +714,7 @@ bool loadConductor(ConductorRules& c) {
     if (prose.read("mods.on_beat_crit.perStack", v, 1)) c.critLevel = v[0];
     if (prose.read("boosts.prism", v, 1)) c.prismLevel = v[0];
     if (prose.read("riffs.pulse_ring.says", v, 1)) c.pulseRingEveryBeatFrom = static_cast<u32>(v[0]);
-    return ok && prose.ok;
+    return loadUpgrades(doc, prose, c) && ok && prose.ok;
 }
 
 u64 parseHex(const char* s) {
