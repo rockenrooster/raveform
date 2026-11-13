@@ -5,8 +5,6 @@ Moto hosting four players, the PC bots' one-second upload spike, and the headroo
 Numbers taken on the Moto (`ZY22BXMJG3`) are from a phone shared with other sessions (our APK deployed right before
 each run, the main checkout's lock `m4net`). Files under `captures\m4net\` (ignored by git).
 
-(Being written as the work goes; the final state is at the end of the file.)
-
 ## The instruments (what was added to see)
 
 - **The client's error at correction, broken down** (`Session::diag()`, `NetDiag`; the game logs it every 20 s as
@@ -158,3 +156,138 @@ What each device decides from its own view of the other players, and so cannot a
   corrections and kept until the next) would remove the class; it is a simulation change, not done.
 - **Shoal flocking** stays chaotic whatever is sent (boids amplify any difference); motion corrections and their weight
   hold it now, but a crowd of Shoals larger than today's will need more of the downlink.
+
+(The lead ruled on the first four in round 2, below; they are now changed.)
+
+## Round 2 (the lead's points after the merge was accepted)
+
+### The lag at an enemy's first correction: the hit's dip (point 1)
+
+On the Moto runs one bot's copies were 50-100 ms of motion behind the host's along their velocity, most at an enemy's
+first correction, worst in the late Tracks. Cause: **a player's hit slows that player's own device's whole simulation to
+85% for 200 ms** (`dipS_`, look.md 5's dip) and no other device's: each hit put that device's entire crowd 30 ms of
+motion behind the host's, and the bot hit most lagged most. Late spawns were not it (0 on the clean runs, 41-57 in 15
+minutes under the impaired profile). **Fix** (`src/sim/world.cpp`, co-op only): the dip slows only the drawn lattice, not
+the simulation. Solo play and the determinism hashes are unchanged.
+
+### Shoves and pulls, and the player an enemy follows (points 3 and 4, as ruled)
+
+- `World::firstHand(p)` (`src/sim/world.h`): true on the host and solo, and on a client for its own player and the
+  host's. Kick Pulse's ring, Colossus's ram shove, Black Hole's, Singularity's and Collapse Field's pulls, and a
+  teammate's panic pulse move bodies only where `firstHand` (`world_upgrades_m5.cpp`, `world_net.cpp`); the owner
+  still sees its own on the beat. A relayed player's shove reaches a client in the host's corrections, and the host
+  now gives a body knocked faster than 30 wu/s 6 more weight (`session.cpp`).
+- `targetOf` on a client keeps the player an enemy follows until the host says otherwise; it chooses again only when
+  that player is down or gone. `netCorrect` takes the host's choice whatever lies between. On the host a changed
+  choice goes to the top of that client's queue (+200 priority). Clients only: host, solo and hashes unchanged.
+- Measured: the seed where knockback was 73% of the squared error now has it at 4% (clean, seed 1). Ten seeds each
+  (`captures\m4net\seeds\r2_*`): impaired mean 6.63 wu (worst 10.18; before round 2 6.03 / 8.16), clean 4.40 (worst
+  8.33; before 5.19 / 8.03); 20 of 20 pass; the default seed 9.13 / 3.15. A copy following another player than the
+  host's copy is now the largest class (61% of the clean default seed's squared error, 2% of the samples): the
+  client waits for the host's word, which under loss and jitter comes late.
+
+### Remote players predicted on direct links, measured (point 2)
+
+The soak now compares each viewer's copy of every other player with that player's own record at the same song time
+(`remote ships` and `remote aims` lines). Default seed, ten minutes (`captures\m4net\r2\`):
+
+| | host's view of a client | client's view of the host | client's view of a relayed client |
+|---|---|---|---|
+| clean, interp: RMS / P95 / max (wu) | 32.4 / 41.0 / 150 | 34.9 / 38.8 / 137 | 33.4 / 41.8 / 200 |
+| clean, direct | **9.2 / 16.0 / 115** | **11.2 / 18.5 / 112** | 32.5 / 40.8 / 180 (interpolated) |
+| clean: unexplained step max, frames over 14 wu (half a hull), interp | 40.1, 190 of 40,114 | 39.2, 370 of 22,900 | 76.5, 854 of 94,028 |
+| clean, direct | 40.0, 139 of 41,623 | 40.4, 162 of 21,012 | 58.6, 874 of 94,228 |
+| impaired, interp: RMS; step max, frames over 14 wu | 31.5; 62.5, 355 of 39,738 | 35.8; 132, 495 of 25,801 | 40.2; 344, 6,827 of 86,525 |
+| impaired, direct | 19.6; 278, 444 of 38,937 | 23.4; 284, 775 of 25,086 | 38.9; 324, 6,342 of 86,574 |
+
+On a clean LAN direct is three times closer to the truth and steps no more than interp; the largest unexplained steps
+(40 wu in both modes) are a dash's first frames, which a copy sees one pose late in any mode. **Not met**: "no frame's
+unexplained step above half a hull" fails in both modes (0.3-1.6% of frames on a clean LAN). Under the impaired profile
+both modes jump (to 278-344 wu); direct jumps further on direct links. The fallback the lead asked for (a link past an
+age or jitter threshold interpolating by itself) is **not built yet**; the threshold from these numbers would be a pose
+age above about 60 ms or its spread above 30 ms (clean links: 8-11 ms, impaired: 26-213 ms).
+
+## The jumpy player shots the user saw on the Moto (the lead's question)
+
+The phone's runs this afternoon (PC local times, `captures\m4net\device\<tag>_*`, bench results `captures\bench\`):
+
+| Tag | When | Profile | Build |
+|---|---|---|---|
+| 120658 | 12:07-12:15 (6 min) | clean | diagnostics; relay bug present (teammates frozen) |
+| 121756 | 12:18-12:21 (2 min) | clean | relay counters; bug present |
+| 122828 | 12:28-12:45 | clean | relay fixed, interpolation (PC stalls in that run) |
+| 130551 | 13:06-13:22 | clean | motion corrections, interpolation |
+| 133303 | 13:33-13:49 | clean | direct prediction, the Hive's Spear |
+| 135034 | 13:50-14:08 | **impaired**: 5% loss and 80 ms jitter on every peer's sends, the phone's own included | as 133303 |
+| (this round) | 14:13-14:30 | clean | round 2 |
+
+What can make player shots jump on the host's screen, with the evidence:
+
+- **(d) The bots' aim flicking between targets** (behaviour): every player's own aim turns more than 30 degrees in one
+  frame in 6.2% of its frames (8,689 of 139,184, the soak's bots; the phone's bot is the same code). A shot leaves along
+  the aim, so the stream swings with it, on the owner's own screen as on the others. A remote copy shows each flick a
+  pose later; its per-frame aim turn beyond the owner's own is 30-37 degrees RMS in both modes (interp and direct alike):
+  not the prediction.
+- **(a) The impaired profile** (the 13:50-14:08 run): 80 ms of jitter on the phone's own sends and the bots' poses makes
+  remote ships, and so where their shots start, step by up to 278-344 wu in a frame in either mode (1-7% of frames over
+  half a hull). No real LAN looks like that. If the user watched that run, this is what they saw on remote players'
+  shots.
+- **(b) Direct mode's muzzle**: on a clean LAN direct steps no more than interpolation (above); it does not explain it.
+- **(c) The shot pool and soft cap**: no shot was ever refused by the pool in the soaks (overflow 0); the soft cap's
+  thinning (pairs of Split lanes taking turns above 576 live shots of a player) is not counted anywhere and was **not
+  measured**; the phone's result does not report live shots.
+- **(e) The frame's time base**: co-op ticks and interpolates on CPU frame time (`wireNowUs()` at the frame's start);
+  solo play's band clock is the same CPU time plus a constant lead, so a solo `bench_play` would show the same.
+  **Not measured on the phone.**
+- **Not done**: the phone-side numbers of the lead's point 3 (shots first drawn more than a tick's travel from the
+  muzzle, frames whose drawn step is more than a quarter off velocity x frame time, split host's own / remote) and the
+  strips; they need a counter in the game's view on the phone.
+
+## Numbers before and after (the Moto's are from a shared phone; our APK deployed before each run)
+
+| | Before | After | Files |
+|---|---|---|---|
+| Moto hosting 3 PC bots, 15 min, clean: on-screen error at correction per bot (limit 12) | 35.5 / 33.5 / 21.8 | relay fix: 10.5 / 10.7 / 9.4 (`122828`); + motion corrections: 10.2 / 15.1 / 7.2 (`130551`); + direct, Hive: 5.8 / 14.5 / 11.6 (`133303`); round 2: **4.84 / 6.32 / 6.12** (`141328`) | `captures\m4net\device\` |
+| the same, impaired (5% loss, 80 ms jitter, every peer) | 17.5 / 17.7 / 81.5 | direct, Hive: **11.45 / 6.92 / 6.59** (`135034`) | |
+| PC bots' worst up second (limit 60) | 301-764 (the host gone) | clean runs 51-68 (the end, host gone) then held; impaired 46-80 in play (`135034`, bot 2: 80.3) | |
+| The Moto's frames (contract: P95 one period, missed <= 5%) | 53,904, 0 missed | 53,903-53,904 frames, 0-1 missed, P95 1 period, max 21.0-25.6 ms, heap 0, every run | `ZY22BXMJG3-bench_play-20261113-*.json` |
+| Loopback soak, default seed (limit 12) | main: impaired 12.48 FAIL, clean 10.33 | impaired 9.13, clean 3.15 | `test.ps1` |
+| Ten seeds each | merged: impaired 9.33 (worst 12.94, 8 of 10 pass), clean 8.28 (13.90, 9 of 10) | impaired 6.63 (10.18), clean 4.40 (8.33), 20 of 20 pass | `captures\m4net\seeds\r2_*` |
+| Soak bandwidth, worst second (limits 250 / 60) | 233 / 56 | 233 / 57 | |
+
+## Changes outside src/net (for the merge)
+
+- `src/game/play_net.cpp`: diagnostics only (`noteFrame`, `noteTickSkipped`, `noteTimeDropped`, the `net: diag` lines).
+- `src/sim/world.h`: `NetLog::kClaims` 512 -> `kMaxEnemies`; `World::firstHand()`.
+- `src/sim/world.cpp`: the hit's dip does not slow the co-op simulation.
+- `src/sim/world_boss.cpp`: `bossGeom`, clients only: a late Spear decision carried on by the charge since.
+- `src/sim/world_net.cpp`: `targetOf` keeps a client's choice; `netCorrect` always takes the host's target; the
+  panic pulse's shove only where `firstHand`.
+- `src/sim/world_upgrades_m5.cpp`: Kick Pulse's shove, Colossus's shove, Black Hole's, Singularity's and Collapse
+  Field's pulls only where `firstHand`.
+- `src/tools/net_headless.cpp`, `tests/net_tests.cpp`, `scripts/coop-device.ps1`, `scripts/net-seeds.ps1` (new).
+
+## Not verified, not done
+
+- The Moto-hosted criterion: met by round 2's clean run (4.84 / 6.32 / 6.12, `141328`) and by the impaired run before
+  it (11.45 / 6.92 / 6.59, `135034`, round 1 code); the impaired run is not yet repeated on round 2's code. In the
+  clean run one bot's worst up second was 86.4 kbit/s (limit 60): the uplink is the open item.
+- Direct mode's per-link fallback (point 2) is not built; its threshold is proposed above. Nobody has looked at the
+  remote ships on a screen.
+- The phone-side shot numbers and the strips of the jumpy-shots question; the shot soft cap's thinning is not counted.
+- Point 5 (Tracks 4-6 and the new fights in co-op) waits for main to hold this branch.
+- Uplink headroom: the soaks' worst second is 56-60 kbit/s against 60; the worst seconds are kill claims (which
+  cannot wait), the ENet and IP overhead of ~55 datagrams a second, and under the impaired profile resends (80.3
+  kbit/s on the Moto run). Sending acknowledgements only with the 30 Hz pose would save about 8 kbit/s (not done).
+- The PC host from the phone (Windows Firewall), the OnePlus 12R and the tablet: as in M4 stage B.
+
+## Lines for CLAUDE.md
+
+- `scripts\net-seeds.ps1 [-Seeds 1..10] [-Impaired] [-Extra '--net-tune','fam2=2'] [-Low] [-Out captures\m4net\seeds\x]`:
+  the loopback soak over ten seeds (one seed's error swings with its run).
+- `scripts\coop-device.ps1 -Run long_moto_host [-Players 2..4] [-Minutes 15] [-Impaired] -LockRoot <main checkout>
+  -LockName <name> [-PhoneArgs '...'] [-BotArgs ...]` (saves the phone's log; deploys the APK as built).
+- `raveform_headless --net soak|host|join ... [--remote-poses interp|predict|direct] [--net-tune down=B,famN=W,motion=0|1]`;
+  the soak prints the true error broken down, the remote ships and aims against the truth, and the worst up second's
+  makeup; `join`/`host` print `corr`, `poses`, `frames` diagnostics every 10 s; the game logs `net: diag` every 20 s.
+- Protocol `0x52460504` on this branch (main's part 4 takes `0x52460505` at the merge).
