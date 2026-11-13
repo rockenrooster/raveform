@@ -12,6 +12,10 @@ namespace {
 
 constexpr u32 kLeadVoices = 64;
 constexpr u32 kLeadPerPlayer = 12;  // per player (a 1/32 line and its harmony, or four lines at 1/16)
+// M5 (cost): a teammate's lead, mixed at 0.35 or less (conductor.json lead.others), holds at most this many: at 174 BPM
+// every player reached 12 in the full band (48 lead voices against 33 at 120 BPM); the notes it cuts short are past
+// 0.23 s, more than 20 dB under the local lead's onsets.
+constexpr u32 kLeadPerOther = 8;
 constexpr u32 kLeadFadeOut = 240;   // frames: a replaced note fades instead of clicking
 constexpr u32 kBassVoices = 4;
 constexpr u32 kStabVoices = 8;
@@ -727,7 +731,8 @@ void Engine::playLead(u8 player, Timbre timbre, float midi, float vel, float gai
         ++mine;
         if (!oldest || startsBefore(o, *oldest)) oldest = &o;
     }
-    if (mine >= kLeadPerPlayer && oldest && at - oldest->start >= static_cast<i64>(oldest->age)) {
+    const u32 cap = (player < kMaxPlayers && player != localPlayer_) ? kLeadPerOther : kLeadPerPlayer;
+    if (mine >= cap && oldest && at - oldest->start >= static_cast<i64>(oldest->age)) {
         oldest->length = static_cast<u32>(at - oldest->start) + kLeadFadeOut;
         oldest->fade = kLeadFadeOut;
     }
