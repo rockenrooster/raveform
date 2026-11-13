@@ -130,7 +130,11 @@ private:
     void glyph(GlyphBatch& b, int g, bool hullOnly, Vec2 pos, float rot0, float rot1, float scaleWu, float intensity,
                float halfWidthRef, GlyphMode mode, Vec3 a, Vec3 c);
     void flare(CapsuleBatch& out, Vec2 at, float angle, float lengthWu, u32 arms, Vec3 colour, float halfWidthRef);
-    void telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight);
+    // (widthWu > 0: the dashes that warn of a beam, as wide as it kills: look.md v2.5)
+    void telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight, float widthWu = 0.0f);
+    // look.md v2.5, a lethal beam is a laser too: the priority capsule exactly as wide as it kills, a 2 px white-pink line on
+    // its axis, and round it a danger glow (0.25 on the axis, sigma twice the kill width) that hurts nobody.
+    void lethalBeam(FrameDraw& d, Vec2 a, Vec2 b, float killWu, float level = 1.0f);
     void envelopes(const ViewInput& in);
     bool shown(u32 bit) const { return ((mute_ | frameMute_) & bit) == 0; }
     u32 frameMute_ = 0;  // this frame's extra mute (ViewInput::backgroundOnly)

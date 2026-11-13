@@ -498,9 +498,9 @@ void World::volleyExtras(u32 p, float advanceS, double stepTick, float base, flo
 
 void World::beamVolley(u32 p, Vec2 muzzle, Vec2 d, float damage, u32 lanes, double stepTick) {
     // Beam: the primary is a continuous laser along the aim; each grid step it burns what it lies on, as wide and as hard
-    // as the volley's lanes together.
+    // as the volley's lanes together (look.md v2.5: 20 wu with one lane; part 3 drew and burned 28).
     PlayerState& pl = players_[p];
-    const float half = kBeamHalfWu + 4.0f * static_cast<float>(lanes);
+    const float half = kBeamHalfWu + 4.0f * static_cast<float>(lanes > 1u ? lanes - 1u : 0u);
     if (isLocal(p)) lineHit(static_cast<u8>(p), muzzle, d, kBeamLengthWu, half, damage * static_cast<float>(lanes));
     pl.beamTick = stepTick;
     pl.beamLanes = static_cast<u8>(lanes);

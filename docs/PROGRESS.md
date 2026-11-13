@@ -4,6 +4,110 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both).
 
+## M5 checkpoint "A boss's rule is a bonus, not a wall" — 2026-11-13 (before part 5)
+
+The lead's checkpoint after part 4 (design `514e4ea`, `17a36f7`): the user never got past Longwave.
+
+### What was built
+
+- **Armour takes a quarter** (GAME_DESIGN 7.6). `World::damageBoss`: a multiplier below 1 is armour: the shot sparks and
+  stops as before (an Impact on part 1 carrying the share) and does the share the page gives (0.25 in longwave, choir,
+  polyrhythm, feedback and horizon.json, read as they are). Polyrhythm's corners and body are armour on their rotor (their
+  0.25 goes to that rotor's health). Feedback's swallowed-shot hat sounds only while its Head is fully shut. Kaleidos is as
+  built: only its lens plates are armour (at nothing), its firing arms' third stays a hit. The Battering Ram's horns stay at
+  nothing (minibosses.json: "sheds every shot"); the Brood Mother's shut dome (a quarter already) now sparks as armour. The
+  Nova's blast does armour's share on an armoured part (it skipped them).
+- **The boss hint line** (screens.md "Boss hint"): under the boss's name in the HUD's small size (cap 11), white at 0.8, from
+  the arrival through the fight's first four bars, the last fading; again for two bars (the last fading) when this player's
+  own shots met only armour for two bars running, at most once every eight bars (the arrival's showing is the first). Kept by
+  `Play::bossHintTick` from this device's player's Impact events, so each co-op player sees it by their own shots. The six
+  lines of Tracks 1-6 (`bossHint`); mini-bosses have none yet (screens.md: written as each is reviewed).
+- **The novice** (`--policy novice`, `Bot::Policy::Novice`, `tuning.h` `kNovice*`): it aims at the nearest body (a boss's
+  nearest part, armour or not) 200 ms behind it with a 6 degree wander; from bar 16 of a fight it aims at the weak point in
+  half the bars (a hash of the bar); it never rides Longwave's crest, stands inside the Choir's ring, holds Event Horizon's
+  lanes, rides Polyrhythm's gaps or the Sentry Array's notch, circles to Kaleidos' open sector, or phrases its fire for
+  Feedback outside the bars it uses the rule; it dashes out of half the hits it sees coming, Novas at one cell, and takes a
+  Trio's first orb half the time, else any.
+- **Calibration** (on the build the user played: armour at nothing, Longwave at 2.2): the first novice (its 250 ms as
+  threats seen 250 ms late) won its first Longwave in 18 of 19 runs: not a novice. Two changes, mine: **its 250 ms is a
+  steering delay** (the stick it holds is what it decided 15 ticks ago; seeing threats late was absorbed by the careful bot's
+  1.4 s look-ahead), and **it minds only the bullets arriving within 0.6 s** (`kNoviceLookS`). Then, on those rules, it loses
+  its first Longwave in **11 of 20** (9 won, 233 s when it wins; Kaleidos 15 of 20; Track 2's boss reached in 15):
+  `raveform_headless --sim crowd --seeds 20 --minutes 25 --policy novice --armour0 --health kaleidos=1.818,longwave=2.857,choir=3.333`.
+- **Health tuned with the novice** (seeds 1-20, 60 minutes, `--policy novice`; levers `--health id=x` until the lines held,
+  then baked into `tuning.h`): the table below. Tracks 4-6 were first measured with `--handover N` (the careful bot's build
+  handed to the novice at Track N), then on the novice's own runs.
+- **Lethal beams are lasers** (look.md v2.5): `PlayView::lethalBeam` draws every one: the priority capsule exactly as wide
+  as it kills, a 2 px white-pink line on its axis, and a danger glow (0.25 on the axis, sigma twice the kill width, reduce
+  flashing 0.15) that hurts nobody. Kill widths: Event Horizon's jets **12 wu** (44), Polyrhythm's burning link **12** (32),
+  the Blink Star's star **10** (16); Kaleidos' beam, the Choir's cage and held note (Kaleidos' 10) and the Tethers' beams (6)
+  unchanged and drawn the same way. Every beam's warning dashes are as wide as the beam (`telegraphLine`'s width).
+- **Feedback's cream discs** were **kill pools**: a crowd killed in one place (the Zenith palette's fodder is cream) summed
+  a dozen pools into a disc a tenth of the screen wide (`--mute killpool` removes them). A kill inside a live kill pool now
+  renews that pool instead of stacking another (`PlayView::addPool`), so no place holds more than one pool's light.
+- **The Beam Boost's glow**: it burned and drew 28 wu with one lane (`kBeamHalfWu` + 4 a lane); look.md says 20, so the first
+  lane adds nothing (20, 28, 36 ... wu). Glow discs under 16 ref px (look.md §3) are sparkles, not quarter-resolution pools.
+  The held cores (the Beam Boost, Standing Wave) move between 1.0 and 1.2 (was 1.4).
+- **Co-op**: a client's boss claims are summed per part a tick (every shot on a boss claims now): the impaired soak's worst
+  upload second went 61.0 -> 48.5 kbit/s (limit 60).
+
+### The fights with the novice (seeds 1-20, 60 minutes; the careful bot 40 minutes)
+
+The first run reached Track 2's boss in **16 of 20** (line 16). First meetings: met / won of 20 runs, the seconds of a win;
+hits a fight over all its fights (bullets / bodies / beams); the careful bot's seconds at the first meeting; the health factor
+in `tuning.h` (part 4's x the novice's).
+
+| Fight | Novice met / won | Its seconds | Hits a fight | Careful bot | Factor | Lines |
+|---|---|---|---|---|---|---|
+| Kaleidos | 20 / **19** | 31 | 2.8 (2.4 / 0.4 / 0) | 9 s | **0.55** (new) x 0.7 in Track 1 | won >= 18; <= 135 s; careful >= 30 s |
+| Longwave | 20 / **17** | 98 | 4.3 (3.3 / 1.0 / 0) | 18 s | **0.77** (2.2 x 0.35) | >= 16; <= 150 s; careful >= 35 s |
+| The Choir | 20 / **17** | 44 | 3.1 (2.8 / 0.3 / 0) | 15 s | **1.26** (4.2 x 0.3) | >= 16; <= 165 s; careful >= 40 s |
+| Event Horizon | 20 / **19** | 107 | 4.1 (2.6 / 1.3 / 0.3) | 28 s | **8.0** (16 x 0.5) | >= 12; <= 120 s; careful >= 40 s |
+| Polyrhythm | 19 / **12** (7 lost) | 40 | 6.1 (0 / 0.1 / 6.5) | 18 s | **2.4** (3.0 x 0.8) | >= 12; <= 180 s; careful >= 50 s |
+| Feedback | 14 / **13** | 136 | 5.4 (4.1 / 0.2 / 1.1) | 43 s | **2.0** (2.5 x 0.8) | >= 12; <= 180 s; careful >= 60 s |
+| Alpha Hound | 19 / 18 (1 warped out) | 19 | 0.3 | 5 s | 0.975 (6.5 x 0.15) | <= 52 s; careful >= 12.5 s |
+| The Hive | 16 / 11 (5) | 25 | 0.5 | 7 s | 0.75 (5.0 x 0.15) | |
+| Battering Ram | 18 / 13 (5) | 26 | 1.4 | 10 s | 0.7 (2.0 x 0.35) | |
+| Carom King | 13 / 10 (3) | 24 | 1.8 | 10 s | 1.44 (4.8 x 0.3) | |
+| Moth Queen | 16 / 12 (4) | 29 | 2.0 | 10 s | 3.0 (12 x 0.25) | |
+| Brood Mother | 17 / 12 (5) | 18 | 1.2 | 11 s | 2.0 (10 x 0.2) | |
+| Blink Star | 11 / 8 (3) | 28 | 2.4 | 16 s | 3.0 (5 x 0.6) | |
+| Sentry Array | 17 / 8 (3 lost, 6) | 25 | 2.8 | 11 s | 0.8 (4 x 0.2) | |
+
+Every novice line holds; **every careful-bot line fails, by three to five times** (the careful bot's damage on target is that
+much the novice's: it leads its aim, never wanders and shoots the weak point from the first bar). Where they pull apart the
+novice's line wins (the design's rule). Mini-bosses have no won line; their health was taken down until the novice won most
+of its meetings within their 24 bars (warped out: the hold ran out). The guards: the careful bot's first deaths in Tracks 1-3
+**0 of 20**, in Tracks 1-6 **0** (line 4); the careless bot's 0 and **3** (lines 2 and 8).
+
+### Acceptance
+
+| Check | Result | Limit |
+|---|---|---|
+| Tests | audio 2,679 checks, sim 5,763 (armour's quarter and its spark, the calibration switch, the new health factors), net 131,366; determinism passes | all pass |
+| Loopback soaks, 4 players, 10 min | clean 4.02 wu RMS; impaired 6.30, upload's worst second 48.5 kbit/s | < 12 wu; 60 kbit/s |
+| Lethal beams (`scenes.py light`, 2400x1080: dark<48, dark<96, >=200, mean; before -> after) | `hz_jets` 53.0/80.5/**6.7**/0.070 -> 54.9/80.3/**3.9**/0.056; `pr_burn` 31.8/66.2/6.4/0.093 -> 32.1/67.6/4.9/0.085; `bs_fire` 40.1/72.2/6.4/0.080 -> 41.4/72.0/4.9/0.066; `bs_half` 39.3/71.0/7.9/0.092 -> 40.4/67.9/6.3/0.080 | |
+| Feedback's kill pools (the same) | `fb_open` 40.8/74.3/**7.4**/0.109 -> 42.0/78.4/**4.3**/0.083; `fb_slapback` 35.8/68.7/8.9/0.135 -> 36.8/73.1/4.9/0.101; `fb_death` 54.0/82.4/4.8/0.081 -> 60.3/86.6/2.9/0.058 | |
+| The Beam Boost's glow, full width at half maximum across the beam (core, glow and bloom together, the picture's luminance, everything else muted) | **13.3 wu** at its 20 wu (14.7 at the 28 it burned); at a quarter of the peak 42 wu, at a tenth 63 (the core's bloom alone: 16 and 44); the glow alone as a quarter-resolution pool measured 25 wu where its sigma gives 13 (hence sparkles under 16 ref px) | <= w |
+| Pictures | `captures\m5\checkpoint\`: `hz_jets`, `pr_burn`, `bs_fire`, `bs_half`, `fb_open`, `fb_slapback`, `fb_death` (dev build; the boss hint shows on `fb_open`) | |
+| Moto (shared phone) | the phone was held by the network engineer (lock `m4net`) when this was committed: the runs follow in the next commit | |
+
+### Decisions taken alone
+
+- The novice's 250 ms is a steering delay and it minds bullets within 0.6 s (the calibration above).
+- A Nova on armour does armour's share of its blast (the design is silent; it skipped armour).
+- Kaleidos' firing arms (a third) stay a hit, not armour: "Kaleidos is unchanged" (their sparks and its hint are as before).
+  For the hint, a hit below x 1 counts as armour, so on Kaleidos shots on the firing arms bring the hint back.
+- The hint shows from the boss's arrival (its entrance bars) through the fight's first four bars ("as it arrives" and "the
+  first four bars of the fight" both hold); a bar with no shot on the boss breaks a run of armour-only bars.
+- Kill pools merge (a kill inside a live pool renews it, at the larger of the two levels) rather than going under 0.12: a lone
+  pool keeps look.md's table (0.26 and 0.32); no place holds more than one.
+- The Beam Boost hurts 20 wu with one lane, 4 more a lane after the first (look.md's 20).
+- The careful bot's lines are left failing (the novice's win; table above); Polyrhythm stays short (40 s for the novice) as
+  ruled.
+- Not built: `--fight` jumps with the careful bot's median build (over an hour: the game would need a build to restore; the
+  headless `--handover N` does it for the sims).
+
 ## M5 part 4 "Tracks 4 to 6" — 2026-11-13
 
 Tracks 4 (Aurora), 5 (Furnace) and 6 (Zenith) with everything the design gives them: the five families of their rosters

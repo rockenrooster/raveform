@@ -40,6 +40,10 @@ constexpr i32 kBotUpgradeScore[kUpgradeCount] = {
     4, 2, 6, 2, 3, 3, 9, 7, 4, 7, 4, 3,
     // Orbitals, Pulse Ring, Sentinel, Lancer, Minelayer, Storm Coil, Swarm, Singularity, Mirror, Comet, Sweeper, Flak
     9, 9, 9, 7, 3, 7, 7, 4, 7, 5, 6, 6};
+Vec2 rotate(Vec2 v, float a) {
+    const float c = std::cos(a), s = std::sin(a);
+    return Vec2{v.x * c - v.y * s, v.x * s + v.y * c};
+}
 constexpr i32 kBotBoostScore[kBoostCount] = {
     // Prism, Hyper, Supernova, Colossus, Time Stretch, Freeze Frame, Halo, Magnet Storm, Black Hole, Chain Storm, Chorus,
     // Beam, Ricochet Fever, Confetti, Fractal, Carousel
@@ -53,6 +57,11 @@ void Bot::reset(u64 seed, Policy policy) {
     ticks_ = 0;
     dashLast_ = novaLast_ = false;
     anchor_ = Vec2{};
+    novContact_ = novDash_ = false;
+    novTrio_ = -1.0;
+    novPick_ = 0;
+    for (Vec2& m : novMove_) m = Vec2{};
+    novMoveAt_ = 0;
 }
 
 StickInput Bot::think(const World& w, u32 player, const PlayerController& controller, double musicTick) {
@@ -159,6 +168,56 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
         in.aimActive = lengthSq(in.aim) > 1e-6f;
     }
 
+    // The novice (GAME_DESIGN 7.6): it aims at the nearest body (a boss's nearest part), 200 ms behind where it is, wandering
+    // 6 degrees to either side; after 16 bars of a fight it aims at the weak point (as above) in half the bars.
+    const bool novice = policy_ == Policy::Novice;
+    const double fightBars = bossFight ? (musicTick - boss.fightTick) / kTicksPerBar : 0.0;
+    const bool novRule = novice && bossFight && fightBars >= tuning::kNoviceLearnBars &&
+                         (hash32(static_cast<u32>(std::floor(musicTick / kTicksPerBar)), 0x40E1CEu) & 1u);
+    if (novice && !novRule) {
+        Vec2 at{};
+        float best = kAimRangeWu * kAimRangeWu;
+        bool any = false;
+        for (u32 i = 0; i < e.count; ++i) {
+            if ((e.flags[i] & kFlagDead) || e.state[i] == kWarping) continue;
+            const Vec2 p{e.x[i], e.y[i]};
+            const float d = lengthSq(p - pos);
+            if (d < best) {
+                best = d;
+                at = p - Vec2{e.vx[i], e.vy[i]} * tuning::kNoviceAimLagS;
+                any = true;
+            }
+        }
+        for (u32 k = 0; k < partCount; ++k) {
+            const float d = lengthSq(parts[k].pos - pos);
+            if (d >= best) continue;
+            // (its body's motion: the nearest of the fight's bodies)
+            u32 bi = 0;
+            float bd = 1e30f;
+            for (u32 j = 0; j < kBossBodies; ++j) {
+                const float dj = lengthSq(boss.body[j] - parts[k].pos);
+                if (dj < bd) {
+                    bd = dj;
+                    bi = j;
+                }
+            }
+            best = d;
+            at = parts[k].pos - (boss.body[bi] - boss.bodyPrev[bi]) * (tuning::kNoviceAimLagS / kDt);
+            any = true;
+        }
+        if (bossFight && kaleidos && lengthSq(boss.pos - pos) < best) {
+            at = boss.pos;
+            any = true;
+        }
+        if (any) {
+            const float wob = tuning::kNoviceWanderDeg * (kTau / 360.0f) * std::sin(static_cast<float>(ticks_) * 0.07f + wander_);
+            in.aim = rotate(at - pos, wob);
+            in.aimActive = lengthSq(in.aim) > 1e-6f;
+        } else {
+            in.aimActive = false;
+        }
+    }
+
     if (policy_ == Policy::Stress) {
         // A slow circle (radius 250 wu, once every 12 s) around where it started: the load stays in view.
         if (ticks_ == 1) anchor_ = pos;
@@ -177,9 +236,11 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     u32 swarmN = 0, close = 0;
     bool contactSoon = false;
     Vec2 escape{};
+    // (the novice reacts 250 ms late: its steering is delayed below; it sees where things are)
+    const float lag = 0.0f;
     for (u32 i = 0; i < e.count; ++i) {
         if (e.flags[i] & kFlagDead) continue;
-        const Vec2 d = pos - Vec2{e.x[i], e.y[i]};
+        const Vec2 d = pos - (Vec2{e.x[i], e.y[i]} - Vec2{e.vx[i], e.vy[i]} * lag);
         const float dist = length(d);
         if (dist > 900.0f) continue;
         swarm = swarm + Vec2{e.x[i], e.y[i]};
@@ -214,14 +275,14 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     }
     u32 bulletsNear = 0;
     for (u32 k = 0; k < b.count && careful; ++k) {
-        const Vec2 rel = pos - Vec2{b.x[k], b.y[k]};
-        if (std::fabs(rel.x) > kBulletReachWu || std::fabs(rel.y) > kBulletReachWu) continue;
         const Vec2 v{b.vx[k], b.vy[k]};
+        const Vec2 rel = pos - (Vec2{b.x[k], b.y[k]} - v * lag);
+        if (std::fabs(rel.x) > kBulletReachWu || std::fabs(rel.y) > kBulletReachWu) continue;
         const float v2 = lengthSq(v);
         if (v2 < 1.0f) continue;
         const float tca = dot(rel, v) / v2;  // seconds until closest approach
         if (lengthSq(rel) < 150.0f * 150.0f) ++bulletsNear;
-        if (tca < 0.0f || tca > 1.4f) continue;
+        if (tca < 0.0f || tca > (novice ? tuning::kNoviceLookS : 1.4f)) continue;  // (the novice minds what is about to arrive)
         const Vec2 miss = rel - v * tca;
         const float m = length(miss);
         if (m > kBulletMissWu) continue;
@@ -252,8 +313,8 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     if (bossFight) {
         const Vec2 rel = pos - (kaleidos ? boss.pos : bossNear);
         const float dist = length(rel);
-        // (Polyrhythm: its walls die 770 wu out; the bot works from beyond them)
-        const float far = boss.kind == BossKind::Polyrhythm ? 1000.0f : kBossWorkFarWu;
+        // (Polyrhythm: its walls die 770 wu out; the bot works from beyond them; not the novice)
+        const float far = boss.kind == BossKind::Polyrhythm && !novice ? 1000.0f : kBossWorkFarWu;
         if (dist > far) force = force - rel * (0.9f * std::fmin((dist - far) / 300.0f, 1.0f) / dist);
     }
     // M5: the other fights: keep off their bodies, out of every line they have shown, inside the Choir's Round when its cage
@@ -309,7 +370,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                     }
                 }
                 if (!any && boss.alive == 0) goal = boss.body[0] + normalizeOr(pos - boss.body[0], Vec2{1.0f, 0.0f}) * 380.0f;
-                if (any || boss.alive == 0) {
+                if ((any || boss.alive == 0) && !novice) {  // (the novice never rides the wave)
                     const Vec2 d = goal - pos;
                     const float l = length(d);
                     if (l > 30.0f) force = force + d * (std::fmin(l / 200.0f, 1.2f) / l);
@@ -323,7 +384,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                 const float dc = length(pos - c);
                 const bool cage = w.choirCage(musicTick + kTicksPerBeat) != 0;
                 const float want = cage ? 110.0f : 150.0f;
-                if (boss.ch.phase < 3 && dc > want) {
+                if (boss.ch.phase < 3 && dc > want && !novice) {  // (the novice does not know to stand inside)
                     Vec2 goal = c;
                     if (dc > boss.ch.radius - 40.0f) {
                         // The gap: the middle of the two live Voices nearest the line to the centre.
@@ -375,7 +436,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                 }
                 const Vec2 to = goal - pos;
                 const float l = length(to);
-                if (l > 30.0f) force = force + to * (std::fmin(l / 250.0f, 1.4f) / l);
+                if (l > 30.0f && !novice) force = force + to * (std::fmin(l / 250.0f, 1.4f) / l);  // (the novice holds no lane)
                 if (H.phases[hz.phase < 3 ? hz.phase : 2].jets) {
                     for (float sgn : {1.0f, -1.0f}) {
                         offLine(boss.pos, dirOf(hz.axis) * sgn, 110.0f);
@@ -385,6 +446,14 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                 break;
             }
             case BossKind::Polyrhythm: {
+                if (novice) {
+                    // (it threads no gap: it only steps off the burning link it sees)
+                    if (boss.alive == 3u && w.polyLinkBurn(musicTick + kTicksPerBeat) != 0) {
+                        const Vec2 dv = normalizeOr(boss.body[1] - boss.body[0], Vec2{1.0f, 0.0f});
+                        offLine(boss.body[0] - dv * 60.0f, dv, 110.0f);
+                    }
+                    break;
+                }
                 // Ride a gap of the nearer rotor at a working distance (its face is open down the gap); step through the
                 // other's rings by their gaps, and dash a wall that cannot be dodged; off the link while it burns.
                 const PolyData& P = w.species().poly;
@@ -509,7 +578,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                 const Vec2 goal = c + dirOf(w.sentryHandAngle() + 0.4f) * (r > 60.0f ? r : 60.0f);
                 const Vec2 to = goal - pos;
                 const float l = length(to);
-                if (l > 20.0f) force = force + to * (std::fmin(l / 160.0f, 1.6f) / l);
+                if (l > 20.0f && !novice) force = force + to * (std::fmin(l / 160.0f, 1.6f) / l);  // (the novice rides no notch)
                 break;
             }
             case BossKind::Feedback: {
@@ -527,7 +596,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                 const Vec2 rel = pos - boss.pos;
                 const float dc = length(rel);
                 const float keep = boss.fb.phase == 2 ? boss.fb.loopR - 90.0f : 0.0f;
-                if (boss.fb.phase == 2 && dc > keep && dc > 1e-3f) force = force - rel * (2.0f * std::fmin((dc - keep) / 60.0f, 1.5f) / dc);
+                if (boss.fb.phase == 2 && dc > keep && dc > 1e-3f && !novice) force = force - rel * (2.0f * std::fmin((dc - keep) / 60.0f, 1.5f) / dc);
                 // Keep a working distance from the Head (its body hurts): 200-380 wu.
                 if (dc < 200.0f && dc > 1e-3f) force = force + rel * (1.5f / dc);
                 break;
@@ -548,6 +617,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     // The boss: keep off its arms and core, step out of a telegraphed beam's line, and circle with the
     // wheel toward an open sector.
     if (boss.active && !boss.dying && careful && kaleidos) {
+        // (the novice keeps off the arms and the beams it sees, but does not circle toward an open sector)
         const Vec2 rel = pos - boss.pos;
         const float dist = length(rel);
         if (dist > 1e-3f) {
@@ -563,7 +633,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                     force = force + normalizeOr(side, perpOf(d)) * (4.0f * (120.0f - off) / 120.0f);
             }
             Vec2 tangent = perpOf(rel * (1.0f / dist));
-            if (bossFight && !openSector && boss.alive != 0x7 && boss.alive != 0) {
+            if (bossFight && !openSector && boss.alive != 0x7 && boss.alive != 0 && !novice) {
                 // Toward the nearest dead pair's direction.
                 float best = 10.0f;
                 for (u32 k = 0; k < 6; ++k) {
@@ -586,7 +656,12 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     if (tr.open && tr.homing < 0 && tr.orbs) {
         u32 pick = 0;
         i32 bestScore = -1;
-        for (u32 k = 0; k < tr.orbs; ++k) {
+        if (novice && tr.openTick != novTrio_) {
+            // The novice takes the first orb half the time, otherwise any.
+            novTrio_ = tr.openTick;
+            novPick_ = rng_.uniform() < tuning::kNoviceFirstOrbShare ? 0u : rng_.below(tr.orbs);
+        }
+        for (u32 k = 0; k < tr.orbs && !novice; ++k) {
             const u8 u = tr.upgrade[k];
             // M5 part 3: with the whole pool (36 Mods, 12 Riffs) the bot picks as a player who knows them: a Fusion's gold
             // orb first, then by what each does for the fights (the stream's strength, a Riff that reaches the boss,
@@ -603,6 +678,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                 pick = k;
             }
         }
+        if (novice) pick = novPick_ < tr.orbs ? novPick_ : 0u;
         const Vec2 d = tr.orbPos[pick] - pos;
         const float dist = length(d);
         const float ring = tuning::kTrioHoldRing * tuning::kTrioOrbWu * (isRiff(tr.upgrade[pick]) ? tuning::kTrioRiffScale : 1.0f);
@@ -671,7 +747,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     force = force + dirOf(wander_) * 0.25f;
     // M5, the Choir (Unison to Fugue): inside the Round, nothing (the crowd, Shards, a dodge) takes the ship out across the
     // ring of Voices; the outward part of the pull fades out before the ring.
-    if (careful && boss.active && !boss.dying && boss.kind == BossKind::Choir && boss.ch.phase < 3) {
+    if (careful && !novice && boss.active && !boss.dying && boss.kind == BossKind::Choir && boss.ch.phase < 3) {
         const Vec2 rel = pos - boss.ch.centre;
         const float dc = length(rel);
         const float room = boss.ch.radius - w.species().choir.voiceRadius - 60.0f - dc;
@@ -684,23 +760,34 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     if (holding) force = force * 0.25f + holdPull;
     const float f = length(force);
     in.move = f > 0.05f ? force * (std::fmin(f, 1.0f) / f) : Vec2{};
+    if (novice) {
+        // (it reacts 250 ms late: the ship steers now as it decided a quarter of a second ago)
+        const Vec2 now = in.move;
+        in.move = novMove_[novMoveAt_];
+        novMove_[novMoveAt_] = now;
+        novMoveAt_ = (novMoveAt_ + 1u) % kNoviceDelayTicks;
+    }
 
     // ---- Dash out of an imminent hit; Nova when surrounded.
     bool dash = false;
-    if (careful && contactSoon && controller.dashCharge(musicTick) >= 1.0f && !pose.dashing) {
+    // (the novice dashes out of half the hits it sees coming)
+    if (novice && contactSoon && !novContact_) novDash_ = rng_.uniform() < tuning::kNoviceDashShare;
+    novContact_ = contactSoon;
+    if (careful && contactSoon && (!novice || novDash_) && controller.dashCharge(musicTick) >= 1.0f && !pose.dashing) {
         dash = true;
         in.move = normalizeOr(escape, normalizeOr(force, dirOf(wander_)));
     }
     in.dash = dash && !dashLast_;
     dashLast_ = dash;
     const bool nova = careful && me.novas > 0 && !me.novaPending &&
-                      ((close >= 7 && me.novas >= 2) || bulletsNear >= 10 || (me.cells == 0 && contactSoon && !dash));
+                      (novice ? (me.cells <= tuning::kNoviceNovaCells && (contactSoon || bulletsNear >= 4 || close >= 5))
+                              : ((close >= 7 && me.novas >= 2) || bulletsNear >= 10 || (me.cells == 0 && contactSoon && !dash)));
     in.nova = nova && !novaLast_;
     novaLast_ = nova;
-    if (boss.active && !boss.dying && boss.kind == BossKind::Feedback && musicTick >= boss.fightTick) {
+    if (boss.active && !boss.dying && boss.kind == BossKind::Feedback && musicTick >= boss.fightTick && (!novice || novRule)) {
         // Feedback (feedback.md: play, then listen): fire in phrases the Echoes leave silent a bar later. Slapback: two beats
         // on, two off, swapped the next bar; Regeneration: a bar on, two off; Howl: two beats on, four off. A Nova would come
-        // back as a Null: none in the fight.
+        // back as a Null: none in the fight. The novice phrases only in the bars it uses the rule (GAME_DESIGN 7.6).
         const double bar = kTicksPerBar;
         const i64 b = static_cast<i64>(std::floor(musicTick / bar));
         const i64 beat = static_cast<i64>(std::floor(musicTick / kTicksPerBeat));

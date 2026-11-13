@@ -239,6 +239,22 @@ float PlayView::chainPulse(double t) const {
 void PlayView::addPool(Vec2 at, float r0, float r1, Vec3 colour, float i0, float i1, float life, bool kill, u8 fade,
                        bool sparkle, bool dimmed, float t) {
     if (kill) {
+        // M5 (look.md: an area is drawn by its edge, and no fill is brighter than the bullets inside): a kill inside a live
+        // kill pool renews that pool instead of stacking another on it. Part 4's Feedback pictures had a crowd killed in one
+        // place sum a dozen pools into a cream-white disc a tenth of the screen wide that hid the bullets in it.
+        for (u32 i = 0; i < poolCap_; ++i) {
+            Pool& p = pools_[i];
+            if (!p.kill || t - p.born >= p.life) continue;
+            const float r = p.r0 + (p.r1 - p.r0) * clampf((t - p.born) / p.life, 0.0f, 1.0f);
+            if (lengthSq(at - p.at) >= r * r) continue;
+            p.r0 = r;
+            p.r1 = std::fmax(p.r1, r1);
+            p.i0 = std::fmax(p.i0, i0);
+            p.i1 = std::fmax(p.i1, i1);
+            p.born = t;
+            p.life = life;
+            return;
+        }
         // At most `killPools` kill pools: the oldest fades out early (look.md §3).
         u32 alive = 0, oldest = poolCap_;
         float oldestBorn = 1e30f;
@@ -678,8 +694,9 @@ void PlayView::flare(CapsuleBatch& out, Vec2 at, float angle, float lengthWu, u3
     }
 }
 
-void PlayView::telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight) {
-    // Telegraphs (look.md §3): danger in the scene at 1.3 x the swarm gain, and on the threat layer.
+void PlayView::telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight, float widthWu) {
+    // Telegraphs (look.md §3): danger in the scene at 1.3 x the swarm gain, and on the threat layer. A beam's warning dashes
+    // are as wide as the beam (look.md v2.5).
     const Vec3 danger = palettes_->danger;
     const LookLine& tl = look_->lines.telegraph;
     if (shown(kMuteBullet)) {
@@ -687,7 +704,7 @@ void PlayView::telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight) {
         d.scene.line(toScene(a), toScene(b), 0.5f * tl.width * refPx_, c, c, 0);
     }
     if (!shown(kMutePriority)) return;
-    const float w = 0.5f * look_->threat.telegraphWidth * refPx_;
+    const float w = widthWu > 0.0f ? 0.5f * widthWu * pxPerWu_ : 0.5f * look_->threat.telegraphWidth * refPx_;
     const Vec3 core = danger * 0.9f;
     d.threatRims.line(toScreen(a), toScreen(b), w + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
     d.threatCores.line(toScreen(a), toScreen(b), w, core, core, 0);

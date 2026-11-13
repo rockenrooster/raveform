@@ -412,9 +412,17 @@ void Play::afterTick() {
     if (opt_.loadoutMax) maxLoadout();  // M5 --loadout max (benchmarks)
     // M5: the fights' held voices end on time, and all of them when no fight is on.
     if (bandDrives_) updateFightVoices(*band_, fightVoices_, band_->view().heardTick, !w.boss().active || w.boss().dying);
+    bossHintTick(w);
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         switch (e.type) {
+            case EventType::Impact:
+                // M5 (screens.md "Boss hint"): this player's shots on the boss, armour (below x 1, or a plate) or not.
+                if (e.species == kBossSpecies && e.b == seat_ && hintBar_ >= 0) {
+                    if (e.c == 1 || e.f < 1.0f) hintArmour_ = true;
+                    else hintFull_ = true;
+                }
+                break;
             case EventType::Death:
                 // The bot taps retry (also in the bot_ pictures, C2: the real careful bot's run goes on).
                 if (opt_.bot || opt_.kind != PlayOptions::Kind::Play || std::strncmp(opt_.picture, "bot_", 4) == 0) retryRequest_ = true;
@@ -601,6 +609,38 @@ void Play::afterTick() {
         if (bandDrives_ && stage > holdStage_) band_->leadNote(0, stage == 1 ? 0 : 1, 0.8f, 0.0f);
         holdStage_ = stage;
     }
+}
+
+void Play::bossHintTick(const World& w) {
+    // screens.md "Boss hint (HUD, M5)": the line comes back for two bars when this player's shots have met only armour for
+    // two bars running, at most once every eight bars (the arrival's showing counts as the first).
+    const BossState& b = w.boss();
+    if (!b.active || b.dying || isMiniBoss(b.kind)) {
+        hintFight_ = -1.0;
+        hintBar_ = -1;
+        return;
+    }
+    if (b.fightTick != hintFight_) {
+        hintFight_ = b.fightTick;
+        hintBar_ = -1;
+        hintArmour_ = hintFull_ = false;
+        hintRun_ = 0;
+        hintShowBar_ = -1;
+        hintLastBar_ = 0;
+    }
+    if (w.music() < b.fightTick) return;
+    const i64 fb = static_cast<i64>(std::floor((w.music() - b.fightTick) / kTicksPerBar));
+    if (fb == hintBar_) return;
+    if (hintBar_ >= 0) {
+        hintRun_ = hintArmour_ && !hintFull_ ? static_cast<u8>(hintRun_ + 1) : 0;
+        if (hintRun_ >= 2 && fb >= hintLastBar_ + 8) {
+            hintShowBar_ = fb;
+            hintLastBar_ = fb;
+            hintRun_ = 0;
+        }
+    }
+    hintBar_ = fb;
+    hintArmour_ = hintFull_ = false;
 }
 
 void Play::bandFrame() {
@@ -877,6 +917,24 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     if (spotlightName_[0] && now - spotlightT_ < 3.0f) {
         hs.spotlight = spotlightName_;
         hs.spotlightAge = now - spotlightT_;
+    }
+    {
+        // M5 (screens.md "Boss hint"): from the arrival through the fight's first four bars, the last fading; again for two
+        // bars (the last fading) when this player's shots met only armour.
+        const BossState& b = w.boss();
+        if (b.active && !b.dying && !isMiniBoss(b.kind) && b.fightTick == hintFight_) {
+            const double bars = (vi.music - b.fightTick) / kTicksPerBar;
+            float level = 0.0f;
+            if (vi.music >= b.enterTick && bars < 4.0)
+                level = clampf(static_cast<float>((vi.music - b.enterTick) / kTicksPerBeat), 0.0f, 1.0f) * clampf(static_cast<float>(4.0 - bars), 0.0f, 1.0f);
+            if (hintShowBar_ >= 0) {
+                const double since = bars - static_cast<double>(hintShowBar_);
+                if (since >= 0.0 && since < 2.0)
+                    level = std::fmax(level, clampf(static_cast<float>(since * 4.0), 0.0f, 1.0f) * clampf(static_cast<float>(2.0 - since), 0.0f, 1.0f));
+            }
+            hs.bossHint = bossHint(b.kind);
+            hs.bossHintLevel = level;
+        }
     }
     if (runHud) {
         drawHud(d, *font_, *look_, variant, *palettes_, *palette_, hs, touch_, W, H, insetMin, insetMax);

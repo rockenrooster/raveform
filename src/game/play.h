@@ -428,6 +428,15 @@ private:
     float spotlightT_ = -100.0f;
     float takenT_ = -100.0f;
     float levelUpT_ = -100.0f;  // play test 2: the local player's last Shard level (the HUD's flash)
+    // M5 (GAME_DESIGN 7.6, screens.md "Boss hint"): this device's player's shots on the boss, bar by bar of the fight.
+    double hintFight_ = -1.0;   // the fight being followed (its fightTick)
+    i64 hintBar_ = -1;          // the fight bar being counted
+    bool hintArmour_ = false;   // this bar: a shot met armour ...
+    bool hintFull_ = false;     // ... or counted in full
+    u8 hintRun_ = 0;            // bars running in which every shot met armour
+    i64 hintShowBar_ = -1;      // the fight bar the hint came back on (-1: not yet)
+    i64 hintLastBar_ = 0;       // the fight bar of the last showing (0: the arrival's)
+    void bossHintTick(const sim::World& w);
     bool ffRunning_ = false;    // the --fast-forward loop is running (picture scripts wait for it)
     Vec2 takenFrom_;
     // Play test 1: the Trio hold's notes (the orb being held, the notes played for it).

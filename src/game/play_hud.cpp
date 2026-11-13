@@ -335,6 +335,20 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
     if (st.world) drawRunHud(d, font, look, variant, palettes, palette, st, W, H, insetMin, insetMax);
 }
 
+const char* bossHint(sim::BossKind k) {
+    // screens.md "Boss hint (HUD, M5)": one line a boss, its rule in plain words (Tracks 7 to 10 when they are built: SHOOT
+    // THE SILENT ONE, SHOOT IT AS IT LOADS, SHOOT WHERE THE WALL THINS, SHOOT THE ARMS OFF). Mini-bosses: none written yet.
+    switch (k) {
+        case sim::BossKind::Kaleidos: return "HIT THE ARMS NOT FIRING";
+        case sim::BossKind::Longwave: return "SHOOT THE WHITE SEGMENT";
+        case sim::BossKind::Choir: return "SHOOT THE ONE THAT SINGS";
+        case sim::BossKind::EventHorizon: return "STARVE IT: KILL ITS FOOD";
+        case sim::BossKind::Polyrhythm: return "SHOOT THROUGH THE GAPS";
+        case sim::BossKind::Feedback: return "STOP FIRING TO OPEN IT";
+        default: return nullptr;
+    }
+}
+
 Vec2 pauseButtonCentre(float W, float H, Vec2 insetMin, Vec2 insetMax, float& radius) {
     const float s = H / 1080.0f;
     radius = 28.0f * s;
@@ -654,6 +668,12 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         const float cap = 11.0f * s;
         font.drawField(d.hud, {x0 - textW(font, cap, name) - 16.0f * s, y + 0.5f * cap}, cap, 0.55f * s, col(gold, 1.4f), col(gold, 1.4f),
                        col(gold, 1.4f), name);
+        // screens.md "Boss hint": under the name, the HUD's small size, white at 0.8 (ends under the name's end).
+        if (st.bossHint && st.bossHintLevel > 0.01f) {
+            const float hc = 11.0f * s;
+            font.drawField(d.hud, {x0 - textW(font, hc, st.bossHint) - 16.0f * s, y + 0.5f * cap + cap + 12.0f * s}, hc, 0.55f * s,
+                           col(white, 0.8f * st.bossHintLevel), col(white, 0.8f * st.bossHintLevel), col(white, 0.8f * st.bossHintLevel), st.bossHint);
+        }
         float hp = boss.coreHp, max = boss.coreMax;
         const u32 parts = boss.kind == BossKind::Longwave ? w.species().longwave.segments
                                                            : (boss.kind == BossKind::Choir ? ChoirData::kVoices : (boss.kind == BossKind::Kaleidos ? 3u : 0u));

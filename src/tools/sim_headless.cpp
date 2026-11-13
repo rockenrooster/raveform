@@ -8,11 +8,14 @@
 //       The bot plays the stage A game (the simple spawner, Track 1's tempo), retrying after each death.
 //       Checks every tick: no NaN or infinity, no pool overflow; reports kills, deaths, peak entity counts
 //       and the tick's time (P50 / P95 / max). Exit 0 = clean.
-//   raveform_headless --sim crowd [--seeds 20] [--minutes 30] [--seed 1] [--policy play|reckless] [--god]
+//   raveform_headless --sim crowd [--seeds 20] [--minutes 30] [--seed 1] [--policy play|reckless|novice] [--god]
 //       The crowd and the difficulty over many seeds (M3 stage C): enemies near the ship during Groove
 //       against the target per Track and cycle, Drop peaks, first death, Tracks reached, kills a minute.
 //       --god: hits cost nothing, so every Track and cycle is measured (no difficulty numbers then).
 //       --trace: one line a minute (Track, section, enemies, kills, ship, boss).
+//       M5 (GAME_DESIGN 7.6): every fight's first meeting in each run; --armour0 (armour takes nothing, as on
+//       the build the user played), --health id=x,... (a factor on a fight's health), --handover N (the
+//       careful bot plays to Track N with hits costing nothing, then the policy asked for goes on with its build).
 //   raveform_headless --sim stress [--seconds 120] [--seed 1]
 //       bench_stress without a window: about 700 enemies and 1,500 enemy bullets around the bot's ship.
 // Each prints a summary and one line tagged RFSIM (JSON).
@@ -137,7 +140,7 @@ int runDeterminism(const SpeciesTable& species, float minutes, u64 seed, float b
         if (!firstDiffC && hashA[k] != hashC[k]) firstDiffC = (k + 1) * every;
     }
     const bool ok = finalA == finalB && finalA == finalC && finalA != finalD && !firstDiffB && !firstDiffC;
-    const char* pname = policy == Bot::Policy::Reckless ? "reckless" : "play";
+    const char* pname = policy == Bot::Policy::Reckless ? "reckless" : (policy == Bot::Policy::Novice ? "novice" : "play");
     std::printf("[sim] determinism (%s bot): %u ticks (%.1f min), seed %llu, %llu kills, %u deaths and %u restarts in run A\n",
                 pname, ticks, minutes, static_cast<unsigned long long>(seed), static_cast<unsigned long long>(killsA), deathsA,
                 restartsA);
@@ -292,6 +295,19 @@ int runSoak(const SpeciesTable& species, float seconds, u64 seed, float bpm, boo
 // enemies in view (the plain frame around the ship) during Groove against the crowd's target, the mean the
 // director counts (the frame x count.frameScale), the Drop's peak in view, kills a minute, the first death
 // and the Tracks reached.
+// M5 (GAME_DESIGN 7.6, calibration and tuning): armour at nothing as on the build the user played, and a health factor per
+// fight on top of tuning.h (--armour0, --health longwave=0.8,choir=1.2).
+bool gArmourNothing = false;
+float gHealthLever[kBossKinds] = {};
+// --handover N: the careful bot plays (hits costing nothing) until Track N starts, then the policy asked for takes over with
+// the careful bot's build of that moment; only its fights count, and a seed ends once it has met Track N's boss.
+u32 gHandover = 0;
+
+void applyLevers(World& w) {
+    w.rules().armourNothing = gArmourNothing;
+    for (u32 k = 0; k < kBossKinds; ++k) w.rules().healthLever[k] = gHealthLever[k] > 0.0f ? gHealthLever[k] : 1.0f;
+}
+
 int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, Bot::Policy policy, bool god, bool trace) {
     const u32 ticks = static_cast<u32>(minutes * 3600.0f);
     auto* world = new (std::nothrow) World;
@@ -323,6 +339,11 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     };
     static FightStat fightStat[kBossKinds];
     for (FightStat& f : fightStat) f = FightStat{};
+    // M5 (GAME_DESIGN 7.6): each run's first meeting with each fight (1 won, 2 lost, 3 warped out; 0 none), its seconds when
+    // won, and whether the first run (before any death) reached Track 2's boss.
+    static u8 firstMeet[256][kBossKinds];
+    static float firstSecs[256][kBossKinds];
+    static bool reachedT2[256];
     // Play test 2: the Shard level pace by Track (alive time and levels in each), and the levels and upgrades held at
     // minutes 3, 6 and 10 in the first run (the runs still in it then).
     double paceTicks[4] = {}, paceLevels[4] = {}, paceShards[4] = {};
@@ -341,13 +362,21 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     for (u32 s = 0; s < seeds && s < 256; ++s) {
         world->init(&species);
         SimRunner runner;
-        runner.start(world, seed0 + s, Spawner::Mode::Slice, policy, 120.0f, god);
+        const bool handover = gHandover > 1;
+        bool handed = !handover;
+        runner.start(world, seed0 + s, Spawner::Mode::Slice, handover ? Bot::Policy::Play : policy, 120.0f, god || handover);
+        applyLevers(*world);
         // The world's counters run on across init (they are the session's): this seed's share is the difference.
         const WorldCounters c0 = world->counters();
         float peak[4][5] = {};
         bool sawDrop[4][5] = {};
         firstDeath[s] = minutes + 1.0f;
         firstDeathTrack[s] = 0;
+        for (u32 k = 0; k < kBossKinds; ++k) {
+            firstMeet[s][k] = 0;
+            firstSecs[s][k] = 0.0f;
+        }
+        reachedT2[s] = false;
         maxTrack[s] = 1;
         u32 lastHits = 0, lastBar = 0xFFFFFFFFu, killsAtBar = 0;
         bool bossOn = false;
@@ -363,6 +392,12 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
             const u32 d0 = runner.deaths();
             runner.step();
             const World& w = *world;
+            if (!handed && w.phrase().track >= gHandover && w.player(0).alive) {
+                handed = true;
+                runner.setPolicy(policy);
+                world->rules().godMode = god;
+            }
+            if (handover && handed && firstMeet[s][static_cast<u32>(bossOfSong(gHandover - 1u))]) break;
             if (w.shots().count > shotsPeak) shotsPeak = w.shots().count;
             if (runner.deaths() > d0 && firstDeath[s] > minutes) {
                 firstDeath[s] = static_cast<float>(t) / 3600.0f;
@@ -404,13 +439,14 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
             {
                 // Boss fights: from its entrance to its death (won) or to the run's end (lost); a mini-boss whose hold ran
                 // out warped out (M5). "Boss fights" (GAME_DESIGN 8's target) are the Tracks' bosses; the mini-bosses apart.
-                const bool on = w.boss().active && !w.boss().dying;
+                const bool on = w.boss().active && !w.boss().dying && handed;
                 if (on && !bossOn) {
                     bossFrom = t;
                     bossKind = w.boss().kind;
                     bossTrack = ph.track;
                     bossHits0 = p.hitsTaken;
                     ++fightStat[static_cast<u32>(bossKind)].fights;
+                    if (!isMiniBoss(bossKind) && ph.track == 2 && runner.deaths() == 0) reachedT2[s] = true;
                 }
                 if (on) {
                     // (Kept while it lasts: a run that ends in the fight starts again with all of them at 0.)
@@ -426,6 +462,11 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     f.hitsBody += fightBody;
                     f.hitsBeam += fightBeam;
                     fightHits = fightBody = fightBeam = 0;
+                    u8& fm = firstMeet[s][static_cast<u32>(bossKind)];
+                    if (!fm) {
+                        fm = w.boss().dying ? 1 : (gone ? 3 : 2);
+                        if (fm == 1) firstSecs[s][static_cast<u32>(bossKind)] = static_cast<float>(t - bossFrom) / 60.0f;
+                    }
                     if (w.boss().dying) {
                         ++f.won;
                         const u32 tr = bossTrack < 16 ? bossTrack : 15u;
@@ -596,7 +637,8 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     runner.deaths(), seedShards, c.enemiesDropped - c0.enemiesDropped, c.bulletsDropped - c0.bulletsDropped,
                     c.shotsDropped - c0.shotsDropped, c.eventsDropped - c0.eventsDropped);
     }
-    std::printf("[sim] crowd (%s bot%s): %u seeds x %.0f min\n", policy == Bot::Policy::Reckless ? "careless" : "careful", god ? ", god mode" : "", seeds, minutes);
+    const char* botName = policy == Bot::Policy::Reckless ? "careless" : (policy == Bot::Policy::Novice ? "novice" : "careful");
+    std::printf("[sim] crowd (%s bot%s): %u seeds x %.0f min\n", botName, god ? ", god mode" : "", seeds, minutes);
     std::printf("[sim]   Track cycle  target  in view (Groove)  ratio  counted  alive  Drop peak in view (runs)  peak/target\n");
     for (u32 tr = 0; tr < 4; ++tr) {
         for (u32 cy = 1; cy <= cyclesOfTrack(tr + 1); ++cy) {
@@ -677,6 +719,33 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         logTagged("RFSIM", "{\"test\":\"fight\",\"kind\":\"%s\",\"fights\":%u,\"won\":%u,\"lost\":%u,\"gone\":%u,\"hits\":%u}", bossId(static_cast<BossKind>(k)),
                   f.fights, f.won, f.lost, f.gone, f.hits);
     }
+    {
+        // M5 (GAME_DESIGN 7.6): the first meetings (won of met, the seconds of those won, the hits of all fights above).
+        u32 t2 = 0;
+        for (u32 s = 0; s < n; ++s) t2 += reachedT2[s] ? 1u : 0u;
+        std::printf("[sim]   the first run reached Track 2's boss in %u of %u runs; first meetings (kind: met, won, lost, warped out; mean seconds of those won):\n", t2, n);
+        for (u32 k = 0; k < kBossKinds; ++k) {
+            u32 met = 0, won = 0, lost = 0, gone = 0;
+            double secs = 0.0;
+            for (u32 s = 0; s < n; ++s) {
+                const u8 fm = firstMeet[s][k];
+                if (!fm) continue;
+                ++met;
+                if (fm == 1) {
+                    ++won;
+                    secs += firstSecs[s][k];
+                } else if (fm == 2) {
+                    ++lost;
+                } else {
+                    ++gone;
+                }
+            }
+            if (!met) continue;
+            std::printf("[sim]     %-13s %3u %3u %3u %3u  %5.0f s\n", bossId(static_cast<BossKind>(k)), met, won, lost, gone, won ? secs / won : 0.0);
+            logTagged("RFSIM", "{\"test\":\"first_meeting\",\"kind\":\"%s\",\"met\":%u,\"won\":%u,\"lost\":%u,\"gone\":%u,\"secs\":%.1f}",
+                      bossId(static_cast<BossKind>(k)), met, won, lost, gone, won ? secs / won : 0.0);
+        }
+    }
     std::printf("[sim]   boss fights lost %.1f%%; shots alive at most %u (pool %u), held back by a player's cap %llu\n",
                 bossWon + bossLost ? 100.0 * static_cast<double>(bossLost) / static_cast<double>(bossWon + bossLost) : 0.0, shotsPeak,
                 Shots::kCap, static_cast<unsigned long long>(capped));
@@ -708,7 +777,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     }
     logTagged("RFSIM", "{\"test\":\"crowd\",\"seeds\":%u,\"minutes\":%.0f,\"policy\":\"%s\",\"first_death_median\":%.2f,\"track2\":%u,\"track3\":%u,"
                        "\"kills_per_min\":%.1f,\"overflow\":%llu,\"nan\":%u,\"allocs\":%llu}",
-              n, minutes, policy == Bot::Policy::Reckless ? "careless" : "careful", median, t2, t3,
+              n, minutes, botName, median, t2, t3,
               static_cast<double>(kills) / (static_cast<double>(n) * minutes), static_cast<unsigned long long>(overflow), nan,
               static_cast<unsigned long long>(allocs));
     delete world;
@@ -734,7 +803,7 @@ int simHeadlessMain(int argc, char** argv) {
             seconds = static_cast<float>(std::atof(next));
             ++i;
         } else if (std::strcmp(a, "--policy") == 0 && next) {
-            policy = std::strcmp(next, "reckless") == 0 ? Bot::Policy::Reckless : Bot::Policy::Play;
+            policy = std::strcmp(next, "reckless") == 0 ? Bot::Policy::Reckless : (std::strcmp(next, "novice") == 0 ? Bot::Policy::Novice : Bot::Policy::Play);
             ++i;
         } else if (std::strcmp(a, "--seed") == 0 && next) {
             seed = std::strtoull(next, nullptr, 10);
@@ -743,6 +812,27 @@ int simHeadlessMain(int argc, char** argv) {
             god = true;
         } else if (std::strcmp(a, "--trace") == 0) {
             trace = true;
+        } else if (std::strcmp(a, "--armour0") == 0) {
+            gArmourNothing = true;
+        } else if (std::strcmp(a, "--handover") == 0 && next) {
+            gHandover = static_cast<u32>(std::strtoul(next, nullptr, 10));
+            ++i;
+        } else if (std::strcmp(a, "--health") == 0 && next) {
+            // id=factor[,id=factor...]
+            char buf[512];
+            std::snprintf(buf, sizeof buf, "%s", next);
+            for (char* tok = std::strtok(buf, ","); tok; tok = std::strtok(nullptr, ",")) {
+                char* eq = std::strchr(tok, '=');
+                if (!eq) continue;
+                *eq = 0;
+                BossKind k;
+                if (!bossFromId(tok, k)) {
+                    std::printf("[sim] unknown fight %s\n", tok);
+                    return 2;
+                }
+                gHealthLever[static_cast<u32>(k)] = static_cast<float>(std::atof(eq + 1));
+            }
+            ++i;
         } else if (std::strcmp(a, "--seeds") == 0 && next) {
             seeds = static_cast<u32>(std::strtoul(next, nullptr, 10));
             ++i;
@@ -768,7 +858,7 @@ int simHeadlessMain(int argc, char** argv) {
     } else if (std::strcmp(mode, "stress") == 0) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes * 60.0f : 120.0f), seed, bpm, true, policy);
     } else {
-        std::printf("usage: raveform_headless --sim determinism|soak|crowd|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless] [--god] [--trace]\n");
+        std::printf("usage: raveform_headless --sim determinism|soak|crowd|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless|novice] [--god] [--trace] [--armour0] [--health id=x,...] [--handover N]\n");
     }
     delete species;
     return code;

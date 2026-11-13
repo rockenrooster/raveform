@@ -291,14 +291,11 @@ void PlayView::drawChoir(FrameDraw& d, const ViewInput& in) {
         const Vec2 p0 = voicePos(k), p1 = voicePos(n);
         if (!visible(p0, 200.0f) && !visible(p1, 200.0f)) continue;
         if (cage == 1) {
-            telegraphLine(d, p0, p1, 1.0f);
+            telegraphLine(d, p0, p1, 1.0f, w.bossData().phases[1].beamWidth);
             continue;
         }
         if (cage == 2) {
-            const float bw = 0.5f * w.bossData().phases[1].beamWidth * pxPerWu_;
-            d.scene.line(toScene(p0), toScene(p1), bw, danger * 3.0f, danger * 3.0f, 0);
-            d.threatRims.line(toScreen(p0), toScreen(p1), bw + 2.0f * refPx_, Vec3{}, Vec3{}, 0);
-            d.threatCores.line(toScreen(p0), toScreen(p1), bw, mix(danger, W1, 0.3f), mix(danger, W1, 0.3f), 0);
+            lethalBeam(d, p0, p1, w.bossData().phases[1].beamWidth);
             continue;
         }
         const Vec2 mid = (p0 + p1) * 0.5f + perpOf(normalizeOr(p1 - p0, Vec2{1.0f, 0.0f})) * (C.neighbourShimmer * std::sin(static_cast<float>(t) * 0.05f + k));
@@ -410,14 +407,10 @@ void PlayView::drawChoir(FrameDraw& d, const ViewInput& in) {
             if (held == 1) {
                 for (float u = 0.0f; u < reach; u += 60.0f) {
                     const Vec2 q0 = p + dv * u, q1 = p + dv * std::fmin(u + 30.0f, reach);
-                    if (visible(q0, 40.0f) || visible(q1, 40.0f)) telegraphLine(d, q0, q1, 1.0f);
+                    if (visible(q0, 40.0f) || visible(q1, 40.0f)) telegraphLine(d, q0, q1, 1.0f, w.bossData().phases[1].beamWidth);
                 }
             } else {
-                const float bw = 0.5f * w.bossData().phases[1].beamWidth * pxPerWu_;
-                d.scene.line(toScene(p), toScene(to), bw, danger * 3.0f, danger * 2.0f, 0);
-                d.scene.line(toScene(p), toScene(to), bw * 0.35f, W1 * 2.5f, W1 * 1.5f, 0);
-                d.threatRims.line(toScreen(p), toScreen(to), bw + 2.0f * refPx_, Vec3{}, Vec3{}, 0);
-                d.threatCores.line(toScreen(p), toScreen(to), bw, mix(danger, W1, 0.3f), mix(danger, W1, 0.3f), 0);
+                lethalBeam(d, p, to, w.bossData().phases[1].beamWidth);
             }
         }
     }
@@ -562,13 +555,10 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
                 for (u32 k = 0; k < 5; ++k) {
                     const Vec2 a0 = w.blinkPoint(kOrder[k]), a1 = w.blinkPoint(kOrder[(k + 1) % 5]);
                     if (firing) {
-                        const float bw = 0.5f * prose::kBsBeamWu * pxPerWu_;
-                        d.scene.line(toScene(a0), toScene(a1), bw, danger * 3.0f, danger * 3.0f, 0);
-                        d.scene.line(toScene(a0), toScene(a1), bw * 0.35f, W1 * 2.5f, W1 * 2.5f, 0);
-                        d.threatRims.line(toScreen(a0), toScreen(a1), bw + 2.0f * refPx_, Vec3{}, Vec3{}, 0);
-                        d.threatCores.line(toScreen(a0), toScreen(a1), bw, mix(danger, W1, 0.3f), mix(danger, W1, 0.3f), 0);
+                        lethalBeam(d, a0, a1, prose::kBsBeamWu);
                     } else if (k < edges) {
-                        for (float u = 0.0f; u < 1.0f; u += 0.08f) telegraphLine(d, lerpv(a0, a1, u), lerpv(a0, a1, std::fmin(u + 0.04f, 1.0f)), 1.0f);
+                        for (float u = 0.0f; u < 1.0f; u += 0.08f)
+                            telegraphLine(d, lerpv(a0, a1, u), lerpv(a0, a1, std::fmin(u + 0.04f, 1.0f)), 1.0f, prose::kBsBeamWu);
                     }
                 }
                 const Vec2 first = w.blinkPoint(0);

@@ -96,7 +96,7 @@ constexpr u32 kBmCap = 36;                                            // cap
 constexpr u32 kBmLastEggs = 16, kBmEggShards = 10;                    // death
 // Blink Star
 constexpr float kBsStarWu = 420.0f, kBsHalfScale = 1.25f;             // move, half
-constexpr float kBsBeamWu = 16.0f;                                    // pattern[1]
+constexpr float kBsBeamWu = 10.0f;                                    // pattern[1]; look.md v2.5: 10 wu (part 4: 16)
 constexpr u32 kBsDecoyFan = 3;                                        // half
 // Sentry Array
 constexpr u32 kSaTurrets = 8;                                         // move
