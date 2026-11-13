@@ -1,5 +1,5 @@
 # M2 device runs under the phone lock of the shared-phone rule (CLAUDE.md, lead's rule of 2026-11-11):
-# writes captures\locks\<serial>.lock in the main checkout ("m2" and the time) when the phone is free,
+# writes captures\locks\<serial>.lock in the main checkout (-LockName, "m2" by default, and the time) when the phone is free,
 # deploys this checkout's last built APK right before the run, and deletes the lock when the run ends.
 #   scripts\audio-device.ps1 -Run bench [-Seconds 60] [-AppArgs '--band full']      bench_idle with the band
 #   scripts\audio-device.ps1 -Run screenshot -AppArgs '--scenario sync --no-overlay'  in-app capture
@@ -13,7 +13,8 @@ param(
     [string]$AppArgs = '--band full',
     [int]$Frames = 240,
     [string]$Out = '',
-    [switch]$NoDeploy
+    [switch]$NoDeploy,
+    [string]$LockName = 'm2'  # M5: each coder's own name in the lock (m5audio)
 )
 . "$PSScriptRoot\env.ps1"
 $Serial = Resolve-RfSerial $Serial
@@ -24,13 +25,13 @@ $lock = Join-Path $lockDir "$Serial.lock"
 if (Test-Path $lock) {
     $age = ((Get-Date) - (Get-Item $lock).LastWriteTime).TotalMinutes
     $owner = (Get-Content $lock -Raw).Trim()
-    if ($age -lt 30 -and $owner -notmatch '^m2\b') {
+    if ($age -lt 30 -and $owner -notmatch "^$([regex]::Escape($LockName))\b") {
         Write-Host "[lock] $Serial is busy: '$owner' ($([int]$age) min old)"
         exit 10
     }
 }
 New-Item -ItemType Directory -Force $lockDir | Out-Null
-Set-Content -Path $lock -Value "m2 $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Set-Content -Path $lock -Value "$LockName $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Write-Host "[lock] took $lock"
 try {
     if (-not $NoDeploy) { & "$PSScriptRoot\deploy-android.ps1" -Serial $Serial -NoBuild -NoLaunch }

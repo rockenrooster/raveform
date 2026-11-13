@@ -798,16 +798,22 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate) {
             const i32 id = put(r, 2, -1, static_cast<u16>(lengths[i]));
             risers_[riserCount_++] = {t, lengths[i], id};
         }
-        // Shard scale: minor pentatonic from the tonic (the first chord's bass) three octaves up.
-        static const u8 kPenta[] = {0, 3, 5, 7, 10};
+        // Shard scale: a pentatonic from the tonic (the first chord's bass) three octaves up, inside the Track's scale
+        // (sfxproto's run is Track 1's A minor pentatonic): minor where the scale has a minor third (aeolian, dorian,
+        // phrygian), else major (M5: Afterglow and Arcadia are major, Mirage lydian; the minor one put a minor third and
+        // seventh over them).
+        static const u8 kMinorPenta[] = {0, 3, 5, 7, 10}, kMajorPenta[] = {0, 2, 4, 7, 9};
+        bool minorThird = tr.scaleCount == 0;
+        for (u32 i = 0; i < tr.scaleCount; ++i) minorThird = minorThird || tr.scale[i] == 3;
+        const u8* penta = minorThird ? kMinorPenta : kMajorPenta;
         const u8 tonic = static_cast<u8>(tr.chords[tr.progression[0]].bass + 36);
-        for (u32 i = 0; i < 10; ++i) shardScale_[t][i] = static_cast<u8>(tonic + 12 * (i / 5) + kPenta[i % 5]);
+        for (u32 i = 0; i < 10; ++i) shardScale_[t][i] = static_cast<u8>(tonic + 12 * (i / 5) + penta[i % 5]);
     }
 
     // Pitched effects: every note the Tracks' chords ask for.
     const auto bakePitched = [&](Sfx kind, auto&& notesOf, auto&& make) {
         sfxFirst_[static_cast<u32>(kind)] = static_cast<i32>(count_);
-        i16 done[64];
+        i16 done[128];  // M5: the notes of ten Tracks
         u32 nd = 0;
         for (u32 t = 0; t < music.trackCount; ++t) {
             i16 notes[32];
@@ -897,7 +903,7 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate) {
 
 namespace {
 constexpr u32 kCacheMagic = 0x42534652u;  // "RFSB"
-constexpr u32 kCacheVersion = 1;
+constexpr u32 kCacheVersion = 2;  // M5: tables sized for ten Tracks
 template <typename T>
 bool put(FILE* f, const T& v) { return std::fwrite(&v, sizeof v, 1, f) == 1; }
 template <typename T>

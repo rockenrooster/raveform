@@ -2,6 +2,7 @@
 
   python -I -B scripts/audio_check.py match <engine.wav> <engine.meta.json> <ref.json> [--stems <dir>]
   python -I -B scripts/audio_check.py onsets <engine.events.csv> <engine.meta.json>
+  python -I -B scripts/audio_check.py tempo-onsets <engine.events.csv>      (M5: a render whose tempo changes)
   python -I -B scripts/audio_check.py metrics <file.wav>
   python -I -B scripts/audio_check.py audible-onsets <engine.wav> <engine.events.csv> <kind>
 
@@ -117,6 +118,59 @@ def onsets(args):
     return 0 if bad == 0 and n > 0 else 1
 
 
+def tempo_onsets(args):
+    """M5: onsets of a render whose tempo changes (the set-list medley: ramps through each Track-change Break, the
+    Build's 85% bar). The tempo map is rebuilt from the log's tempo rows as the main thread mirrors it (a segment at
+    tick 0 starts the song at its frame; each later one starts on its tick, its frame carried on from the segment
+    before at full precision); every onset must sit on round(frame of its tick). Also lists the tempo of each bar."""
+    events_path = args[0]
+    segs = []  # (frame, tick, ticks per frame)
+    rows = []
+    with open(events_path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            rows.append(row)
+    worst, n, bad = 0, 0, 0
+    kinds = {}
+    for row in rows:
+        tick, kind = float(row["tick"]), row["kind"]
+        if kind == "tempo":
+            tpf = float(row["x"])
+            if int(row["a"]) == 1:
+                segs.append((float(row["frame"]), tick, tpf))   # a hold (M4): explicit frames
+            elif tick == 0.0:
+                segs = [(float(row["frame"]), 0.0, tpf)]
+            else:
+                f0, t0, r0 = segs[-1]
+                frame = f0 + (tick - t0) / r0
+                if tick <= t0:
+                    segs[-1] = (f0, t0, tpf)
+                else:
+                    segs.append((frame, tick, tpf))
+            continue
+        if tick < 0 or kind in ("variant", "track") or not segs:
+            continue
+        s = segs[0]
+        for seg in segs:
+            if seg[1] <= tick:
+                s = seg
+        grid = round(s[0] + (tick - s[1]) / s[2])
+        d = int(row["frame"]) - grid
+        worst = max(worst, abs(d))
+        n += 1
+        kinds[kind] = kinds.get(kind, 0) + 1
+        if abs(d) > 1:
+            bad += 1
+    bpms = []
+    for seg in segs:
+        bpm = seg[2] * 60.0 * 48000.0 / 96.0
+        bpms.append("bar %d: %.2f" % (int(seg[1] // 384), bpm))
+    print("tempo map: %d segments; %s" % (len(segs), ", ".join(bpms)))
+    print("onsets: %d checked (%s); worst |frame - grid| = %d samples; %d outside one sample" % (
+        n, ", ".join("%s %d" % kv for kv in sorted(kinds.items())), worst, bad))
+    print("ONSETS", "PASS" if bad == 0 and n > 0 else "FAIL")
+    return 0 if bad == 0 and n > 0 else 1
+
+
 def audible_onsets(args):
     """For a solo render: the first sample above a threshold after each logged onset of `kind` must be the
     logged frame itself (the sound really starts where the log says)."""
@@ -148,7 +202,8 @@ def metrics(args):
 
 def main():
     cmd, args = sys.argv[1], sys.argv[2:]
-    return {"match": match, "onsets": onsets, "metrics": metrics, "audible-onsets": audible_onsets}[cmd](args)
+    return {"match": match, "onsets": onsets, "tempo-onsets": tempo_onsets, "metrics": metrics,
+            "audible-onsets": audible_onsets}[cmd](args)
 
 
 if __name__ == "__main__":

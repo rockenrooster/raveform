@@ -132,7 +132,7 @@ endforeach()
 # platform code, so the headless renderer and the tests link it too. Its DSP is optimised in every
 # configuration, so a Debug build still plays in real time.
 set(RF_AUDIO_GENERATED)
-foreach(data patches variants conductor track01 track02 track03)
+foreach(data patches variants conductor track01 track02 track03 track04 track05 track06 track07 track08 track09 track10)
   add_custom_command(OUTPUT ${RF_GEN}/music_${data}.json.inc
     COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/music/${data}.json -DOUT=${RF_GEN}/music_${data}.json.inc
             -P ${RF_ROOT}/cmake/EmbedText.cmake
@@ -338,7 +338,8 @@ if(NOT ANDROID)
   target_link_libraries(raveform_headless PRIVATE raveform_sim raveform_audio raveform_net)  # M3: --sim runs; M4: --net
   target_compile_options(raveform_headless PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
   target_link_options(raveform_headless PRIVATE -static)
-  add_executable(raveform_tests tests/audio_tests.cpp ${RF_HEADLESS_CORE})
+  # M5: the palettes too (one for each of the ten Tracks).
+  add_executable(raveform_tests tests/audio_tests.cpp src/content/palette.cpp ${RF_GEN}/palettes.json.inc ${RF_HEADLESS_CORE})
   target_link_libraries(raveform_tests PRIVATE raveform_audio)
   target_compile_options(raveform_tests PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
   target_link_options(raveform_tests PRIVATE -static)

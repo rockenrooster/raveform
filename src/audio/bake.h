@@ -33,8 +33,10 @@ struct DrumKit {
 
 class SampleBank {
 public:
-    static constexpr u32 kMaxSamples = 400;
-    SampleBank() = default;
+    static constexpr u32 kMaxSamples = 512;
+    SampleBank() {
+        for (u32 t = 0; t < MusicData::kMaxTracks; ++t) swellHalf_[t] = swellBar_[t] = -1;
+    }
     SampleBank(const SampleBank&) = delete;
     SampleBank& operator=(const SampleBank&) = delete;
     ~SampleBank();
@@ -67,7 +69,8 @@ public:
     i32 sfx(Sfx kind, i32 midi = -1) const;
     // Nova inhale lasting `steps32` thirty-second notes of `track`'s tempo (1..8).
     i32 inhale(u32 track, u32 steps32) const;
-    // Shard scale of a Track (minor pentatonic from its tonic, sfxproto's shard run): 10 notes.
+    // Shard scale of a Track (sfxproto's shard run, a pentatonic from its tonic inside the Track's scale: minor where
+    // the scale has a minor third, else major; M5: Tracks 7-9 are major and lydian): 10 notes.
     const u8* shardScale(u32 track) const { return shardScale_[track]; }
 
 private:
@@ -82,10 +85,10 @@ private:
     struct RiserRef {
         u32 track, bars;
         i32 id;
-    } risers_[8];
+    } risers_[MusicData::kMaxTracks * 4];  // up to four Build lengths a Track
     u32 riserCount_ = 0;
-    i32 swellHalf_[MusicData::kMaxTracks] = {-1, -1, -1, -1};
-    i32 swellBar_[MusicData::kMaxTracks] = {-1, -1, -1, -1};
+    i32 swellHalf_[MusicData::kMaxTracks] = {};  // -1 until baked (set in the constructor)
+    i32 swellBar_[MusicData::kMaxTracks] = {};
     i32 sfxFirst_[kSfxCount] = {};
     u32 sfxCount_[kSfxCount] = {};
     i32 inhale_[MusicData::kMaxTracks][9] = {};

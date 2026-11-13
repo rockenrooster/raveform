@@ -1,9 +1,9 @@
 #pragma once
 // The music as data (design/music/*.json, embedded at build time, parsed once at start-up): the sound
-// (patches.json), its three variants (variants.json), the Tracks (track01.json to track03.json) and the
-// conductor's rules (conductor.json). Numbers are read from the files, never retyped: the resolved
-// parameter sets follow the prototype's order (patches.json, then the variant, then the Track's own
-// overrides).
+// (patches.json), its three variants (variants.json), the ten Tracks of the set list (track01.json to
+// track10.json) and the conductor's rules (conductor.json). Numbers are read from the files, never retyped:
+// the resolved parameter sets follow the prototype's order (patches.json, then the variant, then the
+// Track's own overrides).
 
 #include <cstdint>
 
@@ -12,6 +12,10 @@
 namespace rf::audio {
 
 using i16 = std::int16_t;
+
+// M5: the set list is ten Tracks (design/music/README.md). Every table sized by the Track count holds this many.
+constexpr u32 kMaxTracks = 10;
+constexpr u32 kMaxVariants = 4;
 
 enum class Section : u8 { Groove, Build, Drop, Break, Count };
 const char* sectionName(Section s);  // "groove", ...
@@ -179,14 +183,14 @@ struct ConductorRules {
 // the output gain that puts each Track x variant's staged arrangement at target_lufs, as the prototype
 // normalises its renders. `hash` identifies the music data it was made from.
 struct LoudnessCalibration {
-    float gainDb[4][4] = {};  // [track][variant]
-    bool have[4][4] = {};
+    float gainDb[kMaxTracks][kMaxVariants] = {};  // [track][variant]
+    bool have[kMaxTracks][kMaxVariants] = {};
     u64 hash = 0;
 };
 
 struct MusicData {
-    static constexpr u32 kMaxTracks = 4;
-    static constexpr u32 kMaxVariants = 4;
+    static constexpr u32 kMaxTracks = audio::kMaxTracks;
+    static constexpr u32 kMaxVariants = audio::kMaxVariants;
     Track tracks[kMaxTracks];
     u32 trackCount = 0;
     Variant variants[kMaxVariants];
@@ -207,6 +211,8 @@ struct MusicData {
 };
 
 // Bumped whenever the engine's DSP changes the loudness of a render (invalidates the calibration).
-constexpr u32 kDspVersion = 3;
+// 4 (M5): voices summed in the order they start; the section gain's ramp across a bar line planned a section ahead.
+// 5 (M5): the lead's and the pads' PolyBLEPs four at a time (t x 1/dt), the bell and the bass's sub on a polynomial sine.
+constexpr u32 kDspVersion = 5;
 
 }  // namespace rf::audio

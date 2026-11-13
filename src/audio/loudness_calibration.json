@@ -1,10 +1,17 @@
 {
  "note": "Written by raveform_headless --calibrate (scripts/calibrate-audio.ps1): the output gain that puts each Track's staged arrangement at target_lufs in each sound variant, measured on the engine's own render the way musicproto.py normalises its renders. 'hash' identifies the music data and DSP version it was made from; the engine warns when they differ.",
- "hash": "bcbef05751d5e750",
- "dsp_version": 3,
+ "hash": "3709d8c3f8420598",
+ "dsp_version": 5,
  "gain_db": {
-  "track01": {"club": -5.0442, "arcade": -5.0774, "velvet": -5.7518},
-  "track02": {"club": -5.4788, "arcade": -5.4705, "velvet": -5.5943},
-  "track03": {"club": -4.7652, "arcade": -4.8072, "velvet": -5.0048}
+  "track01": {"club": -5.0442, "arcade": -5.0775, "velvet": -5.7518},
+  "track02": {"club": -5.4789, "arcade": -5.4706, "velvet": -5.5944},
+  "track03": {"club": -4.7653, "arcade": -4.8073, "velvet": -5.0049},
+  "track04": {"club": -5.2162, "arcade": -4.9955, "velvet": -5.3874},
+  "track05": {"club": -5.3362, "arcade": -5.3269, "velvet": -5.6421},
+  "track06": {"club": -5.5810, "arcade": -5.6952, "velvet": -5.5582},
+  "track07": {"club": -5.2582, "arcade": -5.2825, "velvet": -5.0783},
+  "track08": {"club": -6.6306, "arcade": -6.5712, "velvet": -6.9257},
+  "track09": {"club": -5.4786, "arcade": -5.5315, "velvet": -5.3835},
+  "track10": {"club": -5.0989, "arcade": -5.1151, "velvet": -4.9966}
  }
 }

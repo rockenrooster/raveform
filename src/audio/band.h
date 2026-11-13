@@ -62,8 +62,12 @@ struct BeatView {
         const double s = (heardFrame - lastFrame[static_cast<u32>(k)]) / rate;
         return s < 0.0 ? 0.0f : static_cast<float>(s);
     }
-    // e^(-since / decay): 1 on the event, falling.
+    // e^(-since / decay): 1 on the event, falling. M5: envelope(Kick) follows the kicks the Track's pattern plays,
+    // which on Afterglow, Mirage and Last Light are not on every beat (the pump of look.md §7 is the kick's, as the
+    // sidechain is); anything meant "on the beat" takes beat() (or beatPhase), which is the song clock's.
     float envelope(audio::BeatKind k, float decaySeconds) const;
+    // M5: 1 on every heard beat of the song clock, e^(-t / decay) after it, whether or not a kick plays there.
+    float beat(float decaySeconds) const { return envelope(audio::BeatKind::Beat, decaySeconds); }
 };
 
 // What the run asks of the band where no switch (--band, --track, --no-audio) says otherwise.
@@ -173,7 +177,8 @@ public:
     bool saveSync();         // DONE: written to the app's preferences
     bool bluetooth() const { return bluetooth_; }
 
-    // Haptics: a light tick on heard kicks (and clicks), heavy on the Drop. Rate-limited.
+    // Haptics: a light tick on heard kicks (the Track's own, ghost kicks below half velocity skipped) and on the sync
+    // screen's clicks, heavy on the Drop. Rate-limited.
     void setHaptics(bool on) { haptics_ = on; }
     void setHapticStrong(bool strong) { hapticStrong_ = strong; }  // the STRONG setting (M3 stage C)
     void hapticPreview();  // one medium tick at the current strength (the settings screen)
@@ -305,6 +310,9 @@ private:
     // Main-thread cost of update(), per frame.
     float updateUs_[512] = {};
     u32 updateCount_ = 0;
+    // M5 (--audio-profile): the engine's time per stage, written by the audio thread, read once at the end of a run.
+    audio::EngineProfile profile_, profileStart_;
+    bool profiling_ = false;
 };
 
 }  // namespace rf

@@ -15,6 +15,17 @@ constexpr float kPiF = 3.14159265358979323846f;
 
 inline double midiHz(double m) { return 440.0 * std::exp2((m - 69.0) / 12.0); }
 
+// sin(2 pi t) for any t (in turns), without a libm call (M5: the P3 bell lead took two sinf a sample): reduced to a
+// quarter turn by symmetry, then the odd Taylor polynomial to x^11 (error below 6e-8 on [-pi/2, pi/2], about a float's
+// own rounding).
+inline float sinTurns(float t) {
+    t -= std::nearbyint(t);                  // [-0.5, 0.5]
+    if (t > 0.25f) t = 0.5f - t;             // sin(pi - x) = sin(x)
+    else if (t < -0.25f) t = -0.5f - t;
+    const float x = 2.0f * kPiF * t, x2 = x * x;
+    return x * (1.0f + x2 * (-1.0f / 6.0f + x2 * (1.0f / 120.0f + x2 * (-1.0f / 5040.0f + x2 * (1.0f / 362880.0f + x2 * (-1.0f / 39916800.0f))))));
+}
+
 // musicproto.polyblep: t is the phase in [0, 1), dt the phase increment per sample.
 inline float polyBlep(float t, float dt) {
     if (t < dt) {
@@ -26,6 +37,29 @@ inline float polyBlep(float t, float dt) {
         return x * x + x + x + 1.0f;
     }
     return 0.0f;
+}
+
+// M5 (cost): four PolyBLEP oscillator phases at once (NEON on the phones, SSE on the PC), for the lead's and the pads'
+// oscillator banks. The same recipe as polyBlep() with t / dt taken as t * (1 / dt), and branch-free.
+typedef float f4 __attribute__((ext_vector_type(4)));
+typedef int i4 __attribute__((ext_vector_type(4)));
+inline f4 select4(i4 mask, f4 a, f4 b) {
+    return __builtin_bit_cast(f4, (mask & __builtin_bit_cast(i4, a)) | (~mask & __builtin_bit_cast(i4, b)));
+}
+inline f4 polyBlep4(f4 t, f4 dt, f4 invDt) {
+    const f4 x1 = t * invDt, x2 = (t - 1.0f) * invDt;
+    const f4 rise = x1 + x1 - x1 * x1 - 1.0f, fall = x2 * x2 + x2 + x2 + 1.0f, none = 0.0f;
+    return select4(t < dt, rise, select4(t > 1.0f - dt, fall, none));
+}
+// One sample on: phase += dt, wrapped into [0, 1).
+inline void advance4(f4& phase, f4 dt) {
+    phase += dt;
+    phase += __builtin_convertvector(phase >= 1.0f, f4);  // the mask is -1 where it wrapped
+}
+inline f4 invDt4(f4 dt) {
+    f4 r;
+    for (int i = 0; i < 4; ++i) r[i] = dt[i] > 0.0f ? 1.0f / dt[i] : 0.0f;
+    return r;
 }
 
 // musicproto.saw / square: the value at the current phase, then one sample on.

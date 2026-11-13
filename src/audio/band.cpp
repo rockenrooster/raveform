@@ -31,6 +31,7 @@ constexpr i64 kTimestampMaxAgeNs = 500000000; // an older device timestamp is st
 constexpr double kSlew = 0.1;                 // share of the error corrected per frame
 constexpr double kLeadRuleCapMs = 80.0;       // TECH_SPEC 6.3: min(outputLatency, 80 ms)
 constexpr i64 kHapticGapNs = 120000000;       // at most one light tick per 120 ms
+constexpr double kHapticGhostVelocity = 0.5;  // M5: kicks softer than this (ghost notes) give no tick
 constexpr float kPauseLowpassHz = 600.0f, kPauseLowpassRampS = 0.15f;  // M3 stage C: screens.md pause (about 600 Hz, 150 ms)
 
 bool eq(const char* a, const char* b) { return std::strcmp(a, b) == 0; }
@@ -125,6 +126,10 @@ bool Band::init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice
     if (!engine_->init(*music_, *bank_, rate_, 1)) {
         RF_ERR("audio: engine init failed");
         return false;
+    }
+    if (args.audioProfile) {
+        engine_->setProfile(&profile_);
+        profiling_ = true;
     }
     view_.rate = rate_;
     for (double& f : view_.lastFrame) f = -1e18;
@@ -336,6 +341,10 @@ void Band::releaseHeard() {
             case BeatKind::Track: view_.track = e.a; break;
             case BeatKind::Kick:
             case BeatKind::Click:
+                // GAME_DESIGN 11.5: a light tick on the kicks the Track plays (M5: on Afterglow, Mirage and Last
+                // Light they are not on every beat, and that is the groove to feel); a ghost kick (below half
+                // velocity, Last Light's) is too soft to tick.
+                if (e.kind == BeatKind::Kick && e.x < kHapticGhostVelocity) break;
                 if (haptics_ && view_.running) {
                     const i64 now = audioNowNs();
                     if (now - lastHapticNs_ >= kHapticGapNs) {
@@ -769,6 +778,7 @@ void Band::resetMeasurements() {
     histCallbacks_.store(0, std::memory_order_relaxed);
     callbackAllocs_.store(0, std::memory_order_relaxed);
     updateCount_ = 0;
+    profileStart_ = profile_;  // the measured window's profile is the difference (the audio thread keeps adding)
 }
 
 Band::Report Band::report() const {
@@ -874,6 +884,14 @@ void Band::writeJson(JsonWriter& j) const {
     j.boolean("timestamped", r.timestamped);
     j.num("sync_offset_ms", syncOffsetMs_, 1);
     j.integer("haptic_calls", r.hapticCalls);
+    if (profiling_ && r.callbacks) {
+        // Microseconds of engine time per callback, per stage, over the measured window (a diagnostic: the timers cost
+        // a few percent themselves). A plain read of counters the audio thread adds to: approximate by design.
+        j.beginObject("profile_us_per_callback");
+        for (u32 s = 0; s < EngineProfile::Count; ++s)
+            j.num(EngineProfile::name(s), static_cast<double>(profile_.ns[s] - profileStart_.ns[s]) * 1e-3 / r.callbacks, 1);
+        j.endObject();
+    }
     if (r.rateMismatch) j.integer("device_rate_mismatch", r.rateMismatch);
     j.endObject();
 }

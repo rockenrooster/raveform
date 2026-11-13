@@ -9,13 +9,15 @@
 //   --silent                                everything plays and is measured as usual, the output is zeroed at
 //                                           the device (after the limiter): the PC's runs (run-desktop.ps1 adds
 //                                           it unless -Sound)
-//   --track 1|2|3|track01|...               the Track (default 1; bench_*: the palette's Track, Reef = 3)
+//   --track 1..10|track01..track10          the Track (default 1; bench_*: the palette's Track, Reef = 3)
 //   --sound club|arcade|velvet              the sound variant (default club, variants.json "reference")
 //   --intensity X                           director intensity 0..1 (play)
 //   --section groove|build|drop|break       start in this section (play); --hold keeps it
 //   --fire                                  the local player holds fire from the start
 //   --haptics on|off                        beat haptics (default on in the audio scenes, off elsewhere)
 //   --sync-offset MS                        sync calibration override for this run (not saved)
+//   --audio-profile                         M5, profiling: the engine's time per stage (the lead per timbre) in the
+//                                           benchmark result's audio_engine.profile (costs a few percent)
 
 #include "core/types.h"
 
@@ -34,6 +36,7 @@ struct AudioArgs {
     int haptics = -1;
     bool syncOffsetSet = false;
     float syncOffsetMs = 0.0f;
+    bool audioProfile = false;
 };
 
 // True when `arg` is one of the switches above.

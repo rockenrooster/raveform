@@ -3,8 +3,10 @@
 // log; also the loudness calibration and the listening sheets.
 //
 //   raveform_headless --render staged --track track01 --sound club --out x.wav [--events x.csv] [--stems dir]
-//   raveform_headless --render mock|sfx|leads|full|surge --out x.wav [--pcm16]
-//     (surge: the Surge listening test, Groove 4 / Build 4 / Drop 8 twice, Surge one grid step then two)
+//   raveform_headless --render mock|sfx|leads|full|surge|medley --out x.wav [--pcm16]
+//     (surge: the Surge listening test, Groove 4 / Build 4 / Drop 8 twice, Surge one grid step then two;
+//      full: the load test on --track; medley (M5): about 20 s of every Track's Drop with the real Track
+//      changes between them, Break -> Build -> Drop, driven bar by bar as the game's director does)
 //   raveform_headless --calibrate [--write src/audio/loudness_calibration.json] [--check]
 //
 // Exit codes: 0 ok, 1 failure, 2 bad arguments, 3 calibration out of date (--check).
@@ -49,6 +51,7 @@ struct Options {
     bool randomBursts = false;
     bool raw = false;
     bool profile = false;
+    i32 timbre = -1;        // M5: --timbre 0..3: every player of --render full on this lead (profiling)
     u32 burst = 192;
     float seconds = 0.0f;
     u64 seed = 1;
@@ -99,8 +102,17 @@ struct Render {
         Section section;
         u32 bar;
         double seconds;
-    } sections[32];
+    } sections[64];
     u32 sectionCount = 0;
+    // M5 (medley): a command posted when the render reaches this frame (-1: none).
+    i64 postAt = -1;
+    Command postCmd;
+    // M5 (medley): where each Track took over (Track events) and its tempo.
+    struct TrackStart {
+        u32 track, bar;
+        double seconds;
+    } trackStarts[16];
+    u32 trackStartCount = 0;
 };
 
 void drainEvents(Render& r) {
@@ -111,8 +123,11 @@ void drainEvents(Render& r) {
         if (e.kind == BeatKind::Section && r.sectionCount < countOf(r.sections))
             r.sections[r.sectionCount++] = {static_cast<Section>(e.a), static_cast<u32>(e.tick / kTicksPerBar),
                                             static_cast<double>(e.frame) / kRate};
+        if (e.kind == BeatKind::Track && r.trackStartCount < countOf(r.trackStarts))
+            r.trackStarts[r.trackStartCount++] = {e.a, static_cast<u32>(e.tick / kTicksPerBar), static_cast<double>(e.frame) / kRate};
+        // x in full precision: a tempo row's ticks per frame rebuilds the tempo map (audio_check.py tempo-onsets).
         if (r.events)
-            std::fprintf(r.events, "%lld,%.6f,%s,%u,%u,%u,%.6f,%u,%.4f\n", static_cast<long long>(e.frame), e.tick,
+            std::fprintf(r.events, "%lld,%.6f,%s,%u,%u,%u,%.6f,%u,%.17g\n", static_cast<long long>(e.frame), e.tick,
                          beatKindName(e.kind), e.a, e.b, e.c, e.value, e.index, e.x);
     }
 }
@@ -307,18 +322,18 @@ void mockStep(Render& r, const MusicData& music, u32 frameIndex, Random& rng) {
     }
 }
 
-// The full band for the load test: Drop held, all four players firing with mods, every Riff.
-void fullStep(Render& r, u32 frameIndex) {
+// The full band for the load test: Drop held, all four players firing with mods, every Riff (M5: on --track).
+void fullStep(Render& r, u32 track, u32 frameIndex) {
     Engine& e = *r.engine;
     if (frameIndex != 0) return;
-    e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
+    e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(track), 0));
     e.post(cmd(CmdType::SetPlayers, 4, 0));
     e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
     e.post(cmd(CmdType::SetSection, static_cast<u8>(Section::Drop)));
     e.post(cmd(CmdType::HoldSection, 1));
     for (u8 p = 0; p < 4; ++p) {
         e.post(cmd(CmdType::SetFire, p, 1));
-        e.post(cmd(CmdType::SetTimbre, p, p));
+        e.post(cmd(CmdType::SetTimbre, p, r.opt.timbre >= 0 ? static_cast<u8>(r.opt.timbre) : p));  // M5: --timbre (profiling)
         for (u8 k = 0; k < 3; ++k) e.post(cmd(CmdType::SetRiff, p, k, 2));
         Command m = cmd(CmdType::SetMods, p);
         m.mods[0] = 1;  // split (the device load test --band full)
@@ -348,6 +363,71 @@ void surgeStep(Render& r, u32 track, u32 frameIndex) {
     if (next == 16) {
         e.post(cmd(CmdType::SetSection, static_cast<u8>(Section::Groove)));
         e.post(cmd(CmdType::SetSurge, 2));
+    }
+}
+
+// M5: the set list as a medley. The conductor driven bar by bar the way the game's director drives it (SetPhrase for
+// the next bar, posted while the bar before plays; SetTrack with the first bar of a Track-change Break): Track 1's
+// Groove (2 bars) and Build (4), then about 20 s of each Track's Drop, and between two Tracks the real change: the
+// eight-bar Break (tempo ramp, key on its fifth bar) and the new Track's Build (its riser at its tempo, the 85% bar)
+// into its Drop (impact, Surge). Track 10 ends in four bars of its Break. One player fires in the Builds and Drops and
+// rests in the Breaks (the bed echoes the arp); Sentinel, Pulse Ring and Orbitals at level 1, intensity 1.
+constexpr double kMedleyDropS = 20.0;
+struct MedleyBar {
+    u8 track, section, bar, bars;
+    bool change;  // the first bar of a Track-change Break
+};
+constexpr u32 kMedleyMaxBars = 400;
+
+u32 medleyPlan(const MusicData& music, MedleyBar* plan, double& seconds) {
+    u32 n = 0;
+    seconds = 0.0;
+    const auto add = [&](u32 track, Section s, u32 bars, bool change, double bpmA, double bpmB) {
+        for (u32 b = 0; b < bars && n < kMedleyMaxBars; ++b) {
+            plan[n++] = {static_cast<u8>(track), static_cast<u8>(s), static_cast<u8>(b), static_cast<u8>(bars), change && b == 0};
+            seconds += 240.0 / (bpmA < bpmB ? bpmA : bpmB) / (s == Section::Build && b + 1 == bars ? 0.85 : 1.0);
+        }
+    };
+    for (u32 t = 0; t < music.trackCount; ++t) {
+        const double bpm = music.tracks[t].bpm;
+        if (t == 0) {
+            add(0, Section::Groove, 2, false, bpm, bpm);
+        } else {
+            add(t, Section::Break, 8, true, music.tracks[t - 1].bpm, bpm);
+        }
+        add(t, Section::Build, 4, false, bpm, bpm);
+        add(t, Section::Drop, static_cast<u32>(std::lround(kMedleyDropS * bpm / 240.0)), false, bpm, bpm);
+    }
+    const u32 last = music.trackCount - 1;
+    add(last, Section::Break, 4, false, music.tracks[last].bpm, music.tracks[last].bpm);
+    return n;
+}
+
+void medleyStep(Render& r, const MedleyBar* plan, u32 planBars, u32 frameIndex) {
+    Engine& e = *r.engine;
+    if (frameIndex == 0) {
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
+        e.post(cmd(CmdType::SetForm, static_cast<u8>(Form::Short)));
+        e.post(cmd(CmdType::SetPlayers, 1, 0));
+        e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+        e.post(cmd(CmdType::SetFire, 0, 1));
+        for (u8 k = 0; k < static_cast<u8>(Riff::Count); ++k) e.post(cmd(CmdType::SetRiff, 0, k, 1));
+    }
+    if (r.lastBar < 0 || r.lastBar == r.scriptedBar) return;
+    r.scriptedBar = r.lastBar;
+    const u32 next = static_cast<u32>(r.lastBar + 1);
+    if (next >= planBars) return;
+    const MedleyBar& b = plan[next];
+    if (b.change) {
+        e.post(cmd(CmdType::SetTrack, b.track, 0));  // through the Break, at the Track's own tempo
+        e.post(cmd(CmdType::SetForm, static_cast<u8>(Form::Standard)));
+    }
+    e.post(cmd(CmdType::SetPhrase, b.section, b.bar, b.bars));
+    if (b.bar == 0) {
+        // Fire changes exactly on the bar line (the player lets go as the Break begins): posted when the render
+        // reaches the frame of that downbeat (the current bar's tempo says when it comes).
+        r.postAt = e.tempo().gridFrame(static_cast<double>(static_cast<i64>(next) * kTicksPerBar));
+        r.postCmd = cmd(CmdType::SetFire, 0, b.section == static_cast<u8>(Section::Break) ? 0 : 1);
     }
 }
 
@@ -383,10 +463,18 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
     double seconds = opt.seconds;
     const bool staged = eq(opt.render, "staged");
     const bool mock = eq(opt.render, "mock"), sfx = eq(opt.render, "sfx"), leads = eq(opt.render, "leads"),
-               full = eq(opt.render, "full"), surge = eq(opt.render, "surge");
+               full = eq(opt.render, "full"), surge = eq(opt.render, "surge"), medley = eq(opt.render, "medley");
     if (staged && seconds <= 0.0f) seconds = static_cast<float>(tr.arrangementBars * barS + 2.5);  // musicproto.Mixer length
     if (mock && seconds <= 0.0f) seconds = static_cast<float>(26.0 * barS + 2.5);
     if (full && seconds <= 0.0f) seconds = 60.0f;
+    static MedleyBar plan[kMedleyMaxBars];
+    u32 planBars = 0;
+    constexpr double kMedleyTailS = 2.5, kMedleyFadeS = 2.0;
+    if (medley) {
+        double planS = 0.0;
+        planBars = medleyPlan(music, plan, planS);
+        seconds = static_cast<float>(planS * 1.05 + 10.0);  // room; cut to the plan's end below
+    }
     constexpr double kSurgeTailS = 2.0, kSurgeFadeS = 1.5;  // into the Break that follows, faded out
     if (surge) {
         // Two Builds, each with its last bar at the conductor's slower speed.
@@ -400,7 +488,7 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
     }
     if (leads) seconds = static_cast<float>(4 * 4.5 + 0.5);
     if (seconds <= 0.0f) {
-        RF_ERR("unknown render '%s' (staged, mock, sfx, leads, full, surge)", opt.render);
+        RF_ERR("unknown render '%s' (staged, mock, sfx, leads, full, surge, medley)", opt.render);
         return 2;
     }
     r.frames = static_cast<u64>(seconds * kRate);
@@ -440,15 +528,53 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
     } else {
         Random rng(opt.seed + 99);
         u32 frameIndex = 0;
+        u64 medleyEnd = 0;
         while (r.done < r.frames) {
             if (mock) mockStep(r, music, frameIndex, rng);
-            if (full) fullStep(r, frameIndex);
+            if (full) fullStep(r, t, frameIndex);
             if (surge) surgeStep(r, t, frameIndex);
+            if (medley) {
+                medleyStep(r, plan, planBars, frameIndex);
+                if (!medleyEnd && r.lastBar >= static_cast<i32>(planBars) - 1) {
+                    // The plan's last bar is playing: the medley ends a tail after its end.
+                    const double endTick = static_cast<double>(static_cast<i64>(planBars) * kTicksPerBar);
+                    medleyEnd = static_cast<u64>(engine.tempo().gridFrame(endTick)) + static_cast<u64>(kMedleyTailS * kRate);
+                    if (medleyEnd < r.frames) r.frames = medleyEnd;
+                }
+            }
             ++frameIndex;
-            renderTo(r, r.done + kRate / 60);
+            const u64 until = r.done + kRate / 60;
+            if (r.postAt >= 0 && static_cast<u64>(r.postAt) <= until) {
+                renderTo(r, static_cast<u64>(r.postAt));
+                engine.post(r.postCmd);
+                r.postAt = -1;
+            }
+            renderTo(r, until);
         }
     }
     drainEvents(r);
+    if (medley) {
+        // Faded out over the last seconds (Track 10's Break), then where each Track's Drop began.
+        const u64 fade = static_cast<u64>(kMedleyFadeS * kRate);
+        for (u64 i = 0; i < fade && i < r.frames; ++i) {
+            const float g = static_cast<float>(i) / static_cast<float>(fade);
+            r.out[(r.frames - 1 - i) * 2] *= g;
+            r.out[(r.frames - 1 - i) * 2 + 1] *= g;
+        }
+        seconds = static_cast<float>(static_cast<double>(r.frames) / kRate);
+        u32 track = 0;
+        for (u32 i = 0; i < r.sectionCount; ++i) {
+            const auto& s = r.sections[i];
+            for (u32 k = 0; k < r.trackStartCount; ++k)
+                if (r.trackStarts[k].bar <= s.bar) track = r.trackStarts[k].track;
+            const double m = std::floor(s.seconds / 60.0);
+            std::printf("medley: %-6s bar %3u at %7.3f s (%.0f:%06.3f)  %s\n", sectionName(s.section), s.bar, s.seconds, m,
+                        s.seconds - 60.0 * m, music.tracks[track].name);
+        }
+        for (u32 k = 0; k < r.trackStartCount; ++k)
+            std::printf("medley: Track %u (%s) takes over on bar %u at %.3f s\n", r.trackStarts[k].track + 1,
+                        music.tracks[r.trackStarts[k].track].name, r.trackStarts[k].bar, r.trackStarts[k].seconds);
+    }
     if (surge) {
         // Faded out in the Break that follows the second Drop; then where each section began.
         const u64 fade = static_cast<u64>(kSurgeFadeS * kRate);
@@ -609,6 +735,10 @@ int main(int argc, char** argv) {
         } else if (eq(a, "--seconds") && next) {
             opt.seconds = static_cast<float>(std::atof(next));
             ++i;
+        } else if (eq(a, "--timbre") && next) {
+            opt.timbre = std::atoi(next);
+            ++i;
+            ok = opt.timbre >= 0 && opt.timbre < static_cast<i32>(Timbre::Count);
         } else if (eq(a, "--seed") && next) {
             opt.seed = static_cast<u64>(std::atoll(next));
             ++i;

@@ -2,22 +2,25 @@
 #   scripts\render-audio.ps1                 every Track x variant: engine render, match table, onset check,
 #                                            and the listening files (WAV + MP3) in captures\m2\
 #   scripts\render-audio.ps1 -Only track01_club
-#   scripts\render-audio.ps1 -SkipRef        reuse captures\m2\ref (prototype renders take ~3 minutes)
-# Writes captures\m2\match_table.md. The prototype references come from scripts\audio_ref.py.
+#   scripts\render-audio.ps1 -SkipRef        reuse captures\m2\ref (prototype renders take ~20 s each)
+#   scripts\render-audio.ps1 -Out captures\m5audio    (M5: another folder; every Track of design\music\ is matched)
+# Writes <Out>\match_table.md. The prototype references come from scripts\audio_ref.py.
 param(
     [string]$Only = '',
     [switch]$SkipRef,
-    [switch]$NoListening
+    [switch]$NoListening,
+    [string]$Out = 'captures\m2'
 )
 . "$PSScriptRoot\env.ps1"
 . "$PSScriptRoot\audio-common.ps1"
 
 $exe = Build-RfHeadless
-$out = Join-Path $RF_ROOT 'captures\m2'
+$out = if ([System.IO.Path]::IsPathRooted($Out)) { $Out } else { Join-Path $RF_ROOT $Out }
 $eng = Join-Path $out 'eng'
 $ref = Join-Path $out 'ref'
 New-Item -ItemType Directory -Force $out, $eng, $ref | Out-Null
-$tracks = @('track01', 'track02', 'track03')
+# M5: the set list is every design\music\trackNN.json (ten since 2026-11-12).
+$tracks = @(Get-ChildItem (Join-Path $RF_ROOT 'design\music') -Filter 'track??.json' | Sort-Object Name | ForEach-Object { $_.BaseName })
 $sounds = @('club', 'arcade', 'velvet')
 $haveFfmpeg = [bool](Get-Command ffmpeg -ErrorAction SilentlyContinue)
 

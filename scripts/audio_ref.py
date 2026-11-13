@@ -70,7 +70,9 @@ def render(track_id, variant_id, out_dir):
 def main():
     out_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "captures", "m2", "ref")
     os.makedirs(out_dir, exist_ok=True)
-    tracks = [sys.argv[2]] if len(sys.argv) > 2 else ["track01", "track02", "track03"]
+    # M5: every Track of the set list (design/music/trackNN.json).
+    every = sorted(os.path.splitext(f)[0] for f in os.listdir(MUSIC) if f.startswith("track") and f.endswith(".json"))
+    tracks = [sys.argv[2]] if len(sys.argv) > 2 else every
     variants = [sys.argv[3]] if len(sys.argv) > 3 else ["club", "arcade", "velvet"]
     for t in tracks:
         for v in variants:

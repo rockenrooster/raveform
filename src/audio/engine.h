@@ -36,6 +36,9 @@ enum class Form : u8 { Short, Standard };  // 8/4/8/4 or 12/4/16/4 bars (GAME_DE
 
 // What the band played, stamped in song time: `frame` is the write frame the sound starts on. The main
 // thread applies each one when heard time reaches it (TECH_SPEC 6.6).
+// M5: Beat and Bar come from the song clock (every beat and bar line, whatever plays); Kick is a kick the Track's
+// pattern really has. Afterglow (half time), Mirage (broken kick) and Last Light (two-step) have beats without a
+// kick and kicks off the beat: nothing may read Kick as the beat.
 enum class BeatKind : u8 {
     Kick, Snare, Clap, Hat, Shaker, Bass, Lead, Stab, Pulse, Pad, Riser, Swell, Impact,
     Bar, Beat, Section, Click, Sfx, Tempo, Variant, Track, Count
@@ -45,7 +48,8 @@ const char* beatKindName(BeatKind k);
 struct BeatEvent {
     i64 frame = 0;       // write frame of the onset
     double tick = -1.0;  // musical position (< 0: not on the grid)
-    double x = 0.0;      // Tempo: ticks per frame; notes: frequency in Hz
+    double x = 0.0;      // Tempo: ticks per frame; notes: frequency in Hz; Kick: the pattern's velocity (0..1);
+                         // Riser, Swell, Impact: the playback rate
     float value = 0.0f;  // velocity, level or gain
     u32 index = 0;       // Bar, Section, Beat: bar number; Lead: step in the bar
     BeatKind kind = BeatKind::Beat;
@@ -126,8 +130,9 @@ struct EngineStats {
 };
 
 // Offline profiling: nanoseconds spent per stage of renderBlock (set with Engine::setProfile).
+// M5: the lead per timbre (each voice timed: a few percent of overhead, profiling runs only).
 struct EngineProfile {
-    enum Stage : u32 { Lead, Bass, Stab, Pad, Samples, BusFx, Delay, Reverb, SfxReverb, Master, Count };
+    enum Stage : u32 { Lead, LeadSquare, LeadBell, LeadStab, Bass, Stab, Pad, Samples, BusFx, Delay, Reverb, SfxReverb, Master, Count };
     u64 ns[Count] = {};
     static const char* name(u32 s);
 };
@@ -171,6 +176,10 @@ public:
 
     // Diagnostics for tests: the engine's own view (audio thread or a stopped engine only).
     const TempoMap& tempo() const { return tempo_; }
+    // M5 (tests): the sidechain envelope (0..1, before each bus's depth) of the last block rendered, frame by frame from
+    // the block's first frame (frame_ - n), and the block's length.
+    const float* duckBlock() const { return duck_; }
+    u32 duckBlockFrames() const { return duckFrames_; }
 
 private:
     struct LeadVoice;
@@ -209,13 +218,29 @@ private:
     void playBass(float midi, float vel, float steps, i64 frame);
     void playStab(const Chord& chord, float vel, float pan, i64 frame);
     void playPad(const Chord& chord, float level, float bright, i64 frame);
-    void playKick(float gain, i64 frame, double tick);
+    void playKick(float gain, float velocity, i64 frame, double tick);
     void playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, double tick, float rateMul = 1.0f);
+    // M5: each pool's active voices in the order they start (start frame, then allocation), the order they are summed
+    // into the buses in: the sums do not depend on which slot a voice got, which depends on where the device's
+    // callbacks fell (random bursts render bit for bit like fixed ones).
+    struct Order {
+        u8 idx[128];
+        u32 n = 0;
+    };
+    enum Pool : u32 { PoolLead, PoolBass, PoolStab, PoolPad, PoolSample, PoolCount };
+    Order order_[PoolCount];
+    u32 voiceSeq_ = 0;
     template <typename V>
-    V* allocVoice(V* pool, u32 count);
+    V* allocVoice(V* pool, u32 count, Order& order);
+    template <typename V>
+    void placeVoice(V* pool, Order& order, V* v, i64 frame);  // after the voice is set up: start frame, sum order
+    template <typename V>
+    static void compactOrder(Order& order, const V* pool);
 
     // Rendering.
     void renderBlock(float* out, u32 n, u32 channels);
+    template <Timbre T>
+    struct LeadRun;  // one lead voice's per-sample state in locals (engine.cpp)
     template <Timbre T>
     void renderLead(LeadVoice& v, float* __restrict L, float* __restrict R, u32 cnt, float sr);
     void updateBpmStat();
@@ -312,11 +337,14 @@ private:
     i64 lastKick_ = -(1ll << 40);
     i64 prevKick_ = -(1ll << 40);
     u32 duckLen_ = 0;
+    float duck_[kBlock] = {};  // the sidechain envelope of the block being rendered
+    u32 duckFrames_ = 0;
     struct GainPoint {
         double frame;
         float gain;
     } gainPts_[64];
     u32 gainHead_ = 0, gainCount_ = 0;
+    double gainPredictedF_ = -1.0;  // M5: the next section's first gain point, planned on the last bar (-1: none)
     float outGain_ = 1.0f, outGainTarget_ = 1.0f;
     float musicGain_ = 1.0f, sfxGain_ = 1.0f;
     // M4 co-op, "music from host only": the bed's gain (every music bus but the lead), ramped toward 0 or 1.
