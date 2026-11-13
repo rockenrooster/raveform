@@ -820,6 +820,16 @@ public:
     };
     static constexpr u32 kTrails = 96;
     const Trail* trails() const { return trails_; }
+    // Skitter B's mines (lethal circles a player sets off), Blink C's decoys (white copies that stop shots), Sentry C's domes.
+    struct Spot {
+        Vec2 at;
+        float r = 0.0f;
+        double until = -1.0;  // < m1: gone
+    };
+    static constexpr u32 kSpots = 64;
+    const Spot* enemyMines() const { return emines_; }
+    const Spot* decoys() const { return decoys_; }
+    u32 domes(Vec2* at, float* r, u32 cap) const;
     u32 tetherBeams(Vec2* a, Vec2* b, u32 cap) const;
     Vec2 wellPull(Vec2 pos) const;
     // Tests and pictures: a Wyrm's chain or a Tether's pair (triad) as the spawner makes them.
@@ -947,7 +957,13 @@ private:
     void landFamily4(u32 i, const Species& s, const FamilyData& fd, Vec2 to);
     void moveFamily4(u32 i, const Species& s, const FamilyData& fd, float dt, i32 tp, Vec2 to, bool engaged);
     void updateTrails();
-    bool hazardHits(u32 p, Vec2& from) const;
+    bool hazardHits(u32 p, Vec2& from);
+    void layMine(Vec2 at, float r, float bars);
+    void addDecoy(Vec2 at, float r, double until);
+    void familyDeath4(u32 i, const Species& s);
+    void shoalVariant(u32 i, const Species& s, const FamilyData& fd, i32 tp, Vec2 to);
+    void caromSplit(u32 i, const Species& s, const FamilyData& fd);
+    void skitterHop(u32 i, Vec2 dir);
     void findWells();
     void wellShots(float dt);
     bool wellSwallow(u32 i, u32 k);
@@ -1086,6 +1102,10 @@ private:
     u16 groupSlot_[kGroupSlots] = {};
     u32 groupCount_ = 0;
     Trail trails_[kTrails];
+    Spot emines_[kSpots], decoys_[kSpots];
+    Vec2 domeAt_[16];
+    float domeR_[16] = {};
+    u32 domeCount_ = 0;
     u16 wellIdx_[kMaxWells] = {};
     u32 wellCount_ = 0;
     // The loop's ramps this tick (GAME_DESIGN 8; 1 in the first pass): enemy speed, enemy bullet speed, shooters' counts.

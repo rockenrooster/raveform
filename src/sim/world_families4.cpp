@@ -435,7 +435,7 @@ void World::updateTrails() {
     }
 }
 
-bool World::hazardHits(u32 p, Vec2& from) const {
+bool World::hazardHits(u32 p, Vec2& from) {
     // A player's body against the lethal lines: Tether beams, Weaver trails, Ram B's wake, a Weaver C trail as it blows.
     const Vec2 c = players_[p].pos;
     const auto seg = [&](Vec2 a, Vec2 b, float half) {
@@ -451,6 +451,14 @@ bool World::hazardHits(u32 p, Vec2& from) const {
     const u32 nb = tetherBeams(ba, bb, 64);
     for (u32 k = 0; k < nb; ++k)
         if (seg(ba[k], bb[k], 0.5f * species_->family(Family::Tether).beamWidth)) return true;
+    // Skitter B's mines: set off by a ship within their radius (spent).
+    for (Spot& m : emines_) {
+        if (m.until < m1_) continue;
+        if (lengthSq(c - m.at) > (m.r + kPlayerHitRadius) * (m.r + kPlayerHitRadius)) continue;
+        m.until = -1.0;
+        from = m.at;
+        return true;
+    }
     for (const Trail& t : trails_) {
         if (t.n < 2) continue;
         for (u32 k = 1; k < t.n; ++k) {
@@ -507,18 +515,191 @@ Vec2 World::wellPull(Vec2 pos) const {
 }
 
 void World::findWells() {
+    // The Wells, and Sentry C's domes (up while another body stands within shieldsNeighboursWithinWu of it), this tick.
     wellCount_ = 0;
+    domeCount_ = 0;
     const Enemies& e = enemies_;
-    for (u32 i = 0; i < e.count && wellCount_ < kMaxWells; ++i)
-        if (!(e.flags[i] & kFlagDead) && e.state[i] != kWarping && species_->get(e.species[i]).family == Family::Well) wellIdx_[wellCount_++] = static_cast<u16>(i);
+    for (u32 i = 0; i < e.count; ++i) {
+        if ((e.flags[i] & kFlagDead) || e.state[i] == kWarping) continue;
+        const Species& s = species_->get(e.species[i]);
+        if (s.family == Family::Well && wellCount_ < kMaxWells) wellIdx_[wellCount_++] = static_cast<u16>(i);
+        if (s.family == Family::Sentry && s.variant == kVariantC && domeCount_ < 16) {
+            const FamilyData& fd = species_->family(Family::Sentry);
+            const float R = fd.v.domeWithinWu;
+            bool near = false;
+            grid_.query(e.x[i] - R, e.y[i] - R, e.x[i] + R, e.y[i] + R, [&](u32 j) {
+                if (j == i || near || (e.flags[j] & kFlagDead)) return;
+                near = lengthSq(Vec2{e.x[j] - e.x[i], e.y[j] - e.y[i]}) <= R * R;
+            });
+            if (near) {
+                domeAt_[domeCount_] = Vec2{e.x[i], e.y[i]};
+                domeR_[domeCount_++] = fd.v.domeRadius;
+            }
+        }
+    }
+}
+
+u32 World::domes(Vec2* at, float* r, u32 cap) const {
+    u32 n = 0;
+    for (u32 k = 0; k < domeCount_ && n < cap; ++k, ++n) {
+        at[n] = domeAt_[k];
+        r[n] = domeR_[k];
+    }
+    return n;
+}
+
+void World::layMine(Vec2 at, float r, float bars) {
+    for (Spot& m : emines_)
+        if (m.until < m1_) {
+            m.at = at;
+            m.r = r;
+            m.until = m1_ + static_cast<double>(bars) * kTicksPerBar;
+            return;
+        }
+}
+
+void World::addDecoy(Vec2 at, float r, double until) {
+    for (Spot& d : decoys_)
+        if (d.until < m1_) {
+            d.at = at;
+            d.r = r;
+            d.until = until;
+            return;
+        }
+}
+
+void World::familyDeath4(u32 i, const Species& s) {
+    // Drifter C splits into splitInto smaller ones (a tier down; none from tier 1); a Flanker's death quickens the Flanker
+    // C near it. The host's (killEnemy).
+    Enemies& e = enemies_;
+    const FamilyData& fd = species_->family(s.family);
+    const Vec2 at{e.x[i], e.y[i]};
+    if (s.family == Family::Drifter && s.variant == kVariantC && s.tier > fd.v.childTierDrop) {
+        const u16 child = SpeciesTable::index(Family::Drifter, s.tier - fd.v.childTierDrop, kVariantA);
+        for (u32 k = 0; k < fd.v.splitInto; ++k) {
+            const float a = e.heading[i] + kTau * static_cast<float>(k) / static_cast<float>(fd.v.splitInto ? fd.v.splitInto : 1u);
+            spawnEnemy(child, at + dirOf(a) * 16.0f, a, m1_);
+        }
+    }
+    if (s.family == Family::Flanker) {
+        const FamilyData& ff = species_->family(Family::Flanker);
+        const float R = ff.v.speedWithinWu;
+        grid_.query(at.x - R, at.y - R, at.x + R, at.y + R, [&](u32 j) {
+            if (j == i || (e.flags[j] & kFlagDead)) return;
+            const Species& o = species_->get(e.species[j]);
+            if (o.family != Family::Flanker || o.variant != kVariantC || lengthSq(Vec2{e.x[j], e.y[j]} - at) > R * R) return;
+            if (e.step[j] < 250) e.step[j] = static_cast<u8>(e.step[j] + 1);
+        });
+    }
+}
+
+void World::shoalVariant(u32 i, const Species& s, const FamilyData& fd, i32 tp, Vec2 to) {
+    // Shoal B: every second bar, for its first beat, the school streams through its player in streamLines lines at lineSpeed.
+    // Shoal C: on each bar's first beat, after a beat's tell, it charges as a spear at spearSpeed.
+    Enemies& e = enemies_;
+    if (tp < 0) return;
+    const double inBar = std::fmod(m1_, kTicksPerBar);
+    const i64 bar = static_cast<i64>(std::floor(m1_ / kTicksPerBar));
+    const Vec2 d = normalizeOr(to, dirOf(e.heading[i]));
+    if (s.variant == kVariantB) {
+        if ((bar & 1) || inBar >= kTicksPerBeat) return;
+        const u32 lines = fd.v.streamLines ? fd.v.streamLines : 1u;
+        const float lane = (static_cast<float>(e.serial[i] % lines) - 0.5f * static_cast<float>(lines - 1)) * 60.0f;
+        const Vec2 aim = normalizeOr(to + perpOf(d) * lane, d);
+        e.vx[i] = aim.x * fd.v.lineSpeed;
+        e.vy[i] = aim.y * fd.v.lineSpeed;
+        e.heading[i] = angleOf(aim);
+        return;
+    }
+    // C
+    if (inBar >= kTicksPerBar - kTicksPerBeat * static_cast<double>(fd.v.spearTellBeats) && e.serial[i] % 6u == 0) {
+        if (m0_ < bar * kTicksPerBar + kTicksPerBar - kTicksPerBeat * fd.v.spearTellBeats &&
+            m1_ >= bar * kTicksPerBar + kTicksPerBar - kTicksPerBeat * fd.v.spearTellBeats) {
+            Event ev;
+            ev.type = EventType::Telegraph;
+            ev.species = e.species[i];
+            ev.x = e.x[i];
+            ev.y = e.y[i];
+            ev.x2 = d.x;
+            ev.y2 = d.y;
+            ev.tick = (bar + 1) * kTicksPerBar;
+            emit(ev);
+        }
+    }
+    if (inBar >= kTicksPerBeat) return;
+    e.vx[i] = d.x * fd.v.spearSpeed;
+    e.vy[i] = d.y * fd.v.spearSpeed;
+    e.heading[i] = angleOf(d);
+}
+
+void World::caromSplit(u32 i, const Species& s, const FamilyData& fd) {
+    // Carom C: every splitEveryBounces bounces it splits (at most maxSplits times): a copy flies off at 45 degrees, each with
+    // half the health. step counts its bounces, b its splits. The host's.
+    Enemies& e = enemies_;
+    e.step[i] = static_cast<u8>(e.step[i] + 1);
+    if (!fd.v.splitEveryBounces || e.step[i] % fd.v.splitEveryBounces || e.b[i] >= static_cast<float>(fd.v.maxSplits) || role_ == NetRole::Client) return;
+    e.b[i] += 1.0f;
+    e.hp[i] *= 0.5f;
+    const Vec2 v{e.vx[i], e.vy[i]};
+    const float h = angleOf(v) + 0.25f * kPi;
+    const i32 c = spawnEnemy(e.species[i], Vec2{e.x[i], e.y[i]}, h, m1_);
+    if (c < 0) return;
+    e.hp[c] = e.hp[i];
+    e.a[c] = e.a[i];
+    e.b[c] = e.b[i];
+    e.step[c] = e.step[i];
+    const Vec2 nv = dirOf(h) * length(v);
+    e.vx[c] = nv.x;
+    e.vy[c] = nv.y;
+    (void)s;
+}
+
+void World::skitterHop(u32 i, Vec2 dir) {
+    // Skitter C: shot (and not cooling down), it blinks blinkHopWu aside, square to the shot.
+    Enemies& e = enemies_;
+    const FamilyData& fd = species_->family(Family::Skitter);
+    if (m1_ < e.until[i] || e.state[i] == kDodge) return;
+    const Vec2 side = perpOf(dir) * ((e.serial[i] & 1u) ? 1.0f : -1.0f);
+    e.x[i] = clampf(e.x[i] + side.x * fd.v.blinkHopWu, -kArenaHalfW, kArenaHalfW);
+    e.y[i] = clampf(e.y[i] + side.y * fd.v.blinkHopWu, -kArenaHalfH, kArenaHalfH);
+    e.px[i] = e.x[i];
+    e.py[i] = e.y[i];
+    e.until[i] = m1_ + static_cast<double>(fd.v.blinkCooldownBeats) * kTicksPerBeat;
+    Event ev;
+    ev.type = EventType::WarpLand;
+    ev.species = e.species[i];
+    ev.x = e.x[i];
+    ev.y = e.y[i];
+    emit(ev);
 }
 
 void World::wellShots(float dt) {
     // Wells bend the shots passing within pullRadius toward them (shotBend: a turn of that many radians a second at the
-    // well, none at the edge); B and C swallow those that reach them (counted for the ring); C grows by a quarter for
-    // each growPerShotsSwallowed and, overfed (burstAtScale), bursts into a ring of its own (the host's).
-    if (!wellCount_) return;
+    // well, none at the edge; swallowing: wellSwallow, from collide()). Blink C's decoys and Sentry C's domes stop shots.
     Shots& s = shots_;
+    bool decoys = false;
+    for (const Spot& d : decoys_) decoys = decoys || d.until >= m1_;
+    if (decoys || domeCount_)
+        for (u32 k = 0; k < s.count; ++k) {
+            if (s.dead[k]) continue;
+            const Vec2 p{s.x[k], s.y[k]};
+            bool stop = false;
+            for (const Spot& d : decoys_)
+                stop = stop || (d.until >= m1_ && lengthSq(p - d.at) <= (d.r + s.radius[k]) * (d.r + s.radius[k]));
+            for (u32 q = 0; q < domeCount_ && !stop; ++q) stop = lengthSq(p - domeAt_[q]) <= domeR_[q] * domeR_[q];
+            if (!stop) continue;
+            s.dead[k] = 1;
+            Event ev;
+            ev.type = EventType::Impact;
+            ev.species = 0;
+            ev.b = s.owner[k];
+            ev.x = p.x;
+            ev.y = p.y;
+            ev.x2 = s.dx[k];
+            ev.y2 = s.dy[k];
+            emit(ev);
+        }
+    if (!wellCount_) return;
     Enemies& e = enemies_;
     const FamilyData& fd = species_->family(Family::Well);
     for (u32 k = 0; k < s.count; ++k) {

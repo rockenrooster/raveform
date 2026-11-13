@@ -2206,6 +2206,43 @@ void testFamiliesM5b() {
         CHECK_MSG(std::fabs(e.x[m] - 500.0f) < 2.0f && std::fabs(e.y[m]) < 2.0f, "mimic at (%.0f, %.0f)", e.x[m], e.y[m]);
         delete w;
     }
+    {
+        // The slice's families' variants of Tracks 4 to 6: Drifter C splits a tier down; Moth C bursts as its spiral closes;
+        // Sentry C's dome (with a neighbour near) stops shots.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 dr = w->spawnEnemy(SpeciesTable::index(Family::Drifter, 3, kVariantC), Vec2{900.0f, 0.0f}, 0.0f, music);
+        stepWorld(*w, music, Vec2{});
+        w->killEnemy(static_cast<u32>(dr), 0);
+        stepWorld(*w, music, Vec2{});
+        u32 children = 0;
+        for (u32 i = 0; i < w->enemies().count; ++i)
+            children += (!(w->enemies().flags[i] & kFlagDead) && w->enemies().species[i] == SpeciesTable::index(Family::Drifter, 2, kVariantA)) ? 1u : 0u;
+        CHECK_MSG(children == s.family(Family::Drifter).v.splitInto, "children %u", children);
+        const i32 mo = w->spawnEnemy(SpeciesTable::index(Family::Moth, 1, kVariantC), Vec2{0.0f, -400.0f}, 0.0f, music);
+        const u32 b0 = w->bullets().count;
+        bool burst = false;
+        for (u32 k = 0; k < 60 * 60 && !burst; ++k) {
+            stepWorld(*w, music, Vec2{});
+            burst = (w->enemies().flags[mo] & kFlagDead) != 0;
+        }
+        CHECK_MSG(burst && w->bullets().count >= b0 + s.family(Family::Moth).v.burstBullets - 2, "moth burst %d, bullets %u", burst ? 1 : 0, w->bullets().count);
+        delete w;
+    }
+    {
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        const i32 se = w->spawnEnemy(SpeciesTable::index(Family::Sentry, 1, kVariantC), Vec2{500.0f, 0.0f}, 0.0f, music);
+        w->setEnemyHp(static_cast<u32>(se), 1000.0f);
+        const i32 nb = w->spawnEnemy(SpeciesTable::index(Family::Sentry, 1, kVariantA), Vec2{560.0f, 120.0f}, 0.0f, music);
+        w->setEnemyHp(static_cast<u32>(nb), 1000.0f);
+        runShip(*w, music, music + 2.0 * beat, Vec2{});
+        for (u32 k = 0; k < 40; ++k) stepWorld(*w, music, Vec2{}, 1);
+        CHECK_MSG(w->enemies().hp[se] == 1000.0f, "the dome let %.0f damage through", 1000.0f - w->enemies().hp[se]);
+        delete w;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------- M5 part 3: upgrades

@@ -276,6 +276,9 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
             break;
         case EventType::PulseRing: break;
         case EventType::Upgrade: eventUpgrade(w, e, t); break;  // M5 part 3
+        case EventType::TrailBlast:  // M5 part 4: a Weaver C trail blows
+            addShockRings(at, 1, w.species().family(Family::Weaver).v.trailBlastWu, palettes_->danger, whiteV(), t, 0.2f);
+            break;
         case EventType::Restart: tumbleCount_ = 0; break;
         default: break;
     }
@@ -407,6 +410,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
     }
 
     drawUpgrades(d, in);  // M5 part 3: the rest of the Mods, Riffs, Boosts and the Fusions
+    drawHazards(d, in);   // M5 part 4: the lethal lines and the Wells
 
     // ---- Kaleidos.
     drawFight(d, in);  // M5: the fight of the moment (Kaleidos is drawBoss), and the Pen

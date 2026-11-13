@@ -251,7 +251,10 @@ void World::updateEnemies(float dt) {
                 }
                 break;
             }
-            case Family::Shoal: flock(i, s, dt); break;
+            case Family::Shoal:
+                flock(i, s, dt);
+                if (s.variant != kVariantA) shoalVariant(i, s, fd, tp, to);  // M5 part 4: B streams in lines, C spears
+                break;
             case Family::Ram: {
                 // Telegraph one beat, dash one beat in a straight line, rest two (species.json motion).
                 const float dash = fd.dashSpeed * (fd.speed > 0.0f ? s.speed / fd.speed : 1.0f);
@@ -282,6 +285,7 @@ void World::updateEnemies(float dt) {
                         if (m1_ >= e.until[i]) e.state[i] = kMoving;
                         break;
                     default: {
+                        e.step[i] = 0;  // M5 part 4: Ram C's rebounds this dash
                         float h = e.heading[i];
                         if (tp >= 0) h = turnToward(h, angleOf(to), 3.0f * dt);
                         e.heading[i] = h;
@@ -419,11 +423,19 @@ void World::updateEnemies(float dt) {
             if (hitY) e.vy[i] = -e.vy[i];
             e.a[i] = std::fmin(e.a[i] + fd.speedGainPerBounce, fd.maxSpeedFactor);
             caromBounceShot(i, s, fd);  // M5: Carom B
+            if (s.variant == kVariantC) caromSplit(i, s, fd);  // M5 part 4
         } else {
             if (hitX) e.kx[i] = 0.0f;
             if (hitY) e.ky[i] = 0.0f;
-            if (e.state[i] == kDash) {
-                // A Ram meeting the wall stops its dash (variant C rebounds; not in the slice).
+            if (e.state[i] == kDash && s.family == Family::Ram && s.variant == kVariantC && e.step[i] < fd.v.reboundDashes) {
+                // M5 part 4, Ram C: it rebounds off the wall for a second dash.
+                if (hitX) e.a[i] = -e.a[i];
+                if (hitY) e.b[i] = -e.b[i];
+                e.heading[i] = angleOf(Vec2{e.a[i], e.b[i]});
+                e.step[i] = static_cast<u8>(e.step[i] + 1);
+                e.until[i] = m1_ + static_cast<double>(fd.dashBeats) * kTicksPerBeat;
+            } else if (e.state[i] == kDash) {
+                // A Ram meeting the wall stops its dash.
                 e.state[i] = kRest;
                 e.until[i] = std::floor(m1_ / kTicksPerBeat) * kTicksPerBeat + static_cast<double>(fd.restBeats) * kTicksPerBeat;
             }

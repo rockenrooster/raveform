@@ -280,4 +280,72 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
     }
 }
 
+void PlayView::drawHazards(FrameDraw& d, const ViewInput& in) {
+    // M5 part 4 (look.md 2, 5): what is lethal is the danger colour and nothing else. A Tether's beam is one line (under 20
+    // wu: edges and core are one) with a white core; a Weaver's trail (and Ram B's wake) a danger polyline fading with its
+    // age; a Well is drawn by its glyph and the edge of its pull (an area by its edge, no fill).
+    const World& w = *in.world;
+    const Vec3 danger = palettes_->danger, W1 = whiteU();
+    const float t = static_cast<float>(in.time);
+    {
+        Vec2 a[64], b[64];
+        const u32 n = w.tetherBeams(a, b, 64);
+        const float width = w.species().family(Family::Tether).beamWidth;
+        for (u32 k = 0; k < n; ++k) {
+            if (!visible((a[k] + b[k]) * 0.5f, length(b[k] - a[k]) * 0.5f + 20.0f)) continue;
+            const float flick = 0.85f + 0.15f * std::sin(t * 40.0f + static_cast<float>(k));
+            d.scene.line(toScene(a[k]), toScene(b[k]), std::fmax(width * pxPerWu_, 2.0f * refPx_), danger * (1.6f * flick), danger * (1.6f * flick), 0);
+            d.scene.line(toScene(a[k]), toScene(b[k]), 1.2f * refPx_, mix(danger, W1, 0.7f) * (1.4f * flick), mix(danger, W1, 0.7f) * (1.4f * flick), 0);
+        }
+    }
+    const World::Trail* tr = w.trails();
+    for (u32 k = 0; k < World::kTrails; ++k) {
+        const World::Trail& tl = tr[k];
+        if (tl.n < 2) continue;
+        for (u32 j = 1; j < tl.n; ++j) {
+            const u32 j0 = (tl.head + World::Trail::kCap - j) % World::Trail::kCap, j1 = (tl.head + World::Trail::kCap - j - 1) % World::Trail::kCap;
+            const Vec2 p0{tl.x[j0], tl.y[j0]}, p1{tl.x[j1], tl.y[j1]};
+            if (!visible(p0, 40.0f)) continue;
+            const float age0 = static_cast<float>((in.music - tl.t[j0]) / tl.life), age1 = static_cast<float>((in.music - tl.t[j1]) / tl.life);
+            const float l0 = 1.4f * (1.0f - clampU(age0)), l1 = 1.4f * (1.0f - clampU(age1));
+            d.scene.line(toScene(p0), toScene(p1), std::fmax(tl.width * pxPerWu_, 1.6f * refPx_), danger * l0, danger * l1, 0);
+            if (tl.kind == 2) d.scene.line(toScene(p0), toScene(p1), 0.8f * refPx_, W1 * (0.5f * l0), W1 * (0.5f * l1), 0);
+        }
+    }
+    // Skitter B's mines (a danger ring and a core that blinks faster as it ages), Blink C's decoys (white copies), Sentry C's
+    // domes (an area: its edge in the enemy's hue).
+    for (u32 k = 0; k < World::kSpots; ++k) {
+        const World::Spot& m = w.enemyMines()[k];
+        if (m.until < in.music || !visible(m.at, m.r)) continue;
+        const float blink = 0.6f + 0.4f * std::sin(t * 9.0f + static_cast<float>(k));
+        glyph(d.glyphs, gRing64_, false, m.at, 0.0f, 0.0f, m.r, 0.9f, 0.4f, kGlyphRingW, danger, danger);
+        glyph(d.glyphs, gRing32_, false, m.at, 0.0f, 0.0f, 6.0f, 1.8f * blink, 0.7f, kGlyphFlat, danger, W1);
+    }
+    for (u32 k = 0; k < World::kSpots; ++k) {
+        const World::Spot& dc = w.decoys()[k];
+        if (dc.until < in.music || !visible(dc.at, dc.r)) continue;
+        const float left = clampU(static_cast<float>((dc.until - in.music) / kTicksPerBeat));
+        glyph(d.glyphs, gRing32_, false, dc.at, t, t, dc.r, 1.4f * (0.4f + 0.6f * left), 0.6f, kGlyphFlat, W1, W1);
+    }
+    {
+        Vec2 da[16];
+        float dr[16];
+        const u32 nd = w.domes(da, dr, 16);
+        for (u32 k = 0; k < nd; ++k)
+            if (visible(da[k], dr[k])) glyph(d.glyphs, gRing128_, false, da[k], 0.0f, 0.0f, dr[k], 1.0f, 0.5f, kGlyphRingW, palette_->hue[2], W1);
+    }
+    const Enemies& e = w.enemies();
+    const FamilyData& wf = w.species().family(Family::Well);
+    for (u32 i = 0; i < e.count; ++i) {
+        if ((e.flags[i] & kFlagDead) || e.state[i] == kWarping || w.species().get(e.species[i]).family != Family::Well) continue;
+        const Vec2 p{e.x[i], e.y[i]};
+        const float sc = e.b[i] > 0.0f ? e.b[i] : 1.0f;
+        if (!visible(p, wf.pullRadius * sc)) continue;
+        const Vec3 hue = palette_->hue[2];
+        glyph(d.glyphs, gRing128_, false, p, 0.0f, 0.0f, wf.pullRadius * sc, 0.7f, 0.35f, kGlyphRingW, hue, hue);
+        const float ph = std::fmod(t * 0.8f + static_cast<float>(i % 7) * 0.13f, 1.0f);
+        glyph(d.glyphs, gRing128_, false, p, 0.0f, 0.0f, wf.pullRadius * sc * (1.0f - ph), 0.5f * ph, 0.3f, kGlyphRingW, hue, W1);
+    }
+}
+
 }  // namespace rf

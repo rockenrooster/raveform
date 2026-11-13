@@ -203,6 +203,8 @@ private:
     int gHaloPart_[9][9] = {};  // [k][n]: the first k arcs of an n-arc halo (play test 2)
     int gMarkBHeading_ = -1, gMarkBSpin_ = -1, gMarkC_ = -1, gRing32_ = -1, gRing64_ = -1, gRing128_ = -1;
     int speciesGlyph_[sim::SpeciesTable::kCount];
+    int wyrmHeadGlyph_[sim::SpeciesTable::kCount] = {};  // M5 part 4
+    void drawHazards(FrameDraw& d, const ViewInput& in);  // M5 part 4: Tether beams, trails, Wells (play_view_upgrades.cpp)
     bool speciesGlyphsReady_ = false;
 
     // Camera.

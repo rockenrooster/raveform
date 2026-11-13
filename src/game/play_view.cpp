@@ -406,9 +406,15 @@ void PlayView::onEvents(const World& w, double tickEnd) {
     if (!speciesGlyphsReady_) {
         for (u32 i = 0; i < SpeciesTable::kCount; ++i) {
             const Species& s = table.get(static_cast<u16>(i));
-            int g = glyphs_->enemy(familyName(s.family), s.tier);
-            for (u32 t = 1; g < 0 && t <= 5; ++t) g = glyphs_->enemy(familyName(s.family), t);
+            // (M5 part 4: a Wyrm's body is wyrm_body_N, its head wyrm_head_N)
+            const char* fam = s.family == Family::Wyrm ? "wyrm_body" : familyName(s.family);
+            int g = glyphs_->enemy(fam, s.tier);
+            for (u32 t = 1; g < 0 && t <= 5; ++t) g = glyphs_->enemy(fam, t);
             speciesGlyph_[i] = g >= 0 ? g : gRing32_;
+            if (s.family == Family::Wyrm) {
+                int h = glyphs_->enemy("wyrm_head", s.tier);
+                wyrmHeadGlyph_[i < SpeciesTable::kCount ? i : 0] = h >= 0 ? h : speciesGlyph_[i];
+            }
         }
         speciesGlyphsReady_ = true;
     }
@@ -1025,7 +1031,8 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         // M4: a co-op client draws a corrected enemy where it was, the offset decaying (ox, oy; 0 otherwise).
         const Vec2 pos = lerp2(Vec2{e.px[i], e.py[i]}, Vec2{e.x[i], e.y[i]}, a) + Vec2{e.ox[i], e.oy[i]};
         const Species& s = table.get(e.species[i]);
-        const int g = speciesGlyph_[e.species[i]];
+        // (M5 part 4: a Wyrm's head)
+        const int g = (s.family == Family::Wyrm && e.a[i] > 0.5f) ? wyrmHeadGlyph_[e.species[i]] : speciesGlyph_[e.species[i]];
         const GlyphDef& gd = glyphs_->def(static_cast<u32>(g));
         const float scale = e.radius[i];
         const bool inView = visible(pos, 0.0f);

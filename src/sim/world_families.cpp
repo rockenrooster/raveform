@@ -118,7 +118,9 @@ void World::moveFamily(u32 i, const Species& s, const FamilyData& fd, float dt, 
                 want = tangent + radial * clampf((dist - e.b[i]) / kFlankerRadialWu, -1.0f, 1.0f);
             }
             if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(want), kFlankerTurn * dt);
-            const Vec2 vel = dirOf(e.heading[i]) * s.speed;
+            // M5 part 4, C: faster for every other Flanker that died near it (step counts them).
+            const float quick = s.variant == kVariantC ? std::fmin(1.0f + v.speedUpPerDeath * static_cast<float>(e.step[i]), v.speedMaxFactor) : 1.0f;
+            const Vec2 vel = dirOf(e.heading[i]) * (s.speed * quick);
             e.vx[i] = vel.x;
             e.vy[i] = vel.y;
             // B: it fires inward, at the centre of its circle, on every beat while it circles, after a beat's tell.
@@ -175,6 +177,7 @@ void World::moveFamily(u32 i, const Species& s, const FamilyData& fd, float dt, 
                 const float side = pl.aim.x * rel.y - pl.aim.y * rel.x;
                 if (along <= 0.0f || along > kSkitterSeeWu || std::fabs(side) > kSkitterLaneWu + e.radius[i]) continue;
                 const Vec2 away = perpOf(pl.aim) * (side >= 0.0f ? 1.0f : -1.0f);
+                if (s.variant == kVariantB) layMine(Vec2{x, y}, v.mineRadius, v.mineLifeBars);  // M5 part 4: B drops a mine as it dodges
                 e.state[i] = kDodge;
                 e.a[i] = away.x;
                 e.b[i] = away.y;
@@ -190,6 +193,15 @@ void World::moveFamily(u32 i, const Species& s, const FamilyData& fd, float dt, 
             const float barS = static_cast<float>(kTicksPerBar) / ticksPerSecond();
             e.a[i] += kTau * fd.turnsPerBar / barS * dt;
             forCrossings(m0_, m1_, kTicksPerBeat, [&](double, i64) { e.b[i] = std::fmax(e.b[i] - 0.25f * fd.closePerBar, fd.minRadius); });
+            if (s.variant == kVariantC && e.b[i] <= v.burstAtRadius + 0.5f && role_ != NetRole::Client && tp >= 0) {
+                // M5 part 4, C: the spiral closed, it bursts (burstBullets round it) and is gone (the host's).
+                const float a0 = e.a[i];
+                for (u32 k = 0; k < v.burstBullets; ++k)
+                    spawnBullet(Vec2{x, y}, dirOf(a0 + kTau * static_cast<float>(k) / static_cast<float>(v.burstBullets)) * species_->bulletSpeed, 0.0f);
+                shot();
+                killEnemy(i, 0xFF);
+                break;
+            }
             const Vec2 want = P + dirOf(e.a[i]) * e.b[i] - Vec2{x, y};
             const float l = length(want);
             const float sp = std::fmin(s.speed * kMothCatchUp, l / std::fmax(dt, 1e-4f));
@@ -279,6 +291,7 @@ void World::moveFamily(u32 i, const Species& s, const FamilyData& fd, float dt, 
                         break;
                     }
                     const Vec2 from{x, y};
+                    if (s.variant == kVariantC) addDecoy(from, e.radius[i], t + static_cast<double>(v.decoyLifeBeats) * kTicksPerBeat);  // M5 part 4
                     e.heading[i] += 2.0f * kTau / 5.0f;  // the next point in star order: every second point of five
                     const Vec2 at = C + dirOf(e.heading[i]) * fd.hopWu;
                     e.x[i] = e.px[i] = at.x;
@@ -438,6 +451,7 @@ void World::hatchBroodlings(u32 i, u32 n, double land) {
 }
 
 void World::familyDeath(u32 i, const Species& s) {
+    familyDeath4(i, s);  // M5 part 4: Drifter C splits, Flanker C's neighbours speed up
     // Brood C (GAME_DESIGN 7.2): it bursts into a swarm of minis on death (the host's, killEnemy).
     if (s.family != Family::Brood || s.variant != kVariantC || static_cast<u16>(enemies_.species[i]) == SpeciesTable::kBroodling) return;
     const FamilyData& fd = species_->family(Family::Brood);

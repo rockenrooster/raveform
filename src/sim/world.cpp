@@ -46,6 +46,8 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask) {
     bullets_.count = shots_.count = shards_.count = 0;
     for (u32& n : shotsLive_) n = 0;
     for (Trail& t : trails_) t.n = 0;  // M5 part 4
+    for (Spot& m : emines_) m.until = -1.0;
+    for (Spot& d : decoys_) d.until = -1.0;
     serial_ = 0;
     dipS_ = 0.0f;
     allDownDipS_ = 0.0f;
