@@ -50,6 +50,7 @@ float BeatView::envelope(BeatKind k, float decaySeconds) const {
 }
 
 Band::~Band() {
+    if (bakeThread_.joinable()) bakeThread_.join();  // M5: the risers baked behind the game
     delete engine_;
     delete bank_;
     delete music_;
@@ -119,8 +120,16 @@ bool Band::init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice
         prefPath(cache, sizeof cache, "baked_audio.bin");
         const u64 key = music_->hash ^ (static_cast<u64>(rate_) * 0x9E3779B97F4A7C15ull);
         if (!bank_->loadCache(cache, key)) {
-            if (!bank_->bake(*music_, rate_)) return false;
-            if (!bank_->saveCache(cache, key)) RF_WARN("audio: could not cache the baked one-shots (%s)", cache);
+            // M5 (start-up, PLAN: cold start to playing within 5 s): the risers of Tracks 2-10 are baked on a worker
+            // while Track 1 plays (its first Build is half a minute in, the next Track's minutes), then cached.
+            if (!bank_->bake(*music_, rate_, true)) return false;
+            std::snprintf(cachePath_, sizeof cachePath_, "%s", cache);
+            cacheKey_ = key;
+            bakeThread_ = std::thread([this] {
+                bank_->bakeDeferred(*music_, rate_);
+                if (!bank_->complete() || !bank_->saveCache(cachePath_, cacheKey_))
+                    RF_WARN("audio: could not cache the baked one-shots (%s)", cachePath_);
+            });
         }
     }
     if (!engine_->init(*music_, *bank_, rate_, 1)) {

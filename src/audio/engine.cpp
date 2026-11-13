@@ -206,6 +206,7 @@ struct Engine::Player {
     u8 mod[kModCount] = {};
     u16 boosts = 0;
     u8 fusions = 0;
+    u8 lastNote = 69;  // the last lead note it played (Fork's fifth, the bounce blips)
 };
 
 struct Engine::BarPlan {
@@ -289,6 +290,7 @@ Engine::~Engine() {
     delete[] pending_;
     delete[] players_;
     delete plan_;
+    freeContent();
     std::free(delayLine_);
 }
 
@@ -317,6 +319,7 @@ bool Engine::init(const MusicData& music, const SampleBank& bank, u32 sampleRate
             sets[t * MusicData::kMaxVariants + v] =
                 (t < music.trackCount && v < music.variantCount) ? music.sound[t][v].reverb : music.sound[0][0].reverb;
     if (!reverb_.init(sampleRate, sets, FdnReverb::kMaxSets)) return false;
+    if (!initContent()) return false;  // M5
     duckLen_ = framesFor(kDuckS, sampleRate);
     variant_ = music.defaultVariant;
     track_ = 0;
@@ -366,6 +369,9 @@ void Engine::applyParams() {
         bool minorThird = tr_->scaleCount == 0;
         for (u32 i = 0; i < tr_->scaleCount; ++i) minorThird = minorThird || tr_->scale[i] == 3;
         keyMajor_ = !minorThird;
+        bool second = tr_->scaleCount == 0;  // the ninth (the major second) in the scale?
+        for (u32 i = 0; i < tr_->scaleCount; ++i) second = second || tr_->scale[i] == 2;
+        keyNoNinth_ = !second;
     }
     stats_.track.store(static_cast<u8>(track_), std::memory_order_relaxed);
     stats_.variant.store(static_cast<u8>(variant_), std::memory_order_relaxed);
@@ -661,6 +667,7 @@ void Engine::applyCommand(const Command& c) {
             for (u32 i = 0; i < kPadVoices; ++i) pad_[i].active = false;
             for (u32 i = 0; i < kSampleVoices; ++i) smp_[i].active = false;
             for (Order& o : order_) o.n = 0;
+            stopContent();
             pendingCount_ = 0;
             std::memset(delayLine_, 0, sizeof(float) * (delayMask_ + 1));
             reverb_.clear();
@@ -685,7 +692,7 @@ void Engine::emit(BeatKind k, i64 frame, double tick, u8 a, u8 b, u8 c, float va
     events_.push(e);
 }
 
-void Engine::playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate) {
+void Engine::playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate, double from) {
     if (id < 0) return;
     const Sample& s = bank_->sample(id);
     SampleVoice* v = allocVoice(smp_, kSampleVoices, order_[PoolSample]);
@@ -696,7 +703,7 @@ void Engine::playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float
     v->bus = bus;
     v->delay = frame > frame_ ? static_cast<u32>(frame - frame_) : 0u;
     v->age = 0;
-    v->pos = 0.0;
+    v->pos = from;  // M5: a start inside the sample (the reversed cymbal ends on its tick)
     v->rate = rate;
     if (s.channels == 2) {
         v->gl = v->gr = gain;
@@ -735,6 +742,7 @@ void Engine::playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, doubl
         if (midi < 0 && (kind == Sfx::Boost || kind == Sfx::Upgrade || kind == Sfx::GameOver || kind == Sfx::Elite ||
                          kind == Sfx::PerfectDash || kind == Sfx::Shield)) {
             if (keyMajor_ && bank_->sfxMajor(kind) >= 0) id = bank_->sfxMajor(kind);
+            if (kind == Sfx::Upgrade && keyNoNinth_ && bank_->upgradeNoNinth() >= 0) id = bank_->upgradeNoNinth();
             rate *= keyRate_;
         }
     }
@@ -975,6 +983,12 @@ void Engine::playPad(const Chord& chord, float level, float bright, i64 frame) {
     placeVoice(pad_, order_[PoolPad], v, frame);
 }
 
+// M5 (content_sound.cpp): what the content's sound reads of the bar and the players.
+const Chord& Engine::currentChord() const { return plan_ && plan_->chord ? *plan_->chord : tr_->chordAtBar(0); }
+i32 Engine::playerLastNote(u32 p) const { return p < kMaxPlayers ? players_[p].lastNote : 69; }
+Timbre Engine::playerTimbre(u32 p) const { return p < kMaxPlayers ? players_[p].timbre : Timbre::P1Saw; }
+bool Engine::playerBoost(u32 p, Boost b) const { return p < kMaxPlayers && ((players_[p].boosts >> static_cast<u32>(b)) & 1u); }
+
 // ---------------------------------------------------------------- sequencer
 
 void Engine::addSectionGain(double frame, float gain) {
@@ -1010,6 +1024,7 @@ void Engine::onTick(i64 tick) {
         default: break;
     }
     if (tick % 12 == 0) flushKills(tick);
+    if (tick % 12 == 0 || tick % 32 == 0) flushCues(tick);  // M5: the cues on 1/32 steps, Storm Coil on triplet eighths
 }
 
 void Engine::planBar(i64 barTick) {
@@ -1697,6 +1712,7 @@ void Engine::leadStep(i64 tick, i64 inBar) {
             const float drive = pl.overcharge ? 1.0f + r.overchargeDrive * pl.overcharge : 0.0f;
             const float gain = s.mix.lead * level * std::pow(10.0f, r.overchargeDb * pl.overcharge / 20.0f);
             const i64 f = frameOf(tk);
+            players_[i].lastNote = note;
             playLead(static_cast<u8>(i), pl.timbre, note, accent, gain, pan, f, scale, drive);
             emit(BeatKind::Lead, f, tk, note, static_cast<u8>(i), static_cast<u8>(grid), accent, k, midiHz(note));
             // Harmony: Split stacks, Prism, On-Beat Crit (conductor.json mods / boosts).
@@ -2332,6 +2348,7 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         }
     }
     compactOrder(order_[PoolSample], smp_);
+    renderContent(bus_[static_cast<u32>(Bus::Sfx)][0], bus_[static_cast<u32>(Bus::Sfx)][1], n);  // M5: live recipe voices
     mark(EngineProfile::Samples);
     stats_.voices.store(active, std::memory_order_relaxed);
     if (active > stats_.voicesPeak.load(std::memory_order_relaxed)) stats_.voicesPeak.store(active, std::memory_order_relaxed);

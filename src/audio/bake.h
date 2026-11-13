@@ -3,6 +3,9 @@
 // design/tools/musicproto.py and the sound effects of design/tools/sfxproto.py, rendered with the same
 // recipes into float buffers that the sampler plays. Load time only: allocates with malloc.
 
+#include <atomic>
+
+#include "audio/cues.h"
 #include "audio/music_data.h"
 #include "core/types.h"
 
@@ -41,8 +44,12 @@ public:
     SampleBank& operator=(const SampleBank&) = delete;
     ~SampleBank();
 
-    // Bakes everything the Tracks and variants of `music` need at `sampleRate`.
-    bool bake(const MusicData& music, u32 sampleRate);
+    // Bakes everything the Tracks and variants of `music` need at `sampleRate`. M5 (start-up): with deferRisers the
+    // risers of Tracks 2-10 only get their slots; bakeDeferred (a worker thread, while Track 1 plays) bakes them, and
+    // riser() leaves out one not baked yet; complete() says when all are.
+    bool bake(const MusicData& music, u32 sampleRate, bool deferRisers = false);
+    bool bakeDeferred(const MusicData& music, u32 sampleRate);
+    bool complete() const;
     void release();
     // M3 stage B (start-up): the baked bank on disk (TECH_SPEC 11: cached baked audio). key names what
     // was baked (the music data's hash, which includes the DSP version, and the sample rate); a file with
@@ -67,8 +74,13 @@ public:
     i32 swellBar(u32 track) const { return swellBar_[track]; }
     // The nearest baked note of a pitched effect (or the effect itself when unpitched); -1: none.
     i32 sfx(Sfx kind, i32 midi = -1) const;
+    // M5: a recipe's baked one-shot nearest `midi` (any when it has no pitch); -1 when it is not baked (held voices,
+    // Chirp: the Shard's, Roll: the snare's). The sample's `midi` says the note it was baked at; `tag` 1 for the
+    // closing / returning version of Sweep and Whoosh.
+    i32 recipe(Recipe r, i32 midi = -1, u16 tag = 0) const;
     // M5: the major-third variant of an effect written in A minor (Boost, Upgrade, Game over), else -1.
     i32 sfxMajor(Sfx kind) const { return sfxMajor_[static_cast<u32>(kind)]; }
+    i32 upgradeNoNinth() const { return upgradeNoNinth_; }  // the Upgrade without its ninth (a scale without the second)
     // Nova inhale lasting `steps32` thirty-second notes of `track`'s tempo (1..8).
     i32 inhale(u32 track, u32 steps32) const;
     // Shard scale of a Track (sfxproto's shard run, a pentatonic from its tonic inside the Track's scale: minor where
@@ -88,12 +100,16 @@ private:
         u32 track, bars;
         i32 id;
     } risers_[MusicData::kMaxTracks * 4];  // up to four Build lengths a Track
+    std::atomic<bool> riserReady_[MusicData::kMaxTracks * 4] = {};  // M5: baked (the audio thread may play it)
     u32 riserCount_ = 0;
     i32 swellHalf_[MusicData::kMaxTracks] = {};  // -1 until baked (set in the constructor)
     i32 swellBar_[MusicData::kMaxTracks] = {};
     i32 sfxFirst_[kSfxCount] = {};
     u32 sfxCount_[kSfxCount] = {};
     i32 sfxMajor_[kSfxCount] = {};
+    i32 upgradeNoNinth_ = -1;
+    i32 recipeFirst_[kRecipeCount] = {};
+    u32 recipeCount_[kRecipeCount] = {};
     i32 inhale_[MusicData::kMaxTracks][9] = {};
     u8 shardScale_[MusicData::kMaxTracks][10] = {};
 };

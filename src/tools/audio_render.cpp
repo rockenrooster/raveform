@@ -218,6 +218,156 @@ void sheetSfx(Render& r, const SampleBank& bank, double& lengthS, bool dryRun) {
     lengthS = t + 0.5;
 }
 
+// M5: the listening sheets of sound_m5.json for the user's ear: every recipe (and held voice), then every cue, one after
+// the other on Track 1 (A minor, 120 BPM), dry like the effect sheet. `list` gets "seconds  what" lines.
+struct SheetStep {
+    double at;          // seconds
+    Command c;
+    const char* what;   // nullptr: a continuation of the line before
+};
+u32 sheetM5(bool cues, SheetStep* out, u32 cap, double& endS) {
+    u32 n = 0;
+    double t = 0.5;
+    const auto add = [&](double dt, Command c, const char* what) {
+        if (n < cap) out[n++] = {t + dt, c, what};
+    };
+    const auto rec = [](Recipe r, i32 midi, float p1 = 0.0f, float p2 = 0.0f) {
+        Command k = cmd(CmdType::Recipe, static_cast<u8>(r), 0, static_cast<u8>(midi < 0 ? 255 : midi), 1.0f, 0.0f);
+        k.when = Timing::Next32;
+        k.z = p1;
+        k.level = p2;
+        return k;
+    };
+    const auto cue = [](Cue c, u8 count, float value = 0.0f) {
+        Command k = cmd(CmdType::Cue, static_cast<u8>(c), 0, count, value, 0.0f);
+        k.when = Timing::Next32;
+        return k;
+    };
+    if (!cues) {
+        add(0.0, rec(Recipe::Tom, 45), "tom: root, third, fifth, octave (A2 C3 E3 A3)");
+        add(0.5, rec(Recipe::Tom, 48), nullptr);
+        add(1.0, rec(Recipe::Tom, 52), nullptr);
+        add(1.5, rec(Recipe::Tom, 57), nullptr);
+        t += 2.5;
+        add(0.0, rec(Recipe::SubDrop, -1), "sub drop (120 -> 38 Hz)");
+        t += 2.5;
+        add(0.0, rec(Recipe::Gong, 69), "gong (A2) then gong (E2)");
+        add(2.5, rec(Recipe::Gong, 64), nullptr);
+        t += 5.5;
+        add(0.0, rec(Recipe::Bell, 69), "bell: A4 C5 E5 A5");
+        add(0.25, rec(Recipe::Bell, 72), nullptr);
+        add(0.5, rec(Recipe::Bell, 76), nullptr);
+        add(0.75, rec(Recipe::Bell, 81), nullptr);
+        t += 1.8;
+        add(0.0, rec(Recipe::Zap, 81), "zap: A5 C6 E6 (Arc's chain)");
+        add(0.25, rec(Recipe::Zap, 84), nullptr);
+        add(0.5, rec(Recipe::Zap, 88), nullptr);
+        t += 1.5;
+        add(0.0, rec(Recipe::Glass, 69), "glass: on A, C, E (seventh octave)");
+        add(0.3, rec(Recipe::Glass, 72), nullptr);
+        add(0.6, rec(Recipe::Glass, 76), nullptr);
+        t += 1.5;
+        add(0.0, rec(Recipe::SawGlide, 45, 7.0f, 1.0f), "saw glide: up a fifth over a beat (the Alpha's howl), then down an octave over two");
+        add(1.2, rec(Recipe::SawGlide, 57, -12.0f, 2.0f), nullptr);
+        t += 3.6;
+        add(0.0, rec(Recipe::Sweep, -1), "sweep: the Dash; opening over a beat; closing over two");
+        add(0.6, rec(Recipe::Sweep, -1, 1.0f, 1.0f), nullptr);
+        add(1.4, rec(Recipe::Sweep, -1, -1.0f, 2.0f), nullptr);
+        t += 3.0;
+        add(0.5, rec(Recipe::RevCymbal, -1, 1.0f), "reversed cymbal: a beat, then a bar (each ends on its grid line)");
+        add(2.5, rec(Recipe::RevCymbal, -1, 4.0f), nullptr);
+        t += 3.5;
+        add(0.0, rec(Recipe::Woodblock, -1), "woodblock: 1 kHz, then up the scale A5 B5 C6 D6");
+        add(0.4, rec(Recipe::Woodblock, 81), nullptr);
+        add(0.6, rec(Recipe::Woodblock, 83), nullptr);
+        add(0.8, rec(Recipe::Woodblock, 84), nullptr);
+        add(1.0, rec(Recipe::Woodblock, 86), nullptr);
+        t += 1.6;
+        add(0.0, rec(Recipe::Chirp, 81), "chirp: A5 C6 D6 E6");
+        add(0.12, rec(Recipe::Chirp, 84), nullptr);
+        add(0.24, rec(Recipe::Chirp, 86), nullptr);
+        add(0.36, rec(Recipe::Chirp, 88), nullptr);
+        t += 1.0;
+        add(0.0, rec(Recipe::Whoosh, -1, 1.0f), "whoosh: out over a beat; out and back (the Comet)");
+        add(1.0, rec(Recipe::Whoosh, -1, 1.0f, 1.0f), nullptr);
+        t += 2.6;
+        add(0.0, rec(Recipe::Roll, -1, 4.0f), "roll: four beats (it ends on the grid line it was given)");
+        t += 2.6;
+        Command v = cmd(CmdType::VoiceStart, 0, static_cast<u8>(Recipe::Drone), 255, 1.0f, 0.0f);
+        v.z = 300.0f;
+        add(0.0, v, "drone (held 4 s): low-pass opening 300 -> 2400 Hz and closing (the Sweeper)");
+        for (u32 k = 1; k <= 6; ++k) add(0.4 * k, cmd(CmdType::VoiceSet, 0, 0, 0, k <= 3 ? 300.0f + 700.0f * k : 2400.0f - 700.0f * (k - 3), -1.0f), nullptr);
+        add(4.0, cmd(CmdType::VoiceStop, 0, 0, 0, 0.3f), nullptr);
+        t += 5.0;
+        add(0.0, cmd(CmdType::VoiceStart, 1, static_cast<u8>(Recipe::PadVoice), 69, 1.0f, -0.3f), "pad voices (held 3 s): A4, then C5 joins");
+        add(1.0, cmd(CmdType::VoiceStart, 2, static_cast<u8>(Recipe::PadVoice), 72, 1.0f, 0.3f), nullptr);
+        add(3.0, cmd(CmdType::VoiceStop, 1, 0, 0, 0.7f), nullptr);
+        add(3.0, cmd(CmdType::VoiceStop, 2, 0, 0, 0.7f), nullptr);
+        t += 4.5;
+        Command cr = cmd(CmdType::VoiceStart, 3, static_cast<u8>(Recipe::Crackle), 255, 1.0f, 0.0f);
+        cr.z = 5.0f;
+        add(0.0, cr, "crackle (held 3 s): 5 -> 60 bursts a second");
+        add(1.0, cmd(CmdType::VoiceSet, 3, 0, 0, 25.0f, -1.0f), nullptr);
+        add(2.0, cmd(CmdType::VoiceSet, 3, 0, 0, 60.0f, -1.0f), nullptr);
+        add(3.0, cmd(CmdType::VoiceStop, 3, 0, 0, 0.1f), nullptr);
+        t += 3.8;
+    } else {
+        add(0.0, cue(Cue::ForkSplit, 1), "Fork: a forked shot (the fifth above the last lead note, a 1/32 later), then four at once");
+        add(0.5, cue(Cue::ForkSplit, 4), nullptr);
+        t += 1.2;
+        add(0.0, cue(Cue::HeavyStepBurst, 1), "Heavy Step: an orb bursts (the small kill's thud)");
+        t += 0.8;
+        add(0.0, cue(Cue::ArcChain, 1, 1.0f), "Arc: a chain of three jumps (a zap a chord tone up each)");
+        add(0.13, cue(Cue::ArcChain, 1, 2.0f), nullptr);
+        add(0.26, cue(Cue::ArcChain, 1, 3.0f), nullptr);
+        t += 1.2;
+        add(0.0, cue(Cue::BurnCount, 1, 5.0f), "Burn: 5 enemies burning, then 30, then none");
+        add(1.0, cue(Cue::BurnCount, 1, 30.0f), nullptr);
+        add(2.5, cue(Cue::BurnCount, 1, 0.0f), nullptr);
+        t += 3.2;
+        add(0.0, cue(Cue::ShatterBurst, 1), "Shatter: one kill throws shrapnel, then six");
+        add(0.4, cue(Cue::ShatterBurst, 6), nullptr);
+        t += 1.0;
+        add(0.0, cue(Cue::GravityHit, 1), "Gravity Rounds: a hit, then three");
+        add(0.3, cue(Cue::GravityHit, 3), nullptr);
+        t += 0.9;
+        add(0.0, cue(Cue::AfterimageDecoy, 1), "Afterimage: the Dash's sweep a beat later at half level");
+        t += 1.3;
+        add(0.0, cue(Cue::ShockstepDash, 1, 0.0f), "Shockstep: a Dash (tom on the root), a Perfect Dash (and a fifth above)");
+        add(0.6, cue(Cue::ShockstepDash, 1, 1.0f), nullptr);
+        t += 1.3;
+        add(0.0, cue(Cue::AegisBlock, 1), "Aegis: a bullet stopped, then five");
+        add(0.3, cue(Cue::AegisBlock, 5), nullptr);
+        t += 0.8;
+        add(0.0, cue(Cue::LastLightNova, 1), "Last Light: the free mini-Nova");
+        t += 2.6;
+        add(0.0, cue(Cue::CollectorBoost, 1), "Collector: a Boost spawns (the Boost bells)");
+        t += 1.4;
+        add(0.0, cue(Cue::RicochetBounce, 1, 1.0f), "Ricochet: three bounces climbing the scale");
+        add(0.13, cue(Cue::RicochetBounce, 1, 2.0f), nullptr);
+        add(0.26, cue(Cue::RicochetBounce, 1, 3.0f), nullptr);
+        t += 1.0;
+        add(0.0, cue(Cue::StormCoilStrike, 1), "Storm Coil: strikes on six triplet eighths");
+        for (u32 k = 1; k < 6; ++k) add(0.167 * k, cue(Cue::StormCoilStrike, 1), nullptr);
+        t += 1.5;
+        add(0.0, cue(Cue::SupernovaImpact, 1), "Supernova Rounds: an impact, then eight");
+        add(0.3, cue(Cue::SupernovaImpact, 8), nullptr);
+        t += 0.9;
+        add(0.0, cue(Cue::ColossusRam, 1), "Colossus: an enemy rammed, then four");
+        add(0.4, cue(Cue::ColossusRam, 4), nullptr);
+        t += 1.0;
+        add(0.0, cue(Cue::FreezeShatter, 1), "Freeze Frame: an enemy shatters, then ten");
+        add(0.4, cue(Cue::FreezeShatter, 10), nullptr);
+        t += 1.0;
+        add(0.0, cue(Cue::ConfettiKill, 1), "Confetti: a kill bursts (six chirps up the scale)");
+        t += 1.0;
+        add(0.0, cue(Cue::BlackHoleNova, 1), "Black Hole: the three-beat inhale, then the blast with the sub drop");
+        t += 4.5;
+    }
+    endS = t;
+    return n;
+}
+
 // sfxproto.lead_timbres: the same two bars on each player's lead, a quiet kick on the beats.
 void sheetLeads(Render& r, const MusicData& music) {
     const Track& tr = music.tracks[0];
@@ -464,6 +614,14 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
     const bool staged = eq(opt.render, "staged");
     const bool mock = eq(opt.render, "mock"), sfx = eq(opt.render, "sfx"), leads = eq(opt.render, "leads"),
                full = eq(opt.render, "full"), surge = eq(opt.render, "surge"), medley = eq(opt.render, "medley");
+    const bool sheetRecipes = eq(opt.render, "recipes"), sheetCues = eq(opt.render, "cues");  // M5 listening sheets
+    static SheetStep sheet[256];
+    u32 sheetSteps = 0;
+    if (sheetRecipes || sheetCues) {
+        double endS = 0.0;
+        sheetSteps = sheetM5(sheetCues, sheet, 256, endS);
+        seconds = static_cast<float>(endS + 1.0);
+    }
     if (staged && seconds <= 0.0f) seconds = static_cast<float>(tr.arrangementBars * barS + 2.5);  // musicproto.Mixer length
     if (mock && seconds <= 0.0f) seconds = static_cast<float>(26.0 * barS + 2.5);
     if (full && seconds <= 0.0f) seconds = 60.0f;
@@ -488,7 +646,7 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
     }
     if (leads) seconds = static_cast<float>(4 * 4.5 + 0.5);
     if (seconds <= 0.0f) {
-        RF_ERR("unknown render '%s' (staged, mock, sfx, leads, full, surge, medley)", opt.render);
+        RF_ERR("unknown render '%s' (staged, mock, sfx, leads, full, surge, medley, recipes, cues)", opt.render);
         return 2;
     }
     r.frames = static_cast<u64>(seconds * kRate);
@@ -515,6 +673,28 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
     const u64 allocsBefore = heapAllocCountThisThread();
     if (staged) {
         engine.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Staged), static_cast<u8>(t), 0));
+        renderTo(r, r.frames);
+    } else if (sheetRecipes || sheetCues) {
+        // Dry on the effects bus like the effect sheet, on the Track asked for (default Track 1), with the list.
+        engine.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), static_cast<u8>(t), 0));
+        FILE* list = nullptr;
+        if (opt.out) {
+            char path[512];
+            std::snprintf(path, sizeof path, "%s", opt.out);
+            char* dot = std::strrchr(path, '.');
+            if (dot) std::snprintf(dot, sizeof path - static_cast<size_t>(dot - path), ".txt");
+            list = std::fopen(path, "w");
+        }
+        for (u32 i = 0; i < sheetSteps; ++i) {
+            renderTo(r, static_cast<u64>(sheet[i].at * kRate));
+            engine.post(sheet[i].c);
+            if (sheet[i].what) {
+                const double m = std::floor(sheet[i].at / 60.0);
+                if (list) std::fprintf(list, "%.0f:%05.2f  %s\n", m, sheet[i].at - 60.0 * m, sheet[i].what);
+                std::printf("sheet %.0f:%05.2f  %s\n", m, sheet[i].at - 60.0 * m, sheet[i].what);
+            }
+        }
+        if (list) std::fclose(list);
         renderTo(r, r.frames);
     } else if (sfx || leads) {
         engine.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), static_cast<u8>(t), 0));
@@ -598,7 +778,7 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
 
     float peak = 0.0f;
     for (u64 i = 0; i < r.frames * 2; ++i) peak = std::fabs(r.out[i]) > peak ? std::fabs(r.out[i]) : peak;
-    if (sfx || leads) {
+    if (sfx || leads || sheetRecipes || sheetCues) {
         // sfxproto.finish(): after the tanh, scaled down to -1 dBFS peak when louder.
         const float limit = std::pow(10.0f, -1.0f / 20.0f);
         if (peak > limit)
