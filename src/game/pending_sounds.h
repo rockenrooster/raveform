@@ -24,9 +24,16 @@ enum class SoundPlay : u8 {
     Lead,      // a lead note (the cue's place as a degree of the arpeggio; timbre `id`, 0xFF: the cue's Voice)
     Recipe,    // Band::playRecipe(audio::Recipe `id`, midi, gain, pan, tick, p1, p2); midi: the cue's f when `pitched`, else -1
     Recipe2,   // the same recipe twice, an eighth apart (the Hive's two toms)
-    PadVoice,  // a held pad voice at the cue's note (f) in slot (cue.b % 8) for p1 beats, then released over p2 beats
+    PadVoice,  // a held pad voice at the cue's note (f) in slot (cue.b % 8) for p1 beats, then released over p2 beats; with
+               // glideSemis, it glides that far over glideOver beats from glideAfter beats on (setVoice's note)
     LowPass,   // Band::lowPassBed(p1 Hz, p2 beats) when the cue's b is 1
+    Pair,      // recipe id and recipe id2 together on the cue's tick (the Ram's charge: the sub drop and the driven kick)
+    Hats,      // the closed hat on a grid that tightens over p1 beats from the cue's tick (quarters, eighths, sixteenths)
+    Roll,      // a roll recipe ending p1 beats after the cue's tick (p1 - b beats for the cue's b), p1 beats long; p2 its rise
 };
+// How a row's note is found: none (-1: the recipe's default), the cue's f as a MIDI note, or against the Track's chord
+// (audio::chordNote, resolved by the band at the tick it plays).
+enum class NoteRule : u8 { None, Midi, RunDegree, WallTone };
 
 struct FightSound {
     sim::BossCue cue;
@@ -37,6 +44,9 @@ struct FightSound {
     u8 id;                // audio::Sfx, audio::Recipe or a timbre, by `play`
     bool pitched;         // the cue's f is a MIDI note for the recipe
     float gain, p1, p2;
+    NoteRule note = NoteRule::None;  // (pitched rows: Midi)
+    u8 id2 = 0;                      // Pair's second recipe
+    float glideSemis = 0.0f, glideAfter = 0.0f, glideOver = 0.0f;  // PadVoice's glide (beats)
 };
 
 // The table, one row per sim::BossCue (in its order).
@@ -46,6 +56,9 @@ const FightSound* fightSounds(u32* count);
 struct FightVoices {
     double stopAt[16] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};  // band ticks; -1 idle
     float release[16] = {};
+    double glideAt[16] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};  // band ticks; -1 none
+    i32 glideTo[16] = {};      // MIDI
+    float glideS[16] = {};     // seconds
 };
 
 // Plays a fight's cue (a sim::EventType::BossCue event) through the band on `tick` (the band's song ticks), panned;

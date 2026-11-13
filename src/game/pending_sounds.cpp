@@ -26,27 +26,25 @@ const FightSound kRows[] = {
     // ---- Longwave (design/bosses/longwave.md "Sound")
     {BossCue::LwRun, "longwave.md", "a rubber-string voice (the bass patch an octave up, decay x 2), one note on every crest step: the crest's place "
                                     "in its wave as a degree of the Track's scale (0 2 3 5 7 8 10 12 above the chord root)",
-     "a rubber-string voice (the bass patch up an octave, twice its decay), pitched in semitones above the chord's root", SoundPlay::Lead, 3, false,
-     0.45f, 0, 0},
+     nullptr, SoundPlay::Recipe, rc(Recipe::RubberString), false, 0.45f, 1, 0, NoteRule::RunDegree},
     {BossCue::LwTrough, "longwave.md", "the telegraph tick on every step a trough fires", nullptr, SoundPlay::Sfx, sx(Sfx::Tick), false, 0.45f, 0, 0},
     {BossCue::LwJaw, "longwave.md", "the elite-arrives patch, its low fifth, on beat 1 while the jaw is open", nullptr, SoundPlay::Sfx, sx(Sfx::Elite),
      false, 0.6f, 0, 0},
     {BossCue::LwLunge, "(not on the page; chosen)", "a closing sweep as the head dashes", nullptr, SoundPlay::Recipe, rc(Recipe::Sweep), false, 0.8f, -1,
      1},
-    {BossCue::LwWhip, "longwave.md", "the impact a fifth up, on the whip's downbeat", "the impact (crash and sine) as a one-shot with a pitch",
-     SoundPlay::Sfx, sx(Sfx::KillLarge), false, 0.8f, 0, 0},
+    {BossCue::LwWhip, "longwave.md", "the impact a fifth up, on the whip's downbeat", nullptr, SoundPlay::Recipe, rc(Recipe::Impact), false, 0.8f, 7,
+     0},
     // ---- The Choir (choir.md "Sound")
     {BossCue::ChVoice, "choir.md", "pad_voice: the pad patch as a voice (attack 20 ms, release one beat, reverb send 0.5), the Voice's own note every "
                                    "time it sings",
      nullptr, SoundPlay::PadVoice, rc(Recipe::PadVoice), true, 0.5f, 0.5f, 1},
     {BossCue::ChDeath, "choir.md", "the dying Voice's note falling a fourth over one beat into the reverb",
-     "a pad note that glides (the stand-in glides a saw pair down a fourth)", SoundPlay::Recipe, rc(Recipe::SawGlide), true, 0.5f, -5, 1},
+     nullptr, SoundPlay::PadVoice, rc(Recipe::PadVoice), true, 0.5f, 1, 1, NoteRule::Midi, 0, -5.0f, 0.0f, 1.0f},
     {BossCue::ChCageTick, "choir.md", "the telegraph tick on every beat of the cage's telegraph bar", nullptr, SoundPlay::Sfx, sx(Sfx::Tick), false, 0.6f,
      0, 0},
-    {BossCue::ChCageBurn, "choir.md", "the impact as the cage burns", "the impact (crash and sine) as a one-shot", SoundPlay::Sfx, sx(Sfx::KillLarge),
-     false, 0.7f, 0, 0},
+    {BossCue::ChCageBurn, "choir.md", "the impact as the cage burns", nullptr, SoundPlay::Recipe, rc(Recipe::Impact), false, 0.7f, 0, 0},
     {BossCue::ChHeld, "choir.md", "the last Voice's note held for the telegraph bar, rising an octave as the beam fires",
-     "a held pad note that rises an octave (the stand-in holds the note for the bar)", SoundPlay::PadVoice, rc(Recipe::PadVoice), true, 0.6f, 4, 1},
+     nullptr, SoundPlay::PadVoice, rc(Recipe::PadVoice), true, 0.6f, 6, 1, NoteRule::Midi, 0, 12.0f, 4.0f, 0.25f},
     // ---- Alpha Hound (minibosses.md)
     {BossCue::AlHowl, "minibosses.md", "saw_glide up a fifth over one beat (the howl, beat 1)", nullptr, SoundPlay::Recipe, rc(Recipe::SawGlide), false,
      0.7f, 7, 1},
@@ -56,22 +54,21 @@ const FightSound kRows[] = {
     // ---- The Hive (minibosses.md)
     {BossCue::HvShape, "minibosses.md", "rev_cymbal into the bar line (a change of shape)", nullptr, SoundPlay::Recipe, rc(Recipe::RevCymbal), false,
      0.6f, 1, 0},
-    {BossCue::HvRing, "minibosses.md", "closed hats that tighten as the Ring closes", "closed hats on a tightening grid (the stand-in: the tick)",
-     SoundPlay::Sfx, sx(Sfx::Tick), false, 0.5f, 0, 0},
+    {BossCue::HvRing, "minibosses.md", "closed hats that tighten as the Ring closes", nullptr, SoundPlay::Hats, rc(Recipe::Hat), false, 0.5f, 8, 0},
     {BossCue::HvSpear, "minibosses.md", "two toms for the Spear", nullptr, SoundPlay::Recipe2, rc(Recipe::Tom), false, 0.6f, 0, 0},
     {BossCue::HvWall, "minibosses.md", "a noise sweep for the Wall", nullptr, SoundPlay::Recipe, rc(Recipe::Sweep), false, 0.5f, 1, 2},
     // ---- Battering Ram (minibosses.md)
-    {BossCue::RmLock, "minibosses.md", "a tom roll rising through beats 3 and 4 (the lock)", "a tom roll that rises (the stand-in: the snare roll)",
-     SoundPlay::Recipe, rc(Recipe::Roll), false, 0.6f, 2, 0},
-    {BossCue::RmCharge, "minibosses.md", "sub_drop and a driven kick (the charge)", "a driven kick as a one-shot (the sub drop plays)", SoundPlay::Recipe,
-     rc(Recipe::SubDrop), false, 1.0f, 0, 0},
+    {BossCue::RmLock, "minibosses.md", "a tom roll rising through beats 3 and 4 (the lock)", nullptr, SoundPlay::Roll, rc(Recipe::TomRoll), false, 0.6f,
+     2, 12},
+    {BossCue::RmCharge, "minibosses.md", "sub_drop and a driven kick (the charge)", nullptr, SoundPlay::Pair, rc(Recipe::SubDrop), false, 1.0f, 0, 0,
+     NoteRule::None, rc(Recipe::DrivenKick)},
     {BossCue::RmWall, "minibosses.md", "gong (the wall rings)", nullptr, SoundPlay::Recipe, rc(Recipe::Gong), false, 1.0f, 0, 0},
     {BossCue::RmStun, "minibosses.md", "low_pass_bed while it is stunned (three beats, two from half health)", nullptr, SoundPlay::LowPass, 0, false, 1.0f,
      600, 3},
     // ---- Carom King (minibosses.md)
     {BossCue::CkBounce, "minibosses.md", "a rim shot at the wall's note of the Track's chord (left root, top third, right fifth, bottom seventh); "
                                          "Princes an octave up on the half beats",
-     "a rim shot, pitched to a chord tone (root, third, fifth, seventh) by the band", SoundPlay::Sfx, sx(Sfx::EnemyShot), false, 0.6f, 0, 0},
+     nullptr, SoundPlay::Recipe, rc(Recipe::RimShot), false, 0.6f, 0, 0, NoteRule::WallTone},
     // ---- Every mini-boss
     {BossCue::MiniEnter, "(not on the page; chosen)", "the elite-arrives patch under the name card", nullptr, SoundPlay::Sfx, sx(Sfx::Elite), false, 0.9f,
      0, 0},
@@ -91,7 +88,19 @@ void playFightCue(Band& band, FightVoices& voices, const sim::Event& e, double t
     if (c >= static_cast<u32>(BossCue::Count)) return;
     const FightSound& r = kRows[c];
     const float beatS = 60.0f / std::fmax(bpm, 30.0f);
-    const i32 midi = r.pitched ? static_cast<i32>(std::lround(e.f)) : -1;
+    i32 midi = r.pitched ? static_cast<i32>(std::lround(e.f)) : -1;
+    if (r.note == NoteRule::RunDegree) {
+        // Longwave's run (longwave.json music.rule): the crest's semitones above the root (0 2 3 5 7 8 10 12) are the
+        // scale's degrees 0..7, as the band reads them against the Track's own scale and chord.
+        static const i32 kSemis[8] = {0, 2, 3, 5, 7, 8, 10, 12};
+        i32 degree = 0;
+        for (i32 k = 0; k < 8; ++k)
+            if (kSemis[k] == static_cast<i32>(std::lround(e.f))) degree = k;
+        midi = audio::chordNote(degree, 3);
+    } else if (r.note == NoteRule::WallTone) {
+        // Carom King's walls: the chord tone of the wall (0 root, 1 third, 2 fifth, 3 seventh); Princes an octave up.
+        midi = audio::chordNote(static_cast<i32>(std::lround(e.f)), 5 + (e.b ? 1 : 0), audio::NoteFrom::ChordTone);
+    }
     switch (r.play) {
         case SoundPlay::Sfx: {
             // A Carom Prince's bounce: quieter (the page: an octave up).
@@ -115,6 +124,33 @@ void playFightCue(Band& band, FightVoices& voices, const sim::Event& e, double t
             band.startVoice(slot, static_cast<Recipe>(r.id), midi, r.gain, pan, 0.0f);
             voices.stopAt[slot] = tick + static_cast<double>(r.p1) * kTicksPerBeatD;
             voices.release[slot] = r.p2 * beatS;
+            voices.glideAt[slot] = -1.0;
+            if (r.glideSemis != 0.0f && midi >= 0) {
+                // (a Voice's death falls a fourth over a beat; the held note rises an octave as the beam fires)
+                voices.glideAt[slot] = tick + static_cast<double>(r.glideAfter) * kTicksPerBeatD;
+                voices.glideTo[slot] = midi + static_cast<i32>(std::lround(r.glideSemis));
+                voices.glideS[slot] = r.glideOver * beatS;
+            }
+            break;
+        }
+        case SoundPlay::Pair:
+            band.playRecipe(static_cast<Recipe>(r.id), midi, r.gain, pan, tick, r.p1, r.p2);
+            band.playRecipe(static_cast<Recipe>(r.id2), midi, r.gain, pan, tick, r.p1, r.p2);
+            break;
+        case SoundPlay::Hats: {
+            // The Ring closing: quarters for half of it, eighths for a quarter, sixteenths for the last quarter.
+            const double span = static_cast<double>(r.p1) * kTicksPerBeatD;
+            double at = 0.0;
+            while (at < span - 1e-6) {
+                band.playRecipe(static_cast<Recipe>(r.id), -1, r.gain, pan, tick + at, 0.0f, 0.0f);
+                at += at < 0.5 * span ? kTicksPerBeatD : (at < 0.75 * span ? 0.5 * kTicksPerBeatD : 0.25 * kTicksPerBeatD);
+            }
+            break;
+        }
+        case SoundPlay::Roll: {
+            // The Ram's lock: the roll ends as it charges (two beats on, one for a lock straight after the last).
+            const float beats = r.p1 - static_cast<float>(e.b);
+            band.playRecipe(static_cast<Recipe>(r.id), midi, r.gain, pan, tick + static_cast<double>(beats) * kTicksPerBeatD, beats, r.p2);
             break;
         }
         case SoundPlay::LowPass:
@@ -126,9 +162,14 @@ void playFightCue(Band& band, FightVoices& voices, const sim::Event& e, double t
 
 void updateFightVoices(Band& band, FightVoices& voices, double heard, bool all) {
     for (u8 k = 0; k < 16; ++k) {
+        if (voices.glideAt[k] >= 0.0 && heard >= voices.glideAt[k] && voices.stopAt[k] >= 0.0 && !all) {
+            band.setVoice(k, 0.0f, -1.0f, voices.glideTo[k], voices.glideS[k]);
+            voices.glideAt[k] = -1.0;
+        }
         if (voices.stopAt[k] < 0.0 || (!all && heard < voices.stopAt[k])) continue;
         band.stopVoice(k, all ? 0.1f : std::fmax(voices.release[k], 0.02f));
         voices.stopAt[k] = -1.0;
+        voices.glideAt[k] = -1.0;
     }
 }
 
