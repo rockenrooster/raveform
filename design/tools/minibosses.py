@@ -29,7 +29,9 @@ COMMON = dict(
     drop="the Drop holds while the mini-boss lives, for at most 8 bars past its 16; then it warps out and leaves nothing",
     healthByTrack={"2": 600, "3": 1100, "4": 1700, "5": 2400, "6": 3200, "7": 4100, "8": 5100, "9": 6200, "10": 7400, "loopFactorPerTrack": 1.25,
                    "note": "times the mini-boss's own healthFactor; in co-op x (1 + 0.5 x (players - 1)), as GAME_DESIGN 8 has it. Sized for 25 to 35 seconds of fire with the build of that Track's middle cycle: tune with the bot"},
-    crowd={"sectionScale": 0.75, "note": "fodder only, on top of what the mini-boss calls itself"},
+    crowd={"sectionScale": 0.75, "penScale": 0.35, "penMax": 120,
+           "note": ("fodder only, on top of what the mini-boss calls itself. In a Pen fight the crowd is 0.35 of the Drop's and never more than 120 bodies inside the Pen: "
+                    "the Pen is 1.7 frames of ground, and three quarters of a Drop's crowd inside it (the first build: up to 580 in view) hid the lock line and the bounces the fight is about")},
     reward={"boostOrbs": 1, "shards": 60, "note": "for each player; the kill also scores 25 times a tier-5 body of its family"},
     body="its family's tier-5 glyph enlarged, with one more ring of ornament and the white equipment marks; off screen it gets the boss's double chevron",
     healthBar="a thin bar under the section bar with its name, as the boss's but half the height",

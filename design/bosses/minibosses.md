@@ -31,6 +31,9 @@ retype it). Pictures: `design/previews/minibosses_1.png`, `minibosses_2.png`, `m
   of the loop, × the mini-boss's own factor, × (1 + 0.5 per extra player). That is 25 to 35 seconds
   of fire with the build of that Track's middle cycle. Tune with the bot.
 - **Crowd.** Three quarters of the Drop's crowd, fodder only, on top of what the mini-boss calls.
+  In a Pen fight: 0.35 of the Drop's crowd and never more than 120 bodies inside the Pen. (The first
+  build put three quarters of a Drop inside it, up to 580 in view, and the lock line and the bounces
+  the two Pen fights are about could not be seen.)
 - **Reward.** One Boost orb and 60 Shards for each player, and 25 times the score of a tier-5 body
   of its family.
 - **Body.** The family's tier-5 glyph enlarged, one more ring of ornament, the white equipment

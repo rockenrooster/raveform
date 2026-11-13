@@ -19,7 +19,9 @@
   },
   "crowd": {
    "sectionScale": 0.75,
-   "note": "fodder only, on top of what the mini-boss calls itself"
+   "penScale": 0.35,
+   "penMax": 120,
+   "note": "fodder only, on top of what the mini-boss calls itself. In a Pen fight the crowd is 0.35 of the Drop's and never more than 120 bodies inside the Pen: the Pen is 1.7 frames of ground, and three quarters of a Drop's crowd inside it (the first build: up to 580 in view) hid the lock line and the bounces the fight is about"
   },
   "reward": {
    "boostOrbs": 1,
