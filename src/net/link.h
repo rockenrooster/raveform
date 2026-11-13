@@ -21,6 +21,8 @@ struct LinkPeerStats {
     u32 rttMs = 0, rttVarMs = 0;
     float loss = 0.0f;  // ENet's mean loss of reliable packets
     u32 sent = 0, lostPackets = 0;
+    u32 silentMs = 0;   // since the last datagram from it
+    u32 inFlight = 0;   // reliable bytes sent and not yet acknowledged
 };
 
 class Link {

@@ -149,7 +149,10 @@ void Play::netFrame(float realDt) {
                 if (s.resuming() && song >= s.resumeSong()) s.resumed();
                 double m1 = song - s.runOffset();
                 if (s.paused() && m1 > s.pauseTick()) m1 = s.pauseTick();
-                if (m1 <= music1_) continue;  // paused: the run holds its place, the song goes on
+                if (m1 <= music1_) {  // paused: the run holds its place, the song goes on
+                    if (!s.paused()) s.noteTickSkipped();
+                    continue;
+                }
                 const float bpm = static_cast<float>(60.0 / 96.0 * (m1 - music1_) / (static_cast<double>(kTickUs) * 1e-6));
                 tickEnd_ += kDt;
                 netTick(m1, bpm > 1.0f ? bpm : 120.0f, n == 0);
@@ -158,7 +161,9 @@ void Play::netFrame(float realDt) {
             if (hostNow - netSimHostUs_ > 3 * kTickUs) {
                 netSimHostUs_ = hostNow - kTickUs / 2;  // TECH_SPEC 4: beyond three ticks a frame, drop time
                 ++netDropped_;
+                s.noteTimeDropped();
             }
+            s.noteFrame(localUs, n);
             alpha_ = clampf(static_cast<float>(static_cast<double>(hostNow - netSimHostUs_) / static_cast<double>(kTickUs)), 0.0f, 1.0f);
         }
     }
@@ -204,6 +209,17 @@ void Play::netFrame(float realDt) {
                "%.1f wu RMS over %.0f), song %+.2f ms, band %+.1f ms (rate %.4f, %u re-seeks), census %u/%u, %u frames dropped time",
                static_cast<unsigned long long>(frameNo_), st.rttMs, st.loss * 100.0f, st.upKbps, st.downKbps, st.correctionsPerS, st.errRmsWu,
                scrRms, scrN, st.songOffsetMs, netBandErrMs_, netRatePosted_, netSeeks_, st.censusChecks, st.censusMismatches, netDropped_);
+        // Diagnostics (docs/PROGRESS_m4_net.md): this device's ticks and anchors, the poses it heard, a client's corrections.
+        char line[1536];
+        net::formatDiagTicks(s.diag(), line, sizeof line);
+        RF_LOG("net: diag %s", line);
+        net::formatDiagPoses(s.diag(), s.seats(), s.seat(), line, sizeof line);
+        RF_LOG("net: diag %s", line);
+        if (!s.host()) {
+            net::formatDiagCorrections(s.diag(), line, sizeof line);
+            RF_LOG("net: diag %s", line);
+        }
+        s.resetDiag();
     }
 }
 

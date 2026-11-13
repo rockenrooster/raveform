@@ -13,16 +13,25 @@
 #                        the PC's game shows the message (a picture)
 #   long_pc_host         15 minutes: the PC hosts four seats (a headless host), the phone joins (bench_play, measured), two
 #                        PC bots join
-#   long_moto_host       15 minutes: the phone hosts four seats (bench_play, measured), three PC bots join
+#   long_moto_host       15 minutes: the phone hosts four seats (bench_play, measured), three PC bots join (-Players 2 or 3:
+#                        one or two); the phone's RAVEFORM log of the run is saved next to the bots' (its `net: diag` lines)
 #   -Impaired            every peer sends through the condition simulator: 5% loss, 80 ms jitter
-#   scripts\coop-device.ps1 -Run long_moto_host [-Serial moto] [-Minutes 15] [-Impaired] [-Out captures\m4b\device]
+#   -LockRoot, -LockName the checkout whose captures\locks\<serial>.lock counts and the name written there (another
+#                        worktree's coder: the main checkout's lock, its own name)
+#   -PhoneArgs, -BotArgs more arguments for the phone's app and for each PC bot
+#   scripts\coop-device.ps1 -Run long_moto_host [-Serial moto] [-Minutes 15] [-Players 4] [-Impaired] [-Out captures\m4b\device]
 param(
     [Parameter(Mandatory)][ValidateSet('discovery_pc_host', 'discovery_moto_host', 'long_pc_host', 'long_moto_host')][string]$Run,
     [string]$Serial = 'moto',
     [double]$Minutes = 15,
+    [ValidateRange(2, 4)][int]$Players = 4,
     [switch]$Impaired,
     [string]$Out = 'captures\m4b\device',
     [string]$PcIp = '',
+    [string]$LockRoot = '',
+    [string]$LockName = 'm4b',
+    [string]$PhoneArgs = '',
+    [string[]]$BotArgs = @(),
     [switch]$NoDeploy
 )
 . "$PSScriptRoot\env.ps1"
@@ -30,7 +39,7 @@ $Serial = Resolve-RfSerial $Serial
 Assert-RfDevice $Serial
 $OutFull = [IO.Path]::GetFullPath((Join-Path (Get-Location) $Out))
 New-Item -ItemType Directory -Force $OutFull | Out-Null
-$lock = Join-Path $RF_ROOT "captures\locks\$Serial.lock"
+$lock = Join-Path $(if ($LockRoot) { $LockRoot } else { $RF_ROOT }) "captures\locks\$Serial.lock"
 $headless = Join-Path $RF_ROOT 'build\desktop-dev\raveform_headless.exe'
 $game = Join-Path $RF_ROOT 'build\desktop-dev\raveform.exe'
 $stamp = Get-Date -Format 'HHmmss'
@@ -58,7 +67,7 @@ function Test-Phone {
     if (Test-Path $lock) {
         $t = (Get-Content $lock -Raw).Trim()
         $age = ((Get-Date) - (Get-Item $lock).LastWriteTime).TotalMinutes
-        if ($t -notmatch '^m4b\b' -and $age -lt 30) { Write-Host "BUSY: lock '$t' ($([int]$age) min old)"; return $false }
+        if ($t -notmatch "^$([regex]::Escape($LockName))\b" -and $age -lt 30) { Write-Host "BUSY: lock '$t' ($([int]$age) min old)"; return $false }
     }
     $fg = Get-RfForegroundPackage $Serial
     $homePkg = Get-RfHomePackage $Serial
@@ -67,7 +76,7 @@ function Test-Phone {
     if ($fg -ne '' -and $fg -ne $homePkg) { Write-Host "BUSY: $fg is in front"; return $false }
     return $true
 }
-function Lock-Phone { New-Item -ItemType Directory -Force (Split-Path $lock) | Out-Null; Set-Content -Encoding ascii $lock ('m4b ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')) }
+function Lock-Phone { New-Item -ItemType Directory -Force (Split-Path $lock) | Out-Null; Set-Content -Encoding ascii $lock ("$LockName " + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')) }
 function Start-Pc([string]$Name, [string]$Exe, [string[]]$ArgList) {
     Start-Process -FilePath $Exe -ArgumentList $ArgList -WorkingDirectory $RF_ROOT -RedirectStandardOutput "$OutFull\${tag}_$Name.txt" `
         -RedirectStandardError "$OutFull\${tag}_$Name.err" -PassThru -WindowStyle Hidden
@@ -166,11 +175,18 @@ try {
             foreach ($n in @('pc_host', 'pc_bot1', 'pc_bot2')) { "-- $n"; Get-Content "$OutFull\${tag}_$n.txt" | Where-Object { $_ -match 'run;|down |on-screen|PASS|FAIL|RFNET' } }
         }
         'long_moto_host' {
-            foreach ($k in 1..3) { $pcs += Start-Pc "pc_bot$k" $headless (Net-Args @('--net', 'join', $phoneIp, '--wait', '400', '--minutes', "$($Minutes + 1)", '--name', "PC$k", '--seed', "$k")) }
-            $appArgs = '--host --players 4' + $(if ($netsim) { " --netsim $netsim" } else { '' })
-            & "$PSScriptRoot\bench-android.ps1" -Serial $Serial -Scenario bench_play -Warmup 30 -Seconds ([int]($Minutes * 60)) -AppArgs $appArgs -Deploy
+            $bots = 1..($Players - 1)
+            foreach ($k in $bots) { $pcs += Start-Pc "pc_bot$k" $headless (Net-Args (@('--net', 'join', $phoneIp, '--wait', '400', '--minutes', "$($Minutes + 1)", '--name', "PC$k", '--seed', "$k") + $BotArgs)) }
+            $appArgs = "--host --players $Players" + $(if ($netsim) { " --netsim $netsim" } else { '' }) + $(if ($PhoneArgs) { " $PhoneArgs" } else { '' })
+            # The phone's log from now on (its clock): the host's `net:` lines, read back after the run (logcat -d, no clearing).
+            # Our APK as built (build-android.ps1 -Offline first), installed right before the run.
+            Deploy-Once
+            $since = "$(& $RF_ADB -s $Serial shell "date '+%m-%d %H:%M:%S.000'")".Trim()
+            & "$PSScriptRoot\bench-android.ps1" -Serial $Serial -Scenario bench_play -Warmup 30 -Seconds ([int]($Minutes * 60)) -AppArgs $appArgs
+            & $RF_ADB -s $Serial shell "logcat -d -T '$since' -s 'RAVEFORM:*' 'RFLIFE:*' 'RFBENCH:*'" | Set-Content "$OutFull\${tag}_phone.logcat.txt"
             foreach ($p in $pcs) { $p.WaitForExit(150000) | Out-Null }
-            foreach ($n in @('pc_bot1', 'pc_bot2', 'pc_bot3')) { "-- $n"; Get-Content "$OutFull\${tag}_$n.txt" | Where-Object { $_ -match 'run;|down |on-screen|PASS|FAIL|RFNET' } }
+            foreach ($k in $bots) { "-- pc_bot$k"; Get-Content "$OutFull\${tag}_pc_bot$k.txt" | Where-Object { $_ -match 'run;|down |on-screen|PASS|FAIL|RFNET' } }
+            "-- phone: $((Get-Content "$OutFull\${tag}_phone.logcat.txt" | Measure-Object -Line).Lines) log lines (${tag}_phone.logcat.txt)"
         }
     }
 } finally {

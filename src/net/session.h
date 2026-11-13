@@ -46,6 +46,7 @@ struct SessionConfig {
 // What the net overlay and the soak report show (per second where it says so).
 struct SessionStats {
     float rttMs = 0.0f, rttVarMs = 0.0f, loss = 0.0f;  // client: to the host; host: the worst client
+    u32 silentMs = 0, inFlight = 0;                     // the longest a peer has been silent; reliable bytes unacknowledged
     float upKbps = 0.0f, downKbps = 0.0f;               // this device, last second, with IP/UDP headers
     float correctionsPerS = 0.0f;                       // client: applied; host: sent
     float errRmsWu = 0.0f, errMaxWu = 0.0f;             // client: position error the corrections found, last second
@@ -67,6 +68,67 @@ struct SessionStats {
     u32 droppedOutgoing = 0;                            // reliable data that could not be queued (must stay 0)
     double totalUpBytes = 0.0, totalDownBytes = 0.0;    // since start, with headers
 };
+
+// Diagnostics (docs/PROGRESS_m4_net.md): where a client's error at correction comes from, how the other players' poses
+// arrive and how the host's song anchors sit on the model they replace. Sums over a window that the reader resets
+// (resetDiag); nothing here changes what the session does.
+struct NetDiagBin {
+    double sum2 = 0.0;
+    u64 n = 0;
+    void add(float e) {
+        sum2 += static_cast<double>(e) * e;
+        ++n;
+    }
+    float rms() const;
+};
+struct NetDiag {
+    // Corrections landing on enemies on this player's screen (the error at correction, as SessionStats::screenErr*).
+    NetDiagBin all;
+    NetDiagBin byTarget[4];    // the host's copy follows: 0 this device's player, 1 the host's player, 2 another client's, 3 none
+    NetDiagBin targetDiffers;  // this copy followed another player than the host's copy did
+    NetDiagBin stateDiffers;   // in another state (moving, tell, dash, rest ...) than the host's copy
+    NetDiagBin byFamily[16];
+    NetDiagBin byAge[6];       // since the last correction applied to it here: < 0.25, 0.5, 1, 2, 4 s, longer or none
+    NetDiagBin perp;           // moving enemies: the error square to the host's velocity, ...
+    double tauSum = 0.0, tau2Sum = 0.0;  // ... and along it as a time offset (s; > 0: this copy is ahead)
+    u64 tauN = 0;
+    // The other players' poses (by seat): arrivals, the gap between them, their age on arrival (host time then less the
+    // stamp: one-way delay, the frame it waited for and the clock estimate's error), and how far fillRemote reached past
+    // the newest sample (extrapolated).
+    u32 poses[4] = {};
+    float poseGapMaxMs[4] = {};
+    u32 poseGapsOver66[4] = {}, poseGapsOver100[4] = {};
+    double poseAgeSumMs[4] = {};
+    float poseAgeMinMs[4] = {1e9f, 1e9f, 1e9f, 1e9f}, poseAgeMaxMs[4] = {-1e9f, -1e9f, -1e9f, -1e9f};
+    u32 fills[4] = {}, extrapolated[4] = {};
+    double extrapSumMs[4] = {};
+    float extrapMaxMs[4] = {};
+    // The host's song anchors: each against the model it replaces, at its own host time (ms of song).
+    NetDiagBin songResidualMs;
+    float songResidualMaxMs = 0.0f;
+    // Correction packets: the longest gap between two arrivals (ms).
+    float corrGapMaxMs = 0.0f;
+    u32 corrPackets = 0;
+    // This device's own frames and ticks (the driver reports them): the longest frame, ticks a frame (0, 1, 2, 3), ticks
+    // skipped because the song had not moved past the last one, time dropped (more than three ticks due); its pose sends
+    // (the longest gap between two); on the host, each new song anchor (the band's heard clock) against the model it
+    // replaces, at its own host time (ms of song), and how many went backwards.
+    u32 frames = 0;
+    float frameMaxMs = 0.0f;
+    u32 ticksPerFrame[4] = {};
+    u32 ticksSkipped = 0, timeDropped = 0;
+    float poseSendGapMaxMs = 0.0f;
+    u32 poseSendGapsOver50 = 0;
+    NetDiagBin anchorResidualMs;
+    float anchorResidualMaxMs = 0.0f;
+    u32 anchorsBackwards = 0;
+};
+
+void mergeDiag(NetDiag& into, const NetDiag& d);
+// The diagnostics as two lines of text ("corr ..." and "poses ..."), for logs. Returns the characters written.
+u32 formatDiagCorrections(const NetDiag& d, char* out, u32 size);
+u32 formatDiagPoses(const NetDiag& d, u32 seats, u32 self, char* out, u32 size);
+u32 formatDiagTicks(const NetDiag& d, char* out, u32 size);
 
 constexpr i64 kConnectTimeoutUs = 6000000;  // M4 stage B: a join nobody answers ends after 6 s ("no answer")
 
@@ -91,7 +153,11 @@ public:
     void receive(i64 localUs);
     i64 hostNow() const { return hostNow_; }
     // Host: its song as heard now (the band's, or a SongClock's) and the tempo after the next bar line.
-    void setHostSong(const SongAnchor& a) { song_.set(a); }
+    void setHostSong(const SongAnchor& a);
+    // Diagnostics from the driver: a frame (with the ticks it ran), a tick skipped (the song had not moved on), time dropped.
+    void noteFrame(i64 localUs, u32 ticks);
+    void noteTickSkipped() { ++diag_.ticksSkipped; }
+    void noteTimeDropped() { ++diag_.timeDropped; }
     double songAt(i64 hostUs) const { return song_.songAt(hostUs); }
     double tpsAt(i64 hostUs) const { return song_.tpsAt(hostUs); }
     bool songValid() const { return song_.valid(); }
@@ -135,6 +201,12 @@ public:
         stats_.screenErrSum2 = 0.0;
         stats_.screenErrN = 0;
         stats_.screenErrMax = 0.0f;
+    }
+    const NetDiag& diag() const { return diag_; }
+    void resetDiag() { diag_ = NetDiag{}; }
+    // The host music of the newest correction applied to this enemy (diagnostics; < 0: none yet).
+    double lastCorrection(u32 slot, u32 serial) const {
+        return slot < sim::kMaxEnemies && corrSerial_[slot] == serial ? corrStamp_[slot] : -1.0;
     }
     const Link& link() const { return link_; }
     Link& linkMut() { return link_; }  // (tests: a peer that dies)
@@ -283,6 +355,9 @@ private:
 
     // Measurement.
     SessionStats stats_;
+    mutable NetDiag diag_;  // (fillRemote, const, counts its reach)
+    i64 poseArrivedUs_[sim::kMaxPlayers] = {};
+    i64 corrArrivedUs_ = 0, frameUs_ = 0, poseSentUs_ = 0;
     i64 measureFrom_ = 0;
     WireStats lastWire_;
     u32 corrCount_ = 0;

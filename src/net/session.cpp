@@ -50,6 +50,132 @@ u64 contentHash() {
     return (static_cast<u64>(kProtocolVersion) * 0x9E3779B97F4A7C15ull) ^ speciesDataDigest() ^ (bossDataDigest() << 1);
 }
 
+float NetDiagBin::rms() const { return n ? static_cast<float>(std::sqrt(sum2 / static_cast<double>(n))) : 0.0f; }
+
+namespace {
+// "rms (share of all the squared error %, share of the samples %)"
+int binText(char* out, u32 size, const NetDiagBin& b, const NetDiagBin& all) {
+    const double e2 = all.sum2 > 0.0 ? 100.0 * b.sum2 / all.sum2 : 0.0;
+    const double n = all.n ? 100.0 * static_cast<double>(b.n) / static_cast<double>(all.n) : 0.0;
+    return std::snprintf(out, size, "%.1f (%.0f%%e2 %.0f%%n)", static_cast<double>(b.rms()), e2, n);
+}
+}  // namespace
+
+void mergeDiag(NetDiag& into, const NetDiag& d) {
+    const auto bin = [](NetDiagBin& a, const NetDiagBin& b) {
+        a.sum2 += b.sum2;
+        a.n += b.n;
+    };
+    bin(into.all, d.all);
+    for (u32 k = 0; k < 4; ++k) bin(into.byTarget[k], d.byTarget[k]);
+    bin(into.targetDiffers, d.targetDiffers);
+    bin(into.stateDiffers, d.stateDiffers);
+    for (u32 k = 0; k < 16; ++k) bin(into.byFamily[k], d.byFamily[k]);
+    for (u32 k = 0; k < 6; ++k) bin(into.byAge[k], d.byAge[k]);
+    bin(into.perp, d.perp);
+    into.tauSum += d.tauSum;
+    into.tau2Sum += d.tau2Sum;
+    into.tauN += d.tauN;
+    for (u32 s = 0; s < 4; ++s) {
+        into.poses[s] += d.poses[s];
+        into.poseGapMaxMs[s] = std::fmax(into.poseGapMaxMs[s], d.poseGapMaxMs[s]);
+        into.poseGapsOver66[s] += d.poseGapsOver66[s];
+        into.poseGapsOver100[s] += d.poseGapsOver100[s];
+        into.poseAgeSumMs[s] += d.poseAgeSumMs[s];
+        into.poseAgeMinMs[s] = std::fmin(into.poseAgeMinMs[s], d.poseAgeMinMs[s]);
+        into.poseAgeMaxMs[s] = std::fmax(into.poseAgeMaxMs[s], d.poseAgeMaxMs[s]);
+        into.fills[s] += d.fills[s];
+        into.extrapolated[s] += d.extrapolated[s];
+        into.extrapSumMs[s] += d.extrapSumMs[s];
+        into.extrapMaxMs[s] = std::fmax(into.extrapMaxMs[s], d.extrapMaxMs[s]);
+    }
+    bin(into.songResidualMs, d.songResidualMs);
+    into.songResidualMaxMs = std::fmax(into.songResidualMaxMs, d.songResidualMaxMs);
+    into.corrGapMaxMs = std::fmax(into.corrGapMaxMs, d.corrGapMaxMs);
+    into.corrPackets += d.corrPackets;
+    into.frames += d.frames;
+    into.frameMaxMs = std::fmax(into.frameMaxMs, d.frameMaxMs);
+    for (u32 k = 0; k < 4; ++k) into.ticksPerFrame[k] += d.ticksPerFrame[k];
+    into.ticksSkipped += d.ticksSkipped;
+    into.timeDropped += d.timeDropped;
+    into.poseSendGapMaxMs = std::fmax(into.poseSendGapMaxMs, d.poseSendGapMaxMs);
+    into.poseSendGapsOver50 += d.poseSendGapsOver50;
+    bin(into.anchorResidualMs, d.anchorResidualMs);
+    into.anchorResidualMaxMs = std::fmax(into.anchorResidualMaxMs, d.anchorResidualMaxMs);
+    into.anchorsBackwards += d.anchorsBackwards;
+}
+
+u32 formatDiagCorrections(const NetDiag& d, char* out, u32 size) {
+    if (!size) return 0;
+    u32 w = 0;
+    const auto put = [&](int n) {
+        if (n > 0) w = w + static_cast<u32>(n) < size ? w + static_cast<u32>(n) : size - 1;
+    };
+    put(std::snprintf(out + w, size - w, "corr %.1f wu (%llu); target self ", static_cast<double>(d.all.rms()),
+                      static_cast<unsigned long long>(d.all.n)));
+    put(binText(out + w, size - w, d.byTarget[0], d.all));
+    put(std::snprintf(out + w, size - w, " host "));
+    put(binText(out + w, size - w, d.byTarget[1], d.all));
+    put(std::snprintf(out + w, size - w, " other "));
+    put(binText(out + w, size - w, d.byTarget[2], d.all));
+    put(std::snprintf(out + w, size - w, "; target differs "));
+    put(binText(out + w, size - w, d.targetDiffers, d.all));
+    put(std::snprintf(out + w, size - w, "; state differs "));
+    put(binText(out + w, size - w, d.stateDiffers, d.all));
+    put(std::snprintf(out + w, size - w, "; age"));
+    static const char* const kAge[6] = {"<.25", "<.5", "<1", "<2", "<4", ">4"};
+    for (u32 k = 0; k < 6; ++k) {
+        put(std::snprintf(out + w, size - w, " %s:", kAge[k]));
+        put(binText(out + w, size - w, d.byAge[k], d.all));
+    }
+    const double tm = d.tauN ? d.tauSum / static_cast<double>(d.tauN) : 0.0;
+    const double tr = d.tauN ? std::sqrt(d.tau2Sum / static_cast<double>(d.tauN)) : 0.0;
+    put(std::snprintf(out + w, size - w, "; along v: mean %+.1f ms, rms %.1f ms; across v %.1f wu; family", tm * 1e3, tr * 1e3,
+                      static_cast<double>(d.perp.rms())));
+    for (u32 f = 0; f < 16; ++f) {
+        if (!d.byFamily[f].n) continue;
+        put(std::snprintf(out + w, size - w, " %u:", f));
+        put(binText(out + w, size - w, d.byFamily[f], d.all));
+    }
+    return w;
+}
+
+u32 formatDiagTicks(const NetDiag& d, char* out, u32 size) {
+    if (!size) return 0;
+    const int n = std::snprintf(out, size,
+                                "frames %u, longest %.1f ms, ticks a frame 0/1/2/3: %u/%u/%u/%u, ticks skipped %u, time dropped %u; pose "
+                                "sends: longest gap %.1f ms, %u over 50 ms; song anchors set here %.2f ms rms, max %.2f (%llu), %u backwards",
+                                d.frames, static_cast<double>(d.frameMaxMs), d.ticksPerFrame[0], d.ticksPerFrame[1], d.ticksPerFrame[2],
+                                d.ticksPerFrame[3], d.ticksSkipped, d.timeDropped, static_cast<double>(d.poseSendGapMaxMs), d.poseSendGapsOver50,
+                                static_cast<double>(d.anchorResidualMs.rms()), static_cast<double>(d.anchorResidualMaxMs),
+                                static_cast<unsigned long long>(d.anchorResidualMs.n), d.anchorsBackwards);
+    return n < 0 ? 0u : (static_cast<u32>(n) < size ? static_cast<u32>(n) : size - 1);
+}
+
+u32 formatDiagPoses(const NetDiag& d, u32 seats, u32 self, char* out, u32 size) {
+    if (!size) return 0;
+    u32 w = 0;
+    const auto put = [&](int n) {
+        if (n > 0) w = w + static_cast<u32>(n) < size ? w + static_cast<u32>(n) : size - 1;
+    };
+    put(std::snprintf(out + w, size - w, "poses"));
+    for (u32 s = 0; s < seats && s < 4; ++s) {
+        if (s == self || !d.poses[s]) continue;
+        put(std::snprintf(out + w, size - w,
+                          " | seat %u: %u, gap max %.0f ms, >66 %u, >100 %u, age %.0f/%.0f/%.0f ms, past newest %.1f%% (mean %.0f, max %.0f ms)",
+                          s, d.poses[s], static_cast<double>(d.poseGapMaxMs[s]), d.poseGapsOver66[s], d.poseGapsOver100[s],
+                          static_cast<double>(d.poseAgeMinMs[s]), d.poseAgeSumMs[s] / static_cast<double>(d.poses[s]),
+                          static_cast<double>(d.poseAgeMaxMs[s]),
+                          d.fills[s] ? 100.0 * static_cast<double>(d.extrapolated[s]) / static_cast<double>(d.fills[s]) : 0.0,
+                          d.extrapolated[s] ? d.extrapSumMs[s] / static_cast<double>(d.extrapolated[s]) : 0.0,
+                          static_cast<double>(d.extrapMaxMs[s])));
+    }
+    put(std::snprintf(out + w, size - w, " | song anchors %.2f ms rms, max %.2f (%llu) | correction packets %u, gap max %.0f ms",
+                      static_cast<double>(d.songResidualMs.rms()), static_cast<double>(d.songResidualMaxMs),
+                      static_cast<unsigned long long>(d.songResidualMs.n), d.corrPackets, static_cast<double>(d.corrGapMaxMs)));
+    return w;
+}
+
 // ---------------------------------------------------------------------------------------------- set-up
 
 bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
@@ -59,6 +185,9 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     world_ = world;
     content_ = content;
     stats_ = SessionStats{};
+    diag_ = NetDiag{};
+    for (i64& t : poseArrivedUs_) t = 0;
+    corrArrivedUs_ = frameUs_ = poseSentUs_ = 0;
     clock_.reset();
     song_.reset();
     runOffset_ = 0.0;
@@ -167,6 +296,27 @@ void Session::receive(i64 localUs) {
 }
 
 i64 Session::nowLocal() const { return clockFn_ ? clockFn_(clockUser_) : localNow_; }
+
+void Session::setHostSong(const SongAnchor& a) {
+    if (song_.valid() && a.hostUs > song_.anchor().hostUs && a.tps > 0.0) {
+        // Diagnostics: the new anchor against the model it replaces, at its own host time.
+        const float r = static_cast<float>((a.song - song_.songAt(a.hostUs)) / a.tps * 1000.0);
+        diag_.anchorResidualMs.add(r);
+        if (std::fabs(r) > diag_.anchorResidualMaxMs) diag_.anchorResidualMaxMs = std::fabs(r);
+        if (a.song < song_.songAt(song_.anchor().hostUs)) ++diag_.anchorsBackwards;
+    }
+    song_.set(a);
+}
+
+void Session::noteFrame(i64 localUs, u32 ticks) {
+    ++diag_.frames;
+    if (frameUs_) {
+        const float ms = static_cast<float>(static_cast<double>(localUs - frameUs_) * 1e-3);
+        if (ms > diag_.frameMaxMs) diag_.frameMaxMs = ms;
+    }
+    frameUs_ = localUs;
+    ++diag_.ticksPerFrame[ticks < 3 ? ticks : 3];
+}
 
 void Session::service() {
     Link::Event ev;
@@ -524,9 +674,9 @@ void Session::onPose(const MsgPose& m) {
     const auto add = [&](i64 stamp, const PoseState& s) {
         u32 at = r.count;  // insertion place among the r.count samples (oldest first)
         while (at > 0 && r.s[(r.head + at - 1) % kPoseRing].stampUs > stamp) --at;
-        if (at > 0 && r.s[(r.head + at - 1) % kPoseRing].stampUs == stamp) return;
+        if (at > 0 && r.s[(r.head + at - 1) % kPoseRing].stampUs == stamp) return false;
         if (r.count == kPoseRing) {
-            if (at == 0) return;  // older than everything kept
+            if (at == 0) return false;  // older than everything kept
             r.head = (r.head + 1) % kPoseRing;
             --r.count;
             --at;
@@ -537,9 +687,27 @@ void Session::onPose(const MsgPose& m) {
         d = m;
         d.stampUs = stamp;
         d.cur = s;
+        return true;
     };
     if (m.prevAgeMs >= 0) add(m.stampUs - static_cast<i64>(m.prevAgeMs) * 1000, m.prev);
-    add(m.stampUs, m.cur);
+    if (add(m.stampUs, m.cur)) {
+        // Diagnostics: a new sample of this player (a relayed pose the host had already sent is not one).
+        const u32 p = m.player;
+        const i64 local = nowLocal();
+        const i64 hostNow = host() ? local : clock_.hostAt(local);
+        if (poseArrivedUs_[p]) {
+            const float gap = static_cast<float>(static_cast<double>(local - poseArrivedUs_[p]) * 1e-3);
+            if (gap > diag_.poseGapMaxMs[p]) diag_.poseGapMaxMs[p] = gap;
+            if (gap > 66.0f) ++diag_.poseGapsOver66[p];
+            if (gap > 100.0f) ++diag_.poseGapsOver100[p];
+        }
+        poseArrivedUs_[p] = local;
+        const float age = static_cast<float>(static_cast<double>(hostNow - m.stampUs) * 1e-3);
+        ++diag_.poses[p];
+        diag_.poseAgeSumMs[p] += age;
+        if (age < diag_.poseAgeMinMs[p]) diag_.poseAgeMinMs[p] = age;
+        if (age > diag_.poseAgeMaxMs[p]) diag_.poseAgeMaxMs[p] = age;
+    }
 }
 
 void Session::onStats(const MsgStats& m) {
@@ -561,6 +729,13 @@ void Session::onStats(const MsgStats& m) {
 void Session::onCorrections(u16 run, double hostMusic) {
     corrRun_ = run;
     corrMusic_ = hostMusic;
+    const i64 local = nowLocal();
+    if (corrArrivedUs_) {
+        const float gap = static_cast<float>(static_cast<double>(local - corrArrivedUs_) * 1e-3);
+        if (gap > diag_.corrGapMaxMs) diag_.corrGapMaxMs = gap;
+    }
+    corrArrivedUs_ = local;
+    ++diag_.corrPackets;
 }
 
 void Session::onCorrection(const NetEnemyState& s) {
@@ -578,6 +753,7 @@ void Session::onCorrection(const NetEnemyState& s) {
     const Enemies& e = world_->enemies();
     const u32 slot = e.handle[i] & 0xFFFFu;
     if (corrSerial_[slot] == s.serial && corrMusic_ <= corrStamp_[slot]) return;
+    const double prevStamp = corrSerial_[slot] == s.serial ? corrStamp_[slot] : -1.0;
     corrSerial_[slot] = s.serial;
     corrStamp_[slot] = corrMusic_;
     if (!(e.flags[i] & kFlagDead) && e.state[i] != kWarping && s.state != kWarping) {
@@ -586,12 +762,33 @@ void Session::onCorrection(const NetEnemyState& s) {
         const Vec2 me = world_->player(seat_).pos;
         const float dx = e.x[i] + e.ox[i] - me.x, dy = e.y[i] + e.oy[i] - me.y;
         if (std::fabs(dx) <= tuning::kFrameHalfWWu && std::fabs(dy) <= tuning::kFrameHalfHWu) {
-            const float ds = clampf(static_cast<float>((world_->music() - corrMusic_) / static_cast<double>(world_->ticksPerSecond())), -0.25f, 0.25f);
-            const Vec2 h{s.x + (s.vx + s.kx) * ds, s.y + (s.vy + s.ky) * ds};
-            const float d = length(Vec2{e.x[i] + e.ox[i], e.y[i] + e.oy[i]} - h);
+            const float tps = static_cast<float>(world_->ticksPerSecond());
+            const float ds = clampf(static_cast<float>((world_->music() - corrMusic_) / static_cast<double>(tps)), -0.25f, 0.25f);
+            const Vec2 v{s.vx + s.kx, s.vy + s.ky};
+            const Vec2 h{s.x + v.x * ds, s.y + v.y * ds};
+            const Vec2 dv = Vec2{e.x[i] + e.ox[i], e.y[i] + e.oy[i]} - h;
+            const float d = length(dv);
             stats_.screenErrSum2 += static_cast<double>(d) * d;
             ++stats_.screenErrN;
             if (d > stats_.screenErrMax) stats_.screenErrMax = d;
+            // Diagnostics: what kind of divergence it is.
+            NetDiag& g = diag_;
+            g.all.add(d);
+            const u32 tc = s.target >= kMaxPlayers ? 3u : (s.target == seat_ ? 0u : (s.target == 0 ? 1u : 2u));
+            g.byTarget[tc].add(d);
+            if (e.target[i] != s.target) g.targetDiffers.add(d);
+            if (e.state[i] != s.state) g.stateDiffers.add(d);
+            g.byFamily[static_cast<u32>(world_->species().get(e.species[i]).family) & 15u].add(d);
+            const float age = prevStamp < 0.0 ? 1e9f : static_cast<float>((corrMusic_ - prevStamp) / static_cast<double>(tps));
+            g.byAge[age < 0.25f ? 0 : (age < 0.5f ? 1 : (age < 1.0f ? 2 : (age < 2.0f ? 3 : (age < 4.0f ? 4 : 5))))].add(d);
+            const float v2 = v.x * v.x + v.y * v.y;
+            if (v2 > 60.0f * 60.0f) {
+                const float tau = (dv.x * v.x + dv.y * v.y) / v2;
+                g.tauSum += tau;
+                g.tau2Sum += static_cast<double>(tau) * tau;
+                ++g.tauN;
+                g.perp.add(length(dv - v * tau));
+            }
         }
     }
     const float err = world_->netCorrect(s, corrMusic_);
@@ -673,6 +870,12 @@ void Session::onHeartbeat(const MsgHeartbeat& m) {
     a.tps = m.tps;
     a.nextBar = m.nextBar;
     a.tpsNext = m.tpsNext;
+    if (song_.valid() && a.hostUs > song_.anchor().hostUs && a.tps > 0.0) {
+        // Diagnostics: the new anchor against the model it replaces, at its own host time.
+        const float r = static_cast<float>((a.song - song_.songAt(a.hostUs)) / a.tps * 1000.0);
+        diag_.songResidualMs.add(r);
+        if (std::fabs(r) > diag_.songResidualMaxMs) diag_.songResidualMaxMs = std::fabs(r);
+    }
     song_.set(a);
     if (m.bossOn && m.run == world_->runId()) world_->netBossState(m.bossPart, m.bossParts, m.bossCore, Vec2{m.bossX, m.bossY});
 }
@@ -835,6 +1038,14 @@ void Session::fillRemote(TickInput& in, i64 hostUs) const {
             else if (!b) b = &q;
         }
         PoseState st;
+        ++diag_.fills[s];
+        if (a && !b) {
+            // Diagnostics: past the newest sample (carried on by its velocity).
+            const float ahead = static_cast<float>(static_cast<double>(at - a->stampUs) * 1e-3);
+            ++diag_.extrapolated[s];
+            diag_.extrapSumMs[s] += ahead;
+            if (ahead > diag_.extrapMaxMs[s]) diag_.extrapMaxMs[s] = ahead;
+        }
         if (a && b) {
             const float t = static_cast<float>(static_cast<double>(at - a->stampUs) / static_cast<double>(b->stampUs - a->stampUs));
             st = b->cur;
@@ -1268,6 +1479,12 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
     // (each datagram costs 32 bytes of headers). Acknowledgements are ENet's own.
     const bool poseFrame = live && localUs >= nextPoseUs_;
     if (poseFrame) {
+        if (poseSentUs_) {
+            const float gap = static_cast<float>(static_cast<double>(localUs - poseSentUs_) * 1e-3);
+            if (gap > diag_.poseSendGapMaxMs) diag_.poseSendGapMaxMs = gap;
+            if (gap > 50.0f) ++diag_.poseSendGapsOver50;
+        }
+        poseSentUs_ = localUs;
         // The own player: now and the last state (TECH_SPEC 8.1: unreliable, 30 Hz, two states).
         const PlayerState& me = w.player(seat_);
         MsgPose m;
@@ -1430,10 +1647,13 @@ void Session::measure(i64 localUs) {
     // The link.
     stats_.peers = 0;
     stats_.rttMs = stats_.rttVarMs = stats_.loss = 0.0f;
+    stats_.silentMs = stats_.inFlight = 0;
     for (u32 p = 0; p < kMaxLinkPeers; ++p) {
         const LinkPeerStats ps = link_.peerStats(p);
         if (!ps.connected) continue;
         ++stats_.peers;
+        if (ps.silentMs > stats_.silentMs) stats_.silentMs = ps.silentMs;
+        stats_.inFlight += ps.inFlight;
         if (static_cast<float>(ps.rttMs) > stats_.rttMs) stats_.rttMs = static_cast<float>(ps.rttMs);
         if (static_cast<float>(ps.rttVarMs) > stats_.rttVarMs) stats_.rttVarMs = static_cast<float>(ps.rttVarMs);
         if (ps.loss > stats_.loss) stats_.loss = ps.loss;

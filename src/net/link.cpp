@@ -24,11 +24,17 @@ void configurePeer(ENetPeer* p) {
 // ENet doubles a reliable command's resend timeout at every loss (TCP's backoff). On a game's LAN link that turns a
 // few losses in a row into seconds of a stalled reliable stream (at 5% loss each way about one command in 10,000
 // fails four times: 0.24 + 0.47 + 0.95 + 1.9 s). Here a resend waits one round-trip timeout (ENet's own first one,
-// from the current estimate), never more; a dead link still ends by ENet's timeout limits (5 s at least).
+// from the current estimate), never more, while the peer is heard from (it sends 30 times a second). A peer silent
+// for longer than kCapHeardMs is gone or cut off: ENet's backoff takes over, so a link to a dead peer does not resend
+// everything unacknowledged every 50 ms until ENet's timeout (5 s at least) ends it (M4: a client whose host vanished
+// sent 300-764 kbit/s in its last second, docs/PROGRESS_m4_net.md).
+constexpr enet_uint32 kCapHeardMs = 500;
 void capResendTimeouts(ENetHost* h) {
     for (size_t k = 0; k < h->peerCount; ++k) {
         ENetPeer& p = h->peers[k];
         if (p.state != ENET_PEER_STATE_CONNECTED || enet_list_empty(&p.sentReliableCommands)) continue;
+        const enet_uint32 silent = h->serviceTime - p.lastReceiveTime;  // wrapping milliseconds
+        if (silent > kCapHeardMs && silent < 0x80000000u) continue;
         enet_uint32 cap = p.roundTripTime + 4 * p.roundTripTimeVariance;
         if (cap < 50) cap = 50;
         enet_uint32 next = 0;
@@ -201,6 +207,9 @@ LinkPeerStats Link::peerStats(u32 peer) const {
     s.loss = static_cast<float>(p.packetLoss) / static_cast<float>(ENET_PEER_PACKET_LOSS_SCALE);
     s.sent = p.packetsSent;
     s.lostPackets = p.packetsLost;
+    const enet_uint32 silent = h->serviceTime - p.lastReceiveTime;  // wrapping milliseconds
+    s.silentMs = s.connected && p.lastReceiveTime && silent < 0x80000000u ? static_cast<u32>(silent) : 0u;
+    s.inFlight = p.reliableDataInTransit;
     return s;
 }
 
