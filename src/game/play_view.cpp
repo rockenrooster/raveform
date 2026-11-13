@@ -769,6 +769,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         if (w.boss().kind == sim::BossKind::Choir) fightZoom = w.species().choir.zoom;
         if (w.boss().kind == sim::BossKind::EventHorizon) fightZoom = w.species().horizon.zoom;  // M5 part 4 (horizon.json camera)
         if (w.boss().kind == sim::BossKind::Polyrhythm) fightZoom = w.species().poly.zoom;
+        if (w.boss().kind == sim::BossKind::Feedback) fightZoom = w.species().feedback.zoom;
     }
     if (w.boss().active && !w.boss().dying && w.boss().kind != sim::BossKind::Longwave) {
         const Vec2 off = lerp2(w.boss().prevPos, w.boss().pos, a) - S;
@@ -1134,6 +1135,18 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             const Vec2 p = lerp2(Vec2{bl.px[i], bl.py[i]}, Vec2{bl.x[i], bl.y[i]}, a);
             if (!visible(p, 10.0f)) continue;
             if (visible(p, 0.0f)) ++stats_.bulletsInView;
+            if (bl.echo[i]) {
+                // M5 part 4 (feedback.md): an echo shot is the player's shot, turned: a short streak in the danger colour with
+                // the threat rim.
+                const Vec2 dv = normalizeOr(Vec2{bl.vx[i], bl.vy[i]}, Vec2{1.0f, 0.0f});
+                const Vec2 tail = p - dv * w.species().feedback.streak;
+                if (shown(kMuteBullet)) d.scene.line(toScene(tail), toScene(p), 0.5f * look_->lines.enemyBullet.width * refPx_, danger * 0.4f, danger * 1.6f, 0);
+                if (shown(kMutePriority)) {
+                    d.threatRims.line(toScreen(tail), toScreen(p), rimHalf * refPx_, Vec3{}, Vec3{}, 0);
+                    d.threatCores.line(toScreen(tail), toScreen(p), coreHalf * refPx_, threatCore, threatCore, 0);
+                }
+                continue;
+            }
             if (shown(kMuteBullet)) {
                 glyph(d.glyphs, gBullet_, false, p, 0.0f, 0.0f, bulletScale, look_->lines.enemyBullet.intensity * swarm,
                       0.5f * look_->lines.enemyBullet.width, kGlyphFlat, danger, danger);

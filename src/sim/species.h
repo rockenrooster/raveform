@@ -165,6 +165,7 @@ public:
     ChoirData choir;
     HorizonData horizon;  // M5 part 4
     PolyData poly;        // M5 part 4
+    FeedbackData feedback;  // M5 part 4
     MiniData minis;
 
 private:

@@ -322,6 +322,51 @@ struct Bullets {
     float x[kCap], y[kCap], px[kCap], py[kCap], vx[kCap], vy[kCap];
     float life[kCap];  // seconds left
     u8 dead[kCap];
+    u8 echo[kCap];     // M5 part 4: a Feedback echo shot (1 + its player; drawn as the player's shot, turned)
+};
+
+// M5 part 4, Feedback (design/bosses/feedback.md): each player's last bars as the tape holds them (positions relative to
+// the Head, aim, alive; the shots they fired with where and which way; their Novas) and the Nulls bursting.
+struct FeedbackTape {
+    static constexpr u32 kPoses = 384;  // a pose a tick: four bars at 150 BPM
+    static constexpr u32 kShots = 512;  // three bars at the 120-a-bar cap
+    static constexpr u32 kNovas = 8;
+    struct Pose {
+        double tick = -1.0;
+        Vec2 rel, aim;
+        u8 alive = 0;
+    };
+    struct Shot {
+        double tick = -1.0;
+        Vec2 off, dir;  // from the ship, and its heading
+        u8 primary = 0;
+    };
+    struct Lane {
+        Pose poses[kPoses];
+        u32 poseHead = 0, poseCount = 0;
+        Shot shots[kShots];
+        u32 shotHead = 0, shotCount = 0;
+        i64 bar = -1;
+        u32 barShots = 0;  // shots this bar (the 120 cap: every second one after)
+        double novas[kNovas] = {};
+        u32 novaHead = 0, novaCount = 0;
+    };
+    Lane lanes[kMaxPlayers];
+    struct Null {
+        double tick = -1e9;
+        Vec2 at;
+    };
+    static constexpr u32 kNulls = 8;
+    Null nulls[kNulls];
+    u32 nullHead = 0;
+    void clear() {
+        for (Lane& l : lanes) {
+            l.poseHead = l.poseCount = l.shotHead = l.shotCount = l.barShots = l.novaHead = l.novaCount = 0;
+            l.bar = -1;
+        }
+        for (Null& n : nulls) n.tick = -1e9;
+        nullHead = 0;
+    }
 };
 
 enum ShotKind : u8 { kShotPrimary = 0, kShotSentinel, kShotMini, kShotOrb, kShotMissile, kShotPellet, kShotBomb };  // M5: Heavy Step, Swarm, Flak, Carousel
@@ -682,6 +727,14 @@ public:
     bool polyWallAt(const PolyRing& r, float angle) const;  // a wall (not a gap, not erased) in that direction
     bool polyWallHit(Vec2 at, Vec2& from) const;
     u8 polyLinkBurn(double t) const;
+    // Feedback (world_feedback.cpp): the tape, an Echo's delay (ticks) and whether it plays now, a recorded pose, the hits
+    // of its Echoes' bodies, its Nulls and (Howl) its Loop.
+    const FeedbackTape& tape() const { return tape_; }
+    double feedbackDelay(u32 echo) const;
+    u32 feedbackEchoes() const;
+    bool feedbackPose(u32 p, double t, Vec2& rel, Vec2& aim, bool& alive) const;
+    bool feedbackHits(Vec2 at, Vec2& from) const;
+    float feedbackNullRadius(const FeedbackTape::Null& n, double t) const;
     u8 choirHeld(u32 k, double t, float* angle) const;
     float choirRingAngle(double t) const;
     // The Voices that sing on the eighth at song time t (this bar's caller and groups; the next bar's caller as it will move
@@ -998,6 +1051,13 @@ private:
     void wellShots(float dt);
     bool wellSwallow(u32 i, u32 k);
     void bossPayout();  // a boss's Shards and Cells (world_boss.cpp)
+    // world_feedback.cpp (M5 part 4)
+    void enterFeedback(Vec2 centre);
+    void updateFeedback(float dt);
+    void feedbackRecord(u32 shot0);
+    float feedbackScale() const;
+    void feedbackSwallow();
+    bool spawnEchoShot(Vec2 pos, Vec2 vel, float advanceS, float lifeS, u8 player);
     // world_polyrhythm.cpp (M5 part 4)
     void enterPoly(Vec2 centre);
     void updatePoly(float dt);
@@ -1132,6 +1192,8 @@ private:
     BoostPickups boostPickups_;
     CellPickups cellPickups_;
     BossState boss_;
+    FeedbackTape tape_;  // M5 part 4: Feedback's tape (World::init holds it; no allocation after)
+    u32 fbShot0_ = 0;    // the shots before this tick's (Feedback records the new ones)
     PenState pen_;
     u32 hiveIdx_[192] = {};  // the Hive's darts by spawn number (hiveReslot's scratch)
     u8 hitShotFlags_ = 0;  // play test 2: the flags of the shot whose hit hitEnemy() is applying (its Impact's Prism lane)

@@ -18,6 +18,8 @@ namespace {
 bool starts(const char* a, const char* b) { return std::strncmp(a, b, std::strlen(b)) == 0; }
 // Event Horizon's health for --fight horizon:<phase> (horizon.json phases: 100-66, 66-33, 33-0).
 float horizonShare(u8 phase) { return phase == 0 ? 1.0f : (phase == 1 ? 0.6f : 0.3f); }
+// Feedback's (feedback.json phases: above 60%, 60-30%, 30% and below).
+float feedbackShare(u8 phase) { return phase == 0 ? 1.0f : (phase == 1 ? 0.5f : 0.25f); }
 
 enum class Moment : u8 {
     Crest, Jaw, Lunge, Death,                                   // Longwave (Death: every fight)
@@ -28,6 +30,7 @@ enum class Moment : u8 {
     Bounce, Hot, Split,                                         // Carom King
     HzLanes, HzStarved, HzFed, HzWave, HzJetsShown, HzJets,     // Event Horizon (M5 part 4)
     PrOne, PrRings, PrBurnShown, PrBurn, PrSolo,                // Polyrhythm
+    FbEchoes, FbOpen, FbTwo, FbHowl,                            // Feedback
 };
 
 struct Pic {
@@ -92,6 +95,12 @@ const Pic kPics[] = {
     {"pr_solo", "polyrhythm", 2, Moment::PrSolo, false},
     {"pr_death", "polyrhythm", 2, Moment::Death, false},
     {"pr_strip", "polyrhythm", 0, Moment::PrOne, true},
+    {"fb_slapback", "feedback", 0, Moment::FbEchoes, false},
+    {"fb_open", "feedback", 0, Moment::FbOpen, false},
+    {"fb_regeneration", "feedback", 1, Moment::FbTwo, false},
+    {"fb_howl", "feedback", 2, Moment::FbHowl, false},
+    {"fb_death", "feedback", 1, Moment::Death, false},
+    {"fb_strip", "feedback", 0, Moment::FbEchoes, true},
 };
 constexpr u32 kPicCount = sizeof(kPics) / sizeof(kPics[0]);
 
@@ -153,6 +162,7 @@ void Play::applyFightPhase() {
         }
         case BossKind::CaromKing: w.bossHealthNow(1.0f - 0.25f * static_cast<float>(ph < 3 ? ph : 3) - 0.01f); break;
         case BossKind::EventHorizon: w.bossHealthNow(horizonShare(ph)); break;  // Tidal below 66%, Collapse below 33%
+        case BossKind::Feedback: w.bossHealthNow(feedbackShare(ph)); break;
         case BossKind::Polyrhythm:
             // Hemiola: both at half; Solo: Four dead.
             if (ph == 1) w.bossHealthNow(0.5f);
@@ -170,6 +180,7 @@ void Play::holdFight() {
     if (b.kind == BossKind::CaromKing) share = 1.0f - 0.25f * static_cast<float>(fightPhase_ < 3 ? fightPhase_ : 3) - 0.01f;
     else if (b.kind == BossKind::EventHorizon) share = horizonShare(fightPhase_);
     else if (b.kind == BossKind::Polyrhythm) share = fightPhase_ == 1 ? 0.5f : 1.0f;
+    else if (b.kind == BossKind::Feedback) share = feedbackShare(fightPhase_);
     else if (isMiniBoss(b.kind) && fightPhase_) share = 0.49f;
     w.bossRefill(share);
 }
@@ -325,7 +336,7 @@ bool Play::scriptSetupM5() {
     world_->rules().godMode = true;
     if (!setupFight(pic.fight, pic.phase)) return true;
     // Part 4: the Track 5 build kills a rotor in seconds; the fight holds its health until the moment (not for its death).
-    if (fightKind_ == BossKind::Polyrhythm && pic.moment != Moment::Death) opt_.fightHold = true;
+    if ((fightKind_ == BossKind::Polyrhythm || fightKind_ == BossKind::Feedback) && pic.moment != Moment::Death) opt_.fightHold = true;
     if (pic.strip) stripStride_ = 4;
     return true;
 }
@@ -535,7 +546,7 @@ bool Play::scriptInputM5(StickInput& in) {
     if (pic.moment == Moment::Death) {
         // The death: killed on a beat after a bar of the fight, captured as it plays out.
         if (b.active && !b.dying && inBeat < 2.0) w.killBossNextTick(0, true);
-        const double after = b.kind == BossKind::Choir ? 0.6 : (b.kind == BossKind::Longwave ? 0.45 : (b.kind == BossKind::EventHorizon ? 0.5 : (b.kind == BossKind::Polyrhythm ? 0.4 : 0.08)));
+        const double after = b.kind == BossKind::Choir ? 0.6 : (b.kind == BossKind::Longwave ? 0.45 : (b.kind == BossKind::EventHorizon ? 0.5 : (b.kind == BossKind::Polyrhythm ? 0.4 : (b.kind == BossKind::Feedback ? 0.4 : 0.08))));
         go = b.dying && music >= b.deathTick + after * kTicksPerBar;
     } else if (b.active && !b.dying) {
         switch (pic.moment) {
@@ -590,6 +601,16 @@ bool Play::scriptInputM5(StickInput& in) {
             case Moment::PrRings: go = music > b.fightTick + 3.0 * kTicksPerBar && inBar > 0.7 * kTicksPerBar && inBar < 0.75 * kTicksPerBar; break;
             case Moment::PrBurnShown: go = w.polyLinkBurn(music) == 1 && music > fightPhaseAt_ + 2.0 * kTicksPerBar && inBar > 0.6 * kTicksPerBar; break;
             case Moment::PrBurn: go = w.polyLinkBurn(music) == 2 && w.polyLinkBurn(music - 20.0) == 2; break;
+            // Feedback: the Echo at work (its shots in the air), the Head open, both Echoes, Howl's burning Loop.
+            case Moment::FbEchoes: {
+                u32 n = 0;
+                for (u32 i = 0; i < w.bullets().count; ++i) n += w.bullets().echo[i] && !w.bullets().dead[i] ? 1u : 0u;
+                go = b.fb.active && n >= (pic.strip ? 4u : 12u) && music > b.fightTick + 2.0 * kTicksPerBar;
+                break;
+            }
+            case Moment::FbOpen: go = b.fb.active && b.fb.open >= 0.999f && music > b.fightTick + 2.0 * kTicksPerBar && inBar > 0.3 * kTicksPerBar; break;
+            case Moment::FbTwo: go = (b.fb.active & 0x3u) == 0x3u && music > fightPhaseAt_ + 2.0 * kTicksPerBar; break;
+            case Moment::FbHowl: go = b.fb.phase == 2 && music > fightPhaseAt_ + 3.0 * kTicksPerBar && inBar > 0.5 * kTicksPerBar; break;
             case Moment::PrSolo: go = b.pr.phase == 2 && music > fightPhaseAt_ + kTicksPerBar && inBar > 0.2 * kTicksPerBar && inBar < 0.3 * kTicksPerBar; break;
             default: break;
         }

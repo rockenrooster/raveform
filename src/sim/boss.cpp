@@ -30,7 +30,7 @@ const char kHorizonJson[] =
 const char kPolyJson[] =
 #include "polyrhythm.json.inc"
     ;
-[[maybe_unused]] const char kFeedbackJson[] =
+const char kFeedbackJson[] =
 #include "feedback.json.inc"
     ;
 
@@ -516,6 +516,52 @@ bool PolyData::load() {
     num("parts.link.tickLength", tickLength);
     num("parts.link.oneTickLength", oneTickLength);
     num("parts.link.widthRefPx", linkWidthPx);
+    return ok;
+}
+
+bool FeedbackData::load() {
+    // design/bosses/feedback.json (M5 part 4); the prose's numbers are in boss_prose.h.
+    JsonDoc doc;
+    if (!doc.parse(kFeedbackJson, sizeof kFeedbackJson - 1, "design/bosses/feedback.json")) return false;
+    bool ok = true;
+    const auto num = [&](const char* path, float& out) {
+        bool got = true;
+        const double v = doc.number(path, out, &got);
+        if (!got) {
+            RF_ERR("feedback: '%s' is missing", path);
+            ok = false;
+        }
+        out = static_cast<float>(v);
+    };
+    const auto whole = [&](const char* path, u32& out) {
+        float v = static_cast<float>(out);
+        num(path, v);
+        out = static_cast<u32>(v);
+    };
+    num("numbers.health", health);
+    num("numbers.headRadius", headRadius);
+    num("parts.head.coneRadius", coneRadius);
+    num("parts.head.coilRadius", coilRadius);
+    num("parts.head.coreRadius", coreRadius);
+    whole("parts.head.ribs", ribs);
+    whole("parts.head.shutterBlades", blades);
+    num("numbers.loop.radius", loopRadius);
+    num("numbers.loop.bandWidth", loopBand);
+    whole("numbers.loop.steps", loopSteps);
+    num("parts.loop.tickLength", tickLength);
+    num("parts.loop.widthRefPx", loopWidthPx);
+    num("numbers.echo.bodyRadius", echoRadius);
+    whole("parts.echo.afterImages", afterImages);
+    num("parts.echo.afterImageBeats", afterImageBeats);
+    num("numbers.echo.shots.speed", shotSpeed);
+    num("numbers.echo.shots.lifeSeconds", shotLife);
+    num("numbers.echo.shots.radius", shotRadius);
+    num("numbers.echo.shots.streakLength", streak);
+    num("numbers.damageScale.open", dmgOpen);
+    num("numbers.damageScale.closed", dmgClosed);
+    num("numbers.phases.2.loop.shrinkPerBar", howlShrink);
+    num("numbers.phases.2.loop.minRadius", howlMin);
+    num("numbers.camera.zoom", zoom);
     return ok;
 }
 

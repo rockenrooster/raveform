@@ -352,6 +352,7 @@ constexpr float kHorizonHealthTune = 1.0f; // the page's 3,200 until the bot mea
 // Polyrhythm (polyrhythm.md gives no number for these).
 constexpr float kPrLinkBurnHalfWu = 16.0f;  // the burning link: a beam as wide as the Choir's cage strings
 constexpr float kPolyHealthTune = 1.0f;     // the page's 1,400 a rotor until the bot measures it (part 4)
+constexpr float kFeedbackHealthTune = 1.0f; // the page's 4,800 until the bot measures it (part 4)
 
 // ======================================================================================================
 // M4 STAGE A: co-op (GAME_DESIGN 10, TECH_SPEC 8). Quoted numbers are marked; the rest are chosen where the

@@ -148,6 +148,9 @@ private:
     // M5 part 4 (play_view_m5b.cpp): Event Horizon, Polyrhythm, Feedback and mini-bosses batch 2.
     void drawHorizon(FrameDraw& d, const ViewInput& in);
     void drawPoly(FrameDraw& d, const ViewInput& in);
+    void drawFeedback(FrameDraw& d, const ViewInput& in);
+    const Palette* fbHueFor_ = nullptr;
+    Vec3 fbHue_;                   // the Head's electric blue
     void fightBreak(Vec2 at, float t);  // a boss break played late (Event Horizon's flash, Polyrhythm's break on the One)
     void polyWalls(FrameDraw& d, const ViewInput& in);
     const Palette* polyHueFor_ = nullptr;

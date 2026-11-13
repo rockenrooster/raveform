@@ -99,4 +99,15 @@ constexpr u32 kPrShards = 240;                // Reward: "240 Shards per player"
 constexpr float kPrLatticeImpulse = 160.0f;   // Look: "an impulse of 160 under each rotor on each of its pulses"
 constexpr float kPrWallThinS = 0.5f;          // Look: walls "thinning to 2 px in their last half second"
 
+// ---- Feedback (design/bosses/feedback.md, feedback.json's prose; M5 part 4)
+constexpr float kFbRegenAt = 0.6f, kFbHowlAt = 0.3f;  // phases: "above 60%", "60% to 30%", "30% and below"
+constexpr float kFbMinWu = 220.0f, kFbMaxWu = 900.0f; // record: "the distance from the Head is clamped to 220-900 wu"
+constexpr double kFbPlayingSteps = 2.0;       // "playing from each echoed primary shot until two sixteenths after it"
+constexpr u32 kFbShotCap = 500;               // cap: "at most 500 echo shots alive"
+constexpr u32 kFbBarCap = 120;                // "a player's bar holding more than 120 shots is played back with every second shot left out"
+constexpr u32 kFbShards = 320;                // reward: "320 Shards for each player"
+constexpr float kFbLatticePullPx = 20.0f;     // Howl: "the lattice inside it is pulled 20 px toward the Head on every bar line"
+constexpr float kFbConePush = 0.15f;          // Look: "the cone pushes out 15% on every kick"
+constexpr float kFbNullBand = 30.0f;          // (chosen) a Null's front: as thick as the Nova's
+
 }  // namespace rf::sim::prose

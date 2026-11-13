@@ -97,6 +97,21 @@ const FightSound kRows[] = {
     {BossCue::PrLinkTick, "polyrhythm.md", "the link burning: the telegraph tick on each beat of the telegraph bar", nullptr, SoundPlay::Sfx,
      sx(Sfx::Tick), false, 0.6f, 0, 0},
     {BossCue::PrLinkBurn, "polyrhythm.md", "the impact on beat 3", nullptr, SoundPlay::Recipe, rc(Recipe::Impact), false, 0.8f, 0, 0},
+    // ---- Feedback (feedback.md "Sound")
+    {BossCue::FbEcho, "feedback.md", "every echo shot plays its player's own lead note as it was recorded: an octave down, low-passed at 1.2 kHz, "
+                                       "9 dB quieter and panned to the far side; the second Echo 15 dB down and darker",
+     "the lead has no octave-down, low-passed copy: the player's lead note plays 9 dB down (the second Echo 15 dB), from where the Echo is",
+     SoundPlay::Lead, 0xFF, false, 0.35f, 0, 0},
+    {BossCue::FbOpen, "feedback.md", "open: the pad's filter opens and the Head holds the Track's root two octaves up, quietly; it rises a semitone "
+                                       "for every 10% of health lost",
+     "the band cannot open or duck its pad on cue: the held root plays as a pad voice for a bar each time the Head opens; in Howl the "
+     "delay's feedback is not turned up",
+     SoundPlay::PadVoice, rc(Recipe::PadVoice), false, 0.25f, 4, 1, NoteRule::KeyRoot, 0, 0.0f, 0.0f, 0.0f, 6},
+    {BossCue::FbSwallow, "feedback.md", "a swallowed shot is a closed hat", nullptr, SoundPlay::Recipe, rc(Recipe::Hat), false, 0.4f, 0, 0},
+    {BossCue::FbNull, "(not on the page; chosen)", "a Null bursts: the Nova's blast, quieter", nullptr, SoundPlay::Sfx, sx(Sfx::NovaBlast), false,
+     0.6f, 0, 0},
+    {BossCue::FbCut, "(not on the page; chosen)", "the tape is cut: a closing sweep over two beats", nullptr, SoundPlay::Recipe, rc(Recipe::Sweep), false,
+     0.8f, -1, 2},
 };
 static_assert(sizeof(kRows) / sizeof(kRows[0]) == static_cast<u32>(BossCue::Count), "one row per BossCue, in its order");
 }  // namespace
@@ -142,6 +157,12 @@ void playFightCue(Band& band, FightVoices& voices, const sim::Event& e, double t
         }
         case SoundPlay::Lead: {
             const u8 timbre = r.id == 0xFF ? static_cast<u8>(e.b % 4u) : r.id;
+            if (r.cue == BossCue::FbEcho) {
+                // Feedback: the player's own lead (its voice), the step's degree; the second Echo 6 dB further down.
+                const u8 degree = static_cast<u8>(static_cast<u64>(std::floor(e.tick / 24.0)) % 3u);
+                band.leadNote(static_cast<u8>(e.b % 4u), degree, e.f > 0.5f ? 0.5f * r.gain : r.gain, pan, tick, 0xFF);
+                break;
+            }
             band.leadNote(0, static_cast<u8>(e.b % 3u), r.gain, pan, tick, timbre);
             break;
         }

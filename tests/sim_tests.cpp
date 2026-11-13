@@ -1996,6 +1996,78 @@ void testPolyrhythm() {
     delete w;
 }
 
+// M5 part 4: Feedback (feedback.md): the tape, the Echo at the mirror point, its shots turned, the Head open only while
+// the Echo is silent, Regeneration's second Echo, Howl's double speed and burning Loop, the death's late break.
+u32 echoShots(const World& w) {
+    u32 n = 0;
+    for (u32 i = 0; i < w.bullets().count; ++i) n += !w.bullets().dead[i] && w.bullets().echo[i] ? 1u : 0u;
+    return n;
+}
+
+void testFeedback() {
+    g_test = "feedback";
+    const FeedbackData& d = g_species->feedback;
+    CHECK(d.health == 4800.0f && d.headRadius == 84.0f && d.loopRadius == 420.0f && d.loopSteps == 16 && d.shotSpeed == 400.0f && d.shotLife == 3.2f);
+    CHECK(d.echoRadius == 16.0f && d.howlShrink == 15.0f && d.howlMin == 300.0f && d.zoom == 0.75f && d.blades == 6 && d.ribs == 16);
+    CHECK(bossOfSong(5) == BossKind::Feedback && bossHomeTrack(BossKind::Feedback) == 6 && fightBuilt(BossKind::Feedback));
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    const Vec2 ship{300.0f, 0.0f};
+    stepWorld(*w, music, ship);
+    w->spawnBossNow(kTicksPerBar, Vec2{}, BossKind::Feedback);
+    const BossState& s = w->boss();
+    CHECK(s.kind == BossKind::Feedback && s.fightTick == 3.0 * kTicksPerBar && length(s.pos) < 1.0f);
+    // Bar 3: the player fires for two beats (along +x, away from the Head), then rests.
+    runTo(*w, music, 3.0 * kTicksPerBar, ship);
+    while (music + kTicksPerSimTick <= 3.0 * kTicksPerBar + 2.0 * kTicksPerBeat) stepWorld(*w, music, ship, 1);
+    runTo(*w, music, 4.0 * kTicksPerBar + 10.0, ship);
+    // Bar 4: the Echo at the mirror point plays it back, the shots turned (along -x), and the Head is shut while it plays.
+    CHECK_MSG((s.fb.active & 1u) && length(s.body[1] - Vec2{-300.0f, 0.0f}) < 20.0f, "active %u at %.0f %.0f", s.fb.active, s.body[1].x, s.body[1].y);
+    runTo(*w, music, 4.0 * kTicksPerBar + kTicksPerBeat, ship);
+    CHECK_MSG(echoShots(*w) >= 2, "%u echo shots", echoShots(*w));
+    {
+        bool turned = false;
+        for (u32 i = 0; i < w->bullets().count; ++i)
+            if (w->bullets().echo[i] && !w->bullets().dead[i]) turned = w->bullets().vx[i] < -300.0f && w->bullets().x[i] < 0.0f;
+        CHECK(turned);
+    }
+    CHECK_MSG(s.fb.playing & 1u && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 0.0f, "playing %u open %.2f", s.fb.playing, s.fb.open);
+    runTo(*w, music, 4.0 * kTicksPerBar + 2.0 * kTicksPerBeat + 3.0 * kTicksPerStep, ship);
+    CHECK_MSG(!(s.fb.playing & 1u) && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 1.0f, "playing %u open %.2f", s.fb.playing, s.fb.open);
+    // Its body hurts; player shots are not stopped by it (it is not a part).
+    {
+        Vec2 from;
+        CHECK(w->feedbackHits(s.body[1], from) && !w->feedbackHits(Vec2{0.0f, 300.0f}, from));
+        BossPart parts[kBossBodies + 4];
+        CHECK(w->bossParts(parts, kBossBodies + 4) == 1 && parts[0].part == 3);
+    }
+    // Regeneration: a second Echo, two bars behind, where the player stood.
+    w->bossHealthNow(0.5f);
+    stepWorld(*w, music, ship);
+    runTo(*w, music, 5.0 * kTicksPerBar + 10.0, ship);  // (the tape holds two bars from bar 5 on)
+    CHECK_MSG(s.fb.phase == 1 && (s.fb.active & 3u) == 3u && length(s.body[2] - ship) < 20.0f, "phase %u active %u", s.fb.phase, s.fb.active);
+    // Howl: the tape at double speed (two beats and four), the Loop tightening 15 wu a bar line, burning.
+    w->bossHealthNow(0.25f);
+    stepWorld(*w, music, ship);
+    CHECK(s.fb.phase == 2 && w->feedbackDelay(0) == 2.0 * kTicksPerBeat && w->feedbackDelay(1) == 4.0 * kTicksPerBeat);
+    {
+        const double line = (std::floor(w->music() / kTicksPerBar) + 2.0) * kTicksPerBar;
+        runTo(*w, music, line + 5.0, ship);
+        CHECK_MSG(s.fb.loopR == d.loopRadius - 2.0f * d.howlShrink, "loop %.1f", s.fb.loopR);
+        Vec2 from;
+        CHECK(w->feedbackHits(Vec2{0.0f, s.fb.loopR}, from) && !w->feedbackHits(Vec2{0.0f, s.fb.loopR - 60.0f}, from));
+    }
+    // The death: the tape is cut; the break and the Shards come two bars on.
+    w->killBossNextTick(0, true);
+    stepWorld(*w, music, ship);
+    CHECK(s.dying && s.payoutTick > w->music() + kTicksPerBar);
+    const u32 shards0 = w->shards().count;
+    runTo(*w, music, s.payoutTick + 5.0, ship);
+    CHECK_MSG(w->shards().count >= shards0 + 320u, "%u -> %u", shards0, w->shards().count);  // feedback.md: 320 Shards
+    delete w;
+}
+
 void testMinibosses() {
     g_test = "minibosses";
     const MiniData& md = g_species->minis;
@@ -2764,6 +2836,7 @@ int main() {
     testChoir();
     testHorizon();
     testPolyrhythm();
+    testFeedback();
     testMinibosses();
     testFamiliesM5();
     testUpgradesM5();

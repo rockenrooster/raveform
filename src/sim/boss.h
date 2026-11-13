@@ -37,7 +37,7 @@ inline BossKind bossOfSong(u32 song) {
     return k[song % 6u];
 }
 // The fights built so far (--fight takes these; a run's set list ends before the first Track without its fights).
-inline bool fightBuilt(BossKind k) { return k <= BossKind::CaromKing || k == BossKind::EventHorizon || k == BossKind::Polyrhythm; }
+inline bool fightBuilt(BossKind k) { return k <= BossKind::CaromKing || k >= BossKind::EventHorizon; }
 // A fight's home Track (1-based): a boss's own; a mini-boss's the Track whose middle Drop draws it (minibosses.json
 // common.pick).
 inline u32 bossHomeTrack(BossKind k) {
@@ -70,6 +70,9 @@ enum class BossCue : u8 {
     // Polyrhythm: Three's pulse (the tom) and Four's (the rim), f = semitones above their note (a quarter of health lost:
     // one), b = the rotor; the One (the gong); the link's telegraph tick and its burn (the impact).
     PrThree, PrFour, PrOne, PrLinkTick, PrLinkBurn,
+    // Feedback: an Echo plays a sixteenth of its player's shots (b = player, f = 1 for the second Echo), the Head opens (f =
+    // semitones risen, a tenth of health lost: one), a shot swallowed by the closed Head, a Null bursts, the tape is cut.
+    FbEcho, FbOpen, FbSwallow, FbNull, FbCut,
     Count
 };
 
@@ -218,6 +221,24 @@ struct PolyData {
     bool load();
 };
 
+// Feedback (design/bosses/feedback.json; M5 part 4): the Head, the Loop of tape, the Echoes.
+struct FeedbackData {
+    float health = 4800, headRadius = 84;
+    float coneRadius = 66, coilRadius = 48, coreRadius = 24;
+    u32 ribs = 16, blades = 6;
+    float loopRadius = 420, loopBand = 24;
+    u32 loopSteps = 16;
+    float tickLength = 32, loopWidthPx = 1.2f;
+    float echoRadius = 16;
+    u32 afterImages = 3;
+    float afterImageBeats = 0.5f;
+    float shotSpeed = 400, shotLife = 3.2f, shotRadius = 5, streak = 22;
+    float dmgOpen = 1, dmgClosed = 0;
+    float howlShrink = 15, howlMin = 300;
+    float zoom = 0.75f;
+    bool load();
+};
+
 struct ChoirData {
     static constexpr u32 kVoices = 8;
     static constexpr u32 kMaxPts = 16;
@@ -346,6 +367,19 @@ struct PolyState {
     double firstDeathTick = -1.0;
 };
 
+// Feedback's state (the tape itself, the players' recorded play, is World::tape_).
+struct FeedbackState {
+    static constexpr u32 kEchoes = 8;  // two for each of four players: body[1 + 2 x player + echo]
+    u8 phase = 0;                      // 0 Slapback, 1 Regeneration, 2 Howl
+    u8 active = 0;                     // echoes playing back a recorded bar (bit 2 x player + echo)
+    u8 playing = 0;                    // ... of those, the ones counting as playing (an echoed primary shot in the last two sixteenths)
+    float open = 1.0f;                 // the share of active echoes that are silent (the Head's damage scale)
+    float loopR = 420.0f;              // the Loop's radius (Howl tightens it)
+    double howlTick = -1.0;            // Howl began
+    double lastSwallow = -1e9;         // (a swallowed shot's hat, at most one a sixteenth)
+    bool wasOpen = true;
+};
+
 struct ChoirState {
     Vec2 centre;
     float ring0 = 0.0f;          // the Round's angle at ringTick
@@ -435,6 +469,7 @@ struct BossState {
     MiniState mini;
     HorizonState hz;  // M5 part 4
     PolyState pr;     // M5 part 4
+    FeedbackState fb; // M5 part 4
     double payoutTick = -1.0;  // dying: its Shards and Cells come at this tick (Event Horizon's flash, Polyrhythm's break)
     float scale = 1.0f;        // health scale it entered with (players, Track, loop)
     double geomTick[12] = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0};  // each BossGeom decision's moment

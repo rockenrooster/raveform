@@ -153,6 +153,7 @@ void World::tick(const TickInput& in) {
     buildGroups();  // M5 part 4: Wyrms' chains, Tethers' pairs
     findWells();
 
+    fbShot0_ = shots_.count;  // (M5 part 4: Feedback records what this tick fires)
     spawnShots(in);
     fireEchoes();  // M5: Echo's ghost volleys
     updateNovas();
@@ -183,6 +184,7 @@ void World::tick(const TickInput& in) {
         scriptHits_ = 0;
     }
     bossContact();
+    if (boss_.active && !boss_.dying && boss_.kind == BossKind::Feedback) feedbackRecord(fbShot0_);  // M5 part 4: the tape
     if (role_ == NetRole::Client) updatePredictions();
     if (role_ == NetRole::Host) finishNetLog();
     compact();
@@ -936,6 +938,7 @@ bool World::spawnBullet(Vec2 pos, Vec2 vel, float advanceS, float lifeS) {
     b.vy[i] = vel.y;
     b.life[i] = (lifeS > 0.0f ? lifeS : kBulletLifeS) - advanceS;
     b.dead[i] = 0;
+    b.echo[i] = 0;
     return true;
 }
 
@@ -1026,6 +1029,7 @@ void World::compact() {
         b.vy[i] = b.vy[l];
         b.life[i] = b.life[l];
         b.dead[i] = b.dead[l];
+        b.echo[i] = b.echo[l];
     }
     Shots& s = shots_;
     for (u32 i = 0; i < s.count;) {

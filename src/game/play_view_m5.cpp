@@ -100,6 +100,7 @@ void PlayView::drawFight(FrameDraw& d, const ViewInput& in) {
         case BossKind::Choir: drawChoir(d, in); break;
         case BossKind::EventHorizon: drawHorizon(d, in); break;
         case BossKind::Polyrhythm: drawPoly(d, in); break;
+        case BossKind::Feedback: drawFeedback(d, in); break;
         default: drawMini(d, in); break;
     }
 }
@@ -619,7 +620,9 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
         case EventType::BossDeath: {
             // The boss break (three rings, 300 sparks, the 30 px distortion ring) for the bosses; a mini-boss dies as a large
             // kill with its own rings. Event Horizon implodes first: its flash comes a bar and a beat later (drawHorizon).
-            if (static_cast<BossKind>(e.a) == BossKind::EventHorizon || static_cast<BossKind>(e.a) == BossKind::Polyrhythm) break;
+            if (static_cast<BossKind>(e.a) == BossKind::EventHorizon || static_cast<BossKind>(e.a) == BossKind::Polyrhythm ||
+                static_cast<BossKind>(e.a) == BossKind::Feedback)
+                break;
             const bool mini = isMiniBoss(static_cast<BossKind>(e.a));
             const Vec3 c = static_cast<BossKind>(e.a) == BossKind::Choir ? choirHue_[0] : palette_->hue[mini ? 2 : 1];
             addPool(at, 60.0f, mini ? 260.0f : 420.0f, whiteV(), reduceFlashing_ ? 0.45f : 0.9f, 0.0f, 0.12f, false, 1, false, false, t);

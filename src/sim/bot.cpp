@@ -446,6 +446,26 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                 }
                 break;
             }
+            case BossKind::Feedback: {
+                // Off the Echoes' bodies (they are not targets, so not parts); in Howl off the burning Loop, inside it.
+                for (u32 k = 0; k < FeedbackState::kEchoes; ++k) {
+                    if (!(boss.fb.active & (1u << k))) continue;
+                    const Vec2 dd = pos - boss.body[1 + k];
+                    const float dist = length(dd);
+                    if (dist < 160.0f && dist > 1e-3f) force = force + dd * (2.5f * (160.0f - dist) / 160.0f / dist);
+                    if (dist < 60.0f) {
+                        contactSoon = true;
+                        escape = escape + normalizeOr(dd, Vec2{1.0f, 0.0f});
+                    }
+                }
+                const Vec2 rel = pos - boss.pos;
+                const float dc = length(rel);
+                const float keep = boss.fb.phase == 2 ? boss.fb.loopR - 90.0f : 0.0f;
+                if (boss.fb.phase == 2 && dc > keep && dc > 1e-3f) force = force - rel * (2.0f * std::fmin((dc - keep) / 60.0f, 1.5f) / dc);
+                // Keep a working distance from the Head (its body hurts): 200-380 wu.
+                if (dc < 200.0f && dc > 1e-3f) force = force + rel * (1.5f / dc);
+                break;
+            }
             case BossKind::AlphaHound:
                 if (m.state == 1 || m.state == 2) offLine(boss.body[0], m.lockDir, 140.0f);
                 break;
@@ -611,6 +631,27 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                       ((close >= 7 && me.novas >= 2) || bulletsNear >= 10 || (me.cells == 0 && contactSoon && !dash));
     in.nova = nova && !novaLast_;
     novaLast_ = nova;
+    if (boss.active && !boss.dying && boss.kind == BossKind::Feedback && musicTick >= boss.fightTick) {
+        // Feedback (feedback.md: play, then listen): fire in phrases the Echoes leave silent a bar later. Slapback: two beats
+        // on, two off, swapped the next bar; Regeneration: a bar on, two off; Howl: two beats on, four off. A Nova would come
+        // back as a Null: none in the fight.
+        const double bar = kTicksPerBar;
+        const i64 b = static_cast<i64>(std::floor(musicTick / bar));
+        const i64 beat = static_cast<i64>(std::floor(musicTick / kTicksPerBeat));
+        const i64 inBar = beat - b * 4;
+        bool fire = true;
+        switch (boss.fb.phase) {
+            case 0: fire = ((b & 1) == 0) == (inBar < 2); break;
+            case 1: fire = (b % 3) == 0; break;
+            default: fire = (beat % 6) < 2; break;
+        }
+        if (!fire) {
+            in.aimActive = false;
+            in.assist = false;
+        }
+        in.nova = false;
+        novaLast_ = false;
+    }
     return in;
 }
 

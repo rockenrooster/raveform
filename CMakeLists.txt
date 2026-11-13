@@ -242,6 +242,7 @@ add_library(raveform_sim STATIC
   src/sim/world_enemies.cpp
   src/sim/world_families.cpp
   src/sim/world_families4.cpp
+  src/sim/world_feedback.cpp
   src/sim/world_horizon.cpp
   src/sim/world_longwave.cpp
   src/sim/world_miniboss.cpp

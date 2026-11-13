@@ -465,4 +465,202 @@ void PlayView::drawPoly(FrameDraw& d, const ViewInput& in) {
     }
 }
 
+// ---------------------------------------------------------------------------------------------- Feedback
+
+void PlayView::drawFeedback(FrameDraw& d, const ViewInput& in) {
+    const World& w = *in.world;
+    const BossState& s = w.boss();
+    const FeedbackData& F = w.species().feedback;
+    const FeedbackState& f = s.fb;
+    const FeedbackTape& tape = w.tape();
+    const double t = in.music;
+    const float now = static_cast<float>(in.time);
+    const Vec3 W1 = whiteV();
+    const Vec3 gold = palettes_->player[3];
+    const Vec3 danger = palettes_->danger;
+    if (fbHueFor_ != palette_) {
+        // The Head: the palette's electric blue (its colour nearest 255 degrees).
+        fbHueFor_ = palette_;
+        const Vec3 cand[7] = {palette_->accent, palette_->hue[0], palette_->hue[1], palette_->hue[2], palette_->partner[0], palette_->partner[1], palette_->partner[2]};
+        float best = 1e9f;
+        for (const Vec3& c : cand) {
+            const float dd = hueDist(hueOf(c), 255.0f);
+            if (dd < best) {
+                best = dd;
+                fbHue_ = c;
+            }
+        }
+    }
+    const Vec2 c = s.pos;
+    const float hw = 0.6f * refPx_;
+    if (!s.dying && !visible(c, F.loopRadius + 40.0f)) fightChevron(d, in, c, fbHue_);
+    // The entrance: the Loop draws itself once round over the second bar and the Head assembles inside it.
+    const float drawn = clamp01(static_cast<float>((t - (s.enterTick + kTicksPerBar)) / kTicksPerBar));
+    // The death: the tape is cut; the Loop opens at the head and unspools outward.
+    const float cut = s.dying ? clamp01(static_cast<float>((t - s.deathTick) / kTicksPerBar)) : 0.0f;
+    if (s.dying && deathShown_ == 0 && s.payoutTick < 0.0) {
+        deathShown_ = 1;
+        fightBreak(c, now);
+    }
+    const auto ang = [&](double stepFrac) { return -0.5f * kPi + kTau * static_cast<float>(stepFrac); };  // step 0 at twelve, clockwise
+    const double bar = kTicksPerBar;
+    const double headStep = std::floor(std::fmod(t, bar) / kTicksPerStep);
+    const float headA = ang(headStep / static_cast<double>(F.loopSteps ? F.loopSteps : 16u));
+    // ---- The Loop: two thin white lines a band apart with sixteen faint slots (Howl: the danger colour, priority layer).
+    {
+        const float R = f.loopR * (1.0f + 0.6f * cut);
+        const bool hot = f.phase == 2 && !s.dying;
+        const u32 segs = 96;
+        const float level = (1.0f - cut) * 1.0f;
+        for (u32 j = 0; j < segs; ++j) {
+            const float u0 = static_cast<float>(j) / segs, u1 = static_cast<float>(j + 1) / segs;
+            if (u0 >= drawn) break;
+            const float a0 = headA + kTau * u0 + 0.6f * cut, a1 = headA + kTau * u1 + 0.6f * cut;  // (cut: it opens at the head)
+            for (float side : {-1.0f, 1.0f}) {
+                const float r = R + side * 0.5f * F.loopBand;
+                const Vec2 p0 = c + dirv(a0) * r, p1 = c + dirv(a1) * r;
+                if (!visible(p0, 30.0f) && !visible(p1, 30.0f)) continue;
+                if (hot) {
+                    d.scene.line(toScene(p0), toScene(p1), hw * 1.6f, danger * 1.6f, danger * 1.6f, 0);
+                    d.threatRims.line(toScreen(p0), toScreen(p1), 0.5f * F.loopWidthPx * refPx_ * 2.0f + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
+                    d.threatCores.line(toScreen(p0), toScreen(p1), 0.5f * F.loopWidthPx * refPx_ * 2.0f, danger, danger, 0);
+                } else if (level > 0.0f) {
+                    d.scene.line(toScene(p0), toScene(p1), 0.5f * F.loopWidthPx * refPx_, W1 * (1.3f * level), W1 * (1.3f * level), 0);
+                }
+            }
+        }
+        for (u32 j = 0; j < F.loopSteps && drawn >= 1.0f && !s.dying; ++j) {
+            const Vec2 dv = dirv(ang(static_cast<double>(j) / F.loopSteps));
+            d.scene.line(toScene(c + dv * (R - 0.5f * F.loopBand)), toScene(c + dv * (R + 0.5f * F.loopBand)), hw * 0.6f, W1 * 0.35f, W1 * 0.35f, 0);
+        }
+        // The ticks: what the Echoes will play in the coming bar, each player's lane in their colour (the tape is always
+        // the next bar of echo, drawn before it happens).
+        if (!s.dying && t >= s.fightTick) {
+            const double D = w.feedbackDelay(0);
+            for (u32 p = 0; p < kMaxPlayers; ++p) {
+                const FeedbackTape::Lane& l = tape.lanes[p];
+                if (!l.shotCount || !w.player(p).present) continue;
+                const float lane = R + F.loopBand * (-0.35f + 0.7f * (static_cast<float>(p) + 0.5f) / static_cast<float>(kMaxPlayers));
+                double lastStep = -1.0;
+                for (u32 k = 0; k < l.shotCount; ++k) {
+                    const FeedbackTape::Shot& r = l.shots[(l.shotHead + FeedbackTape::kShots - 1 - k) % FeedbackTape::kShots];
+                    const double when = r.tick + D;
+                    if (when < t) break;
+                    if (when > t + bar || !r.primary) continue;
+                    const double step = std::floor(when / kTicksPerStep);
+                    if (step == lastStep) continue;
+                    lastStep = step;
+                    const Vec2 dv = dirv(ang(std::fmod(step, static_cast<double>(F.loopSteps)) / F.loopSteps + 0.5 / F.loopSteps));
+                    const Vec3 col = palettes_->player[p];
+                    d.scene.line(toScene(c + dv * (lane - 0.5f * F.tickLength * 0.4f)), toScene(c + dv * (lane + 0.5f * F.tickLength * 0.4f)), hw * 1.6f,
+                                 col * 2.4f, col * 2.4f, 0);
+                }
+            }
+            // The gold head on the song's sixteenths, with a small flare.
+            const Vec2 hp = c + dirv(headA) * R;
+            d.sparkles.glow(toScene(hp), 9.0f * refPx_, gold * 2.2f);
+            flare(d.scene, hp, headA + 0.5f * kPi, 26.0f, 2, gold * 2.0f, 0.5f);
+        }
+    }
+    // ---- The Head: surround, ribbed cone (it pushes out 15% on every kick), coil, and a six-blade shutter over a gold core
+    // (drawn back while open; across while closed).
+    {
+        const float level = clamp01(static_cast<float>((t - (s.enterTick + kTicksPerBar)) / kTicksPerBar)) * (s.dying ? 1.0f : 1.0f);
+        const float push = 1.0f + prose::kFbConePush * kick_;
+        const bool open = !s.dying && t >= s.fightTick && f.open >= 0.999f;
+        const auto circle = [&](float r, Vec3 col, float width) {
+            const u32 n = 40;
+            for (u32 j = 0; j < n; ++j)
+                d.scene.line(toScene(c + dirv(kTau * j / n) * r), toScene(c + dirv(kTau * (j + 1) / n) * r), width, col, col, 0);
+        };
+        circle(F.headRadius, fbHue_ * (2.2f * level), hw * 1.6f);
+        circle(F.coneRadius * push, fbHue_ * (1.4f * level), hw);
+        circle(F.coilRadius, fbHue_ * (1.2f * level), hw * 0.8f);
+        for (u32 j = 0; j < F.ribs; ++j) {
+            const Vec2 dv = dirv(kTau * j / F.ribs);
+            d.scene.line(toScene(c + dv * F.coilRadius), toScene(c + dv * (F.coneRadius * push)), hw * 0.6f, fbHue_ * (0.9f * level), fbHue_ * (0.9f * level), 0);
+        }
+        d.sparkles.glow(toScene(c), F.coreRadius * pxPerWu_, open ? gold * 2.4f : fbHue_ * 0.25f);
+        const u32 blades = F.blades ? F.blades : 6u;
+        const float spin = static_cast<float>(t / bar) * 0.3f;
+        for (u32 j = 0; j < blades; ++j) {
+            const float a0 = spin + kTau * j / blades;
+            if (open) {
+                // Drawn back: short blades at the coil.
+                d.scene.line(toScene(c + dirv(a0) * (F.coilRadius * 0.85f)), toScene(c + dirv(a0 + 0.5f) * F.coilRadius), hw * 1.2f, W1 * (1.2f * level),
+                             W1 * (1.2f * level), 0);
+            } else {
+                // Across: each blade from the centre to the core's rim and round.
+                d.scene.line(toScene(c), toScene(c + dirv(a0) * (F.coreRadius * 1.3f)), hw * 1.4f, fbHue_ * (2.0f * level), fbHue_ * (2.0f * level), 0);
+                d.scene.line(toScene(c + dirv(a0) * (F.coreRadius * 1.3f)), toScene(c + dirv(a0 + kTau / blades) * (F.coreRadius * 1.3f)), hw,
+                             fbHue_ * (1.6f * level), fbHue_ * (1.6f * level), 0);
+            }
+        }
+        if (open) d.pools.glow(toScene(c), 2.0f * F.headRadius * pxPerWu_, gold * 0.12f);
+    }
+    if (s.dying || t < s.fightTick) return;
+    // ---- The Echoes: the player's own ship in the danger colour with a white core and three after-images, on the priority
+    // layer; a faint dashed line in the player's colour from the Echo through the Head to a small ring where the player
+    // stood a bar ago.
+    const float shipScale = 14.0f * glyphs_->def(static_cast<u32>(gShip_)).size;  // (play_view.cpp kStandardEnemyWu: look.md 4)
+    const Look::PriorityShip& ph = look_->priorityHull;
+    for (u32 e = 0; e < FeedbackState::kEchoes; ++e) {
+        if (!(f.active & (1u << e))) continue;
+        const u32 p = e / 2u, k = e % 2u;
+        const Vec2 at = lerpv(s.bodyPrev[1 + e], s.body[1 + e], in.alpha);
+        const float head = s.bodyAng[1 + e];
+        const double D = w.feedbackDelay(k);
+        // After-images: where it was half a beat apart.
+        for (u32 j = 1; j <= F.afterImages; ++j) {
+            Vec2 rel, aim;
+            bool alive = false;
+            if (!w.feedbackPose(p, t - D - static_cast<double>(j) * F.afterImageBeats * kTicksPerBeat, rel, aim, alive)) continue;
+            const float dist = clampf(length(rel), prose::kFbMinWu, prose::kFbMaxWu);
+            const Vec2 q = c + normalizeOr(rel, Vec2{1.0f, 0.0f}) * ((k == 0 ? -1.0f : 1.0f) * dist);
+            const float lv = 0.5f / static_cast<float>(j);
+            glyph(d.glyphs, gShip_, true, q, head, head, shipScale, lv, 0.5f * look_->lines.playerHull.width, kGlyphFlat, danger, danger);
+        }
+        if (visible(at, 40.0f)) {
+            glyph(d.glyphs, gShip_, true, at, head, head, shipScale, 1.6f, 0.5f * look_->lines.playerHull.width, kGlyphFlat, danger, danger);
+            if (shown(kMutePriority)) {
+                glyph(d.threatGlyphRims, gShip_, true, at, head, head, shipScale, 1.0f, 0.5f * ph.width + ph.rim, kGlyphFlat, Vec3{}, Vec3{});
+                glyph(d.threatGlyphCores, gShip_, true, at, head, head, shipScale, 1.0f, 0.5f * ph.width, kGlyphFlat, mix(danger, W1, 0.25f), mix(danger, W1, 0.25f));
+            }
+            d.sparkles.glow(toScene(at), 6.0f * refPx_, W1 * 1.6f);  // its white core
+        }
+        if (k == 0) {
+            Vec2 rel, aim;
+            bool alive = false;
+            if (w.feedbackPose(p, t - D, rel, aim, alive)) {
+                const Vec2 was = c + rel;
+                const Vec3 col = palettes_->player[p] * 0.45f;
+                const Vec2 dv = normalizeOr(was - at, Vec2{1.0f, 0.0f});
+                const float len = length(was - at);
+                for (float u = 0.0f; u < len; u += 40.0f) {
+                    const Vec2 q0 = at + dv * u, q1 = at + dv * std::fmin(u + 20.0f, len);
+                    if (visible(q0, 20.0f) || visible(q1, 20.0f)) d.scene.line(toScene(q0), toScene(q1), hw * 0.6f, col, col, 0);
+                }
+                const u32 n = 16;
+                for (u32 j = 0; j < n; ++j)
+                    d.scene.line(toScene(was + dirv(kTau * j / n) * 14.0f), toScene(was + dirv(kTau * (j + 1) / n) * 14.0f), hw * 0.7f, col * 2.0f, col * 2.0f, 0);
+            }
+        }
+    }
+    // ---- The Nulls: a danger ring the size of the Nova it echoes.
+    for (const FeedbackTape::Null& n : tape.nulls) {
+        const float r = w.feedbackNullRadius(n, t);
+        if (r <= 0.0f) continue;
+        const u32 segs = 72;
+        for (u32 j = 0; j < segs; ++j) {
+            const Vec2 p0 = n.at + dirv(kTau * j / segs) * r, p1 = n.at + dirv(kTau * (j + 1) / segs) * r;
+            if (!visible(p0, 30.0f) && !visible(p1, 30.0f)) continue;
+            d.scene.line(toScene(p0), toScene(p1), hw * 3.0f, danger * 2.0f, danger * 2.0f, 0);
+            if (shown(kMutePriority)) {
+                d.threatRims.line(toScreen(p0), toScreen(p1), 2.0f * refPx_ + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
+                d.threatCores.line(toScreen(p0), toScreen(p1), 2.0f * refPx_, danger, danger, 0);
+            }
+        }
+    }
+}
+
 }  // namespace rf

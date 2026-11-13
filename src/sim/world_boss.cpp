@@ -156,6 +156,7 @@ float World::bossHealthScale(BossKind kind) const {
     if (kind == BossKind::Choir) scale *= kChoirHealthTune;
     if (kind == BossKind::EventHorizon) scale *= kHorizonHealthTune;
     if (kind == BossKind::Polyrhythm) scale *= kPolyHealthTune;
+    if (kind == BossKind::Feedback) scale *= kFeedbackHealthTune;
     return scale;
 }
 
@@ -187,6 +188,7 @@ void World::spawnBossNow(double enterTick, Vec2 pos, BossKind kind, Vec2 penAt) 
         case BossKind::Choir: enterChoir(pos); break;
         case BossKind::EventHorizon: enterHorizon(pos); break;  // M5 part 4
         case BossKind::Polyrhythm: enterPoly(pos); break;
+        case BossKind::Feedback: enterFeedback(pos); break;
         default: enterMini(pos, penAt); break;
     }
     if (isMiniBoss(kind)) director_.miniSpawned = true;
@@ -256,6 +258,9 @@ u32 World::bossParts(BossPart* out, u32 cap) const {
             }
             break;
         }
+        case BossKind::Feedback:
+            if (m1_ >= s.fightTick) add(s.pos, species_->feedback.headRadius, 3, 0);  // the Head (its Echoes are not targets)
+            break;
         default: return miniParts(out, cap);
     }
     return n;
@@ -359,6 +364,7 @@ float World::bossDamageScale(u8 part, u8 index, double tick, Vec2 dir) const {
         case BossKind::Choir: return choirScale(part, index, tick);
         case BossKind::EventHorizon: return horizonScale();
         case BossKind::Polyrhythm: return polyScale(part, index);
+        case BossKind::Feedback: return part == 3 ? feedbackScale() : 0.0f;
         default: return miniScale(part, index, tick, dir);
     }
 }
@@ -383,10 +389,11 @@ void World::damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir)
     ++s.hits;
     const float scale = part == 1 ? 0.0f : bossDamageScale(part, pair, m1_, dir);
     if (scale <= 0.0f) {
-        // Armour: the shot sparks and stops (a lens plate, a closed jaw, a silent hood, a Ram's horns).
+        // Armour: the shot sparks and stops (a lens plate, a closed jaw, a silent hood, a Ram's horns; Feedback's shutter).
         ev.c = 1;
         ev.f = 0.0f;
         emit(ev);
+        if (s.kind == BossKind::Feedback) feedbackSwallow();
         return;
     }
     damageBossFinal(part, pair, dmg * scale, owner, at, dir, scale);
@@ -562,6 +569,11 @@ void World::killBoss(u8 owner) {
             // The playhead runs a last bar of sparks; the boss break and the Shards on the One that ends the Track.
             s.payoutTick = tickOfBar(endBar);
             s.deathBars = (s.payoutTick - m1_) / kTicksPerBar + 0.25;
+        } else if (s.kind == BossKind::Feedback) {
+            // The tape is cut; the Head holds the root for two bars while the screen blooms, then the break on the One.
+            s.payoutTick = tickOfBar(endBar + 1);
+            s.deathBars = (s.payoutTick - m1_) / kTicksPerBar + 0.25;
+            emitCue(BossCue::FbCut, m1_, 0, 0.0f, s.pos);
         } else {
             bossPayout();
         }
@@ -594,6 +606,7 @@ void World::bossPayout() {
     if (s.kind == BossKind::Choir) shards = prose::kChoirShards;
     if (s.kind == BossKind::EventHorizon) shards = prose::kHzShards;
     if (s.kind == BossKind::Polyrhythm) shards = prose::kPrShards;
+    if (s.kind == BossKind::Feedback) shards = prose::kFbShards;
     for (u32 p = 0; p < playerCount_; ++p) {
         if (!players_[p].present || !isLocal(p)) continue;
         for (u32 k = 0; k < shards; ++k)
@@ -753,6 +766,7 @@ bool World::bossBeamsHit(Vec2 at, Vec2& from) const {
         case BossKind::BatteringRam:
             from = boss_.body[0];
             return ramWakeHit(at);
+        case BossKind::Feedback: return feedbackHits(at, from);  // its Echoes' bodies, the Nulls, the burning Loop
         case BossKind::Polyrhythm: {
             // The walls, and the link while it burns.
             if (polyWallHit(at, from)) return true;
@@ -876,6 +890,7 @@ void World::updateBoss(float dt) {
             s.partHp[0] = static_cast<float>(s.hz.meal);  // (the heartbeat carries the meal: bossPartCount)
             return;
         case BossKind::Polyrhythm: updatePoly(dt); return;
+        case BossKind::Feedback: updateFeedback(dt); return;
         case BossKind::Kaleidos: break;
         default: updateMini(dt); return;
     }
