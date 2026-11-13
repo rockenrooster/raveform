@@ -353,6 +353,7 @@ private:
     NetMotion motions_[96];
     u8 motionRun_[sim::kMaxPlayers][sim::kMaxEnemies] = {};   // host: motion corrections since the last full one
     float fullHp_[sim::kMaxPlayers][sim::kMaxEnemies] = {};   // host: the health the last full one carried
+    u8 sentTarget_[sim::kMaxPlayers][sim::kMaxEnemies] = {};  // host: the player the last correction said it follows
     i64 lastPrioUs_ = 0;
     // Host: each client's downlink budget (bytes, with headers): corrections take what the rest leaves.
     float downBudget_[sim::kMaxPlayers] = {};

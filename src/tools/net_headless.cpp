@@ -119,6 +119,45 @@ struct TrueDiag {
     }
 };
 
+// The remote ships as drawn (M4 net follow-up, the lead's point 2): each viewer's copy of another player against that
+// player's own position at the same song time, and the largest step in one frame its own motion does not explain.
+// Classes: 0 the host's view of a client, 1 a client's view of the host, 2 a client's view of a relayed client.
+struct ShipTruth {
+    static constexpr u32 kN = 256;
+    double music[kN] = {};
+    Vec2 pos[kN];
+    float aim[kN] = {};
+    u32 head = 0, n = 0;
+    void add(double m, Vec2 p, float a) {
+        if (n && music[(head + kN - 1) % kN] >= m) return;
+        music[head] = m;
+        pos[head] = p;
+        aim[head] = a;
+        head = (head + 1) % kN;
+        if (n < kN) ++n;
+    }
+    bool at(double m, Vec2& out, float* aimOut = nullptr) const {
+        for (u32 k = 1; k < n; ++k) {
+            const u32 b = (head + kN - k) % kN, a = (head + kN - k - 1) % kN;
+            if (music[a] <= m && m <= music[b]) {
+                const double t = music[b] > music[a] ? (m - music[a]) / (music[b] - music[a]) : 0.0;
+                out = pos[a] + (pos[b] - pos[a]) * static_cast<float>(t);
+                if (aimOut) *aimOut = aim[static_cast<double>(t) < 0.5 ? a : b];
+                return length(pos[b] - pos[a]) < 120.0f;  // (not across a teleport: a revive, a new run)
+            }
+        }
+        return false;
+    }
+};
+struct ShipView {
+    Hist err;
+    float maxStep = 0.0f;
+    u64 steps = 0, stepsOverHalfHull = 0;
+    double aimTurnSum2 = 0.0;  // a frame's turn of the drawn aim its own turn does not explain (radians)
+    float aimTurnMax = 0.0f;
+    u64 aimTurnsOver30 = 0;
+};
+
 struct PeerReport {
     float downMax = 0.0f, upMax = 0.0f;   // the worst second
     i64 downMaxAt = 0, upMaxAt = 0;       // when it ended
@@ -195,7 +234,16 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     auto* hist = new (std::nothrow) Hist;
     auto* tdiag = new (std::nothrow) TrueDiag;
     auto* cdiag = new (std::nothrow) NetDiag;  // the clients' corrections and poses, merged
-    if (!peers || !hist || !tdiag || !cdiag) return 2;
+    auto* truth = new (std::nothrow) ShipTruth[kMaxPlayers];
+    auto* ships = new (std::nothrow) ShipView[3];
+    if (!peers || !hist || !tdiag || !cdiag || !truth || !ships) return 2;
+    double shipLast[kMaxPlayers][kMaxPlayers];
+    Vec2 shipDrawn[kMaxPlayers][kMaxPlayers];
+    float shipAim[kMaxPlayers][kMaxPlayers] = {};
+    float ownAimLast[kMaxPlayers] = {};
+    u64 ownAimFrames = 0, ownAimFlicks = 0;
+    for (auto& row : shipLast)
+        for (double& v : row) v = -1.0;
     static const i64 kOffsets[kMaxPlayers] = {0, 1234567, -777000, 3210};
     static const double kPpm[kMaxPlayers] = {0.0, 60.0, -45.0, 20.0};
     for (u32 k = 0; k < players; ++k) {
@@ -268,6 +316,55 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
             if (dropped && k == dropPeer) continue;
             if (G < nextFrame[k]) continue;
             peers[k].frame(G);
+            {
+                // The remote ships as this peer now has them, against each player's own record (point 2).
+                const World& vw = peers[k].world();
+                const u32 me = peers[k].session().seat();
+                const double m = peers[k].music();
+                if (vw.player(me).present) {
+                    // The owner's own aim: how often it turns more than 30 degrees in one frame (the bot's aim flicking
+                    // between targets: behaviour, the same in solo play).
+                    const float a = angleOf(vw.player(me).aim);
+                    if (measuring && vw.player(me).alive) {
+                        ++ownAimFrames;
+                        if (std::fabs(wrapAngle(a - ownAimLast[me])) > 30.0f * kPi / 180.0f) ++ownAimFlicks;
+                    }
+                    ownAimLast[me] = a;
+                    truth[me].add(m, vw.player(me).pos, a);
+                }
+                for (u32 j = 0; j < players && measuring; ++j) {
+                    if (j == me || !vw.player(j).present || !vw.player(j).alive || vw.runId() != peers[0].world().runId()) continue;
+                    const u32 cls = k == 0 ? 0u : (j == 0 ? 1u : 2u);
+                    Vec2 t;
+                    if (!truth[j].at(m, t)) {
+                        shipLast[k][j] = -1.0;
+                        continue;
+                    }
+                    const Vec2 drawn = vw.player(j).pos;
+                    ships[cls].err.add(length(drawn - t));
+                    float aimT = 0.0f;
+                    truth[j].at(m, t, &aimT);
+                    const float aimD = angleOf(vw.player(j).aim);
+                    if (shipLast[k][j] >= 0.0) {
+                        Vec2 t0;
+                        float aimT0 = 0.0f;
+                        if (truth[j].at(shipLast[k][j], t0, &aimT0)) {
+                            const float step = length((drawn - shipDrawn[k][j]) - (t - t0));
+                            ++ships[cls].steps;
+                            if (step > ships[cls].maxStep) ships[cls].maxStep = step;
+                            if (step > kPlayerVisualRadius) ++ships[cls].stepsOverHalfHull;
+                            // The drawn aim's turn this frame against the player's own (the stream of its shots swings by it).
+                            const float turn = std::fabs(wrapAngle((aimD - shipAim[k][j]) - (aimT - aimT0)));
+                            ships[cls].aimTurnSum2 += static_cast<double>(turn) * turn;
+                            if (turn > ships[cls].aimTurnMax) ships[cls].aimTurnMax = turn;
+                            if (turn > 30.0f * kPi / 180.0f) ++ships[cls].aimTurnsOver30;
+                        }
+                    }
+                    shipLast[k][j] = m;
+                    shipDrawn[k][j] = drawn;
+                    shipAim[k][j] = aimD;
+                }
+            }
             jitterRng ^= jitterRng << 13;
             jitterRng ^= jitterRng >> 17;
             jitterRng ^= jitterRng << 5;
@@ -513,6 +610,22 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                     overflow == 0 && queueFull == 0 && poolFallbacks == 0 && allocs == 0 && pauseOk && pauseSame;
     // Diagnostics (docs/PROGRESS_m4_net.md), before the summary: the true error broken down, the clients' corrections and poses.
     tdiag->print("the true on-screen error broken down");
+    {
+        static const char* const kCls[3] = {"the host's view of a client", "a client's view of the host", "a client's view of a relayed client"};
+        for (u32 c = 0; c < 3; ++c)
+            std::printf("[net]   remote ships, %s: drawn against the truth RMS %.2f wu, P95 %.2f, max %.1f (%llu); the largest step its motion does "
+                        "not explain %.1f wu, %llu of %llu frames over half a hull (%.0f wu)\n",
+                        kCls[c], static_cast<double>(ships[c].err.rms()), static_cast<double>(ships[c].err.pct(0.95)), static_cast<double>(ships[c].err.max),
+                        static_cast<unsigned long long>(ships[c].err.n), static_cast<double>(ships[c].maxStep),
+                        static_cast<unsigned long long>(ships[c].stepsOverHalfHull), static_cast<unsigned long long>(ships[c].steps),
+                        static_cast<double>(kPlayerVisualRadius));
+        for (u32 c = 0; c < 3; ++c)
+            std::printf("[net]   remote aims, %s: the turn in a frame its own turn does not explain RMS %.1f deg, max %.0f deg, %llu frames over 30 deg\n",
+                        kCls[c], ships[c].steps ? std::sqrt(ships[c].aimTurnSum2 / static_cast<double>(ships[c].steps)) * 180.0 / kPi : 0.0,
+                        static_cast<double>(ships[c].aimTurnMax) * 180.0 / kPi, static_cast<unsigned long long>(ships[c].aimTurnsOver30));
+        std::printf("[net]   the players' own aims (each on its own device): %llu of %llu frames turn more than 30 deg\n",
+                    static_cast<unsigned long long>(ownAimFlicks), static_cast<unsigned long long>(ownAimFrames));
+    }
     for (u32 k = 1; k < players; ++k)
         if (!(dropped && k == dropPeer))
             std::printf("[net]   client %u's worst up second: %.1f kbit/s at %.0f s (reliable %.1f, unreliable %.1f, control %.1f payload; %u "
@@ -566,6 +679,8 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     delete hist;
     delete tdiag;
     delete cdiag;
+    delete[] truth;
+    delete[] ships;
     wireUseSimClock(false);
     return ok ? 0 : 1;
 }

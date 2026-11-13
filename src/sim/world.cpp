@@ -132,7 +132,10 @@ void World::tick(const TickInput& in) {
     loopSpeed_ = std::fmin(loopRamp(kLoopEnemySpeedRamp, phrase_.track, director_.songs), kLoopEnemySpeedMax);
     loopBulletSpeed_ = std::fmin(loopRamp(kLoopBulletSpeedRamp, phrase_.track, director_.songs), kLoopBulletSpeedMax);
     loopShooters_ = std::fmin(loopRamp(kLoopShooterRamp, phrase_.track, director_.songs), kLoopShooterMax);
-    const float dt = kDt * timeScale();
+    // M4 net follow-up (docs/PROGRESS_m4_net.md): in co-op a hit's dip slows only what is drawn (the lattice), not the
+    // simulation: it happened on the hit player's own device alone, so that device's whole crowd fell 30 ms of motion
+    // behind the host's at every hit (a client's copies were 50-100 ms behind along their velocity on the Moto).
+    const float dt = kDt * (coop() && dipS_ > 0.0f && allDownDipS_ <= 0.0f && !phrase_.buildLastBar() ? 1.0f : timeScale());
     if (dipS_ > 0.0f) dipS_ -= kDt;
     // M5 part 3: Time Stretch (GAME_DESIGN 6.4) halves the enemies' and their bullets' speed while any player has it.
     stretch_ = 1.0f;

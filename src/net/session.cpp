@@ -33,6 +33,10 @@ constexpr u32 kCorrPerPacket = 32;      // 32 x 30 bytes + headers: under 1,000 
 // every kFullEvery-th correction of an enemy is a full one.
 constexpr u32 kMotionsPerPacket = 96;
 constexpr u8 kFullEvery = 4;
+// The host's choice of player changed since the last correction to that client: the priority jumps this much (the top of
+// the queue). A body knocked faster than kKnockedWuS gains kKnockedWeight more (as on the client's screen and a margin).
+constexpr u8 kTargetUnsent = 0xFE;
+constexpr float kRetargetBoost = 200.0f, kKnockedWuS = 30.0f, kKnockedWeight = 6.0f;
 constexpr double kBar = 384.0, kBeat = 96.0;
 // TECH_SPEC 8.4: at most 250 kbit/s down per client. Everything sent to a client is counted on the wire against
 // 160 kbit/s with 1.5 KB saved at most; corrections fill what the rest leaves. The margin to 250 is for a reliable
@@ -263,6 +267,7 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
             prioSerial_[s][i] = 0;
             motionRun_[s][i] = 0;
             fullHp_[s][i] = 0.0f;
+            sentTarget_[s][i] = 0xFE;
         }
     for (u32 i = 0; i < kMaxEnemies; ++i) {
         corrSerial_[i] = seenSerial_[i] = 0;
@@ -1523,7 +1528,12 @@ void Session::updatePriorities(float dt) {
             if (prioSerial_[s][slot] != e.serial[i]) {
                 prioSerial_[s][slot] = e.serial[i];
                 prio_[s][slot] = 0.0f;
+                sentTarget_[s][slot] = kTargetUnsent;
             }
+            // M4 net follow-up (the lead's ruling): the host's choice of player is law on the clients, so a change of it
+            // goes out first; a body an upgrade knocked (a relayed player's shove reaches the clients only this way) next.
+            const bool retargeted = sentTarget_[s][slot] != kTargetUnsent && sentTarget_[s][slot] != e.target[i];
+            const bool knocked = std::fabs(e.kx[i]) + std::fabs(e.ky[i]) > kKnockedWuS;
             // Every enemy gains (a copy far off here may be on the client's screen there), more on and near the
             // client's screen, more when it has just landed (a spawn that reached the client late landed there at
             // once, where it was spawned) and the faster it moves; one that has not landed hardly at all.
@@ -1537,8 +1547,9 @@ void Session::updatePriorities(float dt) {
                 wgt += 4.0f;
             }
             wgt *= cfg_.familyWeight[static_cast<u32>(w.species().get(e.species[i]).family) & 15u];
+            if (knocked) wgt += kKnockedWeight;
             const float sp = std::fabs(e.vx[i]) + std::fabs(e.vy[i]) + std::fabs(e.kx[i]) + std::fabs(e.ky[i]);
-            prio_[s][slot] += wgt * (1.0f + sp * (1.0f / 300.0f)) * dt;
+            prio_[s][slot] += wgt * (1.0f + sp * (1.0f / 300.0f)) * dt + (retargeted ? kRetargetBoost : 0.0f);
         }
     }
 }
@@ -1625,6 +1636,7 @@ void Session::sendCorrections(u32 seat, double hostMusic) {
             fullHp_[seat][slot] = e.hp[i];
         }
         prio_[seat][slot] = -1.0f;
+        sentTarget_[seat][slot] = e.target[i];
     };
     for (u32 j = 0; j < k && !full; ++j) {
         take(picks_[j].i);

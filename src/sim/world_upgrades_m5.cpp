@@ -887,7 +887,7 @@ void World::updateUpgradesM5(float dt) {
                     const float l2 = lengthSq(d);
                     if (l2 > rr * rr || l2 < 1e-4f) return;
                     const float len = std::sqrt(l2);
-                    if (e.frozenUntil[i] <= m1_) {
+                    if (e.frozenUntil[i] <= m1_ && firstHand(p)) {
                         e.kx[i] += d.x / len * kKickPush;
                         e.ky[i] += d.y / len * kKickPush;
                     }
@@ -950,8 +950,10 @@ void World::updateUpgradesM5(float dt) {
                 const float rr = r + e.radius[i];
                 if (lengthSq(d) > rr * rr) return;
                 const Vec2 n = normalizeOr(d, dirOf(pl.heading));
-                e.kx[i] += n.x * kPanicShoveWu * dt * 6.0f;
-                e.ky[i] += n.y * kPanicShoveWu * dt * 6.0f;
+                if (firstHand(p)) {
+                    e.kx[i] += n.x * kPanicShoveWu * dt * 6.0f;
+                    e.ky[i] += n.y * kPanicShoveWu * dt * 6.0f;
+                }
                 if (local) hitEnemy(i, kColossusRamDamage, owner, Vec2{e.x[i], e.y[i]}, n);
                 rammed = true;
             });
@@ -961,7 +963,7 @@ void World::updateUpgradesM5(float dt) {
         // Black Hole: the singularity pulls the screen in, then blows on its beat.
         if (pl.holeFrom >= 0.0) {
             if (m1_ < pl.holeBlow) {
-                pullBodies(pl.holeAt, kHolePullWu, kHolePull, dt);
+                if (firstHand(p)) pullBodies(pl.holeAt, kHolePullWu, kHolePull, dt);
             } else {
                 if (local) areaHit(owner, pl.holeAt, kHoleBlastWu, kHoleDamage, -1, true);
                 emitFx(p, kFxHoleBlow, pl.holeAt, pl.holeAt, 0, kHoleBlastWu, pl.holeBlow);
@@ -994,7 +996,7 @@ void World::updateRiffsM5(float dt) {
                 m.blowTick = -1.0;
             }
         });
-        if (l.fused(kCollapseField))
+        if (l.fused(kCollapseField) && firstHand(p))
             for (const PlayerState::Mine& m : pl.mines)
                 if (m.blowTick >= 0.0) pullBodies(m.at, kCollapsePullWu, kCollapsePull, dt);
         if (!pl.alive) continue;
@@ -1084,7 +1086,7 @@ void World::updateRiffsM5(float dt) {
                     pl.wellAt.y = clampf(pl.wellAt.y, -kArenaHalfH, kArenaHalfH);
                     emitFx(p, kFxWell, pl.wellAt, pl.wellAt, L, kWellPullWu[L < 5 ? L : 5], pl.wellBlow);
                 }
-                if (m1_ >= pl.wellFrom && m1_ < pl.wellBlow) pullBodies(pl.wellAt, kWellPullWu[L < 5 ? L : 5], kWellPull, dt);
+                if (m1_ >= pl.wellFrom && m1_ < pl.wellBlow && firstHand(p)) pullBodies(pl.wellAt, kWellPullWu[L < 5 ? L : 5], kWellPull, dt);
                 if (m1_ >= pl.wellBlow) {
                     if (local) areaHit(owner, pl.wellAt, kWellBlastWu[L < 5 ? L : 5], kWellDamage[L < 5 ? L : 5], -1, true);
                     emitFx(p, kFxWellBlow, pl.wellAt, pl.wellAt, L, kWellBlastWu[L < 5 ? L : 5], pl.wellBlow);
