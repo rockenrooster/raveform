@@ -516,7 +516,8 @@ entity counts, kills per second and damage taken per cycle.
 - **Indicators:** edge arrows for elites, bosses, teammates, events and incoming ranged attacks; an
   optional corner radar.
 
-Structures (a handful per run, placed by seed, changing with the Track):
+Structures (a handful per run, placed by seed, changing with the Track; the full design with numbers,
+shapes, sound and which Track has which is `design/arena.md`):
 
 | Structure | Behaviour |
 |---|---|
@@ -525,7 +526,7 @@ Structures (a handful per run, placed by seed, changing with the Track):
 | Vault | An armoured crystal. Break it for a Boost and Shards |
 | Bumper | Bounces ships and shots; charges when hit and discharges on the beat |
 | Current | A flow lane that speeds up anything inside it, enemies included |
-| Prism | A line obstacle that splits player shots passing through it into three |
+| Lens | A bar of glass that splits player shots passing through it into three (first called Prism; renamed so that it is not confused with the Boost) |
 
 Events (scheduled by the director, announced by an edge indicator; they give reasons to cross the map
 and to split up in co-op): Rift Surge · Vault Drop · Elite Hunt · Comet (a fast neutral object trailing
