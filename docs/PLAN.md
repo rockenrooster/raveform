@@ -367,7 +367,14 @@ Exit:
 
 User checkpoint: a real co-op session in one room. Impression of the phones' music playing together.
 
-### M5 — Content scale-up (XL, in batches)
+### M5 — Content scale-up (XL, one batch)
+
+**One batch, everything** (the user, 2026-11-12: "all of the rest of the content should go in the
+next batch. All of it"). The next build the user plays has the whole of GAME_DESIGN §13's last row:
+ten Tracks, ten bosses, twelve mini-bosses, sixteen families and their 240 species, the elite traits,
+36 Mods, 12 Riffs, 16 Boosts, 8 Fusions, the structures and the events. The batches below are now
+the order of work inside that one delivery, each still closed with its own checks, pictures and
+commits; nothing is handed to the user to play until all of it is in.
 
 Read: GAME_DESIGN §6–9, §13.
 
@@ -385,12 +392,16 @@ Tracks 4 and 5 with Event Horizon, Polyrhythm and four more mini-bosses. Batch 3
 Feedback and the last four mini-bosses. Batch 4 (added when the user asked for ten Tracks) adds
 Tracks 7 to 10 with four new bosses. Counts: GAME_DESIGN §13.
 
-Exit per batch:
+Exit (for each part as it closes, and for the whole):
 - [ ] Contact-sheet screenshot shows every new species has a distinct, readable silhouette.
 - [ ] Bot harness spawns and kills every species; no perf regression on either device.
 - [ ] Director intensity chart for a 30-minute simulated run reviewed.
 
-User checkpoint after each batch: playtest.
+- [ ] The careful bot plays the ten Tracks through; GAME_DESIGN §8's targets for the ten-Track run are
+      reported (met or not, with the numbers).
+- [ ] The Moto meets the contract in every Track's densest part and in every boss and mini-boss fight.
+
+User checkpoint: one play test of the whole thing.
 
 ### M6 — Polish and experience (L)
 

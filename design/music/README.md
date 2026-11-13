@@ -66,10 +66,10 @@ Six bars of every Track in order (the last two bars of its Build and the first f
 | 0:35 | 4 Aurora | | 1:25 | 9 Mirage |
 | 0:46 | 5 Furnace | | 1:34 | 10 Last Light |
 
-Each Track's whole staged cycle is `previews/trackNN_cycle.mp3`. Questions for the listener (the
-composer cannot hear this): is any Track harsh, thin or tiring? Do any two sound like the same
-Track? Does 7 feel like a deep breath after 6, and does 10 feel like coming home? Is the lead in 8
-charming or annoying? Which would you drop?
+Each Track's whole staged cycle is `previews/trackNN_cycle.mp3`.
+
+**Accepted by ear** (the user, 2026-11-12, after the sampler: "all tracks sound good"). The ten are
+the set list; their notes and patches do not change without a reason the user can hear.
 
 ### What stands in for ears
 
@@ -77,8 +77,9 @@ charming or annoying? Which would you drop?
 . .\scripts\env.ps1; python -I design\tools\setlist.py        renders all ten, prints this table, writes the previews
 ```
 
-Tracks 1 to 3 were accepted by ear at the M2 and M3 checkpoints. The tool flags any other Track
-that leaves their range: more than 2 dB brighter above 2.5 kHz, 3 dB thinner or 2 dB heavier below
+Tracks 1 to 3 were accepted by ear at the M2 and M3 checkpoints and all ten on 2026-11-12. The
+tool flags a Track that leaves the range of the first three (the yardstick the other seven were
+written against): more than 2 dB brighter above 2.5 kHz, 3 dB thinner or 2 dB heavier below
 250 Hz, 1.5 dB weaker in the phone-speaker band, or a lead a quarter brighter. Measured 2026-11-12:
 
 | Track | LUFS | Peak dBFS | Crest dB | Below 250 Hz | 250 Hz–2.5 kHz | 2.5–6 kHz | 6–16 kHz | Phone band | Lead centroid Hz | Flags |

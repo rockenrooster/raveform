@@ -27,7 +27,7 @@ import musicproto as mp  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MUSIC = os.path.join(ROOT, "design", "music")
 WORK = os.path.join(ROOT, "captures", "work", "setlist")
-REFERENCE = (1, 2, 3)                      # accepted by ear at the M2 and M3 checkpoints
+REFERENCE = (1, 2, 3)                      # the yardstick: accepted by ear first (all ten were, on 2026-11-12)
 SAMPLER_BARS = (10, 16)                    # bars 11-16 of the staged cycle: two of Build, four of Drop
 
 

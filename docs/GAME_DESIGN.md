@@ -640,5 +640,9 @@ Batch 1 has three bosses, not two, so that each of its three Tracks ends in its 
 note of 2026-11-12: more variety in Tracks, bosses and mini-bosses). In every batch the bosses,
 mini-bosses and Tracks are built first.
 
+**The four batches are one delivery** (the user, later the same day: "all of the rest of the content
+should go in the next batch. All of it"). The rows above are the order of work; the next build to be
+played has the last row.
+
 Quality bar for every batch: each new thing is recognisable in a contact-sheet screenshot, audible in
 an offline render, survives the bot harness, and does not move the benchmark numbers.
