@@ -526,6 +526,29 @@ in the three impaired runs below. The session runs on the main thread: its time 
   Moto 53,903 frames, 1 missed, P95 17.76 ms, heap 0, main thread CPU P95 6.07 ms against 6.14 before the budget), the
   second was cut (not a result), the third never ran.
 
+### Fights measured from their start (clean, 3 simulated minutes; `captures\m4net\fights\`)
+
+`raveform_headless --net soak --fight <id> --minutes 3 [--seed N]`: every world plays the fight's home Track from the
+run's start (the host draws the mini-boss named), and the soak measures from the fight's first bar for the minutes
+given (about 12 s of wall time). After merging main f32a441, with the new budgets:
+
+| fight | clean, wu RMS in the fight | note |
+|---|---|---|
+| Cadence (Track 7, part 6) | **5.0** | at correction 6.5 |
+| Brood Mother (first time measured) | **11.4** | under 12, close |
+| Moth Queen | 6.4 | |
+| Event Horizon | 4.6, 3.0, **39.6, 41.5** (seeds 1-4); 20.4-37.7 when reached after the mini-bosses | over 12 on two seeds of four |
+
+Event Horizon's clean excess is its **phase change**: the Well's lanes go from two to three to four with its health,
+and every walker turns with them at once. A client changes phase on its own copy of the health, a few ticks before
+the host when its own claims cross the line, a few after when another player's do (the heartbeat sent at once on the
+host's change still takes a pose frame and the transit). For those ticks the client draws every walker on the other
+lane set, hundreds of wu away; three changes a fight make 30-45 wu of RMS. The 30 Hz corrections, the relayed
+weight and the phase heartbeat each change the seeds' figures but not the cause (`hz_s3_*`, `hz_s4_*`). Fixing it
+needs the phase change to land on the same tick everywhere: the host deciding it for a tick ahead (on the next beat,
+as thinning and the bar lines' verdicts already are), which changes when the phase turns on the host too. That is a
+rule of the fight (horizon.md: phases by health), so it is the lead's and the content engineer's to decide.
+
 ### (b) note: the earlier device figures in pulls and on spirals
 
 The device runs before `d531af0` measured a copy at correction against the host's sample carried by its velocity

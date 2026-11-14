@@ -223,6 +223,9 @@ bool flag(int argc, char** argv, const char* name) {
 
 // --remote-poses interp|predict: where every peer of this process takes a remote player for a tick (net/session.h).
 RemotePoses g_remotePoses = SessionConfig{}.remotePoses;
+// --fight <id>: the soak starts in that fight's home Track and measures from the fight on, for --minutes.
+bool g_fightOn = false;
+BossKind g_fightKind = BossKind::Kaleidos;
 // --net-tune down=..,famN=..: the host's correction budget and family weights (experiments, net/session.h).
 const char* g_tune = nullptr;
 void tune(SessionConfig& c) {
@@ -320,6 +323,7 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     const i64 runUs = static_cast<i64>(static_cast<double>(minutes) * 60e6);
     const i64 settleUs = 20000000;  // the first 20 s of the run are not measured (clocks settle, allocations at start)
     i64 runFrom = 0, lastMeasure = 0, lastSecond[kMaxPlayers] = {};
+    i64 fightFrom = 0;  // --fight: when the fight began (true time)
     PeerReport rep[kMaxPlayers];
     double songSum2 = 0.0, songMax = 0.0;
     u64 songN = 0;
@@ -418,7 +422,22 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
         }
         bool all = true;
         for (u32 k = 0; k < players; ++k) all = all && (dropped || peers[k].session().running());
-        if (all && !runFrom && peers[0].world().runId() > 0 && peers[0].music() > peers[0].world().tickOfBar(0) + 1.0) runFrom = G;
+        if (all && !runFrom && peers[0].world().runId() > 0 && peers[0].music() > peers[0].world().tickOfBar(0) + 1.0) {
+            runFrom = G;
+            if (g_fightOn) {
+                // --fight: every world plays the fight's home Track from here (as the game's --fight does); the host draws
+                // the mini-boss it names.
+                const u32 home = bossHomeTrack(g_fightKind);
+                for (u32 k = 0; k < players; ++k) {
+                    World& w = peers[k].world();
+                    if (home > w.setList()) w.setSetList(home);
+                    w.directorMut().track = static_cast<u8>(home);
+                    w.spawner().mode = Spawner::Mode::Slice;
+                }
+                if (isMiniBoss(g_fightKind)) peers[0].world().forceMini(g_fightKind);
+                std::printf("[net] --fight %s: the run plays Track %u to it\n", bossId(g_fightKind), home);
+            }
+        }
         if (!runFrom) {
             if (G > 2000000000ll + 30000000ll) {
                 std::printf("[net] the run did not start within 30 s\n");
@@ -427,7 +446,17 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
             continue;
         }
         const i64 t = G - runFrom;
-        if (t >= runUs) break;
+        if (g_fightOn) {
+            // Measured from the fight's start for --minutes (at most 15 simulated minutes to reach it).
+            const BossState& hb = peers[0].world().boss();
+            if (!fightFrom && hb.active && hb.kind == g_fightKind && peers[0].music() >= hb.fightTick) {
+                fightFrom = G;
+                std::printf("[net] %5.0f s: the fight begins\n", static_cast<double>(t) * 1e-6);
+            }
+            if (fightFrom ? G - fightFrom >= runUs : t >= 900000000ll) break;
+        } else if (t >= runUs) {
+            break;
+        }
         if (dropAtS > 0.0f && !dropped && t >= static_cast<i64>(dropAtS * 1e6f)) {
             dropped = true;
             peers[dropPeer].session().linkMut().abandon();
@@ -470,7 +499,7 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
             winN = 0;
             winMax = 0.0f;
         }
-        if (!measuring && t >= settleUs) {
+        if (!measuring && (g_fightOn ? fightFrom != 0 : t >= settleUs)) {
             measuring = true;
             allocs0 = heapAllocCountThisThread();
             pool0 = enetPoolStats();
@@ -1095,6 +1124,15 @@ int netHeadlessMain(int argc, char** argv) {
             delete species;
             return 2;
         }
+    }
+    if (const char* fid = arg(argc, argv, "--fight")) {
+        // The soak started at a fight (the lead's short runs): the run begins in its home Track, measuring from the fight.
+        if (!bossFromId(fid, g_fightKind) || !fightBuilt(g_fightKind)) {
+            std::printf("[net] --fight '%s': no such fight built\n", fid);
+            delete species;
+            return 2;
+        }
+        g_fightOn = true;
     }
     if (const char* rp = arg(argc, argv, "--remote-poses")) {
         if (std::strcmp(rp, "predict") == 0) g_remotePoses = RemotePoses::Predict;
