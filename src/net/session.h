@@ -60,7 +60,15 @@ struct SessionConfig {
     // Host: the corrections' share of each client's downlink (bytes a second, every byte to the client counted) and how
     // fast each enemy family gains priority (experiments: raveform_headless --net-tune). Shoals twice as fast: boids
     // drift apart fastest (docs/PROGRESS_m4_net.md: 57-95% of the soaks' squared error; 4 starved the rest).
-    float downBytesPerS = 20000.0f;
+    // TECH_SPEC 8.4 (the lead's ruling of 2026-11-13: 500 kbit/s down a client, worst second): the corrections' rate a
+    // client (was 20,000 B/s and 15 Hz under the 250 limit) ...
+    // (measured, impaired ten seeds: 20,000 at 15 Hz 6.61 wu, 141 kbit/s mean; 26,000 5.05, 183; 30,000 4.58, 210;
+    // 40,000 2.83, 272. The run's mean is to stay well under half the limit: 30,000.)
+    float downBytesPerS = 30000.0f;
+    i64 corrEveryUs = 33333;  // ... and their cadence (30 Hz: a packet each time, so the rate needs the cadence)
+    // ... spent where the measurements point, not evenly: an enemy on a client's screen that follows another client
+    // (a relayed player, whom that client sees late) gains this many times the weight.
+    float relayedFollowWeight = 3.0f;
     float familyWeight[16] = {1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 };
 // "down=20000,fam2=3,..." onto a config (raveform_headless --net-tune); false on a malformed spec.

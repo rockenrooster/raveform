@@ -141,6 +141,25 @@ Vec2 World::horizonLanePoint(float lane, float b) const {
     return s.pos + dirOf(theta) * b;
 }
 
+void World::horizonNetSpawn(u32 i) {
+    // M4 net (a client's spawn from the host): a called body that lands at a lane's start while the Well is on is one of
+    // its walkers (the spawn carries no lane). Without this the copy walked to the players as a plain body until its
+    // first correction, which off-screen came seconds later (measured: the host's walker against a plain copy, 280-760 wu).
+    const BossState& s = boss_;
+    Enemies& e = enemies_;
+    if (!horizonOn() || !(e.flags[i] & kFlagCalled)) return;
+    const HorizonData& d = species_->horizon;
+    const u32 lanes = d.phases[s.hz.phase < 3 ? s.hz.phase : 2].lanes;
+    const Vec2 rel = Vec2{e.x[i], e.y[i]} - s.pos;
+    if (std::fabs(length(rel) - kLaneStartWu) > 40.0f || !lanes) return;
+    const float step = kTau / static_cast<float>(lanes);
+    float a = angleOf(rel);
+    if (a < 0.0f) a += kTau;
+    e.state[i] = kLane;
+    e.a[i] = static_cast<float>(static_cast<u32>(std::floor(a / step + 0.5f)) % lanes);
+    e.b[i] = kLaneStartWu;
+}
+
 float World::horizonLaneCarry(u16 species, float lane, float b, float ds) const {
     // M4 net: the host's distance along a lane carried by `ds` seconds of the walk (speed plus the pull, a tick at a time).
     const float sign = ds < 0.0f ? -1.0f : 1.0f;
@@ -161,6 +180,17 @@ void World::updateHorizon(float dt) {
     const float share = s.coreMax > 0.0f ? s.coreHp / s.coreMax : 0.0f;
     u8 ph = 0;
     while (ph < 2 && share < d.phases[ph].healthLo) ++ph;
+    if (coop()) {
+        // M4 net (co-op only; the lead's ruling of 2026-11-13): the phase turns on a beat, the same tick on every device.
+        // The host decides it from its health for the next beat at least a quarter beat away and sends it ahead (bossDecide
+        // kGeomHorizonPhase); a client turns only when the host says (its own copy of the health crossed early or late,
+        // and every walker turns with the lanes: hundreds of wu for those ticks).
+        if (role_ == NetRole::Host && ph > h.phase && (h.phaseNext == 0xFF || ph > h.phaseNext)) {
+            const double at = (std::floor((m1_ + 0.25 * kTicksPerBeat) / kTicksPerBeat) + 1.0) * kTicksPerBeat;
+            bossDecide(kGeomHorizonPhase, Vec2{static_cast<float>(ph), 0.0f}, Vec2{}, at);
+        }
+        ph = h.phaseNext != 0xFF && m1_ >= h.phaseAt ? h.phaseNext : h.phase;
+    }
     if (ph != h.phase) {
         h.phase = ph;
         s.phase = ph;
@@ -176,8 +206,19 @@ void World::updateHorizon(float dt) {
     const HorizonData::Phase& P = d.phases[ph];
     const u32 extra = presentCount() > 1 ? presentCount() - 1 : 0u;
     // Phase 3: the Well drifts toward the players.
-    if (P.drift > 0.0f) {
-        const Vec2 to = playersCentre() - s.pos;
+    if (coop()) {
+        // M4 net (co-op only; the lead's ruling of 2026-11-13): toward the host's players' centre, decided on each beat for
+        // the next one and sent ahead (each device's own centre moved the Well apart, and every lane and pull with it).
+        if (h.driftAt >= 0.0 && m1_ >= h.driftAt) {
+            h.driftTo = h.driftNext;
+            h.driftSet = true;
+            h.driftAt = -1.0;
+        }
+        if (role_ == NetRole::Host && P.drift > 0.0f)
+            forCrossings(m0_, m1_, kTicksPerBeat, [&](double t, i64) { bossDecide(kGeomHorizonDrift, playersCentre(), Vec2{}, t + kTicksPerBeat); });
+    }
+    if (P.drift > 0.0f && (!coop() || h.driftSet)) {
+        const Vec2 to = (coop() ? h.driftTo : playersCentre()) - s.pos;
         const float l = length(to);
         if (l > d.ringRadius[2]) s.pos = s.pos + to * (P.drift * dt / l);
     }

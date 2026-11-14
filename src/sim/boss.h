@@ -384,6 +384,13 @@ struct HorizonState {
     float axis = 0.0f;         // phase 3: the jets' axis
     double jetFrom = -1e9, jetUntil = -1e9;
     u32 laneSerial = 0;        // the lane the next body walks in
+    // M4 net (co-op only): the phase the host decided by health and the beat it turns on (every device turns there).
+    u8 phaseNext = 0xFF;       // 0xFF: none decided
+    double phaseAt = -1.0;
+    // ... and the point the Well drifts toward in Collapse (the host's players' centre, decided a beat ahead).
+    Vec2 driftTo, driftNext;
+    double driftAt = -1.0;     // driftNext holds from this tick (< 0: none decided yet)
+    bool driftSet = false;     // driftTo holds
 };
 
 // Polyrhythm's rings: each pulse's walls, a function of when and where it was fired; a hit or a Nova erases sectors.
@@ -626,7 +633,8 @@ struct BossState {
     RepriseState rp;  // M5 part 6
     double payoutTick = -1.0;  // dying: its Shards and Cells come at this tick (Event Horizon's flash, Polyrhythm's break)
     float scale = 1.0f;        // health scale it entered with (players, Track, loop)
-    double geomTick[16] = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0};  // each BossGeom decision's moment
+    double geomTick[16] = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+                           -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0};  // each BossGeom decision's moment
 };
 
 // A count scaled by a lever (play test 1), rounded, never below `least` (an exact count at scale 1).
@@ -646,6 +654,8 @@ enum BossGeom : u8 {
     kGeomPolyHemiola,  // M5 part 4: Polyrhythm's Hemiola begins (a.x: its first bar)
     kGeomMothCourt,    // M5 part 4: the Moth Queen's court (a: its centre)
     kGeomBlinkStar,    // M5 part 4: the Blink Star's star (a: its centre, b.x: its first point's direction)
+    kGeomHorizonPhase, // M4 net: Event Horizon's phase in co-op (a.x: the phase; the tick: the beat it turns on)
+    kGeomHorizonDrift, // M4 net: the point Event Horizon drifts toward in Collapse, co-op (a: the point; from the tick, a beat)
     kGeomWeaverCage,   // M5 part 6: Weaver Prime's cage (a: its centre, b.x: where its laps begin)
     kGeomWellBar,      // M5 part 6: Deep Well's bar line (a.x: the damage it swallowed, a.y: 1 it chokes)
     kGeomCount
