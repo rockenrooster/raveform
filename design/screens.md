@@ -294,10 +294,17 @@ The palette is the one the run ended in. The score is the headline; everything e
 | `RUN OVER` | Top centre, cap 44, accent | — |
 | **Score** | Centred under it, cap 150 | White → gold → amber top to bottom, 9 px tubes. Counts up over one bar. A new best gets a gold four-arm flare and `NEW BEST` |
 | Four numbers | One row: `TIME`, `TRACK`, `BEST CHAIN`, `KILLS` | Label cap 14 in accent, value cap 40. Four, never more |
+| What ended it (M6) | One line under the four numbers, cap 14 | `ENDED BY` in the accent and the name of what took the last cell in white, as the game names it (`CAROM`, `LONGWAVE`, `A VOLATILE BLAST`, `METEOR RAIN`); an enemy's bullet names the enemy. Nothing when the run ended by finishing the set |
 | **Set list** | A bar across the width | The run drawn as the song it was: one segment per Track, as long as the time spent in it, in that Track's accent colour with its name under it. A white star where a boss fell, a gold tick for each upgrade taken, a danger-coloured cross for each hit taken. It plays back as a ten-second medley of the run while the screen is up |
 | Your band | Under the set list | The icons of the Riffs and the most-stacked Mods the run ended with |
 | **RETRY** | Bottom right, 600 × 140, label 52, player colour | One tap: a new run starts on the next bar line |
 | HOME | Under it, 330 × 90 | — |
+
+**A finished run (M6).** When the tenth Track's boss falls the run has been won, and the game says so
+before the loop begins: the Track name card's place shows `SET COMPLETE` (cap 44, gold) with the score
+so far under it for two bars, the band plays the tonic over the boss's death, and the loop's own card
+(`ENCORE`) follows. If that run later ends, its game over reads `SET COMPLETE` in gold where `RUN
+OVER` stands, and the high-score table marks it with a gold star.
 
 In co-op the score is the team's, each player's own score sits in their colour under it, ranked, and
 the set list carries each player's crosses in their colour. In detail:
@@ -378,3 +385,41 @@ before the run starts. Your own seat says so under its state: `TAP TO HEAR YOUR 
 - The HUD's edge chevrons (teammates, beacons, Cells, events) keep clear of the HUD: where a chevron
   would land on the score block, the phrase bar, the Nova stock or the pause ring, it slides along the
   edge to the nearest free place, 20 px clear.
+
+## First-run hints (M6)
+
+The game explains itself once, in the world, while the player plays. No tutorial screen, no pause.
+
+- A hint is one line of world text 70 wu above the ship (cap 22, white at 0.85, the dark rim of
+  the priority layer), up for two bars, fading over its last beat. At most 28 characters, plain
+  words, the upgrade words' rules.
+- Each hint shows once ever on a device (remembered with the settings; `RESET HINTS` under
+  SETTINGS, CONTROLS brings them back). One at a time, at least four bars apart, never in a boss
+  or mini-boss fight, never while a Trio's words or a boss's hint line are up, never in co-op for
+  a player who has finished a run.
+- A hint whose moment passes waits for the next such moment.
+
+| When | Hint |
+|---|---|
+| The first run's first bar, touch | `LEFT THUMB MOVES` |
+| The same, keyboard or gamepad | `WASD OR LEFT STICK MOVES` |
+| The first enemy in view | `IT AIMS AND FIRES BY ITSELF` |
+| Four bars later, touch | `RIGHT THUMB AIMS IF YOU LIKE` |
+| The first Trio | `FLY INTO ONE AND STAY` |
+| The first hit taken | `YOUR RING IS YOUR HEALTH` |
+| Twelve enemies within 300 wu and a Nova in stock, once | `NOVA CLEARS THE SCREEN` |
+| The first bullets in view | `DASH GOES THROUGH BULLETS` |
+| The first Boost orb in view | `GOLD ORBS ARE SHORT POWERS` |
+| The first Extra Life in view | `EXTRA LIFE: ONE MORE TRY` |
+| The first Vault in view | `BREAK IT FOR A PRIZE` |
+
+## App icon and name (M6)
+
+- **Icon:** the player's ship glyph, nose up and to the right at 30 degrees, in P1 cyan with its
+  white core line, inside its halo of four cell arcs, on the Ultraviolet palette's `bg1` to `bg0`
+  radial ground with the lattice's lines at rest behind it, bulging a little under the ship. No
+  text. Adaptive icon: the ground and lattice are the background layer, ship and halo the
+  foreground, the ship's extent 44% of the icon so every mask keeps the halo. Drawn from
+  `design/glyphs.json` and `design/palettes.json` by a script, with the bloom of look.md section 7
+  at half strength; a monochrome layer (ship and halo, no ground) for themed icons.
+- **Name:** `RAVEFORM` under the icon as the system draws it. The title screen is the name screen.
