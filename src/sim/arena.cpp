@@ -168,6 +168,8 @@ bool TraitData::load() {
         }
         std::snprintf(p, sizeof p, "traits.%u.fromTrack", t);
         fromTrack[t] = static_cast<u8>(doc.number(p, 99.0));
+        std::snprintf(p, sizeof p, "traits.%u.fromCycle", t);
+        fromCycle[t] = static_cast<u8>(doc.number(p, 1.0));
     }
     const auto tn = [&](u32 t, const char* key, float& out) {
         std::snprintf(p, sizeof p, "traits.%u.numbers.%s", t, key);

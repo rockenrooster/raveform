@@ -4,6 +4,41 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both).
 
+## M5 part 6 "Tracks 7 to 10" — in progress (2026-11-13)
+
+### Elites from Track 3 (the lead's design commit d59062f)
+
+- Elites come from Track 3, cycle 1 (`kElFromTrack`), at once in 16 bars in Track 3 falling evenly to once in 8 by Track 6;
+  a trait is not drawn before its `fromCycle` of its first Track (Giant and Splitting: Track 3's second cycle).
+- **The novice's first Longwave: 15 of 20** (17 before elites existed, 14 with them from Track 2). Its health untouched (the
+  lead's rule). The fights table now has the cells as each fight begins: the novice wins Longwave with **3.1** cells on
+  average and loses it with **1.2**. What takes them in Track 2 before Longwave (20 first runs): enemy bullets **51** hits,
+  Caroms 17, Shoals 15, the mini-boss fight **12**, Drifters 7, Rams 4, a Sentry 1, a Flanker 1. The structures (Vault, two
+  Pylons) and Track 2's events (Vault Drop, Comet) take none: they cannot hurt.
+- Given back: Event Horizon 6.0 -> **8.0** (the novice 19 of 20, 118 s: the line holds). Polyrhythm's 2.0 no longer held (11 of
+  20): **1.7** (15 of 19, 25 s; 2.4 given back: 10 of 19).
+
+### Cadence (Track 7; design/bosses/cadence.md)
+
+- Four pillars on a 700 wu square (I, V, vi, IV clockwise from the top left), the square's centre following the players' at
+  40 wu/s; the bar's chord (the song's bar, `songShift_`) is open and silent, x 2 on its One; the other three fire a fan of five
+  at the nearest player on beats 1 and 3 (180 wu/s, 4 s); Modulation (below 66%) turns the square a quarter the other way in a
+  beat on every bar line the song comes back to I and adds a fan of seven on the snare; Inversion (below 33%) turns the rule
+  over (the sounding pillar alone fires a rosette of sixteen on the One and twelve on three; the other three open). Death: the
+  four burst in turn on the last bar's beats, the Shards (300) with the tonic.
+- **Armour** (GAME_DESIGN 7.6): the closed pillars (the page: "the only one that can be hurt") take a quarter
+  (`tuning::kCdArmour`, for cadence.json's `damageScale`).
+- **Hint**: `SHOOT THE SILENT ONE` (the page's weak point is the open pillar, which is the silent one: it matches).
+- **Health** x 7 (`kCadenceHealthTune`): the novice with the careful bot's build at Track 7 (`--handover 7`) wins **18 of
+  20** in **83 s** (x 1: 14 s; x 5: 66 s); the careful bot **73 s** (x 1: 9 s). The page asks 80-100 s.
+- Co-op: everything on the song's clock; the square's centre is the heartbeat's sync point. **No host decision.**
+- Pictures: `captures\m5\part6\` `cd_progression`, `cd_modulation`, `cd_inversion`, `cd_death`, `cd_strip` (dev).
+- Moto (shared phone; this build's APK left installed): `--fight cadence:2:hold` 0% missed, main thread P95 4.4 ms, GPU 13.7,
+  405 enemies in view at most, heap 0.
+- Soaks: clean 2.91, impaired 5.38 wu RMS, census 0 mismatches.
+- The flaky audio check "seq latest" failed once more: its writer now goes on publishing until the reader has read (the
+  lead's rule), instead of a rerun.
+
 ## M5 part 5 "The arena and the elites" — 2026-11-13
 
 The six structures and eight events of `design/arena.md` (arena.json) and the elites with the twelve traits of

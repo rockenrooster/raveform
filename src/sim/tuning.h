@@ -375,10 +375,12 @@ constexpr float kSaStepBeats = 1.0f;         // turrets step round to stand even
 // M5 part 4, Event Horizon (horizon.md gives no number for these).
 constexpr float kHzJetLengthWu = 1800.0f;  // the jets reach past the frame's edge at the fight's zoom (0.8)
 constexpr float kHzJetHalfWu = 6.0f;       // look.md v2.5: no lethal beam kills wider than 12 wu (part 4: 22)
-constexpr float kHorizonHealthTune = 6.0f;  // (16 x 0.5 x 0.75) part 5, with elites and the arena: 8.0 took the novice 129 s (the page: about 80 s; at most 120)
+constexpr float kHorizonHealthTune = 8.0f;  // (16 x 0.5) given back with elites from Track 3 (d59062f): the novice 19 of 20, 118 s (at most 120)
 // Polyrhythm (polyrhythm.md gives no number for these).
 constexpr float kPrLinkBurnHalfWu = 6.0f;   // the burning link: look.md v2.5, 12 wu (part 4: 16)
-constexpr float kPolyHealthTune = 2.0f;     // (3.0 x 0.8 x 0.83) part 5, with elites and the arena: the novice 14 of 19, 41 s (2.4: 10 of 19)
+constexpr float kPolyHealthTune = 1.7f;     // (3.0 x 0.8 x 0.71) with elites from Track 3: the novice 15 of 19, 25 s (2.0: 11 of 20; 2.4: 10 of 19)
+constexpr float kCadenceHealthTune = 7.0f;  // M5 part 6: the novice with the careful bot's build (--handover 7) 18 of 20, 83 s; x 1: 14 s
+constexpr float kCdArmour = 0.25f;           // GAME_DESIGN 7.6: a pillar the page says cannot be hurt takes a quarter (not in cadence.json yet)
 constexpr float kFeedbackHealthTune = 2.0f; // (2.5 x 0.8) the novice 15 of 17, 112 s (x 1.0: 181 s; the page: about two minutes)
 
 // ======================================================================================================

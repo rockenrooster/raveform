@@ -139,6 +139,15 @@ constexpr float kFbLatticePullPx = 20.0f;     // Howl: "the lattice inside it is
 constexpr float kFbConePush = 0.15f;          // Look: "the cone pushes out 15% on every kick"
 constexpr float kFbNullBand = 30.0f;          // (chosen) a Null's front: as thick as the Nova's
 
+// ---- Cadence (design/bosses/cadence.md, cadence.json's prose; M5 part 6)
+constexpr float kCdFollow = 40.0f;            // numbers.follow: "the square's centre follows the players' centre at 40 wu/s"
+constexpr float kCdModulationAt = 0.66f, kCdInversionAt = 0.33f;  // phases: "100 to 66%", "66 to 33%", "33 to 0%"
+constexpr float kCdOne = 2.0f;                // Progression: "On the One of its bar it takes x 2 for the beat"
+constexpr u32 kCdTurnEvery = 4;               // Modulation: "On every fourth bar line, as the song comes back to I, the square turns a quarter turn"
+constexpr u32 kCdSnareFan = 7;                // "Each firing pillar adds a second fan of seven on the snare"
+constexpr u32 kCdRosetteOne = 16, kCdRosetteThree = 12;  // Inversion: "a rosette of sixteen on the One and twelve on three"
+constexpr u32 kCdShards = 300;                // reward: "300 Shards for each player"
+
 // ---- The arena (design/arena.md, arena.json's rules; M5 part 5)
 constexpr float kArTrack1Scale = 300.0f;      // "the mini-boss health of that Track ... (Track 1 uses 300)"
 constexpr float kArPlaceNearWu = 1000.0f, kArPlaceFarWu = 1800.0f;  // structures "1,000 to 1,800 wu from the players' centre"
@@ -196,7 +205,8 @@ constexpr float kArStormWu = 320.0f, kArStormSpeed = 90.0f;  // Storm Cell: "a c
 constexpr u32 kArStormBodies = 6;             // "lightning joins up to six bodies inside it"
 constexpr float kArStormDamage = 15.0f;       // "15 x the Track's number to each enemy"
 // Elites (design/traits.md; traits.json carries their numbers)
-constexpr float kElPaceBarsT2 = 16.0f, kElPaceBarsT6 = 8.0f;  // "about once in 16 bars in Track 2, falling evenly to once in 8 bars by Track 6"
+constexpr u32 kElFromTrack = 3;                // "From: Track 3, cycle 1" (d59062f; it was Track 2's second cycle)
+constexpr float kElPaceBarsT3 = 16.0f, kElPaceBarsT6 = 8.0f;  // "about once in 16 bars in Track 3, falling evenly to once in 8 bars by Track 6"
 constexpr float kElWarpWu = 90.0f;            // "warps in like any enemy but from 90 wu"
 
 }  // namespace rf::sim::prose

@@ -1,7 +1,7 @@
 // M5 part 5: elites and their twelve traits (design/traits.md, traits.json; GAME_DESIGN 7.3). An elite is a species of the
 // Track's roster made dangerous: x 1.3 its size, x 6 its health, x 10 its score, x 4 its threat, 20 Shards and a Cell. The
-// director buys one with the threat budget about once in 16 bars in Track 2, once in 8 by Track 6; never in a Break or a
-// fight; three at once in Tracks 2-6, five from Track 7. Each carries traits drawn from the ones the run has met.
+// director buys one with the threat budget about once in 16 bars in Track 3 (d59062f: none before Track 3), once in 8 by
+// Track 6; never in a Break or a fight; three at once in Tracks 3-6, five from Track 7. Each carries traits drawn from the ones the run has met.
 //
 // Co-op: the host buys elites and draws their traits; a client hears of each as an arena operation naming the enemy's
 // spawn number (World::applyArenaOp) and makes the same elite. What a trait does at a death (Splitting's copies are the
@@ -34,13 +34,14 @@ u16 World::drawTraits(u32 track) {
     const TraitData& td = species_->traits;
     const u32 songs = director_.songs;
     const u32 met = inLoop(track, songs) ? songs : track;
+    const u32 cycle = inLoop(track, songs) ? 3u : (phrase_.cycle ? phrase_.cycle : 1u);  // (d59062f: a trait's first cycle)
     u32 n = (track >= 7 && track <= 10 && !inLoop(track, songs)) ? td.carried[1] : td.carried[0];
     if (inLoop(track, songs)) n = (songs >= 7 ? td.carried[1] : td.carried[0]) + (track - songs - 1) / (songs ? songs : 1u) + 1u;
     if (n > 4) n = 4;
     u8 pool[kTraitCount];
     u32 m = 0;
     for (u32 t = 0; t < kTraitCount; ++t)
-        if (td.fromTrack[t] <= met) pool[m++] = static_cast<u8>(t);
+        if (td.fromTrack[t] < met || (td.fromTrack[t] == met && td.fromCycle[t] <= cycle)) pool[m++] = static_cast<u8>(t);
     u16 out = 0;
     for (u32 k = 0; k < n && m; ++k) {
         const u32 pick = static_cast<u32>(rand01(arenaRng_) * static_cast<float>(m)) % m;
@@ -56,12 +57,12 @@ u16 World::drawTraits(u32 track) {
 }
 
 void World::eliteBar(const Phrase& ph, double land) {
-    // traits.md "How often": from Track 2's second cycle, never in a Break, a boss fight or a mini-boss fight; about once in 16
-    // bars in Track 2 falling evenly to once in 8 by Track 6 (and so on). The budget pays x 4 the species' threat.
+    // traits.md "How often" (d59062f): from Track 3's first cycle, never in a Break, a boss fight or a mini-boss fight; about once
+    // in 16 bars in Track 3 falling evenly to once in 8 by Track 6 (and so on). The budget pays x 4 the species' threat.
     DirectorState& d = director_;
-    if (ph.track < 2 || (ph.track == 2 && ph.cycle < 2) || ph.section == Section::Break || ph.trackChange || ph.bossDrop || boss_.active) return;
+    if (ph.track < kElFromTrack || ph.section == Section::Break || ph.trackChange || ph.bossDrop || boss_.active) return;
     const float t = static_cast<float>(ph.track < 6 ? ph.track : 6u);
-    const float every = kElPaceBarsT2 + (kElPaceBarsT6 - kElPaceBarsT2) * (t - 2.0f) / 4.0f;
+    const float every = kElPaceBarsT3 + (kElPaceBarsT6 - kElPaceBarsT3) * (t - 3.0f) / 3.0f;
     eliteClock_ += 1.0f / every;
     if (eliteClock_ < 1.0f) return;
     const TraitData& td = species_->traits;

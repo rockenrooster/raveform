@@ -32,6 +32,7 @@ enum class Moment : u8 {
     PrOne, PrRings, PrBurnShown, PrBurn, PrSolo,                // Polyrhythm
     FbEchoes, FbOpen, FbTwo, FbHowl,                            // Feedback
     MqCourt, MqOpen, BmNest, BmExposed, BsDraw, BsFire, BsDazed, SaClock,  // mini-bosses batch 2
+    CdFans,                                                     // Cadence (M5 part 6): the fans of beat 3 in the air
 };
 
 struct Pic {
@@ -121,6 +122,11 @@ const Pic kPics[] = {
     {"sa_half", "sentry_array", 1, Moment::SaClock, false},
     {"sa_death", "sentry_array", 0, Moment::Death, false},
     {"sa_strip", "sentry_array", 0, Moment::SaClock, true},
+    {"cd_progression", "cadence", 0, Moment::CdFans, false},
+    {"cd_modulation", "cadence", 1, Moment::CdFans, false},
+    {"cd_inversion", "cadence", 2, Moment::CdFans, false},
+    {"cd_death", "cadence", 1, Moment::Death, false},
+    {"cd_strip", "cadence", 0, Moment::CdFans, true},
 };
 constexpr u32 kPicCount = sizeof(kPics) / sizeof(kPics[0]);
 
@@ -183,6 +189,7 @@ void Play::applyFightPhase() {
         case BossKind::CaromKing: w.bossHealthNow(1.0f - 0.25f * static_cast<float>(ph < 3 ? ph : 3) - 0.01f); break;
         case BossKind::EventHorizon: w.bossHealthNow(horizonShare(ph)); break;  // Tidal below 66%, Collapse below 33%
         case BossKind::Feedback: w.bossHealthNow(feedbackShare(ph)); break;
+        case BossKind::Cadence: w.bossHealthNow(ph == 1 ? 0.6f : (ph == 2 ? 0.3f : 1.0f)); break;  // Modulation below 66%, Inversion below 33%
         case BossKind::SentryArray: w.killBossNextTick(0x0Fu, false); break;  // half: four left
         case BossKind::Polyrhythm:
             // Hemiola: both at half; Solo: Four dead.
@@ -202,6 +209,7 @@ void Play::holdFight() {
     else if (b.kind == BossKind::EventHorizon) share = horizonShare(fightPhase_);
     else if (b.kind == BossKind::Polyrhythm) share = fightPhase_ == 1 ? 0.5f : 1.0f;
     else if (b.kind == BossKind::Feedback) share = feedbackShare(fightPhase_);
+    else if (b.kind == BossKind::Cadence) share = fightPhase_ == 1 ? 0.6f : (fightPhase_ == 2 ? 0.3f : 1.0f);
     else if (isMiniBoss(b.kind) && fightPhase_) share = 0.49f;
     w.bossRefill(share);
 }
@@ -394,7 +402,7 @@ bool Play::scriptSetupM5() {
     if (!setupFight(pic.fight, pic.phase)) return true;
     // Part 4: the Track 5 build kills a rotor in seconds; the fight holds its health until the moment (not for its death).
     // (its death too: the hold gives nothing back once it is dying, and the picture kills it itself)
-    if (fightKind_ == BossKind::Polyrhythm || fightKind_ == BossKind::Feedback || (fightKind_ >= BossKind::MothQueen && fightKind_ <= BossKind::SentryArray))
+    if (fightKind_ == BossKind::Polyrhythm || fightKind_ == BossKind::Feedback || fightKind_ == BossKind::Cadence || (fightKind_ >= BossKind::MothQueen && fightKind_ <= BossKind::SentryArray))
         opt_.fightHold = true;
     if (pic.strip) stripStride_ = 4;
     return true;
@@ -733,6 +741,7 @@ bool Play::scriptInputM5(StickInput& in) {
             case Moment::HzJetsShown: go = b.hz.phase == 2 && music > fightPhaseAt_ + kTicksPerBar && inBar > 2.5 * kTicksPerBeat && seen(b.pos); break;
             case Moment::HzJets: go = music >= b.hz.jetFrom + 20.0 && music < b.hz.jetUntil && seen(b.pos); break;
             // Polyrhythm: the One (its rings' gaps on the link), the rings at work, the link's dashes, the burn, the Solo.
+            case Moment::CdFans: go = music > fightPhaseAt_ + 2.0 * kTicksPerBar && inBar > (pic.strip ? 1.9 : 2.4) * kTicksPerBeat && inBar < 2.6 * kTicksPerBeat && seen(b.pos); break;
             case Moment::PrOne: go = music > b.fightTick + 2.0 * kTicksPerBar && inBar > (pic.strip ? 0.0 : 0.22 * kTicksPerBar) && inBar < 0.3 * kTicksPerBar; break;
             case Moment::PrRings: go = music > b.fightTick + 3.0 * kTicksPerBar && inBar > 0.7 * kTicksPerBar && inBar < 0.75 * kTicksPerBar; break;
             case Moment::PrBurnShown: go = w.polyLinkBurn(music) == 1 && music > fightPhaseAt_ + 2.0 * kTicksPerBar && inBar > 0.6 * kTicksPerBar; break;

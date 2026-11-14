@@ -21,6 +21,7 @@ enum class BossKind : u8 {
     MothQueen, BroodMother, BlinkStar, SentryArray,      // batch 2 (data only until M5 part 4)
     MirrorMimic, TwinTether, WeaverPrime, DeepWell,      // batch 3 (data only until M5 parts 4 and 6)
     EventHorizon, Polyrhythm, Feedback,                   // M5 part 4: the bosses of Tracks 4 to 6
+    Cadence,                                              // M5 part 6: the bosses of Tracks 7 to 10 (as they are built)
     Count
 };
 constexpr u32 kBossKinds = static_cast<u32>(BossKind::Count);
@@ -30,18 +31,19 @@ const char* bossId(BossKind k);    // "kaleidos", "longwave", "choir", "alpha_ho
 bool bossFromId(const char* id, BossKind& out);
 // The bosses built so far (M5 part 1: three), in set-list order: Track t's boss in the first pass, and the loop's
 // boss for Track t is the one its song's Track had. The set list is the Tracks with their fights (Play).
-constexpr u32 kBossesBuilt = 6;  // M5 part 4: Tracks 4 to 6 have their fights
+constexpr u32 kBossesBuilt = 7;  // M5 part 6: Track 7's Cadence
 // The set list's bosses, Track by Track (GAME_DESIGN 4.2, 7.6).
 inline BossKind bossOfSong(u32 song) {
-    constexpr BossKind k[6] = {BossKind::Kaleidos, BossKind::Longwave, BossKind::Choir, BossKind::EventHorizon, BossKind::Polyrhythm, BossKind::Feedback};
-    return k[song % 6u];
+    constexpr BossKind k[7] = {BossKind::Kaleidos, BossKind::Longwave, BossKind::Choir, BossKind::EventHorizon, BossKind::Polyrhythm, BossKind::Feedback,
+                               BossKind::Cadence};
+    return k[song % 7u];
 }
 // The fights built so far (--fight takes these; a run's set list ends before the first Track without its fights).
 inline bool fightBuilt(BossKind k) { return k <= BossKind::SentryArray || k >= BossKind::EventHorizon; }
 // A fight's home Track (1-based): a boss's own; a mini-boss's the Track whose middle Drop draws it (minibosses.json
 // common.pick).
 inline u32 bossHomeTrack(BossKind k) {
-    constexpr u8 kHome[kBossKinds] = {1, 2, 3, 2, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 8, 4, 5, 6};
+    constexpr u8 kHome[kBossKinds] = {1, 2, 3, 2, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 8, 4, 5, 6, 7};
     return kHome[static_cast<u32>(k) < kBossKinds ? static_cast<u32>(k) : 0u];
 }
 
@@ -81,6 +83,9 @@ enum class BossCue : u8 {
     BmLay, BmHatch, BmBreak,
     BsHop, BsFire, BsDazed,
     SaHand, SaVolley, SaTurret, SaBack,
+    // M5 part 6, Cadence (cadence.md "Sound"): a pillar sounds its chord (b: the pillar), a firing pillar's fan (b: its chord), the
+    // square's turn, Inversion's announcement, a pillar's burst at the death (b: in the song's order).
+    CdChord, CdFan, CdTurn, CdInversion, CdBurst,
     // M5 part 5, elites (design/traits.md): the arrival's low fifth (b, c: the traits' bits), each trait's mark a beat later
     // (in the traits' order), Armored's outer hull shattering, Splitting, Volatile's fuse and burst, Regenerating's heal,
     // Commander's stun, an Elite Hunt's kill.
@@ -467,6 +472,22 @@ struct PenState {
 };
 
 // The fight's state. Kaleidos: phase = 3 - pairs alive (0 Bloom, 1 Refraction, 2 Spiral, 3 Naked core).
+// M5 part 6: Cadence (design/bosses/cadence.json numbers; the prose in boss_prose.h).
+struct CadenceData {
+    float health = 5200, pillarRadius = 90, squareSide = 700;
+    u32 fanBullets = 5;
+    float fanSpreadDeg = 40, bulletSpeed = 180, bulletLife = 4;
+    u32 rewardShards = 300;
+    bool load();
+};
+struct CadenceState {
+    Vec2 centre;               // the square's centre (it follows the players' centre)
+    float rot = 0.0f;          // the square's turn (the Modulation turns it a quarter the other way every fourth bar line)
+    float rotFrom = 0.0f, rotTo = 0.0f;
+    double turnTick = -1.0;    // a turn began (it takes a beat)
+    u8 phase = 0;              // 0 Progression, 1 Modulation, 2 Inversion
+};
+
 struct BossState {
     bool active = false;       // entered and not dead
     bool dying = false;        // the death plays out (no hits, no fire)
@@ -499,6 +520,7 @@ struct BossState {
     HorizonState hz;  // M5 part 4
     PolyState pr;     // M5 part 4
     FeedbackState fb; // M5 part 4
+    CadenceState cd;  // M5 part 6
     double payoutTick = -1.0;  // dying: its Shards and Cells come at this tick (Event Horizon's flash, Polyrhythm's break)
     float scale = 1.0f;        // health scale it entered with (players, Track, loop)
     double geomTick[12] = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0};  // each BossGeom decision's moment

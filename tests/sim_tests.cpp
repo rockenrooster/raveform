@@ -2239,13 +2239,50 @@ float sidewaysWorst(const World& w) {
     return worst;
 }
 
+// M5 part 6: Cadence (design/bosses/cadence.md): the bar's chord open and silent, the other three firing on one and three.
+void testCadence() {
+    g_test = "cadence";
+    const CadenceData& d = g_species->cadence;
+    CHECK(d.health == 5200.0f && d.pillarRadius == 90.0f && d.squareSide == 700.0f && d.fanBullets == 5 && d.bulletSpeed == 180.0f && d.rewardShards == 300);
+    CHECK(bossOfSong(6) == BossKind::Cadence && bossHomeTrack(BossKind::Cadence) == 7 && fightBuilt(BossKind::Cadence));
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    const Vec2 ship{0.0f, 0.0f};
+    stepWorld(*w, music, ship);
+    w->spawnBossNow(kTicksPerBar, Vec2{}, BossKind::Cadence);
+    const BossState& s = w->boss();
+    CHECK(s.kind == BossKind::Cadence && s.fightTick == 2.0 * kTicksPerBar);
+    // The square: 700 wu a side, I at the top left.
+    const Vec2 p0 = w->cadencePillar(0, music), p1 = w->cadencePillar(1, music);
+    CHECK(std::fabs(length(p1 - p0) - 700.0f) < 1.0f && p0.x < s.cd.centre.x && p0.y < s.cd.centre.y);
+    // Fans on beat 1 from the three that do not sound (5 x the bullet density each, at least 2).
+    const u32 b0 = w->bullets().count;
+    runTo(*w, music, 2.0 * kTicksPerBar + 10.0, ship);
+    const u32 chord = w->cadenceChord(w->music());
+    CHECK_MSG(w->bullets().count - b0 >= 6 && w->bullets().count - b0 <= 15, "%u bullets", w->bullets().count - b0);
+    // The open pillar: x 2 on its One, x 1 after it; the others a quarter.
+    CHECK(w->cadenceScale(chord, w->music()) == 2.0f && w->cadenceScale((chord + 1) % 4, w->music()) == 0.25f);
+    runTo(*w, music, 2.0 * kTicksPerBar + kTicksPerBeat + 10.0, ship);
+    CHECK(w->cadenceScale(chord, w->music()) == 1.0f);
+    // The next bar: the next chord.
+    runTo(*w, music, 3.0 * kTicksPerBar + 10.0, ship);
+    CHECK(w->cadenceChord(w->music()) == (chord + 1) % 4);
+    // Inversion (below a third): the sounding pillar closed, the others open.
+    w->bossHealthNow(0.3f);
+    runTo(*w, music, 4.0 * kTicksPerBar + 10.0, ship);
+    const u32 c2 = w->cadenceChord(w->music());
+    CHECK(s.cd.phase == 2 && w->cadenceScale(c2, w->music()) == 0.25f && w->cadenceScale((c2 + 1) % 4, w->music()) == 1.0f);
+    delete w;
+}
+
 // M5 part 5: elites and their traits (design/traits.md), the arena's structures and events (design/arena.md).
 void testArena() {
     g_test = "arena";
     const TraitData& td = g_species->traits;
     const ArenaData& ad = g_species->arena;
     CHECK(td.scale == 1.3f && td.health == 6.0f && td.score == 10.0f && td.threat == 4.0f && td.shards == 20 && td.alive[0] == 3 && td.alive[1] == 5);
-    CHECK(td.fromTrack[kArmored] == 2 && td.fromTrack[kVolatile] == 4 && td.fromTrack[kPhasing] == 7 && td.twinHealth == 1.6f && td.volatileRing == 160.0f);
+    CHECK(td.fromTrack[kArmored] == 3 && td.fromCycle[kGiant] == 2 && td.fromCycle[kArmored] == 1 && td.fromTrack[kVolatile] == 4 && td.fromTrack[kPhasing] == 7 && td.twinHealth == 1.6f && td.volatileRing == 160.0f);
     CHECK(ad.radius[static_cast<u32>(StructKind::Vault)] == 60.0f && ad.radius[static_cast<u32>(StructKind::Lens)] == 160.0f &&
           ad.eventBars[static_cast<u32>(EventKind::Eclipse)] == 8);
     CHECK(ad.structCount[1] == 1 && ad.structs[1][0] == static_cast<u8>(StructKind::Vault) && ad.eventCount[1] == 1 &&
@@ -3278,6 +3315,7 @@ int main() {
     testMinibosses2();
     testShotStream();
     testArena();
+    testCadence();
     testMinibosses();
     testFamiliesM5();
     testUpgradesM5();

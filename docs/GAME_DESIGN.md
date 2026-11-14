@@ -135,7 +135,7 @@ and a single RETRY button.
 | Speed | 520 wu/s, near-instant acceleration, slight glide on release |
 | Size | Visual radius 14 wu; hit radius 5 wu (forgiving) |
 | Primary weapon | One shot per 1/16 step, 1400 wu/s, lead-arp note per shot |
-| Shield cells | Start 4, up to 8 with Extra Cell; one cell comes back at every Break, more with Regen, and **Cells** dropped by enemies restore one each (section 6.1). A hit removes one, fires a panic pulse (clears bullets within 220 wu, shoves enemies), grants 2.5 s invulnerability and halves the Chain. Health is shown on the ship itself: its halo has one arc per cell |
+| Shield cells | Start 4, up to 8 with Extra Cell; one cell comes back at every Break, more with Regen, and **Cells** dropped by enemies restore one each (section 6.1). A hit removes one, fires a panic pulse (clears bullets within 220 wu, shoves enemies), grants 2.5 s invulnerability and halves the Chain. Health is shown on the ship itself: its halo has one arc per cell. **Nobody meets a boss on their last cell** (M5, 2026-11-13): as a boss arrives, a player with fewer than two cells grows back up to two, the arcs drawing themselves over its entrance bar as Regen's do. The novice bot went into the Longwave fights it lost with 1.2 cells on average and into those it won with 3.1 |
 | Nova | Start with 3, capacity 4 (up to 6 with Mods); one comes back at every Break. Rule R6. Clears bullets and non-boss enemies in view; heavy damage to bosses. **Auto Nova** (on by default, a switch under CONTROLS): a hit that would take the last Shield cell fires a Nova from the stock instead and costs no cell |
 | Dash | One charge, recharges in 2 beats. 220 wu in 0.12 s, invulnerable throughout. Perfect Dash refunds half the recharge and emits a small shock ring |
 
@@ -452,6 +452,9 @@ die and does not say why, and the user never got past Longwave. So:
   strong player's fights are three to five times too short, and the careful bot's line is not held.
   That stays until the balance pass, which makes a boss tougher for players who are hurting it
   faster (measured in the fight itself, on its weak point) and never easier than the novice's tune.
+- **Counting a line.** Twenty runs cannot tell 15 from 17. A result within two of its line is run
+  again over forty seeds and judged there (the line scaled: 32 for 16). What a person says after
+  playing outranks both.
 - **Calibration.** On the build the user played (part 3: Longwave's health at 2.2 times its page,
   armour at nothing) the novice must lose to Longwave in most runs. A novice that passes it there
   is not one.

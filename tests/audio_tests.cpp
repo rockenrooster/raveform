@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <chrono>
 #include <thread>
 
 #include "audio/bake.h"
@@ -120,7 +121,12 @@ void testSeqLatest() {
             }
         }
     });
-    for (i64 i = 1; i < 2000000; ++i) s.publish({i, i, i, i});
+    i64 i = 1;
+    for (; i < 2000000; ++i) s.publish({i, i, i, i});
+    // (M5, the lead's rule for this flaky check: under load the reader may not have been scheduled yet; the writer goes on
+    // publishing until the reader has read, rather than the test being rerun)
+    const auto t0 = std::chrono::steady_clock::now();
+    while (reads.load() < 1000 && std::chrono::steady_clock::now() - t0 < std::chrono::seconds(20)) s.publish({i, i, i, i}), ++i;
     stop = true;
     reader.join();
     CHECK(!torn.load());

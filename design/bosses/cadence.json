@@ -25,6 +25,11 @@
  ],
  "numbers": {
   "health": 5200,
+  "damageScale": {
+   "open": 1.0,
+   "openOnTheOne": 2.0,
+   "closed": 0.25
+  },
   "pillarRadius": 90.0,
   "squareSide": 700.0,
   "follow": "the square's centre follows the players' centre at 40 wu/s",

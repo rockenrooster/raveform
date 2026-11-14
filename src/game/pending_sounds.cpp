@@ -143,6 +143,18 @@ const FightSound kRows[] = {
      0},
     {BossCue::SaBack, "minibosses.md", "the turn back is a reverse cymbal into its bar line", nullptr, SoundPlay::Recipe, rc(Recipe::RevCymbal), false,
      0.6f, 1, 0},
+    // ---- Cadence (design/bosses/cadence.md "Sound"; M5 part 6)
+    {BossCue::CdChord, "cadence.md", "each pillar is its chord: while it sounds, a pad voice holds its root and the band's stab plays that chord on the One at 1.2",
+     "the band's stab on the One at 1.2 (a pad voice on the root plays a bar)", SoundPlay::PadVoice, rc(Recipe::PadVoice), false, 0.5f, 4, 0.5f,
+     NoteRule::ChordUp, 0, 0, 0, 0, 3},
+    {BossCue::CdFan, "cadence.md", "each firing pillar's fan is a tom on its own chord's root, on one and three", "its own chord's root (the Track's chord plays)",
+     SoundPlay::Recipe, rc(Recipe::Tom), false, 0.5f, 0, 0},
+    {BossCue::CdTurn, "cadence.md", "the turn of the square is a reversed cymbal into the bar line", nullptr, SoundPlay::Recipe, rc(Recipe::RevCymbal), false,
+     0.6f, 1, 0},
+    {BossCue::CdInversion, "cadence.md", "Inversion is the music bus high-passed at 800 Hz for one bar", "a high-pass on the music bus (a sweep plays)",
+     SoundPlay::Recipe, rc(Recipe::Sweep), false, 0.6f, 1, 4},
+    {BossCue::CdBurst, "cadence.md", "death: the four chords in turn, then the tonic with the gong", "the chords (a gong a burst plays)", SoundPlay::Recipe,
+     rc(Recipe::Gong), false, 0.6f, 0, 0},
     // ---- Elites (design/traits.md: "Heard as it arrives"; M5 part 5)
     {BossCue::ElArrive, "traits.md", "the elite's low fifth (root and fifth of the Track's key) as it warps in", nullptr, SoundPlay::Sfx, sx(Sfx::Elite), false,
      0.9f, 0, 0},
