@@ -829,10 +829,6 @@ public:
     void setNet(NetRole role, u8 localMask);
     NetRole netRole() const { return role_; }
     bool isLocal(u32 p) const { return ((localMask_ >> p) & 1u) != 0; }
-    // M4 net follow-up (the lead's ruling): this device knows player p's place first-hand (its own; across a direct link:
-    // the host every client's, a client the host's, seat 0). Upgrades' shoves and pulls for a relayed player move nothing
-    // here: they reach this device in the host's corrections.
-    bool firstHand(u32 p) const { return role_ != NetRole::Client || isLocal(p) || p == 0; }
     u32 viewPlayer() const { return viewPlayer_; }  // the first local player: the camera's ship, the band's intensity
     u16 runId() const { return runId_; }
     // A run on the bar line `bar` (musical ticks) with this seed, these seats and this id: every device resets

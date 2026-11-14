@@ -72,9 +72,6 @@ i32 World::targetOf(u32 i) {
     // device) and changes only to a player kTargetStick times nearer than its own.
     const u8 t = e.target[i];
     const bool valid = t < playerCount_ && players_[t].alive;
-    // M4 net follow-up (the lead's ruling): the host's choice is law. A client keeps the player it follows (its own first
-    // choice, then what the host's corrections carry) and chooses again only when that player is down or gone.
-    if (role_ == NetRole::Client && valid) return t;
     bool rethink = !valid;
     if (!rethink) {
         const i64 k0 = static_cast<i64>(std::floor(m0_ / kTicksPerStep)) + 1, k1 = static_cast<i64>(std::floor(m1_ / kTicksPerStep));
@@ -330,7 +327,7 @@ void World::applyPlayerOp(const NetOp& op) {
                 if (dx * dx + dy * dy <= r2) bullets_.dead[b] = 1;
             }
             Enemies& e = enemies_;
-            for (u32 i = 0; i < e.count && firstHand(p); ++i) {  // (a relayed player's shove: the host's corrections)
+            for (u32 i = 0; i < e.count; ++i) {
                 const float dx = e.x[i] - c.x, dy = e.y[i] - c.y;
                 const float d2 = dx * dx + dy * dy;
                 if (d2 > r2 || d2 < 1e-6f) continue;
@@ -673,8 +670,6 @@ float World::netCorrect(const NetEnemyState& s, double hostMusic) {
     // moved on from what the sample knew: a new wander, a glint, a dash) or it has landed here already.
     // M5 part 3: Freeze Frame is the host's word here (a client freezes nothing itself): frozen for a bar more, or not.
     e.frozenUntil[i] = s.frozen ? std::fmax(e.frozenUntil[i], m1_ + kTicksPerBar) : -1.0;
-    // The player it follows is the host's word whatever lies between (targetOf keeps it on a client).
-    if (s.target < kMaxPlayers || s.target == 0xFF) e.target[i] = s.target;
     const bool beatBetween = crossed(std::fmin(hostMusic, m1_), std::fmax(hostMusic, m1_), kTicksPerBeat);
     const bool landedHere = hostWarping && e.state[i] != kWarping;
     // M4 net (clients only): a walker the host has let off Event Horizon's lane (the Well died there first) leaves it here

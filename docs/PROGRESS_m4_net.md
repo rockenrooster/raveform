@@ -172,6 +172,9 @@ the simulation. Solo play and the determinism hashes are unchanged.
 
 ### Shoves and pulls, and the player an enemy follows (points 3 and 4, as ruled)
 
+(Taken out again after round 3 with the hit's dip, by the lead's ruling: on today's content the three cost about 1 wu;
+see "A fresh baseline on main 1dce5d3" below. What follows is what was tried.)
+
 - `World::firstHand(p)` (`src/sim/world.h`): true on the host and solo, and on a client for its own player and the
   host's. Kick Pulse's ring, Colossus's ram shove, Black Hole's, Singularity's and Collapse Field's pulls, and a
   teammate's panic pulse move bodies only where `firstHand` (`world_upgrades_m5.cpp`, `world_net.cpp`); the owner
@@ -340,8 +343,22 @@ Each of round 2's rules, off on its own, lands at 3.9-4.5 clean; all three off m
 the content of that day) they cut the clean mean from 5.19 to 4.40; on today's content (Kick Pulse on the kick, armour
 taking a quarter, the novice retune) **together they cost about 1 wu**, clean and impaired. The ten-seed means swing
 by ±0.7 wu between builds that differ in nothing the runs reach (the 10 Hz heartbeat in fights: 4.86 against 5.73), so
-the single rules are not told apart; the three together are. They are the lead's rulings, so they stay as they are
-here; the experiment (a flag in each place) was taken out again. The lead decides.
+the single rules are not told apart; the three together are.
+
+**Ruled and done (the lead, after 7061fb0): the three rules are out.** `world.cpp` and `world_upgrades_m5.cpp` are
+main's again; `World::firstHand`, the client's `targetOf` law and `netCorrect`'s target-whatever-lies-between are gone
+from `world.h` / `world_net.cpp`. Every device applies every player's shove and pull from its own view, as before
+round 2, and the owner still sees its own on the beat. The host's side stays (a changed target and a knocked body
+still weigh more in its queue). Ten seeds (`captures\m4net\seeds\r10_*`), with the rules in -> out:
+
+| seed | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | mean |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| clean | 5.20 -> 3.21 | 4.00 -> 5.49 | 3.48 -> 4.07 | 6.91 -> 5.34 | 4.09 -> 5.22 | 6.36 -> 3.53 | 5.88 -> 2.72 | 4.80 -> 4.37 | 4.58 -> 2.91 | 5.43 -> 5.18 | 5.07 -> **4.20** |
+| impaired | 7.04 -> 5.28 | 5.63 -> 5.88 | 9.12 -> 5.87 | 6.55 -> 6.72 | 6.44 -> 6.14 | 5.34 -> 6.17 | 6.26 -> 4.93 | 6.67 -> 6.37 | 7.43 -> 6.38 | 10.12 -> 6.25 | 7.06 -> **6.00** |
+
+The guard (a seed over 10 wu now that was under it with the rules in): none; the worst is 6.72. Seed 5 clean fails on
+the uplink, **60.8 kbit/s** (client 3, 1,032 claims in one second): the uplink item below. `scripts\test.ps1` passes
+(the soaks 3.21 / 5.28; hashes unchanged).
 
 ### Main 5107877 and the test seed's clean figure (point 3)
 
@@ -426,14 +443,12 @@ What can make player shots jump on the host's screen, with the evidence:
   round 3's `net: diag shots`).
 - `src/platform/app.cpp`, `app.h` (round 3): `--net-capture-bar B --strip N` takes the bar's picture and the next N-1
   frames (`<name>_<k>.png`); without `--strip` as before.
-- `src/sim/world.h`: `NetLog::kClaims` 512 -> `kMaxEnemies`; `World::firstHand()`.
-- `src/sim/world.cpp`: the hit's dip does not slow the co-op simulation.
-- `src/sim/world_boss.cpp`: `bossGeom`, clients only: a late Spear decision carried on by the charge since.
-- `src/sim/world_net.cpp`: `targetOf` keeps a client's choice; `netCorrect` always takes the host's target; the
-  panic pulse's shove only where `firstHand`; round 3: `netCorrect` carries the host's sample by Event Horizon's pull
-  as well as by its velocity (clients only).
-- `src/sim/world_upgrades_m5.cpp`: Kick Pulse's shove, Colossus's shove, Black Hole's, Singularity's and Collapse
-  Field's pulls only where `firstHand`.
+- `src/sim/world.h`: `NetLog::kClaims` 512 -> `kMaxEnemies` (already on main).
+- `src/sim/world.cpp`, `src/sim/world_upgrades_m5.cpp`: none any more (round 2's dip and `firstHand` taken out; main's).
+- `src/sim/world_boss.cpp`: `bossGeom`, clients only: a late Spear decision carried on by the charge since (on main).
+- `src/sim/world_net.cpp`: `netCorrect` (clients only) carries the host's sample by Event Horizon's pull as well as by
+  its velocity, gives a lane walker the host's lane and carried distance, and lets a walker off the lane when the
+  host's has left it. Round 2's `targetOf` law, target-always and the panic pulse's `firstHand` are out.
 - `src/sim/world_horizon.cpp`, `world.h` (round 3): `horizonLanePoint`, `horizonLaneCarry` (const helpers for the
   clients' corrections; nothing on the host or in solo calls them).
 - `src/tools/net_headless.cpp`, `tests/net_tests.cpp`, `scripts/coop-device.ps1`, `scripts/net-seeds.ps1` (new).
