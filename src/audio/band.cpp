@@ -18,6 +18,7 @@
 #include "audio/platform_audio.h"
 #include "core/alloc_counter.h"
 #include "core/log.h"
+#include "core/save_file.h"
 
 namespace rf {
 
@@ -828,7 +829,7 @@ void Band::loadSync() {
     char line[64];
     while (std::fgets(line, sizeof line, f)) {
         float v = 0.0f;
-        if (std::sscanf(line, "offset_ms=%f", &v) == 1) {
+        if (std::sscanf(line, "offset_ms=%f", &v) == 1 && v >= -500.0f && v <= 500.0f) {  // (M7: a damaged value is ignored)
             syncOffsetMs_ = v;
             syncTouched_ = true;
         }
@@ -838,20 +839,16 @@ void Band::loadSync() {
 }
 
 bool Band::saveSync() {
-    char path[512], tmp[520];
+    char path[512];
     prefPath(path, sizeof path, "audio_sync.txt");
-    std::snprintf(tmp, sizeof tmp, "%s.tmp", path);
     if (!syncTouched_) {
         std::remove(path);  // AUTO: nothing to add to the device's own timing
         RF_LOG("audio: sync calibration cleared (automatic)");
         return true;
     }
-    FILE* f = std::fopen(tmp, "w");
-    if (!f) return false;
-    std::fprintf(f, "offset_ms=%.1f\n", syncOffsetMs_);
-    const bool ok = std::fclose(f) == 0;
-    std::remove(path);
-    const bool renamed = ok && std::rename(tmp, path) == 0;
+    char text[48];
+    const int n = std::snprintf(text, sizeof text, "offset_ms=%.1f\n", syncOffsetMs_);
+    const bool renamed = n > 0 && saveFileAtomic(path, text, static_cast<size_t>(n));  // M7: crash-safe (core/save_file)
     RF_LOG("audio: sync calibration %+.0f ms saved to %s%s", syncOffsetMs_, path, renamed ? "" : " (failed)");
     return renamed;
 }

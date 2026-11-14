@@ -9,6 +9,7 @@
 #include "audio/dsp.h"
 #include "audio/fft.h"
 #include "core/log.h"
+#include "core/save_file.h"
 
 namespace rf::audio {
 
@@ -1433,10 +1434,10 @@ bool get(FILE* f, T& v) { return std::fread(&v, sizeof v, 1, f) == 1; }
 }  // namespace
 
 bool SampleBank::saveCache(const char* path, u64 key) const {
-    char tmp[600];
-    std::snprintf(tmp, sizeof tmp, "%s.tmp", path);
-    FILE* f = std::fopen(tmp, "wb");
-    if (!f) return false;
+    // M7 (crash-safe saves): written to a temporary file, flushed and renamed over the old one (core/save_file).
+    SaveFile sf;
+    if (!saveBegin(sf, path)) return false;
+    FILE* f = sf.f;
     bool ok = put(f, kCacheMagic) && put(f, kCacheVersion) && put(f, key) && put(f, count_) && put(f, bytes_);
     for (u32 i = 0; ok && i < count_; ++i) {
         const Sample& s = samples_[i];
@@ -1447,13 +1448,47 @@ bool SampleBank::saveCache(const char* path, u64 key) const {
     ok = ok && put(f, kits_) && put(f, clap_) && put(f, snare_) && put(f, shaker_) && put(f, pulse_) && put(f, impact_) && put(f, risers_) &&
          put(f, riserCount_) && put(f, swellHalf_) && put(f, swellBar_) && put(f, sfxFirst_) && put(f, sfxCount_) && put(f, inhale_) &&
          put(f, shardScale_) && put(f, sfxMajor_) && put(f, upgradeNoNinth_) && put(f, recipeFirst_) && put(f, recipeCount_) && put(f, kCacheMagic);
-    ok = (std::fclose(f) == 0) && ok;
-    if (!ok) {
-        std::remove(tmp);
-        return false;
+    return saveCommit(sf, ok);
+}
+
+void SampleBank::resetTables() {
+    // The tables as constructed (M7: after a damaged cache).
+    for (auto& track : kits_)
+        for (DrumKit& k : track) k = DrumKit{};
+    clap_ = snare_ = shaker_ = pulse_ = impact_ = upgradeNoNinth_ = -1;
+    riserCount_ = 0;
+    for (u32 t = 0; t < MusicData::kMaxTracks; ++t) {
+        swellHalf_[t] = swellBar_[t] = -1;
+        for (i32& v : inhale_[t]) v = 0;
+        for (u8& v : shardScale_[t]) v = 0;
     }
-    std::remove(path);
-    return std::rename(tmp, path) == 0;
+    for (u32 k = 0; k < kSfxCount; ++k) sfxFirst_[k] = 0, sfxCount_[k] = 0, sfxMajor_[k] = 0;
+    for (u32 k = 0; k < kRecipeCount; ++k) recipeFirst_[k] = 0, recipeCount_[k] = 0;
+}
+
+bool SampleBank::cacheTablesValid() const {
+    // M7 (crash-safe saves): a file whose header and tail are right can still be damaged in between; every index the tables
+    // hold must name a sample the file brought (or none), so a damaged cache is baked again instead of read out of bounds.
+    const i32 n = static_cast<i32>(count_);
+    const auto id = [n](i32 v) { return v >= -1 && v < n; };
+    const auto span = [n](i32 first, u32 count) { return count == 0 || (first >= 0 && static_cast<i64>(first) + count <= n); };
+    if (riserCount_ > MusicData::kMaxTracks * 4) return false;
+    if (!id(clap_) || !id(snare_) || !id(shaker_) || !id(pulse_) || !id(impact_) || !id(upgradeNoNinth_)) return false;
+    for (const auto& track : kits_)
+        for (const DrumKit& k : track)
+            if (!id(k.kick) || !id(k.hat) || !id(k.ohat)) return false;
+    for (u32 i = 0; i < riserCount_; ++i)
+        if (!id(risers_[i].id) || risers_[i].track >= MusicData::kMaxTracks) return false;
+    for (u32 t = 0; t < MusicData::kMaxTracks; ++t) {
+        if (!id(swellHalf_[t]) || !id(swellBar_[t])) return false;
+        for (i32 v : inhale_[t])
+            if (!id(v)) return false;
+    }
+    for (u32 k = 0; k < kSfxCount; ++k)
+        if (!id(sfxFirst_[k]) || !span(sfxFirst_[k], sfxCount_[k]) || !id(sfxMajor_[k])) return false;
+    for (u32 k = 0; k < kRecipeCount; ++k)
+        if (!id(recipeFirst_[k]) || !span(recipeFirst_[k], recipeCount_[k])) return false;
+    return true;
 }
 
 bool SampleBank::loadCache(const char* path, u64 key) {
@@ -1481,8 +1516,13 @@ bool SampleBank::loadCache(const char* path, u64 key) {
          get(f, shardScale_) && get(f, sfxMajor_) && get(f, upgradeNoNinth_) && get(f, recipeFirst_) && get(f, recipeCount_) && get(f, tail) &&
          tail == kCacheMagic;
     std::fclose(f);
+    if (ok) {
+        count_ = count;
+        ok = cacheTablesValid();  // M7: damaged between a right header and tail
+    }
     if (!ok) {
         release();
+        resetTables();  // (M7: nothing half-read stays behind; the bank is baked again)
         return false;
     }
     count_ = count;

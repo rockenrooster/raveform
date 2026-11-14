@@ -20,7 +20,9 @@ u64 heapAllocCount() { return g_allocations.load(std::memory_order_relaxed); }
 u64 heapAllocCountThisThread() { return t_allocations; }
 }  // namespace rf
 
-// Replacements for the unaligned forms. Built without exceptions, so failure aborts.
+// Replacements for the unaligned forms. Built without exceptions, so failure aborts. (M7: not in the sanitizer build,
+// whose runtime replaces them itself; there the counts stay 0 and the no-allocation checks prove nothing.)
+#if !defined(RF_SANITIZE)
 void* operator new(std::size_t size) {
     if (void* p = countedAlloc(size)) return p;
     std::abort();
@@ -37,3 +39,6 @@ void operator delete(void* p, std::size_t) noexcept { std::free(p); }
 void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
 void operator delete(void* p, const std::nothrow_t&) noexcept { std::free(p); }
 void operator delete[](void* p, const std::nothrow_t&) noexcept { std::free(p); }
+#else
+[[maybe_unused]] static void* (*const g_keepCountedAlloc)(std::size_t) = countedAlloc;
+#endif

@@ -94,6 +94,8 @@ public:
 
 private:
     i32 add(float* data, u32 frames, u8 channels, i16 midi, u16 tag, const char* name);
+    bool cacheTablesValid() const;  // M7: every index a loaded cache holds names one of its samples
+    void resetTables();             // M7: the tables as constructed (after a damaged cache)
 
     Sample samples_[kMaxSamples];
     u32 count_ = 0;

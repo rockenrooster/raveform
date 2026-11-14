@@ -14,6 +14,15 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
 endif()
 
+# M7: scripts/sanitize.ps1 configures build/desktop-asan with -fsanitize=address,undefined and RF_SANITIZE: the counted
+# operator new is left out (the sanitizer's runtime replaces it) and the tools link dynamically (the ASan runtime is a DLL).
+option(RF_SANITIZE "The sanitizer build of the tests and the headless tool" OFF)
+set(RF_STATIC_LINK -static)
+if(RF_SANITIZE)
+  add_compile_definitions(RF_SANITIZE=1)
+  set(RF_STATIC_LINK "")
+endif()
+
 set(RF_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(RF_TP ${RF_ROOT}/third_party)
 set(RF_GEN ${CMAKE_CURRENT_BINARY_DIR}/generated)
@@ -33,6 +42,12 @@ set_property(GLOBAL APPEND PROPERTY JOB_POOLS rf_jobs=${RF_MAX_JOBS})
 set(CMAKE_JOB_POOL_COMPILE rf_jobs)
 set(CMAKE_JOB_POOL_LINK rf_jobs)
 set(CMAKE_JOB_POOL_PRECOMPILE_HEADER rf_jobs)
+
+# M7 (the release build): debug information in the native libraries; the APK's are stripped by the packaging and the
+# unstripped ones are kept beside it (scripts/build-android.ps1 -Config release), to read a crash report with.
+if(ANDROID AND CMAKE_BUILD_TYPE STREQUAL "Release")
+  add_compile_options(-g)
+endif()
 
 # ---- SDL3 (static on Windows, shared on Android) ---------------------------------------------
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
@@ -159,6 +174,7 @@ add_library(raveform_audio STATIC
   src/audio/reverb.cpp
   src/audio/tempo_map.cpp
   src/audio/wav.cpp
+  src/core/save_file.cpp  # (M7: crash-safe saves; the lowest library that writes a file)
   ${RF_AUDIO_GENERATED})
 target_include_directories(raveform_audio PUBLIC ${RF_ROOT}/src ${RF_GEN})
 target_compile_options(raveform_audio PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti> -fno-math-errno)
@@ -455,7 +471,8 @@ target_sources(raveform_core PRIVATE
   src/game/play_view_upgrades.cpp
   src/game/play_view_shots.cpp
   src/game/screens.cpp
-  src/game/settings.cpp)
+  src/game/settings.cpp
+  src/game/save_data.cpp)
 # M4: co-op in the game (the network library; the game hosts or joins from the command line).
 target_link_libraries(raveform_core PUBLIC raveform_net)
 target_sources(raveform_core PRIVATE src/game/play_net.cpp src/game/play_view_coop.cpp src/game/play_coop.cpp src/game/screens_coop.cpp)
@@ -467,23 +484,29 @@ if(NOT ANDROID)
                  src/game/pending_sounds.cpp ${RF_HEADLESS_CORE})
   target_link_libraries(raveform_headless PRIVATE raveform_sim raveform_audio raveform_net)  # M3: --sim runs; M4: --net
   target_compile_options(raveform_headless PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
-  target_link_options(raveform_headless PRIVATE -static)
+  target_link_options(raveform_headless PRIVATE ${RF_STATIC_LINK})
   # M5: the palettes too (one for each of the ten Tracks).
   add_executable(raveform_tests tests/audio_tests.cpp src/content/palette.cpp ${RF_GEN}/palettes.json.inc ${RF_HEADLESS_CORE})
   target_link_libraries(raveform_tests PRIVATE raveform_audio)
   target_compile_options(raveform_tests PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
-  target_link_options(raveform_tests PRIVATE -static)
+  target_link_options(raveform_tests PRIVATE ${RF_STATIC_LINK})
   # M3: the simulation's unit tests.
   add_executable(raveform_sim_tests tests/sim_tests.cpp ${RF_HEADLESS_CORE})
   target_link_libraries(raveform_sim_tests PRIVATE raveform_sim)
   target_compile_options(raveform_sim_tests PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
-  target_link_options(raveform_sim_tests PRIVATE -static)
+  target_link_options(raveform_sim_tests PRIVATE ${RF_STATIC_LINK})
   # M4: the network's unit tests (packet parsing fuzz, the wire and its condition simulator, clock and song sync,
   # a short loopback session).
   add_executable(raveform_net_tests tests/net_tests.cpp ${RF_HEADLESS_CORE})
   target_link_libraries(raveform_net_tests PRIVATE raveform_net)
   target_compile_options(raveform_net_tests PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
-  target_link_options(raveform_net_tests PRIVATE -static)
+  target_link_options(raveform_net_tests PRIVATE ${RF_STATIC_LINK})
+  # M7: crash-safe saves (settings and hints, high scores, the tier cache, the baked audio): a missing, short or damaged file
+  # loads as defaults.
+  add_executable(raveform_save_tests tests/save_tests.cpp src/game/save_data.cpp src/game/tiers.cpp ${RF_HEADLESS_CORE})
+  target_link_libraries(raveform_save_tests PRIVATE raveform_audio rf_volk SDL3::Headers)
+  target_compile_options(raveform_save_tests PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
+  target_link_options(raveform_save_tests PRIVATE ${RF_STATIC_LINK})
 endif()
 # M2 audio end
 

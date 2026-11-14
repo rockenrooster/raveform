@@ -10,7 +10,7 @@
 . "$PSScriptRoot\env.ps1"
 . "$PSScriptRoot\audio-common.ps1"
 
-$null = Build-RfHeadless -Targets @('raveform_tests', 'raveform_headless', 'raveform_sim_tests', 'raveform_net_tests')
+$null = Build-RfHeadless -Targets @('raveform_tests', 'raveform_headless', 'raveform_sim_tests', 'raveform_net_tests', 'raveform_save_tests')
 $dir = Join-Path $RF_ROOT 'build\desktop-dev'
 $failed = 0
 & (Join-Path $dir 'raveform_tests.exe')
@@ -24,6 +24,9 @@ if ($LASTEXITCODE -ne 0) { $failed += 1; Write-Host "[test] determinism test fai
 # M4: the network.
 & (Join-Path $dir 'raveform_net_tests.exe')
 if ($LASTEXITCODE -ne 0) { $failed += 1; Write-Host "[test] network unit tests failed ($LASTEXITCODE)" }
+# M7: crash-safe saves (settings and hints, high scores, the tier cache, the baked audio).
+& (Join-Path $dir 'raveform_save_tests.exe')
+if ($LASTEXITCODE -ne 0) { $failed += 1; Write-Host "[test] save tests failed ($LASTEXITCODE)" }
 # (Play test 3: Tracks are half as long, so six simulated minutes are the first three Tracks the ten covered before. The census
 # mismatches longer soaks showed in Tracks 4-6 were fixed on the wire in m4-net 26823dc: 17 minutes, 0.)
 & (Join-Path $dir 'raveform_headless.exe') --net soak --minutes 6 | Select-Object -Last 10

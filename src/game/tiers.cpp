@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "core/save_file.h"
+
 namespace rf {
 
 TierSettings tierSettings(Tier t) {
@@ -129,11 +131,12 @@ bool readTierCache(const char* path, const char* gpu, const char* driver, Tier& 
 
 bool writeTierCache(const char* path, const char* gpu, const char* driver, Tier chosen, const float msPerTier[4],
                     float budgetMs) {
-    FILE* f = std::fopen(path, "wb");
-    if (!f) return false;
-    std::fprintf(f, "raveform-tier 1\ngpu=%s\ndriver=%s\ntier=%s\nbudget_ms=%.2f\nms_low_medium_high_ultra=%.2f %.2f %.2f %.2f\n",
-                 gpu, driver, tierName(chosen), budgetMs, msPerTier[0], msPerTier[1], msPerTier[2], msPerTier[3]);
-    return std::fclose(f) == 0;
+    // M7: written whole through a temporary file and a rename (core/save_file); a damaged file is probed again (readTierCache).
+    char text[1024];
+    const int n = std::snprintf(text, sizeof text,
+                                "raveform-tier 1\ngpu=%s\ndriver=%s\ntier=%s\nbudget_ms=%.2f\nms_low_medium_high_ultra=%.2f %.2f %.2f %.2f\n", gpu,
+                                driver, tierName(chosen), budgetMs, msPerTier[0], msPerTier[1], msPerTier[2], msPerTier[3]);
+    return n > 0 && n < static_cast<int>(sizeof text) && saveFileAtomic(path, text, static_cast<size_t>(n));
 }
 
 void Governor::reset(Tier start, float periodMs) {

@@ -57,7 +57,14 @@ bool saveHighScores(const HighScores& h);
 
 // The app's private file `name` (SDL_GetPrefPath); allocates (load and save time only).
 void appFilePath(char* out, size_t capacity, const char* name);
-// Write `text` to `name` through a temporary file and a rename.
+// Write `text` to `name` through a temporary file and a rename (core/save_file: flushed, then renamed over the old file).
 bool writeAppFile(const char* name, const char* text, size_t length);
+
+// M7 (crash-safe saves): the same by path (game/save_data.cpp; no SDL, so the tests link it). A missing file loads nothing
+// (false); a short or damaged one loads what it holds that is valid, the rest stays as given (the defaults).
+bool loadSettingsFile(const char* path, Settings& s);
+bool saveSettingsFile(const char* path, const Settings& s);
+bool loadHighScoresFile(const char* path, HighScores& h);
+bool saveHighScoresFile(const char* path, const HighScores& h);
 
 }  // namespace rf
