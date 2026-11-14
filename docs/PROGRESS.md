@@ -6,6 +6,10 @@ M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in
 
 ## The night of 2026-11-14: easier fights (design commit 1bcc897) and M7's release preparation
 
+- **On the phone** (the Moto, the dev build, installed 01:47, not launched; the launcher was in front): commit a0e7ea8 (A was on
+  it from b6bcc8f at 01:28). `scripts\test.ps1`: all passed (audio 2,716 checks, sim 5,880, save 60, determinism, net 131,368, both
+  soaks: 0 census mismatches).
+
 ### A. Easier fights (GAME_DESIGN 5; horizon.json, polyrhythm.json)
 
 - **A boss's arrival tops a player up to three cells** (`kBossEntranceCells` 3, was 2), the arcs drawn as Regen's.
