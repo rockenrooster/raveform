@@ -6,6 +6,10 @@ M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in
 
 ## The night of 2026-11-14: easier fights (design commit 1bcc897) and M7's release preparation
 
+- **Design cb2edba** (the lead's two follow-ups): the font's `;` and `@` load and draw (62 glyphs, 253 segments; the loader
+  has no fixed glyph count: an ASCII table of 128 and room for 1,024 segments), retaken in `captures\m7\m6_credits.png` (the
+  SDL licence's `SLOUKEN@LIBSDL.ORG` and `MISREPRESENTED; YOU`; crop `m6_credits_font_crop.png`); libc++'s credit line is the
+  page's `LIBC++  (APACHE 2.0, LLVM EXCEPTION)`. RELEASE_CHECKLIST items 9 and 10 resolved; 8 and 11 stay by the lead's ruling.
 - **On the phone** (the Moto, the dev build, installed 01:47, not launched; the launcher was in front): commit a0e7ea8 (A was on
   it from b6bcc8f at 01:28). `scripts\test.ps1`: all passed (audio 2,716 checks, sim 5,880, save 60, determinism, net 131,368, both
   soaks: 0 census mismatches).

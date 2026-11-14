@@ -32,15 +32,16 @@ do. The long soak of PLAN M7 is replaced by the owner's short-runs rule. Nothing
    same licence text) and, for the Vulkan headers, their own copyright and SPDX line from `vulkan_core.h`. Their own files at
    the pinned versions (Oboe 1.11.0's `LICENSE`, the Android Games SDK's `LICENSE` for games-frame-pacing 2.1.3, the
    Vulkan-Headers `LICENSE.md` for the SDK's 1.4.363) are a download: approve it and `fetch-deps.ps1` can fetch them and
-   `cmake/Credits.cmake` read them instead.
-9. **The C++ library is credited though screens.md's list does not name it**: `LLVM LIBC++ (APACHE 2.0 WITH LLVM
-   EXCEPTIONS)` (`libc++_shared.so` in the APK; linked statically into the desktop build). The rule "the list is whatever the
-   build really links" put it there; design may want to word it.
-10. **The font has no `@` or `;`**: in the credits' licence texts they show as `?` (design/vector_font.txt is design's).
+   `cmake/Credits.cmake` read them instead. (The lead's ruling, 2026-11-14: left as it is until the owner says yes to the
+   download; the stand-in texts stay.)
+9. ~~The C++ library credited outside screens.md's list~~: resolved (design cb2edba): `LIBC++  (APACHE 2.0, LLVM EXCEPTION)`
+   is in the page's list and the build's.
+10. ~~The font has no `@` or `;`~~: resolved (design cb2edba): both are drawn in the credits' licence texts.
 11. **Development-only code stays in the release library**: the pictures, the benchmarks, the M0/M1 stages, the glyph sheet,
     the scene replay and the dev overlay, about 0.14 MB of `libmain.so`'s 1.3 MB of code (`llvm-size`; the audio test scene
     also holds the SYNC screen, which players use). The release build ignores the app arguments that reach them; taking the
-    code out needs compile-time switches across a dozen files and was not done (the APK would shrink by about 2%).
+    code out needs compile-time switches across a dozen files and was not done (the APK would shrink by about 2%). (The lead's
+    ruling, 2026-11-14: left as it is.)
 
 ## Checked
 
