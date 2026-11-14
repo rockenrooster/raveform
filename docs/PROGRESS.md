@@ -75,12 +75,26 @@ M5 part 4; protocol `0x52460505` holds both).
 - **The test soaks now run six simulated minutes** (they were ten): with Tracks half as long, ten minutes reach Event Horizon
   in Track 4, where the clean soak showed 6 census mismatches (fight bars 8-9, the client one or two bodies short). Not this
   batch's: a008b71 itself (the arena data put back to let it load), soaked 17 minutes into Tracks 4-6, shows **435**. Six
-  minutes cover the first three Tracks, what the ten covered before. For the network engineer, through the lead.
+  minutes cover the first three Tracks, what the ten covered before. The cause (the network engineer, m4-net 26823dc, merged):
+  the pace decision's damage was checked on the wire as a place, so a large one refused the boss message and its packet's
+  spawns and verdicts; 17 minutes now show 0 mismatches. The soaks stay at six minutes (the lead: enough).
 - Pictures (`captures\playtest3\`, `review-m3b.ps1 -Config dev`): `pt3_ring_broken` (+ `_zoom`), `pt3_ring_relight` (+
   `_zoom`), `pt3_life_orb` (one held in the HUD, one lying), `pt3_life_use`, `pt3_vault`, `strip_boss_hit` (the assist's fire
   on Kaleidos's resting arm), `split5`, `hud_groove` (Track 1's phrase bar).
 - A stray edit of the sound engineer's (68 lines appended to main's `src/audio/content_sound.cpp` at 23:08, from its own
   worktree's file) broke the main build; removed (main's file is a008b71's), a copy kept, the lead told.
+
+### The merges and b1d4a2f (the second phone build)
+
+- Merged `m4-net` 26823dc (the census fix above) and `m5-audio` 80f6870 (every fight, arena and elite cue as its page asks, the
+  output limiter, a kill's sounds as one family, the boss hit tick and armour knock, the Extra Life's and the ring's sounds:
+  docs/PROGRESS_m5_audio.md). Both merged cleanly.
+- b1d4a2f: the six mini-bosses whose rule decides whether they can be hurt show their hint line as the bosses do (`bossHint`:
+  the Hive, Battering Ram, Brood Mother, Sentry Array, Twin Tether, Deep Well; `Play::bossHintTick` now keys on a hint
+  existing, not on a boss); what of a mini-boss's own body took nothing takes a quarter (`prose::kMiniArmour`: the Ram's horns,
+  the Sentry Array's domed turrets, on that turret's health; the Brood Mother's dome and the Deep Well's swallowing were a
+  quarter already). The Hive's decoy is light, not its body: it still stops a shot for nothing (decision). The assist aims at
+  their open weak point through the same tiers as the bosses'.
 
 ### Decisions taken alone
 

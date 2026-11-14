@@ -491,7 +491,7 @@ float World::miniScale(u8 part, u8 index, double t, Vec2 dir) const {
     // Every one has a moment when it takes x 2 (minibosses.md).
     const BossState& s = boss_;
     const MiniState& m = s.mini;
-    if (part == 1) return 0.0f;
+    if (part == 1) return s.kind == BossKind::Hive ? 0.0f : kMiniArmour;  // (b1d4a2f: a mini-boss's own armour takes a quarter)
     switch (s.kind) {
         case BossKind::AlphaHound: return t < m.winded ? 2.0f : 1.0f;
         case BossKind::Hive: return t >= m.cueTick && t < m.cueTick + kTicksPerBeat ? 2.0f : 1.0f;  // the tell's beat
@@ -499,7 +499,7 @@ float World::miniScale(u8 part, u8 index, double t, Vec2 dir) const {
             if (m.state == 4) return 2.0f;  // stunned: x 2 from every side
             // Its front 120 degrees sheds every shot (the shot travels along dir; it meets the front when it comes at the horns).
             const float c = std::cos(0.5f * kRamFrontDeg * kDeg);
-            return dot(dir * -1.0f, m.face) > c ? 0.0f : 1.0f;
+            return dot(dir * -1.0f, m.face) > c ? kMiniArmour : 1.0f;  // (b1d4a2f: the horns take a quarter)
         }
         case BossKind::CaromKing: return part == 3 && t < m.hot[0] ? 2.0f : 1.0f;
         case BossKind::MothQueen:

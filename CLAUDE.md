@@ -173,6 +173,12 @@ each tick) keeps Singularity's and the Sweeper's phase on the band's song bars. 
 (`World::damageBoss`), the HUD shows each boss's hint line under its name (`bossHint`, `Play::bossHintTick`: by this player's own
 shots), the bosses' and mini-bosses' health factors in `tuning.h` are tuned with the novice bot (`Bot::Policy::Novice`), and every
 lethal beam is drawn by `PlayView::lethalBeam` (its kill width, at most 12 wu, a white-pink axis and a danger glow).
+Play test 3 (a008b71, built in 61a7f09; docs/PROGRESS.md "Play test 3"): every Track Short (8 / 4 / 8 / 4; the run's Track 1 two cycles,
+the others three); the assist fires on the full grid and aims at a fight's weak point (World::assistBossAim, an enemy within 250 wu
+first; it rests in Feedback's fight), the novice fires only through it and Bot::Policy::Assist is the careful bot's movement
+with it; Split 2, Double-Time 1, Fork 1; Arc, Burn and Shatter half and one step; Orbitals a guard ring (World::breakRing,
+orbitalsLit); the Extra Life (kPickupExtraLife among the Boost orbs, 	akeExtraLife, spendExtraLife); no Vault in Track 1,
+VAULT over the others; every boss hit seen (PlayView::bossHit, drawBossHitFlash) and heard (BossCue::HitWeak, HitArmour).
 The arena (M5 part 5, `design/arena.md`, `arena.json`; `src/sim/world_arena.cpp`, the view `play_view_arena.cpp`): six structures stand
 for a Track (placed on its first downbeat by the host, dissolving over the Track change) and an event runs in a Track's Groove
 (`World::arenaBar`, `arenaBeat`, `updateArena`); bodies with health (Vault, Rift, the gold Vault, the Comet, carriers) are

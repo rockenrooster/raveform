@@ -360,14 +360,16 @@ constexpr float kStandingDamage = 1.5f;
 // home Track (8 seeds) brought into the page's window by these factors on the page's health (docs/PROGRESS.md, M5 part 1).
 // Since 2026-11-13 (GAME_DESIGN 7.6, fights are tuned for a person) they are tuned with the novice over seeds 1-20 (60 minutes;
 // docs/PROGRESS.md, "The boss rule checkpoint"): the part 4 factor x the novice's, in brackets.
-constexpr float kKaleidosHealthTune = 0.55f;  // the novice wins its first meeting in 19 of 20, 31 s (x 0.7: 18, 36 s)
-constexpr float kLongwaveHealthTune = 0.77f;  // (2.2 x 0.35) the novice 17 of 20, 98 s (the page's 150 s)
-constexpr float kChoirHealthTune = 1.26f;     // (4.2 x 0.3) the novice 17 of 20, 43 s
-constexpr float kMiniHealthTune[12] = {0.975f, 0.75f, 0.7f, 1.44f,  // (6.5, 5.0, 2.0, 4.8 x 0.15, 0.15, 0.35, 0.3) Alpha Hound, The Hive,
+constexpr float kKaleidosHealthTune = 1.21f;  // (0.55 x 2.2, play test 3: the novice through the assist) 19 of 20, 47 s (x 2.7: 17, 64 s)
+constexpr float kLongwaveHealthTune = 0.77f;  // (2.2 x 0.35) play test 3's novice: 19 of 20, 105 s (the page's 150 s)
+constexpr float kChoirHealthTune = 1.26f;     // (4.2 x 0.3) play test 3's novice: 19 of 20, 53 s (x 1.2: 14 of 20, 69 s; x 1.6: 13)
+// Play test 3: x 0.8, 0.7, 0.5, 0.5, 0.4, 0.65, 0.5, 0.85, 0.85, 1, 0.6, 1 on the part 4-6 factors in brackets below (the middle Drop
+// is 8 bars now and the novice fires through the assist: it wins its first meeting with each in about 60-90% of the runs, 10-17 s).
+constexpr float kMiniHealthTune[12] = {0.78f, 0.525f, 0.35f, 0.72f,  // (6.5, 5.0, 2.0, 4.8 x 0.15, 0.15, 0.35, 0.3) Alpha Hound, The Hive,
                                                                      // Battering Ram, Carom King: the novice's wins 23-30 s
-                                     3.0f, 2.0f, 3.0f, 0.8f,       // (12, 10, 5, 4 x 0.25, 0.2, 0.6, 0.2) Moth Queen, Brood Mother, Blink Star,
+                                     1.2f, 1.3f, 1.5f, 0.68f,      // (12, 10, 5, 4 x 0.25, 0.2, 0.6, 0.2) Moth Queen, Brood Mother, Blink Star,
                                                                      // Sentry Array: 24-29 s
-                                     0.5f, 1.0f, 2.5f, 1.3f};      // M5 part 6, batch 3 (the novice from the fight's start, x 1: Mirror
+                                     0.425f, 1.0f, 1.5f, 1.3f};    // M5 part 6, batch 3 (the novice from the fight's start, x 1: Mirror
                                                                      // Mimic 8 won, 12 warped out; Twin Tether 8 of 9, 26 s; Weaver Prime
                                                                      // 11 of 11, 10 s; Deep Well 7 of 9, 15 s)
 // M5 (GAME_DESIGN 7.6, quoted starting values): the novice bot, a player's first week. Play test 3: it no longer aims (it
@@ -389,18 +391,18 @@ constexpr float kSaStepBeats = 1.0f;         // turrets step round to stand even
 // M5 part 4, Event Horizon (horizon.md gives no number for these).
 constexpr float kHzJetLengthWu = 1800.0f;  // the jets reach past the frame's edge at the fight's zoom (0.8)
 constexpr float kHzJetHalfWu = 6.0f;       // look.md v2.5: no lethal beam kills wider than 12 wu (part 4: 22)
-constexpr float kHorizonHealthTune = 8.0f;  // (16 x 0.5) given back with elites from Track 3 (d59062f): the novice 19 of 20, 118 s (at most 120)
+constexpr float kHorizonHealthTune = 8.8f;  // (16 x 0.5 x 1.1) play test 3's novice (--handover 4): 20 of 20, 78 s (at most 120)
 // Polyrhythm (polyrhythm.md gives no number for these).
 constexpr float kPrLinkBurnHalfWu = 6.0f;   // the burning link: look.md v2.5, 12 wu (part 4: 16)
-constexpr float kPolyHealthTune = 1.7f;     // (3.0 x 0.8 x 0.71) with elites from Track 3: the novice 15 of 19, 25 s (2.0: 11 of 20; 2.4: 10 of 19)
+constexpr float kPolyHealthTune = 4.42f;    // (1.7 x 2.6) play test 3's novice (--handover 5): x 1 20 of 20 in 16 s; x 2 17 of 20, 33 s; x 4 4 of 20
 constexpr u8 kBossEntranceCells = 2;       // GAME_DESIGN 5 (f32a441): "grows back up to two" as a boss arrives
-constexpr float kCadenceHealthTune = 7.0f;  // M5 part 6: the novice with the careful bot's build (--handover 7) 18 of 20, 83 s; x 1: 14 s
-constexpr float kArpHealthTune = 18.0f;     // M5 part 6 (tuned with the novice: docs/PROGRESS.md part 6)
-constexpr float kMorganaHealthTune = 14.0f;  // M5 part 6 (tuned with the novice: docs/PROGRESS.md part 6)
+constexpr float kCadenceHealthTune = 8.05f;  // (7 x 1.15) play test 3's novice (--handover 7): 19 of 20, 97 s (the page 80-100)
+constexpr float kArpHealthTune = 15.3f;     // (18 x 0.85) play test 3's novice (--handover 8): 17 of 20, 120 s (the page 90-110)
+constexpr float kMorganaHealthTune = 15.4f;  // (14 x 1.1) play test 3's novice (--handover 9): 16 of 20, 90 s (the page 90-120)
 constexpr float kMgFanSpreadDeg = 40.0f;    // morgana.md gives no spread for her fan of five (Cadence's 40 degrees)
 constexpr float kMgBulletLife = 4.0f;       // ... nor its life (Cadence's 4 s)
 constexpr float kMgMarginWu = 700.0f;       // the oases keep this far from the arena's walls
-constexpr float kRepriseHealthTune = 4.5f;  // M5 part 6 (tuned with the novice: docs/PROGRESS.md part 6)
+constexpr float kRepriseHealthTune = 5.625f; // (4.5 x 1.25) play test 3's novice (--handover 10): 20 of 20, 129 s (the page 110-140)
 constexpr float kRpArmCircleR = 34.0f;      // an arm's hit circles (three along it; Kaleidos's hull is drawn, not given)
 constexpr float kRpWaveSpacing = 150.0f;    // Longwave's arm let go: its segments 150 wu apart across its way (not given)
 constexpr float kRpWaveAmp = 80.0f;         // ... swinging 80 wu along it, a swing a beat (not given)
@@ -421,17 +423,18 @@ constexpr float kWvBurstBeats = 0.5f;       // ... the burst lasts half a beat (
 // armour, a player (measured from the fights' starts, docs/PROGRESS.md part 7; 0: not measured, the pace stays 1), and the
 // pace's bounds (quoted).
 constexpr float kBossPaceNovice[24] = {   // (by BossKind; the mini-bosses 0: they leave with their Drop)
-    234.0f, 450.0f, 1334.0f,                 // Kaleidos, Longwave, the Choir (the novice from the run's start)
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,      // (the twelve mini-bosses)
-    4188.0f, 2910.0f, 2792.0f,               // Event Horizon, Polyrhythm, Feedback (--handover 4, 5, 6)
-    6501.0f, 16772.0f, 21279.0f, 6200.0f};   // Cadence, Arpeggiator, Fata Morgana, Kaleidos Reprise (--handover 7, 8, 9, 10)
+    710.0f, 780.0f, 1150.0f,                 // Kaleidos, Longwave, the Choir (the novice from the run's start; play test 3: it fires
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,      // through the assist, measured --nopace; part 7: 234, 450, 1,334)
+    4721.0f, 6000.0f, 2530.0f,               // Event Horizon, Polyrhythm, Feedback (--handover 4, 5, 6; part 7: 4,188, 2,910, 2,792)
+    8600.0f, 12750.0f, 23250.0f, 5150.0f};   // Cadence, Arpeggiator, Fata Morgana, Kaleidos Reprise (--handover 7-10; part 7: 6,501,
+                                             // 16,772, 21,279, 6,200)
 constexpr float kBossPaceMin = 1.0f, kBossPaceMax = 4.0f;
 constexpr float kBossPaceDeadBand = 1.5f;  // GAME_DESIGN 7.6 (play test 3): a ratio under it counts as 1 (1.25 at first)
 constexpr u32 kBossPaceBars = 8;
 constexpr float kBulletPoolShooters = 0.70f;  // GAME_DESIGN 6.6 (quoted): no shooting species bought above 70% of the bullet pool
 constexpr float kBulletPoolCrowd = 0.95f;     // ... and the crowd's volleys held above 95% of it (the rest kept for the fights' patterns)
 constexpr float kDwArmour = 0.25f;          // Deep Well while it swallows: the fallback for minibosses.json damageScale.swallowing
-constexpr float kFeedbackHealthTune = 2.0f; // (2.5 x 0.8) the novice 15 of 17, 112 s (x 1.0: 181 s; the page: about two minutes)
+constexpr float kFeedbackHealthTune = 1.8f; // (2.0 x 0.9) play test 3's novice (--handover 6): 15 of 20, 126 s (the page: about two minutes)
 
 // ======================================================================================================
 // M4 STAGE A: co-op (GAME_DESIGN 10, TECH_SPEC 8). Quoted numbers are marked; the rest are chosen where the

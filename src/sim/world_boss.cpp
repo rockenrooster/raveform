@@ -533,6 +533,9 @@ void World::damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir)
     } else if (part == 1 && s.kind == BossKind::Arpeggiator) {
         scale = species_->arp.dmgConsole;  // M5 part 6: the console sheds shots (arpeggiator.json: a quarter on the core's health)
         dpart = 3;
+    } else if (part == 1 && s.kind == BossKind::SentryArray) {
+        scale = miniScale(1, pair, m1_, dir);  // b1d4a2f: a domed turret takes a quarter, on that turret's health
+        dpart = 2;
     } else if (part != 1) {
         scale = bossDamageScale(part, pair, m1_, dir);
     }

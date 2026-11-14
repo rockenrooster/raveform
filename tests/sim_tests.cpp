@@ -2195,7 +2195,7 @@ void testMinibosses2() {
         u32 open = 0;
         for (u32 k = 0; k < n; ++k) open += parts[k].part == 2 ? 1u : 0u;
         CHECK(n == 8 && open == 1 && w->bossDamageScale(2, static_cast<u8>(hand), w->music(), Vec2{1.0f, 0.0f}) == 2.0f &&
-              w->bossDamageScale(1, 0, w->music(), Vec2{1.0f, 0.0f}) == 0.0f);
+              w->bossDamageScale(1, 0, w->music(), Vec2{1.0f, 0.0f}) == prose::kMiniArmour);
         {
             const u32 b0 = w->bullets().count;
             runTo(*w, music, f0 + kTicksPerBeat + 10.0, ship);
@@ -2896,7 +2896,7 @@ void testMinibosses() {
         }
         CHECK_MSG(walls >= 1 && bullets >= 16 && stunned > 0.0, "walls %u bullets %u", walls, bullets);
         const Vec2 face = s.mini.face;
-        CHECK(w->bossDamageScale(3, 0, w->music(), face * -1.0f) == (s.mini.state == 4 ? 2.0f : 0.0f));
+        CHECK(w->bossDamageScale(3, 0, w->music(), face * -1.0f) == (s.mini.state == 4 ? 2.0f : prose::kMiniArmour));
         CHECK(w->bossDamageScale(3, 0, w->music(), face) == (s.mini.state == 4 ? 2.0f : 1.0f));
         // Its death: the Pen falls, a Boost orb and 60 Shards for the player, the middle Drop's hold decided.
         w->killBossNextTick(0, true);

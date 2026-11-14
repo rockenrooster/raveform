@@ -631,7 +631,7 @@ void Play::bossHintTick(const World& w) {
     // screens.md "Boss hint (HUD, M5)": the line comes back for two bars when this player's shots have met only armour for
     // two bars running, at most once every eight bars (the arrival's showing counts as the first).
     const BossState& b = w.boss();
-    if (!b.active || b.dying || isMiniBoss(b.kind)) {
+    if (!b.active || b.dying || !bossHint(b.kind)) {  // (b1d4a2f: the mini-bosses with a hint line too)
         hintFight_ = -1.0;
         hintBar_ = -1;
         return;
@@ -939,7 +939,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         // M5 (screens.md "Boss hint"): from the arrival through the fight's first four bars, the last fading; again for two
         // bars (the last fading) when this player's shots met only armour.
         const BossState& b = w.boss();
-        if (b.active && !b.dying && !isMiniBoss(b.kind) && b.fightTick == hintFight_) {
+        if (b.active && !b.dying && bossHint(b.kind) && b.fightTick == hintFight_) {
             const double bars = (vi.music - b.fightTick) / kTicksPerBar;
             float level = 0.0f;
             if (vi.music >= b.enterTick && bars < 4.0)

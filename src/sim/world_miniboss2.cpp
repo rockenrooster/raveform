@@ -65,7 +65,7 @@ float World::mini2Scale(u8 part, double t) const {
         case BossKind::MothQueen: return mothOpen(t) ? 2.0f : 1.0f;
         case BossKind::BroodMother: return m.shut ? kBmShut : kBmExposed;
         case BossKind::BlinkStar: return blinkDazed(t) ? 2.0f : 1.0f;
-        case BossKind::SentryArray: return part == 2 ? 2.0f : 0.0f;  // only the turret under the hand (it has no dome)
+        case BossKind::SentryArray: return part == 2 ? 2.0f : kMiniArmour;  // the turret under the hand (no dome); a dome a quarter (b1d4a2f)
         default: return 1.0f;
     }
 }

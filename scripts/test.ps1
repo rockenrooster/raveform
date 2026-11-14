@@ -24,8 +24,8 @@ if ($LASTEXITCODE -ne 0) { $failed += 1; Write-Host "[test] determinism test fai
 # M4: the network.
 & (Join-Path $dir 'raveform_net_tests.exe')
 if ($LASTEXITCODE -ne 0) { $failed += 1; Write-Host "[test] network unit tests failed ($LASTEXITCODE)" }
-# (Play test 3: Tracks are half as long, so six simulated minutes are the first three Tracks the ten covered before; Tracks 4-6
-# in co-op show census mismatches at HEAD a008b71 too (17 minutes: 435), the network engineer's to look at.)
+# (Play test 3: Tracks are half as long, so six simulated minutes are the first three Tracks the ten covered before. The census
+# mismatches longer soaks showed in Tracks 4-6 were fixed on the wire in m4-net 26823dc: 17 minutes, 0.)
 & (Join-Path $dir 'raveform_headless.exe') --net soak --minutes 6 | Select-Object -Last 10
 if ($LASTEXITCODE -ne 0) { $failed += 1; Write-Host "[test] loopback soak (clean) failed ($LASTEXITCODE)" }
 & (Join-Path $dir 'raveform_headless.exe') --net soak --minutes 6 --pause --netsim 'loss=0.05,jitter=80' | Select-Object -Last 11

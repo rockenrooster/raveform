@@ -60,6 +60,9 @@ constexpr float kHiveSpearSpeed = 700.0f;                             // pattern
 constexpr float kHiveWallLen = 900.0f, kHiveWallSpeed = 160.0f, kHiveWallGap = 90.0f;  // pattern[3]
 // Battering Ram
 constexpr float kRamFrontDeg = 120.0f;                                // move: "its front 120 degrees sheds every shot"
+// GAME_DESIGN 7.6 (b1d4a2f): "the Ram's horns, the Sentry Array's domed turrets, the Brood Mother's dome and whatever else of a
+// mini-boss's own body took nothing take a quarter" (the Hive's decoy is light, not its body: it still stops a shot for nothing).
+constexpr float kMiniArmour = 0.25f;
 constexpr float kRamChargeSpeed = 1400.0f;                            // pattern[1]
 constexpr float kRamWallWu = 300.0f;                                  // pattern[2]
 constexpr u32 kRamWallBullets = 16;                                   // pattern[2]

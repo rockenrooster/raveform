@@ -350,7 +350,7 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
 
 const char* bossHint(sim::BossKind k) {
     // screens.md "Boss hint (HUD, M5)": one line a boss, its rule in plain words (Tracks 7 to 10 when they are built: SHOOT
-    // THE SILENT ONE, SHOOT IT AS IT LOADS, SHOOT WHERE THE WALL THINS, SHOOT THE ARMS OFF). Mini-bosses: none written yet.
+    // THE SILENT ONE, SHOOT IT AS IT LOADS, SHOOT WHERE THE WALL THINS, SHOOT THE ARMS OFF). Mini-bosses: six since b1d4a2f.
     switch (k) {
         case sim::BossKind::Kaleidos: return "HIT THE ARMS NOT FIRING";
         case sim::BossKind::Longwave: return "SHOOT THE WHITE SEGMENT";
@@ -362,6 +362,13 @@ const char* bossHint(sim::BossKind k) {
         case sim::BossKind::Arpeggiator: return "SHOOT IT AS IT LOADS";
         case sim::BossKind::Morgana: return "SHOOT HER OVER THE WATER";
         case sim::BossKind::Reprise: return "SHOOT THE ARMS OFF";  // (the page's weak point, not "SHOOT WHERE THE WALL THINS")
+        // b1d4a2f (screens.md, the mini-boss table): the six whose rule decides whether they can be hurt.
+        case sim::BossKind::Hive: return "SHOOT THE QUEEN BEHIND IT";
+        case sim::BossKind::BatteringRam: return "SHOOT IT AFTER IT CRASHES";
+        case sim::BossKind::BroodMother: return "KILL HER BROOD FIRST";
+        case sim::BossKind::SentryArray: return "SHOOT THE ONE WITH NO DOME";
+        case sim::BossKind::TwinTether: return "DASH THROUGH THE BEAM";
+        case sim::BossKind::DeepWell: return "OVERFEED IT, THEN STRIKE";
         default: return nullptr;
     }
 }

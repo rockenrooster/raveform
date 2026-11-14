@@ -302,9 +302,12 @@ float gHealthLever[kBossKinds] = {};
 // --handover N: the careful bot plays (hits costing nothing) until Track N starts, then the policy asked for takes over with
 // the careful bot's build of that moment; only its fights count, and a seed ends once it has met Track N's boss.
 u32 gHandover = 0;
+// --nopace (play test 3's balance pass): the bosses keep no pace, so the novice's own eight-bar damage is measured as it is.
+bool gNoPace = false;
 
 void applyLevers(World& w) {
     w.rules().armourNothing = gArmourNothing;
+    w.rules().noPace = gNoPace;
     for (u32 k = 0; k < kBossKinds; ++k) w.rules().healthLever[k] = gHealthLever[k] > 0.0f ? gHealthLever[k] : 1.0f;
 }
 
@@ -1004,6 +1007,8 @@ int simHeadlessMain(int argc, char** argv) {
             trace = true;
         } else if (std::strcmp(a, "--armour0") == 0) {
             gArmourNothing = true;
+        } else if (std::strcmp(a, "--nopace") == 0) {
+            gNoPace = true;
         } else if (std::strcmp(a, "--handover") == 0 && next) {
             gHandover = static_cast<u32>(std::strtoul(next, nullptr, 10));
             ++i;
@@ -1050,7 +1055,7 @@ int simHeadlessMain(int argc, char** argv) {
     } else if (std::strcmp(mode, "stress") == 0) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes * 60.0f : 120.0f), seed, bpm, true, policy);
     } else {
-        std::printf("usage: raveform_headless --sim determinism|soak|crowd|picks|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless|novice|assist] [--god] [--trace] [--armour0] [--health id=x,...] [--handover N]\n");
+        std::printf("usage: raveform_headless --sim determinism|soak|crowd|picks|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless|novice|assist] [--god] [--trace] [--armour0] [--nopace] [--health id=x,...] [--handover N]\n");
     }
     delete species;
     return code;
