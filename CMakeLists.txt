@@ -227,7 +227,23 @@ add_custom_command(OUTPUT ${RF_GEN}/minibosses.json.inc
   COMMENT "embed minibosses.json"
   JOB_POOL rf_jobs
   VERBATIM)
+# M5 part 5: the arena (structures and events) and the elites' traits.
+add_custom_command(OUTPUT ${RF_GEN}/arena.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/arena.json -DOUT=${RF_GEN}/arena.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/arena.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed arena.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
+add_custom_command(OUTPUT ${RF_GEN}/traits.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/traits.json -DOUT=${RF_GEN}/traits.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/traits.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed traits.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
 add_library(raveform_sim STATIC
+  src/sim/arena.cpp
   src/sim/boss.cpp
   src/sim/bot.cpp
   src/sim/director.cpp
@@ -237,6 +253,7 @@ add_library(raveform_sim STATIC
   src/sim/species.cpp
   src/sim/upgrades.cpp
   src/sim/world.cpp
+  src/sim/world_arena.cpp
   src/sim/world_boss.cpp
   src/sim/world_choir.cpp
   src/sim/world_enemies.cpp
@@ -252,6 +269,9 @@ add_library(raveform_sim STATIC
   src/sim/world_spawner.cpp
   src/sim/world_upgrades.cpp
   src/sim/world_upgrades_m5.cpp
+  src/sim/world_elites.cpp
+  ${RF_GEN}/arena.json.inc
+  ${RF_GEN}/traits.json.inc
   ${RF_GEN}/species.json.inc
   ${RF_GEN}/kaleidos.json.inc
   ${RF_GEN}/longwave.json.inc
@@ -388,6 +408,7 @@ target_sources(raveform_core PRIVATE
   src/game/play_view_b.cpp
   src/game/play_view_m5.cpp
   src/game/play_view_m5b.cpp
+  src/game/play_view_arena.cpp
   src/game/pending_sounds.cpp
   src/game/upgrade_sounds.cpp
   src/game/play_view_upgrades.cpp

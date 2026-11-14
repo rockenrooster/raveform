@@ -7,6 +7,7 @@
 // the slice's roster does not reach (a medium or large kill needs tier III or V).
 
 #include "core/types.h"
+#include "sim/arena.h"
 #include "sim/boss.h"
 
 namespace rf::sim {
@@ -167,6 +168,8 @@ public:
     PolyData poly;        // M5 part 4
     FeedbackData feedback;  // M5 part 4
     MiniData minis;
+    ArenaData arena;    // M5 part 5: design/arena.json
+    TraitData traits;   // M5 part 5: design/traits.json
 
 private:
     FamilyData families_[kFamilyCount];

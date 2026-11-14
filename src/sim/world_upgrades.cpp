@@ -77,6 +77,7 @@ void World::spawnShotRaw(u32 p, Vec2 pos, Vec2 dir, float advanceS, float damage
     s.flags[i] = flags;
     s.mods[i] = 0;
     s.forks[i] = 0;
+    s.arena[i] = 0;  // M5 part 5
     lastShot_ = static_cast<i32>(i);  // M5: what the caller may still set on it
 }
 
@@ -84,12 +85,15 @@ void World::hitEnemy(u32 i, float dmg, u8 owner, Vec2 at, Vec2 dir) {
     Enemies& e = enemies_;
     if (e.flags[i] & kFlagDead) return;
     // M5: a Hound C's front arc sheds the shot (no damage, the spark of an impact).
-    const bool shed = shieldStops(i, dir);
+    const bool shed = shieldStops(i, dir) || eliteSheds(i, dir);  // (M5 part 5: Shielded)
     // M5: Freeze Frame, a frozen body dies in one hit (and its shatter chains through the frozen ones touching it).
     const bool frozen = !shed && e.frozenUntil[i] > m1_;
     if (frozen && dmg < e.hp[i] + 1.0f) dmg = e.hp[i] + 1.0f;
     if (role_ == NetRole::Client && !shed) logClaim(i, dmg, kClaimHit);  // M4: the host applies it; a kill here is predicted
-    if (!shed) e.hp[i] -= dmg;
+    if (!shed) {
+        e.hp[i] -= dmg;
+        eliteHit(i, dmg);  // M5 part 5: Regenerating's quiet, a Twin's shared bar, Armored's shatter
+    }
     if (e.hp[i] <= 0.0f) {
         // M5 part 3: this device's player's kill brings its Mods' and Boosts' kill effects (Arc, Shatter, Burn, Confetti).
         const bool extras = !applyingClaim_ && owner < kMaxPlayers && isLocal(owner);

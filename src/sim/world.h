@@ -310,6 +310,16 @@ struct Enemies {
     double burnUntil[kCap];                      // M5 (Burn): ignited until then (musical ticks; < 0 never)
     double frozenUntil[kCap];                    // M5 (Freeze Frame): frozen until then
     u8 burnOwner[kCap], burnLevel[kCap];         // whose fire, its Burn stacks
+    // M5 part 5 (design/traits.md): an elite's traits (kEliteBit and the trait bits; 0 an ordinary body), its full health, the
+    // tick it was last hit (Regenerating), its partner (Twin: a handle), its shield's facing (Shielded), the Shards it holds
+    // (Magnetic) and a Commander's death stun.
+    u16 traits[kCap];
+    float hpMax[kCap];
+    double lastHit[kCap];
+    u32 twin[kCap];
+    float shield[kCap];
+    u8 held[kCap];
+    double stunUntil[kCap];
     u32 handle[kCap];                            // generation << 16 | slot
     u32 serial[kCap];                            // spawn number (seeds the enemy's own random stream)
     u32 rng[kCap];
@@ -387,6 +397,8 @@ struct Shots {
     u8 kind[kCap], flags[kCap];      // ShotKind; ShotFlag
     u8 mods[kCap];                   // M5: ShotMod bits (what the owner's Mods and Boosts do to it in flight)
     u8 forks[kCap];                  // M5: forks left on a hit (Fork, Fractal)
+    u16 arena[kCap];                 // M5 part 5: the arena bodies it has met (a bit a slot: a Lens splits it once, a Current
+                                     // speeds it once, a Bumper's reflection)
 };
 // M5 part 3: what a shot does in flight and on a hit (sim/world_upgrades_m5.cpp).
 // kShotHelix / kShotHelixIn (GAME_DESIGN 6.5, look.md v2.5): a Helix Array strand, its pair's level: Helix alone the outer pair,
@@ -467,6 +479,45 @@ struct Shards {
     double born[kCap];  // musical tick
     u8 owner[kCap];     // loot is instanced per player (GAME_DESIGN 10)
     u8 homing[kCap], dead[kCap];
+    u32 holder[kCap];   // M5 part 5: a Magnetic elite holding it (its handle; 0 none): it orbits that body
+};
+
+// M5 part 5 (design/arena.md): a structure, or an event's body, standing in the world. Kinds: StructKind, then the events'
+// bodies (the gold Vault of a Vault Drop, the Comet, a Convoy's carrier).
+enum ArenaBodyKind : u8 { kBodyGoldVault = 6, kBodyComet = 7, kBodyCarrier = 8 };
+struct ArenaBody {
+    u8 kind = 0xFF;      // 0xFF: the slot is free
+    u8 alive = 0;
+    u8 surge = 0;        // a Rift of a Rift Surge
+    u8 tuner = 0xFF;     // Pylon: the player who tuned it
+    u8 quarters = 0;     // Vault: quarters of its health lost
+    u8 tone = 0;         // Bumper: its chord tone (root, third, fifth, octave); a carrier's place in the line
+    u8 discharge = 0;    // Bumper: discharges on the next beat
+    u8 owner = 0xFF;     // Bumper: whose shot charged it last
+    Vec2 pos, vel;
+    float angle = 0.0f;  // Current and Lens: their axis
+    float hp = 0.0f, hpMax = 0.0f;
+    float charge = 0.0f; // Pylon: the fill (0..1); Bumper: shots taken toward its eight
+    double placed = 0.0, from = 0.0, until = -1.0;  // Rift open from-until; Pylon tuned until; an event body's deadline
+    double gone = -1.0;  // dissolving from (the Track change's Break)
+    u8 track = 0;        // the run Track it stands for
+};
+struct ArenaEventState {
+    u8 kind = kNoEvent;  // EventKind
+    u8 stage = 0;        // 0 announced, 1 running, 2 over
+    u8 hits = 0;         // Rift Surge: Rifts closed; Convoy: carriers broken
+    double announce = -1.0, start = -1.0, end = -1.0;
+    Vec2 pos, dir;
+    u32 hunted = 0;      // Elite Hunt: its handle
+};
+struct ArenaMeteor {
+    Vec2 at;
+    double land = -1.0;
+};
+struct ArenaBomb {      // a Volatile elite's death: the ring fills, then it bursts on the beat
+    Vec2 at;
+    double burst = -1.0;
+    u8 killer = 0xFF;
 };
 
 // Cells lying in the arena (play test 2, GAME_DESIGN 6.1): health pickups, instanced like Shards (each device holds its
@@ -703,6 +754,25 @@ public:
     const BossData& bossData() const { return species_->boss; }
     // M5 part 1: the Pen (minibosses.md) and the fights' geometry for the view, the band, the bots and tests.
     const PenState& pen() const { return pen_; }
+    // M5 part 5 (design/arena.md, traits.md): the arena's structures and event, the Volatile bombs and the meteors.
+    static constexpr u32 kArenaBodies = 16, kArenaMeteors = 16, kArenaBombs = 16;
+    const ArenaBody* arenaBodies() const { return arena_; }
+    const ArenaEventState& arenaEvent() const { return arenaEvent_; }
+    const ArenaMeteor* meteors() const { return meteors_; }
+    const ArenaBomb* bombs() const { return bombs_; }
+    bool eclipse() const;                             // an Eclipse is on (the view darkens between beats)
+    float trackScale() const;                         // arena.md: the Track's mini-boss health (Track 1: 300)
+    Vec2 currentFlow(Vec2 at) const;                  // the Currents' push here (wu/s)
+    bool bumperBounce(Vec2& pos, Vec2& vel, float r) const;  // a ship off a Bumper (unhurt, a kick); true when it bounced
+    u32 elitesAlive() const;
+    i32 enemyIndex(u32 handle) const { return indexOf(handle); }  // (the view: a Twin's partner, the hunted elite)
+    ArenaBody& arenaBodyMut(u32 slot) { return arena_[slot < kArenaBodies ? slot : 0]; }  // (pictures, tests)
+    void spawnShardNow(Vec2 pos, Vec2 vel, u8 owner) { spawnShard(pos, vel, owner); }     // (pictures, tests)
+    bool elitePhased(u32 i) const;                    // Phasing: the second half of its beat (shots pass, its touch is harmless)
+    // Pictures and tests: an elite now, a structure, an event.
+    i32 spawnEliteNow(u16 species, Vec2 pos, u16 traits) { return spawnElite(species, pos, m1_, traits); }
+    i32 placeStructureNow(StructKind k, Vec2 pos, float angle) { return addBody(static_cast<u8>(k), pos, angle, m1_); }
+    void startEventNow(EventKind k) { startEvent(k, m1_); }
     bool penInside(Vec2 p, float r) const;
     // The Pen's walls: what was inside stays inside, what was outside stays outside (bit 1: x clamped, bit 2: y).
     u8 penKeep(Vec2 from, Vec2& to, float r) const;
@@ -887,6 +957,7 @@ public:
     bool spawnBullet(Vec2 pos, Vec2 vel, float advanceS, float lifeS = 0.0f);  // 0: an enemy bullet's life
     bool spawnShard(Vec2 pos, Vec2 vel, u8 owner);
     void setEnemyHp(u32 i, float hp) { enemies_.hp[i] = hp; }
+    void hitEnemyNow(u32 i, float dmg, u8 owner, Vec2 dir = Vec2{1.0f, 0.0f}) { hitEnemy(i, dmg, owner, Vec2{enemies_.x[i], enemies_.y[i]}, dir); }  // (tests)
     // Tests (M5): a Hound C's shield would shed a shot travelling along `dir`; turn an enemy's family value b (the shield).
     bool shieldWouldStop(u32 i, Vec2 dir) const { return shieldStops(i, dir); }
     void setEnemyB(u32 i, float b) { enemies_.b[i] = b; }
@@ -1201,6 +1272,49 @@ private:
     void hatchBroodlings(u32 i, u32 n, double land);
     void familyDeath(u32 i, const Species& s);
     void minionLand(u32 i);
+    // world_elites.cpp (M5 part 5, design/traits.md)
+    void eliteBar(const Phrase& ph, double land);     // the director buys an elite with the threat budget
+    i32 spawnElite(u16 species, Vec2 pos, double land, u16 traits);
+    void makeElite(u32 i, u16 traits);
+    u16 drawTraits(u32 track);
+    void updateElites(float dt);                     // shields, Regenerating, Twins' spacing, Magnetic, the Commanders' reach
+    float eliteSpeed(u32 i) const;                   // Swift and a Commander's reach
+    bool eliteSheds(u32 i, Vec2 shotDir) const;      // Shielded's front, Armored's outer hull (a spark, no flash)
+    void eliteHit(u32 i, float dmg);                 // Regenerating's quiet, a Twin's shared health, Armored's shatter
+    void eliteDeath(u32 i, u8 killer);               // Splitting, Volatile, Magnetic, Commander, Twin (every device)
+    void updateBombs();
+    void eliteShards(u32 i, u32 p);                  // an elite's Shards and its Cell for player p
+    void holdShards(float dt);                       // Magnetic: steals and orbits
+    Vec2 commanders_[8];
+    u32 commanderCount_ = 0;
+    float eliteClock_ = 0.0f;
+    float maxEnemyR_ = 40.0f;  // the largest live body's radius this tick (the collision queries' reach)
+    // world_arena.cpp (M5 part 5, design/arena.md)
+    void arenaBar(const Phrase& ph, u32 bar, double barTick);  // placement, dissolving, events (host); Pylons and Rifts
+    void arenaBeat(double beatTick);                  // Bumpers' discharges, Pylon pulses on the One, Meteor Rain, Storm Cell
+    void placeStructures(u32 track, double tick);
+    bool arenaSpot(Vec2& out, Vec2 centre, float lo, float hi, float apart, u32& rngState) const;
+    i32 addBody(u8 kind, Vec2 pos, float angle, double tick);
+    void updateArena(float dt);
+    bool arenaShotHit(u32 shot, Vec2 a, Vec2 b, float r, float& t, i32& body) const;
+    void damageBody(u32 slot, float dmg, u8 owner, Vec2 at, bool fromNet);
+    void breakBody(u32 slot, u8 killer);             // the host's verdict (solo: at once)
+    void bodyRewards(u32 slot);                      // every device: its own players' Shards (and Cells); the host: Boosts
+    void arenaNova(u32 p);
+    void arenaShots(float dt);                       // Lens splits, Currents, Bumpers for player shots
+    void arenaBullets(float dt);                     // Currents and Bumpers for enemy bullets
+    void startEvent(EventKind k, double announceTick);
+    void updateEvent(float dt);
+    void endEvent();
+    void ringDamage(Vec2 c, float r, float dmg, u8 owner);  // a pulse or a blast on every enemy inside (once)
+    void applyArenaOp(const NetOp& op);
+    void logArena(u8 op, u8 a, u8 b, Vec2 p, Vec2 q, double tick, u32 u = 0);
+    ArenaBody arena_[kArenaBodies];
+    ArenaEventState arenaEvent_;
+    ArenaMeteor meteors_[kArenaMeteors];
+    ArenaBomb bombs_[kArenaBombs];
+    u8 lastEvent_ = kNoEvent;  // the event of the Track before (never again next)
+    u32 arenaRng_ = 1;         // placement and draws (the host's)
     // world_net.cpp (M4)
     bool coop() const { return playerCount_ > 1; }
     u32 presentCount() const;

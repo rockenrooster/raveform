@@ -375,10 +375,10 @@ constexpr float kSaStepBeats = 1.0f;         // turrets step round to stand even
 // M5 part 4, Event Horizon (horizon.md gives no number for these).
 constexpr float kHzJetLengthWu = 1800.0f;  // the jets reach past the frame's edge at the fight's zoom (0.8)
 constexpr float kHzJetHalfWu = 6.0f;       // look.md v2.5: no lethal beam kills wider than 12 wu (part 4: 22)
-constexpr float kHorizonHealthTune = 8.0f;  // (16 x 0.5) the novice 18 of 20, 94 s (the page: about 80 s; at most 120)
+constexpr float kHorizonHealthTune = 6.0f;  // (16 x 0.5 x 0.75) part 5, with elites and the arena: 8.0 took the novice 129 s (the page: about 80 s; at most 120)
 // Polyrhythm (polyrhythm.md gives no number for these).
 constexpr float kPrLinkBurnHalfWu = 6.0f;   // the burning link: look.md v2.5, 12 wu (part 4: 16)
-constexpr float kPolyHealthTune = 2.4f;     // (3.0 x 0.8) the novice 15 of 20, 45 s (x 1.0: 11 of 19; the page: 100-120 s)
+constexpr float kPolyHealthTune = 2.0f;     // (3.0 x 0.8 x 0.83) part 5, with elites and the arena: the novice 14 of 19, 41 s (2.4: 10 of 19)
 constexpr float kFeedbackHealthTune = 2.0f; // (2.5 x 0.8) the novice 15 of 17, 112 s (x 1.0: 181 s; the page: about two minutes)
 
 // ======================================================================================================

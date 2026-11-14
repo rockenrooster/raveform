@@ -8,6 +8,7 @@
 
 #include "core/json_doc.h"
 #include "core/log.h"
+#include "sim/arena.h"
 
 namespace rf::sim {
 
@@ -95,6 +96,7 @@ u64 bossDataDigest() {
     h = fnv(h, kLongwaveJson);
     h = fnv(h, kChoirJson);
     h = fnv(h, kMinibossesJson);
+    h ^= arenaDataDigest() * 31u;  // M5 part 5: the arena and the traits
     return h;
 }
 

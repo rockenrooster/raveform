@@ -316,11 +316,47 @@ const UpPic kUpPics[] = {
 };
 constexpr u32 kUpPicCount = sizeof(kUpPics) / sizeof(kUpPics[0]);
 constexpr u8 kUpBase = 150;  // m5Pic_ for an UpPic: kUpBase + its index
+
+// ---- M5 part 5: each elite trait on a body ahead of a still ship, each structure, each event (the spawner off, hits
+// costing nothing); the picture at tick t (or fter frames after the death of the elite the stream kills).
+enum ArKind : u8 { kArElite, kArStruct, kArEvent };
+struct ArPic {
+    const char* name;  // m5_<name>
+    u8 kind, id;       // ArKind; a TraitId, StructKind or EventKind
+    u16 at;            // the capture tick (0: on the elite's death, fter frames on)
+    u8 after;
+    bool fire;
+};
+const ArPic kArPics[] = {
+    {"el_armored", kArElite, kArmored, 300, 0, true},        {"el_swift", kArElite, kSwift, 300, 0, false},
+    {"el_giant", kArElite, kGiant, 300, 0, false},           {"el_splitting", kArElite, kSplitting, 0, 20, true},
+    {"el_volatile", kArElite, kVolatile, 0, 40, true},       {"el_regenerating", kArElite, kRegenerating, 330, 0, false},
+    {"el_shielded", kArElite, kShielded, 300, 0, true},      {"el_twin", kArElite, kTwin, 300, 0, false},
+    {"el_magnetic", kArElite, kMagnetic, 420, 0, false},     {"el_commander", kArElite, kCommander, 330, 0, false},
+    {"el_cloaked", kArElite, kCloaked, 300, 0, false},       {"el_phasing", kArElite, kPhasing, 300, 0, true},
+    {"st_vault", kArStruct, 0, 330, 0, true},                {"st_pylon", kArStruct, 1, 520, 0, false},
+    {"st_rift", kArStruct, 2, 420, 0, false},                {"st_bumper", kArStruct, 3, 360, 0, true},
+    {"st_current", kArStruct, 4, 420, 0, true},              {"st_lens", kArStruct, 5, 330, 0, true},
+    {"ev_vault_drop", kArEvent, 0, 420, 0, true},            {"ev_rift_surge", kArEvent, 1, 1150, 0, false},
+    {"ev_elite_hunt", kArEvent, 2, 480, 0, false},           {"ev_comet", kArEvent, 3, 400, 0, true},
+    {"ev_eclipse", kArEvent, 4, 420, 0, false},              {"ev_meteor_rain", kArEvent, 5, 400, 0, false},
+    {"ev_convoy", kArEvent, 6, 480, 0, true},                {"ev_storm_cell", kArEvent, 7, 1000, 0, false},
+};
+constexpr u32 kArPicCount = sizeof(kArPics) / sizeof(kArPics[0]);
+constexpr u8 kArBase = 200;  // m5Pic_ for an ArPic: kArBase + its index
 }  // namespace
 
 bool Play::scriptSetupM5() {
     const char* p = opt_.picture;
     if (!starts(p, "m5_")) return false;
+    for (u32 k = 0; k < kArPicCount; ++k)
+        if (std::strcmp(p + 3, kArPics[k].name) == 0) m5Pic_ = static_cast<u8>(kArBase + k);
+    if (m5Pic_ != 0xFF) {
+        // M5 part 5: a still ship, hits costing nothing, the spawner off (the Track's first bars: no structure placed by itself).
+        world_->rules().godMode = true;
+        world_->spawner().mode = Spawner::Mode::Off;
+        return true;
+    }
     for (u32 k = 0; k < kUpPicCount; ++k)
         if (std::strcmp(p + 3, kUpPics[k].name) == 0) m5Pic_ = static_cast<u8>(kUpBase + k);
     if (m5Pic_ != 0xFF) {
@@ -367,6 +403,82 @@ bool Play::scriptSetupM5() {
 bool Play::scriptInputM5(StickInput& in) {
     if (m5Pic_ == 0xFF) return false;
     World& w = *world_;
+    if (m5Pic_ >= kArBase) {
+        // M5 part 5: an elite, a structure or an event round a still ship.
+        const ArPic& a = kArPics[m5Pic_ - kArBase];
+        const u32 t = scriptTick_;
+        const i64 now = static_cast<i64>(frameNo_);
+        const Vec2 ship = controller_.pose().pos;
+        const Enemies& e = w.enemies();
+        in = StickInput{};
+        in.assist = false;
+        const double land = (std::floor(music1_ / kTicksPerBeat) + 1.0) * kTicksPerBeat;
+        if (t == 200 && a.kind == kArElite) {
+            const u16 sp = SpeciesTable::index(a.id == kShielded ? Family::Hound : Family::Drifter, 3, kVariantA);
+            const i32 i = w.spawnEliteNow(sp, ship + Vec2{380.0f, 0.0f}, traitBit(a.id));
+            if (i >= 0 && (a.id == kSplitting || a.id == kVolatile)) w.setEnemyHp(static_cast<u32>(i), 140.0f);
+            if (a.id == kCommander)
+                for (u32 k = 0; k < 10; ++k)
+                    w.spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), ship + Vec2{380.0f + std::cos(k * 0.63f) * 220.0f, std::sin(k * 0.63f) * 180.0f}, 0.0f, land);
+            if (a.id == kMagnetic)
+                for (u32 k = 0; k < 30; ++k) w.spawnShardNow(ship + Vec2{250.0f + 12.0f * static_cast<float>(k % 10), -60.0f + 40.0f * static_cast<float>(k / 10)}, Vec2{}, 0);
+        }
+        if (t == 200 && a.kind == kArStruct) {
+            const StructKind k = static_cast<StructKind>(a.id);
+            const Vec2 at = ship + Vec2{k == StructKind::Pylon ? 0.0f : 420.0f, 0.0f};
+            if (k == StructKind::Bumper) {
+                for (u32 j = 0; j < 3; ++j) {
+                    const i32 s = w.placeStructureNow(k, ship + Vec2{420.0f + 160.0f * static_cast<float>(j % 2), -300.0f + 300.0f * static_cast<float>(j)}, 0.0f);
+                    if (s >= 0) w.arenaBodyMut(static_cast<u32>(s)).tone = static_cast<u8>(j);
+                }
+            } else if (k == StructKind::Current) {
+                w.placeStructureNow(k, at, 0.0f);
+                w.placeStructureNow(k, at, 1.4f);
+                for (u32 j = 0; j < 12; ++j) w.spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), at + Vec2{-500.0f + 90.0f * static_cast<float>(j), 30.0f}, 0.0f, land);
+            } else {
+                const i32 s = w.placeStructureNow(k, at, k == StructKind::Lens ? 1.2f : 0.0f);
+                if (s >= 0 && k == StructKind::Rift) w.arenaBodyMut(static_cast<u32>(s)).from = music1_;
+            }
+            if (k == StructKind::Pylon || k == StructKind::Lens)
+                for (u32 j = 0; j < 14; ++j)
+                    w.spawnEnemy(SpeciesTable::index(Family::Drifter, 2, kVariantA), ship + Vec2{700.0f + 40.0f * static_cast<float>(j % 3), -330.0f + 50.0f * static_cast<float>(j)}, 3.14f, land);
+        }
+        if (t == 120 && a.kind == kArEvent) w.startEventNow(static_cast<EventKind>(a.id));
+        if (t == 200 && a.kind == kArEvent)  // (a crowd for the event to fall on)
+            for (u32 j = 0; j < 16; ++j)
+                w.spawnEnemy(SpeciesTable::index(Family::Drifter, 2, kVariantA), ship + Vec2{std::cos(j * 0.39f) * 560.0f, std::sin(j * 0.39f) * 300.0f}, 0.0f, land);
+        if (t == 210) {
+            for (u32 i = 0; i < e.count; ++i)
+                if (!(e.flags[i] & kFlagDead) && !(e.traits[i] & kEliteBit)) w.setEnemyHp(i, 400.0f);
+        }
+        if (a.fire && t > 220) {
+            // The stream at the nearest body, or ahead.
+            i32 best = -1;
+            float bd = 1e30f;
+            for (u32 i = 0; i < e.count; ++i) {
+                if ((e.flags[i] & kFlagDead) || e.state[i] == kWarping) continue;
+                const float d = lengthSq(Vec2{e.x[i], e.y[i]} - ship);
+                if (d < bd) {
+                    bd = d;
+                    best = static_cast<i32>(i);
+                }
+            }
+            in.aim = best >= 0 && a.kind != kArStruct ? Vec2{e.x[best], e.y[best]} - ship : Vec2{1.0f, 0.02f};
+            in.aimActive = true;
+        }
+        w.closeTrioNow(0);
+        w.playerMut(0).levelsBanked = 0;
+        if (captureFrom_ >= 0) return true;
+        bool go = a.at ? t >= a.at : false;
+        if (!a.at)
+            for (u32 k = 0; k < w.eventCount() && !go; ++k) go = w.events()[k].type == EventType::Kill && w.events()[k].a == 2;
+        if (!go && t > 60u * 60u) go = true;
+        if (go) {
+            captureFrom_ = now + 1 + (a.at ? 0 : a.after);
+            RF_LOG("play: picture '%s' captures from frame %lld (music %.1f)", opt_.picture, static_cast<long long>(captureFrom_), music1_);
+        }
+        return true;
+    }
     if (m5Pic_ >= kUpBase) {
         // M5 part 3: an upgrade's scene round a still ship.
         const UpPic& u = kUpPics[m5Pic_ - kUpBase];

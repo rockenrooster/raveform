@@ -56,7 +56,8 @@ void PlayView::drawBeam(FrameDraw& d, Vec2 from, Vec2 dir, float len, float w, f
 void PlayView::lethalBeam(FrameDraw& d, Vec2 a, Vec2 b, float killWu, float level) {
     // look.md v2.5 ("A lethal beam is a laser too"): danger red on the priority layer, its capsule exactly as wide as it kills
     // (a threat's picture is its hit box), a white-pink line of 2 px down its axis; round it a glow of the danger colour drawn
-    // as the players' is, 0.25 on the axis (reduce flashing 0.15), sigma twice the kill width, that hurts nobody.
+    // as the players' is, 0.20 on the axis (reduce flashing 0.15), sigma half the kill width, that hurts nobody (look.md
+    // 1dce5d3: twice the width was a red band 180 px wide behind Event Horizon's jets).
     const Vec3 danger = palettes_->danger, W1 = whiteU();
     const Vec3 pink = mix(danger, W1, 0.7f);
     const float len = length(b - a);
@@ -64,13 +65,14 @@ void PlayView::lethalBeam(FrameDraw& d, Vec2 a, Vec2 b, float killWu, float leve
     const Vec2 dir = (b - a) * (1.0f / len);
     if (shown(kMuteBullet)) {
         d.scene.line(toScene(a), toScene(b), refPx_, pink * (1.6f * level), pink * (1.6f * level), 0);
-        const float sigma = 2.0f * killWu;
+        const float sigma = 0.5f * killWu;
         const float step = 2.0f * sigma;
         const float radius = sigma * look_->glowRadiusOverSigma;
-        const float c = (reduceFlashing_ ? 0.15f : 0.25f) * level * step / (sigma * 2.5066283f);
+        const float c = (reduceFlashing_ ? 0.15f : 0.20f) * level * step / (sigma * 2.5066283f);
+        GlowBatch& soft = radius * pxPerWu_ < 16.0f * refPx_ ? d.sparkles : d.pools;  // (look.md §3, as drawBeam)
         for (float u = 0.0f; u <= len; u += step) {
             const Vec2 p = a + dir * u;
-            if (visible(p, radius)) d.pools.glow(toScene(p), radius * pxPerWu_, danger * c);
+            if (visible(p, radius)) soft.glow(toScene(p), radius * pxPerWu_, danger * c);
         }
     }
     if (!shown(kMutePriority)) return;

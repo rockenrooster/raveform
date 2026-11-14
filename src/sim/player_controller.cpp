@@ -109,6 +109,9 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
     }
     // M5 part 4 (GAME_DESIGN 7.2): Wells pull the ship toward them.
     if (!p.dashing) p.pos = p.pos + world.wellPull(p.pos) * dt;
+    // M5 part 5 (design/arena.md): a Current carries the ship; a Bumper kicks it off unhurt.
+    if (!p.dashing) p.pos = p.pos + world.currentFlow(p.pos) * dt;
+    world.bumperBounce(p.pos, p.vel, kPlayerVisualRadius);
     // M5 part 4: what the world has moved the ship by since the last update (Event Horizon's wave and its throw).
     if (knockKnown_ && state.knockSerial > knockSerial_) p.pos = p.pos + (state.knock - knockTaken_);
     knockTaken_ = state.knock;

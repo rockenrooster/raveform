@@ -5,6 +5,7 @@
 
 #include <cmath>
 
+#include "sim/boss_prose.h"
 #include "sim/tuning.h"
 #include "sim/world.h"
 
@@ -689,6 +690,8 @@ void World::directorBar(double barTick, u32 bar) {
     // its own players'.
     regenBar();
     if (anyAlive && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios)) openLevelTrios(bar);
+    // M5 part 5: the arena's structures and events (the host places and starts them; every device keeps them).
+    if (anyAlive) arenaBar(ph, bar, barTick);
     // M4: a client follows the host's phrase; the host's director alone spawns.
     if (role_ == NetRole::Client) return;
     if (spawner_.mode != Spawner::Mode::Slice || !anyAlive) return;
@@ -705,6 +708,7 @@ void World::directorBar(double barTick, u32 bar) {
                                  : base * sectionScale(ph) * d.assist * coopBudgetScale() * kThreatBudgetScale * loopRamp(kLoopThreatRamp, ph.track, d.songs);
     if (d.budgetPerBar <= 0.0f) return;
     d.bank = std::fmin(d.bank + d.budgetPerBar, d.budgetPerBar * kBankBars);
+    eliteBar(ph, land);  // M5 part 5: an elite first, when one is due (traits.md)
     spendBudget(land);
 }
 
@@ -769,9 +773,11 @@ void World::runDirector() {
     if (!anyAlive) return;
     const bool client = role_ == NetRole::Client;  // M4: the host spawns, dissolves and drops; a client follows
     if (!client) forCrossings(m0_, m1_, kTicksPerBeat, [&](double beatTick, i64) { directorBeat(beatTick); });
+    // M5 part 5: the arena's beat (Bumpers, Pylons, Meteor Rain, the Storm Cell, the Comet's Shards) on every device.
+    forCrossings(m0_, m1_, kTicksPerBeat, [&](double beatTick, i64) { arenaBeat(beatTick); });
     const Phrase& ph = phrase_;
-    // Surge: score x2 and magnet x2 for the first half of the Drop (GAME_DESIGN 4.1).
-    rules_.scoreMultiplier = ph.surge() ? 2.0f : 1.0f;
+    // Surge: score x2 and magnet x2 for the first half of the Drop (GAME_DESIGN 4.1); M5 part 5: an Eclipse's kills x 2.
+    rules_.scoreMultiplier = (ph.surge() ? 2.0f : 1.0f) * (eclipse() ? prose::kArEclipseScore : 1.0f);
     rules_.magnetMultiplier = ph.surge() ? 2.0f : 1.0f;
     if (spawner_.mode == Spawner::Mode::Slice) cellClock();  // play test 2: each device its own players' Cells
     if (client) return;

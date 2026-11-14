@@ -200,6 +200,10 @@ void World::applyNetOp(const NetOp& op) {
             break;
         }
         case NetOp::BossClaim:
+            if (role_ == NetRole::Host && op.a >= kArenaPartBase) {  // M5 part 5: a hit on an arena body
+                damageBody(static_cast<u32>(op.a - kArenaPartBase), op.f, op.player, Vec2{}, true);
+                break;
+            }
             if (role_ == NetRole::Host && boss_.active && !boss_.dying && m1_ >= boss_.fightTick)
                 damageBossFinal(op.a, op.b, op.f, op.player, boss_.pos, Vec2{1.0f, 0.0f}, -1.0f);
             break;
@@ -208,6 +212,10 @@ void World::applyNetOp(const NetOp& op) {
                 spawnBossNow(op.tick, Vec2{op.x, op.y}, static_cast<BossKind>(op.c), Vec2{op.x2, op.y2});
             break;
         case NetOp::BossPair:
+            if (op.a >= kArenaOpBase) {  // M5 part 5: the host's arena decisions
+                applyArenaOp(op);
+                break;
+            }
             if (role_ != NetRole::Client || !boss_.active || boss_.dying) break;
             if (op.a < kBossParts) killBossPart(op.a, op.b);
             else if (op.a >= kBossGeomBase) bossGeom(static_cast<u8>(op.a - kBossGeomBase), Vec2{op.x, op.y}, Vec2{op.x2, op.y2}, op.tick, true);
@@ -527,10 +535,12 @@ void World::finishKill(u32 i, u8 killer, u8 kind) {
         if (killer < kMaxPlayers && players_[killer].present && isLocal(killer)) {
             PlayerState& pl = players_[killer];
             ++pl.kills;
-            pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * static_cast<double>(pl.chain) * rules_.scoreMultiplier));
+            const double elite = (e.traits[i] & kEliteBit) ? static_cast<double>(species_->traits.score) : 1.0;  // M5 part 5
+            pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * elite * static_cast<double>(pl.chain) * rules_.scoreMultiplier));
         }
     }
     if (kind != kDeathDissolve && e.state[i] != kWarping) dropShards(i, killer);
+    if (kind == kDeathKill) eliteDeath(i, killer);  // M5 part 5: its traits' deaths (the host's spawns come as spawns)
 }
 
 // ---------------------------------------------------------------------------------------------- the log

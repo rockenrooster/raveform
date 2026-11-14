@@ -355,6 +355,8 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     // M5 part 3 (GAME_DESIGN 6.1, how a Trio is dealt): the first run's build as Track 3 ends (Mods at their cap) and as
     // Track 5 ends (a Fusion held).
     u32 t3Runs = 0, t3Capped2 = 0, t5Runs = 0, t5Fusion = 0;
+    // M5 part 5: elites, the arena's events and its bodies broken.
+    u64 elites = 0, eliteKills = 0, events[kEventKinds] = {}, broken = 0, pylonsTuned = 0, splits = 0, bombs = 0;
     double t3Capped = 0.0;
     const SpeciesTable::Crowd& cr = species.crowd;
     const float hw = tuning::kFrameHalfWWu, hh = tuning::kFrameHalfHWu;
@@ -421,6 +423,17 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
             if (ph.track > maxTrack[s]) maxTrack[s] = ph.track;
             if (p.alive) paceTicks[(ph.track < 4 ? ph.track : 4u) - 1] += 1.0;
             for (u32 k = 0; k < w.eventCount(); ++k) {
+                const Event& ev = w.events()[k];
+                if (ev.type == EventType::BossCue) {
+                    const BossCue cue = static_cast<BossCue>(ev.a);
+                    if (cue == BossCue::ElArrive) ++elites;
+                    if (cue == BossCue::EvAnnounce && ev.b < kEventKinds) ++events[ev.b];
+                    if (cue == BossCue::VaBreak || cue == BossCue::CoBreak || (cue == BossCue::RiClose && ev.b != 0)) ++broken;
+                    if (cue == BossCue::PyTuned) ++pylonsTuned;
+                    if (cue == BossCue::ElSplit) ++splits;
+                    if (cue == BossCue::ElBurst) ++bombs;
+                }
+                if (ev.type == EventType::Kill && ev.a == 2 && ev.c == 0) ++eliteKills;
                 if (w.events()[k].type == EventType::LevelUp) {
                     paceLevels[(ph.track < 4 ? ph.track : 4u) - 1] += 1.0;
                     ++levelUps;
@@ -704,6 +717,12 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     std::printf("[sim]   kills a minute %.0f, deaths a run %.1f; overflow %llu, NaN runs %u, heap allocations in the loops %llu\n",
                 static_cast<double>(kills) / (static_cast<double>(n) * minutes), static_cast<double>(deaths) / n,
                 static_cast<unsigned long long>(overflow), nan, static_cast<unsigned long long>(allocs));
+    // M5 part 5: elites and the arena.
+    std::printf("[sim]   elites %llu (killed as large kills %llu, Splitting %llu, Volatile bursts %llu); bodies broken %llu, Pylons tuned %llu; events:",
+                static_cast<unsigned long long>(elites), static_cast<unsigned long long>(eliteKills), static_cast<unsigned long long>(splits),
+                static_cast<unsigned long long>(bombs), static_cast<unsigned long long>(broken), static_cast<unsigned long long>(pylonsTuned));
+    for (u32 k = 0; k < kEventKinds; ++k) std::printf(" %s %llu", eventId(static_cast<EventKind>(k)), static_cast<unsigned long long>(events[k]));
+    std::printf("\n");
     // M5 part 1: every fight by its kind (seconds to kill by the Track it came in).
     std::printf("[sim]   fights (kind: fought, won, lost, warped out, hits taken a fight [bullets / bodies / beams]; seconds to kill by Track):\n");
     for (u32 k = 0; k < kBossKinds; ++k) {

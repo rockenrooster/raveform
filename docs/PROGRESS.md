@@ -4,6 +4,100 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both).
 
+## M5 part 5 "The arena and the elites" — 2026-11-13
+
+The six structures and eight events of `design/arena.md` (arena.json) and the elites with the twelve traits of
+`design/traits.md` (traits.json); with them, the lethal glow of look.md `1dce5d3` (0.20 on the axis, sigma half the kill
+width) and the merge of `m4-net` (d5be6ea).
+
+### What was built
+
+- **Data**: arena.json and traits.json embedded and read (`ArenaData`, `TraitData`; the pages' prose numbers in
+  `boss_prose.h` "The arena"); their digest joins the peers' content hash.
+- **Elites** (`src/sim/world_elites.cpp`): the director buys one with the threat budget (x 4 its species' threat) about once
+  in 16 bars in Track 2 falling evenly to once in 8 by Track 6, from Track 2's second cycle, never in a Break or a fight; at
+  most 3 at once in Tracks 2-6 and 5 from Track 7. Any species of the Track's roster but Shoals, Wyrms and Tethers; x 1.3 its
+  size, x 6 its health (co-op x 1 + 0.5 a player), x 10 its score, x 4 its threat, 20 Shards and a Cell (not in the loop), a
+  large kill. Traits drawn from those the run has met (one in Tracks 2-6, two in 7-10, one more each time round the loop, at
+  most four; never Cloaked with Phasing). The twelve: Armored (x 2, a second hull until half, its shatter), Swift (x 1.6 its
+  speed), Giant (x 1.8 and x 2.5, never shoved), Splitting (two copies at 0.6 and 30%), Volatile (a 160 wu ring bursting two
+  beats on: a cell from a ship inside, 30 x the Track to every enemy), Regenerating (8% a beat after two quiet beats), Shielded
+  (its front 120 degrees sheds shots, turning 1.2 rad/s), Twin (two bodies, one bar x 1.6, 200-300 wu apart, dying together),
+  Magnetic (steals up to 40 loose Shards within 300 wu; they orbit it; released doubled), Commander (x 1.3 the speed of all
+  within 400 wu; its death stuns them a beat), Cloaked (8% between beats, full on the flash: the view), Phasing (solid only in
+  the first half of each beat). The view: look.md 3 (hull + 0.6 at 2.3, a white copy, glass, the aura at 0.22, a white edge
+  chevron) and each trait's treatment of look.md 4.
+- **Structures** (`src/sim/world_arena.cpp`): placed by the host on each Track's first downbeat, 1,000-1,800 wu from the
+  players' centre, 700 apart, 400 from a wall, outside every frame; dissolving over the Track change's Break unless a player
+  is within 600 wu. Vault (health trackScale x 0.33; a Boost and 40 Shards a player; a ring of its ornament gone each quarter);
+  Pylon (four beats inside its 150 wu ring tune it for a cycle: on every One a ring to 520 wu at 700 wu/s, 6 x the Track a
+  body); Rift (open through the second cycle's Groove and Build, four fodder a bar; x 0.25; a Boost and 30); Bumper (a cluster
+  300-500 wu apart; ships kicked off at 600 wu/s, shots reflected for x 1.5, enemies and bullets bounced; eight hits discharge a
+  ring of 260 wu, 10 x the Track); Current (240 x 1,600 wu, two crossing; +260 wu/s for ships, enemies and bullets; shots with
+  it x 1.3 speed and damage, against it x 0.7); Lens (320 wu, a turn every eight bars; a shot crossing it becomes three, the
+  two beside it 14 degrees out at half damage in the hues either side).
+- **Events**: Track 1's Comet in its third cycle's Groove; from Track 2 one in the second cycle's Groove, from Track 4 a second
+  in the third; drawn from the Track's list, never the Track before's; announced a bar ahead (gold chevron, the name at the
+  place; the Comet a white chevron two beats ahead). Vault Drop (a gold Vault for eight bars: two Boosts and 80), Rift Surge
+  (three Rifts on a 900 wu triangle from the Build to the Break, six a bar; all three: a Cell for the hurt, 100 Shards for the
+  others), Elite Hunt (the Track's highest-threat family with two traits, three from Track 7, fleeing at 0.8; killed in twelve
+  bars: a level's Trio and 150 Shards), Comet (700 wu/s through the players' centre, five Shards a beat, 60 and a Boost),
+  Eclipse (eight bars: the scene x 0.15 between beats, back on the kick's flash; the lattice 0.05; kills x 2), Meteor Rain
+  (four bars of three 110 wu rings a beat, one on a player, landing two beats on: a cell, 20 x the Track), Convoy (three
+  carriers at 60 wu/s with eight Hounds; a Boost and 50 each, the last a Cell; twelve bars), Storm Cell (320 wu drifting in
+  at 90 wu/s for eight bars; lightning on up to six bodies a beat, 15 x the Track; a ship inside two beats running loses a
+  cell).
+- **Sound**: one row a cue in `src/game/pending_sounds.cpp` (the traits' marks, the structures', the events'); what the engine
+  lacks is in each row.
+- **Bots**: both keep out of a bomb's or a meteor's ring and the Storm Cell.
+- **Co-op, the host's decisions** (for the network engineer): elites and their traits (operation 1), Twins' links (2),
+  structures and events' bodies placed (3), an event begun with its place (4), each meteor (5), a body broken (6) or gone (7),
+  an event ended (8), the hunted elite (9); the Rift's flow, Splitting's copies and the Convoy's Hounds are the host's spawns;
+  the Storm Cell's lightning, meteors and Volatile bombs on enemies are the host's; Boosts are the host's drops. Each device's
+  own: a Current's push and a Bumper's kick on its ship, a meteor's, bomb's or Storm Cell's cell, its players' Shards and Cells,
+  Magnetic's stealing, a Lens's split; a tuned Pylon's pulse is its tuner's device's, a Bumper's discharge its charging shot's
+  owner's. A client's hits on a body are claims (boss claims on part 0x80 + slot).
+
+### Acceptance
+
+| Check | Result | Limit |
+|---|---|---|
+| Tests | audio 2,679 checks, sim 5,787 (new: the arena test: the data, an elite's factors and its death, Twin, Splitting, Volatile, Regenerating and Shielded, a Vault broken, a Lens split, a Current, a Bumper, the Comet, Meteor Rain), net 131,366; determinism passes | all pass |
+| Loopback soaks, 4 players, 10 min | clean **2.68**, impaired **4.69** wu RMS; census 0 mismatches; the worst upload second 44.5 / 49.4 kbit/s. (The first run failed: the arena's operations and body claims were refused by the wire's checks and took their packets with them; `src/net/protocol.cpp` now accepts them, protocol **0x52460506**) | < 12 wu; 60 kbit/s |
+| The novice, 20 x 60 min, with elites and the arena | Track 2's boss reached in **17**; first meetings won: Kaleidos **20**, Longwave **14** (93 s), the Choir **16** (41 s), Event Horizon **19** (102 s), Polyrhythm **12** of 19 (40 s), Feedback **13** of 13 (115 s) | 16; 18; 16; 16; 12 a boss of Tracks 4-6; <= 1.5 x the page |
+| The careful bot, 20 x 40 min | first deaths in Tracks 1-3: **0**; in Tracks 1-6: **1**; median 28.6 min; elites 1,237 in the 20 runs, 245 bodies broken, every event drawn (Vault Drop 75, Rift Surge 39, Elite Hunt 61, Comet 122, Eclipse 21, Meteor Rain 41, Convoy 31, Storm Cell 32) | 4 |
+| The careless bot, 20 x 40 min | Tracks 1-3: **1**; Tracks 1-6: **2** | 2; 8 |
+| Pictures (Debug, 0 validation messages) | `captures\m5\part5\`: 26 (`el_*` 12, `st_*` 6, `ev_*` 8; `ev_comet`, `ev_rift_surge` retaken in dev after their fixes); `hz_jets`, `pr_burn`, `bs_fire` with look.md `1dce5d3`'s glow: 59.2/85.4/**3.9**/0.052, 57.2/86.3/**3.1**/0.050, 48.8/81.8/**4.9**/0.060 (dark<48, dark<96, >=200, mean) | |
+| Moto (shared phone, our APK deployed before each run, the lock; `bench_play`, `--tier low --nohits`) | `--fast-forward 640` (Track 5 with its Currents, Pylon and Rift): **0% missed**, main thread P95 4.7 ms, GPU P95 14.2 ms, 223 enemies in view at most, heap 0; `--drop 6.3` (Track 6's Lenses and Bumpers, 482 in view at most): 0.06% missed (Swappy 2.09%), panel P95 one period, 4.8 / 14.1 ms, heap 0 | P95 <= 16.9 ms, missed <= 5% |
+
+### Not done or not verified
+
+- **Longwave's novice line is not met with elites in the run** (14 of 20; 17 before them). Its health does not move it: x
+  0.58 to x 0.77 of part 4's tune all give 13-14 wins (68-98 s): the novice reaches the fight with fewer cells after Track 2's
+  elites (Armored and Swift from its second cycle). The levers are the lead's: the elites' first Track or pace, or the novice.
+  Polyrhythm went 2.4 -> 2.0 and Event Horizon 8.0 -> 6.0 for the novice's lines with elites and the arena.
+- Mini-bosses warp out more often with the novice now (Battering Ram 11 of 16, Moth Queen 9 of 15, Sentry Array 11 of 17).
+- Not built: the Rift's black disc (the scene is additive: it is not drawn); Phasing's "every other hull segment hidden" is the
+  whole hull at 35% off its half; Swift's x 1.3 turn (only its speed); Wyrm heads and Tether pairs as elites; the "faint
+  triangle" joining a Rift Surge's three; the Comet's "saw glide rising over the two beats of its warning" is the announce
+  row's glide; Riffs other than shots and the Nova do not hurt a Vault.
+- Sounds: every arena and trait row in `pending_sounds.cpp` plays the nearest the engine has; what each lacks is in its row.
+- The bots do not tune Pylons (2 in 20 runs) or seek structures.
+
+### Decisions taken alone
+
+- **trackScale** in co-op is x (1 + 0.5 a player) as the mini-bosses' health (the page is silent).
+- Rift bodies are part of the crowd count only as bodies (the page: "part of the crowd target, not on top of it"); they are
+  spawned on top of the target.
+- The Bumpers' and Currents' counts are byTrack's (Track 6 has two Bumpers where the rule says three or four).
+- A kill inside a Comet's lane, Vault or carrier counts for nobody but the shooter; Boosts from bodies are the host's drops
+  (one orb a player).
+- Elites drop no Cell in the loop (no kill drops a Cell there, GAME_DESIGN 8).
+- Elites' Splitting copies are not elites (no trait, no Cell).
+- The Elite Hunt's reward Trio is a level's (banked on the next bar line).
+- The Pylon tunes for any player inside its ring; in co-op each device sees the tuning by its own view of the ships, and the
+  pulse hurts on the tuner's device.
+
 ## M5 checkpoint "A boss's rule is a bonus, not a wall" — 2026-11-13 (before part 5)
 
 The lead's checkpoint after part 4 (design `514e4ea`, `17a36f7`): the user never got past Longwave.
@@ -90,7 +184,7 @@ of its meetings within their 24 bars (warped out: the hold ran out). The guards:
 | Feedback's kill pools (the same) | `fb_open` 40.8/74.3/**7.4**/0.109 -> 42.0/78.4/**4.3**/0.083; `fb_slapback` 35.8/68.7/8.9/0.135 -> 36.8/73.1/4.9/0.101; `fb_death` 54.0/82.4/4.8/0.081 -> 60.3/86.6/2.9/0.058 | |
 | The Beam Boost's glow, full width at half maximum across the beam (core, glow and bloom together, the picture's luminance, everything else muted) | **13.3 wu** at its 20 wu (14.7 at the 28 it burned); at a quarter of the peak 42 wu, at a tenth 63 (the core's bloom alone: 16 and 44); the glow alone as a quarter-resolution pool measured 25 wu where its sigma gives 13 (hence sparkles under 16 ref px) | <= w |
 | Pictures | `captures\m5\checkpoint\`: `hz_jets`, `pr_burn`, `bs_fire`, `bs_half`, `fb_open`, `fb_slapback`, `fb_death` (dev build; the boss hint shows on `fb_open`) | |
-| Moto (shared phone) | the phone was held by the network engineer (lock `m4net`) when this was committed: the runs follow in the next commit | |
+| Moto (shared phone, `8f5abeb` deployed before each run; `bench_play`, `--tier low --nohits`) | `horizon:3:hold` (the jets) 0% missed, 3.8 / 13.5 ms (main thread / GPU P95); `blink_star:1:hold` 0%, 4.4 / 14.0; `feedback:1:hold` 6.37% on a first run with no late CPU frame and GPU P95 14.2, 0% on the rerun (a transient on the shared phone); `feedback:2:hold` 0%, 4.4 / 14.2; `--fast-forward 640` 0.03%, 4.9 / 14.3; heap 0 in every run | P95 <= 16.9 ms, missed <= 5% |
 
 ### Decisions taken alone
 

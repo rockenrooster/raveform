@@ -55,6 +55,7 @@ inline Vec2 dirOf(float angle) { return {std::cos(angle), std::sin(angle)}; }
 inline Vec2 perpOf(Vec2 v) { return {-v.y, v.x}; }
 inline float angleOf(Vec2 v) { return std::atan2(v.y, v.x); }
 inline float lengthSq(Vec2 v) { return v.x * v.x + v.y * v.y; }
+inline float cross(Vec2 a, Vec2 b) { return a.x * b.y - a.y * b.x; }  // M5 part 5: z of the 2D cross product
 inline Vec2 normalizeOr(Vec2 v, Vec2 fallback) {
     const float l = length(v);
     return l > 1e-6f ? v * (1.0f / l) : fallback;

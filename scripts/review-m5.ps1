@@ -18,6 +18,7 @@
 #   the Riffs (riff_lancer, riff_singularity), the Boosts in pairs (boost_*) and the Fusions (fusion_*).
 #   Part 4 (-Part part4): Event Horizon hz_accretion (the lanes), hz_starved (the gasp), hz_fed (the eruption), hz_tidal
 #   (the wave), hz_collapse (the jets shown), hz_jets (burning), hz_death, strip hz_strip.
+#   Part 5 (-Part part5): each elite trait on a body ahead of a still ship (el_*), each structure (st_*), each event (ev_*).
 #   scripts\review-m5.ps1 [-Part part1|part2|part3|part4] [-Out captures\m5\<part>] [-Config debug|dev] [-Only lw_chop,ch_cage]
 # Debug (the default) runs with validation; the script stops on the first run that is not clean.
 param(
@@ -77,8 +78,14 @@ $sets = @{
                     'sa_clock', 'sa_half', 'sa_death')
         strips = @('hz_strip', 'pr_strip', 'fb_strip', 'mq_strip', 'bs_strip', 'sa_strip')
     }
+    'part5' = @{
+        singles = @('el_armored', 'el_swift', 'el_giant', 'el_splitting', 'el_volatile', 'el_regenerating', 'el_shielded', 'el_twin', 'el_magnetic',
+                    'el_commander', 'el_cloaked', 'el_phasing', 'st_vault', 'st_pylon', 'st_rift', 'st_bumper', 'st_current', 'st_lens',
+                    'ev_vault_drop', 'ev_rift_surge', 'ev_elite_hunt', 'ev_comet', 'ev_eclipse', 'ev_meteor_rain', 'ev_convoy', 'ev_storm_cell')
+        strips = @()
+    }
 }
-if (-not $sets.ContainsKey($Part)) { throw "no review set '$Part' (part1, part2, part3, part4)" }
+if (-not $sets.ContainsKey($Part)) { throw "no review set '$Part' (part1, part2, part3, part4, part5)" }
 $singles = $sets[$Part].singles
 $strips = $sets[$Part].strips
 if ($Only.Count) {

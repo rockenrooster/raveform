@@ -81,6 +81,17 @@ enum class BossCue : u8 {
     BmLay, BmHatch, BmBreak,
     BsHop, BsFire, BsDazed,
     SaHand, SaVolley, SaTurret, SaBack,
+    // M5 part 5, elites (design/traits.md): the arrival's low fifth (b, c: the traits' bits), each trait's mark a beat later
+    // (in the traits' order), Armored's outer hull shattering, Splitting, Volatile's fuse and burst, Regenerating's heal,
+    // Commander's stun, an Elite Hunt's kill.
+    ElArrive, ElArmored, ElSwift, ElGiant, ElSplitting, ElVolatile, ElRegenerating, ElShielded, ElTwin, ElMagnetic, ElCommander,
+    ElCloaked, ElPhasing, ElShatter, ElSplit, ElFuse, ElBurst, ElRegen, ElStun, HuKill,
+    // The arena (design/arena.md): a Vault's hit (b: quarters lost) and break; a Pylon's fill (b: beats), tuning and pulse; a Rift
+    // opening, letting a body through, closing; a Bumper's bounce (b: its chord tone) and discharge; a shot split by a Lens;
+    // an event announced (b: EventKind); the Vault Drop's landing; the Comet's Shards; the Eclipse on and off and its flash;
+    // a meteor's warning and landing; the Convoy's roll and a carrier broken; the Storm Cell's strike and warning.
+    VaHit, VaBreak, PyFill, PyTuned, PyPulse, RiOpen, RiThrough, RiClose, BuBounce, BuDischarge, LeSplit, EvAnnounce, VdLand,
+    CmShard, EcOn, EcOff, EcFlash, MeWarn, MeLand, CoRoll, CoBreak, StStrike, StWarn,
     Count
 };
 
@@ -500,6 +511,10 @@ u32 bossScaledCount(u32 n, float scale, u32 least);
 // device's fight follows the host's.
 constexpr u8 kBossStepBase = 0x40;
 constexpr u8 kBossGeomBase = 0x50;
+// M5 part 5: the host's arena decisions travel the same way (pair = kArenaOpBase + the operation; World::applyArenaOp), and a
+// client's hit on an arena body as a boss claim on part kArenaPartBase + its slot.
+constexpr u8 kArenaOpBase = 0xC0;
+constexpr u8 kArenaPartBase = 0x80;
 enum BossGeom : u8 {
     kGeomHive0 = 0, kGeomHive1, kGeomSpear0, kGeomSpear1, kGeomAlphaLock, kGeomRamLock, kGeomLunge,
     kGeomHorizonBar,   // M5 part 4: Event Horizon's bar line (a: fed, meal)

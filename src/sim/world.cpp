@@ -11,7 +11,7 @@ namespace rf::sim {
 using namespace tuning;
 
 namespace {
-constexpr float kMaxEnemyRadius = 40.0f;  // larger than any species' radius (ram V: 18 x 1.3 = 23.4)
+constexpr float kMaxSpeciesRadius = 40.0f;  // larger than any species' radius (ram V: 18 x 1.3 = 23.4); M5 part 5: elites grow past it (maxEnemyR_)
 constexpr float kGridSlack = 32.0f;       // enemies move at most ~25 wu a tick after the grid was built
 
 bool insideArena(float x, float y) { return std::fabs(x) <= kArenaHalfW && std::fabs(y) <= kArenaHalfH; }
@@ -84,6 +84,15 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask) {
     cellPickups_.count = 0;
     boss_ = BossState{};
     pen_ = PenState{};
+    // M5 part 5: no structure, event, bomb or meteor yet; the arena's own stream (the host's placements and draws).
+    for (ArenaBody& b : arena_) b = ArenaBody{};
+    arenaEvent_ = ArenaEventState{};
+    for (ArenaMeteor& m : meteors_) m = ArenaMeteor{};
+    for (ArenaBomb& b : bombs_) b = ArenaBomb{};
+    lastEvent_ = kNoEvent;
+    eliteClock_ = 0.0f;
+    commanderCount_ = 0;
+    arenaRng_ = hash32(static_cast<u32>(seed ^ (seed >> 32)), 0xA4E7Au) | 1u;
     rules_.scoreMultiplier = rules_.magnetMultiplier = 1.0f;
     // M4: the co-op bookkeeping (nothing in solo reads it).
     restartSeed_ = seed;
@@ -148,8 +157,11 @@ void World::tick(const TickInput& in) {
     // The grid holds the solid enemies as the tick begins (indices stay valid until compact()); flocking
     // and the collisions below query it with slack for the movement since. M5: built before the shots, so a volley's
     // lines (Accent, Beam) can ask it; the bodies a Nova kills below stay in it, skipped as dead.
-    for (u32 i = 0; i < enemies_.count; ++i)
+    maxEnemyR_ = kMaxSpeciesRadius;  // M5 part 5: the queries' reach covers the largest body (a Giant elite)
+    for (u32 i = 0; i < enemies_.count; ++i) {
         solid_[i] = (enemies_.flags[i] & kFlagDead) == 0 && enemies_.state[i] != kWarping;
+        if (enemies_.radius[i] > maxEnemyR_) maxEnemyR_ = enemies_.radius[i];
+    }
     grid_.build(enemies_.x, enemies_.y, enemies_.count, solid_);
     buildGroups();  // M5 part 4: Wyrms' chains, Tethers' pairs
     findWells();
@@ -160,6 +172,7 @@ void World::tick(const TickInput& in) {
     fireEchoes();  // M5: Echo's ghost volleys
     updateNovas();
 
+    updateElites(dt * stretch_);  // M5 part 5: shields, Regenerating, Twins, the Commanders' reach (before the motion)
     updateEnemies(dt * stretch_);
     updateTrails();  // M5 part 4: Weaver trails, Ram B's wake
     updateBoss(dt);
@@ -173,6 +186,8 @@ void World::tick(const TickInput& in) {
     moveProjectiles(dt);
     fenceShots();    // M5 part 4: the Sentry Array's fence stops shots
     aegisBullets();  // M5: Aegis's arc stops the bullets that reach it
+    holdShards(dt);  // M5 part 5: Magnetic elites
+    updateArena(dt); // M5 part 5: structures and events (Lenses, Currents and Bumpers on this tick's paths)
     collide();
     if (scriptHits_) {
         // (tests, pictures: a hit asked for from outside the tick lands inside it, so its events go out like any)
@@ -381,6 +396,7 @@ void World::updateNovas() {
             // M5 part 4 (polyrhythm.md): a Nova erases every wall its front touches (on every device: it follows the Nova).
             if (boss_.active && !boss_.dying && boss_.kind == BossKind::Polyrhythm) polyErase(pl.pos, kNovaFrontWu);
             bossNova(p);
+        arenaNova(p);  // M5 part 5: a Vault in view
         } else if (!pl.novaPending && pl.novaInvulS > 0.0f) {
             pl.novaInvulS -= kDt;
         }
@@ -540,13 +556,13 @@ void World::collide() {
         const float dx = bx - ax, dy = by - ay;
         const float len2 = dx * dx + dy * dy;
         const float sr = s.radius[k];
-        const float reach = sr + kMaxEnemyRadius + kGridSlack;
+        const float reach = sr + maxEnemyR_ + kGridSlack;
         i32 best = -1;
         float bestT = 2.0f;
         const u32 skip = s.lastHit[k];
         grid_.query(std::fmin(ax, bx) - reach, std::fmin(ay, by) - reach, std::fmax(ax, bx) + reach, std::fmax(ay, by) + reach,
                     [&](u32 i) {
-                        if ((e.flags[i] & kFlagDead) || e.handle[i] == skip) return;
+                        if ((e.flags[i] & kFlagDead) || e.handle[i] == skip || elitePhased(i)) return;  // (M5: Phasing)
                         const float cx = e.x[i] - ax, cy = e.y[i] - ay;
                         const float t = len2 > 1e-6f ? clampf((cx * dx + cy * dy) / len2, 0.0f, 1.0f) : 0.0f;
                         const float qx = dx * t - cx, qy = dy * t - cy;
@@ -582,6 +598,16 @@ void World::collide() {
                     ev.y2 = s.dy[k];
                     emit(ev);
                 }
+                continue;
+            }
+        }
+        {
+            // M5 part 5: a Vault, a Rift or an event's body nearer along the path than any enemy takes the shot.
+            float at = 0.0f;
+            i32 body = -1;
+            if (arenaShotHit(k, Vec2{ax, ay}, Vec2{bx, by}, sr, at, body) && at <= bestT) {
+                s.dead[k] = 1;
+                if (real) damageBody(static_cast<u32>(body), s.damage[k], s.owner[k], Vec2{ax + dx * at, ay + dy * at}, false);
                 continue;
             }
         }
@@ -663,9 +689,9 @@ void World::collide() {
         if (sheltered(p)) continue;  // play test 2: inside a level-up orb's ring nothing hurts it
         const Vec2 c = pl.pos;
         i32 contact = -1;
-        const float reach = kMaxEnemyRadius + kGridSlack + kPlayerHitRadius;
+        const float reach = maxEnemyR_ + kGridSlack + kPlayerHitRadius;
         grid_.query(c.x - reach, c.y - reach, c.x + reach, c.y + reach, [&](u32 i) {
-            if ((e.flags[i] & kFlagDead) || contact >= 0) return;
+            if ((e.flags[i] & kFlagDead) || contact >= 0 || elitePhased(i)) return;  // (M5: Phasing's touch is harmless off its half)
             const float r = e.radius[i] * kContactShrink + kPlayerHitRadius;
             const float dx = e.x[i] - c.x, dy = e.y[i] - c.y;
             if (dx * dx + dy * dy <= r * r) contact = static_cast<i32>(i);
@@ -789,10 +815,11 @@ void World::killEnemy(u32 i, u8 killer) {
     }
     e.flags[i] |= kFlagDead;
     const Species& s = species_->get(e.species[i]);
+    const bool elite = (e.traits[i] & kEliteBit) != 0;  // M5 part 5: an elite's death is a large kill and scores x 10
     Event ev;
     ev.type = EventType::Kill;
     ev.species = e.species[i];
-    ev.a = s.killSize();
+    ev.a = elite ? 2 : s.killSize();
     ev.b = killer;
     ev.x = e.x[i];
     ev.y = e.y[i];
@@ -811,7 +838,7 @@ void World::killEnemy(u32 i, u8 killer) {
             ++pl.kills;
             const float chain = static_cast<float>(pl.chain);
             const float surge = (afterparty(killer) && !phrase_.surge()) ? 2.0f : 1.0f;  // M5: Afterparty's longer Surge
-            pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * chain * rules_.scoreMultiplier * surge));
+            pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * (elite ? species_->traits.score : 1.0f) * chain * rules_.scoreMultiplier * surge));
         }
         // A Boost is due (GAME_DESIGN 6.1, director controlled): this kill drops it.
         if (director_.boostDue && spawner_.mode == Spawner::Mode::Slice) {
@@ -823,6 +850,7 @@ void World::killEnemy(u32 i, u8 killer) {
     dropShards(i, killer);
     if (role_ == NetRole::Host) logDeath(i, killer, kDeathKill);
     familyDeath(i, s);  // M5: Brood C bursts into a swarm
+    eliteDeath(i, killer);  // M5 part 5: what its traits do as it dies
 }
 
 void World::dropShards(u32 i, u8 killer) {
@@ -838,6 +866,10 @@ void World::dropShards(u32 i, u8 killer) {
         if (coop() && (std::fabs(e.x[i] - players_[p].pos.x) > kCoopShardReachW || std::fabs(e.y[i] - players_[p].pos.y) > kCoopShardReachH))
             continue;
         // Play test 2 (GAME_DESIGN 6.1): a kill (not a Break's dissolve) near a hurt player drops its Cell when one is due.
+        if (e.traits[i] & kEliteBit) {
+            eliteShards(i, p);  // M5 part 5: 20 Shards and a Cell
+            continue;
+        }
         if (killer != 0xFF) dropCellFor(p, Vec2{e.x[i], e.y[i]}, e.rng[i]);
         u32 n = players_[p].boost(kMagnetStorm) ? 2u * s.shards : s.shards;
         if (e.state[i] == kFlee) n *= 2u;  // M5: the Alpha's pack, scattering, drops double Shards
@@ -900,6 +932,13 @@ i32 World::spawnEnemyAs(u16 speciesIndex, Vec2 pos, float heading, double landTi
     e.burnUntil[i] = e.frozenUntil[i] = -1.0;  // M5
     e.burnOwner[i] = 0xFF;
     e.burnLevel[i] = 0;
+    e.traits[i] = 0;  // M5 part 5: makeElite() sets an elite's
+    e.hpMax[i] = e.hp[i];
+    e.lastHit[i] = -1.0;
+    e.twin[i] = 0;
+    e.shield[i] = heading;
+    e.held[i] = 0;
+    e.stunUntil[i] = -1.0;
     e.ox[i] = e.oy[i] = e.pred[i] = 0.0f;
     e.target[i] = 0xFF;
     // M4: a client's enemy carries the host's spawn number, so its own random stream is the host's.
@@ -961,6 +1000,7 @@ bool World::spawnShard(Vec2 pos, Vec2 vel, u8 owner) {
     h.owner[i] = owner < kMaxPlayers ? owner : 0;
     h.homing[i] = 0;
     h.dead[i] = 0;
+    h.holder[i] = 0;
     return true;
 }
 
@@ -1001,6 +1041,13 @@ void World::removeEnemyAt(u32 i) {
         e.frozenUntil[i] = e.frozenUntil[last];
         e.burnOwner[i] = e.burnOwner[last];
         e.burnLevel[i] = e.burnLevel[last];
+        e.traits[i] = e.traits[last];  // M5 part 5
+        e.hpMax[i] = e.hpMax[last];
+        e.lastHit[i] = e.lastHit[last];
+        e.twin[i] = e.twin[last];
+        e.shield[i] = e.shield[last];
+        e.held[i] = e.held[last];
+        e.stunUntil[i] = e.stunUntil[last];
         e.handle[i] = e.handle[last];
         e.serial[i] = e.serial[last];
         e.rng[i] = e.rng[last];
@@ -1062,6 +1109,7 @@ void World::compact() {
         s.flags[i] = s.flags[l];
         s.mods[i] = s.mods[l];
         s.forks[i] = s.forks[l];
+        s.arena[i] = s.arena[l];
     }
     // Play test 1: each player's live shots, for the pool's per-player caps in the next tick.
     for (u32& n : shotsLive_) n = 0;
@@ -1083,6 +1131,7 @@ void World::compact() {
         h.owner[i] = h.owner[l];
         h.homing[i] = h.homing[l];
         h.dead[i] = h.dead[l];
+        h.holder[i] = h.holder[l];
     }
 }
 
@@ -1166,8 +1215,26 @@ u64 World::hash() const {
     val(director_.midHolding);
     val(director_.miniSpawned);
     val(director_.songs);
+    // M5 part 5: the arena and the elites.
+    for (const ArenaBody& b : arena_) {
+        val(b.kind);
+        val(b.alive);
+        val(b.pos.x);
+        val(b.pos.y);
+        val(b.hp);
+        val(b.charge);
+        val(b.tuner);
+    }
+    val(arenaEvent_.kind);
+    val(arenaEvent_.stage);
+    val(arenaEvent_.pos.x);
+    val(arenaEvent_.pos.y);
+    val(arenaRng_);
+    val(eliteClock_);
     const Enemies& e = enemies_;
     const u32 n = e.count;
+    mix(e.traits, n * sizeof(u16));
+    mix(e.hpMax, n * sizeof(float));
     val(n);
     mix(e.x, n * sizeof(float));
     mix(e.y, n * sizeof(float));
