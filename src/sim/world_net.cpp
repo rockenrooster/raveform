@@ -168,6 +168,7 @@ void World::applyNetOp(const NetOp& op) {
             if (role_ != NetRole::Client) break;
             const i32 i = indexOfSerial(op.serial);
             if (i < 0) {
+                counters_.unknownSerial[counters_.unknownIds & 7u] = op.serial;
                 ++counters_.unknownIds;
                 break;
             }

@@ -626,6 +626,25 @@ network's: the Twin Tether soak (Track 7, four players) **overflows the enemy bu
 own world too** (2,650-4,030 bullets refused in 3 minutes), so it fails the soak's no-overflow check; the content
 engineer's to look at.
 
+### The census past Track 3 (main 61a7f09, protocol 0x52460509)
+
+Reproduced with the 10-minute soak (6 mismatches, all in Event Horizon's fight; the same number of "unknown ids" and of
+refused packets). Every mismatch was a host enemy no client ever had (spawned lane walkers), and every refused packet
+held a `MsgBoss`: M5 part 7's pace decision (`bossDecide kGeomBossPace`, a = (the pace, the players' damage a player))
+carries a damage in a field the parser checked as a place (`inWorld`, +-5,600 wu). A damage above that refused the
+**whole reliable packet**, and the spawns and verdicts in it with it; the clients never had those enemies (the
+census off) and later heard their deaths (unknown ids). The 17-minute soak's 435 on a008b71 is the same, once a fight.
+
+Fix (`src/net/protocol.cpp`): a boss decision's two values (`kind 1`, a geometry pair) are checked as finite and
+within 1e7, a place's bounds only for the other boss messages; a test in `net_tests.cpp` sends a pace decision with a
+damage of 48,000 and a spawn after it in one packet. After it: 10 minutes 0 mismatches of 900, 17 minutes (to Track 7)
+0 of 1,530, no refused packets. The soak now prints, at a mismatch, the enemies the host and client 1 disagree on and
+the last refused message's type, and at the end what each death a client heard for an unknown enemy was on the host.
+
+The two part 7 checks: the four-player Twin Tether soak refuses **0** bullets (fight 10.3 wu, census 0); host and
+clients agree on a boss's health with the pace on: Cadence RMS 0.03% of the whole (max 0.20%), Feedback 0.08% (max
+0.74%). `scripts\test.ps1` passes (its soaks now 6 minutes: 2.40 / 4.25 wu, census 0 mismatches).
+
 ### (e) Moth Queen and Brood Mother
 
 Not done this round. Moth Queen in the 40-minute soaks: true 13-18 impaired (at correction 23-29). Brood Mother is

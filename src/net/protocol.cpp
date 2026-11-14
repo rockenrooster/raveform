@@ -19,6 +19,7 @@ constexpr float kVelQ = 0.1f;   // wu/s per step of a velocity
 constexpr float kKnockQ = 5.0f;
 constexpr float kUntilQ = 0.25f;  // musical ticks per step of a correction's state end (+-8,192 ticks)
 constexpr float kWorldLimit = 5600.0f;  // positions beyond this are malformed (the arena is +-4800 x +-2700)
+constexpr float kDecisionLimit = 1.0e7f;  // a boss decision's values (a place, a pace, a damage, a bar)
 
 float halfToFloat(u16 h) {
     const u32 sign = static_cast<u32>(h & 0x8000u) << 16;
@@ -322,10 +323,14 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             m.changeBar = r.u32v();
             // M5 part 5: the host's arena decisions (pair kArenaOpBase + the operation, its a in oss, its b in killer).
             const bool arena = m.kind == 1 && m.pair >= sim::kArenaOpBase && m.pair < sim::kArenaOpBase + 16;
-            const bool partOk = m.pair < sim::kBossParts || (m.pair >= sim::kBossStepBase && m.pair < sim::kBossStepBase + 8) ||
-                                (m.pair >= sim::kBossGeomBase && m.pair < sim::kBossGeomBase + sim::kGeomCount) || arena;
+            const bool geom = m.kind == 1 && m.pair >= sim::kBossGeomBase && m.pair < sim::kBossGeomBase + sim::kGeomCount;
+            const bool partOk = m.pair < sim::kBossParts || (m.pair >= sim::kBossStepBase && m.pair < sim::kBossStepBase + 8) || geom || arena;
+            // A decision's two values are not always a place (M5 part 7's pace carries a damage, which passed the arena's bounds
+            // and took its whole packet with it: spawns and verdicts lost, the census off): finite and bounded for those.
+            const auto valueOk = [](float v) { return finite(v) && std::fabs(v) <= kDecisionLimit; };
+            const bool placesOk = geom ? valueOk(m.x) && valueOk(m.y) && valueOk(m.x2) && valueOk(m.y2) : inWorld(m.x, m.y) && inWorld(m.x2, m.y2);
             if (r.bad() || m.kind > 2 || !partOk || (!arena && (m.boss >= sim::kBossKinds || !killerOk(m.killer))) || (arena && m.boss >= 32) ||
-                !inWorld(m.x, m.y) || !inWorld(m.x2, m.y2) || !finite(m.tick))
+                !placesOk || !finite(m.tick))
                 return false;
             if (sink) sink->onBoss(m);
             return true;
@@ -616,7 +621,10 @@ bool walk(const u8* data, u32 size, PacketSink* sink) {
         at += kHeader;
         if (len > size - at) return false;
         Reader r(data + at, len);
-        if (!parseMessage(type, r, sink) || r.bad() || r.left() != 0) return false;
+        if (!parseMessage(type, r, sink) || r.bad() || r.left() != 0) {
+            g_lastBadMessage = static_cast<u8>(type);  // (diagnostics: the soak names what a refused packet held)
+            return false;
+        }
         at += len;
     }
     return true;
