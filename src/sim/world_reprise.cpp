@@ -183,7 +183,8 @@ void World::updateReprise(float dt) {
     const RepriseData& d = species_->reprise;
     const BossData& kd = species_->boss;
     if (s.dying) return;
-    // The wheel turns once in eight bars and keeps 450-650 wu from the nearest player at 30 wu/s, as Kaleidos does.
+    // The wheel turns once in 5 1/3 bars and keeps 675-975 wu from the nearest player at 45 wu/s (the owner's 1.5x, 2026-11-14:
+    // once in eight bars, 450-650 at 30, as Kaleidos does, until then).
     s.angle = repriseArmAngle(0, m1_);
     const i32 near = nearestPlayer(s.pos.x, s.pos.y);
     if (near >= 0) {
@@ -191,8 +192,8 @@ void World::updateReprise(float dt) {
         const float l = length(to);
         if (l > 1e-3f) {
             const Vec2 u = to * (1.0f / l);
-            if (l < kd.keepNear) s.pos = s.pos - u * (kd.driftSpeed * dt);
-            if (l > kd.keepFar) s.pos = s.pos + u * (kd.driftSpeed * dt);
+            if (l < kRpKeepNear) s.pos = s.pos - u * (kRpDriftSpeed * dt);
+            if (l > kRpKeepFar) s.pos = s.pos + u * (kRpDriftSpeed * dt);
         }
         const float m = d.armLength * kRpScale + 100.0f;
         s.pos = Vec2{clampf(s.pos.x, -kArenaHalfW + m, kArenaHalfW - m), clampf(s.pos.y, -kArenaHalfH + m, kArenaHalfH - m)};
@@ -201,8 +202,14 @@ void World::updateReprise(float dt) {
     s.bodyAng[0] = s.angle;
     for (u32 k = 0; k < 6; ++k) s.body[1 + k] = s.pos + dirOf(s.angle + static_cast<float>(k) * kArmStep) * (0.7f * d.armLength);
     if (m1_ < s.fightTick) return;
+    // reprise.md "Sound" (the owner, 2026-11-14: "more epic ... audio wise"): every bar's One booms; every fourth rings the gong.
+    forCrossings(m0_, m1_, kTicksPerBar, [&](double t, i64 bar) {
+        if (t < s.fightTick) return;
+        emitCue(BossCue::RpBoom, t, 0, 0.0f, s.pos);
+        if (bar % static_cast<i64>(kRpGongBars) == 0) emitCue(BossCue::RpGong, t, 0, 0.0f, s.pos);
+    });
     // The phase: the Medley once the core is down to 70% (each arm a sixth of the phase's health); Last Light once every arm is
-    // gone.
+    // gone. Each change rings the gong.
     if (r.phase == 0 && s.coreHp <= kRpMedleyAt * s.coreMax) {
         r.phase = 1;
         s.phase = 1;
@@ -210,6 +217,7 @@ void World::updateReprise(float dt) {
         const float share = (s.coreHp - kRpLastAt * s.coreMax) / 6.0f;
         s.partMax = share > 0.0f ? share : 1.0f;
         for (u32 k = 0; k < 6; ++k) s.partHp[k] = (s.alive & (1u << k)) ? s.partMax : 0.0f;
+        emitCue(BossCue::RpGong, m1_, 1, 0.0f, s.pos);
     }
     if (r.phase == 1 && (s.alive & 0x3Fu) == 0) {
         r.phase = 2;
@@ -219,6 +227,7 @@ void World::updateReprise(float dt) {
         r.figure0 = s.angle;
         r.echoOn = false;
         s.coreHp = std::fmin(s.coreHp, kRpLastAt * s.coreMax);
+        emitCue(BossCue::RpGong, m1_, 2, 0.0f, s.pos);
     }
     const float density = bossBulletDensity() * loopShooters_;
     const auto room = [&]() { return bullets_.count < kRpBulletCap; };

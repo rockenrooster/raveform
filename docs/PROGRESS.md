@@ -4,6 +4,20 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (evening), Kaleidos Reprise: 1.5x bigger, faster, tougher, and epic
+
+- "The track 10 Boss needs to be more epic visual wise and audio wise also make it 1.5x bigger also 1.5x faster ... and 1.5x more
+  hp": the wheel 1.875 times Kaleidos (1.25): core 120 (80), arms 450 (300), the arms' hit circles 51 (34); it turns once in
+  5 1/3 bars (8) and keeps 675-975 wu from the nearest player at 45 wu/s (Kaleidos's 450-650 at 30); health x 1.5
+  (`kRepriseHealthTune`, so about 90 s for the novice where it was 60: not measured); the camera holds 0.75 (0.85; at 0.7 the
+  lattice's edge showed). Its bullets keep their speeds.
+- Epic: twelve rays of light behind the wheel in the arms' colours (white and gold in Last Light), flaring on the kick, and a
+  wide glow of the soloist's colour; every bar's One booms (new `BossCue::RpBoom`: the impact at 0.45, a ring off the wheel, a
+  core flash, a lattice push), every fourth bar and each change of phase rings the gong (`RpGong`: two rings across the frame,
+  the distortion ring, a shake); the death is the run's biggest burst (a 1.4 km white flash, a ring in each arm's colour, 400
+  sparks, distortion, a shake of 9) before the ripple and the ENCORE card (reprise.md "Death", "Sound").
+- sim 6,114 checks / audio 2,718, 0 failures. Pictures `captures\pt4\reprise_a` (Reprise), `reprise_b` (Medley).
+
 ## 2026-11-14 (evening), Collector one rank, three Boosts at once, Meteor Rain's landing
 
 - Collector "too op late game": a Boost every **500** Shards, **one rank** (250, then 150 at two; `kCollectorEvery`, the cap in

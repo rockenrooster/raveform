@@ -10,7 +10,7 @@
   "health": "the number given is a first guess: tune it with the careful bot until the fight lasts what the page says with the build a player has by then, as was done for Longwave and The Choir; x (1 + 0.5 per extra player)",
   "grid": "everything it does lands on the song's grid and is computed from the song's clock, so every device in a co-op run sees the same fight with nothing new on the wire",
   "reward": "a bonus Trio and Shards for each player; the Track ends",
-  "camera": "holds 0.85 for the fight (GAME_DESIGN 9)",
+  "camera": "holds 0.75 for the fight, as Longwave (0.85 until the wheel grew, 2026-11-14)",
   "crowd": "half of the Drop's crowd, fodder only, unless the page says otherwise"
  },
  "parts": [
@@ -32,9 +32,9 @@
    "waveSegmentOffTheCrest": 0.25,
    "note": "wherever the page says a part cannot be hurt yet it takes a quarter; in the Medley the closed core's quarter goes to the soloist's sixth"
   },
-  "coreRadius": 80.0,
-  "armLength": 300.0,
-  "turn": "one revolution every eight bars; it keeps 450 to 650 wu from the nearest player as Kaleidos does",
+  "coreRadius": 120.0,
+  "armLength": 450.0,
+  "turn": "one revolution every 5 1/3 bars (eight until 2026-11-14); it keeps 675 to 975 wu from the nearest player, drifting at 45 wu/s (Kaleidos's 450 to 650 at 30 until then)",
   "armShare": "in the Medley each arm has a sixth of that phase's health",
   "fightSeconds": [
    110,

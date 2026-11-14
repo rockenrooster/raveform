@@ -347,7 +347,8 @@ void PlayView::drawMorgana(FrameDraw& d, const ViewInput& in) {
 // ---------------------------------------------------------------------------------------------- Kaleidos, Reprise
 
 void PlayView::drawReprise(FrameDraw& d, const ViewInput& in) {
-    // reprise.md "Parts": Kaleidos as built, a quarter larger (its facets drawn to arms 300 wu long round a core of 80), each
+    // reprise.md "Parts": Kaleidos as built, 1.875 times as large (its facets drawn to arms 450 wu long round a core of 120, the
+    // owner's 1.5x of 2026-11-14), each
     // arm in the accent of the Track whose boss it plays (Ultraviolet, Solar, Reef, Aurora, Furnace, Zenith); the soloist at 3.0
     // with its white core line and a pool of its colour, the others at 1.0; in the Reprise the arms white-edged (they cannot
     // be hurt yet). Longwave's arm let go is its wave (eight segments in Solar, the crests white); Feedback's Echo a ring in its
@@ -375,6 +376,30 @@ void PlayView::drawReprise(FrameDraw& d, const ViewInput& in) {
     if (!visible(pos, R.armLength) && !s.dying) fightChevron(d, in, pos, acc);
     const double barStart = std::floor(t / kTicksPerBar) * kTicksPerBar;
     const bool downbeat = t - barStart < kTicksPerBeat && t >= s.fightTick && !s.dying && r.phase != 1;
+    // reprise.md "The light" (the owner, 2026-11-14: "more epic visual wise"): twelve rays behind the wheel, two in each living
+    // arm's colour through the gaps between the arms, 1,100 wu long, turning with it and flaring on every kick; in Last Light,
+    // the bare core's, white and gold. A wide glow of the soloist's colour under the whole wheel in the Medley.
+    if (!s.dying && enter > 0.0f) {
+        constexpr float kRayWu = 1100.0f;
+        const float flare = (1.0f + 1.2f * kick_) * (reduceFlashing_ ? 0.6f : 1.0f);
+        const float grow = clamp01(enter);
+        for (u32 j = 0; j < 6; ++j) {
+            if (r.phase == 1 && !(s.alive & (1u << j))) continue;
+            const Vec3 hue = r.phase == 2 ? (j % 2 ? palettes_->player[3] : W1) : accentOf(j + 1);
+            for (i32 side = -1; side <= 1; side += 2) {
+                const float ang = wheel + static_cast<float>(j) * kTau / 6.0f + kTau / 12.0f + static_cast<float>(side) * 0.16f;
+                const Vec2 dv = dirv(ang);
+                const Vec2 a0 = pos + dv * (R.coreRadius * 1.1f), a1 = pos + dv * (kRayWu * grow);
+                d.scene.line(toScene(a0), toScene(a1), 2.2f * refPx_, hue * (0.6f * flare * life), hue * 0.0f, 0);
+                for (u32 q = 1; q <= 4; ++q) {
+                    const float u = static_cast<float>(q) / 5.0f;
+                    d.pools.glow(toScene(pos + dv * (kRayWu * grow * u)), 70.0f * pxPerWu_, hue * (0.04f * flare * life * (1.0f - u)));
+                }
+            }
+        }
+        if (r.phase == 1 && r.solo < 6 && (s.alive & (1u << r.solo)))
+            d.pools.glow(toScene(pos), 2.2f * R.armLength * pxPerWu_, accentOf(r.solo + 1u) * 0.07f);
+    }
     // The arms.
     const bool wave = w.repriseWaveOut(t);
     for (u32 j = 0; j < 6 && !s.dying; ++j) {

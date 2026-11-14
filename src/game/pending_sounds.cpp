@@ -228,6 +228,11 @@ const FightSound kRows[] = {
     {BossCue::RpDeath, "reprise.md", "death: the tonic held, the ripple a reversed cymbal ending on the encore's first downbeat (the ENCORE card's bar "
                                      "line, as the fight places it; the tonic a pad voice from the death to a bar past it)",
      nullptr, SoundPlay::Custom, rc(Recipe::RevCymbal), false, 0.7f, 4, 0},
+    {BossCue::RpBoom, "reprise.md", "every bar's One booms under the band: the impact (sub, boom and crash) (the owner, 2026-11-14: \"more epic ... audio "
+                                    "wise\")",
+     nullptr, SoundPlay::Recipe, rc(Recipe::Impact), false, 0.45f, 0, 0},
+    {BossCue::RpGong, "reprise.md", "every fourth bar's One rings the gong, as does each change of phase", nullptr, SoundPlay::Recipe, rc(Recipe::Gong), false,
+     0.7f, 0, 0},
     // ---- Mini-bosses batch 3 (minibosses.md; M5 part 6)
     {BossCue::MmFire, "minibosses.md", "its fire is the player's lead upside down: each lead note answered a thirty-second later by the note as far below "
                                          "the chord's root as the lead's is above, at 0.4",

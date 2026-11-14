@@ -2637,7 +2637,8 @@ void testMorgana() {
 void testReprise() {
     g_test = "reprise";
     const RepriseData& d = g_species->reprise;
-    CHECK(d.health == 9000.0f && d.coreRadius == 80.0f && d.armLength == 300.0f && d.rewardShards == 500);
+    // (the owner's 1.5x, 2026-11-14: a core of 120 and arms of 450, 80 and 300 before)
+    CHECK(d.health == 9000.0f && d.coreRadius == 120.0f && d.armLength == 450.0f && d.rewardShards == 500);
     CHECK(d.arpMidi[0][0] == 69 && d.arpSemis[0][3] == 12 && d.arpSemis[0][12] == 10 && d.arpMidi[3][0] == 62 && d.arpSemis[3][12] == 14);
     CHECK(bossOfSong(9) == BossKind::Reprise && bossHomeTrack(BossKind::Reprise) == 10 && fightBuilt(BossKind::Reprise) && kBossesBuilt == 10);
     World* w = quietWorld();

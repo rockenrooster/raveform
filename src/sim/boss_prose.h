@@ -184,8 +184,12 @@ constexpr float kMgLatticeWhipWu = 10.0f; // "the lattice whipped 10 wu along th
 constexpr float kMgStormLowPassHz = 2000.0f;  // sound: "outside it the music bus is also low-passed at 2 kHz"
 
 // ---- Kaleidos, Reprise (design/bosses/reprise.md; M5 part 6)
-constexpr float kRpScale = 1.25f;         // the wheel: "Kaleidos as built, a quarter larger"
-constexpr u32 kRpTurnBars = 8;            // turn: "one revolution every eight bars"
+constexpr float kRpScale = 1.875f;        // the wheel: "Kaleidos as built, 1.875 times as large" (1.25 until the owner's 1.5x, 2026-11-14)
+constexpr float kRpTurnBars = 16.0f / 3.0f;  // turn: "one revolution every 5 1/3 bars" (eight)
+constexpr float kRpKeepNear = 675.0f, kRpKeepFar = 975.0f;  // "it keeps 675 to 975 wu from the nearest player,
+constexpr float kRpDriftSpeed = 45.0f;                      // drifting at 45 wu/s"
+constexpr float kRpZoom = 0.75f;          // camera: "holds 0.75 for the fight" (Longwave's: the lattice's edge shows below it)
+constexpr u32 kRpGongBars = 4;            // sound: "every fourth [bar] rings the gong"
 constexpr float kRpMedleyAt = 0.70f;      // phases: Reprise 100 to 70%, Medley 70 to 20%, Last Light 20 to 0%
 constexpr float kRpLastAt = 0.20f;
 constexpr u32 kRpHitSteps[4] = {0, 4, 10, 12};  // Reprise: "on the two-step's hits (kick on steps 0 and 10, snare on 4 and 12)"

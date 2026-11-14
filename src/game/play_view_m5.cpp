@@ -875,6 +875,21 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
             if ((cue == BossCue::PrThree || cue == BossCue::PrFour) && s.kind == BossKind::Polyrhythm)
                 push(kImpBoss, at, prose::kPrLatticeImpulse, 120.0f, t);  // the grid beats three against four
             if (cue == BossCue::HzFed) addShockRings(s.pos, 1, w.species().horizon.ringRadius[2] + 120.0f, palette_->hue[1], whiteV(), t, 0.35f);
+            // reprise.md (the owner, 2026-11-14: "more epic visual wise"): the boom on every bar's One is a ring off the wheel, a flash
+            // in its core and a push through the lattice; the gong (every fourth bar, each change of phase) rings twice across the
+            // frame with the distortion ring and a shake.
+            if (cue == BossCue::RpBoom && s.kind == BossKind::Reprise && !s.dying) {
+                const float arm = w.species().reprise.armLength;
+                addShockRings(s.pos, 1, arm + 300.0f, palette_->accent, whiteV(), t, 0.4f);
+                addPool(s.pos, 40.0f, 220.0f, whiteV(), reduceFlashing_ ? 0.25f : 0.6f, 0.0f, 0.15f, false, 1, false, false, t);
+                push(kImpBoss, s.pos, 240.0f, arm * 2.2f, t);
+            }
+            if (cue == BossCue::RpGong && s.kind == BossKind::Reprise && !s.dying) {
+                addShockRings(s.pos, 2, 1800.0f, palettes_->player[3], whiteV(), t, 0.8f);
+                addDistortion(s.pos, 1200.0f, 0.6f, 20.0f, 28.0f, t);
+                push(kImpBoss, s.pos, 420.0f, 2600.0f, t);
+                shakeAmp_ = std::fmax(shakeAmp_, e.b ? 7.0f : 4.0f);
+            }
             if (cue == BossCue::HzStarved)
                 addPool(s.pos, w.species().horizon.photonRadius, w.species().horizon.ringRadius[1], palettes_->player[3], reduceFlashing_ ? 0.2f : 0.45f, 0.0f, 0.25f,
                         false, 1, false, false, t);
@@ -904,7 +919,26 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
                 static_cast<BossKind>(e.a) == BossKind::Feedback)
                 break;
             if (static_cast<BossKind>(e.a) == BossKind::Reprise) {
-                // reprise.md: no burst; the core dims to a point (drawReprise) and one white ripple crosses the whole lattice.
+                // reprise.md (the owner, 2026-11-14: "more epic"; no burst until then): the run's biggest burst, a white flash across
+                // the frame, a ring in each of the six arms' colours, four hundred sparks and the distortion ring; then the core dims to
+                // a point (drawReprise) and one white ripple crosses the whole lattice.
+                addPool(at, 80.0f, 1400.0f, whiteV(), reduceFlashing_ ? 0.5f : 1.2f, 0.0f, 0.3f, false, 1, false, false, t);
+                for (u32 k = 0; k < 6; ++k) {
+                    Vec3 c = palette_->accent;
+                    for (u32 i = 0; i < palettes_->count; ++i)
+                        if (palettes_->list[i].track == k + 1) c = palettes_->list[i].accent;
+                    addShockRings(at, 1, 900.0f + 260.0f * static_cast<float>(k), c, whiteV(), t + 0.05f * static_cast<float>(k), 0.9f);
+                }
+                SparkReq r{};
+                r.at = at;
+                r.count = 400;
+                r.kind = 1;
+                r.a = palettes_->player[3];
+                r.b = whiteV();
+                r.t0 = t;
+                sparkRequest(r);
+                addDistortion(at, 1600.0f, 0.8f, 30.0f, 40.0f, t);
+                shakeAmp_ = std::fmax(shakeAmp_, 9.0f);
                 push(kImpBoss, at, 700.0f, 4200.0f, t);
                 addShockRings(at, 1, 4200.0f, whiteV(), whiteV(), t, 1.6f);
                 break;

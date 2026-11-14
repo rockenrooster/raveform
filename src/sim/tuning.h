@@ -455,11 +455,12 @@ constexpr float kMorganaHealthTune = 1.7325f * tempoHealth(9); // (15.4 x 0.1125
 constexpr float kMgFanSpreadDeg = 40.0f;    // morgana.md gives no spread for her fan of five (Cadence's 40 degrees)
 constexpr float kMgBulletLife = 4.0f;       // ... nor its life (Cadence's 4 s)
 constexpr float kMgMarginWu = 700.0f;       // the oases keep this far from the arena's walls
-constexpr float kRepriseHealthTune = 0.659f * tempoHealth(10);  // (0.347 x 1.9) bccb4eb ("the finale is the longest", about 60 s): --handover 10, 20 of 20,
+constexpr float kRepriseHealthTune = 0.659f * 1.5f * tempoHealth(10);  // (x 1.5: the owner, 2026-11-14, "1.5x more hp") (0.347 x 1.9) bccb4eb ("the finale is the longest", about 60 s): --handover 10, 20 of 20,
                                               // median 60 s, mean 74 s (4 of 20 over two minutes: weak inherited builds; 22-77 s the
                                               // rest); at 0.347 on 5cd026a: 20 of 20, 35 s; x 1.71: 19 of 20, 51 s; x 2.1: 20 of 20, 65 s.
                                               // 02c28ab: 0.914 x 0.38 (at 0.914: 26 of 30, 100 s)
-constexpr float kRpArmCircleR = 34.0f;      // an arm's hit circles (three along it; Kaleidos's hull is drawn, not given)
+constexpr float kRpArmCircleR = 51.0f;      // an arm's hit circles (three along it; Kaleidos's hull is drawn, not given; 34 until the
+                                            // owner's 1.5x, 2026-11-14)
 constexpr float kRpWaveSpacing = 150.0f;    // Longwave's arm let go: its segments 150 wu apart across its way (not given)
 constexpr float kRpWaveAmp = 80.0f;         // ... swinging 80 wu along it, a swing a beat (not given)
 constexpr float kRpWaveTravel = 1800.0f;    // ... 1,800 wu out from the wheel over its two bars ("crosses the frame once")

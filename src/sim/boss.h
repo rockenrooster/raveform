@@ -96,8 +96,9 @@ enum class BossCue : u8 {
     // Kaleidos, Reprise (reprise.md "Sound"): each solo in its boss's voice (Kaleidos's bells on its fans, Longwave's rubber
     // string on the wave's beats, a pad voice for the Choir's volley and its answer (b: 0 / 1), the sub drop for Event
     // Horizon's pull and its ring, toms three against four for Polyrhythm (f: semitones), the player's lead for Feedback's
-    // Echo (b: the player)); the last pattern's bell (f: MIDI); the death's reversed cymbal (ending on its tick).
-    RpBell, RpString, RpPad, RpSub, RpTom, RpEcho, RpArp, RpDeath,
+    // Echo (b: the player)); the last pattern's bell (f: MIDI); the death's reversed cymbal (ending on its tick); the owner's
+    // "more epic" (2026-11-14): the boom on every bar's One, the gong on every fourth and on each change of phase (b: 1, 2).
+    RpBell, RpString, RpPad, RpSub, RpTom, RpEcho, RpArp, RpDeath, RpBoom, RpGong,
     // Mini-bosses batch 3 (minibosses.md): the Mimic's answer to a lead note (b: the player), its late Dash, its glass; the
     // Tether's cut strand and a node passing twelve o'clock; the Weaver's lap (b: the lap), its knot, the cage going off; the
     // Well's swallow (b: the rings lit), its choke and the bed low-passed for the bar, a ring given back.

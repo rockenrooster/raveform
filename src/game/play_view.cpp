@@ -854,6 +854,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         if (w.boss().kind == sim::BossKind::EventHorizon) fightZoom = w.species().horizon.zoom;  // M5 part 4 (horizon.json camera)
         if (w.boss().kind == sim::BossKind::Polyrhythm) fightZoom = w.species().poly.zoom;
         if (w.boss().kind == sim::BossKind::Feedback) fightZoom = w.species().feedback.zoom;
+        if (w.boss().kind == sim::BossKind::Reprise) fightZoom = sim::prose::kRpZoom;  // (reprise.md "Camera": 0.7 since the wheel grew)
     }
     if (w.boss().active && !w.boss().dying && w.boss().kind != sim::BossKind::Longwave) {
         const Vec2 off = lerp2(w.boss().prevPos, w.boss().pos, a) - S;
