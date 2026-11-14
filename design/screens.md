@@ -497,6 +497,14 @@ bar line after.
 A tap on PLAY while the title is still building starts the drop-in from where the title is; its wait
 is still at least two beats.
 
+### Every other way in or out of a run
+
+Each takes one of the two above, so nothing cuts anywhere: the pause's RESTART is RETRY's drop-in
+(the pause's dim and filter lift over its wait); QUIT RUN, co-op's HOME and LEAVE RUN are home; a
+peer whose host has left goes home, and the host's message (`THE HOST LEFT`) stands under PLAY
+for two bars. The co-op lobby's START is the drop-in from the lobby, whose screen leaves as the
+title's controls do.
+
 ### Death → game over (unchanged, for the record)
 
 The last hit, the ship's break and the game-over sound; the run goes on behind, dimmed to a fifth

@@ -55,7 +55,7 @@ SIZE = {"pylon": 26.0, "rift": 80.0, "vault": 60.0, "bumper": 45.0, "lens": 160.
 COMMON = {
     "note": "World units. A structure stands in the world for one Track; an event is a few bars long. Both are placed by the run's seed relative to the players' centre at the moment they are placed, never inside a player's frame, never within 400 wu of a wall, and never while a boss or a mini-boss is alive. Health and damage follow the Track through 'trackScale': the mini-boss health of that Track in design/bosses/minibosses.json (Track 1 uses 300), times the fraction given.",
     "structuresPlaced": "on the first downbeat of the Track, 1,000 to 1,800 wu from the players' centre, at least 700 wu from each other; the last Track's dissolve over the Track change's Break unless a player is within 600 wu, in which case they stay until that player leaves",
-    "events": "Track 1 has one, the Comet, in the Groove of its third cycle; from Track 2 one event a Track, in the Groove of its second cycle; from Track 4 a second one in the Groove of its third cycle. Drawn by the seed from the Track's list, never the event of the Track before. Announced one bar ahead by a gold edge chevron and its name as world text at the place (cap 22, gold), then it runs",
+    "events": "Track 1 has one, the Comet, in the Groove of its second cycle; from Track 2 one event a Track, in the Groove of its second cycle; from Track 4 a second one in the Groove of its first cycle (every Track is two cycles since 2026-11-14). Drawn by the seed from the Track's list, never the event of the Track before. Announced one bar ahead by a gold edge chevron and its name as world text at the place (cap 22, gold), then it runs",
     "indicators": "structures get no edge chevron (they are found); events get the gold one; a Rift's is the enemy hue with a ring at its tip",
     "coop": "placed round the players' centre; every reward is for each player (Boost orbs and Shards are each player's own, as everywhere)",
     "caps": "at most 6 structures and 1 event alive; what an event or a structure spawns counts against the enemy and bullet caps",
@@ -164,7 +164,7 @@ BY_TRACK = {
     "8": {"structures": ["bumper", "bumper", "bumper", "bumper", "lens", "lens"], "events": ["meteor_rain", "rift_surge"]},
     "9": {"structures": ["current", "current", "lens", "rift", "rift"], "events": ["storm_cell", "eclipse"]},
     "10": {"structures": ["vault", "pylon", "rift", "bumper", "current", "lens"], "events": ["elite_hunt", "meteor_rain", "convoy", "storm_cell"]},
-    "note": "Track 1 has no event before its third cycle (the Comet). In the loop each Track keeps its list.",
+    "note": "Track 1 has no event before its second cycle (the Comet). In the loop each Track keeps its list.",
 }
 
 

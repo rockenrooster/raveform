@@ -500,7 +500,10 @@ die and does not say why, and the user never got past Longwave. So:
   divided by the pace. Nothing
   jumps on the health bar; a player who knows the rule and has the build simply meets a boss
   that lasts about as long as the novice's does, which is the length on its page. A novice's pace
-  is 1 by construction. Bosses only: a mini-boss leaves with its Drop. In co-op the host sets the
+  is 1 by construction. **Only aimed damage counts** (2026-11-14): shots fired through the assist are
+  the novice's own fire and never raise the pace, so a player who never aims meets the novice's boss
+  (the assist bot, which never aims, met Longwave and the Choir at paces of 2.1 to 2.8 and missed
+  its bar). Bosses only: a mini-boss leaves with its Drop. In co-op the host sets the
   pace and applies it; solo is the same code. With it the careful bot's line (a fight at least
   half the page's shorter length) is held again.
 - **Beatable with the assist alone** (play test 3, the owner: "this is meant to be an 'easy' game,
