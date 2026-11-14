@@ -142,8 +142,11 @@ private:
     void flare(CapsuleBatch& out, Vec2 at, float angle, float lengthWu, u32 arms, Vec3 colour, float halfWidthRef);
     void hullEveryOther(FrameDraw& d, int g, Vec2 pos, float rot, float scale, float intensity, float halfWidthRef, Vec3 hue, Vec3 partner,
                         bool white);  // M6: a Phasing elite's hull off its solid half
-    // (widthWu > 0: the dashes that warn of a beam, as wide as it kills: look.md v2.5)
-    void telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight, float widthWu = 0.0f);
+    // look.md §5 (0449eb3): a tell is see-through: dashed here, 1.5 px, in the scene light only, the danger colour at 0.35 rising
+    // to 0.6 over the beat before `fireTick` (when what it warns of fires; < 0: unknown, 0.35 throughout).
+    void telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, double fireTick, float sceneLight = 1.0f);
+    // A shooter's glint and a Ram's chevrons (look.md §5): marks, not dashes; in the scene light only as well.
+    void tellMark(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight);
     // look.md v2.5, a lethal beam is a laser too: the priority capsule exactly as wide as it kills, a 2 px white-pink line on
     // its axis, and round it a danger glow (0.25 on the axis, sigma twice the kill width) that hurts nobody.
     void lethalBeam(FrameDraw& d, Vec2 a, Vec2 b, float killWu, float level = 1.0f);
@@ -233,6 +236,7 @@ private:
     const Palette* choirHueFor_ = nullptr;
     u32 deathShown_ = 0;
     double deathSeenTick_ = -1.0;
+    double tellNow_ = 0.0;  // the frame's musical position, for the tells' rise (telegraphLine)
     // Edge indicator (look.md §6, M3 stage C): a chevron inside the screen edge pointing at world, on a dark
     // disc, in the threat layer; oss: the larger double chevron, scaled by swell.
     // tip: 1 a small ring at its tip (a downed teammate, M4), 2 a plus (a Cell while its player is on the last cell, play

@@ -188,12 +188,14 @@ Vec2 World::choirAimFrom(Vec2 from) const {
     return near >= 0 ? players_[near].pos : boss_.ch.centre;
 }
 
-void World::choirSing(u32 k, double t, u32 bullets, float spreadDeg, float aim) {
+void World::choirSing(u32 k, double t, u32 bullets, float spreadDeg, float aim, i64 volley) {
     BossState& s = boss_;
     const ChoirData& d = species_->choir;
     if (!(s.alive & (1u << k))) return;  // rule 4: a dead Voice is a rest
     const Vec2 at = s.body[1 + k];
-    const u32 n = bossScaledCount(bullets, bossBulletDensity(), 1u);
+    // (0449eb3: the Track's count, a fan thinned evenly; a Voice's single note every second time it sings, or three in four; it
+    // still sings)
+    const u32 n = bossCount(bullets, 1u, volley, k);
     const float adv = tickAgeOf(t);
     for (u32 j = 0; j < n; ++j) {
         const float da = (static_cast<float>(j) - 0.5f * static_cast<float>(n - 1)) * spreadDeg * kDeg;
@@ -272,24 +274,25 @@ void World::choirEighth(double t) {
     const ChoirState& c = s.ch;
     const ChoirData& d = species_->choir;
     const i64 e = imod(static_cast<i64>(std::floor((t - std::floor(t / kTicksPerBar) * kTicksPerBar) / (kTicksPerBeat / 2.0) + 0.5)), 8);
+    const i64 eighth = volleyIndex(t, 0.5 * kTicksPerBeat);  // (0449eb3: the eighth's index, for a pattern's volleys: see choirSing)
     const auto aimAt = [&](u32 k) { return angleOf(choirAimFrom(s.body[1 + k]) - s.body[1 + k]); };
     switch (c.phase) {
         case 0: {  // Unison: the caller on beats 1 and 3, the Voice opposite on 2 and 4
-            if (e == 0 || e == 4) choirSing(c.caller, t, d.unisonCall, prose::kChFanCallDeg, aimAt(c.caller));
+            if (e == 0 || e == 4) choirSing(c.caller, t, d.unisonCall, prose::kChFanCallDeg, aimAt(c.caller), eighth / 4);
             const u32 o = (c.caller + kV / 2) % kV;
-            if (e == 2 || e == 6) choirSing(o, t, d.unisonAnswer, prose::kChFanCallDeg, aimAt(o));
+            if (e == 2 || e == 6) choirSing(o, t, d.unisonAnswer, prose::kChFanCallDeg, aimAt(o), eighth / 4);
             break;
         }
         case 1: {  // Canon: the caller on beat 1, then every other live Voice clockwise, an eighth apart
             if (e == 0) {
-                choirSing(c.caller, t, d.canonCall, prose::kChFanCallDeg, aimAt(c.caller));
+                choirSing(c.caller, t, d.canonCall, prose::kChFanCallDeg, aimAt(c.caller), eighth / 8);
                 break;
             }
             u32 m = 0;
             for (u32 step = 1; step < kV; ++step) {
                 const u32 k = (c.caller + step) % kV;
                 if (!(s.alive & (1u << k))) continue;
-                if (++m == static_cast<u32>(e)) choirSing(k, t, d.canonAnswer, prose::kChFanAnswerDeg, aimAt(k));
+                if (++m == static_cast<u32>(e)) choirSing(k, t, d.canonAnswer, prose::kChFanAnswerDeg, aimAt(k), eighth / 8);
             }
             break;
         }
@@ -301,7 +304,7 @@ void World::choirEighth(double t) {
                 if (!(group & (1u << k)) || !(s.alive & (1u << k))) continue;
                 const float dir = ((m++ & 1u) == 0u ? 1.0f : -1.0f) * (callBar ? 1.0f : -1.0f);
                 const float u = static_cast<float>(e) / 7.0f - 0.5f;
-                choirSing(k, t, d.fugueStream, 0.0f, c.heldAim[k] + dir * u * prose::kChFugueSweepDeg * kDeg);
+                choirSing(k, t, d.fugueStream, 0.0f, c.heldAim[k] + dir * u * prose::kChFugueSweepDeg * kDeg, eighth);
             }
             break;
         }
@@ -309,7 +312,7 @@ void World::choirEighth(double t) {
             if (e != 2 && e != 6) break;
             for (u32 k = 0; k < kV; ++k) {
                 if (!(s.alive & (1u << k))) continue;
-                const u32 n = bossScaledCount(d.soloRing, bossBulletDensity(), 4u);
+                const u32 n = bossCount(d.soloRing, 4u, eighth / 4, k);  // (0449eb3: the ring thinned evenly)
                 const float turn = e == 6 ? 0.5f * kTau / static_cast<float>(n) : 0.0f;
                 const Vec2 at = s.body[1 + k];
                 for (u32 j = 0; j < n; ++j)

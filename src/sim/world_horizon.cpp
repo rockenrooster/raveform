@@ -314,14 +314,19 @@ void World::updateHorizon(float dt) {
     // The eruption: one bullet a sixteenth on each arm, the arms turning 12 degrees a bullet. They leave from the outer
     // ring (chosen: from the photon ring the Collapse's pull, 270 wu/s there, would take them back at once).
     if (h.eruptLeft)
-        forCrossings(m0_, m1_, kTicksPerStep, [&](double t, i64) {
+        forCrossings(m0_, m1_, kTicksPerStep, [&](double t, i64 stepIndex) {
+            // (0449eb3: the Track's count: the arms fire on every second sixteenth, or three in four, the spiral as long and as
+            // turned as before)
+            const bool fire = trackCount(1u, 1u, stepIndex, 0u) != 0;
             for (u32 a = 0; a < h.eruptArms && h.eruptLeft; ++a, --h.eruptLeft) {
+                if (!fire) continue;
                 const float ang = h.eruptAngle + kTau * static_cast<float>(a) / static_cast<float>(h.eruptArms ? h.eruptArms : 1u);
                 spawnBullet(s.pos + dirOf(ang) * d.ringRadius[2], dirOf(ang) * d.bulletSpeed, tickAgeOf(t), d.bulletLife);
             }
             h.eruptAngle += kArmTurnDeg * (kTau / 360.0f);
         });
-    // Phase 2: the tidal wave on beat 3 of every bar, shoving ships and Shards 140 wu outward as it passes.
+    // Phase 2: the tidal wave on beat 3 of every bar, pushing ships and Shards 140 wu outward over a beat as it passes (3283249,
+    // rule 7: a push, never a jump).
     if (P.wave)
         forCrossings(m0_, m1_, kTicksPerBeat, [&](double t, i64 beat) {
             if (((beat % 4) + 4) % 4 == 2) {
@@ -337,26 +342,33 @@ void World::updateHorizon(float dt) {
                 PlayerState& pl = players_[p];
                 if (!pl.alive || !isLocal(p)) continue;
                 const float l = length(pl.pos - s.pos);
-                if (l > r0 && l <= r1) knockPlayer(p, normalizeOr(pl.pos - s.pos, Vec2{1.0f, 0.0f}) * kWaveShove);
+                // (once a wave: the push starts faster than the ring, 2 x 140 wu over a beat, so the ring passes the ship
+                // again as the push dies away)
+                if (l > r0 && l <= r1 && pl.shoves[PlayerState::kShoveWave].tick < h.waveTick)
+                    shovePlayer(p, PlayerState::kShoveWave, normalizeOr(pl.pos - s.pos, Vec2{1.0f, 0.0f}) * kWaveShove,
+                                h.waveTick + static_cast<double>(l / kWaveSpeed * tps), kTicksPerBeat);
             }
+            // A Shard rides it too: a velocity outward that its drag (kShardDrag) takes away, carrying it about 140 wu (most
+            // of it within the beat).
             for (u32 k = 0; k < shards_.count; ++k) {
                 if (shards_.dead[k]) continue;
                 const Vec2 rel = Vec2{shards_.x[k], shards_.y[k]} - s.pos;
                 const float l = length(rel);
                 if (l > r0 && l <= r1 && l > 1.0f) {
-                    shards_.x[k] += rel.x / l * kWaveShove;
-                    shards_.y[k] += rel.y / l * kWaveShove;
+                    shards_.vx[k] += rel.x / l * kWaveShove * kShardDrag;
+                    shards_.vy[k] += rel.y / l * kWaveShove * kShardDrag;
                 }
             }
         }
     }
-    // Touching the horizon: a Shield cell, and the ship is thrown 300 wu out.
+    // Touching the horizon: a Shield cell, and the ship is thrown 300 wu out over half a beat, eased out (3283249, rule 6; the
+    // pull lets go of it meanwhile: wellPull). A ship already being thrown is not thrown again.
     for (u32 p = 0; p < playerCount_; ++p) {
         PlayerState& pl = players_[p];
-        if (!pl.alive || !isLocal(p)) continue;
+        if (!pl.alive || !isLocal(p) || thrown(p, m1_)) continue;
         const Vec2 rel = pl.pos - s.pos;
         if (lengthSq(rel) > (eatR + kPlayerHitRadius) * (eatR + kPlayerHitRadius)) continue;
-        knockPlayer(p, normalizeOr(rel, Vec2{1.0f, 0.0f}) * kThrowWu);
+        shovePlayer(p, PlayerState::kShoveThrow, normalizeOr(rel, Vec2{1.0f, 0.0f}) * kThrowWu, m1_, 0.5 * kTicksPerBeat);
         if (!pl.invulnerable() && !rules_.godMode) bossHitPlayer(p, s.pos);
     }
     (void)dt;
@@ -381,11 +393,21 @@ bool World::horizonJetHits(Vec2 at, Vec2& from) const {
     return false;
 }
 
-void World::knockPlayer(u32 p, Vec2 by) {
-    // The ship is moved (the controller takes it on its next update: PlayerState::knock).
-    PlayerState& pl = players_[p];
-    pl.knock = pl.knock + by;
-    ++pl.knockSerial;
+void World::shovePlayer(u32 p, u32 slot, Vec2 by, double tick, double ticks) {
+    // 3283249 (horizon.md rule 7): the ship rides it (its controller carries it `by` over `ticks`, eased out: shoveProgress); a
+    // new shove in the slot replaces the old. Each device its own players' (isLocal): a client's ship is pushed by its own
+    // world, from the song time, and its pose carries the result.
+    PlayerState::Shove& s = players_[p].shoves[slot < PlayerState::kShoves ? slot : 0u];
+    s.by = by;
+    s.tick = tick;
+    s.ticks = ticks > 1.0 ? ticks : 1.0;
+    s.serial = ++shoveSerial_;
+}
+
+bool World::thrown(u32 p, double tick) const {
+    if (p >= kMaxPlayers) return false;
+    const PlayerState::Shove& s = players_[p].shoves[PlayerState::kShoveThrow];
+    return tick >= s.tick - 0.5 && tick < s.tick + s.ticks;
 }
 
 }  // namespace rf::sim

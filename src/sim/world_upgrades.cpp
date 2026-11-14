@@ -1137,6 +1137,61 @@ u32 World::shooterCount(u32 base, u32& rngState) const {
     return n;
 }
 
+float World::bulletTrackScale() const {
+    // GAME_DESIGN 8, "Enemy bullets by Track" (the owner, 2026-11-14, 0449eb3): every enemy bullet at 0.5 in Tracks 1-3 and 0.75
+    // in Tracks 4-7; Tracks 8-10 and the loop as written.
+    const u32 t = phrase_.track;
+    if (rules_.bulletsAsWritten || t == 0 || inLoop(t, director_.songs)) return 1.0f;
+    return t <= 3u ? kBulletsEarly : (t <= 7u ? kBulletsMiddle : 1.0f);
+}
+
+namespace {
+i64 floorDiv(i64 a, i64 b) {
+    i64 q = a / b;
+    if ((a % b) != 0 && ((a < 0) != (b < 0))) --q;
+    return q;
+}
+}  // namespace
+
+u32 World::trackCount(u32 n, u32 least, i64 volley, u32 salt, bool tally) const {
+    // A volley of n bullets at the Track's count (GAME_DESIGN 8, 0449eb3), so that over its volleys a pattern fires n x f.
+    // A pattern loses bullets evenly (its caller spaces them by the count it is given, so a fan or a ring keeps its symmetry),
+    // never below `least`, the smallest its page allows: where n x f is not whole the volleys alternate between the counts
+    // either side of it (a fan of five at 0.5: 2, 3, 2, 3). A volley the count cannot thin (one bullet, a mirrored pair, a
+    // pattern at its smallest) fires whole on that share of its volleys: every second at 0.5, three in four at 0.75, on its beat
+    // as before. `volley`: the volley's index on its own grid (consecutive volleys, consecutive numbers), `salt` an enemy's
+    // serial so neighbours do not skip together. Integers only: every device decides the same.
+    const float f = bulletTrackScale();
+    if (tally) bulletsAsked_ += n;
+    if (f >= 1.0f || n == 0) {
+        if (tally) bulletsKept_ += n;
+        return n;
+    }
+    constexpr i64 kDen = 64;
+    const i64 T = static_cast<i64>(n) * static_cast<i64>(std::lround(f * static_cast<float>(kDen)));  // n x f, in 64ths
+    const i64 i = volley + static_cast<i64>(salt & 0xFFFFu);
+    if (least < 1u) least = 1u;
+    u32 out = 0;
+    if (T >= static_cast<i64>(least) * kDen) {
+        out = static_cast<u32>(floorDiv((i + 1) * T, kDen) - floorDiv(i * T, kDen));
+    } else {
+        const u32 k = n < least ? n : least;
+        const i64 D = static_cast<i64>(k) * kDen;
+        out = floorDiv((i + 1) * T, D) - floorDiv(i * T, D) > 0 ? k : 0u;
+    }
+    if (tally) bulletsKept_ += out;
+    return out;
+}
+
+u32 World::bossCount(u32 n, u32 least, i64 volley, u32 salt, float extra) const {
+    // A fight's pattern: its page's count with the bullet lever and the loop (bossBulletDensity), then the Track's (trackCount).
+    return trackCount(bossScaledCount(n, bossBulletDensity() * extra, least), least, volley, salt);
+}
+
+i64 World::volleyIndex(double tick, double every) {
+    return static_cast<i64>(std::floor(tick / (every > 0.0 ? every : kTicksPerBeat) + 0.5));
+}
+
 void World::regenBar() {
     // Regen (Mod 18, play test 2): while a cell is missing it grows back by itself every 16, 8, then 4 bars (counted on bar
     // lines; the view draws the growing arc), stretched in the loop. Each device its own players'.

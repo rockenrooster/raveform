@@ -287,7 +287,7 @@ void World::updateMorgana(float dt) {
                 const i32 np = nearestPlayer(at.x, at.y);
                 const float aim = np >= 0 ? angleOf(players_[np].pos - at) : 0.0f;
                 const float age = tickAgeOf(t);
-                const u32 m = bossScaledCount(d.fanBullets, bossBulletDensity() * loopShooters_, 2);
+                const u32 m = bossCount(d.fanBullets, 2u, volleyIndex(t, kTicksPerBeat), 0u, loopShooters_);  // (0449eb3: Track 9 fires as written)
                 for (u32 j = 0; j < m; ++j) {
                     const float off = m > 1 ? (static_cast<float>(j) / static_cast<float>(m - 1) - 0.5f) * kMgFanSpreadDeg * kDegR : 0.0f;
                     spawnBullet(at + dirOf(aim + off) * d.bodyRadius, dirOf(aim + off) * d.bulletSpeed, age, kMgBulletLife);

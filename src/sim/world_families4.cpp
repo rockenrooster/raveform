@@ -198,8 +198,11 @@ void World::moveFamily4(u32 i, const Species& s, const FamilyData& fd, float dt,
             // before by its head).
             if (s.variant == kVariantB && engaged && v.sideShotEverySteps) {
                 const double every = static_cast<double>(v.sideShotEverySteps) * kTicksPerStep;
+                // (0449eb3: a mirrored pair cannot thin: the whole snake fires on every second volley, or three in four, and
+                // its head tells only those)
                 if (e.a[i] > 0.5f)
-                    forCrossings(m0_ + kTicksPerBeat, m1_ + kTicksPerBeat, every, [&](double t, i64) {
+                    forCrossings(m0_ + kTicksPerBeat, m1_ + kTicksPerBeat, every, [&](double t, i64 vk) {
+                        if (!trackCount(2u, 2u, vk, 0u, false)) return;
                         Event ev;
                         ev.type = EventType::Telegraph;
                         ev.species = e.species[i];
@@ -209,7 +212,8 @@ void World::moveFamily4(u32 i, const Species& s, const FamilyData& fd, float dt,
                         emit(ev);
                     });
                 if (v.fromEveryNthSegment && e.step[i] % v.fromEveryNthSegment == 0)
-                    forCrossings(m0_, m1_, every, [&](double t, i64) {
+                    forCrossings(m0_, m1_, every, [&](double t, i64 vk) {
+                        if (!trackCount(2u, 2u, vk, 0u)) return;
                         const Vec2 side = perpOf(dirOf(e.heading[i]));
                         const float adv = tickAgeOf(t);
                         spawnBullet(Vec2{e.x[i], e.y[i]}, side * bulletSpeed, adv);
@@ -281,8 +285,9 @@ void World::moveFamily4(u32 i, const Species& s, const FamilyData& fd, float dt,
                 forCrossings(m0_, m1_, kTicksPerBar, [&](double t, i64) {
                     if (e.a[i] < 1.0f || !v.ringBullets) return;
                     const float a0 = static_cast<float>(e.serial[i] % 360u) * (kTau / 360.0f);
-                    for (u32 k = 0; k < v.ringBullets; ++k)
-                        spawnBullet(Vec2{e.x[i], e.y[i]}, dirOf(a0 + kTau * static_cast<float>(k) / static_cast<float>(v.ringBullets)) * bulletSpeed,
+                    const u32 nr = trackCount(v.ringBullets, 4u, volleyIndex(t, kTicksPerBar), e.serial[i]);  // (0449eb3: the ring thinned evenly)
+                    for (u32 k = 0; k < nr; ++k)
+                        spawnBullet(Vec2{e.x[i], e.y[i]}, dirOf(a0 + kTau * static_cast<float>(k) / static_cast<float>(nr)) * bulletSpeed,
                                     tickAgeOf(t));
                     shotEvent(Vec2{e.x[i], e.y[i]});
                     e.a[i] = 0.0f;
@@ -318,7 +323,8 @@ void World::moveFamily4(u32 i, const Species& s, const FamilyData& fd, float dt,
                 const u8 seen = static_cast<u8>(pl.shotsFired);
                 if (static_cast<u8>(seen - e.step[i]) >= v.everyNthShot) {
                     e.step[i] = static_cast<u8>(e.step[i] + v.everyNthShot);
-                    if (engaged) {
+                    // (0449eb3: its one shot on every second answer, or three in four)
+                    if (engaged && trackCount(1u, 1u, static_cast<i64>(e.step[i] / (v.everyNthShot ? v.everyNthShot : 1u)), e.serial[i])) {
                         spawnBullet(Vec2{e.x[i], e.y[i]}, normalizeOr(pl.pos - Vec2{e.x[i], e.y[i]}, Vec2{1.0f, 0.0f}) * bulletSpeed, 0.0f);
                         shotEvent(Vec2{e.x[i], e.y[i]});
                     }
@@ -494,8 +500,9 @@ bool World::wellSwallow(u32 i, u32 k) {
             e.step[i] = 0;
             e.b[i] = (e.b[i] > 0.0f ? e.b[i] : 1.0f) + 0.25f;
             if (e.b[i] >= fd.v.burstAtScale && role_ != NetRole::Client) {
-                for (u32 q = 0; q < fd.v.wellBurstBullets; ++q)
-                    spawnBullet(Vec2{e.x[i], e.y[i]}, dirOf(kTau * static_cast<float>(q) / static_cast<float>(fd.v.wellBurstBullets)) * species_->bulletSpeed, 0.0f);
+                const u32 nb = trackCount(fd.v.wellBurstBullets, 4u, volleyIndex(m1_, kTicksPerBeat), e.serial[i]);  // (0449eb3: thinned evenly)
+                for (u32 q = 0; q < nb; ++q)
+                    spawnBullet(Vec2{e.x[i], e.y[i]}, dirOf(kTau * static_cast<float>(q) / static_cast<float>(nb)) * species_->bulletSpeed, 0.0f);
                 killEnemy(i, 0xFF);
             }
         }
@@ -503,12 +510,12 @@ bool World::wellSwallow(u32 i, u32 k) {
     return true;
 }
 
-Vec2 World::wellPull(Vec2 pos) const {
+Vec2 World::wellPull(Vec2 pos, bool horizon) const {
     // A Well pulls a ship within pullRadius toward it, hardest at pullPeakAt (pullSpeed wu/s), nothing at its edge. (Asked
     // between ticks by the controller: every body is looked at.)
     const Enemies& e = enemies_;
     Vec2 v{};
-    if (horizonOn()) {
+    if (horizon && horizonOn()) {
         // M5 part 4: Event Horizon pulls the ship too (half its own speed at the photon ring; a Dash ignores it).
         const Vec2 to = boss_.pos - pos;
         const float l = length(to);

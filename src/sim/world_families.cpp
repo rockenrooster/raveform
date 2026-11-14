@@ -135,7 +135,9 @@ void World::moveFamily(u32 i, const Species& s, const FamilyData& fd, float dt, 
                     } else {
                         const double every = kTicksPerStep * static_cast<double>(v.sideShotEverySteps ? v.sideShotEverySteps : 4u);
                         const auto fire = [&](double t) {
-                            const u32 n = shooterCount(v.sideBullets ? v.sideBullets : 1u, e.rng[i]);
+                            // (0449eb3: the Track's count; a one-bullet volley every second or three in four)
+                            const u32 n = trackCount(shooterCount(v.sideBullets ? v.sideBullets : 1u, e.rng[i]), 1u, volleyIndex(t, every), e.serial[i]);
+                            if (!n) return;
                             for (u32 k = 0; k < n; ++k)
                                 spawnBullet(Vec2{x, y}, dirOf(angleOf(to) + (static_cast<float>(k) - 0.5f * static_cast<float>(n - 1)) * kHoundBurstSpread) * bulletSpeed,
                                             tickAgeOf(t));
@@ -196,8 +198,9 @@ void World::moveFamily(u32 i, const Species& s, const FamilyData& fd, float dt, 
             if (s.variant == kVariantC && e.b[i] <= v.burstAtRadius + 0.5f && role_ != NetRole::Client && tp >= 0) {
                 // M5 part 4, C: the spiral closed, it bursts (burstBullets round it) and is gone (the host's).
                 const float a0 = e.a[i];
-                for (u32 k = 0; k < v.burstBullets; ++k)
-                    spawnBullet(Vec2{x, y}, dirOf(a0 + kTau * static_cast<float>(k) / static_cast<float>(v.burstBullets)) * species_->bulletSpeed, 0.0f);
+                const u32 nb = trackCount(v.burstBullets, 4u, volleyIndex(m1_, kTicksPerBeat), e.serial[i]);  // (0449eb3: a ring, thinned evenly)
+                for (u32 k = 0; k < nb; ++k)
+                    spawnBullet(Vec2{x, y}, dirOf(a0 + kTau * static_cast<float>(k) / static_cast<float>(nb)) * species_->bulletSpeed, 0.0f);
                 shot();
                 killEnemy(i, 0xFF);
                 break;
@@ -221,12 +224,13 @@ void World::moveFamily(u32 i, const Species& s, const FamilyData& fd, float dt, 
                     } else {
                         const double every = kTicksPerStep * static_cast<double>(v.petalEverySteps ? v.petalEverySteps : 2u);
                         const auto rosette = [&](double t) {
-                            const u32 n = shooterCount(v.petals ? v.petals : 2u, e.rng[i]);
+                            // (0449eb3: the Track's count; two opposite petals are its smallest: every second or three in four)
+                            const u32 n = trackCount(shooterCount(v.petals ? v.petals : 2u, e.rng[i]), 2u, volleyIndex(t, every), e.serial[i]);
                             const float turn = e.a[i] + static_cast<float>(e.step[i]) * v.petalRotateDeg * kDeg;
                             for (u32 k = 0; k < n; ++k)
                                 spawnBullet(Vec2{x, y}, dirOf(turn + kTau * static_cast<float>(k) / static_cast<float>(n)) * v.petalSpeed, tickAgeOf(t));
                             e.step[i] = static_cast<u8>(e.step[i] + 1u);
-                            shot();
+                            if (n) shot();
                         };
                         if (e.state[i] == kGlint && m1_ >= e.until[i]) {
                             e.state[i] = kFiring;
@@ -301,12 +305,13 @@ void World::moveFamily(u32 i, const Species& s, const FamilyData& fd, float dt, 
                     if (s.variant == kVariantB && v.pathBullets) {
                         // B: bullets left along the hop, flying on along it.
                         const Vec2 d = normalizeOr(at - from, dirOf(e.heading[i]));
-                        const u32 n = shooterCount(v.pathBullets, e.rng[i]);
+                        // (0449eb3: the Track's count, spaced evenly along the hop; a hop of one every second or three in four)
+                        const u32 n = trackCount(shooterCount(v.pathBullets, e.rng[i]), 1u, static_cast<i64>(e.step[i]), e.serial[i]);
                         for (u32 k = 0; k < n; ++k) {
                             const float u = static_cast<float>(k + 1) / static_cast<float>(n + 1);
                             spawnBullet(from + (at - from) * u, d * v.pathBulletSpeed, tickAgeOf(t));
                         }
-                        shot();
+                        if (n) shot();
                     }
                     Event ev;  // a hop is a blink (the view's flash)
                     ev.type = EventType::WarpLand;
@@ -366,11 +371,18 @@ void World::drifterShot(u32 i, const Species& s, const FamilyData& fd, i32 tp, V
     const FamilyData::Variants& v = fd.v;
     if (s.variant != kVariantB || tp < 0) return;
     const i64 every = static_cast<i64>(v.aimedShotEveryBars > 0.0f ? v.aimedShotEveryBars : 2.0f);
+    // (0449eb3: the Track's count; its one aimed shot on every second of its bars, or three in four: a volley that will not fire
+    // shows no glint either)
+    const auto volley = [&](double at) { return volleyIndex(at, static_cast<double>(every) * kTicksPerBar); };
     if (e.state[i] == kMoving && engaged) {
         forCrossings(m0_, m1_, kTicksPerBeat, [&](double t, i64 beat) {
             if (e.state[i] != kMoving || imod(beat, 4) != 3) return;
             const i64 bar = static_cast<i64>(std::floor(t / kTicksPerBar));
             if (imod(bar + static_cast<i64>(e.serial[i]), every) != every - 1) return;
+            if (!trackCount(v.aimedBullets ? v.aimedBullets : 1u, 1u, volley(t + kTicksPerBeat), e.serial[i], false)) {
+                bulletsAsked_ += v.aimedBullets ? v.aimedBullets : 1u;  // (diagnostics: a volley skipped at its tell was asked for)
+                return;
+            }
             e.state[i] = kGlint;
             e.until[i] = t + kTicksPerBeat;
             Event ev;
@@ -382,11 +394,12 @@ void World::drifterShot(u32 i, const Species& s, const FamilyData& fd, i32 tp, V
             emit(ev);
         });
     } else if (e.state[i] == kGlint && m1_ >= e.until[i]) {
-        const u32 n = shooterCount(v.aimedBullets ? v.aimedBullets : 1u, e.rng[i]);
+        const u32 n = trackCount(shooterCount(v.aimedBullets ? v.aimedBullets : 1u, e.rng[i]), 1u, volley(e.until[i]), e.serial[i]);
         for (u32 k = 0; k < n; ++k)
             spawnBullet(Vec2{e.x[i], e.y[i]}, dirOf(angleOf(to) + (static_cast<float>(k) - 0.5f * static_cast<float>(n - 1)) * kHoundBurstSpread) * species_->bulletSpeed,
                         tickAgeOf(e.until[i]));
         e.state[i] = kMoving;
+        if (!n) return;
         Event ev;
         ev.type = EventType::EnemyShot;
         ev.species = e.species[i];
@@ -401,7 +414,10 @@ void World::caromBounceShot(u32 i, const Species& s, const FamilyData& fd) {
     if (s.variant != kVariantB) return;
     Enemies& e = enemies_;
     const FamilyData::Variants& v = fd.v;
-    const u32 n = shooterCount(static_cast<u32>(v.bulletsPerBounce > 0.0f ? v.bulletsPerBounce : 3.0f), e.rng[i]);
+    // (0449eb3: the Track's count, the fan thinned evenly down to one; its bounces counted by the sixteenth they fall on)
+    const u32 n = trackCount(shooterCount(static_cast<u32>(v.bulletsPerBounce > 0.0f ? v.bulletsPerBounce : 3.0f), e.rng[i]), 1u,
+                             volleyIndex(m1_, kTicksPerStep), e.serial[i]);
+    if (!n) return;
     const float h = angleOf(Vec2{e.vx[i], e.vy[i]});
     const float spread = v.bounceFanDeg * kDeg;
     for (u32 k = 0; k < n; ++k) {

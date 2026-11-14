@@ -4,6 +4,161 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (afternoon), the owner's play of af4b101 (design 0449eb3, 3283249, a09dd2c-02c28ab): enemy bullets by Track, see-through tells, Event Horizon's pushes, every fight 30-60 s
+
+The engineer before me was stopped in the middle of this job; its diff (the bullets by Track, 1b) is kept and finished: what it
+had and what changed in it is under 1b.
+
+### 1a. Event Horizon at half health (0449eb3; horizon.md's note)
+
+- `kHorizonHealthTune` 2.178 -> **1.089** (x 0.5: "way too much hp, needs like 0.5x"). With everything below in, the novice
+  from Track 4's start wins **19 of 20 in 53 s** (it was 27 of 40 in 75 s; the lead's estimate 38 s: the fight is not linear in
+  its health). Inside 30-60, so nothing more (GAME_DESIGN 7.6). Its pace reference: under 3.
+
+### 1b. Enemy bullets by Track (0449eb3; GAME_DESIGN 8)
+
+- **The rule** (`World::trackCount`, `bulletTrackScale`, `world_upgrades.cpp`): a volley asks for its page's n and fires the
+  Track's share: x 0.5 in Tracks 1-3, x 0.75 in 4-7 (`tuning::kBulletsEarly`, `kBulletsMiddle`), as written from Track 8 and in
+  the loop. Integers only (in 64ths), so every device decides alike. A pattern loses bullets evenly (each caller spaces its
+  bullets by the count it gets, so a fan stays centred and a ring even), never below `least`, its page's smallest; where n x f
+  is not whole the volleys alternate between the counts either side of it, so they average n x f exactly (a fan of five at 0.5:
+  2, 3, 2, 3; three at 0.75: 2, 2, 3, 2). A volley that cannot thin (one bullet, a mirrored pair, a turning spiral's arms, a
+  pattern at its smallest) fires whole on that share of its volleys: every second at 0.5, three in four at 0.75, on its beat
+  (a Bresenham count over the volley's own index, salted by the enemy's serial so neighbours do not skip together). A fight's
+  patterns go through `bossCount`: the lever and the loop (`bossBulletDensity`, as before), then the Track's.
+- **Every source** (each `spawnBullet` caller): the crowd's Hound fan (1, 2, 1, 2 at 0.5: its smallest an aimed shot, so every
+  glint still fires), the Sentry's turning arms (whole, on every second volley: two arms would be another pattern), the
+  Flanker's side shot, the Moth's petal pair and its closing burst, the Blink's path bullets (thinned along the hop), the
+  Drifter's aimed shot (a volley that will not fire shows no glint), the Carom's bounce fan, the Wyrm's mirrored side pair (the
+  whole snake on the same volleys; its head tells only those), the Well's ring and burst, the Mimic's answer; Kaleidos's tips
+  and core rings, Longwave's troughs (by the wave's pass: every second trough of a wave fires, so the wave keeps its shape), its
+  whip and the bare head's rings, the Choir's fans, streams and solo rings (each pattern by its own volleys), Event Horizon's
+  eruption (the arms on three sixteenths in four; the spiral as long and as turned), Feedback's echo shots (by tape slot: three
+  recorded shots in four), Cadence's fans and rosettes, the Ram's wall fan, the Carom King's bounce, the Moth Queen's rosettes
+  and court bursts, the Blink Star's decoy fans, the Sentry Array's volleys, the Mirror Mimic's answers. Fata Morgana, the
+  Arpeggiator, Deep Well and the Reprise live in Tracks 8-10 (as written). Polyrhythm, Twin Tether and Weaver Prime fire no
+  bullets; elites and arena events have no bullets of their own. Beams, bodies, the Arpeggiator's blocks and trails untouched.
+- **What the stopped engineer's diff had**: the helpers and every call site above. Changed: its thinning rounded (a fan of
+  three gave 2 at both 0.5 and 0.75: x 0.67), now exact over the volleys; several volley indices did not step by one a volley,
+  so a one-bullet pattern there fired always or never: the Choir's (a sixteenth's index for patterns on the eighths), Longwave's
+  troughs (the step index, which a segment sees every eighth step: half the segments never fired), Kaleidos's core rings, the
+  bare head's rings; the Sentry's three arms became two; the Drifter's and the Wyrm's tells showed for volleys that did not
+  fire; `MiniState::answers` (the Mimic's count) kept.
+- Co-op: alike everywhere (the Track and the volley grids are song time; Feedback's tape as each device records it, as
+  before). `Rules::bulletsAsWritten` turns the rule off: the tests that count a page's pattern, and `--bullets-as-written` in
+  the headless tool. Test `bullets by Track`: five shooters over eight bars of a Groove fire 340 as written, 170 in Track 2
+  (x 0.50), 257 in Track 5 (x 0.76), 340 in Track 9.
+- **Before / after** (`--sim crowd --god --policy reckless`: the careless bot ignores bullets, so the crowd is the same run
+  with and without the rule; `captures\bullets\r_*`): the enemy bullets alive in the first run's Grooves, mean and most at once.
+
+  | | seed 1, as written | seed 1, the rule | 10 seeds, as written | 10 seeds, the rule | fired of what the pages asked (10 seeds) |
+  |---|---|---|---|---|---|
+  | Track 2 Groove | 27, most 64 | 14, most 43 | 20, most 100 | 11, most 55 | 920 of 1,916 (x 0.48) |
+  | Track 5 Groove | 11, most 37 | 5, most 16 | 13, most 126 | 8, most 98 | 622 of 833 (x 0.75) |
+
+  The same seed matches in Track 2 (the pages asked 239 and 246); by Track 5 the two runs differ (the director's assist
+  answers the god-mode hits), so the 10-seed means and the same run's asked / fired are the better reading there. Tracks 3, 4,
+  6, 7 fired x 0.52, 0.72, 0.72, 0.67 of what was asked. The headless crowd table prints these lines now (`enemy bullets alive in
+  the first run's Grooves`, `fired a Groove second by Track`).
+
+### 1c. A tell is see-through (0449eb3; look.md 5, Telegraphs, and the priority capsule's row)
+
+- `PlayView::telegraphLine(d, a, b, fireTick)` draws in the scene light only, never on the priority layer (no rim, no core):
+  dashes 1.5 px in the danger colour at 0.35, rising to 0.6 over the beat before `fireTick` (the view's constants
+  `kTellWidthRefPx`, `kTellLevel`, `kTellLevelFiring`; dash and gap 30 wu each, chosen: the beam tells' own). It dashes what it
+  is given, so every caller passes the whole line and when it fires: Kaleidos's beams (the next bar line), the Choir's cage and
+  held note, Event Horizon's jets, Polyrhythm's burning link (the coming burn), the Blink Star's edges (the fifth hop),
+  Longwave's lunge (`lungeTick`), Alpha Hound's and the Ram's lock lines (`cueTick`), the fights' charge lines
+  (`FightLine::until`), Volatile bombs' and meteors' dashed rings. A shooter's glint and a Ram's chevrons are marks, not dashes
+  (`tellMark`): at the telegraph line's scene level as before, off the priority layer too. A beam's tell is no longer as wide
+  as the beam (look.md v2.5's rule, replaced by this one).
+
+### 2. A shove is a push, never a jump (3283249; horizon.md rules 6 and 7, the phase 2 row)
+
+- **Cause**, as the lead found: `World::knockPlayer` added to `PlayerState::knock` and the controller added the difference to
+  the ship's position in one update (the wave 140 wu in a tick every bar of Tidal; the throw 300).
+- **Now** `PlayerState::shoves[2]` (0 the wave, 1 the throw): the push's whole way, its start and length in ticks, a serial;
+  `World::shovePlayer` sets one; `PlayerController::takeShoves` carries the ship each update by what the push has done since
+  (`shoveProgress`, 1 - (1 - u)^2: a velocity that starts at twice the mean and dies away to nothing), on top of its own
+  steering, the whole way at any frame rate. The throw: 300 wu over half a beat from the touch; meanwhile the horizon's pull
+  lets go (`wellPull(pos, false)`, `World::thrown`) and the ship is neither thrown nor hurt again. The wave: 140 wu over a beat
+  from the moment the ring reaches the ship, once a wave (the push starts faster than the ring, 650 wu/s at Track 4's tempo, so
+  the ring passes the ship again as it slows: without the guard it pushed again and again). Shards: an outward velocity their
+  drag takes away (140 wu x `kShardDrag`: about 140 wu, 82% of it within the beat at Track 4's tempo).
+- **Co-op**: each device pushes its own ships, as before (`isLocal`, from the song time); a client's ship is pushed by its
+  own world and its pose carries the motion. No protocol change.
+- **Anything else that set a ship's position**: nothing that shoves. The rest are placements or contacts: a run's start, a
+  revive at the beacon, the host's record of where a ship went down, the pose the world takes each tick, the Dash (the
+  player's own 220 wu over 0.12 s), a Bumper (the ship put on its edge with a kick of 600 wu/s, a velocity), the Pen's walls
+  and the arena's edges.
+- Test (`horizon`): a touch sets the throw (300 wu over half a beat); the controller carries the ship 270-330 wu, never more
+  than 70 wu a tick; the pull lets go meanwhile; no second throw; the wave's push is 140 wu over a beat, 3/4 of it at half.
+- Strips (`captures\af4b101\`, dev, off screen, a frame a sixteenth; `review-m3b.ps1 -Config dev -Only m6_hz_wave,m6_hz_touch`,
+  scripted in `play_pictures_m6.cpp`): `strip_m6_hz_wave_sheet.png` (a ship standing 380 wu out in Tidal held, from a
+  sixteenth before the ring reaches it) and `strip_m6_hz_touch_sheet.png` (a ship flown into the horizon and thrown). Tidal is
+  `--fight horizon:1` (0-based like every `--fight` phase; `:2` is Collapse, which has no wave).
+
+### 3. Every boss fight 30-60 s for the novice (a09dd2c-02c28ab; GAME_DESIGN 7.6)
+
+The novice through the half-rate assist from the fight's Track's start (`--sim crowd --policy novice --handover N --minutes
+60`), after 1b; won first meetings and their mean seconds (`captures\fights\`). Ten seeds were too few for these: a fight's
+length moves 20-50 s between seed sets (the build each run inherits), so each was measured on 20-30 seeds while tuning, then
+once more on the build as committed, 10 seeds each (the last column).
+
+| Fight | af4b101 (the lead's figures) | with 1b, its factor as it was | factor | tuning (20-30 seeds) | as committed (20 seeds: 1-10 / 11-20) |
+|---|---|---|---|---|---|
+| Longwave | 32 of 40, 83 s (from the run's start) | 20 of 20, 88 s | 0.1925 -> **0.0886** (x 0.46) | 20 of 20, 49 s | **20 of 20, 49 s** (55 / 43) |
+| Event Horizon | 27 of 40, 75 s | (1a only) | 2.178 -> **1.089** (x 0.5) | 19 of 20, 53 s | **19 of 20, 52 s** (62 / 43) |
+| Polyrhythm | 36 of 40, 20 s | 18 of 20, 19 s | **0.4165**, as it is | x 1.3: 16 of 20, 21 s; x 1.58: 12 of 20, 25 s | **18 of 20, 19 s** (22 / 15) |
+| Feedback | 26 of 40, 63 s | 17 of 20, 70 s (once the cuts before it were in) | 0.2925 -> **0.16** (x 0.547) | 30 of 30, 50 s | **20 of 20, 52 s** (57 / 46) |
+| Cadence | 28 of 39, 91 s | 7 of 10, 115 s | 2.113 -> **0.919** (x 0.435) | 20 of 20, 52 s | **20 of 20, 39 s** (50 / 28) |
+| Arpeggiator | 28 of 40, 69 s | 20 of 30, 50 s; 16 of 20, 65 s with the cuts before it | 1.863 -> **1.435** (x 0.77) | 17 of 20, 53 s | **20 of 20, 43 s** (48 / 37) |
+| Kaleidos Reprise | 35 of 40, 114 s | 26 of 30, 100 s | 0.914 -> **0.347** (x 0.38) | 20 of 20, 50 s | **20 of 20, 35 s** (38 / 31) |
+
+Kaleidos (55 s), the Choir (34) and Fata Morgana (41) untouched. The committed build's Cadence, Arpeggiator and Reprise came
+out shorter than in tuning (39, 43, 35 s against 52, 53, 50): the re-measured pace references (below) are the only change
+between, and they move the careful bot's own fights before the handover (it aims, so its pace is set from them): longer
+fights there, more Shards, a stronger build handed to the novice. All inside 30-60.
+
+- **Not linear in health**, as the lead warned: Longwave x 0.562 gave 58 s, x 0.46 49 s, x 0.36 36 s; Event Horizon x 0.5 75 to
+  53 s. **Feedback**'s won fights run from 10 s to over 100 by the build the novice inherits (the head shuts while the
+  assist fires: x 0.25): seeds 1-10 stay at 60-83 s from x 0.77 down to x 0.45; x 0.547 of its old factor (x 0.71 on 0.225)
+  gives 30 of 30 in 50 s, x 0.6 the same 50 s in 29 of 30.
+- **The cuts reach downstream**: a shorter fight pays fewer Shards, so the build the novice inherits for the next fights is
+  weaker. With 1b alone the Arpeggiator was already 20 of 30 in 50 s; once Longwave, Event Horizon and Feedback were cut it
+  took 65 s (16 of 20), hence its x 0.77; Cadence and the Reprise were measured with every cut before them in.
+- **Polyrhythm** stays: x 1.3 of its health gave 16 of 20 in 21 s, x 1.58 12 of 20 in 25 s, against 18 of 20 in 19 s as it is
+  (the rule: raise it only if the novice wins it about as often). Said so to the lead.
+- **The pace references** (`kBossPaceNovice`) are a damage rate (the novice's first eight bars a player), so a health cut does
+  not scale them: scaled, an aiming player's pace would rise by the cut and give back the health the owner took off. They were
+  measured again at the new health (they fall only as far as the novice's eight bars do less: parts dead sooner, later phases'
+  armour, the weaker inherited build): Longwave 126 -> 93, Event Horizon 985 -> 996, Feedback 509 -> 183, Cadence 1,615 -> 1,240,
+  Arpeggiator 2,063 -> 2,450, the Reprise 1,292 -> 1,097; Polyrhythm 1,030 kept. The novice never sets a pace (only aimed fire
+  counts), so none of the lengths above depend on them.
+
+### Checks
+
+- `scripts\test.ps1`'s parts, one by one (the owner's rule: no impaired-network runs, so its second soak, 5% loss and 80 ms
+  jitter, was left out): audio 2,716 checks; the loudness calibration current; sim 6,108 checks, 0 failures (new: `bullets by
+  Track`; `horizon` with the pushes; Longwave's crest and trough shots made 2 for its smaller segments); determinism PASS (hash
+  cc439a7eca529334, unchanged: two minutes of Track 1 hold no shooter); net 131,368 checks; save 60; the clean 6-minute loopback
+  soak PASS (0 census mismatches).
+- Pictures (`captures\af4b101\`, desktop dev, off screen, each with a `.small.png`): `boss_beam_tell.png` (Kaleidos's beam tells
+  over the lattice, the bullets and the glass; `review-m3b.ps1 -Config dev -Only boss_beam_tell`), the two Event Horizon strips
+  above.
+
+### Noticed, not changed
+
+- Volatile bombs' and meteors' filling ring (inside their dashed ring) is still a solid line on the priority layer: a tell by
+  look.md's new words, though not a dashed one.
+- The lead's `--fight horizon:2:hold` is Collapse (the phases are 0-based); the strips use `:1`, Tidal.
+- These lengths are the novice's with the build the careful bot hands it (`--handover`); they swing 10-30 s with anything
+  upstream (above). Polyrhythm stays under 30 s by the rule's own condition.
+- The Track's count makes a Drifter's skipped volley show no glint, so it does not pause for it: the crowd moves differently from
+  the first skipped volley, which is why a run with and without the rule part ways by Track 5 even with a bot that ignores
+  bullets.
+- The assist bot's bar (19 of 20 through the ten Tracks) and the careful bot's line were not measured again.
+
 ## 2026-11-14, the owner's rulings (design c2f113a, a953828, 27077b6, a667116, eb10554, b12310b): two-cycle Tracks, Longwave never jumps, no Break Trio, Split and Double-Time's ranks, the transitions, the assist at half rate
 
 ### A. Every Track is two cycles, like Track 1 (c2f113a; GAME_DESIGN 4.2, 4.3, 5)

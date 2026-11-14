@@ -10,6 +10,9 @@
 
 namespace rf::sim {
 
+// 3283249: how far a ship is through a shove at `tick` (0..1, eased out: its velocity dies away to nothing at the end).
+float shoveProgress(const PlayerState::Shove& s, double tick);
+
 struct StickInput {
     Vec2 move;               // magnitude 0..1 (dead zone already applied)
     Vec2 aim;                // the aim stick's direction (any length when aimActive)
@@ -47,9 +50,12 @@ private:
     double dashReadyAt_ = -1e18;  // musical tick at which the Dash has recharged
     double dashStartedAt_ = 0.0;
     u8 charges_ = 1;              // M5: Dash charges ready (Reserve holds more)
-    Vec2 knockTaken_;             // M5 part 4: how much of the world's knock (PlayerState::knock) the ship has taken,
-    u32 knockSerial_ = 0;         // as of this knock (a lower serial: the world started again; nothing is taken)
-    bool knockKnown_ = false;
+    // 3283249 (horizon.md rule 7): how far through each of the world's shoves (PlayerState::Shove: Event Horizon's wave and
+    // throw) the ship has been carried, as of that shove's serial (a new serial: a new push, from nothing).
+    float shoveTaken_[PlayerState::kShoves] = {};
+    u32 shoveSerial_[PlayerState::kShoves] = {};
+    bool shoveKnown_ = false;
+    void takeShoves(const PlayerState& state, double musicTick, PlayerPose& p, bool move);
     u32 targetHandle_ = 0;
 };
 

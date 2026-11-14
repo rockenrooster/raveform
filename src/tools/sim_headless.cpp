@@ -305,7 +305,10 @@ u32 gHandover = 0;
 // --nopace (play test 3's balance pass): the bosses keep no pace, so the novice's own eight-bar damage is measured as it is.
 bool gNoPace = false;
 
+bool gBulletsAsWritten = false;  // 0449eb3: every enemy bullet as written (the count before "Enemy bullets by Track")
+
 void applyLevers(World& w) {
+    w.rules().bulletsAsWritten = gBulletsAsWritten;
     w.rules().armourNothing = gArmourNothing;
     w.rules().noPace = gNoPace;
     for (u32 k = 0; k < kBossKinds; ++k) w.rules().healthLever[k] = gHealthLever[k] > 0.0f ? gHealthLever[k] : 1.0f;
@@ -483,6 +486,13 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     // a667116 (the Trio only at Shard levels and a boss's death): the first run's Trios by Track, level-ups and the boss's (the
     // boss's in the Track-change Break counts for the Track whose boss it was), and the first runs that played in each Track.
     double triosLevel[11] = {}, triosBoss[11] = {}, runsInTrack[11] = {};
+    // 0449eb3 (GAME_DESIGN 8, "Enemy bullets by Track"): the enemy bullets alive in the first run's Grooves, by Track (their sum
+    // over the Groove's ticks, the ticks, the most at once).
+    double grooveBullets[11] = {}, grooveTicks[11] = {}, grooveSpawned[11] = {}, grooveAsked[11] = {}, grooveKept[11] = {};
+    u32 grooveBulletsMax[11] = {};
+    static double grooveByFamily[11][kFamilyCount + 1];  // (bullet-ticks by the family that fired them; [kFamilyCount] a fight's or other)
+    for (auto& row : grooveByFamily)
+        for (double& v : row) v = 0.0;
     // M5 part 3 (GAME_DESIGN 6.1, how a Trio is dealt): the first run's build as Track 3 ends (Mods at their cap) and as
     // Track 5 ends (a Fusion held).
     u32 t3Runs = 0, t3Capped2 = 0, t5Runs = 0, t5Fusion = 0;
@@ -512,6 +522,8 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         reachedT2[s] = false;
         maxTrack[s] = 1;
         u32 countedTrack = 0;  // (the Trio count's Tracks this seed has entered)
+        u32 bulletsAll0 = world->counters().bulletsAll;
+        u64 asked0 = world->bulletsAsked(), kept0 = world->bulletsKept();
         u32 lastHits = 0, lastBar = 0xFFFFFFFFu, killsAtBar = 0;
         bool bossOn = false;
         u32 bossFrom = 0, bossTrack = 1, bossHits0 = 0, fightHits = 0, fightBody = 0, fightBeam = 0;
@@ -557,6 +569,26 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 countedTrack = ph.track;
             }
             if (ph.track > maxTrack[s]) maxTrack[s] = ph.track;
+            const u32 spawnedNow = w.counters().bulletsAll - bulletsAll0;
+            bulletsAll0 = w.counters().bulletsAll;
+            const u64 askedNow = w.bulletsAsked() - asked0, keptNow = w.bulletsKept() - kept0;
+            asked0 = w.bulletsAsked();
+            kept0 = w.bulletsKept();
+            if (runner.deaths() == 0 && ph.section == Section::Groove && !ph.trackChange && ph.track >= 1 && ph.track <= 10 && (!handover || handed)) {
+                grooveBullets[ph.track] += static_cast<double>(w.bullets().count);
+                grooveTicks[ph.track] += 1.0;
+                grooveSpawned[ph.track] += static_cast<double>(spawnedNow);
+                grooveAsked[ph.track] += static_cast<double>(askedNow);
+                grooveKept[ph.track] += static_cast<double>(keptNow);
+                if (w.bullets().count > grooveBulletsMax[ph.track]) grooveBulletsMax[ph.track] = w.bullets().count;
+                const Bullets& bb = w.bullets();
+                for (u32 k = 0; k < bb.count; ++k) {
+                    if (bb.dead[k]) continue;
+                    const u16 src = bb.src[k];
+                    const u32 fam = src < SpeciesTable::kCount ? static_cast<u32>(species.get(src).family) : kFamilyCount;
+                    grooveByFamily[ph.track][fam < kFamilyCount ? fam : kFamilyCount] += 1.0;
+                }
+            }
             if (p.alive) paceTicks[(ph.track < 4 ? ph.track : 4u) - 1] += 1.0;
             for (u32 k = 0; k < w.eventCount(); ++k) {
                 const Event& ev = w.events()[k];
@@ -936,6 +968,25 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                   f.fights, f.won, f.lost, f.gone, f.hits);
     }
     {
+        // 0449eb3: the enemy bullets alive in the first run's Grooves (mean and most at once, by Track).
+        std::printf("[sim]   enemy bullets alive in the first run's Grooves%s (Track: mean, most; seconds counted):",
+                    gBulletsAsWritten ? " (as written)" : "");
+        for (u32 t = 1; t <= 10; ++t)
+            if (grooveTicks[t] > 0.0)
+                std::printf(" T%u %.0f, %u (%.0f s);", t, grooveBullets[t] / grooveTicks[t], grooveBulletsMax[t], grooveTicks[t] / 60.0);
+        std::printf("\n");
+        std::printf("[sim]   ... fired a Groove second by Track, and the families whose bullets were alive (mean alive):");
+        for (u32 t = 1; t <= 10; ++t) {
+            if (grooveTicks[t] <= 0.0) continue;
+            std::printf("\n[sim]     T%u %.1f a second (the volleys' pages asked %.0f, the Track's count fired %.0f: x %.2f):", t,
+                        grooveSpawned[t] / (grooveTicks[t] / 60.0), grooveAsked[t], grooveKept[t], grooveAsked[t] > 0.0 ? grooveKept[t] / grooveAsked[t] : 1.0);
+            for (u32 f = 0; f <= kFamilyCount; ++f)
+                if (grooveByFamily[t][f] / grooveTicks[t] >= 0.5)
+                    std::printf(" %s %.1f,", f < kFamilyCount ? familyName(static_cast<Family>(f)) : "other", grooveByFamily[t][f] / grooveTicks[t]);
+        }
+        std::printf("\n");
+    }
+    {
         // M5 (GAME_DESIGN 7.6): the first meetings (won of met, the seconds of those won, the hits of all fights above).
         u32 t2 = 0;
         for (u32 s = 0; s < n; ++s) t2 += reachedT2[s] ? 1u : 0u;
@@ -1049,6 +1100,8 @@ int simHeadlessMain(int argc, char** argv) {
             gArmourNothing = true;
         } else if (std::strcmp(a, "--nopace") == 0) {
             gNoPace = true;
+        } else if (std::strcmp(a, "--bullets-as-written") == 0) {
+            gBulletsAsWritten = true;
         } else if (std::strcmp(a, "--handover") == 0 && next) {
             gHandover = static_cast<u32>(std::strtoul(next, nullptr, 10));
             ++i;

@@ -257,8 +257,7 @@ void World::longwaveFire(double t, i64 n) {
     const LongwaveState& L = s.lw;
     const u32 ph = L.phase < 3 ? L.phase : 2u;
     const float adv = tickAgeOf(t);
-    const float density = bossBulletDensity();
-    const u32 per = bossScaledCount(d.phases[ph].perSide ? d.phases[ph].perSide : 1u, density, 1u);
+    const u32 per0 = d.phases[ph].perSide ? d.phases[ph].perSide : 1u;
     const float spread = (ph == 1 ? prose::kLwChopSpreadDeg : 0.0f) * kDeg;
     const i64 lambda = static_cast<i64>(d.wavelength);
     u32 rank = 0;
@@ -267,6 +266,11 @@ void World::longwaveFire(double t, i64 n) {
         if (!(s.alive & (1u << k))) continue;
         ++rank;
         if (imod(static_cast<i64>(rank) - n - 3 * lambda / 4, lambda) != 0) continue;
+        // (0449eb3: the Track's count, by the wave's pass over this place (consecutive passes, consecutive numbers): a fan of three
+        // a side thinned evenly (1, 2, 1, 2); a trough's mirrored pair on every second pass, so every second trough of the
+        // wave fires and the wave keeps its shape)
+        const u32 per = bossCount(per0, 1u, (n + 3 * lambda / 4 - static_cast<i64>(rank)) / lambda, 0u);
+        if (!per) continue;
         Vec2 tan;
         const Vec2 at = longwavePoint(t, static_cast<float>(rank) + longwaveLag(k, t), 0.0f, &tan);
         const float a = angleOf(Vec2{-tan.y, tan.x});
@@ -303,7 +307,7 @@ void World::updateLongwave(float /*dt*/) {
         if (L.whipTick >= 0.0 && m1_ >= L.whipTick) {
             const double t = L.whipTick;
             L.whipTick = -1.0;
-            const u32 n = bossScaledCount(d.whipCount, bossBulletDensity(), 8u);
+            const u32 n = bossCount(d.whipCount, 8u, volleyIndex(t, kTicksPerBar), 0u);  // (0449eb3: the ring thinned evenly)
             const Vec2 tip = s.alive ? s.body[kBossBodies - 1] : s.body[0];
             for (u32 j = 0; j < n; ++j)
                 spawnBullet(tip, dirOf(kTau * static_cast<float>(j) / static_cast<float>(n)) * d.bulletSpeed, tickAgeOf(t), d.bulletLife);
@@ -347,7 +351,7 @@ void World::updateLongwave(float /*dt*/) {
         if (ph == 3 && d.phases[3].headBurst) {
             forCrossings(m0_, m1_, kTicksPerBeat, [&](double t, i64 beat) {
                 if (t < s.phaseTick || (imod(beat, 4) != 1 && imod(beat, 4) != 3)) return;
-                const u32 n = bossScaledCount(d.phases[3].headBurst, bossBulletDensity(), 4u);
+                const u32 n = bossCount(d.phases[3].headBurst, 4u, beat / 2, 0u);  // (0449eb3: the ring thinned evenly)
                 const float turn = (imod(beat / 2, 2) == 1) ? 0.5f * kTau / static_cast<float>(n) : 0.0f;
                 for (u32 j = 0; j < n; ++j)
                     spawnBullet(s.body[0], dirOf(turn + kTau * static_cast<float>(j) / static_cast<float>(n)) * d.bulletSpeed, tickAgeOf(t),

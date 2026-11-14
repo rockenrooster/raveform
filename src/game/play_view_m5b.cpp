@@ -215,10 +215,7 @@ void PlayView::drawHorizon(FrameDraw& d, const ViewInput& in) {
         const float next = h.axis + prose::kHzAxisTurnDeg * kTau / 360.0f;
         for (float sgn : {1.0f, -1.0f}) {
             const Vec2 dv = dirv(next) * sgn;
-            for (float u = H.photonRadius; u < tuning::kHzJetLengthWu; u += 60.0f) {
-                const Vec2 q0 = c + dv * u, q1 = c + dv * std::fmin(u + 30.0f, tuning::kHzJetLengthWu);
-                if (visible(q0, 40.0f) || visible(q1, 40.0f)) telegraphLine(d, q0, q1, 1.0f, 2.0f * tuning::kHzJetHalfWu);
-            }
+            telegraphLine(d, c + dv * H.photonRadius, c + dv * tuning::kHzJetLengthWu, (std::floor(t / kTicksPerBar) + 1.0) * kTicksPerBar);
         }
         if (t >= h.jetFrom && t < h.jetUntil) {
             for (float sgn : {1.0f, -1.0f}) {
@@ -398,8 +395,13 @@ void PlayView::drawPoly(FrameDraw& d, const ViewInput& in) {
                 // On the One a white flare runs the link.
                 const float one = inBar < bar / 12.0 && t >= s.fightTick ? 1.0f - static_cast<float>(inBar / (bar / 12.0)) : 0.0f;
                 d.scene.line(toScene(A), toScene(L1), 0.5f * P.linkWidthPx * refPx_, W1 * (1.4f + 2.0f * one), W1 * (1.4f + 2.0f * one), 0);
-                if (burn == 1)
-                    for (float u = 0.0f; u < 1.0f; u += 0.1f) telegraphLine(d, lerpv(A, B, u), lerpv(A, B, u + 0.05f), 1.0f, 2.0f * tuning::kPrLinkBurnHalfWu);
+                if (burn == 1) {
+                    // (it burns for the bar's last burnBeats every second bar: when the coming burn begins)
+                    const double barAt = std::floor(t / kTicksPerBar) * kTicksPerBar;
+                    const bool odd = ((static_cast<i64>(std::floor(t / kTicksPerBar)) - s.pr.hemiolaBar0) & 1) != 0;
+                    const u32 burns = w.species().poly.burnBeats < 4u ? w.species().poly.burnBeats : 4u;
+                    telegraphLine(d, A, B, barAt + (odd ? 0.0 : kTicksPerBar) + (4.0 - static_cast<double>(burns)) * kTicksPerBeat);
+                }
             }
         }
         for (u32 j = 0; j < P.linkTicks && j < ticksShown; ++j) {

@@ -278,12 +278,12 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
         }
     }
     // Volatile bombs: a danger ring of 160 wu filling from its edge over two beats (priority layer).
-    const auto fillRing = [&](Vec2 c, float r, float u) {
+    const auto fillRing = [&](Vec2 c, float r, float u, double fireTick) {
         const u32 n = 40;
         for (u32 k = 0; k < n; ++k) {
             if (k % 2u) continue;
             const float a0 = kTau * k / n, a1 = kTau * (k + 1) / n;
-            telegraphLine(d, c + dirv(a0) * r, c + dirv(a1) * r, 1.0f);
+            telegraphLine(d, c + dirv(a0) * r, c + dirv(a1) * r, fireTick);
         }
         if (u > 0.0f) d.pools.glow(toScene(c), r * (1.0f - 0.6f * (1.0f - u)) * pxPerWu_, danger * (0.06f + 0.1f * u));
         if (shown(kMutePriority)) {
@@ -297,12 +297,12 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
     for (u32 k = 0; k < World::kArenaBombs; ++k) {
         const ArenaBomb& b = w.bombs()[k];
         if (b.burst < 0.0 || !visible(b.at, 200.0f)) continue;
-        fillRing(b.at, w.species().traits.volatileRing, clamp01(1.0f - static_cast<float>((b.burst - t) / (w.species().traits.volatileFuse * kTicksPerBeat))));
+        fillRing(b.at, w.species().traits.volatileRing, clamp01(1.0f - static_cast<float>((b.burst - t) / (w.species().traits.volatileFuse * kTicksPerBeat))), b.burst);
     }
     for (u32 k = 0; k < World::kArenaMeteors; ++k) {
         const ArenaMeteor& m = w.meteors()[k];
         if (m.land < 0.0 || !visible(m.at, 150.0f)) continue;
-        fillRing(m.at, prose::kArMeteorWu, clamp01(1.0f - static_cast<float>((m.land - t) / (prose::kArMeteorBeats * kTicksPerBeat))));
+        fillRing(m.at, prose::kArMeteorWu, clamp01(1.0f - static_cast<float>((m.land - t) / (prose::kArMeteorBeats * kTicksPerBeat))), m.land);
     }
     // The event: its announcement (a gold edge chevron and its name at the place; the Comet a white chevron two beats ahead),
     // the Storm Cell's ring with the lattice hot inside, the hunted elite's dotted trail.

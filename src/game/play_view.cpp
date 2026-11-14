@@ -50,6 +50,11 @@ constexpr float kDashGhostS = 0.25f;
 // round the danger hue no lane may fall in.
 constexpr float kPrismLaneL = 0.70f, kPrismLaneStepDeg = 60.0f, kPrismDangerBandDeg = 30.0f;
 constexpr float kChevronDepth = 0.4f, kChevronPairGap = 0.32f, kChevronDisc = 0.68f, kChevronStroke = 0.055f;
+// look.md §5, Telegraphs (0449eb3, the owner, quoted): a tell's dashes are 1.5 px in the danger colour at 0.35, rising to 0.6 over
+// the charge's last beat, in the scene light only. The dash and the gap between dashes (30 wu each) are chosen: the beams' tells
+// had them before.
+constexpr float kTellWidthRefPx = 1.5f, kTellLevel = 0.35f, kTellLevelFiring = 0.6f;
+constexpr float kTellDashWu = 30.0f, kTellGapWu = 30.0f;
 
 Vec2 dir(float a) { return {std::cos(a), std::sin(a)}; }
 Vec2 perp(Vec2 v) { return {-v.y, v.x}; }
@@ -742,20 +747,33 @@ void PlayView::flare(CapsuleBatch& out, Vec2 at, float angle, float lengthWu, u3
     }
 }
 
-void PlayView::telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight, float widthWu) {
-    // Telegraphs (look.md §3): danger in the scene at 1.3 x the swarm gain, and on the threat layer. A beam's warning dashes
-    // are as wide as the beam (look.md v2.5).
-    const Vec3 danger = palettes_->danger;
-    const LookLine& tl = look_->lines.telegraph;
-    if (shown(kMuteBullet)) {
-        const Vec3 c = danger * (tl.intensity * sceneLight);
-        d.scene.line(toScene(a), toScene(b), 0.5f * tl.width * refPx_, c, c, 0);
+void PlayView::telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, double fireTick, float sceneLight) {
+    // look.md §5 (0449eb3, the owner: "the red dotted line before a laser needs to be transparent"): a tell is a warning, not a
+    // threat, so it is see-through: in the scene light only, never on the priority layer (no dark rim, no opaque core), its
+    // dashes 1.5 px in the danger colour at 0.35, so the lattice, enemies and shots under it show through; over the charge's last
+    // beat it rises to 0.6. Every laser's and lethal beam's tell, the Longwave lunge's line and every other dashed tell come
+    // here whole and are dashed here (a piece shorter than a dash is one dash).
+    if (!shown(kMuteBullet)) return;
+    const float len = length(b - a);
+    if (len < 1e-3f) return;
+    const float rise = fireTick >= 0.0 ? clampf(1.0f - static_cast<float>((fireTick - tellNow_) / kTicksPerBeat), 0.0f, 1.0f) : 0.0f;
+    const Vec3 c = palettes_->danger * ((kTellLevel + (kTellLevelFiring - kTellLevel) * rise) * sceneLight);
+    const float hw = 0.5f * kTellWidthRefPx * refPx_;
+    const Vec2 dv = (b - a) * (1.0f / len);
+    for (float u = 0.0f; u < len; u += kTellDashWu + kTellGapWu) {
+        const Vec2 p0 = a + dv * u, p1 = a + dv * std::fmin(u + kTellDashWu, len);
+        if (!visible(p0, 20.0f) && !visible(p1, 20.0f)) continue;
+        d.scene.line(toScene(p0), toScene(p1), hw, c, c, 0);
     }
-    if (!shown(kMutePriority)) return;
-    const float w = widthWu > 0.0f ? 0.5f * widthWu * pxPerWu_ : 0.5f * look_->threat.telegraphWidth * refPx_;
-    const Vec3 core = danger * 0.9f;
-    d.threatRims.line(toScreen(a), toScreen(b), w + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
-    d.threatCores.line(toScreen(a), toScreen(b), w, core, core, 0);
+}
+
+void PlayView::tellMark(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight) {
+    // A glint or a chevron (look.md §5): danger in the scene at the telegraph line's level (look.md §3), never on the priority
+    // layer (0449eb3: a tell is see-through).
+    if (!shown(kMuteBullet)) return;
+    const LookLine& tl = look_->lines.telegraph;
+    const Vec3 c = palettes_->danger * (tl.intensity * sceneLight);
+    d.scene.line(toScene(a), toScene(b), 0.5f * tl.width * refPx_, c, c, 0);
 }
 
 void PlayView::envelopes(const ViewInput& in) {
@@ -807,6 +825,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     const World& w = *in.world;
     const float t = static_cast<float>(in.time);
     now_ = in.time;
+    tellNow_ = in.music;
     refPx_ = H / 1080.0f;
     const Vec3 W1 = white();
     const Vec3 player = palettes_->player[w.viewPlayer()], deep = palettes_->playerDeep[w.viewPlayer()], light = palettes_->playerLight[w.viewPlayer()];
@@ -1215,8 +1234,8 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             const Vec2 n = perp(dd);
             for (float along = 50.0f; along <= tuning::kRamPathWu; along += 52.0f) {
                 const Vec2 c = pos + dd * along;
-                telegraphLine(d, c - dd * 10.0f + n * 10.0f, c, swarm);
-                telegraphLine(d, c - dd * 10.0f - n * 10.0f, c, swarm);
+                tellMark(d, c - dd * 10.0f + n * 10.0f, c, swarm);
+                tellMark(d, c - dd * 10.0f - n * 10.0f, c, swarm);
             }
         } else if (e.state[i] == kGlint) {
             const float progress = clampf(1.0f - static_cast<float>((e.until[i] - in.music) / kTicksPerBeat), 0.0f, 1.0f);
@@ -1224,7 +1243,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             const float ang = 0.25f * kPi + progress * 0.5f * kPi;
             for (u32 k = 0; k < 2; ++k) {
                 const Vec2 dd = dir(ang + 0.5f * kPi * static_cast<float>(k));
-                telegraphLine(d, pos - dd * len, pos + dd * len, swarm);
+                tellMark(d, pos - dd * len, pos + dd * len, swarm);
             }
         }
     }

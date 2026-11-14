@@ -3,12 +3,14 @@
 // and 130% with the touch controls shown, the mini-boss that stays (13 bars after its arrival, the Drop held), and the boss
 // hit flash (a white copy of the part's own shape) on three fights. Fixed 1/60 s steps and no band, like the other pictures.
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
 #include "core/args.h"
 #include "core/log.h"
 #include "game/play.h"
+#include "sim/boss_prose.h"
 #include "sim/tuning.h"
 
 namespace rf {
@@ -17,7 +19,7 @@ using namespace sim;
 
 namespace {
 enum class M6 : u8 { Hint, EndedBy, SetCard, SetOver, TitleStar, UiScale, MiniStays, Flash, Credits, LwEntrance, LwLunge, LwClose, DropTitle,
-                     DropRetry, Home, PauseRestart, PauseQuit };
+                     DropRetry, Home, PauseRestart, PauseQuit, HzWave, HzTouch };
 struct M6Pic {
     const char* name;   // m6_<name>
     M6 kind;
@@ -47,6 +49,10 @@ const M6Pic kM6Pics[] = {
     // c9218dc (screens.md "Every other way in or out of a run"): the pause's RESTART (RETRY's drop-in) and QUIT RUN (home), the
     // pause taken on a bar's second beat, the choice half a second later.
     {"pause_restart", M6::PauseRestart, 0, nullptr}, {"pause_quit", M6::PauseQuit, 0, nullptr},
+    // 3283249 (horizon.md rules 6 and 7: a shove is a push the ship rides), strips of eight a sixteenth apart in Event Horizon's
+    // Tidal phase held: a tidal wave reaching a ship standing still 380 wu out (from a sixteenth before it), and a ship flying into
+    // the horizon and thrown out over half a beat.
+    {"hz_wave", M6::HzWave, 1, "horizon"}, {"hz_touch", M6::HzTouch, 1, "horizon"},  // (phase 1: Tidal, 0-based as --fight)
 };
 constexpr u32 kM6Count = sizeof(kM6Pics) / sizeof(kM6Pics[0]);
 constexpr u32 kM6At = 300;  // after the run's Track card (2.25 bars)
@@ -139,6 +145,11 @@ bool Play::scriptSetupM6() {
             if (!setupFight(pic.fight, pic.arg)) return true;
             opt_.fightHold = true;
             stripStride_ = pic.kind == M6::LwLunge ? 15u : 2u;
+            break;
+        case M6::HzWave:
+        case M6::HzTouch:
+            if (!setupFight(pic.fight, pic.arg)) return true;
+            opt_.fightHold = true;
             break;
         case M6::MiniStays:
         case M6::Flash:
@@ -346,6 +357,47 @@ bool Play::scriptInputM6(StickInput& in) {
                     captureFrom_ = now + 1;
                 }
             }
+            return true;
+        }
+        case M6::HzWave:
+        case M6::HzTouch: {
+            in = bot_.think(w, 0, controller_, clock_.heardNow());
+            if (ffRunning_) return true;
+            in = StickInput{};
+            in.assist = false;
+            w.closeTrioNow(0);
+            w.playerMut(0).levelsBanked = 0;
+            const BossState& b = w.boss();
+            if (captureFrom_ >= 0 || !b.active || b.dying || b.kind != BossKind::EventHorizon || music1_ < b.fightTick + kTicksPerBar)
+                return true;
+            const Vec2 c = b.pos;
+            stripStride_ = static_cast<u32>(std::lround(900.0 / std::fmax(w.tempoAt(music1_), 30.0f)));  // (a sixteenth's frames)
+            if (pic.kind == M6::HzWave) {
+                // The ship stands 380 wu out until a wave leaves; then it is left to the wave and the pull. The strip starts a
+                // sixteenth before the ring reaches it.
+                const HorizonState& h = b.hz;
+                if (!(scriptFlags_ & 0x40u) || !(h.waveTick > static_cast<double>(placedAt_) && music1_ >= h.waveTick)) {
+                    if (!(scriptFlags_ & 0x40u)) placedAt_ = static_cast<u32>(music1_);
+                    scriptFlags_ |= 0x40u;
+                    controller_.reset(c + Vec2{-380.0f, 0.0f});
+                    return true;
+                }
+                const double reach = h.waveTick + 380.0 / prose::kHzWaveSpeed * static_cast<double>(w.ticksPerSecond());
+                const double framesTo = (reach - music1_) / static_cast<double>(w.ticksPerSecond()) * 60.0;
+                captureFrom_ = now + std::max<i64>(1, static_cast<i64>(std::lround(framesTo)) - static_cast<i64>(stripStride_));
+                RF_LOG("play: picture '%s': the wave reaches the ship in %.1f frames", opt_.picture, framesTo);
+                return true;
+            }
+            // The touch: put 320 wu out once, then flown straight at the Well until it is thrown; the strip starts as the ship
+            // comes within 60 wu of the touch.
+            if (!(scriptFlags_ & 0x40u)) {
+                controller_.reset(c + Vec2{-320.0f, 0.0f});
+                scriptFlags_ |= 0x40u;
+                return true;
+            }
+            if (w.thrown(0, music1_)) scriptFlags_ |= 0x80u;
+            if (!(scriptFlags_ & 0x80u)) in.move = normalizeOr(c - ship, Vec2{1.0f, 0.0f});
+            if (length(ship - c) < w.species().horizon.horizonRadius + kPlayerHitRadius + 60.0f) captureFrom_ = now;
             return true;
         }
         case M6::MiniStays:

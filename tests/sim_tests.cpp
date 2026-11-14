@@ -55,6 +55,7 @@ World* quietWorld() {
     auto* w = new (std::nothrow) World;
     w->init(g_species);
     w->spawner().mode = Spawner::Mode::Off;
+    w->rules().bulletsAsWritten = true;  // (the pages' patterns as written; the Track's count has its own test: testBulletsByTrack)
     w->resetRun(7, 0.0, 1);
     return w;
 }
@@ -1743,12 +1744,12 @@ void testLongwave() {
         const Vec2 c = w->longwavePoint(t, static_cast<float>(crest + 1), 0.0f, &tan);
         const Vec2 nrm{-tan.y, tan.x};
         const float hp = s.partHp[crest];
-        CHECK(w->shootBoss(c + nrm * 140.0f, c, 7.0f) == 2);
-        CHECK_MSG(std::fabs(hp - s.partHp[crest] - 7.0f) < 1e-3f, "crest took %.2f", hp - s.partHp[crest]);
+        CHECK(w->shootBoss(c + nrm * 140.0f, c, 2.0f) == 2);  // (02c28ab: a segment holds about 5 now: a shot of 2)
+        CHECK_MSG(std::fabs(hp - s.partHp[crest] - 2.0f) < 1e-3f, "crest took %.2f", hp - s.partHp[crest]);
         const Vec2 q = w->longwavePoint(t, static_cast<float>(trough + 1), 0.0f, &tan);
         const float hq = s.partHp[trough];
-        w->shootBoss(q - Vec2{-tan.y, tan.x} * 140.0f, q, 7.0f);
-        CHECK_MSG(std::fabs(hq - s.partHp[trough] - 1.75f) < 1e-3f, "trough took %.2f", hq - s.partHp[trough]);
+        w->shootBoss(q - Vec2{-tan.y, tan.x} * 140.0f, q, 2.0f);
+        CHECK_MSG(std::fabs(hq - s.partHp[trough] - 0.5f) < 1e-3f, "trough took %.2f", hq - s.partHp[trough]);
         CHECK(w->bossDamageScale(2, static_cast<u8>(trough), t, Vec2{1.0f, 0.0f}) == 0.25f);
         // (the armour's spark: an impact on part 1 with the armour's share)
         bool spark = false;
@@ -1902,6 +1903,47 @@ u32 cuesUntil(World& w, double& music, double until, Vec2 ship, BossCue c) {
     return n;
 }
 
+// 0449eb3 (GAME_DESIGN 8, "Enemy bullets by Track"): every enemy bullet counted at 0.5 in Tracks 1-3 and 0.75 in Tracks 4-7, as
+// written from Track 8 and in the loop: the crowd's shooters (a Hound's fan of three, a Sentry's turning arms, a Flanker's and
+// a Drifter's single shots, a Moth's opposite petals) over eight bars of a Track's Groove against the same run as written.
+void testBulletsByTrack() {
+    g_test = "bullets by Track";
+    const auto fired = [&](u32 track, bool asWritten, u32& singles) -> u32 {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        w->rules().bulletsAsWritten = asWritten;
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->directorMut().track = static_cast<u8>(track);
+        w->directorMut().trackBar = 0;
+        runTo(*w, music, kTicksPerBar + 5.0, Vec2{});
+        CHECK_MSG(w->phrase().track == track && w->phrase().section == Section::Groove, "Track %u", static_cast<u32>(w->phrase().track));
+        const Family fams[] = {Family::Hound, Family::Sentry, Family::Flanker, Family::Drifter, Family::Moth};
+        for (u32 k = 0; k < 5; ++k)
+            w->spawnEnemy(SpeciesTable::index(fams[k], 1, kVariantB), dirOf(kTau * static_cast<float>(k) / 5.0f) * 320.0f, 0.0f, w->music());
+        const u32 b0 = w->counters().bulletsAll;
+        u32 shots = 0;
+        for (double until = w->music() + 8.0 * kTicksPerBar; w->music() < until;) {
+            stepWorld(*w, music, Vec2{});
+            for (u32 k = 0; k < w->eventCount(); ++k) {
+                const Event& ev = w->events()[k];
+                if (ev.type == EventType::EnemyShot && static_cast<u16>(ev.species) == SpeciesTable::index(Family::Drifter, 1, kVariantB)) ++shots;
+            }
+        }
+        singles = shots;
+        const u32 n = w->counters().bulletsAll - b0;
+        delete w;
+        return n;
+    };
+    u32 s0 = 0, s2 = 0, s5 = 0, s9 = 0;
+    const u32 all = fired(2, true, s0), t2 = fired(2, false, s2), t5 = fired(5, false, s5), t9 = fired(9, false, s9);
+    const float r2 = static_cast<float>(t2) / static_cast<float>(all ? all : 1u), r5 = static_cast<float>(t5) / static_cast<float>(all ? all : 1u);
+    CHECK_MSG(all > 100 && r2 > 0.42f && r2 < 0.58f && r5 > 0.67f && r5 < 0.83f && t9 == all, "as written %u, Track 2 %u (%.2f), Track 5 %u (%.2f), Track 9 %u",
+              all, t2, r2, t5, r5, t9);
+    std::printf("  [bullets by Track] eight bars of five shooters: as written %u, Track 2 %u (x %.2f), Track 5 %u (x %.2f), Track 9 %u; a Drifter's "
+                "shots %u, %u, %u\n", all, t2, r2, t5, r5, t9, s0, s2, s5);
+}
+
 void testHorizon() {
     g_test = "horizon";
     const HorizonData& d = g_species->horizon;
@@ -1953,21 +1995,47 @@ void testHorizon() {
         runTo(*w, music, 4.0 * kTicksPerBar + 2.0 * kTicksPerStep + 10.0, ship);
         CHECK_MSG(w->bullets().count - b0 >= 4, "%u bullets", w->bullets().count - b0);
     }
-    // Touching the horizon: thrown 300 wu out (the controller takes the knock).
+    // Touching the horizon: thrown 300 wu out over half a beat, eased out, the pull letting go meanwhile (3283249, rules 6 and
+    // 7: a push the ship rides, never a jump); the controller carries it a tick at a time.
     {
-        const u32 serial = w->player(0).knockSerial;
-        stepWorld(*w, music, s.pos + Vec2{100.0f, 0.0f});
-        const Vec2 k = w->player(0).knock;
-        CHECK_MSG(w->player(0).knockSerial == serial + 1 && k.x > 250.0f, "knock %.1f %.1f", k.x, k.y);
+        const u32 serial = w->player(0).shoves[PlayerState::kShoveThrow].serial;
+        PlayerController c;
+        c.reset(s.pos + Vec2{100.0f, 0.0f});
+        StickInput idle;
+        idle.assist = false;
+        c.update(idle, kDt, music, kBpm, *w, 0);
+        stepWorld(*w, music, c.pose().pos);
+        const PlayerState::Shove& sh = w->player(0).shoves[PlayerState::kShoveThrow];
+        CHECK_MSG(sh.serial != serial && sh.by.x > 250.0f && std::fabs(sh.ticks - 0.5 * kTicksPerBeat) < 1e-6, "throw %.1f %.1f over %.1f",
+                  sh.by.x, sh.by.y, sh.ticks);
+        CHECK(w->thrown(0, w->music()) && lengthSq(w->wellPull(s.pos + Vec2{200.0f, 0.0f}, false)) < 1e-6f);
+        const u32 thrownSerial = sh.serial;
+        const Vec2 from = c.pose().pos;
+        float step = 0.0f;
+        while (w->music() < sh.tick + sh.ticks + kTicksPerSimTick) {
+            const Vec2 was = c.pose().pos;
+            c.update(idle, kDt, music, kBpm, *w, 0);
+            step = std::fmax(step, length(c.pose().pos - was));
+            stepWorld(*w, music, c.pose().pos);
+        }
+        const float went = length(c.pose().pos - from);
+        CHECK_MSG(step < 70.0f && went > 270.0f && went < 330.0f && w->player(0).shoves[PlayerState::kShoveThrow].serial == thrownSerial,
+                  "the throw: %.1f wu in all, at most %.1f a tick", went, step);
     }
-    // Tidal (two thirds of its health): the wave on beat 3 of every bar.
+    // Tidal (two thirds of its health): the wave on beat 3 of every bar, a push of 140 wu over a beat.
     w->bossHealthNow(0.6f);
     stepWorld(*w, music, ship);
     CHECK(s.hz.phase == 1);
     {
         const double line = (std::floor(w->music() / kTicksPerBar) + 1.0) * kTicksPerBar;
         runTo(*w, music, line + 5.0, ship);
+        const u32 serial = w->player(0).shoves[PlayerState::kShoveWave].serial;
         CHECK(cuesUntil(*w, music, line + 2.0 * kTicksPerBeat + 5.0, ship, BossCue::HzWave) == 1);
+        runTo(*w, music, line + 4.5 * kTicksPerBeat, ship);  // (the ring reaches the ship 600 wu out a second, two beats, after it leaves)
+        const PlayerState::Shove& sh = w->player(0).shoves[PlayerState::kShoveWave];
+        CHECK_MSG(sh.serial != serial && std::fabs(length(sh.by) - 140.0f) < 0.5f && sh.by.x > 0.0f && std::fabs(sh.ticks - kTicksPerBeat) < 1e-6,
+                  "wave %.1f %.1f over %.1f", sh.by.x, sh.by.y, sh.ticks);
+        CHECK(std::fabs(shoveProgress(sh, sh.tick + 0.5 * kTicksPerBeat) - 0.75f) < 1e-4f && shoveProgress(sh, sh.tick + kTicksPerBeat) == 1.0f);
     }
     // Collapse: the jets burn on a fed bar line along the axis, which turns 45 degrees a bar; it drifts toward the players.
     w->bossHealthNow(0.3f);
@@ -3940,6 +4008,7 @@ int main() {
     testLongwave();
     testChoir();
     testHorizon();
+    testBulletsByTrack();
     testPolyrhythm();
     testFeedback();
     testMinibosses2();

@@ -909,7 +909,7 @@ void World::updateRam(float dt) {
             // The wall rings: 16 bullets fan out from the point of impact, and it is stunned.
             const Vec2 n = (hit & 1u) ? Vec2{p.x > pen_.centre.x ? -1.0f : 1.0f, 0.0f} : Vec2{0.0f, p.y > pen_.centre.y ? -1.0f : 1.0f};
             const Vec2 at = p - n * r;
-            const u32 count = bossScaledCount(kRamWallBullets, bossBulletDensity(), 4u);
+            const u32 count = bossCount(kRamWallBullets, 4u, volleyIndex(m1_, kTicksPerBeat), 0u);  // (0449eb3: the fan thinned evenly)
             const float speed = species_->bulletSpeed;
             for (u32 k = 0; k < count; ++k) {
                 const float a = angleOf(n) + (static_cast<float>(k) / static_cast<float>(count > 1 ? count - 1 : 1) - 0.5f) * kRamWallFanDeg * kDeg;
@@ -994,7 +994,7 @@ void World::caromBounce(u32 k, double t) {
         for (double until : m.bulletsUntil)
             if (until > t) flying += kCaromBounceBullets;
         if (flying + kCaromBounceBullets <= kCaromBulletCap) {
-            const u32 n = bossScaledCount(kCaromBounceBullets, bossBulletDensity(), 3u);
+            const u32 n = bossCount(kCaromBounceBullets, 3u, volleyIndex(t, kTicksPerBeat), 0u);  // (0449eb3: the fan thinned evenly)
             for (u32 j = 0; j < n; ++j) {
                 const float a = angleOf(nd) + (static_cast<float>(j) / static_cast<float>(n > 1 ? n - 1 : 1) - 0.5f) * 2.0f * kCaromBounceFanDeg * kDeg;
                 spawnBullet(at, dirOf(a) * species_->bulletSpeed, tickAgeOf(t), kBulletLifeS);

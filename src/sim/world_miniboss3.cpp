@@ -308,6 +308,7 @@ void World::updateMimic(float /*dt*/) {
         const i64 step = static_cast<i64>(std::floor(m1_ / kTicksPerStep));
         if (step == m.fireStep) continue;
         m.fireStep = step;
+        if (!trackCount(1u, 1u, static_cast<i64>(m.answers++), 0u)) continue;  // (0449eb3: every second answer, or three in four)
         const Vec2 dir = normalizeOr(Vec2{ev.x2, ev.y2}, Vec2{1.0f, 0.0f});
         for (u32 i = 0; i < (m.half ? 2u : 1u); ++i) {
             if (bullets_.count >= kMmCap) break;

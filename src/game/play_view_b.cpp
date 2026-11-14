@@ -805,10 +805,7 @@ void PlayView::drawBoss(FrameDraw& d, const ViewInput& in) {
             if (dv.y < -1e-4f) reach = std::fmin(reach, (-kArenaHalfH - from.y) / dv.y);
             const Vec2 to = from + dv * reach;
             if (beam == 1) {
-                for (float u = 0.0f; u < reach; u += 60.0f) {
-                    const Vec2 p0 = from + dv * u, p1 = from + dv * std::fmin(u + 30.0f, reach);
-                    if (visible(p0, 40.0f) || visible(p1, 40.0f)) telegraphLine(d, p0, p1, 1.0f, b.phases[1].beamWidth);
-                }
+                telegraphLine(d, from, to, (std::floor(in.music / kTicksPerBar) + 1.0) * kTicksPerBar);  // (it fires on the next bar line)
             } else {
                 lethalBeam(d, from, to, b.phases[1].beamWidth);  // look.md v2.5: 10 wu, the model
             }

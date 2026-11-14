@@ -944,7 +944,9 @@ void World::bossGeom(u8 geom, Vec2 a, Vec2 b, double tick, bool host) {
                 emitCue(BossCue::DwLow, tick, 1, 0.0f, s.body[0]);
                 break;
             }
-            const u32 n = static_cast<u32>(std::fmin(std::floor(a.x / prose::kDwPerBullet), static_cast<float>(prose::kDwRingMax)));
+            // (0449eb3: the Track's count, the ring thinned evenly: the same on every device from the host's bar)
+            const u32 n = trackCount(static_cast<u32>(std::fmin(std::floor(a.x / prose::kDwPerBullet), static_cast<float>(prose::kDwRingMax))), 4u,
+                                     volleyIndex(tick, kTicksPerBar), 0u);
             if (n == 0) break;
             const u32 now = m.half ? n / 2u : n;
             m.ringLeft = static_cast<u16>(n - now);
@@ -1013,14 +1015,15 @@ void World::bossFire(double t) {
     const float adv = tickAgeOf(t);
     const float wheel = wheelAt(s, b, t);
     const u8 mask = bossFiringMask(t);
-    const float density = bossBulletDensity();
     if (mask) {
         const float spread = ph.spreadDeg * kDeg;
         for (u32 k = 0; k < 6; ++k) {
             if (!(mask & (1u << (k % 3)))) continue;
             const float a = wheel + static_cast<float>(k) * kArmStep;
             const Vec2 tip = s.pos + dirOf(a) * b.tip.armRadius;
-            const u32 fan = bossScaledCount(ph.fan ? ph.fan : 1u, density, 1u);
+            // (0449eb3: the Track's count on top of the lever; a tip's single shot every second volley or three in four)
+            const u32 fan = bossCount(ph.fan ? ph.fan : 1u, 1u, volleyIndex(t, ph.fireStepTicks), k);
+            if (!fan) continue;
             for (u32 j = 0; j < fan; ++j) {
                 const float da = (static_cast<float>(j) - 0.5f * static_cast<float>(fan - 1)) * spread;
                 spawnBullet(tip, dirOf(a + da) * b.bulletSpeed, adv, b.bulletLife);
@@ -1032,17 +1035,20 @@ void World::bossFire(double t) {
     if (ph.coreBurst) {
         const double inBar = t - barStartOf(t);
         bool fire = false;
+        i64 volley = 0;  // (0449eb3: the burst's index among its own)
         if (s.phase == 2) {
             fire = inBar < 0.5;
+            volley = volleyIndex(t, kTicksPerBar);
         } else {
             const u32 bars = bossFightBar(t) >= s.phaseBar0 ? bossFightBar(t) - s.phaseBar0 : 0;
             const double every = bars >= 8 ? 2.0 * kTicksPerStep : kTicksPerBeat;
             const double in = std::fmod(t, every);
             fire = t >= s.phaseTick && (in < 0.5 || every - in < 0.5);
+            volley = volleyIndex(t, every);
         }
         if (fire) {
-            const u32 n = bossScaledCount(ph.coreBurst, density, 4u);
             const u32 index = static_cast<u32>(std::floor(t / (2.0 * kTicksPerStep) + 0.5));
+            const u32 n = bossCount(ph.coreBurst, 4u, volley, 0u);  // (0449eb3: the ring thinned evenly)
             const float turn = (index & 1u) ? 0.5f * kTau / static_cast<float>(n) : 0.0f;
             for (u32 j = 0; j < n; ++j) {
                 const float a = wheel + turn + kTau * static_cast<float>(j) / static_cast<float>(n);

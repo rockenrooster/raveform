@@ -504,6 +504,7 @@ struct MiniState {
     Vec2 dashVec;                // ... the Dash it copies a beat late (the player's own) and when the copy begins
     double dashCopy = -1.0;
     i64 fireStep = -1;           // ... the last step it answered (one bullet a step)
+    u32 answers = 0;             // ... the steps it has answered (0449eb3: every second fires in Tracks 1-3, three in four in 4-7)
     double slackUntil = -1.0;    // Twin Tether: the beam is off and the nodes take x 2 until here
     double flailTick = -1.0;     // ... a node dead: the survivor's flail from here, from this angle
     float flail0 = 0.0f;

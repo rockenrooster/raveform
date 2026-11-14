@@ -242,6 +242,8 @@ void World::updateFeedback(float dt) {
                 if (r.primary && when <= m1_ && when >= m1_ - prose::kFbPlayingSteps * kStep) playing = true;
                 if (when <= m0_ || when > m1_) continue;
                 if (echoShots >= prose::kFbShotCap) continue;
+                // (0449eb3: the Track's count: every second recorded shot, or three in four)
+                if (!trackCount(1u, 1u, static_cast<i64>((l.shotHead + FeedbackTape::kShots - 1 - k) % FeedbackTape::kShots), 0u)) continue;
                 const Vec2 off = e == 0 ? r.off * -1.0f : r.off, sd = e == 0 ? r.dir * -1.0f : r.dir;
                 if (spawnEchoShot(at + off, sd * d.shotSpeed, static_cast<float>((m1_ - when) / tps), d.shotLife, static_cast<u8>(p))) ++echoShots;
                 if (!sounded) {

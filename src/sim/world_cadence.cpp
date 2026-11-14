@@ -133,7 +133,7 @@ void World::updateCadence(float dt) {
                 const i32 np = nearestPlayer(p.x, p.y);
                 const float aim = np >= 0 ? angleOf(players_[np].pos - p) : 0.0f;
                 const auto fan = [&](u32 n, float spreadDeg) {
-                    const u32 m = bossScaledCount(n, bossBulletDensity() * loopShooters_, 2);
+                    const u32 m = bossCount(n, 2u, beatIndex / 2, k, loopShooters_);  // (0449eb3: the Track's count, the fan thinned evenly)
                     for (u32 j = 0; j < m; ++j) {
                         const float off = m > 1 ? (static_cast<float>(j) / static_cast<float>(m - 1) - 0.5f) * spreadDeg * kDegR : 0.0f;
                         spawnBullet(p + dirOf(aim + off) * d.pillarRadius, dirOf(aim + off) * d.bulletSpeed, age, d.bulletLife);
@@ -146,7 +146,7 @@ void World::updateCadence(float dt) {
         } else {
             // Inversion: the sounding pillar alone fires, a rosette of sixteen on the One and twelve on three.
             const Vec2 p = cadencePillar(chord, t);
-            const u32 n = bossScaledCount(beat == 0 ? kCdRosetteOne : kCdRosetteThree, bossBulletDensity() * loopShooters_, 4);
+            const u32 n = bossCount(beat == 0 ? kCdRosetteOne : kCdRosetteThree, 4u, beatIndex / 2, 0u, loopShooters_);  // (0449eb3)
             const float a0 = static_cast<float>(hash32(static_cast<u32>(t), 0xCADu) % 360u) * kDegR;
             for (u32 j = 0; j < n; ++j) {
                 const float a = a0 + kTau * static_cast<float>(j) / static_cast<float>(n);

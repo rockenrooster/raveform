@@ -239,7 +239,9 @@ void World::updateEnemies(float dt) {
                     if (e.state[i] == kGlint && m1_ >= e.until[i]) {
                         const float age = tickAgeOf(e.until[i]);
                         const float aim = tp >= 0 ? angleOf(to) : h;
-                        const u32 n = shooterCount(3u, e.rng[i]);  // the loop adds to every volley (GAME_DESIGN 8)
+                        // the loop adds to every volley; 0449eb3: the Track's count (a fan of three: 1, 2, 1, 2 in Tracks 1-3, its
+                        // smallest an aimed shot, so every glint still fires)
+                        const u32 n = trackCount(shooterCount(3u, e.rng[i]), 1u, volleyIndex(e.until[i], kTicksPerBar), e.serial[i]);
                         for (u32 k = 0; k < n; ++k)
                             spawnBullet(Vec2{x, y}, dirOf(aim + (static_cast<float>(k) - 0.5f * static_cast<float>(n - 1)) * kHoundBurstSpread) * bulletSpeed,
                                         age);
@@ -333,10 +335,15 @@ void World::updateEnemies(float dt) {
                 e.vx[i] = e.vy[i] = 0.0f;
                 if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(to), 2.0f * dt);
                 if (s.variant != kVariantB) break;
+                const double fireEvery = kTicksPerStep * static_cast<double>(fd.fireEverySteps ? fd.fireEverySteps : 2u);
                 const auto volley = [&](double t) {
                     const float turn = static_cast<float>(t / kTicksPerBar) * kSentryTurnsPerBar * kTau;
                     const float age = tickAgeOf(t);
-                    const u32 arms = shooterCount(fd.patternArms ? fd.patternArms : 3u, e.rng[i]);  // the loop adds arms (GAME_DESIGN 8)
+                    // the loop adds arms (GAME_DESIGN 8); 0449eb3: the Track's count. A turning spiral keeps its arms (fewer
+                    // would turn it into another pattern): the whole volley on every second step, or three in four.
+                    const u32 arms0 = shooterCount(fd.patternArms ? fd.patternArms : 3u, e.rng[i]);
+                    const u32 arms = trackCount(arms0, arms0, volleyIndex(t, fireEvery), e.serial[i]);
+                    if (!arms) return;
                     for (u32 k = 0; k < arms; ++k) {
                         const float a = e.b[i] + turn + kTau * static_cast<float>(k) / static_cast<float>(arms);
                         spawnBullet(Vec2{x, y}, dirOf(a) * fd.bulletSpeed, age);
@@ -369,8 +376,7 @@ void World::updateEnemies(float dt) {
                     if (!engaged) {
                         e.state[i] = kMoving;
                     } else {
-                        const double every = kTicksPerStep * static_cast<double>(fd.fireEverySteps ? fd.fireEverySteps : 2u);
-                        forCrossings(m0_, m1_, every, [&](double t, i64) { volley(t); });
+                        forCrossings(m0_, m1_, fireEvery, [&](double t, i64) { volley(t); });
                     }
                 }
                 break;

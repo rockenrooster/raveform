@@ -276,8 +276,9 @@ void World::updateMoth(float dt) {
             Enemies& e = enemies_;
             for (u32 i = 0; i < e.count; ++i) {
                 if ((e.flags[i] & kFlagDead) || e.state[i] != kCourt || (e.b[i] > 0.5f) != (r == 1)) continue;
-                for (u32 j = 0; j < kMqBurst; ++j)
-                    spawnBullet(Vec2{e.x[i], e.y[i]}, dirOf(kTau * static_cast<float>(j) / kMqBurst + e.a[i]) * kMqBurstSpeed, tickAgeOf(t), 0.0f);
+                const u32 nb = trackCount(kMqBurst, 3u, volleyIndex(t, kTicksPerBar), e.serial[i]);  // (0449eb3: the ring thinned evenly)
+                for (u32 j = 0; j < nb; ++j)
+                    spawnBullet(Vec2{e.x[i], e.y[i]}, dirOf(kTau * static_cast<float>(j) / static_cast<float>(nb) + e.a[i]) * kMqBurstSpeed, tickAgeOf(t), 0.0f);
                 if (role_ == NetRole::Client) continue;
                 e.flags[i] |= kFlagDead;
                 Event ev;
@@ -295,9 +296,10 @@ void World::updateMoth(float dt) {
         if (since < (kMqCycleBars - 1) * kTicksPerBar) {
             // Bars one to three: a rosette on every eighth (from half health in pairs), each turned 12 degrees from the last.
             const u32 sets = m.half ? 2u : 1u;
+            const u32 petals = trackCount(kMqPetals, 3u, eighth, 0u);  // (0449eb3: the rosette thinned evenly)
             for (u32 k = 0; k < sets; ++k)
-                for (u32 j = 0; j < kMqPetals; ++j) {
-                    const float a = m.rosette + kTau * (static_cast<float>(j) + 0.5f * static_cast<float>(k)) / kMqPetals;
+                for (u32 j = 0; j < petals; ++j) {
+                    const float a = m.rosette + kTau * (static_cast<float>(j) + 0.5f * static_cast<float>(k)) / static_cast<float>(petals);
                     spawnBullet(q + dirOf(a) * 40.0f, dirOf(a) * kMqPetalSpeed, tickAgeOf(t), kMqPetalReach / kMqPetalSpeed);
                 }
             m.rosette += kMqRosetteTurnDeg * kDegR;
@@ -437,8 +439,10 @@ void World::updateBlink(float /*dt*/) {
                     const i32 near = nearestPlayer(p.x, p.y);
                     if (near < 0) break;
                     const float a = angleOf(players_[near].pos - p);
-                    for (u32 j = 0; j < kBsDecoyFan; ++j)
-                        spawnBullet(p, dirOf(a + (static_cast<float>(j) - 1.0f) * kBsDecoyFanDeg * kDegR) * kBsDecoyBulletSpeed, tickAgeOf(t), 0.0f);
+                    const u32 nf = trackCount(kBsDecoyFan, 1u, volleyIndex(t, kTicksPerBar), k);  // (0449eb3: the fan thinned evenly)
+                    for (u32 j = 0; j < nf; ++j)
+                        spawnBullet(p, dirOf(a + (static_cast<float>(j) - 0.5f * static_cast<float>(nf - 1)) * kBsDecoyFanDeg * kDegR) * kBsDecoyBulletSpeed,
+                                    tickAgeOf(t), 0.0f);
                 }
             }
         }
@@ -524,6 +528,8 @@ void World::sentryVolley(double t, u32 fan) {
     u32 n = 0;
     for (u32 k = 0; k < kSaTurrets; ++k) n += (s.alive >> k) & 1u;
     if (!n) return;
+    fan = trackCount(fan, 1u, volleyIndex(t, kTicksPerBeat), 0u);  // (0449eb3: each turret's fan thinned evenly, or every second volley)
+    if (!fan) return;
     const float share = kTau / static_cast<float>(n);
     for (u32 k = 0; k < kSaTurrets; ++k) {
         if (!(s.alive & (1u << k)) || static_cast<i32>(k) == hand) continue;

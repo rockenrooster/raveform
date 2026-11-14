@@ -19,8 +19,33 @@ void PlayerController::reset(Vec2 pos) {
     dashLeftS_ = 0.0f;
     dashReadyAt_ = -1e18;
     charges_ = 1;
-    knockKnown_ = false;
+    shoveKnown_ = false;
     targetHandle_ = 0;
+}
+
+float shoveProgress(const PlayerState::Shove& s, double tick) {
+    // How far through a shove: eased out (1 - (1 - u)^2), so its velocity starts at twice the mean and dies away to nothing.
+    const double u = (tick - s.tick) / (s.ticks > 1.0 ? s.ticks : 1.0);
+    if (u <= 0.0) return 0.0f;
+    if (u >= 1.0) return 1.0f;
+    const float v = 1.0f - static_cast<float>(u);
+    return 1.0f - v * v;
+}
+
+void PlayerController::takeShoves(const PlayerState& state, double musicTick, PlayerPose& p, bool move) {
+    // 3283249 (horizon.md rule 7): the ship rides each shove its whole way over its time, on top of its own steering (what
+    // the shove has carried by musicTick, less what it had already). Not moving: only noted (a dead ship, a new controller).
+    for (u32 k = 0; k < PlayerState::kShoves; ++k) {
+        const PlayerState::Shove& sh = state.shoves[k];
+        const float at = shoveProgress(sh, musicTick);
+        if (!shoveKnown_ || sh.serial != shoveSerial_[k]) {
+            shoveTaken_[k] = (shoveKnown_ && move) ? 0.0f : at;
+            shoveSerial_[k] = sh.serial;
+        }
+        if (move && at > shoveTaken_[k]) p.pos = p.pos + sh.by * (at - shoveTaken_[k]);
+        if (at > shoveTaken_[k] || !move) shoveTaken_[k] = at;
+    }
+    shoveKnown_ = true;
 }
 
 float PlayerController::dashCharge(double musicTick) const {
@@ -34,6 +59,7 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
     PlayerPose& p = pose_;
     p.present = true;
     if (!state.alive) {
+        takeShoves(state, musicTick, p, false);
         p.vel = Vec2{};
         p.fire = 0;
         p.dashing = false;
@@ -107,16 +133,13 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
         }
         p.pos = p.pos + p.vel * dt;
     }
-    // M5 part 4 (GAME_DESIGN 7.2): Wells pull the ship toward them.
-    if (!p.dashing) p.pos = p.pos + world.wellPull(p.pos) * dt;
+    // M5 part 4 (GAME_DESIGN 7.2): Wells pull the ship toward them (Event Horizon lets go of a ship it throws: 3283249).
+    if (!p.dashing) p.pos = p.pos + world.wellPull(p.pos, !world.thrown(index, musicTick)) * dt;
     // M5 part 5 (design/arena.md): a Current carries the ship; a Bumper kicks it off unhurt.
     if (!p.dashing) p.pos = p.pos + world.currentFlow(p.pos) * dt;
     world.bumperBounce(p.pos, p.vel, kPlayerVisualRadius);
-    // M5 part 4: what the world has moved the ship by since the last update (Event Horizon's wave and its throw).
-    if (knockKnown_ && state.knockSerial > knockSerial_) p.pos = p.pos + (state.knock - knockTaken_);
-    knockTaken_ = state.knock;
-    knockSerial_ = state.knockSerial;
-    knockKnown_ = true;
+    // 3283249: Event Horizon's wave and throw carry the ship on top of its steering (pushes, never jumps).
+    takeShoves(state, musicTick, p, true);
     // M5 (minibosses.md): the Pen's walls stop ships without hurting (inside stays inside, outside stays outside).
     {
         Vec2 to = p.pos;

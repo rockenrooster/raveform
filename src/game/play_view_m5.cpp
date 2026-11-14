@@ -99,7 +99,7 @@ void PlayView::drawFight(FrameDraw& d, const ViewInput& in) {
     // The lines a fight has shown (a pack's charge, the Hive's spear): dashed in the danger colour until their moment.
     for (FightLine& l : fightLines_) {
         if (l.until < in.music || l.until - in.music > 3.0 * kTicksPerBeat) continue;
-        telegraphLine(d, l.from, l.from + l.dir * l.length, 1.0f);
+        telegraphLine(d, l.from, l.from + l.dir * l.length, l.until);
     }
     const BossState& s = w.boss();
     if (!s.active) {
@@ -277,7 +277,7 @@ void PlayView::drawLongwave(FrameDraw& d, const ViewInput& in) {
     if (!s.dying && lw.lungeArmed && t >= lw.lungeTelegraph && t < lw.lungeTick) {
         const Vec2 from = head;
         const LongwaveData::Phase& P = L.phases[lw.phase < 4 ? lw.phase : 3];
-        telegraphLine(d, from, from + lw.lungeDir * (P.lungeDashWu > 0.0f ? P.lungeDashWu + 300.0f : 1000.0f), 1.0f);
+        telegraphLine(d, from, from + lw.lungeDir * (P.lungeDashWu > 0.0f ? P.lungeDashWu + 300.0f : 1000.0f), lw.lungeTick);
     }
 }
 
@@ -329,7 +329,7 @@ void PlayView::drawChoir(FrameDraw& d, const ViewInput& in) {
         const Vec2 p0 = voicePos(k), p1 = voicePos(n);
         if (!visible(p0, 200.0f) && !visible(p1, 200.0f)) continue;
         if (cage == 1) {
-            telegraphLine(d, p0, p1, 1.0f, w.bossData().phases[1].beamWidth);
+            telegraphLine(d, p0, p1, (std::floor(t / kTicksPerBar) + 1.0) * kTicksPerBar);  // (it burns on the next downbeat)
             continue;
         }
         if (cage == 2) {
@@ -443,10 +443,7 @@ void PlayView::drawChoir(FrameDraw& d, const ViewInput& in) {
             if (dv.y < -1e-4f) reach = std::fmin(reach, (-kArenaHalfH - p.y) / dv.y);
             const Vec2 to = p + dv * reach;
             if (held == 1) {
-                for (float u = 0.0f; u < reach; u += 60.0f) {
-                    const Vec2 q0 = p + dv * u, q1 = p + dv * std::fmin(u + 30.0f, reach);
-                    if (visible(q0, 40.0f) || visible(q1, 40.0f)) telegraphLine(d, q0, q1, 1.0f, w.bossData().phases[1].beamWidth);
-                }
+                telegraphLine(d, p, to, (std::floor(t / kTicksPerBar) + 1.0) * kTicksPerBar);  // (a bar of dashes, then the beam)
             } else {
                 lethalBeam(d, p, to, w.bossData().phases[1].beamWidth);
             }
@@ -493,7 +490,7 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
             const bool winded = t < m.winded;
             drawBody(body, me->radius, s.bodyAng[0], winded ? mix(hue, W1, 0.4f) : hue, partner, level * (winded ? 0.7f : 1.0f), winded);
             if (winded) d.sparkles.glow(toScene(body), 20.0f * refPx_, gold * 1.6f);
-            if (m.state == 1) telegraphLine(d, body, body + m.lockDir * 1000.0f, 1.0f);
+            if (m.state == 1) telegraphLine(d, body, body + m.lockDir * 1000.0f, m.cueTick);
             break;
         }
         case BossKind::Hive: {
@@ -533,7 +530,7 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
                     if (dv.y > 1e-4f) reach = std::fmin(reach, (pen.centre.y + pen.half - body.y) / dv.y);
                     if (dv.y < -1e-4f) reach = std::fmin(reach, (pen.centre.y - pen.half - body.y) / dv.y);
                 }
-                telegraphLine(d, body + m.lockDir * me->radius, body + m.lockDir * reach, 1.0f);
+                telegraphLine(d, body + m.lockDir * me->radius, body + m.lockDir * reach, m.cueTick);
             }
             if (m.wake && (t < m.wakeUntil || m.state == 2)) {
                 d.scene.line(toScene(m.wakeFrom), toScene(m.wakeTo), 0.5f * tuning::kRamWakeWu * pxPerWu_, danger * 2.2f, danger * 2.2f, 0);
@@ -595,8 +592,7 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
                     if (firing) {
                         lethalBeam(d, a0, a1, prose::kBsBeamWu);
                     } else if (k < edges) {
-                        for (float u = 0.0f; u < 1.0f; u += 0.08f)
-                            telegraphLine(d, lerpv(a0, a1, u), lerpv(a0, a1, std::fmin(u + 0.04f, 1.0f)), 1.0f, prose::kBsBeamWu);
+                        telegraphLine(d, a0, a1, m.ringTick + 5.0 * kTicksPerBeat);  // (the star fires on the fifth hop)
                     }
                 }
                 const Vec2 first = w.blinkPoint(0);

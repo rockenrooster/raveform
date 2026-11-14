@@ -630,8 +630,16 @@ struct PlayerState {
     u8 lanceNext = 0;
     double beamTick = -1e9;      // Beam: the last volley it fired
     u8 beamLanes = 1;
-    Vec2 knock;                  // M5 part 4: what the world has moved the ship by, all told (the controller takes the rest)
-    u32 knockSerial = 0;
+    // 3283249 (horizon.md rules 6 and 7): a shove is a push the ship rides, never a jump: `by` carried over `ticks` from `tick`,
+    // eased out (a velocity that dies away), on top of the player's own steering; its controller takes what it has not taken yet
+    // (by `serial`: a new shove in the slot starts from nothing). Slot 0: Event Horizon's tidal wave; 1: its throw.
+    struct Shove {
+        Vec2 by;
+        double tick = -1e9, ticks = 1.0;
+        u32 serial = 0;
+    };
+    static constexpr u32 kShoves = 2, kShoveWave = 0, kShoveThrow = 1;
+    Shove shoves[kShoves];
     Vec2 lastDashFrom, lastDashTo;  // M5 part 4 (Mimic C copies it): the last Dash, and when it began
     double lastDashTick = -1e9;
     Vec2 shockAt;                // Shockstep's ring: where, when, how far
@@ -668,6 +676,9 @@ struct Rules {
     // M5 part 7 (measurements only: the no-trap table, GAME_DESIGN 6.6): the loadout stays as set (no Trio opens, no Boost is
     // taken) and the bosses keep no pace.
     bool frozenLoadout = false, noPace = false;
+    // 0449eb3 (GAME_DESIGN 8, "Enemy bullets by Track"): every enemy bullet as its page writes it in every Track (the tests of a
+    // page's pattern; `--bullets-as-written`, the count before the rule). Off in the game.
+    bool bulletsAsWritten = false;
     float healthLever[24] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
                              1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
 };
@@ -766,6 +777,8 @@ public:
     float crowdGoal() const { return crowdGoal_; }
 
     // M3 stage B: the director, upgrades, Boosts, the boss.
+    u64 bulletsAsked() const { return bulletsAsked_; }  // 0449eb3 (diagnostics): what the volleys' pages asked for, all told
+    u64 bulletsKept() const { return bulletsKept_; }    // ... and what the Track's count fired of it
     const DirectorState& director() const { return director_; }
     DirectorState& directorMut() { return director_; }
     const Phrase& phrase() const { return phrase_; }  // the bar being played
@@ -1105,7 +1118,7 @@ public:
     const Spot* decoys() const { return decoys_; }
     u32 domes(Vec2* at, float* r, u32 cap) const;
     u32 tetherBeams(Vec2* a, Vec2* b, u32 cap) const;
-    Vec2 wellPull(Vec2 pos) const;
+    Vec2 wellPull(Vec2 pos, bool horizon = true) const;  // (horizon false: Event Horizon's pull lets go, a ship it throws)
     // Tests and pictures: a Wyrm's chain or a Tether's pair (triad) as the spawner makes them.
     void spawnCreatureNow(u16 speciesIndex, Vec2 p, float heading, double landTick) { spawnCreature(speciesIndex, p, heading, landTick); }
 
@@ -1282,7 +1295,10 @@ private:
     void eatBody(u32 i);
     bool horizonLane(u32 i, float dt);
     void updateHorizon(float dt);
-    void knockPlayer(u32 p, Vec2 by);
+    void shovePlayer(u32 p, u32 slot, Vec2 by, double tick, double ticks);  // 3283249: a push the ship rides (PlayerState::Shove)
+public:
+    bool thrown(u32 p, double tick) const;  // in Event Horizon's throw (its pull lets go of the ship)
+private:
     // world_boss.cpp
     void updateBoss(float dt);
     void bossFire(double stepTick);
@@ -1318,7 +1334,7 @@ private:
     void choirPartDied(u8 index, Event& ev);
     void choirBar(double t);
     void choirEighth(double t);
-    void choirSing(u32 k, double t, u32 bullets, float spreadDeg, float aim);
+    void choirSing(u32 k, double t, u32 bullets, float spreadDeg, float aim, i64 volley);  // (volley: its index among this pattern's)
     Vec2 choirAimFrom(Vec2 from) const;
     u32 choirPhaseBar(double t) const;
     bool choirBeamsHit(Vec2 at) const;
@@ -1527,7 +1543,17 @@ private:
     u32 wellCount_ = 0;
     // The loop's ramps this tick (GAME_DESIGN 8; 1 in the first pass): enemy speed, enemy bullet speed, shooters' counts.
     float loopSpeed_ = 1.0f, loopBulletSpeed_ = 1.0f, loopShooters_ = 1.0f;
+    u32 shoveSerial_ = 0;  // 3283249: the last shove's number (PlayerState::Shove::serial; never reset, so a new one always differs)
     u32 shooterCount(u32 base, u32& rngState) const;  // a volley's bullets with the loop's ramp, inside the pool
+    // GAME_DESIGN 8, "Enemy bullets by Track" (0449eb3; world_upgrades.cpp): the Track's factor on every enemy bullet; a volley's
+    // count at it (a pattern thinned evenly, never below `least`; a volley it cannot thin skipped every second or fourth time);
+    // a fight's (its lever, the loop, then the Track's); a volley's index on a grid of `every` ticks.
+    float bulletTrackScale() const;
+    u32 trackCount(u32 n, u32 least, i64 volley, u32 salt, bool tally = true) const;  // (tally false: a tell's look-ahead)
+    // (diagnostics, the headless tool: the bullets the volleys' pages asked for and those the Track's count kept, all told)
+    mutable u64 bulletsAsked_ = 0, bulletsKept_ = 0;
+    u32 bossCount(u32 n, u32 least, i64 volley, u32 salt = 0, float extra = 1.0f) const;
+    static i64 volleyIndex(double tick, double every);
     Rng rng_{1};         // the director's stream
     Rng upgradeRng_{2};  // Trios and Boost types (their own stream, so a pick never moves a spawn)
     u64 seed_ = 1;
