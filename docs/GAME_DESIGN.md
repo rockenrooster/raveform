@@ -40,7 +40,10 @@ Rules:
   10 mm, buttons at least 9 mm — so phones and the tablet feel the same. Positions and sizes are
   adjustable in settings; left/right can be swapped.
 - **Auto-aim assist (on by default):** while the aim stick is idle the ship fires at the nearest threat
-  on the full fire grid (play test 3, 2026-11-13: it was half rate). In a boss or mini-boss fight
+  at **half rate**: every second step of the fire grid, half of whatever the build's rate is (the
+  owner, 2026-11-14: "Auto aim needs to shoot half speed like before"; play test 3 had put it on the
+  full grid for a day). A thumb on the aim stick fires at the full rate; Riffs, Novas and everything
+  that fires by itself are not the assist and keep their own rate. In a boss or mini-boss fight
   the assist aims at the boss: its open weak point when it has one, else its nearest part; an
   ordinary enemy within 250 wu of the ship comes first. One thumb is enough to play **and to finish
   the run** (7.6, "Beatable with the assist alone"); a second thumb chooses what dies first.
@@ -496,7 +499,12 @@ die and does not say why, and the user never got past Longwave. So:
   every second bar, so the Head opens for a player who never lifts a thumb. A second policy,
   **assist**, is the careful bot's movement with the assist's fire: it must finish the ten Tracks
   in at least 19 runs of 20, so aim is never what ends a run. Health is tuned with the novice as
-  before, from fight starts.
+  before, from fight starts. Since 2026-11-14 the assist fires at half rate (section 2), so the
+  novice does about half the damage it did: the bosses' and mini-bosses' health factors and the
+  novice's eight-bar numbers are measured again with it, and every line here holds as written. The
+  fights get no longer for it: a boss the assist meets at half rate has about half the health (the pace
+  rule then holds a thumb-aimed player's fight to the page's length, as before). The crowd is left
+  as it is unless the assist bot's runs end there.
 - **Every hit on a boss is seen and heard** (play test 3: "no hit confirmation effects"). A shot on
   a weak point: the part flashes white for 60 ms (a white copy of its hull at 2.0), six sparks in
   the part's hue fly back along the shot, its segment of the health bar flashes, and a bright tick
