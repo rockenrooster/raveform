@@ -85,6 +85,7 @@ M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in
 
 ### Checks
 
+- **On the phone** (the Moto, installed 01:12, not launched; the launcher was in front): commit f625bbe.
 - `scripts\test.ps1`: all passed (audio 2,716 checks, sim 5,875, determinism, net 131,368, both loopback soaks: 0 census
   mismatches). One test followed the crowd's slower bullets (`testPlayTest2`'s loop bullet speed x
   `kCrowdBulletSpeedScale`).
