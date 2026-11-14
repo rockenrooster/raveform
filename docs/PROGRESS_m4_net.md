@@ -568,6 +568,27 @@ more than 10 wu (in Collapse the Well drifts toward the players' centre, each de
 is a few walkers placed 100-200 wu off right after a correction (lanes 38.2; 82% of the squared error from errors over
 96 wu): the cause is not found yet.
 
+**Then (the lead's rulings, 2026-11-13): the Well's drift, and seed 3.** Three more client-side causes, each fixed:
+
+1. **The Well's drift (seed 4's pulled bodies)**: in Collapse each device drifted the Well toward its own players' centre.
+   In co-op the host now decides the point on each beat for the next one and sends it ahead (`bossDecide
+   kGeomHorizonDrift`); every device drifts toward it (the Well's place against the host's: 0.0-0.4 wu RMS).
+2. **Walkers spawned as plain bodies (seed 4)**: a spawn carries no lane, so a client's copy of a lane walker walked
+   to the players as a plain body until its first correction, which for an off-screen walker came seconds later (host
+   in its lane, client moving: 280-760 wu). A client now makes a called body that lands at a lane's start while the
+   Well is on into a walker on that lane at once (`World::horizonNetSpawn`); the host also sends a walker's first
+   correction at once.
+3. **The arena's walls (seed 3)**: a spiral reaches past the arena's walls, where the host's walker stands clamped at
+   the wall; the client placed its copy at the unclamped lane point at each correction (every big sample was a walker
+   on the lane nearest a wall, 120-265 wu off right after a correction). `netHostPlace` now clamps as the movement does.
+
+The four seeds, clean, in the fight, after all of it: **3.6 / 1.9 / 7.9 / 4.2** (were 4.6 / 3.0 / 39.6 / 41.5): all
+under 12. `scripts\test.ps1` passes; hashes unchanged. src/sim for these: `world_horizon.cpp` (`updateHorizon` co-op
+only; `horizonNetSpawn`, `horizonLanePoint`, `horizonLaneCarry` client helpers), `world_boss.cpp` (`bossGeom`: the
+two decisions), `world_net.cpp` (`netHostPlace`, the Spawn op), `boss.h` (`kGeomHorizonPhase`, `kGeomHorizonDrift`,
+`HorizonState`'s decided phase and drift point, `BossState::geomTick` 12 -> 16; none in the hash), `world.h`. Protocol
+**0x52460507** (both decisions).
+
 ### The phone host with the new budgets (clean, 5 minutes, `202359`)
 
 Moto hosting three PC bots, `5c17cb7`'s APK, our APK deployed first, shared phone: **1.50 / 2.99 / 2.15 wu** (limit
@@ -582,6 +603,19 @@ The device runs before `d531af0` measured a copy at correction against the host'
 alone. Bodies in Event Horizon's pull and walkers on its spirals are not where that line puts them, so those figures
 (the 170-182 wu of `171023`/`172745`, the 19-58 of `182905`) read high for that reason; from `d531af0` the measure
 carries the sample as the copy is placed.
+
+### Final state (2026-11-13)
+
+- Accepted by the lead: the clean phone-hosted runs (`174451`: 8.45 / 6.39 / 9.25; with the new budgets `202359`: 1.50 /
+  2.99 / 2.15, the Moto's frame contract held, main thread P95 5.61 ms); the fights measured clean from their start
+  (Cadence 5.0, Brood Mother 11.4, Moth Queen 6.4, Event Horizon 1.9-7.9 on four seeds); `scripts\test.ps1` green.
+- The network's budgets are TECH_SPEC 8.4's new ones (500 / 120 kbit/s): corrections 30 Hz from 30,000 B/s a client;
+  claims at 10 Hz in a dense second; boss claims one a part and pair a pose; the direct-link fallback; the strip.
+- Dropped by the user: impaired-network testing (the impaired soak in `test.ps1` stays as a guard), the relayed
+  seats' view-only smoothing, the arena's breakdown.
+- What remains, each time a part 6 fight lands on main: merge, `test.ps1`, one clean 3-minute fight soak
+  (`raveform_headless --net soak --fight <id> --minutes 3`), a few lines to the lead, a fix only where a fight is over
+  12 wu. Still to land: Arpeggiator, Fata Morgana, Kaleidos Reprise and mini-bosses batch 3.
 
 ### (e) Moth Queen and Brood Mother
 

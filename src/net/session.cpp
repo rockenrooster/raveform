@@ -888,7 +888,7 @@ void Session::onCorrection(const NetEnemyState& s) {
             // carried by velocity alone a walker on its spiral measured 170-182 wu on the device runs.)
             const float tps = static_cast<float>(world_->ticksPerSecond());
             const Vec2 v{s.vx + s.kx, s.vy + s.ky};
-            const Vec2 h = world_->netHostPlace(s, corrMusic_, e.species[i]);
+            const Vec2 h = world_->netHostPlace(s, corrMusic_, e.species[i], e.radius[i]);
             const Vec2 dv = Vec2{e.x[i] + e.ox[i], e.y[i] + e.oy[i]} - h;
             const float d = length(dv);
             stats_.screenErrSum2 += static_cast<double>(d) * d;
@@ -1690,7 +1690,10 @@ void Session::updatePriorities(float dt) {
             wgt *= cfg_.familyWeight[static_cast<u32>(w.species().get(e.species[i]).family) & 15u];
             if (knocked) wgt += kKnockedWeight;
             const float sp = std::fabs(e.vx[i]) + std::fabs(e.vy[i]) + std::fabs(e.kx[i]) + std::fabs(e.ky[i]);
-            prio_[s][slot] += wgt * (1.0f + sp * (1.0f / 300.0f)) * dt + (retargeted ? kRetargetBoost : 0.0f);
+            // An Event Horizon lane walker no correction has reached yet: the client spawned it as a plain body (the spawn
+            // carries no lane), which walks to the players instead of along the spiral (measured: 280-600 wu off).
+            const bool laneUnsent = e.state[i] == kLane && sentTarget_[s][slot] == kTargetUnsent;
+            prio_[s][slot] += wgt * (1.0f + sp * (1.0f / 300.0f)) * dt + (retargeted || laneUnsent ? kRetargetBoost : 0.0f);
         }
     }
 }

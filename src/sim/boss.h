@@ -371,6 +371,10 @@ struct HorizonState {
     // M4 net (co-op only): the phase the host decided by health and the beat it turns on (every device turns there).
     u8 phaseNext = 0xFF;       // 0xFF: none decided
     double phaseAt = -1.0;
+    // ... and the point the Well drifts toward in Collapse (the host's players' centre, decided a beat ahead).
+    Vec2 driftTo, driftNext;
+    double driftAt = -1.0;     // driftNext holds from this tick (< 0: none decided yet)
+    bool driftSet = false;     // driftTo holds
 };
 
 // Polyrhythm's rings: each pulse's walls, a function of when and where it was fired; a hit or a Nova erases sectors.
@@ -526,7 +530,8 @@ struct BossState {
     CadenceState cd;  // M5 part 6
     double payoutTick = -1.0;  // dying: its Shards and Cells come at this tick (Event Horizon's flash, Polyrhythm's break)
     float scale = 1.0f;        // health scale it entered with (players, Track, loop)
-    double geomTick[12] = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0};  // each BossGeom decision's moment
+    double geomTick[16] = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+                           -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0};  // each BossGeom decision's moment
 };
 
 // A count scaled by a lever (play test 1), rounded, never below `least` (an exact count at scale 1).
@@ -547,9 +552,10 @@ enum BossGeom : u8 {
     kGeomMothCourt,    // M5 part 4: the Moth Queen's court (a: its centre)
     kGeomBlinkStar,    // M5 part 4: the Blink Star's star (a: its centre, b.x: its first point's direction)
     kGeomHorizonPhase, // M4 net: Event Horizon's phase in co-op (a.x: the phase; the tick: the beat it turns on)
+    kGeomHorizonDrift, // M4 net: the point Event Horizon drifts toward in Collapse, co-op (a: the point; from the tick, a beat)
     kGeomCount
 };
-static_assert(kGeomCount <= 12, "BossState::geomTick holds twelve");
+static_assert(kGeomCount <= 16, "BossState::geomTick holds sixteen");
 
 // A part of a boss as the hits see it (Longwave, the Choir and the mini-bosses; Kaleidos keeps its arms).
 struct BossPart {

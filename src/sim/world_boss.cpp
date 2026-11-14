@@ -700,6 +700,16 @@ void World::bossGeom(u8 geom, Vec2 a, Vec2 b, double tick, bool host) {
     MiniState& m = s.mini;
     switch (geom) {
         case kGeomHorizonBar: horizonBar(tick, a.x > 0.5f, static_cast<u32>(a.y)); break;  // M5 part 4
+        case kGeomHorizonDrift:  // M4 net: the point the Well drifts toward from the tick on
+            if (s.kind == BossKind::EventHorizon) {
+                if (s.hz.driftAt >= 0.0 && tick > s.hz.driftAt) {  // (the one before is due first)
+                    s.hz.driftTo = s.hz.driftNext;
+                    s.hz.driftSet = true;
+                }
+                s.hz.driftNext = a;
+                s.hz.driftAt = tick;
+            }
+            break;
         case kGeomHorizonPhase:  // M4 net: the host's phase and the beat it turns on
             if (s.kind == BossKind::EventHorizon && a.x >= 0.0f && a.x < 3.0f) {
                 s.hz.phaseNext = static_cast<u8>(a.x);

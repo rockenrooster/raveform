@@ -79,6 +79,7 @@ struct TrueDiag {
     NetDiagBin fbTarget, fbState, fbCalled, fbKnocked, fbFamily[16];  // Feedback's fight: the kinds and the families
     NetDiagBin elite, byTrait[kTraitCount], byEvent[kEventKinds];      // M5 part 5: elites, by trait; while an arena event runs
     NetDiagBin nearStruct[9];  // within a structure's radius + 150 wu (by StructKind 0-5; 6-8 the events' bodies)
+    NetDiagBin statePair[16][16];  // host's state x the client copy's state, where they differ
     double hzPosSum2 = 0.0;
     u64 hzPosN = 0;
     double tauSum = 0.0, tau2Sum = 0.0;
@@ -134,6 +135,13 @@ struct TrueDiag {
         std::printf("\n[net]     elites:");
         b("all", elite);
         for (u32 t = 0; t < kTraitCount; ++t) b(traitId(t), byTrait[t]);
+        std::printf("\n[net]     state differs (host>client):");
+        for (u32 x = 0; x < 16; ++x)
+            for (u32 y = 0; y < 16; ++y)
+                if (statePair[x][y].n) {
+                    std::snprintf(name, sizeof name, "%u>%u", x, y);
+                    b(name, statePair[x][y]);
+                }
         std::printf("\n[net]     near a structure:");
         static const char* const kBodyNames[9] = {"vault", "pylon", "rift", "bumper", "current", "lens", "gold_vault", "comet", "carrier"};
         for (u32 k = 0; k < 9; ++k) b(kBodyNames[k], nearStruct[k]);
@@ -675,7 +683,10 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                     g.byFamily[static_cast<u32>(cw.species().get(ce.species[i]).family) & 15u].add(err);
                     g.byState[ce.state[i] & 15u].add(err);
                     if (ce.target[i] != he.target[j]) g.targetDiffers.add(err);
-                    if (ce.state[i] != he.state[j]) g.stateDiffers.add(err);
+                    if (ce.state[i] != he.state[j]) {
+                        g.stateDiffers.add(err);
+                        g.statePair[he.state[j] & 15u][ce.state[i] & 15u].add(err);
+                    }
                     if (std::fabs(ce.kx[i]) + std::fabs(ce.ky[i]) + std::fabs(he.kx[j]) + std::fabs(he.ky[j]) > 20.0f) g.knocked.add(err);
                     if ((ce.frozenUntil[i] > cw.music()) != (he.frozenUntil[j] > hw.music())) g.frozenDiffers.add(err);
                     if (ce.flags[i] & kFlagCalled) g.called.add(err);

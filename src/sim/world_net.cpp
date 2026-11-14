@@ -160,6 +160,7 @@ void World::applyNetOp(const NetOp& op) {
             if (i >= 0) {
                 e.group[i] = op.group;
                 e.flags[i] = static_cast<u8>(e.flags[i] | (op.a & (kFlagArriving | kFlagCalled)));
+                horizonNetSpawn(static_cast<u32>(i));  // M4 net: Event Horizon's lane walkers
             }
             break;
         }
@@ -632,7 +633,7 @@ bool World::netSample(u32 i, NetEnemyState& s) const {
     return true;
 }
 
-Vec2 World::netHostPlace(const NetEnemyState& s, double hostMusic, u16 species, float* laneB) const {
+Vec2 World::netHostPlace(const NetEnemyState& s, double hostMusic, u16 species, float radius, float* laneB) const {
     // The host's position carried to this world's musical time by its own velocity (at most a quarter second); in Event
     // Horizon's pull by the pull as well, and a lane walker along its lane (M4 net, clients only). netCorrect puts the
     // copy there; the session's at-correction error measures against the same place.
@@ -659,6 +660,10 @@ Vec2 World::netHostPlace(const NetEnemyState& s, double hostMusic, u16 species, 
         const float b = horizonLaneCarry(species, s.a, s.b, ds);
         if (laneB) *laneB = b;
         h = horizonLanePoint(s.a, b);
+        // A spiral reaches past the arena's walls; the host's walker stands at the wall there (the movement's clamp), and so
+        // does this one (measured: walkers on the lane nearest a wall drawn 120-265 wu off, all of them right after a correction).
+        const float lx = kArenaHalfW - radius, ly = kArenaHalfH - radius;
+        h = Vec2{clampf(h.x, -lx, lx), clampf(h.y, -ly, ly)};
     }
     return h;
 }
@@ -672,7 +677,7 @@ float World::netCorrect(const NetEnemyState& s, double hostMusic) {
     const bool hostWarping = s.state == kWarping;
     const bool lane = s.state == kLane && horizonOn();
     float laneB = 0.0f;
-    const Vec2 h = netHostPlace(s, hostMusic, e.species[i], &laneB);
+    const Vec2 h = netHostPlace(s, hostMusic, e.species[i], e.radius[i], &laneB);
     const Vec2 c{e.x[i], e.y[i]};
     const Vec2 d = h - c;
     const float err = length(d);
