@@ -256,7 +256,7 @@ words' rules as for upgrades. In co-op each player sees it by their own shots.
 | Kaleidos | `HIT THE ARMS NOT FIRING` | | Feedback | `STOP FIRING TO OPEN IT` |
 | Longwave | `SHOOT THE WHITE SEGMENT` | | Cadence | `SHOOT THE SILENT ONE` |
 | The Choir | `SHOOT THE ONE THAT SINGS` | | Arpeggiator | `SHOOT IT AS IT LOADS` |
-| Event Horizon | `STARVE IT: KILL ITS FOOD` | | Fata Morgana | `SHOOT WHERE THE WALL THINS` |
+| Event Horizon | `STARVE IT: KILL ITS FOOD` | | Fata Morgana | `SHOOT HER OVER THE WATER` |
 | Polyrhythm | `SHOOT THROUGH THE GAPS` | | Kaleidos, Reprise | `SHOOT THE ARMS OFF` |
 
 A mini-boss with an armoured part gets a line the same way; they are written as each is reviewed.
