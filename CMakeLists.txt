@@ -227,6 +227,14 @@ add_custom_command(OUTPUT ${RF_GEN}/minibosses.json.inc
   COMMENT "embed minibosses.json"
   JOB_POOL rf_jobs
   VERBATIM)
+# M5 part 6: the bosses of Tracks 7 to 10.
+add_custom_command(OUTPUT ${RF_GEN}/cadence.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/cadence.json -DOUT=${RF_GEN}/cadence.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/bosses/cadence.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed cadence.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
 # M5 part 5: the arena (structures and events) and the elites' traits.
 add_custom_command(OUTPUT ${RF_GEN}/arena.json.inc
   COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/arena.json -DOUT=${RF_GEN}/arena.json.inc
@@ -255,6 +263,7 @@ add_library(raveform_sim STATIC
   src/sim/world.cpp
   src/sim/world_arena.cpp
   src/sim/world_boss.cpp
+  src/sim/world_cadence.cpp
   src/sim/world_choir.cpp
   src/sim/world_enemies.cpp
   src/sim/world_families.cpp
@@ -272,6 +281,7 @@ add_library(raveform_sim STATIC
   src/sim/world_elites.cpp
   ${RF_GEN}/arena.json.inc
   ${RF_GEN}/traits.json.inc
+  ${RF_GEN}/cadence.json.inc
   ${RF_GEN}/species.json.inc
   ${RF_GEN}/kaleidos.json.inc
   ${RF_GEN}/longwave.json.inc
@@ -409,6 +419,7 @@ target_sources(raveform_core PRIVATE
   src/game/play_view_m5.cpp
   src/game/play_view_m5b.cpp
   src/game/play_view_arena.cpp
+  src/game/play_view_m6.cpp
   src/game/pending_sounds.cpp
   src/game/upgrade_sounds.cpp
   src/game/play_view_upgrades.cpp

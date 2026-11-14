@@ -78,6 +78,10 @@ $sets = @{
                     'sa_clock', 'sa_half', 'sa_death')
         strips = @('hz_strip', 'pr_strip', 'fb_strip', 'mq_strip', 'bs_strip', 'sa_strip')
     }
+    'part6' = @{
+        singles = @('cd_progression', 'cd_modulation', 'cd_inversion', 'cd_death')
+        strips = @('cd_strip')
+    }
     'part5' = @{
         singles = @('el_armored', 'el_swift', 'el_giant', 'el_splitting', 'el_volatile', 'el_regenerating', 'el_shielded', 'el_twin', 'el_magnetic',
                     'el_commander', 'el_cloaked', 'el_phasing', 'st_vault', 'st_pylon', 'st_rift', 'st_bumper', 'st_current', 'st_lens',
@@ -85,7 +89,7 @@ $sets = @{
         strips = @()
     }
 }
-if (-not $sets.ContainsKey($Part)) { throw "no review set '$Part' (part1, part2, part3, part4, part5)" }
+if (-not $sets.ContainsKey($Part)) { throw "no review set '$Part' (part1, part2, part3, part4, part5, part6)" }
 $singles = $sets[$Part].singles
 $strips = $sets[$Part].strips
 if ($Only.Count) {

@@ -765,6 +765,10 @@ public:
     Vec2 currentFlow(Vec2 at) const;                  // the Currents' push here (wu/s)
     bool bumperBounce(Vec2& pos, Vec2& vel, float r) const;  // a ship off a Bumper (unhurt, a kick); true when it bounced
     u32 elitesAlive() const;
+    // M5 part 6, Cadence: the bar's chord (0 I, 1 V, 2 vi, 3 IV), pillar k's place, its damage multiplier.
+    u32 cadenceChord(double t) const;
+    Vec2 cadencePillar(u32 k, double t) const;
+    float cadenceScale(u32 k, double t) const;
     i32 enemyIndex(u32 handle) const { return indexOf(handle); }  // (the view: a Twin's partner, the hunted elite)
     ArenaBody& arenaBodyMut(u32 slot) { return arena_[slot < kArenaBodies ? slot : 0]; }  // (pictures, tests)
     void spawnShardNow(Vec2 pos, Vec2 vel, u8 owner) { spawnShard(pos, vel, owner); }     // (pictures, tests)
@@ -1276,6 +1280,9 @@ private:
     void hatchBroodlings(u32 i, u32 n, double land);
     void familyDeath(u32 i, const Species& s);
     void minionLand(u32 i);
+    // world_cadence.cpp (M5 part 6)
+    void enterCadence(Vec2 centre);
+    void updateCadence(float dt);
     // world_elites.cpp (M5 part 5, design/traits.md)
     void eliteBar(const Phrase& ph, double land);     // the director buys an elite with the threat budget
     i32 spawnElite(u16 species, Vec2 pos, double land, u16 traits);

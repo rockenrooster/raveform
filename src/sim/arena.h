@@ -61,6 +61,7 @@ struct TraitData {
     u32 alive[2] = {3, 5};    // at once: Tracks 2-6, 7-10
     u32 carried[2] = {1, 2};  // traits carried: Tracks 2-6, 7-10
     u8 fromTrack[kTraitCount] = {};
+    u8 fromCycle[kTraitCount] = {};  // (d59062f) not drawn before this cycle of its first Track (absent: 1)
     // each trait's numbers
     float armoredHealth = 2.0f, armoredHull = 0.5f;
     float swiftSpeed = 1.6f, swiftTurn = 1.3f;

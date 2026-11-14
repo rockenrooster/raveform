@@ -34,6 +34,9 @@ const char kPolyJson[] =
 const char kFeedbackJson[] =
 #include "feedback.json.inc"
     ;
+const char kCadenceJson[] =
+#include "cadence.json.inc"
+    ;
 
 double stepTicks(const char* s) {
     if (std::strcmp(s, "1/8") == 0) return 48.0;
@@ -54,6 +57,7 @@ constexpr KindName kKinds[kBossKinds] = {
     {"blink_star", "BLINK STAR"},     {"sentry_array", "SENTRY ARRAY"}, {"mirror_mimic", "MIRROR MIMIC"},
     {"twin_tether", "TWIN TETHER"},   {"weaver_prime", "WEAVER PRIME"}, {"deep_well", "DEEP WELL"},
     {"horizon", "EVENT HORIZON"},     {"polyrhythm", "POLYRHYTHM"},     {"feedback", "FEEDBACK"},
+    {"cadence", "CADENCE"},
 };
 
 // Lines [x0, y0, x1, y1, layer] from an array of arrays.
@@ -96,6 +100,7 @@ u64 bossDataDigest() {
     h = fnv(h, kLongwaveJson);
     h = fnv(h, kChoirJson);
     h = fnv(h, kMinibossesJson);
+    h = fnv(h, kCadenceJson);  // M5 part 6
     h ^= arenaDataDigest() * 31u;  // M5 part 5: the arena and the traits
     return h;
 }
@@ -564,6 +569,36 @@ bool FeedbackData::load() {
     num("numbers.phases.2.loop.shrinkPerBar", howlShrink);
     num("numbers.phases.2.loop.minRadius", howlMin);
     num("numbers.camera.zoom", zoom);
+    return ok;
+}
+
+bool CadenceData::load() {
+    // design/bosses/cadence.json (M5 part 6); the prose's numbers are in boss_prose.h.
+    JsonDoc doc;
+    if (!doc.parse(kCadenceJson, sizeof kCadenceJson - 1, "design/bosses/cadence.json")) return false;
+    bool ok = true;
+    const auto num = [&](const char* path, float& out) {
+        bool got = true;
+        const double v = doc.number(path, out, &got);
+        if (!got) {
+            RF_ERR("cadence: '%s' is missing", path);
+            ok = false;
+        }
+        out = static_cast<float>(v);
+    };
+    const auto whole = [&](const char* path, u32& out) {
+        float v = static_cast<float>(out);
+        num(path, v);
+        out = static_cast<u32>(v);
+    };
+    num("numbers.health", health);
+    num("numbers.pillarRadius", pillarRadius);
+    num("numbers.squareSide", squareSide);
+    whole("numbers.fanBullets", fanBullets);
+    num("numbers.fanSpreadDegrees", fanSpreadDeg);
+    num("numbers.bulletSpeed", bulletSpeed);
+    num("numbers.bulletLifeSeconds", bulletLife);
+    whole("numbers.rewardShards", rewardShards);
     return ok;
 }
 

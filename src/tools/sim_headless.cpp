@@ -328,12 +328,16 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     u32 nan = 0, shotsPeak = 0;
     // What hit the ship (C2 tuning): a body of each family within reach, else a bullet or a beam.
     u64 hitsBy[kFamilyCount + 1] = {}, hitsInBossFight = 0, hitsBySection[4] = {};
+    // (the lead, 2026-11-13: what takes the cells in Track 2 before Longwave, in the first run: bodies by family, bullets or
+    // beams, the mini-boss's fight; and the cells regained there)
+    u64 t2Hits[kFamilyCount + 2] = {}, t2Runs = 0, t2Regained = 0;
     u64 bossWon = 0, bossLost = 0;
     double bossWonTicks = 0.0;
     // M5 part 1: every fight by its kind: fights, won, lost (the run ended in it), warped out (a mini-boss's hold ran out),
     // the time to kill by Track, the hits the ship took in it.
     struct FightStat {
         u32 fights = 0, won = 0, lost = 0, gone = 0, hits = 0, hitsBody = 0, hitsBeam = 0;
+        double cellsIn = 0.0, capIn = 0.0;  // (the lead, 2026-11-13: the player's cells as each fight begins)
         double wonSecs[16] = {};
         u32 wonAt[16] = {};
     };
@@ -343,6 +347,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     // won, and whether the first run (before any death) reached Track 2's boss.
     static u8 firstMeet[256][kBossKinds];
     static float firstSecs[256][kBossKinds];
+    static u8 firstCells[256][kBossKinds];  // the cells as the first meeting began
     static bool reachedT2[256];
     // Play test 2: the Shard level pace by Track (alive time and levels in each), and the levels and upgrades held at
     // minutes 3, 6 and 10 in the first run (the runs still in it then).
@@ -459,6 +464,9 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     bossTrack = ph.track;
                     bossHits0 = p.hitsTaken;
                     ++fightStat[static_cast<u32>(bossKind)].fights;
+                    fightStat[static_cast<u32>(bossKind)].cellsIn += p.cells;
+                    fightStat[static_cast<u32>(bossKind)].capIn += p.cellCap;
+                    if (!firstMeet[s][static_cast<u32>(bossKind)]) firstCells[s][static_cast<u32>(bossKind)] = static_cast<u8>(p.cells);
                     if (!isMiniBoss(bossKind) && ph.track == 2 && runner.deaths() == 0) reachedT2[s] = true;
                 }
                 if (on) {
@@ -543,10 +551,10 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                         best = static_cast<i32>(i);
                     }
                 }
-                if (best >= 0 && bestD < 90.0f)
-                    ++hitsBy[static_cast<u32>(species.get(e.species[best]).family)];
-                else
-                    ++hitsBy[kFamilyCount];
+                const u32 cause = (best >= 0 && bestD < 90.0f) ? static_cast<u32>(species.get(e.species[best]).family) : kFamilyCount;
+                ++hitsBy[cause];
+                if (w.phrase().track == 2 && runner.deaths() == 0 && !(w.boss().active && w.boss().kind == BossKind::Longwave))
+                    ++t2Hits[w.boss().active && isMiniBoss(w.boss().kind) ? kFamilyCount + 1 : cause];
                 if (trace && w.boss().active && !w.boss().dying) {
                     const sim::BossState& b = w.boss();
                     BossPart parts[kBossBodies + 4];
@@ -717,6 +725,15 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     std::printf("[sim]   kills a minute %.0f, deaths a run %.1f; overflow %llu, NaN runs %u, heap allocations in the loops %llu\n",
                 static_cast<double>(kills) / (static_cast<double>(n) * minutes), static_cast<double>(deaths) / n,
                 static_cast<unsigned long long>(overflow), nan, static_cast<unsigned long long>(allocs));
+    {
+        std::printf("[sim]   Track 2 before Longwave (first runs): hits by");
+        for (u32 f = 0; f < kFamilyCount; ++f)
+            if (t2Hits[f]) std::printf(" %s %llu", familyName(static_cast<Family>(f)), static_cast<unsigned long long>(t2Hits[f]));
+        std::printf(" bullets or beams %llu, in the mini-boss fight %llu\n", static_cast<unsigned long long>(t2Hits[kFamilyCount]),
+                    static_cast<unsigned long long>(t2Hits[kFamilyCount + 1]));
+        (void)t2Runs;
+        (void)t2Regained;
+    }
     // M5 part 5: elites and the arena.
     std::printf("[sim]   elites %llu (killed as large kills %llu, Splitting %llu, Volatile bursts %llu); bodies broken %llu, Pylons tuned %llu; events:",
                 static_cast<unsigned long long>(elites), static_cast<unsigned long long>(eliteKills), static_cast<unsigned long long>(splits),
@@ -724,14 +741,14 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     for (u32 k = 0; k < kEventKinds; ++k) std::printf(" %s %llu", eventId(static_cast<EventKind>(k)), static_cast<unsigned long long>(events[k]));
     std::printf("\n");
     // M5 part 1: every fight by its kind (seconds to kill by the Track it came in).
-    std::printf("[sim]   fights (kind: fought, won, lost, warped out, hits taken a fight [bullets / bodies / beams]; seconds to kill by Track):\n");
+    std::printf("[sim]   fights (kind: fought, won, lost, warped out, hits taken a fight [bullets / bodies / beams], cells as it began / of; seconds to kill by Track):\n");
     for (u32 k = 0; k < kBossKinds; ++k) {
         const FightStat& f = fightStat[k];
         if (!f.fights) continue;
         const double nf = static_cast<double>(f.fights);
         const u32 bullets = f.hits >= f.hitsBody + f.hitsBeam ? f.hits - f.hitsBody - f.hitsBeam : 0u;
-        std::printf("[sim]     %-13s %3u %3u %3u %3u  %5.2f [%.2f / %.2f / %.2f] ", bossId(static_cast<BossKind>(k)), f.fights, f.won, f.lost,
-                    f.gone, static_cast<double>(f.hits) / nf, bullets / nf, f.hitsBody / nf, f.hitsBeam / nf);
+        std::printf("[sim]     %-13s %3u %3u %3u %3u  %5.2f [%.2f / %.2f / %.2f] %4.1f/%4.1f ", bossId(static_cast<BossKind>(k)), f.fights, f.won, f.lost,
+                    f.gone, static_cast<double>(f.hits) / nf, bullets / nf, f.hitsBody / nf, f.hitsBeam / nf, f.cellsIn / nf, f.capIn / nf);
         for (u32 tr = 1; tr < 16; ++tr)
             if (f.wonAt[tr]) std::printf(" T%u %.0f s (%u)", tr, f.wonSecs[tr] / f.wonAt[tr], f.wonAt[tr]);
         std::printf("\n");
@@ -742,10 +759,10 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         // M5 (GAME_DESIGN 7.6): the first meetings (won of met, the seconds of those won, the hits of all fights above).
         u32 t2 = 0;
         for (u32 s = 0; s < n; ++s) t2 += reachedT2[s] ? 1u : 0u;
-        std::printf("[sim]   the first run reached Track 2's boss in %u of %u runs; first meetings (kind: met, won, lost, warped out; mean seconds of those won):\n", t2, n);
+        std::printf("[sim]   the first run reached Track 2's boss in %u of %u runs; first meetings (kind: met, won, lost, warped out; mean seconds of those won; cells as it began, won / lost):\n", t2, n);
         for (u32 k = 0; k < kBossKinds; ++k) {
             u32 met = 0, won = 0, lost = 0, gone = 0;
-            double secs = 0.0;
+            double secs = 0.0, cellsWon = 0.0, cellsLost = 0.0;
             for (u32 s = 0; s < n; ++s) {
                 const u8 fm = firstMeet[s][k];
                 if (!fm) continue;
@@ -753,14 +770,17 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 if (fm == 1) {
                     ++won;
                     secs += firstSecs[s][k];
+                    cellsWon += firstCells[s][k];
                 } else if (fm == 2) {
                     ++lost;
+                    cellsLost += firstCells[s][k];
                 } else {
                     ++gone;
                 }
             }
             if (!met) continue;
-            std::printf("[sim]     %-13s %3u %3u %3u %3u  %5.0f s\n", bossId(static_cast<BossKind>(k)), met, won, lost, gone, won ? secs / won : 0.0);
+            std::printf("[sim]     %-13s %3u %3u %3u %3u  %5.0f s  cells %.1f / %.1f\n", bossId(static_cast<BossKind>(k)), met, won, lost, gone, won ? secs / won : 0.0,
+                        won ? cellsWon / won : 0.0, lost ? cellsLost / lost : 0.0);
             logTagged("RFSIM", "{\"test\":\"first_meeting\",\"kind\":\"%s\",\"met\":%u,\"won\":%u,\"lost\":%u,\"gone\":%u,\"secs\":%.1f}",
                       bossId(static_cast<BossKind>(k)), met, won, lost, gone, won ? secs / won : 0.0);
         }

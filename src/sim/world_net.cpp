@@ -774,6 +774,7 @@ void World::netBossState(const float* partHp, u32 parts, float coreHp, Vec2 pos)
         case BossKind::Choir: b.ch.centre = pos; break;
         case BossKind::EventHorizon:
         case BossKind::Polyrhythm: b.pos = pos; break;  // (the pivot; the Solo survivor)
+        case BossKind::Cadence: b.cd.centre = b.pos = pos; break;  // M5 part 6: the square's centre
         case BossKind::AlphaHound:
         case BossKind::BatteringRam: b.body[0] = pos; break;
         default: break;  // the Hive's Queen and the Carom King follow their song-time paths
@@ -798,7 +799,8 @@ Vec2 World::bossSyncPoint() const {
         case BossKind::Choir: return boss_.ch.centre;
         case BossKind::Kaleidos:
         case BossKind::EventHorizon:
-        case BossKind::Polyrhythm: return boss_.pos;
+        case BossKind::Polyrhythm:
+        case BossKind::Cadence: return boss_.pos;
         default: return boss_.body[0];
     }
 }

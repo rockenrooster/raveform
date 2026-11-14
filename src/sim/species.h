@@ -168,6 +168,7 @@ public:
     PolyData poly;        // M5 part 4
     FeedbackData feedback;  // M5 part 4
     MiniData minis;
+    CadenceData cadence;  // M5 part 6
     ArenaData arena;    // M5 part 5: design/arena.json
     TraitData traits;   // M5 part 5: design/traits.json
 

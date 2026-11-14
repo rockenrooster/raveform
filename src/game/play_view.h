@@ -137,6 +137,7 @@ private:
     void lethalBeam(FrameDraw& d, Vec2 a, Vec2 b, float killWu, float level = 1.0f);
     // M5 part 5 (play_view_arena.cpp): the arena's structures and events, and the elites' extras (look.md 3, 4).
     void drawArena(FrameDraw& d, const ViewInput& in);
+    void drawCadence(FrameDraw& d, const ViewInput& in);  // M5 part 6 (play_view_m6.cpp)
     void drawElite(FrameDraw& d, const ViewInput& in, u32 i, Vec2 pos, float rot0, float rot1, float scale, Vec3 hue, int g, float level);
     void eventArena(const sim::World& w, const sim::Event& e, float t);
     void arenaShape(FrameDraw& d, const sim::ArenaGlyph& g, Vec2 pos, float rot, float scale, Vec3 c0, Vec3 c1, Vec3 c2, float widthRef, u8 layers);

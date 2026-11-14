@@ -158,6 +158,7 @@ float World::bossHealthScale(BossKind kind) const {
     if (kind == BossKind::EventHorizon) scale *= kHorizonHealthTune;
     if (kind == BossKind::Polyrhythm) scale *= kPolyHealthTune;
     if (kind == BossKind::Feedback) scale *= kFeedbackHealthTune;
+    if (kind == BossKind::Cadence) scale *= kCadenceHealthTune;
     scale *= rules_.healthLever[static_cast<u32>(kind)];  // (measurements only)
     return scale;
 }
@@ -191,6 +192,7 @@ void World::spawnBossNow(double enterTick, Vec2 pos, BossKind kind, Vec2 penAt) 
         case BossKind::EventHorizon: enterHorizon(pos); break;  // M5 part 4
         case BossKind::Polyrhythm: enterPoly(pos); break;
         case BossKind::Feedback: enterFeedback(pos); break;
+        case BossKind::Cadence: enterCadence(pos); break;
         default: enterMini(pos, penAt); break;
     }
     if (isMiniBoss(kind)) director_.miniSpawned = true;
@@ -262,6 +264,9 @@ u32 World::bossParts(BossPart* out, u32 cap) const {
         }
         case BossKind::Feedback:
             if (m1_ >= s.fightTick) add(s.pos, species_->feedback.headRadius, 3, 0);  // the Head (its Echoes are not targets)
+            break;
+        case BossKind::Cadence:
+            for (u32 k = 0; k < 4; ++k) add(s.body[1 + k], species_->cadence.pillarRadius, 3, static_cast<u8>(k));  // one health
             break;
         default: return miniParts(out, cap);
     }
@@ -367,6 +372,7 @@ float World::bossDamageScale(u8 part, u8 index, double tick, Vec2 dir) const {
         case BossKind::EventHorizon: return horizonScale();
         case BossKind::Polyrhythm: return polyScale(part, index);
         case BossKind::Feedback: return part == 3 ? feedbackScale() : 0.0f;
+        case BossKind::Cadence: return part == 3 ? cadenceScale(index, tick) : 0.0f;
         default: return miniScale(part, index, tick, dir);
     }
 }
@@ -598,6 +604,10 @@ void World::killBoss(u8 owner) {
             // The playhead runs a last bar of sparks; the boss break and the Shards on the One that ends the Track.
             s.payoutTick = tickOfBar(endBar);
             s.deathBars = (s.payoutTick - m1_) / kTicksPerBar + 0.25;
+        } else if (s.kind == BossKind::Cadence) {
+            // The four burst on the four beats of the last bar, then the tonic over a gong (the Shards with it).
+            s.payoutTick = tickOfBar(endBar + 1);
+            s.deathBars = (s.payoutTick - m1_) / kTicksPerBar + 0.25;
         } else if (s.kind == BossKind::Feedback) {
             // The tape is cut; the Head holds the root for two bars while the screen blooms, then the break on the One.
             s.payoutTick = tickOfBar(endBar + 1);
@@ -636,6 +646,7 @@ void World::bossPayout() {
     if (s.kind == BossKind::EventHorizon) shards = prose::kHzShards;
     if (s.kind == BossKind::Polyrhythm) shards = prose::kPrShards;
     if (s.kind == BossKind::Feedback) shards = prose::kFbShards;
+    if (s.kind == BossKind::Cadence) shards = prose::kCdShards;
     for (u32 p = 0; p < playerCount_; ++p) {
         if (!players_[p].present || !isLocal(p)) continue;
         for (u32 k = 0; k < shards; ++k)
@@ -946,6 +957,7 @@ void World::updateBoss(float dt) {
             return;
         case BossKind::Polyrhythm: updatePoly(dt); return;
         case BossKind::Feedback: updateFeedback(dt); return;
+        case BossKind::Cadence: updateCadence(dt); return;
         case BossKind::Kaleidos: break;
         default: updateMini(dt); return;
     }

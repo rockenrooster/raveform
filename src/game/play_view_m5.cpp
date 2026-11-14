@@ -105,6 +105,7 @@ void PlayView::drawFight(FrameDraw& d, const ViewInput& in) {
         case BossKind::EventHorizon: drawHorizon(d, in); break;
         case BossKind::Polyrhythm: drawPoly(d, in); break;
         case BossKind::Feedback: drawFeedback(d, in); break;
+        case BossKind::Cadence: drawCadence(d, in); break;
         default: drawMini(d, in); break;
     }
 }

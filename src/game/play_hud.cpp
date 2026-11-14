@@ -345,6 +345,7 @@ const char* bossHint(sim::BossKind k) {
         case sim::BossKind::EventHorizon: return "STARVE IT: KILL ITS FOOD";
         case sim::BossKind::Polyrhythm: return "SHOOT THROUGH THE GAPS";
         case sim::BossKind::Feedback: return "STOP FIRING TO OPEN IT";
+        case sim::BossKind::Cadence: return "SHOOT THE SILENT ONE";
         default: return nullptr;
     }
 }
