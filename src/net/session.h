@@ -52,6 +52,11 @@ struct SessionConfig {
     bool phaseBeat = true;          // host: a heartbeat at once when Event Horizon's phase changes
     bool bossBeat = false;          // host (experiment): the heartbeat at 10 Hz while a boss fights (4 Hz otherwise)
     bool bossClaimsAtPose = true;   // client: hits on the boss merged until the pose (else sent each tick)
+    // An interpolated remote ship's jump spread over kPoseSmoothS (round 4), as a predicted one's. Off: the simulation takes
+    // the smoothed place too, and enemies chasing a relayed player drifted from the host's (impaired ten seeds 6.22 -> 7.59).
+    bool relaySmooth = false;
+    bool ackWithPose = false;       // client (experiment): the link serviced on pose frames (and while a ping is out) only
+    bool claimsDense15 = true;      // client: above kClaimsDense claims a second, claims leave every third pose (10 Hz)
     // Host: the corrections' share of each client's downlink (bytes a second, every byte to the client counted) and how
     // fast each enemy family gains priority (experiments: raveform_headless --net-tune). Shoals twice as fast: boids
     // drift apart fastest (docs/PROGRESS_m4_net.md: 57-95% of the soaks' squared error; 4 starved the rest).
@@ -346,6 +351,7 @@ private:
         i64 stamp = 0, lastAt = 0;
         Vec2 pos, vel, off;
         Vec2 out;                // the place given last (estimate + offset)
+        Vec2 raw, rawVel;        // the estimate given last, before the offset, and its velocity
     } track_[sim::kMaxPlayers];
     // A direct link's poses: their age on arrival (ms), smoothed, and its spread; past the thresholds the link is
     // interpolated instead of predicted (RemotePoses::Direct), back below them predicted again.
@@ -357,6 +363,10 @@ private:
     PacketWriter scratch_;  // one-off packets
     i64 nextPoseUs_ = 0, nextBeatUs_ = 0, nextCensusUs_ = 0, nextCorrUs_[sim::kMaxPlayers] = {};
     u8 beatBossPhase_ = 0xFF;  // host: the boss's phase the last heartbeat carried (0xFF none); a change sends one at once
+    i64 pingOutUs_ = 0;        // client: when its last ping left (0: its pong came)
+    u32 claimPoses_ = 0;       // client: pose frames since its claims last left (dense seconds: every other pose)
+    i64 rawClaimSec_ = -1;     // client: the second (host time) its world's claims are being counted in
+    u32 rawClaimSecN_ = 0, rawClaimPrevN_ = 0;  // ... this second's and the last one's
     sim::World::DirectorSync sentDirector_;
     bool directorSent_ = false;
     u32 directorRun_ = 0xFFFFFFFFu;

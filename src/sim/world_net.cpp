@@ -622,13 +622,10 @@ bool World::netSample(u32 i, NetEnemyState& s) const {
     return true;
 }
 
-float World::netCorrect(const NetEnemyState& s, double hostMusic) {
-    const i32 idx = indexOfSerial(s.serial);
-    if (idx < 0) return -1.0f;
-    Enemies& e = enemies_;
-    const u32 i = static_cast<u32>(idx);
-    if (e.flags[i] & kFlagDead) return -1.0f;  // a death predicted here: the host will say
-    // The host's position carried to this world's musical time by its own velocity (at most a quarter second).
+Vec2 World::netHostPlace(const NetEnemyState& s, double hostMusic, u16 species, float* laneB) const {
+    // The host's position carried to this world's musical time by its own velocity (at most a quarter second); in Event
+    // Horizon's pull by the pull as well, and a lane walker along its lane (M4 net, clients only). netCorrect puts the
+    // copy there; the session's at-correction error measures against the same place.
     const float tps = ticksPerSecond();
     const float ds = clampf(static_cast<float>((m1_ - hostMusic) / static_cast<double>(tps)), -0.25f, 0.25f);
     const bool hostWarping = s.state == kWarping;
@@ -648,9 +645,24 @@ float World::netCorrect(const NetEnemyState& s, double hostMusic) {
     }
     // M4 net (clients only): an Event Horizon lane walker's place is its lane and its distance along it (horizonLane draws
     // it from them every tick), so it takes the host's, the distance carried by the walk to this time, beat or not.
+    if (s.state == kLane && horizonOn()) {
+        const float b = horizonLaneCarry(species, s.a, s.b, ds);
+        if (laneB) *laneB = b;
+        h = horizonLanePoint(s.a, b);
+    }
+    return h;
+}
+
+float World::netCorrect(const NetEnemyState& s, double hostMusic) {
+    const i32 idx = indexOfSerial(s.serial);
+    if (idx < 0) return -1.0f;
+    Enemies& e = enemies_;
+    const u32 i = static_cast<u32>(idx);
+    if (e.flags[i] & kFlagDead) return -1.0f;  // a death predicted here: the host will say
+    const bool hostWarping = s.state == kWarping;
     const bool lane = s.state == kLane && horizonOn();
-    const float laneB = lane ? horizonLaneCarry(e.species[i], s.a, s.b, ds) : 0.0f;
-    if (lane) h = horizonLanePoint(s.a, laneB);
+    float laneB = 0.0f;
+    const Vec2 h = netHostPlace(s, hostMusic, e.species[i], &laneB);
     const Vec2 c{e.x[i], e.y[i]};
     const Vec2 d = h - c;
     const float err = length(d);

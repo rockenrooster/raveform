@@ -373,6 +373,33 @@ another course, and one seed's figure swings with what its run met (on this bran
 the Hive fight: 56% of its squared error from 7% of its samples). If thinning ever needs to agree, the owner's live
 count can ride in its pose (one byte, count / 4).
 
+## Round 4 (after the lead's rulings on 7061fb0; round 2's rules out at `d5be6ea`)
+
+### (a) The impaired Moto run on the final APK (`182905`, nothing else of mine on the PC)
+
+Moto hosting three PC bots, 15 minutes, 5% loss and 80 ms jitter on every peer's sends (the phone's too), APK and bots
+from `d5be6ea`. Shared phone; our APK deployed first. **0 PC stalls** on every bot.
+
+| bot | whole run (limit 12) | outside Event Horizon | Event Horizon's 20 s (bars 371-386) | worst up / down second |
+|---|---|---|---|---|
+| 1 | 11.86 | 11.46 | 29.0 (242 samples) | 48.1 / 222.6 |
+| 2 | **12.20** | **12.16** | 19.1 (113) | 51.5 / 203.5 |
+| 3 | **13.30** | **12.84** | 57.8 (98) | 43.4 / 228.0 |
+
+**Not met** for bots 2 and 3, and not because of Event Horizon: outside its 20 s they are 12.2 and 12.8. The windows
+over 20 wu are in Track 5 (cycle 2 to the boss, 30-50 wu a window) and Track 6; the soaks put Track 5 impaired at
+7-10. The Event Horizon windows fell from 170-182 to 19-58 on the same measure.
+
+### (b) The device-only spike in Event Horizon: the measure
+
+The device runs' `scr` (a client's drawn copy against the host's sample as each correction lands) carried the
+host's sample to now **by its velocity alone**. A lane walker on its spiral (100-500 wu/s, curving hard near the
+Well) and a body in the pull (the pull is not in its velocity) are not where that straight line puts them, so the
+measure itself read tens to hundreds of wu while the copies stood where the host's were; the soak's true error (both
+worlds at the same song time) does not carry anything. Now `World::netHostPlace` carries the sample the way
+`netCorrect` places the copy (velocity, pull, lane), and the session's measure uses it; for every other enemy it is
+unchanged. The soak prints this measure by fight (`at correction ... by fight`) beside the true error by fight.
+
 ## The jumpy player shots the user saw on the Moto (the lead's question)
 
 The phone's runs this afternoon (PC local times, `captures\m4net\device\<tag>_*`, bench results `captures\bench\`):

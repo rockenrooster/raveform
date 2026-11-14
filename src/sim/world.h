@@ -848,6 +848,8 @@ public:
     // snaps). Returns the distance between the two before the correction (-1: not here, or gone).
     bool netSample(u32 index, NetEnemyState& out) const;
     float netCorrect(const NetEnemyState& s, double hostMusic);
+    // The host's sample carried to this world's musical time, as netCorrect places the copy (M4 net).
+    Vec2 netHostPlace(const NetEnemyState& s, double hostMusic, u16 species, float* laneB = nullptr) const;
     // The director's state as the host has it (the phrase, the Track, the boss's place in the run).
     struct DirectorSync {
         double startTick = 0.0;

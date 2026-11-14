@@ -18,6 +18,9 @@ constexpr i64 kPoseEveryUs = 33333;     // TECH_SPEC 8.1: poses at 30 Hz
 constexpr i64 kCorrEveryUs = 66667;     // corrections 15 Hz per client
 constexpr i64 kBeatEveryUs = 250000;    // the song clock heartbeat, 4 Hz
 constexpr i64 kBossBeatEveryUs = 100000;  // ... 10 Hz while a boss fights (its health rides with it)
+constexpr i64 kPingWaitUs = 500000;       // a client services every frame this long after a ping, or until its pong
+constexpr u32 kClaimsDense = 400;         // claims in a second above which a client sends them every kDensePoses poses
+constexpr u32 kDensePoses = 3;            // ... 10 Hz (a teammate sees a kill at most 67 ms later; the lead's rule: 100 ms)
 constexpr i64 kCensusEveryUs = 2000000;
 constexpr i64 kPingFastUs = 50000, kPingUs = 250000;  // TECH_SPEC 8.2: 4 Hz (20 Hz until 16 samples)
 constexpr i64 kInterpUs = 66000;        // remote players drawn ~66 ms behind
@@ -94,6 +97,12 @@ bool parseNetTune(const char* spec, SessionConfig& c) {
             c.bossBeat = v != 0.0f;
         } else if (std::strcmp(key, "bossmerge") == 0) {
             c.bossClaimsAtPose = v != 0.0f;
+        } else if (std::strcmp(key, "relaysmooth") == 0) {
+            c.relaySmooth = v != 0.0f;
+        } else if (std::strcmp(key, "ackpose") == 0) {
+            c.ackWithPose = v != 0.0f;
+        } else if (std::strcmp(key, "dense15") == 0) {
+            c.claimsDense15 = v != 0.0f;
         } else if (std::strncmp(key, "fam", 3) == 0) {
             const int f = std::atoi(key + 3);
             if (f < 0 || f > 15) return false;
@@ -293,6 +302,10 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     pendClaimCount_ = 0;
     pendBossCount_ = 0;
     pendRun_ = 0;
+    pingOutUs_ = 0;
+    claimPoses_ = 0;
+    rawClaimSec_ = -1;
+    rawClaimSecN_ = rawClaimPrevN_ = 0;
     hostQuiet_ = false;
     measureFrom_ = 0;
     lastWire_ = WireStats{};
@@ -363,7 +376,7 @@ void Session::stop() {
 // ---------------------------------------------------------------------------------------------- in
 
 void Session::receive(i64 localUs) {
-    // The frame's clocks. The link itself is serviced once a frame, in send(), after everything is queued (the
+    // The frame's clocks. The link itself is serviced once a frame (a running client: on its pose frames), in send(), after everything is queued (the
     // frame's data leaves in one datagram a peer; ENet acknowledges what arrives at once, in its own).
     localNow_ = localUs;
     if (!startUs_) startUs_ = localUs;
@@ -562,6 +575,7 @@ void Session::onPing(i64 t0) {
 
 void Session::onPong(i64 t0, i64 t1, i64 t2) {
     if (host()) return;
+    pingOutUs_ = 0;
     clock_.addSample(t0, t1, t2, nowLocal());
 }
 
@@ -865,10 +879,11 @@ void Session::onCorrection(const NetEnemyState& s) {
         const Vec2 me = world_->player(seat_).pos;
         const float dx = e.x[i] + e.ox[i] - me.x, dy = e.y[i] + e.oy[i] - me.y;
         if (std::fabs(dx) <= tuning::kFrameHalfWWu && std::fabs(dy) <= tuning::kFrameHalfHWu) {
+            // (The host's place as netCorrect carries it: by velocity, and in Event Horizon's pull and lanes as they move;
+            // carried by velocity alone a walker on its spiral measured 170-182 wu on the device runs.)
             const float tps = static_cast<float>(world_->ticksPerSecond());
-            const float ds = clampf(static_cast<float>((world_->music() - corrMusic_) / static_cast<double>(tps)), -0.25f, 0.25f);
             const Vec2 v{s.vx + s.kx, s.vy + s.ky};
-            const Vec2 h{s.x + v.x * ds, s.y + v.y * ds};
+            const Vec2 h = world_->netHostPlace(s, corrMusic_, e.species[i]);
             const Vec2 dv = Vec2{e.x[i] + e.ox[i], e.y[i] + e.oy[i]} - h;
             const float d = length(dv);
             stats_.screenErrSum2 += static_cast<double>(d) * d;
@@ -1222,9 +1237,12 @@ void Session::fillRemote(TickInput& in, i64 hostUs) {
         } else {
             st = b->cur;
         }
-        if (predict || direct) {
+        {
+            // Every remote ship (M4 net round 4: relayed seats too) keeps its place when a pose moves the estimate: the jump
+            // goes into an offset that decays over kPoseSmoothS.
             RemoteTrack& t = track_[s];
             const MsgPose& n = r.s[(r.head + r.count - 1) % kPoseRing];
+            const Vec2 raw{st.x, st.y};
             if (!t.valid) {
                 t.off = Vec2{};
                 t.lastAt = hostUs;
@@ -1232,7 +1250,13 @@ void Session::fillRemote(TickInput& in, i64 hostUs) {
                 const i64 since = hostUs - t.lastAt;
                 if (since > 0) t.off = t.off * std::exp(-static_cast<float>(static_cast<double>(since) * 1e-6) / kPoseSmoothS);
                 t.lastAt = hostUs;
-                if (t.predicted != predict) {
+                if (cfg_.relaySmooth && !predict && t.predicted == predict && n.stampUs != t.stamp) {
+                    // Interpolated (66 ms behind): a pose that lands moves the estimate where it was carried past the
+                    // newest sample, or where a late one fills a gap; the step its motion does not explain is spread.
+                    const float dt = since > 0 ? static_cast<float>(static_cast<double>(since) * 1e-6) : 0.0f;
+                    const Vec2 jump = raw - (t.raw + t.rawVel * dt);
+                    t.off = lengthSq(jump) > kPoseSnapWu * kPoseSnapWu ? Vec2{} : t.off - jump;
+                } else if (t.predicted != predict) {
                     // The link changed mode (66 ms between the two estimates): the ship keeps its place, carried on by its
                     // velocity, and the difference is spread over kPoseSmoothS like a pose's jump.
                     const float dt = since > 0 ? static_cast<float>(static_cast<double>(since) * 1e-6) : 0.0f;
@@ -1250,6 +1274,8 @@ void Session::fillRemote(TickInput& in, i64 hostUs) {
             t.stamp = n.stampUs;
             t.pos = Vec2{n.cur.x, n.cur.y};
             t.vel = Vec2{n.cur.vx, n.cur.vy};
+            t.raw = raw;
+            t.rawVel = Vec2{st.vx, st.vy};
             st.x += t.off.x;
             st.y += t.off.y;
             t.out = Vec2{st.x, st.y};
@@ -1335,6 +1361,16 @@ void Session::afterTick() {
         // This player's hits, claimed from the host (TECH_SPEC 8.1: reliable, batched; they leave with the pose).
         if ((log.claimCount || log.bossClaimCount) && pendRun_ != run) writeClaims();  // a new run: the last one's go first
         pendRun_ = run;
+        {
+            // The claims this world makes in a second (before merging): above kClaimsDense they leave every other pose.
+            const i64 sec = hostNow_ / 1000000;
+            if (sec != rawClaimSec_) {
+                rawClaimPrevN_ = sec == rawClaimSec_ + 1 ? rawClaimSecN_ : 0u;
+                rawClaimSecN_ = 0;
+                rawClaimSec_ = sec;
+            }
+            rawClaimSecN_ += log.claimCount + log.bossClaimCount;
+        }
         for (u32 k = 0; k < log.claimCount; ++k) {
             if (pendClaimCount_ == kPendingClaims) {
                 // The host has gone quiet (gone, or a long Wi-Fi hole) and kPendingClaims are waiting: the rest are not
@@ -1948,7 +1984,15 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
     }
     // Reliable data leaves with the pose (a packet that fills goes at once); before the lobby, every frame.
     if (poseFrame || !live) {
-        if (!hostQuiet) writeClaims();  // (held while the host is quiet: kPendingClaims of them at most, then they go)
+        // In a dense second (above kClaimsDense claims, the loop's crowds) claims leave every third pose, 10 Hz: more hits
+        // on one enemy merge and fewer reliable datagrams go. The claimant's own kills show at once as ever; a teammate
+        // sees them up to 67 ms later (the lead's rule: up to 100 ms).
+        const bool dense = cfg_.claimsDense15 && !host() && (rawClaimSecN_ > kClaimsDense || rawClaimPrevN_ > kClaimsDense);
+        ++claimPoses_;
+        if (!hostQuiet && (!dense || !live || claimPoses_ >= kDensePoses)) {  // (held while the host is quiet: kPendingClaims of them at most, then they go)
+            writeClaims();
+            claimPoses_ = 0;
+        }
         flushReliable();
     }
     // A client's ping (TECH_SPEC 8.2: 4 Hz; 20 Hz until it has 16 samples), stamped as it leaves.
@@ -1957,10 +2001,18 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
         scratch_.putPing(nowLocal());
         sendTo(0, kChControl, scratch_, false);
         nextPingUs_ = localUs + (clock_.samples() < ClockSync::kSamples ? kPingFastUs : kPingUs);
+        pingOutUs_ = localUs;
     }
-    // The one service of the frame: what was queued leaves with the acknowledgements; what came is handled.
-    service();
-    link_.flush();
+    // The one service of the frame: what was queued leaves with the acknowledgements; what came is handled. A running
+    // client services on its pose frames only (30 Hz), so ENet's acknowledgements leave with the pose instead of in a
+    // datagram of their own each frame (the uplink, docs/PROGRESS_m4_net.md); while a ping is out it services every frame,
+    // so the pong is timed as it lands (the clock's offset).
+    const bool pingOut = pingOutUs_ != 0 && localUs - pingOutUs_ < kPingWaitUs;
+    const bool quiet = cfg_.ackWithPose && !host() && state_ == SessionState::Running && !poseFrame && !pingOut;
+    if (!quiet) {
+        service();
+        link_.flush();
+    }
     measure(localUs);
 }
 

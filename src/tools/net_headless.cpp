@@ -316,6 +316,8 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     u64 thinChecks = 0, thinDiffers = 0, thinOwnerOn = 0;  // a copy's thinning against the owner's (GAME_DESIGN 6.6)
     double thinLiveSum2 = 0.0;
     u64 shStraight[2] = {}, shBent[2] = {}, shBentFirst[2] = {}, shCurve[2] = {};  // the host's screen: own 0, remote 1
+    double scrBoss2[32] = {}, lastScr2[kMaxPlayers] = {};  // the clients' at-correction error by fight (31: none)
+    u64 scrBossN[32] = {}, lastScrN[kMaxPlayers] = {};
     double bossHpSum2 = 0.0, bossHpMax = 0.0;  // a client's boss health against the host's (shares of the whole)
     u64 bossHpN = 0, bossHpAbove = 0, bossDeathLate = 0;
     u64 missing = 0;
@@ -539,6 +541,20 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                 ++bossHpN;
                 if (std::fabs(d) > bossHpMax) bossHpMax = std::fabs(d);
                 if (d > 0.0) ++bossHpAbove;
+            }
+        }
+        {
+            // The clients' error as each correction lands (the game's and the device runs' `scr`), by the host's fight then
+            // (31: no fight), to set beside the true error by fight.
+            const BossState& hb = peers[0].world().boss();
+            const u32 bk = hb.active && static_cast<u32>(hb.kind) < 31u ? static_cast<u32>(hb.kind) : 31u;
+            for (u32 k = 1; k < players; ++k) {
+                if (dropped && k == dropPeer) continue;
+                const SessionStats& st = peers[k].session().stats();
+                scrBoss2[bk] += st.screenErrSum2 - lastScr2[k];
+                scrBossN[bk] += st.screenErrN - lastScrN[k];
+                lastScr2[k] = st.screenErrSum2;
+                lastScrN[k] = st.screenErrN;
             }
         }
         // Each viewer's copy of every other player's thinning (GAME_DESIGN 6.6, decided on a beat from the live shots this
@@ -770,6 +786,12 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     std::printf("[net]   thinning: a copy's against its owner's differs in %llu of %llu looks (owner thinned in %llu); live shots off by %.1f RMS\n",
                 static_cast<unsigned long long>(thinDiffers), static_cast<unsigned long long>(thinChecks),
                 static_cast<unsigned long long>(thinOwnerOn), thinChecks ? std::sqrt(thinLiveSum2 / static_cast<double>(thinChecks)) : 0.0);
+    std::printf("[net]   at correction (the device runs' scr) by fight:");
+    for (u32 k = 0; k < 32; ++k)
+        if (scrBossN[k])
+            std::printf(" %s %.1f (%llu)", k == 31 ? "none" : bossId(static_cast<BossKind>(k)),
+                        std::sqrt(scrBoss2[k] / static_cast<double>(scrBossN[k])), static_cast<unsigned long long>(scrBossN[k]));
+    std::printf("\n");
     std::printf("[net]   boss health, a client's against the host's: RMS %.2f%% of the whole, max %.2f%% (%llu looks, %llu above the "
                 "host's); looks with the host's boss dying and the client's not yet: %llu\n",
                 bossHpN ? 100.0 * std::sqrt(bossHpSum2 / static_cast<double>(bossHpN)) : 0.0, 100.0 * bossHpMax,
