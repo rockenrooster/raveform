@@ -1103,7 +1103,7 @@ void World::updateRiffsM5(float dt) {
                     emitFx(p, kFxLance, pl.pos, pl.pos + d * kLancerLengthWu, kLanceLancer, half, t);
                 }
                 if (b == 0 && l.fused(kDownbeatCannon)) {
-                    const float dmg = kLancerDamage * onBeatCritMultiplier(3);
+                    const float dmg = kDownbeatDamage;  // (play test 3's balance pass: it was the Lancer's x On-Beat Crit's 8, 48)
                     if (local) lineHit(owner, pl.pos, d, kDownbeatLengthWu, kDownbeatHalfWu, dmg);
                     addLance(p, pl.pos, d, kDownbeatLengthWu, kDownbeatHalfWu, kLanceCannon, false, t);
                     emitFx(p, kFxLance, pl.pos, pl.pos + d * kDownbeatLengthWu, kLanceCannon, kDownbeatHalfWu, t);

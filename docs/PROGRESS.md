@@ -27,9 +27,9 @@ M5 part 4; protocol `0x52460505` holds both).
   fire for the Mimic or Feedback (they never lift a thumb).
 - **Caps** (6.2): Split 2 (five lanes), Double-Time 1 (the triplet grid), Fork 1 (forking again is Fractal's). Helix Array's
   two pairs at 80 and 53 wu and the middle lane; the shots-per-step ceiling 25 (5 x Prism's 5); words (Double-Time and Fork
-  one line each, Arc "KILLS ARC TO 1 MORE"); tests; the `split7` picture is `split5`. Not moved: the band's stress loadout
-  (`src/audio/content_sound.cpp` `kMods`: Split 3, Double-Time 2, Fork 2) is src/audio, the sound engineer's; it is a heavier
-  load than the game can now make, so the measurement stays on the safe side.
+  one line each, Arc "KILLS ARC TO 1 MORE"); tests; the `split7` picture is `split5`. The band's stress loadout
+  (`src/audio/content_sound.cpp` `kMods`) is src/audio: the sound engineer moved it to Split 2, Double-Time 1, Fork 1 (c3af625,
+  merged).
 - **Chains at half, one step** (6.2 rows 13-15, 6.4): Arc 1 / 2 / 3 more within 160 wu, an arc's own kill arcs no further
   (`World::arcing_`; Tesla Bloom's arcs too); Burn spreads within 45 wu once (a fire caught from a death carries
   `kBurnSpread` in `Enemies::burnLevel` and spreads no further; a hit makes it the shooter's own again); Shatter 2 / 3 / 4
@@ -95,6 +95,49 @@ M5 part 4; protocol `0x52460505` holds both).
   the Sentry Array's domed turrets, on that turret's health; the Brood Mother's dome and the Deep Well's swallowing were a
   quarter already). The Hive's decoy is light, not its body: it still stops a shot for nothing (decision). The assist aims at
   their open weak point through the same tiers as the bosses'.
+
+### 7e, the balance pass (GAME_DESIGN 7.6; `raveform_headless --sim crowd`, seeds 1-20; files in `captures\pt3bal\`)
+
+- **Method.** The novice now fires only through the assist, so first its eight-bar damage was measured with no pace
+  (`--nopace`, new), then the bosses' and mini-bosses' health was moved in two rounds of `--health` factors from the fights'
+  starts (Tracks 1-3 from the run's start, 60 minutes; Tracks 4-10 `--handover N`), toward the novice's lines and its fights
+  taking about the page's length, and the pace's novice numbers were measured again at the final health
+  (`kBossPaceNovice`: Kaleidos 760, Longwave 780, the Choir 1,550, Event Horizon 4,721, Polyrhythm 6,000, Feedback 3,170,
+  Cadence 8,860, Arpeggiator 14,400, Fata Morgana 23,250, the Reprise 6,060).
+- **Health** (`tuning.h`, the factor on the part 7 tune in brackets): Kaleidos 1.21 (x 2.2), Longwave 0.77 (x 1), the Choir
+  1.26 (x 1), Event Horizon 8.8 (x 1.1), Polyrhythm 3.4 (x 2.0), Feedback 1.8 (x 0.9), Cadence 8.05 (x 1.15), Arpeggiator
+  13.8 (x 0.77), Fata Morgana 15.4 (x 1.1), the Reprise 5.625 (x 1.25); the mini-bosses x 0.8, 0.7, 0.5, 0.5, 0.4, 0.65, 0.5,
+  0.85, 0.85, 1, 0.6, 1 (Alpha Hound to Deep Well; the middle Drop is 8 bars now, the hold 8 more). Where a fight's length and
+  the novice's wins pulled apart the wins won: Kaleidos x 2.7 was 17 of 20 (64 s), the Choir x 1.2 14 of 20, Polyrhythm x 2.6
+  cost the assist bot two runs.
+- **The picks** (`--sim picks --seeds 8`, the table's yardsticks): nothing above 3x but the Downbeat Cannon (x 3.1); Pulse Ring
+  2.1, Ricochet 1.7, Heavy Step 1.7, Pierce 1.1 are under the lead's line and were left. The Cannon's damage (the Lancer's 6
+  x On-Beat Crit's 8 = 48) is now 18 (`kDownbeatDamage`): its crowd figure did not follow (x 2.7 at 18, x 3.3 at 9 on the same
+  seeds: its kills are its quoted shape's, 64 wu the screen's length every bar), its boss figure did (the Choir x 1.32 to
+  1.05). **Not brought in**: the Cannon's crowd figure, without changing what the page quotes.
+- **The last runs** (the final build; 20 seeds; the novice 60 minutes, the others 45):
+
+  | | novice | assist | careful | careless |
+  |---|---|---|---|---|
+  | finished the ten Tracks (the first run) | 5 | **19** | 20 | 0 |
+  | first death, median | 16.6 min | 42.5 min | 42.4 min | 26.6 min (Track 9) |
+  | Kaleidos (won of met, s) | 20/20, 47 | 20/20, 47 | 20/20, 49 | 20/20, 38 |
+  | Longwave | 19/20, 94 | 20/20, 68 | 20/20, 50 | 19/20, 36 |
+  | the Choir | 18/20, 48 | 20/20, 29 | 20/20, 28 | 20/20, 25 |
+  | Event Horizon | 18/20, 142 | 20/20, 74 | 20/20, 69 | 20/20, 88 |
+  | Polyrhythm | 13/20, 34 | 19/20, 32 | 20/20, 31 | 20/20, 31 |
+  | Feedback | 13/18, 108 | 20/20, 66 | 20/20, 78 | 19/20, 110 |
+  | Cadence | 13/13, 98 | 20/20, 80 | 20/20, 75 | 20/20, 67 |
+  | Arpeggiator | 13/13, 111 | 20/20, 101 | 20/20, 92 | 19/20, 87 |
+  | Fata Morgana | 11/13, 113 | 20/20, 94 | 20/20, 95 | 0/18 |
+  | the Reprise | 10/10, 165 | 19/19, 152 | 20/20, 127 | — |
+
+  The novice's mini-boss first meetings: 67-95% won (10-18 s). Its lines hold (Kaleidos 18, Longwave and the Choir 16, Tracks
+  4-6 12 of 20; Kaleidos 40 seeds: 40 of 40); Event Horizon from the novice's own run takes 142 s (its page's 1.5 x 80 = 120;
+  from `--handover 4` 78 s). The assist bot's bar holds (19 of 20; the one: Polyrhythm in Track 5). The careful bot's line (half
+  the page's shorter length) holds but for the Choir (28 s, line 40) and Polyrhythm (31 s, line 50): both die before the pace
+  has grown, as in part 7 (the ruling: no second mechanism). The careless bot never passes Fata Morgana (the storm outside the
+  oases; the reckless policy ignores danger).
 
 ### Decisions taken alone
 

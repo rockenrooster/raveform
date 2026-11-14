@@ -353,6 +353,8 @@ constexpr u32 kConfettiSparks = 6;                                  // quoted
 constexpr float kCarouselWu = 70.0f, kBombSpeed = 500.0f, kBombLifeS = 1.0f, kBombBlastWu = 90.0f, kBombDamage = 6.0f;
 // Fusions.
 constexpr float kDownbeatHalfWu = 32.0f, kDownbeatLengthWu = 2400.0f;  // look.md v2.5: no beam hurts wider than 64 wu (was 60)
+constexpr float kDownbeatDamage = 18.0f;  // play test 3's balance pass (the no-trap table, 8 seeds: x 3.1 a Split stack at 48, 2.7 at 18, 3.3 at 9: its kills are
+                                          // its quoted shape's, not its damage's; the Choir x 1.32, 1.05, 0.97): the Lancer's 6 x 3
 constexpr float kCollapsePullWu = 200.0f, kCollapsePull = 200.0f;
 constexpr float kStandingDamage = 1.5f;
 // The pages leave the health to the bot ("tune the segment health with the bot once it can surf", "tune the Voice health
@@ -394,10 +396,11 @@ constexpr float kHzJetHalfWu = 6.0f;       // look.md v2.5: no lethal beam kills
 constexpr float kHorizonHealthTune = 8.8f;  // (16 x 0.5 x 1.1) play test 3's novice (--handover 4): 20 of 20, 78 s (at most 120)
 // Polyrhythm (polyrhythm.md gives no number for these).
 constexpr float kPrLinkBurnHalfWu = 6.0f;   // the burning link: look.md v2.5, 12 wu (part 4: 16)
-constexpr float kPolyHealthTune = 4.42f;    // (1.7 x 2.6) play test 3's novice (--handover 5): x 1 20 of 20 in 16 s; x 2 17 of 20, 33 s; x 4 4 of 20
+constexpr float kPolyHealthTune = 3.4f;     // (1.7 x 2.0) play test 3's novice (--handover 5): x 1 20 of 20 in 16 s; x 2 17 of 20, 33 s; x 4 4 of
+                                            // 20; x 2.6 the assist bot lost 2 of 20 here (its bar: 19 of 20 runs through the ten Tracks)
 constexpr u8 kBossEntranceCells = 2;       // GAME_DESIGN 5 (f32a441): "grows back up to two" as a boss arrives
 constexpr float kCadenceHealthTune = 8.05f;  // (7 x 1.15) play test 3's novice (--handover 7): 19 of 20, 97 s (the page 80-100)
-constexpr float kArpHealthTune = 15.3f;     // (18 x 0.85) play test 3's novice (--handover 8): 17 of 20, 120 s (the page 90-110)
+constexpr float kArpHealthTune = 13.8f;     // (18 x 0.77) play test 3's novice (--handover 8, x 0.85): 17 of 20, 120 s (the page 90-110)
 constexpr float kMorganaHealthTune = 15.4f;  // (14 x 1.1) play test 3's novice (--handover 9): 16 of 20, 90 s (the page 90-120)
 constexpr float kMgFanSpreadDeg = 40.0f;    // morgana.md gives no spread for her fan of five (Cadence's 40 degrees)
 constexpr float kMgBulletLife = 4.0f;       // ... nor its life (Cadence's 4 s)
@@ -423,10 +426,10 @@ constexpr float kWvBurstBeats = 0.5f;       // ... the burst lasts half a beat (
 // armour, a player (measured from the fights' starts, docs/PROGRESS.md part 7; 0: not measured, the pace stays 1), and the
 // pace's bounds (quoted).
 constexpr float kBossPaceNovice[24] = {   // (by BossKind; the mini-bosses 0: they leave with their Drop)
-    710.0f, 780.0f, 1150.0f,                 // Kaleidos, Longwave, the Choir (the novice from the run's start; play test 3: it fires
+    760.0f, 780.0f, 1550.0f,                 // Kaleidos, Longwave, the Choir (the novice from the run's start; play test 3: it fires
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,      // through the assist, measured --nopace; part 7: 234, 450, 1,334)
-    4721.0f, 6000.0f, 2530.0f,               // Event Horizon, Polyrhythm, Feedback (--handover 4, 5, 6; part 7: 4,188, 2,910, 2,792)
-    8600.0f, 12750.0f, 23250.0f, 5150.0f};   // Cadence, Arpeggiator, Fata Morgana, Kaleidos Reprise (--handover 7-10; part 7: 6,501,
+    4721.0f, 6000.0f, 3170.0f,               // Event Horizon, Polyrhythm, Feedback (--handover 4, 5, 6; part 7: 4,188, 2,910, 2,792)
+    8860.0f, 14400.0f, 23250.0f, 6060.0f};   // Cadence, Arpeggiator, Fata Morgana, Kaleidos Reprise (--handover 7-10; part 7: 6,501,
                                              // 16,772, 21,279, 6,200)
 constexpr float kBossPaceMin = 1.0f, kBossPaceMax = 4.0f;
 constexpr float kBossPaceDeadBand = 1.5f;  // GAME_DESIGN 7.6 (play test 3): a ratio under it counts as 1 (1.25 at first)
