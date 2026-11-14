@@ -409,7 +409,9 @@ line: a stronger beam is hotter and longer, never fatter. For a beam of damage w
 - **A lethal beam is a laser too.** An enemy's or a boss's beam is danger red on the priority layer
   (§6): its capsule is exactly as wide as it kills (a threat's picture is its hit box), with a
   white-pink line of 2 px down its axis, and round it a glow of the danger colour drawn as the
-  players' is (0.25 on the axis, σ = twice the kill width) that hurts nobody. **No lethal beam
+  players' is (0.20 on the axis, σ = half the kill width) that hurts nobody. (The first number
+  here, σ = twice the width, put a red band 180 px wide across the screen behind Event Horizon's
+  jets and filled the Blink Star's star: `captures/m5/checkpoint/hz_jets.png`, `bs_fire.png`.) **No lethal beam
   kills wider than 12 wu** (18 px at zoom 1); Kaleidos' beam, 10 wu, is the model. Part 4 drew
   Event Horizon's jets about 90 wu wide and Polyrhythm's burning link and the Blink Star's star as
   bars (`captures/m5/part4/hz_jets.png`, `pr_burn.png`, `bs_fire.png`): the pages gave no width,
