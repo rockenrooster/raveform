@@ -617,6 +617,15 @@ carries the sample as the copy is placed.
   (`raveform_headless --net soak --fight <id> --minutes 3`), a few lines to the lead, a fix only where a fight is over
   12 wu. Still to land: Arpeggiator, Fata Morgana, Kaleidos Reprise and mini-bosses batch 3.
 
+### Part 6 merged (main 3be00a8, protocol 0x52460508; `cf63035`)
+
+`scripts\test.ps1` passes (soaks 1.97 / 3.20). Each new fight, clean, 3 minutes from its start (`captures\m4net\fights\`):
+Arpeggiator **8.3**, Fata Morgana **4.0**, Kaleidos Reprise **5.7**, Mirror Mimic **3.8**, Twin Tether **4.3**, Weaver
+Prime **5.4**, Deep Well **8.2** (Cadence 5.0 before): all under 12, nothing to fix. One finding that is not the
+network's: the Twin Tether soak (Track 7, four players) **overflows the enemy bullet pool on every peer, the host's
+own world too** (2,650-4,030 bullets refused in 3 minutes), so it fails the soak's no-overflow check; the content
+engineer's to look at.
+
 ### (e) Moth Queen and Brood Mother
 
 Not done this round. Moth Queen in the 40-minute soaks: true 13-18 impaired (at correction 23-29). Brood Mother is
