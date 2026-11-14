@@ -491,7 +491,8 @@ die and does not say why, and the user never got past Longwave. So:
   the half-rate assist, a won fight, af4b101): Event Horizon 75 s (halved by the owner), Polyrhythm
   20, Feedback 63, Cadence 91, Arpeggiator 69, Fata Morgana 41, Reprise 114; Kaleidos 55, Longwave
   83, the Choir 34. So Longwave, Feedback, Cadence, Arpeggiator and Reprise come down, and
-  Polyrhythm goes up to about 30 as long as the novice still wins it as often. The careful bot's
+  Polyrhythm goes up to about 30 as long as the novice still wins it as often. **The finale is the
+  longest:** Kaleidos Reprise lasts about 60 seconds (the owner, 2026-11-14, after it came in at 35). The careful bot's
   fight lasts at least half the shorter length. Where the two pull apart, the novice's line wins.
 - **What that costs, and until when.** Tuned for the novice (2026-11-13: Kaleidos at 0.55 of its
   page's health, Longwave at 0.77), the careful bot kills Kaleidos in 9 s and Longwave in 18 s: a
