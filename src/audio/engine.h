@@ -259,9 +259,10 @@ public:
         stemFn_ = fn;
         stemUser_ = user;
     }
-    // M5 audio, offline only (the output stage's check): each block, the stage's input (music and effects summed) and its
+    // M5 audio, offline only (the output stage's check): each block, the stage's inputs (the music, the effects) and its
     // output, frame for frame (the output kLimDelay frames behind).
-    using StageTapFn = void (*)(void* user, const float* inL, const float* inR, const float* outL, const float* outR, u32 n);
+    using StageTapFn = void (*)(void* user, const float* inL, const float* inR, const float* fxL, const float* fxR, const float* outL,
+                                const float* outR, u32 n);
     void setStageTap(StageTapFn fn, void* user) {
         stageFn_ = fn;
         stageUser_ = user;
@@ -612,19 +613,32 @@ private:
     // callbacks do not matter) may take is ceiling / its peak; a segment's gain is the least of the segments from kLimHold
     // before it to kLimAhead after it, released over kLimReleaseS, and moves linearly across the segment. A sub-bass sine under
     // it keeps one gain over a whole period (the hold), so it stays a sine; nothing over the ceiling reaches the output.
+    // The owner's play of f0624e5 ("annoying attenuation when tons of sfx are playing"; duck-check: a crowd dying took the effects
+    // bus to 0 dBFS, a large kill alone is -8, so the limiter pulled the music down with them): the effects bus has its own gain,
+    // planned the same way in the same delay line, that keeps the effects together under kFxCeiling; the sum's gain then plans
+    // from the music and the effects at their own request, so a pile of effects is quieted on its own bus and the music is not.
     static constexpr u32 kLimSeg = 32, kLimAhead = 3, kLimHold = 40, kLimDelay = (kLimAhead + 1) * kLimSeg;
     static constexpr u32 kLimRing = 256, kLimReqs = 64;  // powers of two over the delay and over hold + ahead + 1
     static constexpr float kLimCeiling = 0.8f, kLimReleaseS = 0.12f;
-    float limBuf_[2][kLimRing] = {};
+    static constexpr float kFxCeiling = 0.63f;  // -4 dBFS: a hit (-5.2) passes untouched, a Nova's blast (-3.1) loses 0.9 dB
+    float limBuf_[2][kLimRing] = {};   // the music (in at frame t, out kLimDelay later)
+    float fxBuf_[2][kLimRing] = {};    // the effects
     float limReq_[kLimReqs] = {};
-    float limPeak_ = 0.0f, limPrev_ = 1.0f, limCur_ = 1.0f, limRelease_ = 0.0f;
+    float fxReq_[kLimReqs] = {};
+    float fxPeak_ = 0.0f, limPrev_ = 1.0f, limCur_ = 1.0f, fxPrev_ = 1.0f, fxCur_ = 1.0f, limRelease_ = 0.0f;
 
 public:
     // M5 audio: frames from the engine's write head to its output (the limiter's look-ahead; 0 for the raw output).
     u32 outputDelayFrames() const { return rawOutput_ ? 0u : kLimDelay; }
     float limiterGain() const { return limCur_; }  // (tests) the gain of the last segment it planned
+    // (tests; the owner's play of f0624e5: "annoying attenuation when tons of sfx are playing") the effects' dip on the music at
+    // the last block's last frame, and that block's peaks into the limiter: the music's (after its dips) and the effects'.
+    float musicDip() const { return lastDip_; }
+    float musicPeak() const { return musicPeak_; }
+    float sfxPeak() const { return sfxPeak_; }
 
 private:
+    float lastDip_ = 1.0f, musicPeak_ = 0.0f, sfxPeak_ = 0.0f;
     EngineProfile* profile_ = nullptr;
     StemTapFn stemFn_ = nullptr;
     void* stemUser_ = nullptr;

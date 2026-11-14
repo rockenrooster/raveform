@@ -18,6 +18,7 @@
 //
 // Exit codes: 0 ok, 1 failure, 2 bad arguments, 3 calibration out of date (--check).
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -1796,18 +1797,21 @@ int fightSheet(const Options& opt, const MusicData& music, const SampleBank& ban
 // M5 audio (play test 3: "sometimes the nova SFX sounds heavily distorted"): the worst instant through the output stage. A
 // Track's Drop held at intensity 1 with a player firing, effects at full; a Nova (or Black Hole's, or Last Light's) blasts, and
 // eighty kills follow over the next 0.35 s on top of the kicks. The stage's input and output are tapped: below 1 kHz (where
-// the blast's sub and its harmonics are) the output against the input times a gain fitted to each 5 ms piece (a gain that
-// moves slowly is not distortion), over the 400 ms from the blast, gives the stage's distortion and noise (THD+N); the same
-// input through the old stage (the soft knee alone) for comparison. Exit 1 when any is 3% or more.
+// the blast's sub and its harmonics are) the output against the inputs times gains fitted to each 5 ms piece (a gain that
+// moves slowly is not distortion; since the owner's play of f0624e5 the music and the effects each have one, so two are fitted),
+// over the 400 ms from the blast, gives the stage's distortion and noise (THD+N); the same input through the old stage (the soft
+// knee alone) for comparison. Exit 1 when any is 3% or more.
 struct StageCapture {
-    float* in = nullptr;  // mono (L + R) / 2
+    float* in = nullptr;  // the music, mono (L + R) / 2
+    float* fx = nullptr;  // the effects (since the owner's play of f0624e5 they have their own gain)
     float* out = nullptr;
     u64 cap = 0, n = 0;
 };
-void stageTap(void* user, const float* inL, const float* inR, const float* outL, const float* outR, u32 n) {
+void stageTap(void* user, const float* inL, const float* inR, const float* fxL, const float* fxR, const float* outL, const float* outR, u32 n) {
     auto* s = static_cast<StageCapture*>(user);
     for (u32 i = 0; i < n && s->n < s->cap; ++i, ++s->n) {
         s->in[s->n] = 0.5f * (inL[i] + inR[i]);
+        s->fx[s->n] = 0.5f * (fxL[i] + fxR[i]);
         s->out[s->n] = 0.5f * (outL[i] + outR[i]);
     }
 }
@@ -1818,8 +1822,8 @@ float oldStage(float x) {  // the soft knee the limiter replaced (knee 0.66, cei
     return x < 0.0f ? -y : y;
 }
 int novaCheck(const MusicData& music, const SampleBank& bank) {
-    std::printf("nova-check: THD+N below 1 kHz over the 400 ms from the blast (a gain fitted a 5 ms piece), new stage and the old soft knee "
-                "on the same input; the stage's input and output peaks\n");
+    std::printf("nova-check: THD+N below 1 kHz over the 400 ms from the blast (a gain for the music and one for the effects fitted a 5 ms "
+                "piece), new stage and the old soft knee on the same input; the stage's input and output peaks\n");
     int failed = 0;
     for (u32 t : {0u, 9u}) {
         for (u32 which = 0; which < 3; ++which) {
@@ -1828,6 +1832,7 @@ int novaCheck(const MusicData& music, const SampleBank& bank) {
             StageCapture cap;
             cap.cap = static_cast<u64>(kRate) * 12;
             cap.in = static_cast<float*>(std::calloc(cap.cap, sizeof(float)));
+            cap.fx = static_cast<float*>(std::calloc(cap.cap, sizeof(float)));
             cap.out = static_cast<float*>(std::calloc(cap.cap, sizeof(float)));
             e->setStageTap(stageTap, &cap);
             e->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
@@ -1876,7 +1881,7 @@ int novaCheck(const MusicData& music, const SampleBank& bank) {
             if (blast > 0) {
                 // A one-pole pair at 1 kHz on input and output (the same filter: what remains is the stage's).
                 const u64 a = static_cast<u64>(blast), b = static_cast<u64>(blast) + kRate * 400 / 1000;
-                for (u64 i = a; i < b; ++i) inPeak = std::fmax(inPeak, std::fabs(static_cast<double>(cap.in[i])));
+                for (u64 i = a; i < b; ++i) inPeak = std::fmax(inPeak, std::fabs(static_cast<double>(cap.in[i] + cap.fx[i])));
                 const auto lowband = [&](const float* x, u64 from, u64 to, double* y) {
                     double s1 = 0.0, s2 = 0.0;
                     const double k = 1.0 - std::exp(-2.0 * kPiD * 1000.0 / kRate);
@@ -1888,29 +1893,43 @@ int novaCheck(const MusicData& music, const SampleBank& bank) {
                 };
                 const u64 m = b - a;
                 double* xin = static_cast<double*>(std::calloc(m, sizeof(double)));
+                double* xfx = static_cast<double*>(std::calloc(m, sizeof(double)));
                 double* xout = static_cast<double*>(std::calloc(m, sizeof(double)));
                 double* xold = static_cast<double*>(std::calloc(m, sizeof(double)));
                 float* old = static_cast<float*>(std::calloc(cap.n, sizeof(float)));
-                for (u64 i = 0; i < cap.n; ++i) old[i] = oldStage(cap.in[i]);
+                for (u64 i = 0; i < cap.n; ++i) old[i] = oldStage(cap.in[i] + cap.fx[i]);
                 lowband(cap.in, a, b, xin);
+                lowband(cap.fx, a, b, xfx);
                 lowband(cap.out, a + dly, b + dly, xout);
                 lowband(old, a, b, xold);
-                // One gain a 5 ms piece (least squares): what a gain that moves slowly does is taken out, what a waveshaper
-                // adds (harmonics, clipping) stays.
+                // A gain for the music and one for the effects a 5 ms piece (least squares): what gains that move slowly do is
+                // taken out, what a waveshaper adds (harmonics, clipping) stays.
                 const auto thd = [&](const double* y) {
                     double err = 0.0, sig = 0.0;
                     const u64 piece = kRate / 200;
                     for (u64 p0 = 0; p0 < m; p0 += piece) {
-                        double xy = 0.0, xx = 0.0;
+                        double mm = 0.0, ff = 0.0, mf = 0.0, my = 0.0, fy = 0.0;
                         for (u64 i = p0; i < p0 + piece && i < m; ++i) {
-                            xy += xin[i] * y[i];
-                            xx += xin[i] * xin[i];
+                            mm += xin[i] * xin[i];
+                            ff += xfx[i] * xfx[i];
+                            mf += xin[i] * xfx[i];
+                            my += xin[i] * y[i];
+                            fy += xfx[i] * y[i];
                         }
-                        const double g = xx > 0.0 ? xy / xx : 0.0;
+                        double gm = 0.0, gf = 0.0;
+                        const double det = mm * ff - mf * mf;
+                        if (det > 1e-9 * (mm * ff + 1e-30)) {
+                            gm = (my * ff - fy * mf) / det;
+                            gf = (fy * mm - my * mf) / det;
+                        } else if (mm + ff > 0.0) {  // (one of them silent, or the two in proportion: one gain on their sum)
+                            const double s = mm + 2.0 * mf + ff;
+                            gm = gf = s > 0.0 ? (my + fy) / s : 0.0;
+                        }
                         for (u64 i = p0; i < p0 + piece && i < m; ++i) {
-                            const double d = y[i] - g * xin[i];
+                            const double fit = gm * xin[i] + gf * xfx[i];
+                            const double d = y[i] - fit;
                             err += d * d;
-                            sig += g * xin[i] * g * xin[i];
+                            sig += fit * fit;
                         }
                     }
                     return sig > 0.0 ? 100.0 * std::sqrt(err / sig) : -1.0;
@@ -1920,6 +1939,7 @@ int novaCheck(const MusicData& music, const SampleBank& bank) {
                 for (u64 i = static_cast<u64>(blast); i < static_cast<u64>(blast) + kRate / 2 + dly && i < cap.n; ++i)
                     peak = std::fmax(peak, std::fabs(static_cast<double>(cap.out[i])));
                 std::free(xin);
+                std::free(xfx);
                 std::free(xout);
                 std::free(xold);
                 std::free(old);
@@ -1931,11 +1951,112 @@ int novaCheck(const MusicData& music, const SampleBank& bank) {
                         thdNew, thdOld, 20.0 * std::log10(inPeak + 1e-12), 20.0 * std::log10(peak + 1e-12), pass ? "pass" : "FAIL");
             std::free(buf);
             std::free(cap.in);
+            std::free(cap.fx);
             std::free(cap.out);
             delete e;
         }
     }
     return failed ? 1 : 0;
+}
+
+// The owner's play of f0624e5 ("annoying attenuation when tons of sfx are playing"): how far a barrage of effects pulls the music
+// down. The Drop held at intensity 1, one player firing; 4 s of the music alone, then 8 s of a crowd dying (three small kills and a
+// medium every frame, a large every fifth, a Shard every second frame, a hit every two seconds). Every 32 frames: the effects' dip
+// on the music, the limiter's gain and their product (what the music keeps), and the peaks into the limiter.
+int duckCheck(const MusicData& music, const SampleBank& bank) {
+    std::printf("duck-check: what the music keeps under a barrage of effects (dB: mean, 5th percentile; peaks into the limiter dBFS)\n");
+    constexpr u32 kMax = 1u << 15;
+    float* st[2][3];
+    for (auto& w : st)
+        for (float*& p : w) p = static_cast<float*>(std::calloc(kMax, sizeof(float)));
+    for (u32 t : {0u, 4u, 9u}) {
+        Engine* e = new Engine;
+        if (!e->init(music, bank, kRate, 1)) return 1;
+        e->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
+        e->post(cmd(CmdType::SetPlayers, 1, 0));
+        e->post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+        e->post(cmd(CmdType::SetSection, static_cast<u8>(Section::Drop)));
+        e->post(cmd(CmdType::HoldSection, 1));
+        e->post(cmd(CmdType::SetFire, 0, 1));
+        float buf[2 * 32];
+        u32 count[2] = {};
+        float mPeak[2] = {}, sPeak[2] = {};
+        BeatEvent ev;
+        constexpr u32 kFrames = 60 * 12, kPer = kRate / 60;
+        for (u32 frame = 0; frame < kFrames; ++frame) {
+            const bool barrage = frame >= 60 * 4;
+            if (barrage) {
+                e->post(cmd(CmdType::Kill, 0, 3));
+                e->post(cmd(CmdType::Kill, 1, 1));
+                if (frame % 5 == 0) e->post(cmd(CmdType::Kill, 2, 1));
+                if (frame % 2 == 0) e->post(cmd(CmdType::Shard, 0, 0, 0, 1.0f));
+                if (frame % 120 == 0) e->post(cmd(CmdType::Sfx, static_cast<u8>(Sfx::Hit), 0, 0, 1.0f));
+            }
+            for (u32 k = 0; k < kPer; k += 32) {
+                e->render(buf, 32, 2);
+                if (frame < 60) continue;  // (the first second settles)
+                const u32 w = barrage ? 1u : 0u;
+                if (count[w] < kMax) {
+                    st[w][0][count[w]] = e->musicDip();
+                    st[w][1][count[w]] = e->limiterGain();
+                    st[w][2][count[w]] = e->musicDip() * e->limiterGain();
+                    ++count[w];
+                }
+                mPeak[w] = std::fmax(mPeak[w], e->musicPeak());
+                sPeak[w] = std::fmax(sPeak[w], e->sfxPeak());
+            }
+            while (e->popEvent(ev)) {
+            }
+        }
+        for (u32 w = 0; w < 2; ++w) {
+            double mean[3] = {}, p5[3] = {};
+            for (u32 q = 0; q < 3; ++q) {
+                double s = 0.0;
+                for (u32 i = 0; i < count[w]; ++i) s += 20.0 * std::log10(std::fmax(st[w][q][i], 1e-6f));
+                mean[q] = count[w] ? s / count[w] : 0.0;
+                std::sort(st[w][q], st[w][q] + count[w]);
+                p5[q] = count[w] ? 20.0 * std::log10(std::fmax(st[w][q][count[w] / 20], 1e-6f)) : 0.0;
+            }
+            std::printf("  %-12s %-8s dip %6.2f %6.2f   limiter %6.2f %6.2f   music keeps %6.2f %6.2f   peaks: music %6.2f effects %6.2f\n",
+                        music.tracks[t].name, w ? "barrage" : "alone", mean[0], p5[0], mean[1], p5[1], mean[2], p5[2],
+                        20.0 * std::log10(mPeak[w] + 1e-9), 20.0 * std::log10(sPeak[w] + 1e-9));
+        }
+        delete e;
+    }
+    for (auto& w : st)
+        for (float* p : w) std::free(p);
+    // Each effect alone (the music's gain 0): its peak into the limiter, Track 1 in a Drop.
+    std::printf("  one effect alone, its peak (dBFS):");
+    for (u32 which = 0; which < 6; ++which) {
+        Engine* e = new Engine;
+        if (!e->init(music, bank, kRate, 1)) return 1;
+        e->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
+        e->post(cmd(CmdType::SetPlayers, 1, 0));
+        e->post(cmd(CmdType::SetSection, static_cast<u8>(Section::Drop)));
+        e->post(cmd(CmdType::HoldSection, 1));
+        e->post(cmd(CmdType::SetGains, 0, 0, 0, 0.0f, 1.0f));
+        float buf[2 * 32], peak = 0.0f;
+        BeatEvent ev;
+        for (u32 frame = 0; frame < 150; ++frame) {
+            if (frame == 60) {
+                if (which < 3) e->post(cmd(CmdType::Kill, static_cast<u8>(which), 1));
+                if (which == 3) e->post(cmd(CmdType::Sfx, static_cast<u8>(Sfx::Hit), 0, 0, 1.0f));
+                if (which == 4) e->post(cmd(CmdType::Nova, 0, 0, 0, 1.0f));
+                if (which == 5) e->post(cmd(CmdType::Shard, 0, 0, 0, 1.0f));
+            }
+            for (u32 k = 0; k < kRate / 60; k += 32) {
+                e->render(buf, 32, 2);
+                if (frame >= 60) peak = std::fmax(peak, e->sfxPeak());
+            }
+            while (e->popEvent(ev)) {
+            }
+        }
+        static const char* const kName[6] = {"small kill", "medium kill", "large kill", "hit", "Nova", "Shard"};
+        std::printf("  %s %.2f", kName[which], 20.0 * std::log10(peak + 1e-9));
+        delete e;
+    }
+    std::printf("\n");
+    return 0;
 }
 
 // M5 audio follow-up: Kick Pulse's tom against a full Drop. The Drop held at intensity 1, one player firing, rendered with and
@@ -2167,6 +2288,8 @@ int main(int argc, char** argv) {
         code = kickPulseCheck(*music, *bank);  // M5 audio
     } else if (eq(opt.render, "nova-check")) {
         code = novaCheck(*music, *bank);  // M5 audio
+    } else if (eq(opt.render, "duck-check")) {
+        code = duckCheck(*music, *bank);  // the owner's play of f0624e5
     } else {
         const i32 t = music->trackIndex(opt.track);
         const i32 v = opt.sound ? music->variantIndex(opt.sound) : static_cast<i32>(music->defaultVariant);

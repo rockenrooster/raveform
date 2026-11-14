@@ -828,6 +828,10 @@ bool World::haloBlocks(u32 p, Vec2 from) {
 void World::updateBoosts() {
     for (u32 p = 0; p < playerCount_; ++p) {
         PlayerState& pl = players_[p];
+        // The owner's play of f0624e5 ("some temporary power-ups don't seem like they work (like black hole)": it waited for a
+        // Nova press, which a player on the assist alone never makes): Black Hole goes off by itself the tick after it is taken,
+        // as a free Nova (GAME_DESIGN 6.4 row 9), on its owner's device; a teammate's arrives here as that player's Nova.
+        if (pl.alive && isLocal(p) && pl.boost(kBlackHole) && !pl.novaPending) pressNova(p, true);
         for (ActiveBoost& a : pl.boosts) {
             if (a.type == kNoBoost || m1_ < a.until) continue;
             Event ev;
@@ -1139,10 +1143,10 @@ u32 World::shooterCount(u32 base, u32& rngState) const {
 
 float World::bulletTrackScale() const {
     // GAME_DESIGN 8, "Enemy bullets by Track" (the owner, 2026-11-14, 0449eb3): every enemy bullet at 0.5 in Tracks 1-3 and 0.75
-    // in Tracks 4-7; Tracks 8-10 and the loop as written.
+    // in Tracks 4-7; the owner's play of f0624e5: 0.25 in Tracks 9 and 10; Track 8 and the loop as written.
     const u32 t = phrase_.track;
     if (rules_.bulletsAsWritten || t == 0 || inLoop(t, director_.songs)) return 1.0f;
-    return t <= 3u ? kBulletsEarly : (t <= 7u ? kBulletsMiddle : 1.0f);
+    return t <= 3u ? kBulletsEarly : (t <= 7u ? kBulletsMiddle : (t == 8u ? 1.0f : kBulletsLate));
 }
 
 namespace {

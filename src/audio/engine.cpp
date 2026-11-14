@@ -310,6 +310,7 @@ bool Engine::init(const MusicData& music, const SampleBank& bank, u32 sampleRate
     if (!reverb_.init(sampleRate, sets, FdnReverb::kMaxSets)) return false;
     if (!initContent()) return false;  // M5
     for (float& g : limReq_) g = 1.0f;  // M5 audio: the output limiter, open
+    for (float& g : fxReq_) g = 1.0f;   // (and the effects bus's)
     limRelease_ = 1.0f - std::exp(-static_cast<float>(kLimSeg) / (kLimReleaseS * static_cast<float>(sampleRate)));
     duckLen_ = framesFor(kDuckS, sampleRate);
     variant_ = music.defaultVariant;
@@ -688,9 +689,11 @@ void Engine::applyCommand(const Command& c) {
             freezeMix_ = freezeTarget_ = 0.0f;
             // M5 audio: the limiter open and empty; the fights' bus effects all lifted.
             std::memset(limBuf_, 0, sizeof limBuf_);
+            std::memset(fxBuf_, 0, sizeof fxBuf_);
             for (float& g : limReq_) g = 1.0f;
-            limPeak_ = 0.0f;
-            limPrev_ = limCur_ = 1.0f;
+            for (float& g : fxReq_) g = 1.0f;
+            fxPeak_ = 0.0f;
+            limPrev_ = limCur_ = fxPrev_ = fxCur_ = 1.0f;
             cutMask_ = 0;
             cutHats_ = false;
             cutTo_ = -1;
@@ -820,16 +823,15 @@ void Engine::playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, doubl
     // x: a pitched effect's frequency, else its playback rate (M5: the key's); b = 1: the major-third variant.
     emit(BeatKind::Sfx, frame, tick, static_cast<u8>(kind), static_cast<u8>(id == bank_->sfxMajor(kind) ? 1 : 0), 0, gain, 0,
          midi >= 0 ? midiHz(midi) : static_cast<double>(rate));
-    // sfxproto: hits and blasts duck the music (depth, time constant), nothing else does.
+    // sfxproto: hits and blasts duck the music (depth, time constant), nothing else does. The owner's play of f0624e5
+    // ("Attenuation doesn't need to be near as much"; duck-check: a crowd dying cost the music 1.9 dB on average in large kills'
+    // dips alone): a large kill no longer dips it (sfxproto's 0.25), a hit and a Nova's blast half as deep (0.5, 0.45).
     float depth = 0.0f, tau = 0.0f;
     if (kind == Sfx::Hit) {
-        depth = 0.5f;
-        tau = 0.18f;
-    } else if (kind == Sfx::KillLarge) {
         depth = 0.25f;
-        tau = 0.12f;
+        tau = 0.18f;
     } else if (kind == Sfx::NovaBlast) {
-        depth = 0.45f;
+        depth = 0.22f;
         tau = 0.25f;
     }
     if (depth > 0.0f) {
@@ -2838,13 +2840,15 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         freezeHp_[0].reset();
         freezeHp_[1].reset();
     }
-    float stageIn[2][kBlock], stageOut[2][kBlock];  // (the stage tap's, offline)
+    float stageIn[2][kBlock], stageFx[2][kBlock], stageOut[2][kBlock];  // (the stage tap's, offline)
     // M5 (HighPassBed: Cadence's Inversion): the music high-passed for its window, faded in and out over 50 ms.
     const bool bedHp = bedHpMix_ > 0.0f || (bedHpTo_ > frame_ && bedHpFrom_ < frame_ + static_cast<i64>(n));
     if (bedHp && bedHpMix_ <= 0.0f) {
         bedHp_[0].reset();
         bedHp_[1].reset();
     }
+    musicPeak_ = sfxPeak_ = 0.0f;
+    lastDip_ = 1.0f;
     for (u32 i = 0; i < n; ++i) {
         float l = wet_[0][i], r = wet_[1][i];
         for (u32 b = 0; b < kBusCount; ++b) {
@@ -2888,6 +2892,7 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
             }
             l *= d;
             r *= d;
+            lastDip_ = d;
         }
         if (muffled) {
             muffleZ_[0][0] += (l - muffleZ_[0][0]) * muffleK;
@@ -2915,37 +2920,67 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
             l += (hl - l) * bedHpMix_;
             r += (hr - r) * bedHpMix_;
         }
-        l += bus_[static_cast<u32>(Bus::Sfx)][0][i] * sfxGain_;
-        r += bus_[static_cast<u32>(Bus::Sfx)][1][i] * sfxGain_;
+        const float sl = bus_[static_cast<u32>(Bus::Sfx)][0][i] * sfxGain_, sr2 = bus_[static_cast<u32>(Bus::Sfx)][1][i] * sfxGain_;
+        musicPeak_ = std::fmax(musicPeak_, std::fmax(std::fabs(l), std::fabs(r)));
+        sfxPeak_ = std::fmax(sfxPeak_, std::fmax(std::fabs(sl), std::fabs(sr2)));
         if (stageFn_) {
             stageIn[0][i] = l;
             stageIn[1][i] = r;
+            stageFx[0][i] = sl;
+            stageFx[1][i] = sr2;
         }
-        if (!rawOutput_) {
-            // M5 audio: the look-ahead limiter (engine.h): in at frame t, out the frame kLimDelay before it.
+        if (rawOutput_) {
+            l += sl;
+            r += sr2;
+        } else {
+            // M5 audio: the look-ahead limiter (engine.h): in at frame t, out the frame kLimDelay before it. The effects bus
+            // has its own gain in the same delay line (the owner's play of f0624e5).
             const i64 t = frame_ + static_cast<i64>(i);
             const u32 w = static_cast<u32>(t) & (kLimRing - 1);
             limBuf_[0][w] = l;
             limBuf_[1][w] = r;
-            const float a = std::fmax(std::fabs(l), std::fabs(r));
-            limPeak_ = a > limPeak_ ? a : limPeak_;
+            fxBuf_[0][w] = sl;
+            fxBuf_[1][w] = sr2;
+            const float a = std::fmax(std::fabs(sl), std::fabs(sr2));
+            fxPeak_ = a > fxPeak_ ? a : fxPeak_;
             const u32 phase = static_cast<u32>(t) & (kLimSeg - 1);
             if (phase == 0) {
-                // An output segment begins: its gain, from the segments kLimHold before it to kLimAhead after it (all heard).
+                // An output segment begins: its gains, from the segments kLimHold before it to kLimAhead after it (all heard).
                 const i64 seg = (t - static_cast<i64>(kLimDelay)) / static_cast<i64>(kLimSeg);
-                float target = 1.0f;
-                for (i64 s = seg - static_cast<i64>(kLimHold); s <= seg + static_cast<i64>(kLimAhead); ++s)
+                float target = 1.0f, fxTarget = 1.0f;
+                for (i64 s = seg - static_cast<i64>(kLimHold); s <= seg + static_cast<i64>(kLimAhead); ++s) {
                     target = std::fmin(target, limReq_[static_cast<u32>(s) & (kLimReqs - 1)]);
+                    fxTarget = std::fmin(fxTarget, fxReq_[static_cast<u32>(s) & (kLimReqs - 1)]);
+                }
                 limPrev_ = limCur_;
                 limCur_ = target < limCur_ ? target : limCur_ + (target - limCur_) * limRelease_;
+                fxPrev_ = fxCur_;
+                fxCur_ = fxTarget < fxCur_ ? fxTarget : fxCur_ + (fxTarget - fxCur_) * limRelease_;
             }
-            const float g = limPrev_ + (limCur_ - limPrev_) * static_cast<float>(phase + 1) * (1.0f / static_cast<float>(kLimSeg));
+            const float u = static_cast<float>(phase + 1) * (1.0f / static_cast<float>(kLimSeg));
+            const float g = limPrev_ + (limCur_ - limPrev_) * u;
+            const float gf = fxPrev_ + (fxCur_ - fxPrev_) * u;
             const u32 o = static_cast<u32>(t - static_cast<i64>(kLimDelay)) & (kLimRing - 1);
-            l = limit(limBuf_[0][o] * g);
-            r = limit(limBuf_[1][o] * g);
-            if (phase == kLimSeg - 1) {  // an input segment is complete: the gain it may take
-                limReq_[static_cast<u32>(t / static_cast<i64>(kLimSeg)) & (kLimReqs - 1)] = limPeak_ > kLimCeiling ? kLimCeiling / limPeak_ : 1.0f;
-                limPeak_ = 0.0f;
+            l = limit((limBuf_[0][o] + fxBuf_[0][o] * gf) * g);
+            r = limit((limBuf_[1][o] + fxBuf_[1][o] * gf) * g);
+            if (phase == kLimSeg - 1) {
+                // An input segment is complete: the effects' gain it may take, then the sum's with the effects at that gain.
+                // Whatever gain the effects are given later is at most this request (each output segment's is the least of
+                // a window holding its own), and the sum is linear in it, so its peak lies between the music alone and the
+                // music with the effects at the request: the larger of the two bounds it.
+                const float rf = fxPeak_ > kFxCeiling ? kFxCeiling / fxPeak_ : 1.0f;
+                float peak = 0.0f;
+                for (u32 k = 0; k < kLimSeg; ++k) {
+                    const u32 q = (static_cast<u32>(t) - k) & (kLimRing - 1);
+                    for (u32 c = 0; c < 2; ++c) {
+                        const float m = limBuf_[c][q];
+                        peak = std::fmax(peak, std::fmax(std::fabs(m), std::fabs(m + fxBuf_[c][q] * rf)));
+                    }
+                }
+                const u32 rs = static_cast<u32>(t / static_cast<i64>(kLimSeg)) & (kLimReqs - 1);
+                fxReq_[rs] = rf;
+                limReq_[rs] = peak > kLimCeiling ? kLimCeiling / peak : 1.0f;
+                fxPeak_ = 0.0f;
             }
         }
         float* o = out + static_cast<size_t>(i) * channels;
@@ -2962,7 +2997,7 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         }
         peak_ = std::fmax(peak_, std::fmax(std::fabs(l), std::fabs(r)));
     }
-    if (stageFn_) stageFn_(stageUser_, stageIn[0], stageIn[1], stageOut[0], stageOut[1], n);
+    if (stageFn_) stageFn_(stageUser_, stageIn[0], stageIn[1], stageFx[0], stageFx[1], stageOut[0], stageOut[1], n);
     mark(EngineProfile::Master);
     if (muffle_ != muffleTarget_) {
         const float stepN = muffleStep_ * static_cast<float>(n);

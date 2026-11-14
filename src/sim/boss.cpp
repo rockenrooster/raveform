@@ -643,6 +643,7 @@ bool ArpData::load() {
     num("numbers.laneWidth", laneWidth);
     num("numbers.laneLength", laneLength);
     num("numbers.blockWidth", blockWidth);
+    num("numbers.blockDepth", blockDepth);
     num("numbers.blockSpeed", blockSpeed);
     num("numbers.damageScale.loading", dmgLoading);
     num("numbers.damageScale.console", dmgConsole);

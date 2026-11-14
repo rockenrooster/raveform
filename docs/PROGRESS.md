@@ -4,6 +4,51 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (evening), the owner's play of f0624e5: the mix, Arcadia's blocks, Track 9's bullets, Boosts that show, the grade, the first level, Shards, the tempo
+
+Done by the lead alone (the owner: "fix these yourself with no subagents"); design and code in one commit.
+
+- **"Annoying attenuation when tons of sfx are playing."** Measured first (`raveform_headless --render duck-check`, new: the
+  Drop held, 4 s of the music alone, then 8 s of a crowd dying: three small kills and a medium a frame, a large every fifth, a
+  Shard every second frame, a hit every two seconds; every 32 frames the effects' dip on the music and the limiter's gain): the
+  music lost **2.2 dB on average, 4.0-5.3 dB in its worst 5%**: large kills' dips (sfxproto's 0.25 a large kill) 1.9 dB of it, the
+  limiter the rest, since a crowd dying took the effects bus to 0 dBFS (a large kill alone is -8.0, a hit -5.2, a Nova's blast
+  -3.1). Now: a large kill dips the music no more, a hit 0.25 (0.5) and a Nova's blast 0.22 (0.45); and the effects bus has
+  its own gain in the output limiter's delay line (`Engine::kFxCeiling` -4 dBFS: a pile of effects is quieted on its bus, the
+  music is not), the sum's gain planned from the music and the effects at their own request (engine.h). The music now loses
+  **0.66 dB on average, 2.1-2.6 dB in its worst 5%**. `nova-check` fits a gain for the music and one for the effects (two
+  gains now move): THD+N 0.24-1.05% (pass under 3%).
+- **Arcadia's (Arpeggiator's) red pills** "much smaller with the glow making up the rest of the size": a block is a lethal
+  capsule 36 x 12 (72 x 28) drawn as a lethal beam is (priority capsule, white-pink axis) with a danger glow out to about the old
+  size that hurts nobody (`arpeggiator.json` `blockWidth` 36, new `blockDepth` 12; `World::arpBlockHit` reads both).
+- **Track 9's "red line enemy projectiles"** (the enemy bullets: dozens of small outlined diamonds in its Drop, Tracks 8-10 were
+  as written): `kBulletsLate` 0.25 in Tracks 9 and 10 (`World::bulletTrackScale`; Track 8 and the loop as written), and the
+  bullet glyph half a standard enemy across (0.38), its hit radius 5 wu as before.
+- **Boosts that don't seem to work.** Black Hole waited for a Nova press, which a player on the assist never makes: it goes off by
+  itself the tick after it is taken, as a free Nova (no Nova spent; `World::updateBoosts`; the sim test now presses nothing).
+  **Fractal** ("i still don't know what it does"): a split shows: a Y of light at the hit along the halves' paths (`kFxFork`
+  draws two arms, bolt styles 4-5), the halves drawn as Prism lanes turned 60 / 120 degrees round the hue wheel
+  (`kShotForked`, the last free shot flag); Fork's halves the same. Words: `PULLS ALL IN, THEN BLOWS`, `HITS SPLIT SHOTS IN TWO`.
+- **Colour pop** ("like we did for the Prism powerup"): a grade after the tone map on the scene only (look.md 3 "Grade",
+  `look.json` `grade`: saturation 1.12, vibrance 0.45, contrast 0.3; `composite.frag`, the UBO's new `grade`). The threat layer
+  and the HUD are drawn after it. The M1 acceptance stills predate it (their compare will differ).
+- **The first Shard level** 100 Shards (170; `kLevelShardsFirst`), the later ones as before.
+- **Shards that vanish.** Over 1,536 out, every loose Shard older than a bar went out at once at full brightness (the crowded
+  rule of play test 1); now it flies to its player as under Magnet Storm and is collected (a homing one is not lost to age while
+  its player lives; the view draws a homing Shard whole).
+- **The tempo** "start at 110 bpm and scale up slightly slower": 110 to 155, five a Track (`kTrackBpm`, the Track files; the loop
+  holds 155). Every boss's and mini-boss's health factor x (its Track's tempo now / then) (`tempoHealth`), so each fight lasts
+  the seconds it was tuned to (the players' damage a second follows the tempo). Loudness calibrated again (gains +0.2-0.4 dB).
+  Not measured again with the novice (the scaling is analytic; the owner's rule is short runs): a fight that is held by its bars
+  rather than its health may run up to a tenth longer in seconds.
+- Checked: sim tests 6,112 checks, 0 failures (the director's tempi, bullets by Track with Track 8 as written and Track 9 at
+  0.25, the Arpeggiator's 36 x 12, the first level 100, Black Hole with no Nova pressed); audio tests 2,718, 0 failures (the data
+  check at 110 + 5 a Track; the engine's timing tests run on the music at the tempi they were written at, 120 + 6, with their own
+  bank: `testUseWrittenTempi`); calibration check, net tests, save tests, determinism, the clean 6-minute loopback soak pass
+  (the impaired soak not run: the owner's rule). The bot's Shard levels (3 seeds, 4 minutes): Track 1 a level every 44 s, Track
+  2 every 18 s; three level-ups in Track 1. Pictures in `captures\pt4\` (before / after: `endgame`, `arp`, `t9`) and
+  `captures\m5\part3\boost_fractal_stretch`, `boost_black_hole`.
+
 ## 2026-11-14, Kaleidos Reprise about 60 s (design bccb4eb; GAME_DESIGN 7.6, "the finale is the longest")
 
 - `kRepriseHealthTune` 0.347 -> **0.659** (x 1.9, from the length ratio 60 / 35). The novice from Track 10's start

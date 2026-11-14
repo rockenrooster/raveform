@@ -596,15 +596,15 @@ void testMusicData() {
     const MusicData& m = *g_music;
     CHECK(m.trackCount == 10);
     CHECK(m.variantCount == 3);
-    // M5: the set list, 120 to 174 BPM in steps of six; each Track by id and by number; every Track x variant
-    // calibrated; each arrangement the same 24 staged bars.
+    // M5: the set list, 110 to 155 BPM in steps of five (the owner's play of f0624e5; 120 to 174 in sixes until then); each
+    // Track by id and by number; every Track x variant calibrated; each arrangement the same 24 staged bars.
     for (u32 t = 0; t < m.trackCount; ++t) {
         char id[16], num[4];
         std::snprintf(id, sizeof id, "track%02u", t + 1);
         std::snprintf(num, sizeof num, "%u", t + 1);
         CHECK_MSG(std::strcmp(m.tracks[t].id, id) == 0 && m.trackIndex(id) == static_cast<i32>(t) && m.trackIndex(num) == static_cast<i32>(t),
                   "Track %u is '%s'", t + 1, m.tracks[t].id);
-        CHECK_MSG(m.tracks[t].bpm == 120.0f + 6.0f * static_cast<float>(t), "%s at %.1f BPM", id, m.tracks[t].bpm);
+        CHECK_MSG(m.tracks[t].bpm == 110.0f + 5.0f * static_cast<float>(t), "%s at %.1f BPM", id, m.tracks[t].bpm);
         CHECK_MSG(m.tracks[t].arrangementBars == 24 && m.tracks[t].progressionCount == 4, "%s: arrangement %u bars", id,
                   m.tracks[t].arrangementBars);
         for (u32 v = 0; v < m.variantCount; ++v) CHECK_MSG(m.calibration.have[t][v], "%s/%s not calibrated", id, m.variants[v].id);
@@ -639,7 +639,7 @@ void testMusicData() {
     CHECK(m.tracks[0].longestBassSteps == 1.5f);
     // Track 3 carries mix, send and patch overrides; each wins over the variant.
     const SoundParams& s3 = m.sound[2][arcade];
-    CHECK(m.tracks[2].bpm == 132.0f && m.tracks[2].arrangementBars == 24);
+    CHECK(m.tracks[2].bpm == 120.0f && m.tracks[2].arrangementBars == 24);
     CHECK(m.tracks[2].longestBassSteps == 0.8f);
     CHECK(s3.mix.lead == 0.33f && s3.mix.stab == 0.80f && s3.mix.shaker == 0.08f && s3.mix.bass == 0.58f);
     CHECK(s3.send[static_cast<u32>(Bus::Stab)] == 0.42f && s3.send[static_cast<u32>(Bus::Lead)] == 0.26f);
@@ -2261,6 +2261,21 @@ void testSfxRate() {
 }
 }  // namespace
 
+// The owner's play of f0624e5: the set list's tempi are 110 + 5 a Track; the engine's tests were written at 120 + 6 (their frame
+// counts: a bar of Track 1 is 96000 frames). The engine takes the tempo as a parameter, so after the data checks they run on the
+// music at those tempi, with its own bank (the risers are baked at a Track's tempo).
+void testUseWrittenTempi() {
+    MusicData* m = new MusicData;
+    SampleBank* b = new SampleBank;
+    CHECK(m->load());
+    for (u32 t = 0; t < m->trackCount; ++t) m->tracks[t].bpm = 120.0f + 6.0f * static_cast<float>(t);
+    CHECK(b->bake(*m, kRate));
+    delete g_bank;
+    delete g_music;
+    g_music = m;
+    g_bank = b;
+}
+
 int main() {
     g_music = new MusicData;
     g_bank = new SampleBank;
@@ -2276,6 +2291,7 @@ int main() {
         {"tempo map changes", testTempoChange},
         {"music data", testMusicData},
         {"palettes: ten, one for each Track (M5)", testPalettes},
+        {"(the engine's tests at the tempi they were written at: 120 + 6 a Track)", testUseWrittenTempi},
         {"staged: burst independence, grid, no allocation", testStagedBurstIndependence},
         {"conductor: every Track's form, grid through the Build dip", testConductorForms},
         {"lead follows fire, every Track", testLeadFollowsFire},

@@ -33,21 +33,23 @@ Questions for the listener (the composer cannot hear this):
 
 ## The set list — ten Tracks
 
-The tempo climbs six beats a minute a Track. Each Track differs from its neighbours in the three
+The tempo climbs five beats a minute a Track, from 110 to 155 (the owner, 2026-11-14: "the game should start
+at 110 bpm and scale up slightly slower"; six a Track from 120 to 174 until then: the previews were rendered at
+those first tempi). Each Track differs from its neighbours in the three
 things an ear notices first: the mode, the drum pattern and what the lead does.
 
 | File | Track | Tempo, key | Drums | Lead | Character |
 |---|---|---|---|---|---|
-| `track01.json` | First Light | 120, A minor: Am F C G | Four-on-the-floor | Up-down chord arps | Warm house; off-beat bass |
-| `track02.json` | Solar Wind | 126, F minor: Fm E♭ D♭ E♭ | Four-on-the-floor | Falling arps, an eighth-note echo | Driving; bouncing octave bass, syncopated stabs |
-| `track03.json` | Reef | 132, D dorian: Dm9 G6 | Four-on-the-floor, rolling hats | A three-note cell turning against the bar | Rolling techno, hypnotic and liquid |
-| `track04.json` | Aurora | 138, E minor: Em Am C B | Four-on-the-floor | A tune on the even sixteenths under a high pedal note | Trance, wide and bright; galloping bass; the major V pulls home |
-| `track05.json` | Furnace | 144, G phrygian: Gm7 A♭maj7 | Kick on four, toms in 3-3-2 | A mallet: cells that climb, then fall | Tribal and warm; the flat second as a major seventh chord |
-| `track06.json` | Zenith | 150, C dorian: Cm E♭ B♭ F | Four-on-the-floor | A tune over a low pedal | The peak-time anthem; chords in 3-3-4-3-3; the major IV lifts |
-| `track07.json` | Afterglow | 156, D♭ major: D♭ A♭ B♭m G♭ | **Half time:** kick on one, snare on three | A tune over a low pedal | The first major key; big soft chords, long bass notes |
-| `track08.json` | Arcadia | 162, G major: G Em C D | Four-on-the-floor | Broken chords through two octaves | The arcade: square-wave octave bass, short blips, a short room |
-| `track09.json` | Mirage | 168, B♭ lydian: B♭maj7 C/B♭ Gm7 Fadd9 | **Broken kick:** one, the and of two, the and of three | A harp: five notes up, three down | Floating; the bass holds for two bars, the fourth bar lands home |
-| `track10.json` | Last Light | 174, A minor: Am F C G | **Two-step break:** kick on one and the and of three, snare on two and four | First Light's arps, note for note | Liquid drum and bass; the first theme comes back and the loop returns to First Light in its key |
+| `track01.json` | First Light | 110, A minor: Am F C G | Four-on-the-floor | Up-down chord arps | Warm house; off-beat bass |
+| `track02.json` | Solar Wind | 115, F minor: Fm E♭ D♭ E♭ | Four-on-the-floor | Falling arps, an eighth-note echo | Driving; bouncing octave bass, syncopated stabs |
+| `track03.json` | Reef | 120, D dorian: Dm9 G6 | Four-on-the-floor, rolling hats | A three-note cell turning against the bar | Rolling techno, hypnotic and liquid |
+| `track04.json` | Aurora | 125, E minor: Em Am C B | Four-on-the-floor | A tune on the even sixteenths under a high pedal note | Trance, wide and bright; galloping bass; the major V pulls home |
+| `track05.json` | Furnace | 130, G phrygian: Gm7 A♭maj7 | Kick on four, toms in 3-3-2 | A mallet: cells that climb, then fall | Tribal and warm; the flat second as a major seventh chord |
+| `track06.json` | Zenith | 135, C dorian: Cm E♭ B♭ F | Four-on-the-floor | A tune over a low pedal | The peak-time anthem; chords in 3-3-4-3-3; the major IV lifts |
+| `track07.json` | Afterglow | 140, D♭ major: D♭ A♭ B♭m G♭ | **Half time:** kick on one, snare on three | A tune over a low pedal | The first major key; big soft chords, long bass notes |
+| `track08.json` | Arcadia | 145, G major: G Em C D | Four-on-the-floor | Broken chords through two octaves | The arcade: square-wave octave bass, short blips, a short room |
+| `track09.json` | Mirage | 150, B♭ lydian: B♭maj7 C/B♭ Gm7 Fadd9 | **Broken kick:** one, the and of two, the and of three | A harp: five notes up, three down | Floating; the bass holds for two bars, the fourth bar lands home |
+| `track10.json` | Last Light | 155, A minor: Am F C G | **Two-step break:** kick on one and the and of three, snare on two and four | First Light's arps, note for note | Liquid drum and bass; the first theme comes back and the loop returns to First Light in its key |
 
 A Track can carry `mix`, `send`, `duck` and `patch` overrides: that is how each gets its own
 character from the same voices. `patch.kick_hz` tunes the kick's body to the key. Every preview uses
@@ -216,7 +218,10 @@ Rules:
 - Shards climb the scale: each pickup within a run plays the next note up, so a streak is a rising run.
 - Warp-ins swell for half a second and end exactly on the beat the enemy becomes solid.
 - A Nova is two sounds: an inhale from the press to the next beat, and the blast on that beat.
-- Hits and blasts duck the music (0.25–0.5 depth, 120–250 ms); nothing else does.
+- Hits and blasts duck the music (0.25–0.5 depth, 120–250 ms); nothing else does. In the game since the owner's
+  play of 2026-11-14 ("annoying attenuation when tons of sfx are playing ... doesn't need to be near as much"): a
+  hit 0.25 and a Nova's blast 0.22, a large kill none; and the effects together are kept under −4 dBFS on their
+  own bus, so a crowd dying is quieted there and does not pull the music down through the output limiter.
 - In the mock the bed sits at −14 LUFS and the effects sum to about −17.5 LUFS; together −12.9 LUFS.
   Effect levels are the `LEVEL` table in the script.
 

@@ -1,7 +1,7 @@
 {
   "id": "track09",
   "name": "Mirage",
-  "bpm": 168,
+  "bpm": 150,
   "key": "Bb lydian",
   "scale": [0, 2, 4, 6, 7, 9, 11],
   "note": "Same format as track01.json. Character: floating. B flat major 7 with its sharp eleventh, C over the same B flat in the bass, G minor 7, F add 9: the bass does not move for two bars, then the fourth bar lands on F and the ear hears home. The lead is a harp: five notes up through stacked thirds, three down, soft and long with a lot of echo. The kick is broken (one, the and of two, the and of three), so the beat leans forward instead of marching.",

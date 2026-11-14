@@ -121,8 +121,15 @@ constexpr u32 kShooterEaseTrack = 4;
 constexpr float kShooterEaseWeight = 0.5f;
 constexpr float kBoostEveryLoS = 20.0f, kBoostEveryHiS = 30.0f;            // GAME_DESIGN 6.1 (quoted)
 constexpr float kSpotlightWu = 560.0f;       // a debut's group lands this far from the ship
-constexpr float kEndlessBpmStep = 4.0f, kEndlessBpmCap = 174.0f;           // GAME_DESIGN 4.2 (quoted)
-constexpr float kTrackBpm[10] = {120.0f, 126.0f, 132.0f, 138.0f, 144.0f, 150.0f, 156.0f, 162.0f, 168.0f, 174.0f};  // GAME_DESIGN 4.2 (quoted)
+// GAME_DESIGN 4.2 (quoted; the owner's play of f0624e5: "start at 110 bpm and scale up slightly slower": five a Track from 110,
+// six from 120 until then; the loop holds the last Track's tempo, as it held 174 before).
+constexpr float kEndlessBpmStep = 4.0f, kEndlessBpmCap = 155.0f;
+constexpr float kTrackBpm[10] = {110.0f, 115.0f, 120.0f, 125.0f, 130.0f, 135.0f, 140.0f, 145.0f, 150.0f, 155.0f};
+// The tempo each fight was tuned at before the new ladder (Tracks 1-10): a boss's or mini-boss's health factor below is its
+// factor then x (its Track's tempo now / then), so a fight lasts as many seconds as it did (the players' damage a second
+// follows the tempo: their fire is on the grid).
+constexpr float kTunedBpm[10] = {120.0f, 126.0f, 132.0f, 138.0f, 144.0f, 150.0f, 156.0f, 162.0f, 168.0f, 174.0f};
+constexpr float tempoHealth(u32 track) { return kTrackBpm[track - 1] / kTunedBpm[track - 1]; }
 
 // ---- Trio (GAME_DESIGN 6.1, screens.md "The Trio": ring 170 wu, orbs 38 wu, Riffs x1.14 quoted) ----
 constexpr float kTrioRingWu = 170.0f;
@@ -166,8 +173,9 @@ constexpr u32 kShotsHardCap = 1000;
 constexpr u32 kShotsThinEnd = 432;            // GAME_DESIGN 6.6 (quoted): thinning ends below three quarters of the soft cap
 constexpr float kThinReach = 0.5f;            // GAME_DESIGN 6.6 (quoted): the lanes beyond the middle three fly half as far
 constexpr u32 kMaxShotsPerStep = 25;          // Split's 5 lanes x Prism 5 (eb10554: 5 lanes at Split 4; it was 7 x 5 before play test 3)
-// The Shard pool (2,048): above this many out at once a loose Shard lasts one bar instead of GAME_DESIGN 5's four and a
-// death drops one Shard; within kShardsReserve of the cap a death drops none.
+// The Shard pool (2,048): above this many out at once a loose Shard older than one bar flies to its player (until the owner's
+// play of f0624e5 it went out: "they timeout ... and disappear") and a death drops one Shard; within kShardsReserve of the cap
+// a death drops none.
 constexpr u32 kShardsCrowded = 1536;
 constexpr double kShardCrowdedBars = 1.0;
 constexpr u32 kShardsReserve = 64;
@@ -201,6 +209,9 @@ constexpr float kSentinelSpreadDeg = 4.0f;    // a burst fans this far apart
 // Shard levels: level n takes kLevelShardsBase x kLevelShardsRatio^(n - 1) Shards (the design's 25 and 1.22 to start;
 // tuned with the bot for a level every 20-30 s through the first three Tracks, docs/PROGRESS.md "Play test 2").
 constexpr float kLevelShardsBase = 170.0f, kLevelShardsRatio = 1.17f;
+// The owner's play of f0624e5 (GAME_DESIGN 6.1: "shards needed for the 1st level powerup should be less"): the first level takes
+// 100 (it took 170, the base); the later ones are as above.
+constexpr u32 kLevelShardsFirst = 100;
 constexpr u32 kLevelTrioBars = 4;           // GAME_DESIGN 6.1 (quoted): a level-up Trio's ring runs for four bars
 constexpr u32 kLevelTrioClearBars = 4;      // chosen: one opens only when no Break begins in the next four bars, its ring's
                                             // span (the Break's own Trio keeps its place; the level waits, banked)
@@ -275,9 +286,11 @@ constexpr float kBossEnterWu = 500.0f;        // kaleidos.md (quoted): enters 50
 // ======================================================================================================
 constexpr float kBossBulletScaleM5 = 1.0f;    // the new fights' bullet density lever (1 = the pages' counts; Kaleidos keeps 0.7)
 // GAME_DESIGN 8, "Enemy bullets by Track" (the owner, 2026-11-14, 0449eb3; quoted): every enemy bullet (the crowd's, the fights',
-// the mini-bosses') counted at 0.5 in Tracks 1-3 and 0.75 in Tracks 4-7 (World::trackCount).
+// the mini-bosses') counted at 0.5 in Tracks 1-3 and 0.75 in Tracks 4-7 (World::trackCount); the owner's play of f0624e5 ("red
+// line enemy projectiles in track 9 ... are too frequent, tune down to like 0.25x"): 0.25 in Tracks 9 and 10; Track 8 as written.
 constexpr float kBulletsEarly = 0.5f;
 constexpr float kBulletsMiddle = 0.75f;
+constexpr float kBulletsLate = 0.25f;
 constexpr float kBossNovaShareM5 = 1.0f;      // a Nova's blast on each part of theirs it can hurt (x kBossNovaDamage)
 constexpr u32 kLwSegmentShards = 4;           // Shards a Longwave segment drops (24 of them)
 constexpr u32 kChoirVoiceShards = 20;         // Shards a Voice drops (as Kaleidos's pair)
@@ -386,17 +399,21 @@ constexpr float kStandingDamage = 1.5f;
 // bar (docs/PROGRESS.md, "C"). 2026-11-14 (02c28ab, GAME_DESIGN 7.6, "a fight is short": every fight the novice wins lasts 30 to
 // 60 s, a long one brought to about 50): the factor before x the cut, in brackets; the novice from the fight's Track's start
 // (--handover N), the won first meetings over 20 or 30 seeds (docs/PROGRESS.md, "The owner's play of af4b101", 3).
-constexpr float kKaleidosHealthTune = 0.605f;  // (1.21 x 0.5) 40 of 40, 55 s
-constexpr float kLongwaveHealthTune = 0.0886f; // (0.1925 x 0.46) --handover 2: 20 of 20, 49 s (at 0.1925: 20 of 20, 88 s; x 0.36: 36 s; the
+// The owner's play of f0624e5: every factor below x tempoHealth(its Track) (the new tempo ladder; the seconds as measured).
+constexpr float kKaleidosHealthTune = 0.605f * tempoHealth(1);  // (1.21 x 0.5) 40 of 40, 55 s
+constexpr float kLongwaveHealthTune = 0.0886f * tempoHealth(2); // (0.1925 x 0.46) --handover 2: 20 of 20, 49 s (at 0.1925: 20 of 20, 88 s; x 0.36: 36 s; the
                                                // length follows its health weakly: x 0.562 58 s, x 0.42 45 s)
-constexpr float kChoirHealthTune = 0.189f;     // (1.26 x 0.15) 29 of 40, 34 met (from Track 3's start, x 0.175: 37 of 40), 34 s
+constexpr float kChoirHealthTune = 0.189f * tempoHealth(3);     // (1.26 x 0.15) 29 of 40, 34 met (from Track 3's start, x 0.175: 37 of 40), 34 s
 // The mini-bosses: the play test 3 factors x 0.3 (Weaver Prime x 0.21: its trail ended assist bot runs), so the novice kills about
 // as many before they warp out as before Split and Double-Time's new ranks (from Track 2 a kill drops the Extra Life).
-constexpr float kMiniHealthTune[12] = {0.234f, 0.1575f, 0.105f, 0.216f,  // (6.5, 5.0, 2.0, 4.8 x 0.15, 0.15, 0.35, 0.3) Alpha Hound, The Hive,
-                                                                     // Battering Ram, Carom King: the novice's wins 23-30 s
-                                     0.36f, 0.39f, 0.45f, 0.204f,  // (12, 10, 5, 4 x 0.25, 0.2, 0.6, 0.2) Moth Queen, Brood Mother, Blink Star,
-                                                                     // Sentry Array: 24-29 s
-                                     0.1275f, 0.3f, 0.315f, 0.39f};  // M5 part 6, batch 3 (the novice from the fight's start, x 1: Mirror
+// Each x tempoHealth(its home Track): 2, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 8.
+constexpr float kMiniHealthTune[12] = {0.234f * tempoHealth(2), 0.1575f * tempoHealth(2), 0.105f * tempoHealth(3), 0.216f * tempoHealth(3),
+                                     // (6.5, 5.0, 2.0, 4.8 x 0.15, 0.15, 0.35, 0.3) Alpha Hound, The Hive, Battering Ram, Carom King: the
+                                     // novice's wins 23-30 s
+                                     0.36f * tempoHealth(4), 0.39f * tempoHealth(4), 0.45f * tempoHealth(5), 0.204f * tempoHealth(5),
+                                     // (12, 10, 5, 4 x 0.25, 0.2, 0.6, 0.2) Moth Queen, Brood Mother, Blink Star, Sentry Array: 24-29 s
+                                     0.1275f * tempoHealth(6), 0.3f * tempoHealth(7), 0.315f * tempoHealth(7), 0.39f * tempoHealth(8)};
+                                     // M5 part 6, batch 3 (the novice from the fight's start, x 1: Mirror
                                                                      // Mimic 8 won, 12 warped out; Twin Tether 8 of 9, 26 s; Weaver Prime
                                                                      // 11 of 11, 10 s; Deep Well 7 of 9, 15 s)
 // M5 (GAME_DESIGN 7.6, quoted starting values): the novice bot, a player's first week. Play test 3: it no longer aims (it
@@ -418,11 +435,11 @@ constexpr float kSaStepBeats = 1.0f;         // turrets step round to stand even
 // M5 part 4, Event Horizon (horizon.md gives no number for these).
 constexpr float kHzJetLengthWu = 1800.0f;  // the jets reach past the frame's edge at the fight's zoom (0.8)
 constexpr float kHzJetHalfWu = 6.0f;       // look.md v2.5: no lethal beam kills wider than 12 wu (part 4: 22)
-constexpr float kHorizonHealthTune = 1.089f;  // (8.8 x 0.2475 x 0.5) --handover 4 at 2.178: 27 of 40, 75 s (at most 120); halved on the
+constexpr float kHorizonHealthTune = 1.089f * tempoHealth(4);  // (8.8 x 0.2475 x 0.5) --handover 4 at 2.178: 27 of 40, 75 s (at most 120); halved on the
                                               // owner's play of af4b101 ("way too much hp, needs like 0.5x"; horizon.md, design 0449eb3): 19 of 20, 53 s
 // Polyrhythm (polyrhythm.md gives no number for these).
 constexpr float kPrLinkBurnHalfWu = 6.0f;   // the burning link: look.md v2.5, 12 wu (part 4: 16)
-constexpr float kPolyHealthTune = 0.4165f;  // (3.4 x 0.1225) --handover 5: POLY_NOVICE; x 0.175 had the assist bot lost there in 3 of 20. Play test 3: x 1 20 of 20 in 16 s; x 2 17, 33 s; x 4 4 of
+constexpr float kPolyHealthTune = 0.4165f * tempoHealth(5);  // (3.4 x 0.1225) --handover 5: POLY_NOVICE; x 0.175 had the assist bot lost there in 3 of 20. Play test 3: x 1 20 of 20 in 16 s; x 2 17, 33 s; x 4 4 of
                                             // 20; x 2.6 the assist bot lost 2 of 20 here (its bar: 19 of 20 runs through the ten Tracks).
                                             // 02c28ab ("raise it to about 30 s if the novice wins as often"): as it is: 18 of 20 in 19 s;
                                             // x 1.3: 16 of 20, 21 s; x 1.58: 12 of 20, 25 s (--handover 5, seeds 1-20)
@@ -431,15 +448,15 @@ constexpr u8 kBossEntranceCells = 3;       // GAME_DESIGN 5 (1bcc897): "grows ba
 // the player at this speed (chosen; inside the magnet it homes as any Cell).
 constexpr u32 kBossPhaseCells = 1;
 constexpr float kBossPhaseCellDriftWu = 240.0f;
-constexpr float kCadenceHealthTune = 0.919f;  // (2.113 x 0.435) --handover 7: 20 of 20, 52 s (at 2.113: 7 of 10, 115 s)
-constexpr float kArpHealthTune = 1.435f;    // (1.863 x 0.77) --handover 8: 17 of 20, 53 s (at 1.863: 20 of 30 in 50 s with the bullets by
+constexpr float kCadenceHealthTune = 0.919f * tempoHealth(7);  // (2.113 x 0.435) --handover 7: 20 of 20, 52 s (at 2.113: 7 of 10, 115 s)
+constexpr float kArpHealthTune = 1.435f * tempoHealth(8);    // (1.863 x 0.77) --handover 8: 17 of 20, 53 s (at 1.863: 20 of 30 in 50 s with the bullets by
                                             // Track, then 16 of 20 in 65 s once the fights before it were cut: a novice's build is
                                             // what the shorter fights before paid in Shards)
-constexpr float kMorganaHealthTune = 1.7325f; // (15.4 x 0.1125) --handover 9: 26 of 40, 41 s (the page 90-120)
+constexpr float kMorganaHealthTune = 1.7325f * tempoHealth(9); // (15.4 x 0.1125) --handover 9: 26 of 40, 41 s (the page 90-120)
 constexpr float kMgFanSpreadDeg = 40.0f;    // morgana.md gives no spread for her fan of five (Cadence's 40 degrees)
 constexpr float kMgBulletLife = 4.0f;       // ... nor its life (Cadence's 4 s)
 constexpr float kMgMarginWu = 700.0f;       // the oases keep this far from the arena's walls
-constexpr float kRepriseHealthTune = 0.659f;  // (0.347 x 1.9) bccb4eb ("the finale is the longest", about 60 s): --handover 10, 20 of 20,
+constexpr float kRepriseHealthTune = 0.659f * tempoHealth(10);  // (0.347 x 1.9) bccb4eb ("the finale is the longest", about 60 s): --handover 10, 20 of 20,
                                               // median 60 s, mean 74 s (4 of 20 over two minutes: weak inherited builds; 22-77 s the
                                               // rest); at 0.347 on 5cd026a: 20 of 20, 35 s; x 1.71: 19 of 20, 51 s; x 2.1: 20 of 20, 65 s.
                                               // 02c28ab: 0.914 x 0.38 (at 0.914: 26 of 30, 100 s)
@@ -481,7 +498,7 @@ constexpr u32 kBossPaceBars = 8;
 constexpr float kBulletPoolShooters = 0.70f;  // GAME_DESIGN 6.6 (quoted): no shooting species bought above 70% of the bullet pool
 constexpr float kBulletPoolCrowd = 0.95f;     // ... and the crowd's volleys held above 95% of it (the rest kept for the fights' patterns)
 constexpr float kDwArmour = 0.25f;          // Deep Well while it swallows: the fallback for minibosses.json damageScale.swallowing
-constexpr float kFeedbackHealthTune = 0.16f;  // (0.2925 x 0.547) --handover 6: 30 of 30, 50 s (at 0.2925: 17 of 20, 70 s; its won fights run
+constexpr float kFeedbackHealthTune = 0.16f * tempoHealth(6);  // (0.2925 x 0.547) --handover 6: 30 of 30, 50 s (at 0.2925: 17 of 20, 70 s; its won fights run
                                                // from 10 s to over 100 by the build the novice inherits, and seeds 1-10 stay near 60-80 s
                                                // from x 0.77 down to x 0.45)
 

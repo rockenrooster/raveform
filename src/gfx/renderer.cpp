@@ -97,6 +97,7 @@ struct CompositeUbo {
     float dcount[4];
     float ring[16][4];
     float well[8][4];
+    float grade[4];  // saturation, vibrance, contrast, on (look.md §3 Grade)
 };
 
 void rotationMatrix(int deg, float out[4]) {
@@ -1626,6 +1627,10 @@ bool Renderer::endFrame(const FrameDraw& draw, const FrameParams& params, bool c
     ubo.post2[0] = look_->aberrationCornerRefPx * refPx;
     ubo.post2[1] = params.aberrationSnarePx;
     ubo.post2[2] = clampf(params.drain, 0.0f, 1.0f);
+    ubo.grade[0] = look_->gradeSaturation;
+    ubo.grade[1] = look_->gradeVibrance;
+    ubo.grade[2] = look_->gradeContrast;
+    ubo.grade[3] = (look_->gradeSaturation != 1.0f || look_->gradeVibrance != 0.0f || look_->gradeContrast != 0.0f) ? 1.0f : 0.0f;
     const u32 rings = params.ringCount < 8 ? params.ringCount : 8;
     const u32 wells = params.wellCount < 4 ? params.wellCount : 4;
     ubo.dcount[0] = static_cast<float>(rings);

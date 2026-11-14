@@ -73,13 +73,13 @@ const BoostInfo kBoosts[kBoostCount] = {
     {"FREEZE FRAME", "freeze_frame", "FREEZE AND SHATTER", 2},
     {"HALO", "halo", "BLOCKS THREE HITS", 8},
     {"MAGNET STORM", "magnet_storm", "PULLS EVERY SHARD", 4},
-    {"BLACK HOLE", "black_hole", "NEXT NOVA PULLS ALL IN", 4},
+    {"BLACK HOLE", "black_hole", "PULLS ALL IN, THEN BLOWS", 4},
     {"CHAIN STORM", "chain_storm", "LIGHTNING EVERY BEAT", 4},
     {"CHORUS", "chorus", "TWO GHOST SHIPS", 4},
     {"BEAM", "beam", "A SWEEPING LASER", 4},
     {"RICOCHET FEVER", "ricochet_fever", "+5 BOUNCES, FASTER", 4},
     {"CONFETTI", "confetti", "KILLS BURST INTO SPARKS", 4},
-    {"FRACTAL", "fractal", "SHOTS FORK TWICE", 4},
+    {"FRACTAL", "fractal", "HITS SPLIT SHOTS IN TWO", 4},
     {"CAROUSEL", "carousel", "A BOMB EVERY BEAT", 4},
 };
 
@@ -310,6 +310,7 @@ u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[kMaxOrbs], bool f
 }
 
 u32 levelShards(u32 n) {
+    if (n <= 1) return kLevelShardsFirst;  // the owner's play of f0624e5: the first level sooner
     double v = static_cast<double>(kLevelShardsBase);
     for (u32 k = 1; k < n && k < 400; ++k) v *= static_cast<double>(kLevelShardsRatio);
     const double r = v + 0.5;

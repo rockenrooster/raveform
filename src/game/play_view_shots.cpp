@@ -91,10 +91,13 @@ void PlayView::drawShots(FrameDraw& d, const ViewInput& in, float a) {
         }
         const float wv = wid * (primary ? kOverWidth[over] : 1.0f);
         Vec3 tip;  // the head's colour, for its glow
-        if (mine && shotHasLane(sh.flags[i])) {
+        // The owner's play of f0624e5 (Fractal "isn't visually clear at all"): a half that a Fork or Fractal split made is drawn
+        // as a Prism lane is, turned round the hue wheel: 60 degrees while it can split again, 120 for the last halves.
+        const bool forked = mine && primary && (sh.flags[i] & kShotForked) && !shotHasLane(sh.flags[i]);
+        if (forked || (mine && shotHasLane(sh.flags[i]))) {
             // Prism: the lane's colour end to end, white only in its front 15%, at 0.6 of the shot level and 1.3 of its
             // width (the tone map bleaches anything brighter, which is why the first build's fan looked pale).
-            const Vec3 lane = laneColour_[shotLane(sh.flags[i]) + 2];
+            const Vec3 lane = forked ? laneColour_[sh.forks[i] > 0 ? 3 : 4] : laneColour_[shotLane(sh.flags[i]) + 2];
             const float pv = lvl * kPrismLevel, pw = wv * kPrismWidth;
             const Vec2 cut = head - dirv * (len * kPrismWhite);
             d.scene.line(toScene(tail), toScene(cut), pw, lane * pv, lane * pv, 0);

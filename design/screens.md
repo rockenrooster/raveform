@@ -229,13 +229,13 @@ name (`ARC` for Aegis, `SINGULARITY` for the Black Hole). At most 26 characters.
 | Colossus | `GIANT, RAMS THROUGH` | | Standing Wave | `LANCES STAY A BAR` |
 | Time Stretch | `THE WORLD AT HALF SPEED` | | Tesla Bloom | `RINGS ARC LIGHTNING` |
 | Freeze Frame | `FREEZE AND SHATTER` | | Shard Halo | `ORBITALS FLING SHRAPNEL` |
-| Black Hole | `NEXT NOVA PULLS ALL IN` | | Downbeat Cannon | `A GIANT BEAM EACH BAR` |
+| Black Hole | `PULLS ALL IN, THEN BLOWS` | | Downbeat Cannon | `A GIANT BEAM EACH BAR` |
 | Chain Storm | `LIGHTNING EVERY BEAT` | | Collapse Field | `MINES PULL IN` |
 | Chorus | `TWO GHOST SHIPS` | | Murmuration | `A HOMING FLOCK` |
 | Beam | `A SWEEPING LASER` | | Quartet | `THREE WINGMEN` |
 | Ricochet Fever | `+5 BOUNCES, FASTER` | | | |
 | Confetti | `KILLS BURST INTO SPARKS` | | | |
-| Fractal | `SHOTS FORK TWICE` | | | |
+| Fractal | `HITS SPLIT SHOTS IN TWO` | | | |
 | Carousel | `A BOMB EVERY BEAT` | | | |
 
 **Boost cards (HUD).** An active Boost shows its icon, its name and its words above the Riff slots.

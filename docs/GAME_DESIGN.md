@@ -95,7 +95,7 @@ lets try 0.5x". Every Track now uses the Short form and Standard is retired.** A
 
 A Track is a block with its own tempo, key, palette, enemy families and boss. **Every Track is two Short
 cycles, 48 bars** (the owner, 2026-11-14: "tracks should be the same length as track 1"; Tracks 2 to 10
-were three): 96 seconds at Track 1's 120 BPM, 91 at 126, 66 at 174, before its boss. The first upgrade
+were three): 105 seconds at Track 1's 110 BPM, 100 at 115, 74 at Track 10's 155, before its boss. The first upgrade
 arrives within 45 seconds. A mini-boss arrives on the first cycle's Drop from Track 2 on; the boss
 arrives on the second, the last. A Track's Trios are its Shard levels and its boss's (the
 cycle's Break deals none since 2026-11-14). What was
@@ -105,21 +105,24 @@ next Track's Break, during which tempo, key and palette cross-fade.
 
 | Track | BPM | Key / progression | Feel | Palette | New families | Boss |
 |---|---|---|---|---|---|---|
-| 1 First Light | 120 | A minor: i–VI–III–VII | Warm four-on-the-floor | Ultraviolet (violet, cyan, magenta on indigo) | Drifters, Hounds, Shoal, Rams | Kaleidos |
-| 2 Solar Wind | 126 | F minor: i–VII–VI–VII | Driving off-beat bass | Solar (amber, gold, teal on black-teal) | Flankers, Skitters, Caroms, Sentries | Longwave |
-| 3 Reef | 132 | D dorian: i–IV vamp | Rolling techno | Reef (aqua, lime, coral on deep blue) | Moths, Brood, Blinks | The Choir |
-| 4 Aurora | 138 | E minor: i–iv–VI–V (the V major) | Trance: a tune under a high pedal note, galloping bass | Aurora (green, violet, ice on night blue) | Wyrms, Tethers | Event Horizon |
-| 5 Furnace | 144 | G phrygian: i7–♭IImaj7 vamp | Tribal and warm: toms, bass and lead in 3-3-2, a mallet lead | Furnace (amber, white, cyan on charcoal) | Weavers, Wells | Polyrhythm |
-| 6 Zenith | 150 | C dorian: i–III–VII–IV | The peak-time anthem; chords in 3-3-4-3-3 | Zenith (white, gold, electric blue) | Mimics | Feedback |
-| 7 Afterglow | 156 | D♭ major: I–V–vi–IV | The first major key; half-time drums under big soft chords | Afterglow (peach, lavender, mint on plum) | Elites carry two traits | Cadence |
-| 8 Arcadia | 162 | G major: I–vi–IV–V | The arcade: square-wave octave bass, broken chords, dry | Arcadia (green, blue, magenta on black, a green grid) | — | Arpeggiator |
-| 9 Mirage | 168 | B♭ lydian: I–II–vi–V over a held bass | Floating: a harp lead, a broken kick | Mirage (turquoise, sand, violet on deep teal, a sand grid) | — | Fata Morgana |
-| 10 Last Light | 174 | A minor: First Light's chords and lead, note for note | Liquid drum and bass; the run comes home | Last Light (violet, gold, blue on indigo, a warm horizon) | — | Kaleidos, Reprise |
+| 1 First Light | 110 | A minor: i–VI–III–VII | Warm four-on-the-floor | Ultraviolet (violet, cyan, magenta on indigo) | Drifters, Hounds, Shoal, Rams | Kaleidos |
+| 2 Solar Wind | 115 | F minor: i–VII–VI–VII | Driving off-beat bass | Solar (amber, gold, teal on black-teal) | Flankers, Skitters, Caroms, Sentries | Longwave |
+| 3 Reef | 120 | D dorian: i–IV vamp | Rolling techno | Reef (aqua, lime, coral on deep blue) | Moths, Brood, Blinks | The Choir |
+| 4 Aurora | 125 | E minor: i–iv–VI–V (the V major) | Trance: a tune under a high pedal note, galloping bass | Aurora (green, violet, ice on night blue) | Wyrms, Tethers | Event Horizon |
+| 5 Furnace | 130 | G phrygian: i7–♭IImaj7 vamp | Tribal and warm: toms, bass and lead in 3-3-2, a mallet lead | Furnace (amber, white, cyan on charcoal) | Weavers, Wells | Polyrhythm |
+| 6 Zenith | 135 | C dorian: i–III–VII–IV | The peak-time anthem; chords in 3-3-4-3-3 | Zenith (white, gold, electric blue) | Mimics | Feedback |
+| 7 Afterglow | 140 | D♭ major: I–V–vi–IV | The first major key; half-time drums under big soft chords | Afterglow (peach, lavender, mint on plum) | Elites carry two traits | Cadence |
+| 8 Arcadia | 145 | G major: I–vi–IV–V | The arcade: square-wave octave bass, broken chords, dry | Arcadia (green, blue, magenta on black, a green grid) | — | Arpeggiator |
+| 9 Mirage | 150 | B♭ lydian: I–II–vi–V over a held bass | Floating: a harp lead, a broken kick | Mirage (turquoise, sand, violet on deep teal, a sand grid) | — | Fata Morgana |
+| 10 Last Light | 155 | A minor: First Light's chords and lead, note for note | Liquid drum and bass; the run comes home | Last Light (violet, gold, blue on indigo, a warm horizon) | — | Kaleidos, Reprise |
 | The loop | as the Tracks | — | The encore (section 8) | — | Elite traits stack | Bosses return under the loop's ramps |
 
 **Ten Tracks** (the user, 2026-11-12: "I want 10 tracks total, don't be afraid to experiment with
-different themes, but they should all be very pleasing to the ear"). The tempo climbs six beats a
-minute a Track, from 120 to 174. The themes are chosen to differ in what the ear notices first: the
+different themes, but they should all be very pleasing to the ear"). The tempo climbs five beats a
+minute a Track, from 110 to 155 (the owner, 2026-11-14: "the game should start at 110 bpm and scale up
+slightly slower"; six a Track from 120 to 174 until then). A fight keeps the seconds it was tuned to: a
+boss's and a mini-boss's health follow their Track's tempo down (the players' fire is on the grid, so
+their damage a second does too). The loop holds Last Light's tempo, as it held 174 before. The themes are chosen to differ in what the ear notices first: the
 mode (four minor, two modal, two major, one lydian, and the first theme again at the end), the drum
 pattern (four-on-the-floor, 3-3-2 toms, half time, a broken kick, a two-step break) and what the
 lead does (broken chords, a three-note cell, a pedal point, a mallet, a harp). All ten are written
@@ -127,9 +130,9 @@ lead does (broken chords, a three-note cell, a pedal point, a mallet, a harp). A
 bosses' full pages (7.6 has the concepts) and their rosters.
 
 **A run plays all ten, in order** (the user's call, 2026-11-12; the alternative offered was five
-drawn for each run). That is about 13 minutes of music before the encore, plus the fights (19 until
-2026-11-14, 29 until play test 3): ten Tracks of 48 bars at 120 to 174, each a little shorter than the
-last. The loop of section 8 begins
+drawn for each run). That is about 14 and a half minutes of music before the encore (13 at the first tempi), plus the
+fights (19 until 2026-11-14, 29 until play test 3): ten Tracks of 48 bars at 110 to 155, each a little
+shorter than the last. The loop of section 8 begins
 after the last Track the game has — after Track 3 in the build of 2026-11-12, after Track 10 when the
 set list is complete — so nothing in the loop may be counted from a fixed Track number.
 
@@ -157,7 +160,10 @@ Drop, from Track 2 from the mini-boss as it dies (it shares that Drop since ever
 **Scoring.** Score = enemy value × Chain. The Chain is a multiplier: it starts at ×1 and never goes
 below it. Every enemy death drops **Shards** for each player separately
 (1–5 by tier, 20 for elites, 200 for bosses); each Shard collected adds +1 to that player's Chain.
-Shards drift toward a player within 90 wu and fade after four bars. Losing a Shield cell halves the
+Shards drift toward a player within 90 wu and fade after four bars. **A Shard is never lost to the
+crowd** (the owner, 2026-11-14: "if too many shards are on screen it glitches out and they timeout or
+something and dissapear"): while more than 1,536 are out, one older than a bar flies to its player as
+under Magnet Storm and is collected; until then it went out, all of them at once. Losing a Shield cell halves the
 Chain. Nothing else decays it. The Chain has no cap: with the crowd it climbs by hundreds a minute
 and a long run scores in the billions. That is intended (big numbers are part of the show, and one
 hit costs half of it), so the score is a 64-bit number and both score and Chain are shown with
@@ -208,8 +214,9 @@ except settings, local high scores and lifetime stats.
 - **Shard levels** (play test 2, 2026-11-12: "upgrades need to happen more often, maybe scale by
   collected Shards"). Collected Shards fill a level meter under the Chain. Each time it fills the
   player gains a level, and a Trio opens round the ship on the next bar line, wherever the fight
-  is: the same three orbs, held to be taken. Level n needs 170 × 1.17^(n−1) Shards (170, 199,
-  233, 272 …): the curve the bot runs settled on, giving a level about every 28 seconds in
+  is: the same three orbs, held to be taken. The first level needs **100** Shards (the owner,
+  2026-11-14: "shards needed for the 1st level powerup should be less"; it needed 170), level n after
+  it 170 × 1.17^(n−1) (199, 233, 272 …): the curve the bot runs settled on, giving a level about every 28 seconds in
   Track 1, 16 in Track 2 and 31 in Track 3 (the Shard income rises sevenfold from Track 1 to 2,
   so no one curve is even; the first guess of 25 × 1.22 gave a level every 9 seconds). Levels that fill while a Trio is open are banked and
   the next Trio opens on the bar line after the last one closes. A level-up Trio lasts four bars
@@ -314,13 +321,13 @@ Rhythm
 | 6 | Freeze Frame | Enemies in view freeze for 2 bars and shatter in one hit, chaining to at most 12 at a time (play test 3) |
 | 7 | Halo | Absorbs up to 3 hits (until broken, at most 8 bars) |
 | 8 | Magnet Storm | All your Shards on the map fly to you; kills drop double |
-| 9 | Black Hole | Your next Nova becomes a 3-beat singularity that drags the screen in, then explodes |
+| 9 | Black Hole | Goes off by itself the moment it is taken, as a free Nova: a 3-beat singularity that drags the screen in, then explodes. It spends no Nova (the owner, 2026-11-14: "some temporary power-ups don't seem like they work (like black hole)": it waited for the next Nova, which a player on the assist never fires) |
 | 10 | Chain Storm | Every beat, lightning links all enemies near you |
 | 11 | Chorus | Two ghost ships fly formation and copy your shots |
 | 12 | Beam | Primary becomes a continuous sweeping laser |
 | 13 | Ricochet Fever | All shots gain +5 bounces and speed up per bounce |
 | 14 | Confetti | Every kill bursts into 6 homing sparks |
-| 15 | Fractal | Shots fork twice, recursively |
+| 15 | Fractal | Every shot splits in two on its first hit and each half splits again on its next, at half damage each time (up to four from one shot; with Fork, one generation more). **The split shows** (the owner, 2026-11-14: "fractal ... isn't visually clear at all on what happens, i still don't know what it does"): a Y of light at the hit, its two arms along the halves' paths, and the halves turned round the hue wheel as Prism's lanes are (60 degrees, then 120 for the last), so a tree of colour grows through the crowd. Fork's halves show the same way |
 | 16 | Carousel | Six orbiting bombs; one launches outward on each beat |
 
 ### 6.5 Fusions (8)
@@ -568,11 +575,14 @@ with a safe place that moves, and recognising six fights inside a seventh.
 - **Enemy bullets by Track** (the owner, 2026-11-14: "tone down the number of enemy bullets by like
   0.5x in tracks 1-3, 4-7 can be 0.75x"). Every enemy bullet the game would fire (a shooter's shot,
   a fan, a ring, a spray, a boss's or mini-boss's pattern, an elite's, an arena event's) is counted
-  at **0.5 in Tracks 1 to 3** and **0.75 in Tracks 4 to 7**; Tracks 8 to 10 and the loop fire as
-  written. A pattern keeps its shape: a fan or ring loses bullets evenly round it, keeping its
+  at **0.5 in Tracks 1 to 3** and **0.75 in Tracks 4 to 7**, and **0.25 in Tracks 9 and 10** (the
+  owner's next play, 2026-11-14: "red line enemy projectiles in track 9 are too small, not visible
+  enough and are too frequent, tune down to like 0.25x"; Track 10 with it, as dense as written);
+  Track 8 and the loop fire as written. The bullets are drawn a third larger (look.md section 4), their
+  hit radius unchanged. A pattern keeps its shape: a fan or ring loses bullets evenly round it, keeping its
   symmetry and never going below the smallest count its page allows; a shooter whose volley is one
-  bullet fires on every second volley (Tracks 1 to 3) or three volleys in four (4 to 7), on the beat
-  as before. Lethal beams, bodies, the Arpeggiator's blocks and trails are not bullets and stay. Co-op
+  bullet fires on every second volley (Tracks 1 to 3), three volleys in four (4 to 7) or one in
+  four (9 and 10), on the beat as before. Lethal beams, bodies, the Arpeggiator's blocks and trails are not bullets and stay. Co-op
   the same. The fights' health is not tuned again for it.
 - **Threat budget.** Each bar has a budget `B = base(track, cycle, section) × players × assist`. Every
   species has a threat cost; the director spends the budget on **formations** rather than single

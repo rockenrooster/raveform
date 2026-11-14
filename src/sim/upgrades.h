@@ -137,7 +137,7 @@ float dealWeight(const Loadout& l, u8 u);
 bool firepower(u8 u);
 
 // Shard levels (GAME_DESIGN 6.1, play test 2): the Shards level n takes from level n - 1, base x ratio^(n - 1) rounded
-// (tuning::kLevelShardsBase and kLevelShardsRatio; n >= 1).
+// (tuning::kLevelShardsBase and kLevelShardsRatio; n >= 1), the first tuning::kLevelShardsFirst.
 u32 levelShards(u32 n);
 
 }  // namespace rf::sim

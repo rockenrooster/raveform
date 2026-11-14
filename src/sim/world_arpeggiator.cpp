@@ -185,8 +185,8 @@ void World::updateArpeggiator(float dt) {
 }
 
 bool World::arpBlockHit(Vec2 at, Vec2& from) const {
-    // A block: a bar blockWidth wide and 28 deep falling along its lane's middle at blockSpeed (arpeggiator.json: 72 wu at 340 wu/s
-    // since 2fbb4b2).
+    // A block: a capsule blockWidth wide and blockDepth deep falling along its lane's middle at blockSpeed (arpeggiator.json: 36 by 12
+    // at 340 wu/s since the owner's play of f0624e5; its glow hurts nobody).
     const BossState& s = boss_;
     if (s.kind != BossKind::Arpeggiator || !s.active || s.dying) return false;
     const ArpData& d = species_->arp;
@@ -199,7 +199,7 @@ bool World::arpBlockHit(Vec2 at, Vec2& from) const {
         const Vec2 c = o + dir * dist;
         const Vec2 rel = at - c;
         const Vec2 axis{-dir.y, dir.x};
-        if (std::fabs(dot(rel, axis)) <= 0.5f * d.blockWidth + kPlayerHitRadius && std::fabs(dot(rel, dir)) <= 14.0f + kPlayerHitRadius) {
+        if (std::fabs(dot(rel, axis)) <= 0.5f * d.blockWidth + kPlayerHitRadius && std::fabs(dot(rel, dir)) <= 0.5f * d.blockDepth + kPlayerHitRadius) {
             from = c;
             return true;
         }

@@ -19,7 +19,7 @@ What it teaches:
 |---|---|
 | **The Machine** | A console 900 wu wide and 120 deep with a core of radius 70 at its middle behind a shutter, four ports along its lower edge (one for each lane) and above it the chart: a matrix of 4 by 16 dots, gold, 400 by 60 wu, the lit dots the next bar's notes and a white cursor crossing it in time |
 | **Lanes** | Four lanes 200 wu wide and 900 long running from the ports. Drawn as five faint lines in the grid's colour with the lane's number at the far end |
-| **Blocks** | A note: a danger-coloured bar 72 wu wide and 28 deep on the priority layer, falling along its lane's middle at 340 wu/s (90 wide at 420 until 2026-11-14: the assist bot, the game's difficulty bar, lost its only two runs of twenty to them). It cannot be shot; a Nova clears the lanes |
+| **Blocks** | A note: a danger-coloured capsule 36 wu wide and 12 deep on the priority layer with a white-pink line down its middle, drawn as a lethal beam is (look.md section 5), falling along its lane's middle at 340 wu/s. Its glow, which hurts nobody, makes up the rest of its size: about the 72 by 28 the block had before (the owner, 2026-11-14: "they need to be much smaller with the glow making up the rest of the size"; 72 wu wide and 28 deep until then, and 90 wide at 420 wu/s before that, when the assist bot lost its only two runs of twenty to them). It cannot be shot; a Nova clears the lanes |
 
 ## Phases
 
@@ -37,7 +37,8 @@ What it teaches:
 | coreRadius | 70.0 |
 | laneWidth | 200.0 |
 | laneLength | 900.0 |
-| blockWidth | 72.0 |
+| blockWidth | 36.0 |
+| blockDepth | 12.0 |
 | blockSpeed | 340.0 |
 | place | 380 wu from the players' centre on its side of them; it follows them along its own axis at 120 wu/s and its lanes move with it |
 | laneOfNote | rank the distinct pitches of the bar's arpeggio from low to high; a note's lane is (its rank mod 4) + 1. For G that is 1 2 3 4 3 2 3 4 1 4 3 4 2 1 4 3 |

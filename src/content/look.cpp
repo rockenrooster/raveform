@@ -150,6 +150,9 @@ bool loadLook(Look& out) {
     }
     out.bleedStart = r.num("toneMap.bleedStart");
     out.bleedEnd = r.num("toneMap.bleedEnd");
+    out.gradeSaturation = r.num("grade.saturation");
+    out.gradeVibrance = r.num("grade.vibrance");
+    out.gradeContrast = r.num("grade.contrast");
     out.glowRadiusOverSigma = r.num("softLight.radiusOverSigma");
     out.glowCutoffRadii = r.num("softLight.cutoffRadii");
     out.poolMinRadiusRefPx = r.num("softLight.poolMinRadiusRefPx");

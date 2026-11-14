@@ -664,7 +664,7 @@ void World::shotHitExtras(u32 k, u32 i, Vec2 at, Vec2 dir) {
         const float a = angleOf(dir);
         for (float side : {-1.0f, 1.0f}) {
             spawnShotRaw(owner, at, dirOf(a + side * kForkDeg * kDeg), 0.0f, s.damage[k] * kForkDamage, kShotPrimary,
-                         static_cast<u8>(s.flags[k] & kShotLaneMask), kShotLifeS * 0.6f, 0, 0);
+                         static_cast<u8>((s.flags[k] & kShotLaneMask) | kShotForked), kShotLifeS * 0.6f, 0, 0);
             if (lastShot_ >= 0) {
                 shots_.forks[lastShot_] = forks;
                 shots_.mods[lastShot_] = static_cast<u8>(s.mods[k] & (kShotSeek | kShotBlast | kShotFever));
@@ -672,7 +672,7 @@ void World::shotHitExtras(u32 k, u32 i, Vec2 at, Vec2 dir) {
             }
         }
         s.forks[k] = 0;
-        emitFx(owner, kFxFork, at, at + dir, 0, 0.0f, m1_);
+        emitFx(owner, kFxFork, at, at + dir, forks, kForkDeg, m1_);  // (c: the halves' own forks left; f: their angle)
     }
     if (!primary) return;
     if (l.mods[kGravityRounds]) {

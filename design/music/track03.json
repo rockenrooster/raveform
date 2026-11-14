@@ -1,7 +1,7 @@
 {
   "id": "track03",
   "name": "Reef",
-  "bpm": 132,
+  "bpm": 120,
   "key": "D dorian",
   "scale": [0, 2, 3, 5, 7, 9, 10],
   "note": "Same format as track01.json. Character: rolling techno, hypnotic and liquid. A two-chord vamp (Dm9 to G6: the raised sixth, B, is the dorian colour). The bass rolls on the three sixteenths between the kicks. The lead is a three-note cell repeated across the bar, so it turns against the four-on-the-floor and only lines up again at the bar line; a quarter-note echo answers each note with the one before it. 'Dm2' and 'G2' are the same harmonies with the cell one chord tone higher and a tail that leads on.",

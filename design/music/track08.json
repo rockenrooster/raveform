@@ -1,7 +1,7 @@
 {
   "id": "track08",
   "name": "Arcadia",
-  "bpm": 162,
+  "bpm": 145,
   "key": "G major",
   "scale": [0, 2, 4, 5, 7, 9, 11],
   "note": "Same format as track01.json. Character: the arcade. G, Em, C, D, bright and dry: broken chords running up through two octaves and back, nothing in them but chord tones, so at eleven notes a second it is still consonant. The bass is a square wave bouncing root and octave on every eighth note, with almost no sidechain. Short blips, a short room.",

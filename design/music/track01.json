@@ -1,7 +1,7 @@
 {
   "id": "track01",
   "name": "First Light",
-  "bpm": 120,
+  "bpm": 110,
   "key": "A minor",
   "scale": [0, 2, 3, 5, 7, 8, 10],
   "note": "MIDI note numbers (A4 = 69). Patterns are 16 steps per bar: '.' is a rest, digits 1-9 are velocity/9. The lead only sounds while the player holds fire; its position in the arp advances with the bar regardless.",

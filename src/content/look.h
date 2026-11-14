@@ -70,6 +70,8 @@ struct Look {
     // Tone map: the white point and bleed amount come from the variant; where the bleed starts and ends.
     float bleedStart = 1.0f;
     float bleedEnd = 8.0f;
+    // Grade (look.md §3, the owner's play of 2026-11-14: "a little more color pop"): after the tone map, on the scene only.
+    float gradeSaturation = 1.0f, gradeVibrance = 0.0f, gradeContrast = 0.0f;
     // Soft light.
     float glowRadiusOverSigma = 2.45f;
     float glowCutoffRadii = 1.25f;

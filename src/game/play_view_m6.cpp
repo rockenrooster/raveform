@@ -107,8 +107,8 @@ u32 arpNote(const ArpState& a, u32 m, u32 k) {
 void PlayView::drawArpeggiator(FrameDraw& d, const ViewInput& in) {
     // arpeggiator.md "Parts": the console (900 x 120) with its core (radius 70) behind a shutter at its middle, four ports on
     // its lower edge and the chart above it (4 x 16 gold dots, 400 x 60, the next bar's notes lit, a white cursor in time);
-    // the lanes, five faint lines in the grid's colour with the lane's number at the far end; the blocks, danger bars blockWidth wide
-    // (72 since 2fbb4b2) and 28 deep on the priority layer. The second machine is white. Its death: the chart reads GG and every block in flight
+    // the lanes, five faint lines in the grid's colour with the lane's number at the far end; the blocks, danger capsules blockWidth
+    // wide and blockDepth deep (36 by 12 since the owner's play of f0624e5) on the priority layer, with a glow. The second machine is white. Its death: the chart reads GG and every block in flight
     // turns gold and climbs back up its lane.
     const World& w = *in.world;
     const BossState& s = w.boss();
@@ -215,18 +215,33 @@ void PlayView::drawArpeggiator(FrameDraw& d, const ViewInput& in) {
         }
         if (dist < 0.0f || dist > A.laneLength) continue;
         const Vec2 c = b.from + b.dir * dist;
-        if (!visible(c, 0.5f * A.blockWidth)) continue;
+        if (!visible(c, 0.5f * A.blockWidth + 20.0f)) continue;
         const Vec2 axis{-b.dir.y, b.dir.x};
-        const float r = 14.0f;  // 28 deep
+        const float r = 0.5f * A.blockDepth;
         const Vec2 e0 = c - axis * (0.5f * A.blockWidth - r), e1 = c + axis * (0.5f * A.blockWidth - r);
         if (back) {
             d.scene.line(toScene(e0), toScene(e1), r * pxPerWu_, gold * 1.6f, gold * 1.6f, 0);
             continue;
         }
-        if (shown(kMuteBullet)) d.scene.line(toScene(e0), toScene(e1), r * pxPerWu_, danger * 0.5f, danger * 0.5f, 0);
+        // arpeggiator.md (the owner's play of f0624e5: "much smaller with the glow making up the rest of the size"): the lethal
+        // core drawn as a lethal beam is, its capsule exactly what kills with a white-pink line down it; round it a danger glow
+        // (sigma 9 wu, 0.5 on the axis, reduce flashing 0.35) out to about the old block's 72 by 28, which hurts nobody.
+        const Vec3 pink = mix(danger, W1, 0.7f);
+        if (shown(kMuteBullet)) {
+            d.scene.line(toScene(e0), toScene(e1), refPx_, pink * 1.6f, pink * 1.6f, 0);
+            constexpr float kSigma = 9.0f;
+            const float radius = kSigma * look_->glowRadiusOverSigma;
+            const u32 n = static_cast<u32>(std::ceil(A.blockWidth / (2.0f * kSigma)));
+            const float stepWu = A.blockWidth / static_cast<float>(n);
+            const float peak = (reduceFlashing_ ? 0.35f : 0.5f) * stepWu / (kSigma * 2.5066283f);
+            GlowBatch& soft = radius * pxPerWu_ < 16.0f * refPx_ ? d.sparkles : d.pools;  // (look.md §3, as drawBeam)
+            const Vec2 g0 = c - axis * (0.5f * A.blockWidth);
+            for (u32 k = 0; k <= n; ++k) soft.glow(toScene(g0 + axis * (stepWu * static_cast<float>(k))), radius * pxPerWu_, danger * peak);
+        }
         if (shown(kMutePriority)) {
             d.threatRims.line(toScreen(e0), toScreen(e1), r * pxPerWu_ + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
             d.threatCores.line(toScreen(e0), toScreen(e1), r * pxPerWu_, danger, danger, 0);
+            d.threatCores.line(toScreen(e0), toScreen(e1), refPx_, pink, pink, 0);
         }
     }
 }

@@ -417,7 +417,9 @@ struct Shots {
 enum ShotMod : u8 { kShotSeek = 1, kShotWave = 2, kShotWaveNeg = 4, kShotGhost = 8, kShotBlast = 16, kShotFever = 32, kShotHelix = 64, kShotHelixIn = 128 };
 // kShotRefracted (play test 1): a Prism shot refracts on its first hit only.
 // kShotPiece (play test 3): a Shatter piece; its kill throws none (GAME_DESIGN 6.2 row 15).
-enum ShotFlag : u8 { kShotCrit = 1, kShotPrism = 2, kShotLaneMask = 7u << 2, kShotRefracted = 32, kShotPiece = 64 };
+// kShotForked (the owner's play of f0624e5: Fractal "isn't visually clear"): a half that a Fork or Fractal split made (the view
+// turns it round the hue wheel; nothing else reads it).
+enum ShotFlag : u8 { kShotCrit = 1, kShotPrism = 2, kShotLaneMask = 7u << 2, kShotRefracted = 32, kShotPiece = 64, kShotForked = 128 };
 // M3 stage C2: a Prism shot's lane in its fan (-2..2, GAME_DESIGN 7: the rainbow), kept in flags bits 2-4 (0: none);
 // its mini-refractions carry it on.
 inline u8 shotLaneFlags(i32 lane) { return static_cast<u8>((lane + 3) << 2); }

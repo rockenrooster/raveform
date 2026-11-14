@@ -1493,9 +1493,9 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             if (s.dead[i]) continue;
             const Vec2 p = lerp2(Vec2{s.px[i], s.py[i]}, Vec2{s.x[i], s.y[i]}, a);
             if (!visible(p, 30.0f) || !shown(kMuteShard)) continue;
-            // Loose Shards fade over their last bar.
+            // Loose Shards fade over their last bar (one flying in is whole: a crowded field sends its old ones in, world.cpp).
             const float left = static_cast<float>((s.born[i] + lifeTicks - in.music) / kTicksPerBar);
-            const float fade = clampf(left, 0.0f, 1.0f);
+            const float fade = s.homing[i] ? 1.0f : clampf(left, 0.0f, 1.0f);
             const float i0 = sl.intensity * swarm * fade;
             glyph(d.glyphs, gShard_, false, p, static_cast<float>(i) * 0.7f + 4.0f * t, 0.0f, shardScale, i0, 0.5f * sl.width,
                   kGlyphFlat, shardColour, shardColour);

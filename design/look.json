@@ -17,6 +17,13 @@
 
  "exposure": 1.0,
 
+ "grade": {
+  "saturation": 1.12,
+  "vibrance": 0.45,
+  "contrast": 0.3,
+  "note": "look.md section 3, Grade (the owner, 2026-11-14: 'a little more color pop, like we did for the Prism powerup'): after the tone map, on the scene only: colour pushed away from its luminance by saturation + vibrance x (1 - its own saturation), so the paler a colour the more it gains and a pure hue keeps its place; then an S-curve of strength contrast on the luminance's square root (0, a half and 1 stay put), hue and saturation kept. The threat layer and the HUD are drawn after it and keep theirs."
+ },
+
  "joints": {
   "flatBelowTurnDegrees": 20.0,
   "maxWidthRatio": 1.25

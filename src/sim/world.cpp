@@ -517,19 +517,25 @@ void World::moveProjectiles(float dt) {
     }
     // Shards: loose ones slow down and wait; inside a player's magnet they home in; after four bars they
     // are gone (GAME_DESIGN 5). Play test 1: while more than kShardsCrowded are out (the stronger build kills several
-    // times as fast), they last one bar, so the pool keeps room for the next kills.
+    // times as fast) the pool must make room for the next kills. Until the owner's play of f0624e5 a loose Shard then
+    // lasted one bar, so every Shard older than that went out at once ("if too many shards are on screen it glitches out
+    // and they timeout ... and disappear"); now one older than a bar flies to its player instead, as under Magnet Storm,
+    // and is collected (GAME_DESIGN 5: a Shard is never lost to the crowd).
     Shards& h = shards_;
-    const double lifeTicks = (h.count > kShardsCrowded ? kShardCrowdedBars : kShardLifeBars) * kTicksPerBar;
+    const double lifeTicks = kShardLifeBars * kTicksPerBar;
+    const bool crowded = h.count > kShardsCrowded;
+    const double crowdedTicks = kShardCrowdedBars * kTicksPerBar;
     const float drag = std::exp(-kShardDrag * dt);
     for (u32 i = 0; i < h.count; ++i) {
         h.px[i] = h.x[i];
         h.py[i] = h.y[i];
         if (h.dead[i]) continue;
-        if (m1_ - h.born[i] > lifeTicks) {
+        const PlayerState& pl = players_[h.owner[i]];
+        if (crowded && !h.homing[i] && !h.holder[i] && pl.alive && m1_ - h.born[i] > crowdedTicks) h.homing[i] = 1;
+        if (m1_ - h.born[i] > lifeTicks && !(h.homing[i] && pl.alive)) {  // (one on its way in is not lost)
             h.dead[i] = 1;
             continue;
         }
-        const PlayerState& pl = players_[h.owner[i]];
         bool home = false;
         Vec2 to{};
         float dist = 0.0f;

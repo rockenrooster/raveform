@@ -1,7 +1,7 @@
 {
   "id": "track04",
   "name": "Aurora",
-  "bpm": 138,
+  "bpm": 125,
   "key": "E minor",
   "scale": [0, 2, 3, 5, 7, 8, 10],
   "note": "Same format as track01.json. Character: trance, wide and bright. Em, Am, C, B: the B is major, its D sharp the one note outside the scale, and it pulls every fourth bar home. The lead is a pedal-point figure: the melody is on the even sixteenths (E G F# G, E G A G) and a high pedal note answers on the odd ones, so a player who holds fire hears a tune with a shimmer over it. The pedal moves B, A, C, B across the four chords. The bass gallops on the last two sixteenths of every beat.",

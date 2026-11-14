@@ -485,14 +485,15 @@ void testNoAllocations() {
 void testDirectorCycle() {
     g_test = "director";
     DirectorState d;
-    // Track 1: two Short cycles of 8/4/8/4 bars at 120 BPM (48 bars; play test 3: it had three).
+    // Track 1: two Short cycles of 8/4/8/4 bars at 110 BPM (48 bars; play test 3: it had three; 120 BPM until the owner's play of
+    // f0624e5).
     Phrase p = phraseAt(d, 0);
     CHECK(p.cycles == 2);
     CHECK(p.track == 1 && p.song == 0 && p.cycle == 1 && p.section == Section::Groove && p.sectionBars == 8);
     p = phraseAt(d, 8);
-    CHECK(p.section == Section::Build && p.sectionBar == 0 && p.sectionBars == 4 && p.bpm == 120.0f);
+    CHECK(p.section == Section::Build && p.sectionBar == 0 && p.sectionBars == 4 && p.bpm == 110.0f);
     p = phraseAt(d, 11);  // the Build's last bar runs at 85%
-    CHECK(p.section == Section::Build && p.buildLastBar() && std::fabs(p.bpm - 102.0f) < 1e-3f);
+    CHECK(p.section == Section::Build && p.buildLastBar() && std::fabs(p.bpm - 93.5f) < 1e-3f);
     // Surge: the Drop's first half, gear 1 then gear 2.
     CHECK(phraseAt(d, 12).section == Section::Drop && phraseAt(d, 12).surgeGear() == 1 && phraseAt(d, 13).surgeGear() == 1);
     CHECK(phraseAt(d, 14).surgeGear() == 2 && phraseAt(d, 15).surgeGear() == 2 && phraseAt(d, 16).surgeGear() == 0);
@@ -511,11 +512,11 @@ void testDirectorCycle() {
     CHECK(p.cycle == 2 && p.section == Section::Drop && p.bossDrop && !p.miniDrop);
     p = phraseAt(d, 49);
     CHECK(p.section == Section::Drop && p.bossDrop && p.sectionBar == 13);
-    // The boss died: the Track-change Break (8 bars, 120 -> 126 BPM, bar by bar), then Track 2.
+    // The boss died: the Track-change Break (8 bars, 110 -> 115 BPM, bar by bar), then Track 2.
     d.changeBar = 50;
     p = phraseAt(d, 50);
-    CHECK(p.trackChange && p.section == Section::Break && p.track == 2 && p.sectionBars == 8 && p.bpm == 120.0f);
-    CHECK(std::fabs(phraseAt(d, 57).bpm - 126.0f) < 1e-3f);
+    CHECK(p.trackChange && p.section == Section::Break && p.track == 2 && p.sectionBars == 8 && p.bpm == 110.0f);
+    CHECK(std::fabs(phraseAt(d, 57).bpm - 115.0f) < 1e-3f);
     // Every Track Short since play test 3: 8 / 4 / 8 / 4 bars, 24 bars a cycle; two cycles a Track since c2f113a (48 bars).
     p = phraseAt(d, 58);
     CHECK(!p.trackChange && p.track == 2 && p.song == 1 && p.cycle == 1 && p.section == Section::Groove && p.sectionBars == 8);
@@ -526,8 +527,9 @@ void testDirectorCycle() {
     // c2f113a: the mini-boss on the first cycle's Drop, the boss on the second's.
     CHECK(phraseAt(d, 58 + 24 + 12).bossDrop && phraseAt(d, 58 + 24 + 12).cycle == 2);
     CHECK(phraseAt(d, 58 + 12).section == Section::Drop && !phraseAt(d, 58 + 12).bossDrop && phraseAt(d, 58 + 12).miniDrop);
-    // Track 3 is Reef (two Short cycles at 132 BPM); then the loop over all three, 4 BPM a Track faster.
-    CHECK(bpmOfTrack(3, 3) == 132.0f && bpmOfTrack(4, 3) == 136.0f && bpmOfTrack(5, 3) == 140.0f && bpmOfTrack(40, 3) == 174.0f);
+    // Track 3 is Reef (two Short cycles at 120 BPM); then the loop over all three, 4 BPM a Track faster up to Last Light's 155.
+    CHECK(bpmOfTrack(3, 3) == 120.0f && bpmOfTrack(4, 3) == 124.0f && bpmOfTrack(5, 3) == 128.0f && bpmOfTrack(40, 3) == 155.0f);
+    CHECK(bpmOfTrack(10, 10) == 155.0f && bpmOfTrack(11, 10) == 155.0f);
     CHECK(songOfTrack(3, 3) == 2 && cyclesOfTrack(3) == 2 && formOfTrack(3, 3) == 0 && cyclesOfTrack(1) == 2);
     CHECK(songOfTrack(4, 3) == 0 && cyclesOfTrack(4) == 2 && formOfTrack(4, 3) == 0 && songOfTrack(5, 3) == 1 && songOfTrack(6, 3) == 2);
     // Budgets (species.json firstSlice, threats only), rising past the data; section scales (GAME_DESIGN 8).
@@ -556,7 +558,8 @@ void testDirectorCycle() {
     CHECK(sectionScale(s) == 0.0f);
 
     // In the world: the sections arrive in order on their bar lines, the first Break's Trio opens with the first
-    // Break (bar 20, 40 s in), the Drop doubles score and magnet. (Play test 2: level-up Trios open in the fight too.)
+    // Break (bar 20, 44 s in at 110 BPM), the Drop doubles score and magnet. (Play test 2: level-up Trios open in the fight too.)
+    // A cycle is 24 bars: 52.4 s at 110 BPM (48 at 120), so the run is 56 s long.
     auto* w = new (std::nothrow) World;
     w->init(g_species);
     SimRunner r;
@@ -564,7 +567,7 @@ void testDirectorCycle() {
     u8 order[16];
     u32 n = 0, trioTick = 0;
     bool surgeRules = false;
-    for (u32 t = 0; t < 60 * 50; ++t) {
+    for (u32 t = 0; t < 60 * 56; ++t) {
         r.step();
         for (u32 k = 0; k < w->eventCount(); ++k) {
             const Event& ev = w->events()[k];
@@ -1229,8 +1232,10 @@ void testPlayTest2() {
     // the shelter), Cells (the drop clock, at most two loose, taken, eight bars), Regen.
     g_test = "playtest2";
     using namespace tuning;
-    // Level n takes base x ratio^(n - 1) Shards, rounded; the design's 25, 31, 37, 45, 55 with 25 and 1.22.
-    CHECK(levelShards(1) == static_cast<u32>(kLevelShardsBase + 0.5f));
+    // Level n takes base x ratio^(n - 1) Shards, rounded; the design's 25, 31, 37, 45, 55 with 25 and 1.22. The first takes
+    // kLevelShardsFirst (the owner's play of f0624e5).
+    CHECK(levelShards(1) == kLevelShardsFirst && levelShards(1) < static_cast<u32>(kLevelShardsBase + 0.5f));
+    CHECK(levelShards(2) == static_cast<u32>(kLevelShardsBase * kLevelShardsRatio + 0.5f));
     for (u32 n = 1; n < 40; ++n) CHECK(levelShards(n + 1) >= levelShards(n));
     CHECK(std::fabs(static_cast<double>(levelShards(10)) - kLevelShardsBase * std::pow(static_cast<double>(kLevelShardsRatio), 9.0)) <= 0.51);
     if (kLevelShardsBase == 25.0f && kLevelShardsRatio == 1.22f)
@@ -1903,8 +1908,8 @@ u32 cuesUntil(World& w, double& music, double until, Vec2 ship, BossCue c) {
     return n;
 }
 
-// 0449eb3 (GAME_DESIGN 8, "Enemy bullets by Track"): every enemy bullet counted at 0.5 in Tracks 1-3 and 0.75 in Tracks 4-7, as
-// written from Track 8 and in the loop: the crowd's shooters (a Hound's fan of three, a Sentry's turning arms, a Flanker's and
+// 0449eb3 (GAME_DESIGN 8, "Enemy bullets by Track"): every enemy bullet counted at 0.5 in Tracks 1-3, 0.75 in Tracks 4-7 and 0.25
+// in Tracks 9 and 10, as written in Track 8 and in the loop: the crowd's shooters (a Hound's fan of three, a Sentry's turning arms, a Flanker's and
 // a Drifter's single shots, a Moth's opposite petals) over eight bars of a Track's Groove against the same run as written.
 void testBulletsByTrack() {
     g_test = "bullets by Track";
@@ -1935,13 +1940,15 @@ void testBulletsByTrack() {
         delete w;
         return n;
     };
-    u32 s0 = 0, s2 = 0, s5 = 0, s9 = 0;
-    const u32 all = fired(2, true, s0), t2 = fired(2, false, s2), t5 = fired(5, false, s5), t9 = fired(9, false, s9);
+    // (The owner's play of f0624e5: 0.25 in Tracks 9 and 10, Track 8 as written.)
+    u32 s0 = 0, s2 = 0, s5 = 0, s8 = 0, s9 = 0;
+    const u32 all = fired(2, true, s0), t2 = fired(2, false, s2), t5 = fired(5, false, s5), t8 = fired(8, false, s8), t9 = fired(9, false, s9);
     const float r2 = static_cast<float>(t2) / static_cast<float>(all ? all : 1u), r5 = static_cast<float>(t5) / static_cast<float>(all ? all : 1u);
-    CHECK_MSG(all > 100 && r2 > 0.42f && r2 < 0.58f && r5 > 0.67f && r5 < 0.83f && t9 == all, "as written %u, Track 2 %u (%.2f), Track 5 %u (%.2f), Track 9 %u",
-              all, t2, r2, t5, r5, t9);
-    std::printf("  [bullets by Track] eight bars of five shooters: as written %u, Track 2 %u (x %.2f), Track 5 %u (x %.2f), Track 9 %u; a Drifter's "
-                "shots %u, %u, %u\n", all, t2, r2, t5, r5, t9, s0, s2, s5);
+    const float r9 = static_cast<float>(t9) / static_cast<float>(all ? all : 1u);
+    CHECK_MSG(all > 100 && r2 > 0.42f && r2 < 0.58f && r5 > 0.67f && r5 < 0.83f && t8 == all && r9 > 0.17f && r9 < 0.33f,
+              "as written %u, Track 2 %u (%.2f), Track 5 %u (%.2f), Track 8 %u, Track 9 %u (%.2f)", all, t2, r2, t5, r5, t8, t9, r9);
+    std::printf("  [bullets by Track] eight bars of five shooters: as written %u, Track 2 %u (x %.2f), Track 5 %u (x %.2f), Track 8 %u, Track 9 %u "
+                "(x %.2f); a Drifter's shots %u, %u, %u, %u\n", all, t2, r2, t5, r5, t8, t9, r9, s0, s2, s5, s9);
 }
 
 void testHorizon() {
@@ -2446,8 +2453,9 @@ void testCadence() {
 void testArpeggiator() {
     g_test = "arpeggiator";
     const ArpData& d = g_species->arp;
-    CHECK(d.health == 6400.0f && d.coreRadius == 70.0f && d.laneWidth == 200.0f && d.laneLength == 900.0f && d.blockWidth == 72.0f &&
-          d.blockSpeed == 340.0f && d.rewardShards == 340);  // (2fbb4b2: 72 wu at 340 wu/s; 90 at 420 before)
+    CHECK(d.health == 6400.0f && d.coreRadius == 70.0f && d.laneWidth == 200.0f && d.laneLength == 900.0f && d.blockWidth == 36.0f &&
+          d.blockDepth == 12.0f && d.blockSpeed == 340.0f && d.rewardShards == 340);  // (the owner's play of f0624e5: 36 x 12, the glow
+                                                                                     // the rest; 2fbb4b2: 72 x 28 at 340 wu/s; 90 at 420 before)
     CHECK(bossOfSong(7) == BossKind::Arpeggiator && bossHomeTrack(BossKind::Arpeggiator) == 8 && fightBuilt(BossKind::Arpeggiator));
     const Vec2 ship{0.0f, 0.0f};
     // A mini-boss leaves the cells alone.
@@ -3703,18 +3711,21 @@ void testUpgradesM5() {
         delete w;
     }
     {
-        // Black Hole: the next Nova is a singularity that pulls for three beats, then blows on a beat.
+        // Black Hole (the owner's play of f0624e5): it goes off by itself, with no Nova pressed and none spent, as a singularity that
+        // pulls for three beats, then blows on a beat.
         World* w = quietWorld();
         double music = 0.0;
         stepWorld(*w, music, Vec2{});
         const i32 i = w->spawnEnemy(target, Vec2{500.0f, 0.0f}, 0.0f, music);
         w->setEnemyHp(static_cast<u32>(i), 1e6f);
         runShip(*w, music, music + beat, Vec2{});
+        const u8 novasBefore = w->player(0).novas;
         w->grantBoost(0, kBlackHole);
         const double press = music;
-        stepWorld(*w, music, Vec2{}, 0, true);
+        stepWorld(*w, music, Vec2{});
         const PlayerState& pl = w->player(0);
         CHECK(pl.holeFrom >= 0.0 && pl.novaBlastTick >= press + 3.0 * beat - 1e-6 && pl.novaBlastTick < press + 4.0 * beat + 1e-6 && !pl.boost(kBlackHole));
+        CHECK(pl.novas == novasBefore);
         const float d0 = length(Vec2{w->enemies().x[i], w->enemies().y[i]});
         runShip(*w, music, music + beat, Vec2{});
         CHECK_MSG(length(Vec2{w->enemies().x[i], w->enemies().y[i]}) < d0 - 100.0f, "pulled from %.0f to %.0f", d0,

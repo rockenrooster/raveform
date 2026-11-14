@@ -419,7 +419,7 @@ def build():
     for n in range(1, 9):
         add("halo_%d" % n, halo(n), kind="player", facesHeading=False, size=1.0)
     add("shard", shard(), kind="pickup", facesHeading=False, size=0.3)
-    add("enemy_bullet", enemy_bullet(), kind="threat", facesHeading=False, size=0.38)
+    add("enemy_bullet", enemy_bullet(), kind="threat", facesHeading=False, size=0.5)  # 0.38 until 2026-11-14 (the owner: "too small")
     add("mark_b_heading", mark_b_heading(), kind="mark", facesHeading=True, size=1.0)
     add("mark_b_spin", mark_b_spin(), kind="mark", facesHeading=False, size=1.0)
     add("mark_c", mark_c(), kind="mark", facesHeading=False, size=1.0)

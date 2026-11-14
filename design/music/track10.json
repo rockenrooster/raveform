@@ -1,7 +1,7 @@
 {
   "id": "track10",
   "name": "Last Light",
-  "bpm": 174,
+  "bpm": 155,
   "key": "A minor",
   "scale": [0, 2, 3, 5, 7, 8, 10],
   "note": "Same format as track01.json. Character: liquid drum and bass, and the way home. The chords and the lead are First Light's, note for note (Am, F, C, G and its arpeggios), now with ninths in the pads, a long warm room and a two-step break under them: kick on one and on the and of three, the snare (the clap voice) on two and four. The player has heard this tune once, an hour of play ago at 120; here it comes back at 174 and the run's loop returns to First Light in the same key. Nothing that reads 'kick' as 'beat' may be used on this Track.",

@@ -1,7 +1,7 @@
 {
   "id": "track07",
   "name": "Afterglow",
-  "bpm": 156,
+  "bpm": 140,
   "key": "Db major",
   "scale": [0, 2, 4, 5, 7, 9, 11],
   "note": "Same format as track01.json. Character: the first major key, and the drums drop to half time: the kick on one, the snare (the clap voice) on three, so the fastest Track yet feels like the slowest. D flat add 9, A flat add 9, B flat minor 7, G flat major 7: close voicings that share notes, big and soft. The lead is a tune on the even sixteenths over a low pedal. The bass holds long notes under it. Nothing that reads 'kick' as 'beat' may be used on this Track: the beat comes from the clock.",

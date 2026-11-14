@@ -1,7 +1,7 @@
 {
   "id": "track02",
   "name": "Solar Wind",
-  "bpm": 126,
+  "bpm": 115,
   "key": "F minor",
   "scale": [0, 2, 3, 5, 7, 8, 10],
   "note": "Same format as track01.json. Character: driving, brighter, bouncing octave bass, syncopated stabs. 'Eb2' is the same harmony as 'Eb' with a rising arp that leads back to the tonic.",

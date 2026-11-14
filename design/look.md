@@ -156,7 +156,7 @@ HDR intensity multipliers on the linear colour. Widths are ref px.
 | Player trail | 2.4 | 2.6 | 13 dashes |
 | Player shots | 4.6 | 2.2 | Capsules with the head at the shot and the tail where it was: length = speed × 1/60 s + 8 wu, never under 16 wu (31 wu at 1400 wu/s; the same rule for Sentinel and wingman shots). One frame's capsule then overlaps the next, so a stream of shots reads as streaks, not dashes. A white sparkle at the head |
 | Riff effects | 2.0–3.8 | 1.7–2.6 | Pulse Ring 2.2 / 2.6 with a thin echo ring inside at 0.7 / 1.4; Orbitals 3.4 / 1.7 with an arc of trail at 2.0 / 2.0; Sentinel 2.8 / 1.7, its shot 3.8 / 1.9 |
-| Enemy bullets | 2.4 in the scene **and** redrawn on the threat layer | 2.2 | Threat layer: 2.1 px line in danger + 25% white, with a 1.5 px dark rim. Upright diamonds: a bullet never turns with its travel and never spins, so a thousand of them read as one texture and any one of them as a point |
+| Enemy bullets | 2.4 in the scene **and** redrawn on the threat layer | 2.2 | Threat layer: 2.1 px line in danger + 25% white, with a 1.5 px dark rim. Upright diamonds: a bullet never turns with its travel and never spins, so a thousand of them read as one texture and any one of them as a point. Half a standard enemy across (0.38 until 2026-11-14, the owner: "too small, not visible enough"); the hit radius stays 5 wu |
 | Telegraphs | 1.3 in the scene and on the threat layer | 1.8 | Threat layer: 1.6 px line in danger × 0.9, 1.0 px rim |
 | Shards | 3.2 in 60% pickup + 40% white | 1.3 | |
 | Sparks | one of 2.4, 3.4, 4.6, 5.6 at birth, fading with exponent 1.6 | 1.4 | Field from §2 |
@@ -242,6 +242,24 @@ rgb   = rgb * tm / m                       // hue-preserving
 t     = smoothstep(1, 8, m) * 0.7          // very hot values bleed toward white
 rgb   = mix(rgb, vec3(tm), t)
 ```
+
+### Grade (the owner's play, 2026-11-14)
+
+"Color vibrance/contrast pass, game needs a little more color pop, like we did for the Prism powerup."
+After the tone map, on the scene only (the threat layer and the HUD are drawn after it and keep their
+colours), `look.json` `grade`:
+
+```
+Y     = luminance(rgb)
+s     = (max - min) / max                  // the colour's own saturation
+rgb   = Y + (rgb - Y) * (1.12 + 0.45 * (1 - s))   // saturation and vibrance: the paler, the more it gains
+p     = sqrt(Y'); q = p + 0.3 * p (1 - p) (2p - 1) // contrast: an S-curve, 0, a half and 1 stay put
+rgb   = rgb * q² / Y'                      // hue and saturation kept; a channel past 1 scales the colour down
+```
+
+A pure hue (a shot's core, a line's colour) keeps its place; what gains is the colour the bloom and the
+white bleed had paled (halos, pools, the lattice's tint, the background's gradient), and the darks go a
+little darker under the light. The M1 acceptance stills (`design/previews`) predate it.
 
 ---
 
@@ -377,6 +395,14 @@ hotter each time, and never near the danger colour.
   end, white only in its front 15%, drawn at 0.6 of the shot level and 1.3 of its width: the tone
   map bleaches anything brighter, which is why the first build's fan looked pale. Glow, sparks and
   mini-refractions take the lane's colour.
+
+### Splits (the owner's play, 2026-11-14)
+
+A Fork or Fractal split is drawn, not only heard: at the hit a **Y of light**, two straight arms 70 wu long
+along the halves' paths, drawn out over 60 ms in the halves' colour with white at the hit, fading by a
+quarter of a second, with six sparks. **The halves are drawn as Prism's lanes are** (their colour end to
+end, white in the front 15%): turned 60 degrees round the hue wheel while they can split again, 120 for
+the last. A teammate's split: its light colour at 0.5.
 
 ### Beams, lightning and areas (M5, 2026-11-13)
 

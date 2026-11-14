@@ -376,7 +376,7 @@ const UpPic kUpPics[] = {
     {"boost_supernova_chain", {kSplit, kSplit, N}, {kSupernova, kChainStorm}, 0, 24, kUpCrowd, 400.0f, true, kUpNone, kFxArc, 0xFF, 330, 2},
     {"boost_colossus_carousel", {N}, {kColossus, kCarousel}, 0, 12, kUpRing, 400.0f, false, kUpNone, 0xFF, 0xFF, 340, 0},
     {"boost_freeze_fever", {kRicochet, N}, {kFreezeFrame, kRicochetFever}, 0, 20, kUpCrowd, 400.0f, true, kUpNone, 0xFF, 0xFF, 345, 0},
-    {"boost_black_hole", {N}, {kBlackHole, kConfetti}, 0, 30, kUpCrowd, 400.0f, true, kUpNova, kFxHole, 0xFF, 300, 70},
+    {"boost_black_hole", {N}, {kBlackHole, kConfetti}, 0, 30, kUpCrowd, 400.0f, true, kUpNone, kFxHole, 0xFF, 300, 70},
     {"boost_chorus_beam", {kSplit, kSplit, kSplit, kSplit, N}, {kChorus, kBeam}, 0, 12, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 335, 0},
     {"boost_fractal_stretch", {kSplit, kSplit, N}, {kFractal, kTimeStretch}, 0, 16, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 335, 0},
     {"fusion_tesla", {kPulseRing, kPulseRing, kPulseRing, kPulseRing, kPulseRing, kArc, kArc, kArc, N}, {NB, NB}, 1u << kTeslaBloom, 24, kUpCrowd, 400.0f, false, kUpNone, kFxArc, 0xFF, 300, 1},
@@ -587,8 +587,12 @@ bool Play::scriptInputM5(StickInput& in) {
             for (u32 i = 0; i < e.count; ++i)
                 if (!(e.flags[i] & kFlagDead)) w.setEnemyHp(i, u.hp);
             for (u8 b : u.boosts)
-                if (b != kNoBoost) w.grantBoost(0, b);
+                if (b != kNoBoost && b != kBlackHole) w.grantBoost(0, b);
         }
+        // (The owner's play of f0624e5: Black Hole goes off as it is taken, so it is taken where the Nova used to be pressed.)
+        if (t == 300)
+            for (u8 b : u.boosts)
+                if (b == kBlackHole) w.grantBoost(0, b);
         if (u.fire && t > (u.hp < 50.0f ? 296u : 220u)) {  // (a weak crowd: the stream after the Track card has gone)
             // The stream at the nearest of them (the ring's scenes turn with the clock).
             i32 best = -1;

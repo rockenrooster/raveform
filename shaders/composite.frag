@@ -1,6 +1,6 @@
 #version 450
 // Composite (design/look.md §7, §9): distort -> scene + pools + bloom + afterglow + background ->
-// vignette -> exposure -> hue-preserving tone map with white bleed -> (threat layer and HUD are drawn
+// vignette -> exposure -> hue-preserving tone map with white bleed -> grade -> (threat layer and HUD are drawn
 // after this, in the same pass) -> sRGB encoding with +-half a code value of dither.
 // Colour maths in mediump (half precision on phones: twice the ALU rate); positions in highp.
 precision mediump int;
@@ -29,6 +29,7 @@ layout(std140, set = 0, binding = 3) uniform Composite {
     vec4 dcount;          // distortion rings, wells (shaders/distort.frag)
     highp vec4 ring[16];
     highp vec4 well[8];
+    vec4 grade;           // saturation, vibrance, contrast, on (look.md §3 Grade)
 } u;
 
 layout(push_constant) uniform Push {
@@ -94,6 +95,26 @@ void main() {
     float b = clamp((m - u.tone.w) * u.tone2.x, 0.0, 1.0);
     float white = b * b * (3.0 - 2.0 * b) * u.tone.z;
     vec3 outLin = mix(base, vec3(tm), white);
+
+    // Grade (look.md §3; the owner's play of 2026-11-14: "a little more color pop, like we did for the Prism powerup"): colour
+    // pushed away from its luminance by saturation + vibrance x (1 - its own saturation), so the paler a colour the more it gains
+    // and a pure hue keeps its place; then an S-curve on the luminance's square root (0, a half and 1 stay put), hue and
+    // saturation kept. A channel that would pass 1 scales the colour down instead (its hue kept). The threat layer and the HUD
+    // are drawn after this and keep their own colours.
+    if (u.grade.w > 0.5) {
+        const vec3 luma = vec3(0.2126, 0.7152, 0.0722);
+        float Y = dot(outLin, luma);
+        float mx = max(outLin.r, max(outLin.g, outLin.b));
+        float mn = min(outLin.r, min(outLin.g, outLin.b));
+        float sat = mx > 1e-4 ? (mx - mn) / mx : 0.0;
+        vec3 g = max(vec3(Y) + (outLin - vec3(Y)) * (u.grade.x + u.grade.y * (1.0 - sat)), vec3(0.0));
+        float Yg = dot(g, luma);
+        float p = sqrt(max(Yg, 0.0));
+        float q = clamp(p + u.grade.z * p * (1.0 - p) * (2.0 * p - 1.0), 0.0, 1.0);
+        g *= Yg > 1e-5 ? (q * q) / Yg : 1.0;
+        float gm = max(g.r, max(g.g, g.b));
+        outLin = gm > 1.0 ? g / gm : g;
+    }
 
     // +-half a code value of noise in the encoded image before the 8-bit write (look.md §7). On an sRGB
     // target the hardware encodes, so the noise moves to linear light through the curve's slope: exact

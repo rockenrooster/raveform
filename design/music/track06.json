@@ -1,7 +1,7 @@
 {
   "id": "track06",
   "name": "Zenith",
-  "bpm": 150,
+  "bpm": 135,
   "key": "C dorian",
   "scale": [0, 2, 3, 5, 7, 9, 10],
   "note": "Same format as track01.json. Character: the peak-time anthem. Cm, E flat, B flat, F: the last chord is major (the raised sixth, A), so every fourth bar lifts instead of falling. The lead is a tune on the even sixteenths with a low pedal on the odd ones, so that at this tempo a held trigger sings rather than chatters. Chords hit in 3-3-4-3-3 across the bar.",

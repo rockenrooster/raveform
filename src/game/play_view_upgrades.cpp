@@ -22,6 +22,10 @@ float clampU(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
 const Vec3 kIce{0.55f, 0.85f, 1.0f};
 const Vec3 kFire{1.0f, 0.42f, 0.08f};
 constexpr float kBoltS = 0.09f;       // look.md 5: a zap's 90 ms
+// The owner's play of f0624e5 (Fractal "isn't visually clear"): a Fork's split drawn as a Y of light (look.md 5): two straight
+// arms along the halves' paths in their colour (60 degrees round the hue wheel while they can split again, 120 for the last).
+constexpr u8 kBoltForkMore = 4, kBoltForkLast = 5;
+constexpr float kForkArmWu = 70.0f, kForkShowS = 0.25f;
 constexpr float kBeatPeakS = 2.0f / 60.0f, kBeatFallS = 0.110f;  // look.md 5 (a beam on a beat), 7
 // A held beam's core moves between 1.0 and 1.2 on the 1/32 grid (look.md v2.5 says 1.0-1.4; the lead's checkpoint after part 4:
 // the core's bloom widened the Beam Boost's haze, so 1.2).
@@ -131,10 +135,24 @@ void PlayView::eventUpgrade(const World& w, const Event& e, float t) {
         case kFxFreeze: addShockRings(at, reduceFlashing_ ? 1 : 2, 900.0f, kIce, whiteU(), t, 0.5f); break;  // (M6: reduce flashing, one ring)
         case kFxCollector: addShockRings(at, 1, 160.0f, palettes_->player[3], whiteU(), t, 0.3f); break;
         case kFxFork:
+            // The owner's play of f0624e5 (Fractal "isn't visually clear"): the split is drawn as a Y of light, its two arms along
+            // the halves' paths (straight, 70 wu, in the halves' colour, gone in a quarter of a second), with the sparks.
+            for (float side : {-1.0f, 1.0f}) {
+                const Vec2 dv = normalizeOr(Vec2{e.x2, e.y2} - at, Vec2{1.0f, 0.0f});
+                const float ang = angleOf(dv) + side * e.f * (kPi / 180.0f);
+                Bolt& b = bolts_[boltHead_];
+                boltHead_ = (boltHead_ + 1u) % kBolts;
+                b.a = at;
+                b.b = at + Vec2{std::cos(ang), std::sin(ang)} * kForkArmWu;
+                b.born = t;
+                b.owner = static_cast<u8>(q);
+                b.style = e.c > 0 ? kBoltForkMore : kBoltForkLast;
+            }
+            [[fallthrough]];
         case kFxConfetti: {
             SparkReq r{};
             r.at = at;
-            r.count = e.b == kFxFork ? 3 : 12;
+            r.count = e.b == kFxFork ? 6 : 12;
             r.kind = 0;
             r.a = e.b == kFxConfetti ? palettes_->player[3] : light;
             r.b = W1;
@@ -329,6 +347,18 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
     // ms; the middle strand white, the outer two the owner's colour (gold for Chain Storm, a Boost); a sparkle at each end.
     for (const Bolt& b : bolts_) {
         const float age = t - b.born;
+        if (b.style == kBoltForkMore || b.style == kBoltForkLast) {
+            // A Fork's split: a straight arm from the hit along a half's path, drawn out over its first 60 ms, fading by 0.25 s.
+            if (age < 0.0f || age > kForkShowS) continue;
+            const bool mine = b.owner == w.viewPlayer();
+            const Vec3 c = mine ? laneColour_[b.style == kBoltForkMore ? 3 : 4] : palettes_->playerLight[b.owner < kMaxPlayers ? b.owner : 0];
+            const float fade = 1.0f - age / kForkShowS;
+            const float lv = fade * fade * (mine ? 1.6f : 0.8f) * (reduceFlashing_ ? 0.7f : 1.0f);
+            const Vec2 tip = b.a + (b.b - b.a) * clampU(age / 0.06f);
+            d.scene.line(toScene(b.a), toScene(tip), 1.1f * refPx_, W1 * lv, c * lv, 0);
+            d.sparkles.glow(toScene(b.a), 9.0f * refPx_, c * (0.9f * lv));
+            continue;
+        }
         if (age < 0.0f || age > kBoltS) continue;
         const float lvl = (b.owner == w.viewPlayer() ? 1.0f : 0.6f) * (reduceFlashing_ ? 0.8f : 1.4f);  // (M6: reduce flashing)
         const Vec3 outer = (b.style == 2 ? palettes_->player[3] : palettes_->player[b.owner < kMaxPlayers ? b.owner : 0]) * lvl;
