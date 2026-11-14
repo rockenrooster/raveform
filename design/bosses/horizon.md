@@ -51,7 +51,13 @@ Picture: `design/previews/boss_horizon.png`. Tool: `design/tools/boss_horizon.py
    holds for the bar (damage × 0.15). Starved: it gasps, the rings thin, the rim turns gold, the
    core shows, and it takes full damage until the next bar line.
 5. **Its own bullets fall back.** Slow ones curl round and are eaten; they do not fill the meter.
-6. **Touching the horizon** costs a Shield cell and throws the ship 300 wu out.
+6. **Touching the horizon** costs a Shield cell and throws the ship 300 wu out over half a beat, eased
+   out; the pull lets go of a ship while it is thrown.
+7. **A shove is a push, never a jump** (2026-11-14, the owner: "I kept jumping around and
+   teleporting"; both shoves had moved the ship in one frame). The throw and the tidal wave give
+   the ship a velocity that dies away over their time, added to the player's own steering, so the
+   ship travels the whole way on screen and the camera follows it as it follows any flight.
+   Shards shoved by the wave travel the same way.
 7. **Everything is a function of song time**, as for every boss, except the meal: the meter and
    health are shared in co-op.
 
@@ -60,7 +66,7 @@ Picture: `design/previews/boss_horizon.png`. Tool: `design/tools/boss_horizon.py
 | Phase | Health | Lanes | Hunger | Stream per bar | Adds |
 |---|---|---|---|---|---|
 | 1 **Accretion** | 100–66% | 2, opposite | 5 | 10 bodies | — One player can hold both lanes by circling |
-| 2 **Tidal** | 66–33% | 3 | 7 | 18 | Pull × 1.25. On beat 3 of every bar a **tidal wave**: a ring leaves the Well at 600 wu/s and shoves ships and Shards 140 wu outward. It does no damage; it breaks your position |
+| 2 **Tidal** | 66–33% | 3 | 7 | 18 | Pull × 1.25. On beat 3 of every bar a **tidal wave**: a ring leaves the Well at 600 wu/s and pushes ships and Shards 140 wu outward over one beat (rule 7). It does no damage; it breaks your position |
 | 3 **Collapse** | 33–0% | 4 | 9 | 26 | Pull × 1.5. The Well drifts toward the players at 90 wu/s. A fed bar line also fires the **jets**: two opposite beams along the Well's axis for two beats, shown as danger dashes for the bar before; the axis turns 45° every bar |
 
 Bullets fly at 200 wu/s and live six seconds. The most alive at once is about 250 (three fed bars
