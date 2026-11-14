@@ -174,8 +174,11 @@ bool World::minion2Motion(u32 i, float dt) {
             // An egg rides its place round her until it hatches (then a broodling: its family's chase).
             if (!s.active || s.dying || s.kind != BossKind::BroodMother || m1_ >= e.until[i]) {
                 e.state[i] = kMoving;
-                if (s.active && !s.dying && s.kind == BossKind::BroodMother && m1_ >= e.until[i])
-                    emitCue(BossCue::BmHatch, e.until[i], static_cast<u8>(static_cast<u32>(e.a[i] * 8.0f / kTau) % 8u), 0.0f, Vec2{e.x[i], e.y[i]});
+                if (s.active && !s.dying && s.kind == BossKind::BroodMother && m1_ >= e.until[i]) {
+                    // (M7, UBSan: the place's angle can be negative; its eighth of the turn from the fraction of a turn)
+                    const float turn = e.a[i] / kTau - std::floor(e.a[i] / kTau);
+                    emitCue(BossCue::BmHatch, e.until[i], static_cast<u8>(static_cast<u32>(turn * 8.0f) % 8u), 0.0f, Vec2{e.x[i], e.y[i]});
+                }
                 if (!s.active || s.dying || s.kind != BossKind::BroodMother) e.flags[i] &= static_cast<u8>(~kFlagCalled);
                 return false;
             }
