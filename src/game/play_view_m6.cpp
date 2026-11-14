@@ -499,25 +499,40 @@ void PlayView::drawReprise(FrameDraw& d, const ViewInput& in) {
     // 0.12 s after the one before and spreads as every shock ring does, fast and then slowing (radius x 0.25 + 0.75 x the square
     // root of its age's share), to 1,100 wu for the first and 120 more for each after it, fading over 1.2 s; then a white one
     // to 3,200 wu over 1.8 s. Drawn here, past the six shock rings the view keeps at once; they raced at 2,400 wu/s until then.
+    // The owner on that: "they should all come out 'at once' like a real exp, just a thick transparent layer of each color
+    // sandwhiched together". So it is one shockwave: from the death, ten thick see-through bands side by side, one in each Track's
+    // colour (First Light's at the front, Last Light's at the back), leave the core together and spread as an explosion does, fast
+    // and then slowing (its front at 80 + 1,420 x (1 - (1 - u)^2.5) wu: 330 wu at 0.14 s, 800 at 0.45 s, 1,250 at 0.9 s, 1,500 at
+    // the end), the whole growing from 160 to 360 wu thick, fading over 1.8 s; a thin white line at its front.
     if (s.dying && s.deathTick >= 0.0) {
         const float since = static_cast<float>((t - s.deathTick) / std::fmax(w.ticksPerSecond(), 1.0f));
-        const float rf = reduceFlashing_ ? 0.6f : 1.0f;
-        const auto ring = [&](float start, float life, float toWu, Vec3 c) {
-            const float age = since - start;
-            if (age < 0.0f || age >= life) return;
-            const float u = age / life;
-            const float rad = toWu * (0.25f + 0.75f * std::sqrt(u));
-            const float lv = (1.0f - u) * rf;
-            // (lines in its colour end to end: the shock ring's glyph has a white core, which washed the Tracks' colours out)
-            const u32 n = 96;
-            for (u32 q = 0; q < n; ++q) {
-                const Vec2 p0 = pos + dirv(kTau * static_cast<float>(q) / n) * rad, p1 = pos + dirv(kTau * static_cast<float>(q + 1) / n) * rad;
-                if (!visible(p0, 40.0f) && !visible(p1, 40.0f)) continue;
-                d.scene.line(toScene(p0), toScene(p1), 1.6f * refPx_, c * lv, c * lv, 0);
+        constexpr float kWaveLife = 1.8f, kWaveWu = 1500.0f, kWaveStartWu = 80.0f, kWaveThick0 = 160.0f, kWaveThick1 = 360.0f;
+        if (since >= 0.0f && since < kWaveLife) {
+            const float rf = reduceFlashing_ ? 0.6f : 1.0f;
+            const float u = since / kWaveLife;
+            const float outer = kWaveStartWu + (kWaveWu - kWaveStartWu) * (1.0f - std::pow(1.0f - u, 2.5f));
+            const float layer = (kWaveThick0 + (kWaveThick1 - kWaveThick0) * u) / 10.0f;
+            const float fade = (1.0f - u) * rf;
+            const u32 n = 48;
+            for (u32 k = 0; k < 10; ++k) {
+                const float r1 = outer - layer * static_cast<float>(k), r0 = r1 - layer;
+                if (r0 <= 0.0f) continue;
+                const Vec3 c = accentOf(k + 1) * (0.6f * fade);
+                for (u32 q = 0; q < n; ++q) {
+                    const float a0 = kTau * static_cast<float>(q) / n, a1 = kTau * static_cast<float>(q + 1) / n;
+                    const Vec2 o0 = pos + dirv(a0) * r1, o1 = pos + dirv(a1) * r1;
+                    if (!visible((o0 + o1) * 0.5f, 0.5f * length(o1 - o0) + layer)) continue;
+                    const Vec2 i0 = pos + dirv(a0) * r0, i1 = pos + dirv(a1) * r0;
+                    d.glass.tri(toScene(i0), c, toScene(o0), c, toScene(o1), c);
+                    d.glass.tri(toScene(i0), c, toScene(o1), c, toScene(i1), c);
+                }
             }
-        };
-        for (u32 k = 0; k < 10; ++k) ring(0.12f * static_cast<float>(k), 1.2f, 1100.0f + 120.0f * static_cast<float>(k), accentOf(k + 1) * 2.2f);
-        ring(0.4f, 1.8f, 3200.0f, W1 * 1.4f);
+            for (u32 q = 0; q < 96; ++q) {
+                const Vec2 p0 = pos + dirv(kTau * static_cast<float>(q) / 96.0f) * outer, p1 = pos + dirv(kTau * static_cast<float>(q + 1) / 96.0f) * outer;
+                if (!visible(p0, 40.0f) && !visible(p1, 40.0f)) continue;
+                d.scene.line(toScene(p0), toScene(p1), 1.0f * refPx_, W1 * (1.2f * fade), W1 * (1.2f * fade), 0);
+            }
+        }
     }
 }
 

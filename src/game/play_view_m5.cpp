@@ -923,18 +923,19 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
                 // a shake of 10; then (drawReprise, from its death) the whole set list comes home: a ring in each of the ten Tracks'
                 // colours, one after another, and a white ripple across the whole lattice. The gong and the impact (play.cpp).
                 const Vec3 gold = palettes_->player[3];
-                addPool(at, 80.0f, 2000.0f, whiteV(), reduceFlashing_ ? 0.5f : 1.4f, 0.0f, 0.4f, false, 1, false, false, t);
-                addPool(at, 200.0f, 2600.0f, gold, reduceFlashing_ ? 0.25f : 0.6f, 0.0f, 0.9f, false, 1, false, false, t + 0.2f);
+                // (the flashes a little softer than at first, 1.4 and 0.6: the ten-colour wave must read through them)
+                addPool(at, 80.0f, 1400.0f, whiteV(), reduceFlashing_ ? 0.45f : 1.0f, 0.0f, 0.3f, false, 1, false, false, t);
+                addPool(at, 200.0f, 2000.0f, gold, reduceFlashing_ ? 0.2f : 0.35f, 0.0f, 0.8f, false, 1, false, false, t + 0.2f);
                 SparkReq r{};
                 r.at = at;
                 r.kind = 1;
                 r.b = whiteV();
                 r.t0 = t;
                 for (u32 k = 0; k < 6; ++k) {
+                    // (no staggered rings: the owner wants one explosion, drawn as ten bands in drawReprise)
                     Vec3 c = palette_->accent;
                     for (u32 i = 0; i < palettes_->count; ++i)
                         if (palettes_->list[i].track == k + 1) c = palettes_->list[i].accent;
-                    addShockRings(at, 1, 900.0f + 260.0f * static_cast<float>(k), c, whiteV(), t + 0.05f * static_cast<float>(k), 0.9f);
                     r.count = 100;
                     r.a = c;
                     sparkRequest(r);
