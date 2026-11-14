@@ -43,11 +43,22 @@ void UpgradeCues::reset() {
         tick[k] = -1.0;
     }
     burning = 0xFFFFFFFFu;
+    ringLit = 0;
+    ringBroken = false;
 }
 
 void UpgradeCues::add(const Event& e, float p, double songOffset) {
     if (e.type == EventType::Hit) {
         const u32 k = static_cast<u32>(Cue::PlayerHit);
+        ++count[k];
+        // Play test 3 (GAME_DESIGN 6.3 row 1): the Orbitals' guard ring broke instead of a cell: the glass crack, low.
+        if (e.c == 1) ++count[static_cast<u32>(Cue::OrbitalsBreak)];
+        return;
+    }
+    if (e.type == EventType::ExtraLife) {
+        // Play test 3 (GAME_DESIGN 5): picked up (b 0), or spent (b 1: the stab on the free Nova's blast, the event's tick).
+        const u32 k = static_cast<u32>(e.b ? Cue::ExtraLifeUse : Cue::ExtraLifePickup);
+        if (!count[k]) tick[k] = e.b && e.tick > 0.0 ? e.tick + songOffset : -1.0;
         ++count[k];
         return;
     }
@@ -125,6 +136,18 @@ void UpgradeCues::flush(Band& band, const World& w, u32 seat) {
     } else if (burning != 0xFFFFFFFFu && burning != 0) {
         band.cue(Cue::BurnCount, 1, 0.0f);
         burning = 0;
+    }
+    // Play test 3 (GAME_DESIGN 6.3 row 1): a broken ring's shards relight one by one; each is a shaker tick a scale step above
+    // the last (value: the shard's place, 0 the first).
+    const PlayerState& me = w.player(seat);
+    if (me.loadout.riffs[riffIndex(kOrbitals)]) {
+        const u32 lit = w.orbitalsLit(seat, w.music());
+        if (ringBroken && lit > ringLit) band.cue(Cue::OrbitalsRelight, 1, static_cast<float>(lit - 1));
+        ringLit = lit;
+        ringBroken = me.ringBroke >= 0.0;
+    } else {
+        ringLit = 0;
+        ringBroken = false;
     }
 }
 

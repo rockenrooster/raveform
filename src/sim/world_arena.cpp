@@ -180,13 +180,14 @@ void World::arenaBar(const Phrase& ph, u32 bar, double barTick) {
         if (ph.trackChange && ph.sectionBar == 0)
             for (ArenaBody& b : arena_)
                 if (b.alive && b.kind < kStructKinds && !b.surge) b.gone = barTick;
-        // Events: Track 1's Comet in the Groove of its third cycle; from Track 2 one in the Groove of the second cycle, from Track 4
-        // a second in the third; drawn by the seed from the Track's list, never the event of the Track before; not in a fight.
+        // Events: Track 1's Comet in the Groove of its second cycle (play test 3: Track 1 has two); from Track 2 one in the Groove
+        // of the second cycle, from Track 4 a second in the third; drawn by the seed from the Track's list, never the event of the
+        // Track before; not in a fight. An event never outlasts its Groove (arena.md, play test 3).
         if (!ph.trackChange && ph.section == Section::Groove && ph.sectionBar == 0 && !fight && arenaEvent_.stage != 1 &&
             arenaEvent_.kind == kNoEvent) {
             const ArenaData& a = species_->arena;
             const u32 t = songOfTrack(ph.track, director_.songs) + 1u;
-            const bool due = (t == 1 && ph.cycle == 3) || (ph.track >= 2 && ph.cycle == 2) || (ph.track >= 4 && ph.cycle == 3);
+            const bool due = (t == 1 && ph.cycle == 2) || (ph.track >= 2 && ph.cycle == 2) || (ph.track >= 4 && ph.cycle == 3);
             if (due && t <= ArenaData::kTracks) {
                 u8 pool[4];
                 u32 n = 0;
@@ -690,6 +691,11 @@ void World::startEvent(EventKind k, double announceTick) {
     ev.start = k == EventKind::Comet ? announceTick + kArCometWarnBeats * kTicksPerBeat : announceTick + bar;  // (the Comet: its chevron two beats ahead)
     const u32 bars = species_->arena.eventBars[static_cast<u32>(k)];
     ev.end = bars ? ev.start + static_cast<double>(bars) * bar : -1.0;
+    // Play test 3 (arena.md): an event never outlasts its Groove. It is announced on the Groove's first bar line, so one
+    // written longer ends with the Groove's last (the Elite Hunt's and the Convoy's twelve bars are the Groove's eight, the
+    // announcing bar among them). The Rift Surge keeps its own written span (a Build to the end of its Drop).
+    const double grooveEnd = announceTick + static_cast<double>(kSectionBars[0][0]) * bar;
+    if (ev.end > grooveEnd) ev.end = grooveEnd;
     const Vec2 c = playersCentre();
     const float ang = randRange(arenaRng_, 0.0f, kTau);
     ev.dir = dirOf(ang);

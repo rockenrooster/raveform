@@ -25,9 +25,13 @@ struct UpgradeCues {
     float pan[audio::kCueCount] = {};
     double tick[audio::kCueCount] = {};
     u32 burning = 0xFFFFFFFFu;  // Burn: the bodies burning last posted
+    // Play test 3: the Orbitals' guard ring, as last seen (its shards lit, whether it was broken): each shard relit is a cue.
+    u32 ringLit = 0;
+    bool ringBroken = false;
     // One of this device's player's events (`songOffset`: the band's ticks minus the run's; `pan` -1..1).
     void add(const sim::Event& e, float pan, double songOffset);
-    // Every cue counted this frame, once a kind; Burn's crackle follows the bodies this player has burning.
+    // Every cue counted this frame, once a kind; Burn's crackle follows the bodies this player has burning; play test 3: each
+    // shard of a broken Orbitals ring relit (World::orbitalsLit) is a shaker tick a scale step higher.
     void flush(Band& band, const sim::World& w, u32 seat);
     void reset();
 };

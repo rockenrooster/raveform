@@ -344,7 +344,7 @@ void testStagedBurstIndependence() {
 }
 
 // The conductor through a whole phrase cycle of every Track (M5: all ten; the Build's 85% bar in each): the form
-// (Track 1 Short 8 / 4 / 8 / 4, the others Standard 12 / 4 / 16 / 4), the tempo dip and its return, a lead note on
+// (every Track Short 8 / 4 / 8 / 4 since play test 3), the tempo dip and its return, a lead note on
 // every grid step, and every onset on the grid of the tempo map mirrored from the Tempo events, as the main thread
 // sees it. Random bursts; no allocation, no voice stolen.
 void testConductorForms() {
@@ -355,8 +355,7 @@ void testConductorForms() {
         s->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
         s->post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
         s->post(cmd(CmdType::SetFire, 0, 1));
-        const bool shortForm = t == 0;
-        const u32 want[4] = {shortForm ? 8u : 12u, 4u, shortForm ? 8u : 16u, 4u};
+        const u32 want[4] = {8u, 4u, 8u, 4u};  // play test 3: every Track Short (Standard retired)
         const u32 cycle = want[0] + want[1] + want[2] + want[3];
         const double bpm = g_music->tracks[t].bpm;
         // The cycle (the Build's last bar at 85%) and two bars of the next Groove.
@@ -1329,7 +1328,7 @@ void testModsOnLead() {
     }
     {  // Wave: the vibrato's depth (18 cents a stack) and its phase from the song's clock; Helix Array swings the harmony
        // half a cycle the other way.
-        PlayerLoadout l = withMod(Mod::Split, 3, withMod(Mod::Wave, 2));
+        PlayerLoadout l = withMod(Mod::Split, 2, withMod(Mod::Wave, 2));  // (play test 3: Split's cap is 2)
         Session* s = upgradeRun(l, 0, true, Section::Groove, 0.0f);
         Session* h = upgradeRun(withFusion(Fusion::HelixArray, l), 0, true, Section::Groove, 0.0f);
         s->run(static_cast<u64>(barFrames(0) * 2));

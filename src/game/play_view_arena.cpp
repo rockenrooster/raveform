@@ -20,6 +20,7 @@ namespace {
 Vec2 dirv(float a) { return {std::cos(a), std::sin(a)}; }
 Vec3 whiteV() { return {1.0f, 1.0f, 1.0f}; }
 float clamp01(float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
+constexpr float kVaultChevronWu = 1200.0f;  // arena.md (play test 3, quoted): a Vault's gold chevron while off screen this near
 }  // namespace
 
 void PlayView::arenaShape(FrameDraw& d, const ArenaGlyph& g, Vec2 pos, float rot, float scale, Vec3 c0, Vec3 c1, Vec3 c2, float widthRef, u8 layers) {
@@ -153,6 +154,10 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
         // (arena.md: a Rift's edge chevron is the enemy hue with a ring at its tip; structures get none)
         if (b.kind == static_cast<u8>(StructKind::Rift) && b.from > 0.0 && !visible(b.pos, 0.0f) && shown(kMutePriority))
             edgeChevron(d, b.pos, palette_->hue[0], false, 1.0f, 1);
+        // Play test 3 (arena.md, "A Vault says what it is"): a gold edge chevron while it is off screen within 1,200 wu.
+        if (b.kind == static_cast<u8>(StructKind::Vault) && b.gone < 0.0 && !visible(b.pos, 0.0f) && shown(kMutePriority) &&
+            lengthSq(b.pos - w.player(w.viewPlayer()).pos) <= kVaultChevronWu * kVaultChevronWu)
+            edgeChevron(d, b.pos, gold, false, 1.0f);
         if (!visible(b.pos, (b.kind == static_cast<u8>(StructKind::Current) ? prose::kArCurrentLength : R) + 600.0f)) continue;
         switch (b.kind) {
             case static_cast<u8>(StructKind::Vault):
@@ -165,6 +170,15 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
                 const u8 layers = static_cast<u8>(b.quarters >= 2 ? 1u : (b.quarters >= 1 ? 3u : 7u));
                 arenaShape(d, A.glyph[ArenaData::gVault], b.pos, rot, sc, (goldV ? gold : W1) * (1.6f * fade), gold * (1.4f * fade), W1 * (1.2f * fade), 1.6f, layers);
                 d.pools.glow(toScene(b.pos), 2.0f * R * pxPerWu_, gold * (0.2f * fade));
+                if (!goldV && b.hp >= b.hpMax && b.gone < 0.0) {
+                    // Play test 3 (arena.md): its name, VAULT, as world text above it (cap 22, gold) until its first hit.
+                    const char* name = "VAULT";
+                    const float cap = 22.0f * pxPerWu_;
+                    const float wText = font_->measure(TextStyle{cap}, name);
+                    const Vec2 sc2 = toScene(b.pos);
+                    const Vec3 g = gold * 1.8f;
+                    font_->drawField(d.scene, Vec2{sc2.x - 0.5f * wText, sc2.y - (R + 24.0f) * pxPerWu_ - cap}, cap, 0.9f * refPx_, g, g, g, name);
+                }
                 if (goldV) {
                     const float since = static_cast<float>((t - b.placed) / bar);
                     if (since < 1.0f) d.scene.line(toScene(b.pos), toScene(b.pos) + Vec2{0.0f, -400.0f * refPx_}, 3.0f * refPx_, gold * (2.0f * (1.0f - since)), Vec3{}, 0);

@@ -325,9 +325,28 @@ void World::applyPlayerOp(const NetOp& op) {
             break;
         }
         case kPeHit: {
-            // Its panic pulse happens here too (bullets and shoves near it), so the worlds stay alike.
+            // Its panic pulse happens here too (bullets and shoves near it), so the worlds stay alike. Play test 3: opts[0] 1,
+            // the Orbitals' guard ring broke instead of a cell (its shards relight from the owner's tick); 2, an Extra Life
+            // was spent (the ship back with its cells, a bar of invulnerability; its free Nova comes as its own event).
+            const u8 how = op.opts[0];
             pl.cells = op.b;
-            pl.invulS = kInvulnerableS;
+            pl.invulS = how == 1 ? kRingInvulS : kInvulnerableS;
+            if (how == 1) {
+                pl.ringBroke = std::isfinite(op.tick) && op.tick > 0.0 ? op.tick : m1_;
+                ++pl.ringBreaks;
+            } else if (how == 2) {
+                pl.extraLives = 0;
+                ++pl.extraLivesSpent;
+                const float tps = ticksPerSecond();
+                pl.invulS = tps > 0.0f ? static_cast<float>(kTicksPerBar) / tps : 2.0f;
+                Event el;
+                el.type = EventType::ExtraLife;
+                el.a = static_cast<u8>(p);
+                el.b = 1;
+                el.x = op.x;
+                el.y = op.y;
+                emit(el);
+            }
             ++pl.hitsTaken;
             const Vec2 c{op.x, op.y};
             const float r2 = kPanicRadiusWu * kPanicRadiusWu;
@@ -344,8 +363,8 @@ void World::applyPlayerOp(const NetOp& op) {
                 e.kx[i] += dx / d * kPanicShoveWu;
                 e.ky[i] += dy / d * kPanicShoveWu;
             }
-            // GAME_DESIGN 8, assist: any player's lost cell eases the budget (the host's director).
-            if (role_ == NetRole::Host && !director_.hitThisCycle) {
+            // GAME_DESIGN 8, assist: any player's lost cell eases the budget (the host's director; a broken ring takes no cell).
+            if (role_ == NetRole::Host && !director_.hitThisCycle && how != 1) {
                 director_.hitThisCycle = true;
                 director_.assist = std::fmax(director_.assist - kAssistStep, kAssistMin);
             }
@@ -353,6 +372,7 @@ void World::applyPlayerOp(const NetOp& op) {
             ev.type = EventType::Hit;
             ev.a = static_cast<u8>(p);
             ev.b = op.b;
+            ev.c = how;
             ev.x = c.x;
             ev.y = c.y;
             ev.x2 = op.x2;
@@ -427,7 +447,7 @@ void World::applyPlayerOp(const NetOp& op) {
             i32 best = -1;
             float bestD = 0.0f;
             for (u32 i = 0; i < b.count; ++i) {
-                if (b.dead[i] || b.owner[i] != p) continue;
+                if (b.dead[i] || b.owner[i] != p || (b.type[i] == kPickupExtraLife) != (op.b == kPickupExtraLife)) continue;
                 const float d = lengthSq(Vec2{b.x[i] - op.x, b.y[i] - op.y});
                 if (best < 0 || d < bestD) {
                     best = static_cast<i32>(i);
@@ -435,7 +455,8 @@ void World::applyPlayerOp(const NetOp& op) {
                 }
             }
             if (best >= 0) b.dead[best] = 1;
-            if (op.b < kBoostCount) activateBoost(p, op.b);
+            if (op.b == kPickupExtraLife) takeExtraLife(p);  // play test 3
+            else if (op.b < kBoostCount) activateBoost(p, op.b);
             break;
         }
         case kPeHalo:

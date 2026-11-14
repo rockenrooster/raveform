@@ -93,9 +93,25 @@ bool Play::scriptSetupB() {
         }
         return true;
     }
-    if (is(p, "boost_prism") || is(p, "split7")) {
-        // M3 stage C: the fan in open air, toward a few targets far to the right (play test 1: Split's seven lanes too).
-        if (is(p, "split7")) for (u32 k = 0; k < 3; ++k) w.grantUpgrade(0, kSplit);
+    if (starts(p, "pt3_")) {
+        // Play test 3's pictures (captures\playtest3): the Orbitals' guard ring broken and relighting (level 3: seven shards, six
+        // bars), the Extra Life's orb and its use, a Vault with its name (Track 2's first downbeat places it).
+        w.rules().godMode = true;
+        w.playerMut(0).novas = 0;  // (no Auto Nova; no Nova's inhale across the picture but the Extra Life's own)
+        if (starts(p, "pt3_ring")) {
+            for (u32 k = 0; k < 3; ++k) w.grantUpgrade(0, kOrbitals);
+            ring(10, 330.0f, Family::Drifter, 2, 400.0f);
+        }
+        if (is(p, "pt3_life_orb") || is(p, "pt3_life_use")) ring(10, 360.0f, Family::Drifter, 2, 400.0f);
+        if (is(p, "pt3_vault")) {
+            w.spawner().mode = Spawner::Mode::Slice;
+            w.directorMut().track = 2;
+        }
+        return true;
+    }
+    if (is(p, "boost_prism") || is(p, "split5")) {
+        // M3 stage C: the fan in open air, toward a few targets far to the right (play test 1: Split's lanes too; five since play test 3).
+        if (is(p, "split5")) for (u32 k = 0; k < 2; ++k) w.grantUpgrade(0, kSplit);  // (play test 3: Split's cap is 2)
         for (u32 k = 0; k < 5; ++k) {
             const Vec2 at{900.0f + 60.0f * static_cast<float>(k), -240.0f + 120.0f * static_cast<float>(k)};
             const i32 i = w.spawnEnemy(SpeciesTable::index(Family::Drifter, 2, kVariantA), at, kPi, 0.0);
@@ -270,21 +286,65 @@ bool Play::scriptInputB(StickInput& in) {
         if (is(p, "pt2_halo8") && captureFrom_ < 0 && t == 300) captureFrom_ = now;  // after the run's Track card
         return true;
     }
-    if (starts(p, "riff_") || starts(p, "boost_") || is(p, "split7")) {
+    if (starts(p, "pt3_")) {
+        // Play test 3 (after the run's Track card has gone, 2.25 bars).
+        constexpr u32 kAt = 300;
+        if (starts(p, "pt3_ring")) {
+            // (a real hit, inside the tick, so the view sees it)
+            if (t == kAt) {
+                PlayerState& pl = w.playerMut(0);
+                pl.invulS = pl.novaInvulS = 0.0f;
+                w.rules().godMode = false;
+                w.spawnBullet(pl.pos, Vec2{}, 0.0f);
+            }
+            if (t == kAt + 2) w.rules().godMode = true;
+            // broken: a few frames after (the shards flying, dark); relighting: half its six bars later (three of seven lit)
+            const u32 when = is(p, "pt3_ring_broken") ? kAt + 6 : kAt + static_cast<u32>(3.0 * 4.0 * 60.0 / 120.0 * 60.0);
+            if (captureFrom_ < 0 && t == when) captureFrom_ = now;
+        } else if (is(p, "pt3_life_orb")) {
+            // One taken (the HUD's gold ship right of the Novas), a second lying ahead (one is held at most).
+            if (t == 2) w.dropExtraLifeNow(ship, 0);
+            if (t == 6) w.dropExtraLifeNow(ship + Vec2{230.0f, -90.0f}, 0);
+            if (captureFrom_ < 0 && t == kAt) captureFrom_ = now;
+        } else if (is(p, "pt3_life_use")) {
+            if (t == 2) w.dropExtraLifeNow(ship, 0);
+            if (t == kAt) {
+                PlayerState& pl = w.playerMut(0);
+                pl.cells = 0;
+                pl.novas = 0;
+                pl.invulS = pl.novaInvulS = 0.0f;
+                w.rules().godMode = false;
+                w.spawnBullet(pl.pos, Vec2{}, 0.0f);
+            }
+            if (t == kAt + 2) w.rules().godMode = true;
+            if (captureFrom_ < 0 && t == kAt + 10) captureFrom_ = now;  // EXTRA LIFE over the ship, the Nova inhaling
+        } else if (is(p, "pt3_vault")) {
+            // Toward Track 2's Vault (placed on the first downbeat) until it is well in view, its name over it.
+            const ArenaBody* bodies = w.arenaBodies();
+            for (u32 k = 0; k < World::kArenaBodies; ++k) {
+                if (!bodies[k].alive || bodies[k].kind != static_cast<u8>(StructKind::Vault)) continue;
+                const Vec2 d = bodies[k].pos + Vec2{-260.0f, 120.0f} - ship;
+                if (length(d) > 40.0f) in.move = d * (std::fmin(length(d) / 200.0f, 1.0f) / length(d));
+                if (captureFrom_ < 0 && t >= kAt && length(d) < 60.0f) captureFrom_ = now;
+            }
+        }
+        return true;
+    }
+    if (starts(p, "riff_") || starts(p, "boost_") || is(p, "split5")) {
         const Enemies& e = w.enemies();
         if (t == 30 && is(p, "boost_prism")) w.grantBoost(0, kPrism);
         if (t == 30 && is(p, "boost_hyper")) w.grantBoost(0, kHyper);
         if (t == 30 && is(p, "boost_halo")) w.grantBoost(0, kHalo);
         if (t == 60 && is(p, "boost_magnet_storm")) w.grantBoost(0, kMagnetStorm);
-        const bool fires = is(p, "boost_prism") || is(p, "boost_hyper") || is(p, "split7");
+        const bool fires = is(p, "boost_prism") || is(p, "boost_hyper") || is(p, "split5");
         if (fires && t >= 40 && e.count) {
             in.aim = Vec2{e.x[0], e.y[0]} - ship;
             in.aimActive = true;
         }
-        if (is(p, "boost_prism") || is(p, "split7")) {
+        if (is(p, "boost_prism") || is(p, "split5")) {
             // M3 stage C: while the fan fires, after the run's Track card has gone (2.25 bars): once the shots in
-            // the air make a fan, or at the latest at 6 s (play test 1, Split: seven lanes in the air).
-            const u32 enough = is(p, "split7") ? 30u : 14u;
+            // the air make a fan, or at the latest at 6 s (play test 1, Split: its lanes in the air).
+            const u32 enough = is(p, "split5") ? 30u : 14u;
             if (captureFrom_ < 0 && t >= 290 && (w.shots().count >= enough || t >= 360)) captureFrom_ = now;
             return true;
         }
@@ -319,6 +379,7 @@ bool Play::scriptInputB(StickInput& in) {
         }
         const BossState& b = w.boss();
         in.move = (Vec2{-250.0f, 40.0f} - ship) * 0.004f;
+        if (is(p, "boss_hit")) in.assist = true;  // play test 3: the assist's fire on the weak point (GAME_DESIGN 2, 7.6)
         if (!b.active) return true;
         const double fight = b.fightTick;
         const auto killPair = [&](u32 pair) {
@@ -379,21 +440,24 @@ bool Play::scriptEventsB() {
     const i64 now = static_cast<i64>(frameNo_);
     if (captureFrom_ >= 0) return starts(p, "screen_") || starts(p, "hud_") || starts(p, "bot_") || starts(p, "trio") ||
                                    starts(p, "riff_") || starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") ||
-                                   is(p, "split7") || starts(p, "pt2_") || is(p, "loop_encore") || is(p, "loop_burn");
+                                   is(p, "split5") || starts(p, "pt2_") || starts(p, "pt3_") || is(p, "loop_encore") || is(p, "loop_burn");
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         if (is(p, "trio_take") && e.type == EventType::TrioTake) captureFrom_ = now;
         if (is(p, "boss_pair_death") && e.type == EventType::BossPair && e.a == 1) captureFrom_ = now;
         if (is(p, "boss_death") && e.type == EventType::BossDeath) captureFrom_ = now;
         if (is(p, "loop_burn") && e.type == EventType::HaloBurn) captureFrom_ = now + 3;  // the arcs a few frames into their flight
+        // Play test 3 (GAME_DESIGN 7.6): a hit on Kaleidos's weak point (a resting arm) by the assist's fire, the flash in the strip.
+        if (is(p, "boss_hit") && e.type == EventType::Impact && e.species == kBossSpecies && e.c == 2 && e.f >= 1.0f && w.music() > w.boss().fightTick + kTicksPerBar)
+            captureFrom_ = now + 2;
         if (captureFrom_ >= 0) {
             RF_LOG("play: picture '%s' captures from frame %lld", p, static_cast<long long>(captureFrom_));
             break;
         }
     }
     return starts(p, "screen_") || starts(p, "hud_") || starts(p, "bot_") || starts(p, "trio") || starts(p, "riff_") ||
-           starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") || is(p, "split7") || starts(p, "pt2_") ||
-           is(p, "loop_encore") || is(p, "loop_burn");
+           starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") || is(p, "split5") || starts(p, "pt2_") ||
+           starts(p, "pt3_") || is(p, "loop_encore") || is(p, "loop_burn");
 }
 
 }  // namespace rf

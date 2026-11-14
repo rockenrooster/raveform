@@ -1341,7 +1341,7 @@ void Engine::planStagedBar(i64 barTick) {
 double Engine::trackBpm() const { return bpmOverride_ > 0.0 ? bpmOverride_ : (tr_ ? tr_->bpm : 120.0); }
 
 bool Engine::advanceCycle() {
-    const u32 len[2][4] = {{8, 4, 8, 4}, {12, 4, 16, 4}};  // Short, Standard (play test 2: it was 16 / 8 / 16 / 8)
+    const u32 len[2][4] = {{8, 4, 8, 4}, {8, 4, 8, 4}};  // Short; Standard retired (play test 3: every Track Short)
     const auto lengthOf = [&](Section s) { return len[form_ == Form::Short ? 0 : 1][static_cast<u32>(s)]; };
     Section next = section_;
     bool change = false;
@@ -1374,7 +1374,7 @@ void Engine::planConductorBar(i64 barTick) {
     if (first) {
         section_ = Section::Groove;
         sectionBar_ = 0;
-        sectionBars_ = form_ == Form::Short ? 8 : 12;  // the Groove (play test 2: Standard is 12 / 4 / 16 / 4)
+        sectionBars_ = 8;  // the Groove (play test 3: every Track Short, 8 / 4 / 8 / 4)
     } else {
         if (trackNow_ && pendingTrack_ >= 0) {
             // M3: a new run starts on this bar line in the Track (and tempo) the game asks for, no Break.

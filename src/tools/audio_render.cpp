@@ -546,8 +546,8 @@ u32 upgradeSheetPlan(const char* kind, UpEntry* e, u32 cap) {
         add("Magnet Storm (first slice): the Shard runs climb twice as fast (Track 1)", 0, 0.35f, false, 2, 4, L(), L().boost(Boost::MagnetStorm), Feed::Shards,
             true);
     } else if (eq(kind, "fusions")) {
-        add("Helix Array (Split 3 + Wave 2, then fused): the harmony sways against the lead (Track 3, firing)", 2, 0.35f, true, 3, 4,
-            L().mod(Mod::Split, 3).mod(Mod::Wave, 2), L().mod(Mod::Split, 3).mod(Mod::Wave, 2).fusion(Fusion::HelixArray));
+        add("Helix Array (Split 2 + Wave 2, then fused): the harmony sways against the lead (Track 3, firing)", 2, 0.35f, true, 3, 4,
+            L().mod(Mod::Split, 2).mod(Mod::Wave, 2), L().mod(Mod::Split, 2).mod(Mod::Wave, 2).fusion(Fusion::HelixArray));
         add("Standing Wave (Echo 2 + Accent 3, then fused): each accented note held a bar as a pad voice (Track 1, firing)", 0, 0.35f, true, 3, 4,
             L().mod(Mod::Echo, 2).mod(Mod::Accent, 3), L().mod(Mod::Echo, 2).mod(Mod::Accent, 3).fusion(Fusion::StandingWave));
         add("Tesla Bloom (Pulse Ring 5 + Arc 3, then fused): each ring's tom carries zaps; Arc's chains are quiet (Track 4)", 3, 0.6f, false, 3, 4,
@@ -1323,7 +1323,8 @@ struct EngineSink final : CommandSink {
 enum class FS : u8 {
     HzEat, HzStarved, FbEcho, FbHead, MqStep, MqBurst, MqOpen, Brood, BsFire, CdChord, CdFan, CdInversion, CdBurst, ApBlock, ApSecond,
     MgStorm, MgBlinkLeap, RpEcho, RpArp, RpDeath, MmFire, MmDash, Tether, WvBurst, Well, ElArmored, ElSplitting, ElVolatile,
-    ElRegenerating, ElMagnetic, ElPhasing, VaBreak, PyTuned, Rift, LeSplit, Comet, Eclipse, Convoy, Storm, ChoirSend, Colossus
+    ElRegenerating, ElMagnetic, ElPhasing, VaBreak, PyTuned, Rift, LeSplit, Comet, Eclipse, Convoy, Storm, ChoirSend, Colossus,
+    HitWeak, HitArmour, ExtraLife, Orbitals
 };
 struct FightEntry {
     FS id;
@@ -1376,6 +1377,10 @@ constexpr FightEntry kFightSheet[] = {
     {FS::Storm, 5, false, 0.6f, 0, 3, "Storm Cell (Furnace): its crackle rising as it nears; each beat's strikes a zap on the chord's three notes"},
     {FS::ChoirSend, 3, false, 0.4f, 0, 2, "Follow-up: the Choir's Voices (Reef) with their reverb send of 0.5"},
     {FS::Colossus, 1, true, 0.8f, 0, 2, "Follow-up: Colossus's ram toms (a ram every 0.3 s), brought level with the music"},
+    {FS::HitWeak, 2, true, 0.8f, 7, 3, "Play test 3: a boss's weak point hit (Solar Wind, Drop, firing): a bar of music, a bar of hits on the sixteenths (the tick up the chord, 0.7 a step), a bar on the thirty-seconds (down to 0.3)"},
+    {FS::HitArmour, 2, true, 0.8f, 7, 3, "Play test 3: armour hit: a bar of music, a bar of knocks on the sixteenths, a bar of weak point and armour in turn"},
+    {FS::ExtraLife, 4, false, 0.6f, 0, 3, "Play test 3: an Extra Life (Aurora): picked up (the Cell's note and its fifth), then spent on a hit (the hit, the free Nova, the tonic chord's stab on its blast)"},
+    {FS::Orbitals, 3, false, 0.6f, 0, 3, "Play test 3: the Orbitals' guard ring (Reef): broken by a hit (the glass crack, low), its five shards relighting over two bars (shaker ticks up the scale)"},
 };
 
 int fightSheet(const Options& opt, const MusicData& music, const SampleBank& bank) {
@@ -1391,6 +1396,15 @@ int fightSheet(const Options& opt, const MusicData& music, const SampleBank& ban
     }
     Engine* engine = new Engine;
     if (!engine->init(music, bank, kRate, opt.seed)) return 1;
+    Stems stems;  // (--stems: each bus before the master, as the other renders write them)
+    if (opt.stems) {
+        for (u32 b = 0; b <= kBusCount; ++b) {
+            char path[512];
+            std::snprintf(path, sizeof path, "%s/%s.f32", opt.stems, b < kBusCount ? busName(static_cast<Bus>(b)) : "reverb");
+            stems.f[b] = std::fopen(path, "wb");
+        }
+        engine->setStemTap(stemTap, &stems);
+    }
     // Lengths first: each entry its bars at its Track's tempo, a tail of 1.6 s.
     constexpr double kLeadS = 0.3, kTailS = 1.6;
     double total = kLeadS;
@@ -1703,6 +1717,52 @@ int fightSheet(const Options& opt, const MusicData& music, const SampleBank& ban
                     sc.fight = false;
                     if (frame % 18 == 0) engine->post(cmd(CmdType::Cue, static_cast<u8>(Cue::ColossusRam), 0, 1, 0.0f));
                     break;
+                case FS::HitWeak:
+                case FS::HitArmour: {
+                    // As World::bossHitCue sends them: one a step at most, each further step of a beat at 0.7 of the last, down
+                    // to 0.3.
+                    const auto chain = [](u32 k) { return static_cast<float>(std::fmax(std::pow(0.7, static_cast<double>(k)), 0.3)); };
+                    const bool armour = f.id == FS::HitArmour;
+                    each(384.0, 24.0, 16, [&](double T, u32 k) { cue(T, armour ? BossCue::HitArmour : BossCue::HitWeak, 0, chain(k % 4), 0.2f); });
+                    if (!armour) {
+                        each(768.0, 12.0, 32, [&](double T, u32 k) { cue(T, BossCue::HitWeak, 0, chain(k % 8), 0.2f); });
+                    } else {
+                        each(768.0, 24.0, 16, [&](double T, u32 k) {
+                            cue(T, (k / 4) % 2 ? BossCue::HitArmour : BossCue::HitWeak, 0, chain(k % 4), 0.2f);
+                        });
+                    }
+                    break;
+                }
+                case FS::ExtraLife: {
+                    sc.fight = false;
+                    const auto at = [&](double T) { return T > prev && T <= ahead; };
+                    if (at(192.0)) engine->post(cmd(CmdType::Cue, static_cast<u8>(Cue::ExtraLifePickup), 0, 1, 0.0f));
+                    if (at(384.0 + 60.0)) {
+                        // The hit that would end the run: the hit, the free Nova (its blast on the next beat), the stab with it.
+                        engine->post(cmd(CmdType::Sfx, static_cast<u8>(Sfx::Hit), 0, 0, 1.0f));
+                        Command nova = cmd(CmdType::Nova, 0, 0, 0, 1.0f);
+                        nova.when = Timing::AtTick;
+                        nova.tick = 480.0;
+                        engine->post(nova);
+                        Command use = cmd(CmdType::Cue, static_cast<u8>(Cue::ExtraLifeUse), 0, 1, 0.0f);
+                        use.when = Timing::AtTick;
+                        use.tick = 480.0;
+                        engine->post(use);
+                    }
+                    break;
+                }
+                case FS::Orbitals: {
+                    sc.fight = false;
+                    const auto at = [&](double T) { return T > prev && T <= ahead; };
+                    if (at(96.0)) {
+                        engine->post(cmd(CmdType::Sfx, static_cast<u8>(Sfx::Hit), 0, 0, 1.0f));
+                        engine->post(cmd(CmdType::Cue, static_cast<u8>(Cue::OrbitalsBreak), 0, 1, 0.0f));
+                    }
+                    // Level 2: five shards over six bars (here two): one each 2/5 of a bar after the first.
+                    for (u32 k = 0; k < 5; ++k)
+                        if (at(96.0 + 768.0 * (k + 1) / 5.0)) engine->post(cmd(CmdType::Cue, static_cast<u8>(Cue::OrbitalsRelight), 0, 1, static_cast<float>(k)));
+                    break;
+                }
             }
             updateFightVoices(sink, *voices, now, false, nullptr);
             prev = ahead;
@@ -1717,6 +1777,9 @@ int fightSheet(const Options& opt, const MusicData& music, const SampleBank& ban
     }
     renderUntil(frames);
     if (list) std::fclose(list);
+    engine->setStemTap(nullptr, nullptr);
+    for (FILE* f : stems.f)
+        if (f) std::fclose(f);
     float peak = 0.0f;
     for (u64 i = 0; i < frames * 2; ++i) peak = std::fmax(peak, std::fabs(out[i]));
     const double lufs = integratedLoudness(out, frames, 2, kRate);

@@ -40,10 +40,6 @@ constexpr i32 kBotUpgradeScore[kUpgradeCount] = {
     4, 2, 6, 2, 3, 3, 9, 7, 4, 7, 4, 3,
     // Orbitals, Pulse Ring, Sentinel, Lancer, Minelayer, Storm Coil, Swarm, Singularity, Mirror, Comet, Sweeper, Flak
     9, 9, 9, 7, 3, 7, 7, 4, 7, 5, 6, 6};
-Vec2 rotate(Vec2 v, float a) {
-    const float c = std::cos(a), s = std::sin(a);
-    return Vec2{v.x * c - v.y * s, v.x * s + v.y * c};
-}
 constexpr i32 kBotBoostScore[kBoostCount] = {
     // Prism, Hyper, Supernova, Colossus, Time Stretch, Freeze Frame, Halo, Magnet Storm, Black Hole, Chain Storm, Chorus,
     // Beam, Ricochet Fever, Confetti, Fractal, Carousel
@@ -168,54 +164,15 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
         in.aimActive = lengthSq(in.aim) > 1e-6f;
     }
 
-    // The novice (GAME_DESIGN 7.6): it aims at the nearest body (a boss's nearest part), 200 ms behind where it is, wandering
-    // 6 degrees to either side; after 16 bars of a fight it aims at the weak point (as above) in half the bars.
+    // The novice and the assist bot (GAME_DESIGN 7.6, play test 3: "beatable with the assist alone"): they never aim; they
+    // fire only through the auto-aim assist (GAME_DESIGN 2), which aims at a boss's weak point by itself. The novice moves as
+    // before; the assist bot is the careful bot's movement.
     const bool novice = policy_ == Policy::Novice;
+    const bool assistOnly = novice || policy_ == Policy::Assist;
     const double fightBars = bossFight ? (musicTick - boss.fightTick) / kTicksPerBar : 0.0;
-    const bool novRule = novice && bossFight && fightBars >= tuning::kNoviceLearnBars &&
-                         (hash32(static_cast<u32>(std::floor(musicTick / kTicksPerBar)), 0x40E1CEu) & 1u);
-    if (novice && !novRule) {
-        Vec2 at{};
-        float best = kAimRangeWu * kAimRangeWu;
-        bool any = false;
-        for (u32 i = 0; i < e.count; ++i) {
-            if ((e.flags[i] & kFlagDead) || e.state[i] == kWarping) continue;
-            const Vec2 p{e.x[i], e.y[i]};
-            const float d = lengthSq(p - pos);
-            if (d < best) {
-                best = d;
-                at = p - Vec2{e.vx[i], e.vy[i]} * tuning::kNoviceAimLagS;
-                any = true;
-            }
-        }
-        for (u32 k = 0; k < partCount; ++k) {
-            const float d = lengthSq(parts[k].pos - pos);
-            if (d >= best) continue;
-            // (its body's motion: the nearest of the fight's bodies)
-            u32 bi = 0;
-            float bd = 1e30f;
-            for (u32 j = 0; j < kBossBodies; ++j) {
-                const float dj = lengthSq(boss.body[j] - parts[k].pos);
-                if (dj < bd) {
-                    bd = dj;
-                    bi = j;
-                }
-            }
-            best = d;
-            at = parts[k].pos - (boss.body[bi] - boss.bodyPrev[bi]) * (tuning::kNoviceAimLagS / kDt);
-            any = true;
-        }
-        if (bossFight && kaleidos && lengthSq(boss.pos - pos) < best) {
-            at = boss.pos;
-            any = true;
-        }
-        if (any) {
-            const float wob = tuning::kNoviceWanderDeg * (kTau / 360.0f) * std::sin(static_cast<float>(ticks_) * 0.07f + wander_);
-            in.aim = rotate(at - pos, wob);
-            in.aimActive = lengthSq(in.aim) > 1e-6f;
-        } else {
-            in.aimActive = false;
-        }
+    if (assistOnly) {
+        in.aimActive = false;
+        in.assist = true;
     }
 
     if (policy_ == Policy::Stress) {
@@ -915,19 +872,19 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                               : ((close >= 7 && me.novas >= 2) || bulletsNear >= 10 || (me.cells == 0 && contactSoon && !dash)));
     in.nova = nova && !novaLast_;
     novaLast_ = nova;
-    if (boss.active && !boss.dying && boss.kind == BossKind::MirrorMimic && musicTick >= boss.fightTick && careful && (!novice || novRule)) {
-        // M5 part 6, Mirror Mimic (minibosses.md: fire in phrases): two beats on, two off (the novice only in the bars it uses the
-        // rule).
+    if (boss.active && !boss.dying && boss.kind == BossKind::MirrorMimic && musicTick >= boss.fightTick && careful && !assistOnly) {
+        // M5 part 6, Mirror Mimic (minibosses.md: fire in phrases): two beats on, two off (the careful bot; the novice and the
+        // assist bot never lift a thumb).
         const i64 beat = static_cast<i64>(std::floor(musicTick / kTicksPerBeat));
         if ((beat % 4) >= 2) {
             in.aimActive = false;
             in.assist = false;
         }
     }
-    if (boss.active && !boss.dying && boss.kind == BossKind::Feedback && musicTick >= boss.fightTick && (!novice || novRule)) {
+    if (boss.active && !boss.dying && boss.kind == BossKind::Feedback && musicTick >= boss.fightTick && !assistOnly) {
         // Feedback (feedback.md: play, then listen): fire in phrases the Echoes leave silent a bar later. Slapback: two beats
         // on, two off, swapped the next bar; Regeneration: a bar on, two off; Howl: two beats on, four off. A Nova would come
-        // back as a Null: none in the fight. The novice phrases only in the bars it uses the rule (GAME_DESIGN 7.6).
+        // back as a Null: none in the fight. (The novice and the assist bot: the assist's own rest, PlayerController.)
         const double bar = kTicksPerBar;
         const i64 b = static_cast<i64>(std::floor(musicTick / bar));
         const i64 beat = static_cast<i64>(std::floor(musicTick / kTicksPerBeat));

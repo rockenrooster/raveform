@@ -1467,6 +1467,14 @@ void Session::collectLocalEvents() {
             case EventType::Hit:
                 m.kind = kPeHit;
                 m.b = e.b;
+                m.opts[0] = e.c;  // play test 3: 1 the guard ring broke (no cell), 2 an Extra Life spent
+                m.tick = e.tick;
+                break;
+            case EventType::ExtraLife:
+                // Play test 3: an Extra Life taken (its spending comes with the Hit).
+                if (e.b != 0) continue;
+                m.kind = kPeBoostTake;
+                m.b = kPickupExtraLife;
                 break;
             case EventType::Down: m.kind = kPeDown; break;
             case EventType::Revive:

@@ -20,7 +20,6 @@ namespace {
 constexpr float kDeg = kTau / 360.0f;
 constexpr float kQuerySlackWu = 72.0f;  // the largest enemy (40 wu) and a tick's movement since the grid was built
 constexpr u32 kFxPerTick = 384;         // upgrade events a tick at most (the view and the band aggregate them anyway)
-constexpr u32 kFreezeChainMax = 256;    // Freeze Frame: shatters one hit can chain to
 
 inline i32 beatInBar(double tick) {
     const i64 b = static_cast<i64>(std::floor(tick / kTicksPerBeat + 0.5));
@@ -305,7 +304,13 @@ void World::arcFrom(u32 i, u8 owner, u32 jumps, float dmg, u8 style) {
         const Vec2 next{e.x[best], e.y[best]};
         struck[ns++] = static_cast<u32>(best);
         emitFx(owner, kFxArc, at, next, static_cast<u8>(j), static_cast<float>(style), m1_);
+        // (play test 3: an arc's own kill arcs no further; nor does it show a shot's lane)
+        const u8 wasArcing = arcing_, wasFlags = hitShotFlags_;
+        arcing_ = 1;
+        hitShotFlags_ = 0;
         hitEnemy(static_cast<u32>(best), dmg, owner, next, normalizeOr(next - at, Vec2{1.0f, 0.0f}));
+        arcing_ = wasArcing;
+        hitShotFlags_ = wasFlags;
         at = next;
     }
 }
@@ -361,7 +366,8 @@ void World::updateThinning() {
 void World::tagShot(u32 p, u8 extraMods, i32 laneOff, u32 lanes) {
     // What the owner's Mods and Boosts give a primary shot in flight (lastShot_: the one just spawned). Wave: every lane on
     // the same curve about its own direction; Helix Array: the lanes ride strands in mirrored pairs, the outer pair at the
-    // full amplitude and the pairs inside it at 2/3 and 1/3, the middle lane straight (GAME_DESIGN 6.2, 6.5).
+    // full amplitude and the pair inside it at 2/3 (80 and 53 wu with Split's five lanes since play test 3; a third pair would ride
+    // at 1/3), the middle lane straight (GAME_DESIGN 6.2, 6.5).
     if (lastShot_ < 0) return;
     const u32 i = static_cast<u32>(lastShot_);
     Shots& s = shots_;
@@ -404,7 +410,7 @@ void World::tagShot(u32 p, u8 extraMods, i32 laneOff, u32 lanes) {
 
 u32 World::volley(u32 p, Vec2 origin, float base, float advanceS, float damage, u8 flags, u8 pierce, u8 bounces, u32 lanes,
                   bool prism, u32 thin, i64 /*step*/, u8 middle, u8 extraMods) {
-    // Split: +2 lanes a stack in a tight fan (3, 5, 7); Prism: every lane refracts into five. Thinned (GAME_DESIGN 6.6),
+    // Split: +2 lanes a stack in a tight fan (3, 5; play test 3); Prism: every lane refracts into five. Thinned (GAME_DESIGN 6.6),
     // the lanes beyond the middle three fly half as far; above kShotsMiddleOnly the middle lane alone fires (play test 1). M5: `middle` 1 leaves the middle lane out (Accent's
     // lance took its place), 2 makes it Heavy Step's orb.
     const u32 fan = prism ? 5u : 1u;
@@ -412,7 +418,7 @@ u32 World::volley(u32 p, Vec2 origin, float base, float advanceS, float damage, 
     u32 made = 0;
     for (u32 lane = 0; lane < lanes; ++lane) {
         const i32 off = static_cast<i32>(lane) - mid;
-        const i32 ring = off < 0 ? -off : off;  // 0 the middle, 1 its neighbours, 2 and 3 the outer pairs
+        const i32 ring = off < 0 ? -off : off;  // 0 the middle, 1 its neighbours, 2 the outer pair
         if (thin == 2 && ring >= 1) continue;
         if (ring == 0 && middle == 1) continue;
         // GAME_DESIGN 6.6: thinned, the lanes beyond the middle three fly half as far (every lane still fires). Helix Array
@@ -617,7 +623,7 @@ float World::blastRadius(u32 k, float& dmg) const {
         }
         case kShotBomb: dmg = kBombDamage; return kBombBlastWu;
         case kShotPellet: dmg = s.damage[k]; return kFlakBlastWu;
-        default: dmg = s.damage[k]; return kSupernovaWu;
+        default: dmg = s.damage[k] * kSupernovaShare; return kSupernovaWu;  // Supernova Rounds (play test 3: half the shot's damage)
     }
 }
 
@@ -666,7 +672,9 @@ void World::shotHitExtras(u32 k, u32 i, Vec2 at, Vec2 dir) {
         // Burn: the hit sets it alight for two beats (its fire hurts on every beat, by the stacks).
         e.burnUntil[i] = m1_ + kBurnBeats * kTicksPerBeat;
         e.burnOwner[i] = owner;
-        if (e.burnLevel[i] < st) e.burnLevel[i] = st;
+        // (the shooter's own fire: it spreads again on a death)
+        const u8 level = static_cast<u8>(e.burnLevel[i] & ~kBurnSpread);
+        e.burnLevel[i] = level < st ? st : level;
     }
 }
 
@@ -704,13 +712,15 @@ void World::killExtras(u32 i, u8 owner) {
     Enemies& e = enemies_;
     const Vec2 at{e.x[i], e.y[i]};
     const bool room = shotRoom(owner);
-    if (const u8 st = l.mods[kArc]) arcFrom(i, owner, st + 1u, kArcDamage, 0);
-    if (const u8 st = l.mods[kShatter]; st && room) {
+    // Play test 3 (GAME_DESIGN 6.2 rows 13-15, "half, one step"): Arc 1, 2, 3 more and an arc's kill arcs no further; a Shatter
+    // piece's kill throws none; a fire caught from a death spreads no further.
+    if (const u8 st = l.mods[kArc]; st && !arcing_) arcFrom(i, owner, st, kArcDamage, 0);
+    if (const u8 st = l.mods[kShatter]; st && room && !(hitShotFlags_ & kShotPiece)) {
         // Shatter: the body's line segments fly out as shrapnel.
         const u32 n = kShatterShards[st < 3 ? st : 3];
         const float a0 = e.heading[i];
         for (u32 k = 0; k < n; ++k) {
-            spawnShotRaw(owner, at, dirOf(a0 + kTau * static_cast<float>(k) / static_cast<float>(n)), 0.0f, 1.0f, kShotPellet, 0, kPelletLifeS, 0, 0);
+            spawnShotRaw(owner, at, dirOf(a0 + kTau * static_cast<float>(k) / static_cast<float>(n)), 0.0f, 1.0f, kShotPellet, kShotPiece, kPelletLifeS, 0, 0);
             if (lastShot_ >= 0) {
                 shots_.speed[lastShot_] = kPelletSpeed;
                 shots_.lastHit[lastShot_] = e.handle[i];
@@ -718,17 +728,19 @@ void World::killExtras(u32 i, u8 owner) {
         }
         emitFx(owner, kFxShatter, at, at, static_cast<u8>(n), 0.0f, m1_);
     }
-    if (e.burnUntil[i] > m1_) {
-        // Burn: a burning body lights its neighbours as it dies.
+    if (e.burnUntil[i] > m1_ && !(e.burnLevel[i] & kBurnSpread)) {
+        // Burn: a burning body lights its neighbours as it dies (once: theirs spreads no further).
         u32 lit = 0;
         const float reach = kBurnSpreadWu + kQuerySlackWu;
         grid_.query(at.x - reach, at.y - reach, at.x + reach, at.y + reach, [&](u32 j) {
             if (j == i || (e.flags[j] & kFlagDead)) return;
             const float rr = kBurnSpreadWu + e.radius[j];
             if (lengthSq(Vec2{e.x[j], e.y[j]} - at) > rr * rr) return;
+            const bool own = e.burnUntil[j] > m1_ && !(e.burnLevel[j] & kBurnSpread);  // (already burning by a hit: stays its own)
             e.burnUntil[j] = m1_ + kBurnBeats * kTicksPerBeat;
             e.burnOwner[j] = e.burnOwner[i];
-            if (e.burnLevel[j] < e.burnLevel[i]) e.burnLevel[j] = e.burnLevel[i];
+            const u8 lj = static_cast<u8>(e.burnLevel[j] & ~kBurnSpread), li = static_cast<u8>(e.burnLevel[i] & ~kBurnSpread);
+            e.burnLevel[j] = static_cast<u8>((lj < li ? li : lj) | (own ? 0u : kBurnSpread));
             ++lit;
         });
         if (lit) emitFx(owner, kFxBurnSpread, at, at, static_cast<u8>(lit < 255 ? lit : 255), 0.0f, m1_);
@@ -1004,7 +1016,7 @@ void World::updateUpgradesM5(float dt) {
             if (local && l.mods[kBurn]) {
                 for (u32 i = 0; i < e.count; ++i) {
                     if ((e.flags[i] & kFlagDead) || e.burnOwner[i] != owner || e.burnUntil[i] < t) continue;
-                    hitEnemy(i, kBurnDamage * static_cast<float>(e.burnLevel[i]), owner, Vec2{e.x[i], e.y[i]}, Vec2{0.0f, -1.0f});
+                    hitEnemy(i, kBurnDamage * static_cast<float>(e.burnLevel[i] & ~kBurnSpread), owner, Vec2{e.x[i], e.y[i]}, Vec2{0.0f, -1.0f});
                 }
             }
         });

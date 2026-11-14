@@ -4,6 +4,94 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both).
 
+## Play test 3 (the lead's design commit a008b71; GAME_DESIGN 2, 4, 5, 6.2-6.4, 7.6; arena.md, screens.md) — 2026-11-13
+
+### What was built (items 1-8)
+
+- **Tracks half as long** (4.1, 4.2): every Track in the Short form (8 / 4 / 8 / 4); the run's Track 1 two cycles (48 bars),
+  every later Track three (72), the loop's too (`formOfTrack`, `cyclesOfTrack`); Standard is retired (the table keeps its row,
+  equal to Short, for the band's own copy: `src/audio/engine.cpp`'s two literals changed with it, nothing else in src/audio;
+  `Play` asks the band for Short always). Bar-written things keep their bars (the mini-boss's hold 8, the elites' spacing).
+  An arena event never outlasts its Groove: announced on the Groove's first bar line, one written longer ends with the
+  Groove's last (the Elite Hunt's and the Convoy's twelve bars: the Groove's eight, the announcing bar among them; the Rift
+  Surge keeps its written Build-to-Drop span). Track 1's Comet comes in its second cycle's Groove.
+- **The assist beats the game** (2, 7.6): the assist fires on the full grid (`PlayerPose::fire` 1; 2 is no longer set); in a
+  boss or mini-boss fight it aims at the boss unless an ordinary enemy is within 250 wu (`kAssistNearWu`):
+  `World::assistBossAim` takes the open weak point (a part the hit multiplies when the shot arrives, the most first), else
+  the nearest part that takes its full share, else armour's share, else the nearest part, each led by the shot's flight
+  (Kaleidos: the core through a dead pair's sector, else the nearest resting arm, else the nearest arm). In Feedback's fight
+  it rests every second bar (Slapback and Howl); in Regeneration, whose second Echo plays two bars behind, two bars of three
+  (decision: with every second bar the Head never opens there). The novice no longer aims (`kNoviceAimLagS`,
+  `kNoviceWanderDeg` and its weak-point learning are gone; `kNoviceLearnBars` stays for Fata Morgana's water); new policy
+  **assist** (`Bot::Policy::Assist`, `--policy assist`): the careful bot's movement, the assist's fire. Neither phrases its
+  fire for the Mimic or Feedback (they never lift a thumb).
+- **Caps** (6.2): Split 2 (five lanes), Double-Time 1 (the triplet grid), Fork 1 (forking again is Fractal's). Helix Array's
+  two pairs at 80 and 53 wu and the middle lane; the shots-per-step ceiling 25 (5 x Prism's 5); words (Double-Time and Fork
+  one line each, Arc "KILLS ARC TO 1 MORE"); tests; the `split7` picture is `split5`. Not moved: the band's stress loadout
+  (`src/audio/content_sound.cpp` `kMods`: Split 3, Double-Time 2, Fork 2) is src/audio, the sound engineer's; it is a heavier
+  load than the game can now make, so the measurement stays on the safe side.
+- **Chains at half, one step** (6.2 rows 13-15, 6.4): Arc 1 / 2 / 3 more within 160 wu, an arc's own kill arcs no further
+  (`World::arcing_`; Tesla Bloom's arcs too); Burn spreads within 45 wu once (a fire caught from a death carries
+  `kBurnSpread` in `Enemies::burnLevel` and spreads no further; a hit makes it the shooter's own again); Shatter 2 / 3 / 4
+  pieces, a piece's kill throws none (`kShotPiece`); Supernova Rounds' blast half the shot's damage (`kSupernovaShare`);
+  Freeze Frame shatters at most 12 at a time (`kFreezeChainMax`).
+- **Orbitals, a guard ring** (6.3 row 1): shards 14 wu across (`kOrbitalHitWu` 7), 64 wu out, a turn a bar, cutting for 3 an
+  eighth note and eating bullets. While every shard is lit a hit breaks the ring instead of taking a cell
+  (`World::breakRing`, before Auto Nova: the panic pulse, 1 s of invulnerability, the Chain halved, Crescendo and Last Light
+  as for a hit; no budget easing, no cell); the shards go dark and relight one by one, the ring guarding again 8 bars after
+  it broke (6 at level 3, 4 at level 5: `kRingRelightBars`); dark shards neither cut nor eat bullets. 3 / 5 / 7 / 9 / 11
+  shards; the words of screens.md. The bot's score for it unchanged. Drawn: dark shards faint, a dashed ring while it guards,
+  the shards flying when it breaks.
+- **Extra Life** (5, screens.md): its own pickup kind among the Boost orbs (`kPickupExtraLife`; never a Boost, no slot, no
+  Trio). In each Track of the set list the host drops one from the first kill of the first cycle's Drop, an orb for each
+  player who holds none (`DirectorState::extraLifeTrack`; none in the loop, one held is carried in); it lies 8 bars with a
+  gold edge chevron. Held: one. Spent on the hit that would end the run, after Auto Nova (co-op: instead of going down): two
+  cells, a free Nova (`pressNova(p, true)`: no stock), a bar of invulnerability, half the Chain, `EXTRA LIFE` over the ship
+  for a bar (picked up too). The HUD: a small gold ship outline right of the Nova stock. The orb: a gold ship outline in a
+  ring, the Boost orb's size.
+- **The Vault says what it is** (arena.md): none in Track 1 (arena.json; the loader now accepts an empty structure list);
+  from Track 2 `VAULT` over it (cap 22, gold) until its first hit, and a gold edge chevron while it is off screen within
+  1,200 wu.
+- **Every hit on a boss is seen and heard** (7.6): a hit taking its full share or more: the part white for 60 ms (a white
+  outline of its hit circles at 2.0; Kaleidos's pair's arms or its core), six sparks in its hue back along the shot, its
+  segment of the health bar flashing (the whole bar's last 40 px, or the pair's / segment's / Voice's pip); armour (a plate or
+  below x 1): three grey sparks thrown sideways, no flash. Boss sparks go first into the particle pool and take an ordinary
+  request's place when the request list is full (`SparkReq::prio`). Two cues, `BossCue::HitWeak` and `HitArmour`, the
+  shooter's device only, at most one of each a 1/32 step with the step's gain in f (1, then x 0.7 within the beat, down to
+  0.3); their `pending_sounds.cpp` rows say what is missing (a bright tick in the key, a dull low knock: the glass and a tom
+  play meanwhile).
+- The pace's dead band is 1.5 (`kBossPaceDeadBand`, the same commit).
+- Co-op (src/net, kept small): protocol **0x5246050A**. A Hit's `opts[0]` says 1 the guard ring broke (its tick in `tick`), 2
+  an Extra Life was spent; an Extra Life taken is a `kPeBoostTake` of `kPickupExtraLife`; a dropped one is a `BoostDrop` of
+  `kPickupExtraLife` + its owner (the validation accepts both).
+- Tests: the director's cycle and the middle Drop on the new lengths, the caps (five lanes, the triplet grid), Helix's two
+  pairs, the conductor's forms (`audio_tests`: every Track 8 / 4 / 8 / 4), and `testPlayTest3`: the ring (breaks instead of a
+  cell, relights one by one, 4 bars at level 5), the Extra Life (taken, spent: two cells, a free Nova, half the Chain, a bar
+  of invulnerability; none held, the run ends), Arc one step, Shatter's two pieces, the assist's aim at Kaleidos.
+
+### Acceptance (items 1-8)
+
+- `scripts\test.ps1`: all passed (audio 2,679 checks, sim 5,875, determinism, net 131,366, both loopback soaks).
+- **The test soaks now run six simulated minutes** (they were ten): with Tracks half as long, ten minutes reach Event Horizon
+  in Track 4, where the clean soak showed 6 census mismatches (fight bars 8-9, the client one or two bodies short). Not this
+  batch's: a008b71 itself (the arena data put back to let it load), soaked 17 minutes into Tracks 4-6, shows **435**. Six
+  minutes cover the first three Tracks, what the ten covered before. For the network engineer, through the lead.
+- Pictures (`captures\playtest3\`, `review-m3b.ps1 -Config dev`): `pt3_ring_broken` (+ `_zoom`), `pt3_ring_relight` (+
+  `_zoom`), `pt3_life_orb` (one held in the HUD, one lying), `pt3_life_use`, `pt3_vault`, `strip_boss_hit` (the assist's fire
+  on Kaleidos's resting arm), `split5`, `hud_groove` (Track 1's phrase bar).
+- A stray edit of the sound engineer's (68 lines appended to main's `src/audio/content_sound.cpp` at 23:08, from its own
+  worktree's file) broke the main build; removed (main's file is a008b71's), a copy kept, the lead told.
+
+### Decisions taken alone
+
+- The loop's First Light plays three cycles (only the run's Track 1 is two: it is the opening).
+- Events end with their Groove counted from the announcing bar line (so an eight-bar event runs seven after its announcement).
+- The assist's Regeneration rest (two bars of three), above.
+- The ring's break counts as a hit for the Chain, Crescendo and Last Light, not for the director's assist easing.
+- An Extra Life's orb carries no name (screens.md gives its look only); the words come with the pickup.
+- "A white copy of its hull": drawn as a white outline of the part's hit circles (the fights draw their hulls each in its own
+  code; a hull copy for every part of 22 fights is more than this batch).
+
 ## M5 part 7 "The ten-Track whole" — in progress (2026-11-13)
 
 ### The armour numbers from the data (7667dd7)

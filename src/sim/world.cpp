@@ -56,6 +56,8 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask) {
     crowdInFrame_ = 0;
     crowdGoal_ = 0.0f;
     restartPending_ = false;
+    hitCueTick_[0] = hitCueTick_[1] = -1e18;  // play test 3
+    arcing_ = 0;
     m0_ = m1_ = startTick;
     playerCount_ = players < 1 ? 1 : (players > kMaxPlayers ? kMaxPlayers : players);
     for (u32 p = 0; p < kMaxPlayers; ++p) {
@@ -284,15 +286,17 @@ void World::applyPlayers(const TickInput& in) {
     }
 }
 
-bool World::pressNova(u32 p) {
+bool World::pressNova(u32 p, bool free) {
     PlayerState& pl = players_[p];
-    if (!rules_.novas || pl.novas == 0 || pl.novaPending) return false;
+    if (!rules_.novas || (pl.novas == 0 && !free) || pl.novaPending) return false;
     // R6: invulnerable at once; the blast lands on the next beat. The band plays the inhale from the press and the
     // blast on a beat of its write time, which is ahead of the heard time by the output latency, and moves to the
     // following beat when the next one is closer than six ticks (engine.cpp, CmdType::Nova): the same rule here, so
     // picture and sound land together.
-    --pl.novas;
-    ++pl.novasUsed;
+    if (!free) {
+        --pl.novas;
+        ++pl.novasUsed;
+    }
     pl.novaPending = true;
     const double earliest = m1_ + static_cast<double>(latencyTicks_) + 6.0;
     pl.novaBlastTick = std::ceil(earliest / kTicksPerBeat) * kTicksPerBeat;
@@ -749,7 +753,15 @@ void World::hitPlayer(u32 p, Vec2 from) {
     // Auto Nova (GAME_DESIGN 5, play test 1 second pass; on unless switched off): a hit that would take the last Shield
     // cell (or end the run, with none left) fires a Nova from the stock instead and costs nothing; the Nova keeps R6
     // (invulnerable at once, the blast on the next beat). With no Nova in stock the hit lands as before.
+    // Play test 3 (GAME_DESIGN 6.3 row 1): the Orbitals' guard ring, every shard lit, takes the hit instead of a cell (first:
+    // it is a spare cell).
+    if (breakRing(p, from)) return;
     if (rules_.autoNova && pl.cells <= 1 && pressNova(p)) return;
+    // Play test 3 (GAME_DESIGN 5): the hit that would end the run (co-op: put the ship down) spends an Extra Life instead.
+    if (pl.cells == 0 && pl.extraLives) {
+        spendExtraLife(p, from);
+        return;
+    }
     ++pl.hitsTaken;
     if (pl.cells == 0 && coop()) {
         // GAME_DESIGN 10: in co-op the ship shatters into a beacon; the run goes on while anyone stands.
@@ -849,6 +861,8 @@ void World::killEnemy(u32 i, u8 killer) {
             director_.boostDue = false;
             director_.boostTicks = static_cast<i32>(rng_.range(kBoostEveryLoS, kBoostEveryHiS) / kDt);
         }
+        // Play test 3 (GAME_DESIGN 5): the Track's Extra Life, from a kill in the first cycle's Drop.
+        if (spawner_.mode == Spawner::Mode::Slice) extraLifeDrop(Vec2{e.x[i], e.y[i]});
     }
     dropShards(i, killer);
     if (role_ == NetRole::Host) logDeath(i, killer, kDeathKill);
@@ -1373,6 +1387,8 @@ u64 World::hash() const {
         val(pl.decoyUntil);
         val(pl.wellFrom);
         val(pl.holeFrom);
+        val(pl.ringBroke);    // play test 3
+        val(pl.extraLives);
         for (const PlayerState::Mine& m : pl.mines) val(m.blowTick);
         for (const PlayerState::Comet& c : pl.comets) val(c.start);
         for (const PlayerState::Echo& ec : pl.echoes) val(ec.tick);

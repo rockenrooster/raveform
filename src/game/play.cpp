@@ -425,6 +425,11 @@ void Play::afterTick() {
                     if (e.c == 1 || e.f < 1.0f) hintArmour_ = true;
                     else hintFull_ = true;
                 }
+                // Play test 3 (GAME_DESIGN 7.6): a weak point's hit flashes its segment of the boss's health bar.
+                if (e.species == kBossSpecies && e.c != 1 && e.f >= 1.0f - 1e-3f) {
+                    bossHitT_ = static_cast<float>(tickEnd_ - e.age);
+                    bossHitPart_ = e.c == 2 ? e.a : 0xFF;
+                }
                 break;
             case EventType::Death:
                 // The bot taps retry (also in the bot_ pictures, C2: the real careful bot's run goes on).
@@ -565,6 +570,14 @@ void Play::afterTick() {
                 break;
             case EventType::HaloBlock:
                 if (bandDrives_ && e.a == seat_) band_->playSfx(audio::Sfx::Shield);
+                break;
+            case EventType::ExtraLife:
+                // Play test 3 (M5 audio): an Extra Life picked up, or spent (its stab lands with the free Nova's blast).
+                if (bandDrives_ && e.a == seat_) {
+                    Event x = e;
+                    if (e.b) x.tick = w.player(seat_).novaBlastTick;
+                    upgradeCues_.add(x, 0.0f, coop() ? netBandOffset_ : clock_.offset());
+                }
                 break;
             case EventType::Revive:
                 if (e.a == seat_) controller_.reset(w.player(seat_).pos);  // M4: back where the beacon was
@@ -737,14 +750,14 @@ void Play::conductBand() {
         // The boss is dead: the Track-change Break (tempo ramp, key on its fifth bar) into the next Track.
         band_->setHold(false);
         band_->changeTrack(next.song, next.trackBpm, false);
-        band_->setForm(next.song == 0 ? audio::Form::Short : audio::Form::Standard);
+        band_->setForm(audio::Form::Short);  // play test 3: every Track Short
         postedBpm_ = next.trackBpm;
     }
     if (!next.trackChange && (band_->track() != next.song || std::fabs(postedBpm_ - next.trackBpm) > 0.01f)) {
         // The band plays another Track or tempo than the run (a new run, a fast-forward, the loop after a
         // resync): it changes on the next bar line.
         band_->changeTrack(next.song, next.trackBpm, true);
-        band_->setForm(next.song == 0 ? audio::Form::Short : audio::Form::Standard);
+        band_->setForm(audio::Form::Short);  // play test 3: every Track Short
     }
     postedBpm_ = next.trackBpm;
     if (holdPosted_) {
@@ -896,6 +909,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     }
     hs.novas = p.novas;
     hs.novaCap = p.novaCap;
+    hs.extraLife = p.extraLives > 0;  // play test 3
     hs.dashCharge = controller_.dashCharge(coop() ? netHeard_ : clock_.heardNow());
     hs.alive = p.alive;
     hs.retryPending = w.restartPending();
@@ -937,6 +951,12 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
             }
             hs.bossHint = bossHint(b.kind);
             hs.bossHintLevel = level;
+        }
+        // Play test 3 (GAME_DESIGN 7.6): the hit's segment of the bar, white for 60 ms, then fading over as long again.
+        const float since = now - bossHitT_;
+        if (b.active && !b.dying && since >= 0.0f && since < 0.12f) {
+            hs.bossFlash = since < 0.06f ? 1.0f : 1.0f - (since - 0.06f) / 0.06f;
+            hs.bossFlashPart = bossHitPart_;
         }
     }
     if (runHud) {

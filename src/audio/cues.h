@@ -79,7 +79,8 @@ enum class Cue : u8 {
     BlackHoleNova,    // Black Hole: the Nova pressed: the three-beat rising inhale, then the blast with the sub drop
     // Appended 2026-11-13 (M5 audio, play test 3: GAME_DESIGN 5 Extra Life, 6.3 Orbitals' guard ring).
     ExtraLifePickup,  // an Extra Life picked up: the Cell's note (the player's lead an octave over the root) and the fifth above
-    ExtraLifeUse,     // an Extra Life spent: the Nova's blast with the Track's tonic chord on the stab
+    ExtraLifeUse,     // an Extra Life spent: the Track's tonic chord on the stab, posted for the tick of the free Nova's blast (the
+                      // Nova itself is the game's: its inhale and blast)
     OrbitalsBreak,    // the Orbitals' ring broke on a hit: the glass crack, two octaves down
     OrbitalsRelight,  // a shard of the ring relit; value = its place (0, 1, ...): a shaker tick a scale step higher each
     Count
@@ -129,6 +130,11 @@ enum class Recipe : u8 {
     SubSine,       // voice: a sine at a note, held (Event Horizon's drone); setVoice glides it
     EliteGated,    // the elite's arrival fifth (in the Track's key) gated on the eighths from the tick: sounding on the beat's first
                    // eighth, silent on its second (traits.md Phasing)
+    // Appended (play test 3, GAME_DESIGN 7.6: every hit on a boss is heard).
+    Tick,          // a bright tick at a note (default the chord's root, octave 6): a sine with two harmonics, 25 ms, over a 1 ms
+                   // click of 4-10 kHz noise (a shot on a weak point)
+    Knock,         // a dull low knock, unpitched: a sine falling 220 -> 150 Hz, 25 ms, a woody partial and a 250-1200 Hz thud
+                   // of noise (a shot on armour)
     Count
 };
 // The held recipes (startVoice); the rest are one-shots (playRecipe).

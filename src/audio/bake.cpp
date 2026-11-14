@@ -868,6 +868,56 @@ float* recCrack(double hz, double sr, u32& n) {
     return x;
 }
 
+// Play test 3 (GAME_DESIGN 7.6, appended): a shot on a weak point, a bright tick at a note: the note's sine (25 ms) with its
+// second and third harmonics (8 and 6 ms) over a 1 ms click of 4-10 kHz noise, a 0.5 ms attack.
+float* recTick(double hz, double sr, u32& n) {
+    n = framesFor(0.12, sr);
+    float* x = alloc(n);
+    float* click = alloc(n);
+    if (!x || !click || !noise(click, n, 56, SpectralShape::bandpass(4000.0, 10000.0), sr)) {
+        std::free(x);
+        std::free(click);
+        return nullptr;
+    }
+    for (u32 i = 0; i < n; ++i) {
+        const double t = i / sr;
+        double v = std::sin(kTau * hz * t) * std::exp(-t / 0.025);
+        if (hz * 2.0 < 0.45 * sr) v += 0.35 * std::sin(kTau * hz * 2.0 * t) * std::exp(-t / 0.008);
+        if (hz * 3.0 < 0.45 * sr) v += 0.3 * std::sin(kTau * hz * 3.0 * t) * std::exp(-t / 0.006);
+        v = v * (t / 0.0005 < 1.0 ? t / 0.0005 : 1.0) + 0.8 * click[i] * std::exp(-t / 0.001);
+        x[i] = static_cast<float>(v);
+    }
+    std::free(click);
+    normPeak(x, n);
+    fadeOut(x, n, 0.004, sr);
+    return x;
+}
+
+// A shot on armour, a dull low knock: a sine falling 220 -> 150 Hz (6 ms), 25 ms, a woody partial at 2.3 x it (15 ms) and a
+// 4 ms thud of 250-1200 Hz noise, through a light tanh. No pitch of the key: armour gives nothing back.
+float* recKnock(double sr, u32& n) {
+    n = framesFor(0.18, sr);
+    float* x = alloc(n);
+    float* thud = alloc(n);
+    if (!x || !thud || !noise(thud, n, 57, SpectralShape::bandpass(250.0, 1200.0), sr)) {
+        std::free(x);
+        std::free(thud);
+        return nullptr;
+    }
+    PhaseSine s, w;
+    for (u32 i = 0; i < n; ++i) {
+        const double t = i / sr;
+        const double hz = 150.0 + 70.0 * std::exp(-t / 0.006);
+        double v = s.next(hz, sr) * std::exp(-t / 0.025) + 0.7 * w.next(hz * 2.3, sr) * std::exp(-t / 0.015);
+        v = v * (t / 0.001 < 1.0 ? t / 0.001 : 1.0) + 0.9 * thud[i] * std::exp(-t / 0.004);
+        x[i] = static_cast<float>(std::tanh(1.3 * v));
+    }
+    std::free(thud);
+    normPeak(x, n);
+    fadeOut(x, n, 0.008, sr);
+    return x;
+}
+
 // The crackle as a one-shot (sound_m5.json recipes.crackle: 5 ms bursts of 2 to 6 kHz noise at a given density), a second
 // long: flat (about 40 bursts a second, Volatile's mark) or swelling (density 6 -> 90 a second and level 0.15 -> 1 toward its
 // end, which is the loudest: the Weaver's cage going off).
@@ -1282,6 +1332,9 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers, 
         recipeOnce(Recipe::DashReverse, reversed(d, n), 1, -1, 0);
     }
     recipeOnce(Recipe::Thup, recThup(sr, n), 1, 47, 0);  // its 120 Hz is near B2 (46.9)
+    // Play test 3 (appended; cache version 9): a boss's hits.
+    recipeGrid(Recipe::Tick, 84, 108, [&](double hz) { return recTick(hz, sr, n); });
+    recipeOnce(Recipe::Knock, recKnock(sr, n), 1, -1, 0);
     section(4);
     // Nova inhale: from the press to the next beat, 1..8 thirty-seconds of each Track's tempo.
     sfxFirst_[static_cast<u32>(Sfx::NovaInhale)] = static_cast<i32>(count_);
@@ -1370,9 +1423,9 @@ bool SampleBank::complete() const {
 
 namespace {
 constexpr u32 kCacheMagic = 0x42534652u;  // "RFSB"
-constexpr u32 kCacheVersion = 8;  // M5: tables sized for ten Tracks; the major-third effects; the recipes; (6) the upgrades'
+constexpr u32 kCacheVersion = 9;  // M5: tables sized for ten Tracks; the major-third effects; the recipes; (6) the upgrades'
                                   // one-shots; (7) the rim shot; (8) the fights' recipes (crack, crackle, reversed Dash, thup,
-                                  // short gong)
+                                  // short gong); (9) a boss's hits (tick, knock)
 template <typename T>
 bool put(FILE* f, const T& v) { return std::fwrite(&v, sizeof v, 1, f) == 1; }
 template <typename T>

@@ -4,7 +4,7 @@
 # src/game/play_pictures.cpp:
 #   screens: screen_notice, screen_title, screen_settings_sound / _controls / _look, screen_pause (mid
 #   count-in), screen_game_over; the Trio: trio, trio_answer, trio_take (strip), and since play test 1 trio_locked,
-#   trio_hold (half filled) and split7 (Split at seven lanes); the HUD: hud_groove,
+#   trio_hold (half filled) and split5 (Split at five lanes, play test 3); the HUD: hud_groove,
 #   hud_build, hud_drop (Surge), hud_break; riff_orbitals, riff_pulse, riff_sentinel; boost_prism,
 #   boost_hyper, boost_halo, boost_magnet_storm; edge; Kaleidos: boss_bloom, boss_refraction, boss_spiral,
 #   boss_naked, boss_beam_tell, boss_beam, boss_iris, boss_pair_death (strip), boss_death (strip);
@@ -20,6 +20,9 @@
 #   growing back, Overcharge 0-5, the HUD's Shard level); it also writes overcharge_sheet.png (the six side by side) and
 #   pt2_halo8_zoom.png (the halo three times larger). The loop: loop_encore (the loop's first Track card, ENCORE ...
 #   NO MORE REFILLS, HALO 6) and loop_burn (two arcs shattering as the halo burns down; also loop_burn_zoom.png).
+# Play test 3's set: -Out captures\playtest3 -Only pt3_ring_broken,pt3_ring_relight,pt3_life_orb,pt3_life_use,pt3_vault,boss_hit,split5,
+#   hud_groove (the Orbitals' guard ring broken and relighting, the Extra Life's orb and its use, a Vault's name, a hit on
+#   Kaleidos's weak point as a strip, Split at five lanes, Track 1's phrase bar).
 # Debug (the default) runs with validation; the script stops on the first run that is not clean.
 param(
     [string]$Out = 'captures\m3b',
@@ -47,12 +50,13 @@ $sheet = 'import sys; from PIL import Image; fs=[Image.open(p).convert("RGB") fo
          's=Image.new("RGB",(4*w,2*h)); [s.paste(f.resize((w,h),Image.LANCZOS),((i%4)*w,(i//4)*h)) for i,f in enumerate(fs)]; s.save(sys.argv[1])'
 
 $singles = @('screen_notice', 'screen_title', 'screen_settings_sound', 'screen_settings_controls', 'screen_settings_look', 'screen_pause',
-             'screen_game_over', 'trio', 'trio_answer', 'trio_locked', 'trio_hold', 'split7', 'hud_groove', 'hud_build', 'hud_drop', 'hud_break', 'riff_orbitals', 'riff_pulse',
+             'screen_game_over', 'trio', 'trio_answer', 'trio_locked', 'trio_hold', 'split5', 'hud_groove', 'hud_build', 'hud_drop', 'hud_break', 'riff_orbitals', 'riff_pulse',
              'riff_sentinel', 'boost_prism', 'boost_hyper', 'boost_halo', 'boost_magnet_storm', 'edge', 'boss_bloom', 'boss_refraction',
              'boss_spiral', 'boss_naked', 'boss_beam_tell', 'boss_beam', 'boss_iris', 'track_change', 'bot_3', 'bot_6', 'bot_10', 'bot_15', 'bot_3_nohits', 'bot_6_nohits', 'bot_10_nohits', 'bot_15_nohits',
              'pt2_level_trio', 'pt2_cell_crowd', 'pt2_halo8', 'pt2_hud_level', 'pt2_overcharge_0', 'pt2_overcharge_1', 'pt2_overcharge_2',
-             'pt2_overcharge_3', 'pt2_overcharge_4', 'pt2_overcharge_5', 'loop_encore', 'loop_burn')
-$strips = @('trio_take', 'boss_pair_death', 'boss_death')
+             'pt2_overcharge_3', 'pt2_overcharge_4', 'pt2_overcharge_5', 'loop_encore', 'loop_burn',
+             'pt3_ring_broken', 'pt3_ring_relight', 'pt3_life_orb', 'pt3_life_use', 'pt3_vault')
+$strips = @('trio_take', 'boss_pair_death', 'boss_death', 'boss_hit')
 if ($Only.Count) {
     $singles = @($singles | Where-Object { $Only -contains $_ })
     $strips = @($strips | Where-Object { $Only -contains $_ })
@@ -86,6 +90,14 @@ $burn = Join-Path $Out 'loop_burn.png'
 if (Test-Path $burn) {
     python -I -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).convert("RGB").crop((1050,390,1350,690)).resize((900,900),Image.LANCZOS).save(sys.argv[2])' $burn (Join-Path $Out 'loop_burn_zoom.png')
     Write-Host "[review] loop_burn_zoom"
+}
+# Play test 3: the guard ring, three times larger (broken, relighting).
+foreach ($r in 'pt3_ring_broken', 'pt3_ring_relight') {
+    $png = Join-Path $Out "$r.png"
+    if (Test-Path $png) {
+        python -I -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).convert("RGB").crop((1050,390,1350,690)).resize((900,900),Image.LANCZOS).save(sys.argv[2])' $png (Join-Path $Out "${r}_zoom.png")
+        Write-Host "[review] ${r}_zoom"
+    }
 }
 foreach ($s in $strips) {
     $png = Join-Path $Out "strip_$s.png"

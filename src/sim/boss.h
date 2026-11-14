@@ -113,6 +113,9 @@ enum class BossCue : u8 {
     // a meteor's warning and landing; the Convoy's roll and a carrier broken; the Storm Cell's strike and warning.
     VaHit, VaBreak, PyFill, PyTuned, PyPulse, RiOpen, RiThrough, RiClose, BuBounce, BuDischarge, LeSplit, EvAnnounce, VdLand,
     CmShard, EcOn, EcOff, EcFlash, MeWarn, MeLand, CoRoll, CoBreak, StStrike, StWarn,
+    // Play test 3 (GAME_DESIGN 7.6, "Every hit on a boss is seen and heard"): a shot on a weak point (a bright tick in the
+    // Track's key) and on armour (a dull low knock); at most one of each a 1/32 step (f: the step's gain within its beat).
+    HitWeak, HitArmour,
     Count
 };
 

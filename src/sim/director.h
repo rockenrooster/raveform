@@ -9,10 +9,10 @@
 // the middle cycle's Drop brings a mini-boss and holds while it lives (at most 8 bars past its 16). The loop begins
 // after the last Track of the set list (DirectorState::songs), never at a fixed Track number.
 //
-// Track 1 "First Light" plays three Short cycles (8/4/8/4 bars; play test 2: it had four); its third Drop
+// Track 1 "First Light" plays two Short cycles (8/4/8/4 bars; play test 3: it had three); its second Drop
 // brings Kaleidos and is held while Kaleidos lives. Its death schedules the Track-change Break (eight bars:
-// tempo, key and palette cross-fade, conductor.json trackChange) into Track 2 "Solar Wind", three Standard
-// cycles (12/4/16/4 since play test 2; it was 16/8/16/8) ending in Kaleidos again, then Track 3 "Reef" the same.
+// tempo, key and palette cross-fade, conductor.json trackChange) into Track 2 "Solar Wind", three Short
+// cycles (play test 3; Standard, 12/4/16/4, is retired) ending in its boss, then Track 3 "Reef" the same.
 // After that the run loops by the endless rule (GAME_DESIGN 4.2, last row: +4 BPM per Track, capped at 174) with
 // the budget still rising.
 
@@ -24,7 +24,7 @@ namespace rf::sim {
 enum class Section : u8 { Groove, Build, Drop, Break };  // the order of audio::Section
 const char* sectionLabel(Section s);                      // "GROOVE", ...
 
-constexpr u32 kSectionBars[2][4] = {{8, 4, 8, 4}, {12, 4, 16, 4}};  // GAME_DESIGN 4.1 (play test 2): Short, Standard
+constexpr u32 kSectionBars[2][4] = {{8, 4, 8, 4}, {8, 4, 8, 4}};  // GAME_DESIGN 4.1: Short; Standard retired (play test 3)
 constexpr u32 kTrackChangeBars = 8;  // the band's Track-change Break (conductor.json trackChange)
 constexpr u32 kNoBar = 0xFFFFFFFFu;
 
@@ -40,8 +40,10 @@ inline u8 songOfTrack(u32 track, u32 songs) {
     const u32 n = songs ? songs : 1u;
     return static_cast<u8>((track + n - 1) % n);
 }
-inline u32 formOfTrack(u32 track, u32 songs) { return songOfTrack(track, songs) == 0 ? 0u : 1u; }  // First Light Short
-inline u32 cyclesOfTrack(u32 /*track*/) { return 3u; }  // GAME_DESIGN 4.2 (play test 2: Track 1 too)
+// Play test 3 (GAME_DESIGN 4.1): every Track in the Short form, Standard retired (the row stays for the band's own copy).
+inline u32 formOfTrack(u32 /*track*/, u32 /*songs*/) { return 0u; }
+// GAME_DESIGN 4.2 (play test 3): the run's Track 1 plays two cycles (48 bars), every later one three (72), the loop's too.
+inline u32 cyclesOfTrack(u32 track) { return track == 1 ? 2u : 3u; }
 inline bool inLoop(u32 track, u32 songs) { return track > songs; }
 float bpmOfTrack(u32 track, u32 songs);  // the set list's tempi, then +4 per Track up to 174 (GAME_DESIGN 4.2)
 const char* songName(u32 song);  // "FIRST LIGHT", "SOLAR WIND", "REEF", ... (GAME_DESIGN 4.2's ten)
@@ -110,6 +112,7 @@ struct DirectorState {
     bool miniSpawned = false;  // this Track's mini-boss has entered
     u8 lastMini = 0xFF;        // the mini-boss met in the Track before (BossKind; 0xFF none)
     u16 minisMet = 0;          // M5 part 6: the mini-bosses met this run (a bit each from Alpha Hound; Tracks 8 to 10 draw by it)
+    u8 extraLifeTrack = 0;     // play test 3 (GAME_DESIGN 5): the last Track whose Extra Life has dropped (the host's)
 };
 
 // Where bar `bar` of the run sits, given what the director knows now.

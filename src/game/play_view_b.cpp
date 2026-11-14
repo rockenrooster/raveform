@@ -261,26 +261,54 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
             if (e.species == kBossSpecies && w.boss().kind != BossKind::Kaleidos) {
                 eventFight(w, e, t);
             } else if (e.species == kBossSpecies) {
-                SparkReq r{};
-                r.at = at;
-                r.dir = Vec2{-e.x2, -e.y2};
-                r.count = static_cast<u16>(e.c == 1 ? 3 : 4);
-                r.kind = 3;
+                // Play test 3 (GAME_DESIGN 7.6): seen as every fight's hits are (play_view_m5.cpp bossHit).
                 const BossData& b = w.bossData();
                 const Vec3 acc = oklch(b.accentL, b.accentHue, b.accentChroma * 0.16f);
-                r.a = e.c == 2 ? palette_->hue[e.a % 3] : acc;
-                r.b = e.f > 1.5f ? whiteV() : r.a;
+                bossHit(w, e, t, e.c == 2 ? palette_->hue[e.a % 3] : acc);
+            }
+            break;
+        case EventType::PulseRing: break;
+        case EventType::ExtraLife:
+            // Play test 3 (screens.md): EXTRA LIFE at the ship for a bar, picked up or spent; spent, a gold burst.
+            if (e.a < kMaxPlayers) extraLifeT_[e.a] = t;
+            if (e.b == 1) {
+                SparkReq r{};
+                r.at = at;
+                r.count = 24;
+                r.kind = 5;
+                r.a = palettes_->player[3];
+                r.b = whiteV();
                 r.t0 = t;
                 sparkRequest(r);
             }
             break;
-        case EventType::PulseRing: break;
         case EventType::Upgrade: eventUpgrade(w, e, t); break;  // M5 part 3
         case EventType::TrailBlast:  // M5 part 4: a Weaver C trail blows
             addShockRings(at, 1, w.species().family(Family::Weaver).v.trailBlastWu, palettes_->danger, whiteV(), t, 0.2f);
             break;
         case EventType::Restart: tumbleCount_ = 0; break;
         default: break;
+    }
+}
+
+void PlayView::ringBreak(const World& w, u32 p, Vec2 at, float t) {
+    // Play test 3 (GAME_DESIGN 6.3 row 1): the guard ring takes the hit; its shards fly outward (three sparks each, in the
+    // Riff's colour) and go dark.
+    if (p >= kMaxPlayers) return;
+    const PlayerState& pl = w.player(p);
+    const u32 n = orbitalCount(pl.loadout.riffs[riffIndex(kOrbitals)]);
+    const double ph = std::fmod(w.music() - w.director().startTick, kTicksPerBar) / kTicksPerBar;
+    for (u32 k = 0; k < n && k < 16; ++k) {
+        const float a = static_cast<float>(ph) * kTau + kTau * static_cast<float>(k) / static_cast<float>(n) - 0.25f * kTau;
+        SparkReq r{};
+        r.at = at + dirv(a) * tuning::kOrbitalRadiusWu;
+        r.dir = dirv(a);
+        r.count = 3;
+        r.kind = 3;
+        r.a = palettes_->playerLight[p];
+        r.b = whiteV();
+        r.t0 = t;
+        sparkRequest(r);
     }
 }
 
@@ -312,6 +340,14 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             }
             const Vec2 sp = toScene(p);
             const float r = kBoostOrbWu * pxPerWu_ * (1.0f + 0.08f * beat_);
+            if (bp.type[i] == kPickupExtraLife) {
+                // Play test 3 (screens.md "Extra Life (HUD)"): a gold ship outline in a ring, the Boost orb's size.
+                const float sc = kBoostOrbWu * 0.9f * (1.0f + 0.08f * beat_);
+                glyph(d.glyphs, gShip_, true, p, -0.5f * kPi, -0.5f * kPi, sc, 2.0f * fade, 0.7f, kGlyphFlat, gold, gold);
+                glyph(d.glyphs, gRing32_, false, p, 0.0f, 0.0f, kBoostOrbWu * 1.5f, 1.6f * fade, 0.55f, kGlyphFlat, gold, gold);
+                d.pools.glow(sp, r * 2.6f, gold * (0.22f * fade));
+                continue;
+            }
             if (icons_) icons_->draw(d, boostIcon_[bp.type[i] % kBoostCount], sp, r, fade * 1.1f);
             glyph(d.glyphs, gRing32_, false, p, 0.0f, 0.0f, kBoostOrbWu * 1.5f, 1.4f * fade, 0.5f, kGlyphFlat, gold, W1);
             d.pools.glow(sp, r * 2.6f, gold * (0.18f * fade));
@@ -361,15 +397,44 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
         // Play test 2 (look.md 5): what a Riff throws is its owner's base colour at levels 1 and 2, the light colour at 3
         // and 4, and a white core with the player's rim at 5.
         const auto riffColour = [&](u32 lv) { return lv >= 5 ? W1 : (lv >= 3 ? light : player); };
+        {
+            // Play test 3 (screens.md "Extra Life (HUD)"): EXTRA LIFE as world text at the ship (cap 22, gold) for one bar.
+            const float since = static_cast<float>(in.time) - extraLifeT_[q];
+            const float barS = 240.0f / std::fmax(in.bpm, 30.0f);
+            if (since >= 0.0f && since < barS) {
+                const char* words = "EXTRA LIFE";
+                const float cap = 22.0f * pxPerWu_;
+                const float fade = clamp01((barS - since) / (0.25f * barS));
+                const Vec2 sc = toScene(ship);
+                const Vec3 g = gold * (1.8f * fade);
+                font_->drawField(d.scene, Vec2{sc.x - 0.5f * font_->measure(TextStyle{cap}, words), sc.y - 56.0f * pxPerWu_ - cap}, cap, 0.9f * refPx_, g, g, g,
+                                 words);
+            }
+        }
         if (const u8 lv = l.riffs[riffIndex(kOrbitals)]) {
             const u32 n = orbitalCount(lv);
             const double turn = hyper ? kTicksPerBar * 0.5 : kTicksPerBar;
             const double ph = std::fmod(in.music - w.director().startTick, turn) / turn;
-            const float shardScale = 9.0f;
+            // Play test 3 (GAME_DESIGN 6.3 row 1): each shard 14 wu across; a broken ring's shards are dark (a faint outline)
+            // until they relight one by one; while every shard is lit a faint ring joins them (it guards).
+            const float shardScale = tuning::kOrbitalHitWu;
             const Vec3 c = riffColour(lv);
+            const u32 lit = w.orbitalsLit(q, in.music);
+            if (lit >= n && w.ringGuards(q)) {
+                for (u32 k = 0; k < 48; ++k) {
+                    const float a0 = kTau * static_cast<float>(k) / 48.0f, a1 = kTau * static_cast<float>(k + 1) / 48.0f;
+                    if (k % 2u) continue;
+                    d.scene.line(toScene(ship + dirv(a0) * tuning::kOrbitalRadiusWu), toScene(ship + dirv(a1) * tuning::kOrbitalRadiusWu), 0.35f * refPx_,
+                                 c * 0.45f, c * 0.45f, 0);
+                }
+            }
             for (u32 k = 0; k < n; ++k) {
                 const float ang = static_cast<float>(ph) * kTau + kTau * static_cast<float>(k) / static_cast<float>(n) - 0.25f * kTau;
                 const Vec2 o = ship + dirv(ang) * tuning::kOrbitalRadiusWu;
+                if (k >= lit) {
+                    glyph(d.glyphs, gShard_, false, o, ang * 2.0f, 0.0f, shardScale, 0.35f, 0.45f, kGlyphFlat, c * 0.5f, c * 0.5f);
+                    continue;
+                }
                 if (lv >= 5) glyph(d.glyphs, gShard_, false, o, ang * 2.0f, 0.0f, shardScale, 2.0f, 1.1f, kGlyphFlat, player, player);
                 glyph(d.glyphs, gShard_, false, o, ang * 2.0f, 0.0f, shardScale, 2.2f, 0.6f, kGlyphFlat, c, lv >= 3 ? c : player);
                 d.sparkles.glow(toScene(o), 7.0f * refPx_, c * 0.6f);

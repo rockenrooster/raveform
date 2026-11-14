@@ -53,6 +53,10 @@ float recipeLevel(Recipe r, const SoundParams& s) {
         case Recipe::Thup: return s.mix.pulse;        // the tom's
         case Recipe::SubSine: return s.mix.impact * 0.5f;  // the impact's sine, held under the band (engine choice)
         case Recipe::EliteGated: return sfxLevel(Sfx::Elite);
+        // Play test 3 (engine choice, by ear at the next play test): a beat's first hit about 3 dB over the music in its own
+        // band in a Drop (20 ms windows against the music's median; render fights --stems), the later steps under it.
+        case Recipe::Tick: return 0.24f;
+        case Recipe::Knock: return 0.30f;
         default: return 0.2f;
     }
 }
@@ -618,6 +622,13 @@ void Engine::playRecipeAt(Recipe r, i32 midi, float gain, float pan, i64 frame, 
             gateSample(playSample(id, Bus::Sfx, frame, level, pan, keyRate_), framesFor(beatS * 0.5, sr_), frame > frame_ ? frame : frame_);
             break;
         }
+        // Play test 3 (appended): a boss's hits.
+        case Recipe::Tick: {
+            const i32 note = midi >= 0 ? midi : chordRootMidi(6);
+            pitched(note, note);
+            break;
+        }
+        case Recipe::Knock: playSample(bank_->recipe(r), Bus::Sfx, frame, level, pan); break;
         default: break;  // Drone, PadVoice, Crackle, SubSine: held voices (startVoice)
     }
     emit(BeatKind::Sfx, frame, tick, static_cast<u8>(64 + static_cast<u32>(r)), 0, 0, level, 0, static_cast<double>(midi));
@@ -1006,8 +1017,9 @@ void Engine::flushCues(i64 tickIn) {
                     playLead(static_cast<u8>(p), playerTimbre(p), n0 + 7.0f, 0.9f, s.mix.lead * 0.85f, pan, f);
                     break;
                 }
-                case Cue::ExtraLifeUse: {  // the Nova's blast with the Track's tonic chord on the stab
-                    playSfx(Sfx::NovaBlast, -1, sfxLevel(Sfx::NovaBlast), 0.0f, f, tick);
+                case Cue::ExtraLifeUse: {
+                    // The Nova's blast with the Track's tonic chord on the stab: the free Nova it brings is the game's Nova
+                    // (the inhale, the blast on its beat); the stab lands with the blast, on the cue's tick.
                     const Chord& tonic = tr_->chords[tr_->progression[0]];
                     playStab(tonic, 1.0f, 0.0f, f);
                     break;

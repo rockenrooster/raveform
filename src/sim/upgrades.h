@@ -75,7 +75,7 @@ const char* upgradeWords(u8 u, u32 level);
 
 // What each stack or level gives (GAME_DESIGN 6.2, 6.3 as raised after play test 1, 2026-11-12: every pick is felt
 // at once). The world, the view and the effect words read these.
-inline u32 splitLanes(u32 stacks) { return 1u + 2u * stacks; }        // 1, 3, 5, 7 lanes
+inline u32 splitLanes(u32 stacks) { return 1u + 2u * stacks; }        // 1, 3, 5 lanes (play test 3: Split's cap is 2)
 inline u32 pierceCount(u32 stacks) { return 2u * stacks; }            // enemies a shot passes through
 inline u32 ricochetBounces(u32 stacks) { return 2u * stacks; }        // off walls, and on to the nearest other enemy
 inline float onBeatCritMultiplier(u32 stacks) {                      // x3, x5, x8 on the beat

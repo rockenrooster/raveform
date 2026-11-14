@@ -20,6 +20,8 @@ constexpr float kShotRadius = 4.0f;       // wu: a shot's collision radius again
 constexpr float kMuzzleWu = 10.0f;        // wu: shots leave this far along the aim from the ship's centre
 constexpr float kAutoAimRangeWu = 900.0f; // wu: auto-aim assist picks the nearest enemy within this
 constexpr float kAutoAimKeep = 1.25f;     // a held target stays while within this x the nearest one's distance
+constexpr float kAssistNearWu = 250.0f;   // GAME_DESIGN 2 (play test 3): in a fight an ordinary enemy this near comes before the boss
+constexpr float kAssistSectorRad = 0.35f; // the assist sees Kaleidos's core through a dead pair's sector this wide to either side
 constexpr float kHeadingTurn = 18.0f;     // rad/s: the hull turns toward its course at most this fast
 constexpr float kNovaGraceS = 0.30f;      // s: Nova invulnerability lasts this long after the blast
 constexpr float kNovaFrontS = 0.35f;      // s: the front's growth time (look.md 5) during which it clears
@@ -129,7 +131,7 @@ constexpr float kDealModNew = 1.0f, kDealModHeld = 3.0f, kDealRiffNew = 3.0f, kD
 constexpr float kDealCellsNew = 3.0f;
 
 // ---- Mods (GAME_DESIGN 6.2 gives each effect per stack; how wide, how far is chosen) ----
-// Play test 1 (2026-11-12) raised them: Split +2 lanes, Pierce +2, Ricochet +2 (and on to the nearest other enemy
+// Play test 1 (2026-11-12) raised them (play test 3 took Split, Double-Time and Fork one rank down): Split +2 lanes, Pierce +2, Ricochet +2 (and on to the nearest other enemy
 // within 300 wu), Overcharge +50%, Magnet +100% of the base radius, On-Beat Crit x3 / x5 / x8 with a burst over 80
 // wu (all quoted; sim/upgrades.h has the per-stack numbers).
 constexpr float kSplitFanDeg = 5.0f;          // Split: lanes 5 degrees apart, centred on the aim
@@ -139,7 +141,7 @@ constexpr float kMagnetPerStack = 1.00f;      // GAME_DESIGN 6.2 (quoted): +100%
 constexpr float kRicochetSeekWu = 300.0f;     // GAME_DESIGN 6.2 (quoted): a hit bounces on to the nearest enemy this near
 constexpr float kCritBurstWu = 80.0f;         // GAME_DESIGN 6.2 (quoted): a beat shot's hit bursts this wide ...
 constexpr float kCritBurstShare = 0.5f;       // ... dealing this share of the shot's damage to the others in it (chosen)
-// The shot pool (TECH_SPEC 7.1: 1,024 a player) with Split 7 x Prism 5, Double-Time, Hyper and the endless tempo
+// The shot pool (TECH_SPEC 7.1: 1,024 a player) with Split 5 x Prism 5 (play test 3: Split 2), Double-Time, Hyper and the endless tempo
 // on top: above kShotsSoftCap live shots of a player (from a beat; until below kShotsThinEnd, on a beat: GAME_DESIGN 6.6)
 // every lane still fires but those beyond the middle three fly half as far, and the multipliers' extras and Prism's
 // mini-refractions wait; above kShotsMiddleOnly the middle lane alone fires; a player never has more than kShotsHardCap
@@ -149,7 +151,7 @@ constexpr u32 kShotsMiddleOnly = 800;
 constexpr u32 kShotsHardCap = 1000;
 constexpr u32 kShotsThinEnd = 432;            // GAME_DESIGN 6.6 (quoted): thinning ends below three quarters of the soft cap
 constexpr float kThinReach = 0.5f;            // GAME_DESIGN 6.6 (quoted): the lanes beyond the middle three fly half as far
-constexpr u32 kMaxShotsPerStep = 35;          // Split 7 x Prism 5
+constexpr u32 kMaxShotsPerStep = 25;          // Split 5 x Prism 5 (play test 3: Split's cap is 2; it was 7 x 5)
 // The Shard pool (2,048): above this many out at once a loose Shard lasts one bar instead of GAME_DESIGN 5's four and a
 // death drops one Shard; within kShardsReserve of the cap a death drops none.
 constexpr u32 kShardsCrowded = 1536;
@@ -157,12 +159,18 @@ constexpr double kShardCrowdedBars = 1.0;
 constexpr u32 kShardsReserve = 64;
 
 // ---- Riffs (GAME_DESIGN 6.3) ----
-// Play test 1: Orbitals 3, 5, 7, 9, 11 shards that also destroy the enemy bullets they touch; Pulse Ring on every
+// Play test 1: Orbitals 3, 5, 7, 9, 11 shards that also destroy the enemy bullets they touch (play test 3: a guard ring); Pulse Ring on every
 // beat from level 1 at twice the damage, then a second ring, wider, heavier, and every eighth at level 5; Sentinel a
 // burst of 3, then 4, a second drone, 5, a third drone (quoted; sim/upgrades.h).
 constexpr float kOrbitalRadiusWu = 64.0f;     // Orbitals: circle around the ship, one turn per bar (quoted)
-constexpr float kOrbitalHitWu = 10.0f;
-constexpr float kOrbitalDamage = 1.0f;        // per eighth note an enemy stays in contact
+constexpr float kOrbitalHitWu = 7.0f;         // play test 3 (quoted): each shard 14 wu across
+constexpr float kOrbitalDamage = 3.0f;        // play test 3 (quoted): it cuts what it touches for 3 an eighth note
+// Play test 3 (GAME_DESIGN 6.3 row 1, quoted): the guard ring. While every shard is lit a hit breaks the ring instead of taking
+// a cell (the panic pulse, and kRingInvulS of invulnerability); its shards relight one by one and it guards again
+// kRingRelightBars after it broke (by level: 8, 8, 6, 6, 4).
+constexpr u32 kRingRelightBars[6] = {0, 8, 8, 6, 6, 4};
+constexpr float kRingInvulS = 1.0f;
+constexpr u8 kExtraLifeCells = 2;             // GAME_DESIGN 5 (play test 3, quoted): an Extra Life brings the ship back with two cells
 constexpr float kPulseRadiusWu = 230.0f;      // Pulse Ring: expands to this ...
 constexpr float kPulseRadiusWide = 290.0f;    // ... (level 3 and up)
 constexpr float kPulseGrowS = 0.25f;          // ... in this long
@@ -290,10 +298,12 @@ constexpr float kWaveAmpWu[3] = {0.0f, 28.0f, 40.0f}, kWaveRadius[3] = {1.0f, 1.
                                                             // to a beat of flight, look.md v2.5)
 constexpr float kHelixAmpWu = 80.0f;                        // GAME_DESIGN 6.5 (quoted): the outer pair 80 wu to each side, the
 constexpr float kHelixWaveBeats = 2.0f;                     // pairs inside at 2/3 and 1/3; one wave to two beats of flight
-constexpr float kArcReachWu = 220.0f, kArcDamage = 2.0f;    // Arc: 2, 3, 4 more (quoted 2 at the first stack)
-constexpr float kBurnDamage = 1.0f, kBurnSpreadWu = 90.0f;  // a beat's fire, x the stacks; neighbours caught on a death
+constexpr float kArcReachWu = 160.0f, kArcDamage = 2.0f;    // Arc: 1, 2, 3 more within 160 wu (play test 3, quoted: half); an
+                                                            // arc's own kill arcs no further
+constexpr float kBurnDamage = 1.0f, kBurnSpreadWu = 45.0f;  // a beat's fire, x the stacks; neighbours within 45 wu caught on a
+                                                            // death, once: their fire spreads no further (play test 3, quoted)
 constexpr double kBurnBeats = 2.0;                          // quoted
-constexpr u32 kShatterShards[4] = {0, 3, 5, 7};
+constexpr u32 kShatterShards[4] = {0, 2, 3, 4};             // play test 3 (quoted): 2, 3, 4 pieces; a piece's kill throws none
 constexpr float kPelletSpeed = 700.0f, kPelletLifeS = 0.3f;
 constexpr float kGravityReachWu[3] = {0.0f, 110.0f, 150.0f}, kGravityPull[3] = {0.0f, 70.0f, 110.0f};  // wu, wu/s
 constexpr double kDecoyBeats[3] = {0.0, 2.0, 4.0};          // Afterimage (quoted 2 beats)
@@ -326,9 +336,11 @@ constexpr u32 kFlakPellets[6] = {0, 12, 16, 20, 24, 24};
 constexpr float kFlakBlastWu = 40.0f;
 // Boosts 3-6, 9-16.
 constexpr float kSupernovaWu = 70.0f;
+constexpr float kSupernovaShare = 0.5f;                             // play test 3 (quoted): the blast is half the shot's damage
 constexpr float kColossusScale = 3.0f, kColossusRamDamage = 20.0f;  // quoted x3
 constexpr float kTimeStretchSpeed = 0.5f;                           // quoted: half speed
 constexpr float kFreezeChainWu = 90.0f;
+constexpr u32 kFreezeChainMax = 12;                                 // play test 3 (quoted): one hit shatters at most 12 at a time
 constexpr float kHolePullWu = 700.0f, kHolePull = 300.0f, kHoleBlastWu = 500.0f, kHoleDamage = 50.0f;
 constexpr double kHoleBeats = 3.0;                                  // quoted
 constexpr float kChainStormWu = 360.0f, kChainStormDamage = 2.0f;
@@ -358,10 +370,9 @@ constexpr float kMiniHealthTune[12] = {0.975f, 0.75f, 0.7f, 1.44f,  // (6.5, 5.0
                                      0.5f, 1.0f, 2.5f, 1.3f};      // M5 part 6, batch 3 (the novice from the fight's start, x 1: Mirror
                                                                      // Mimic 8 won, 12 warped out; Twin Tether 8 of 9, 26 s; Weaver Prime
                                                                      // 11 of 11, 10 s; Deep Well 7 of 9, 15 s)
-// M5 (GAME_DESIGN 7.6, quoted starting values): the novice bot, a player's first week.
-constexpr float kNoviceAimLagS = 0.200f;     // it aims 200 ms behind where the body is
-constexpr float kNoviceWanderDeg = 6.0f;     // and wanders 6 degrees to either side
-constexpr double kNoviceLearnBars = 16.0;    // it ignores a boss's weak point for 16 bars, then aims at it half the time
+// M5 (GAME_DESIGN 7.6, quoted starting values): the novice bot, a player's first week. Play test 3: it no longer aims (it
+// fires only through the assist), so its aim lag, wander and weak-point learning are gone; the learning stays for its feet.
+constexpr double kNoviceLearnBars = 16.0;    // it keeps to Fata Morgana's nearer water (the mirage too) for 16 bars
 constexpr float kNoviceReactS = 0.250f;      // (its steering runs this far behind its decisions: bot.h kNoviceDelayTicks)
 constexpr float kNoviceLookS = 0.6f;         // calibration (mine): it minds bullets arriving within 0.6 s (the careful bot 1.4 s)
 constexpr float kNoviceDashShare = 0.5f;     // it dashes out of half the hits it sees coming
@@ -415,7 +426,7 @@ constexpr float kBossPaceNovice[24] = {   // (by BossKind; the mini-bosses 0: th
     4188.0f, 2910.0f, 2792.0f,               // Event Horizon, Polyrhythm, Feedback (--handover 4, 5, 6)
     6501.0f, 16772.0f, 21279.0f, 6200.0f};   // Cadence, Arpeggiator, Fata Morgana, Kaleidos Reprise (--handover 7, 8, 9, 10)
 constexpr float kBossPaceMin = 1.0f, kBossPaceMax = 4.0f;
-constexpr float kBossPaceDeadBand = 1.25f;  // ea472ab: a ratio under it counts as 1 (the novice's good bars; up to 1.5 if it must)
+constexpr float kBossPaceDeadBand = 1.5f;  // GAME_DESIGN 7.6 (play test 3): a ratio under it counts as 1 (1.25 at first)
 constexpr u32 kBossPaceBars = 8;
 constexpr float kBulletPoolShooters = 0.70f;  // GAME_DESIGN 6.6 (quoted): no shooting species bought above 70% of the bullet pool
 constexpr float kBulletPoolCrowd = 0.95f;     // ... and the crowd's volleys held above 95% of it (the rest kept for the fights' patterns)

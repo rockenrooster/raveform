@@ -296,7 +296,7 @@ const FightSound kRows[] = {
     {BossCue::PyPulse, "arena.md", "Pylon: each pulse a bell on the chord's root an octave up, on the One", nullptr, SoundPlay::Recipe, rc(Recipe::Bell), false,
      0.5f, 0, 0},
     {BossCue::RiOpen, "arena.md", "Rift: a drone on the chord's bass note while it is open, its cutoff rising through the Build (each open Rift's drone "
-                                  "follows the world: FightScene; the nearest two, a Rift Surge's a fifth apart)",
+                                  "follows the world: FightScene; the nearest one since the lead's ruling, a Rift Surge's a fifth up)",
      nullptr, SoundPlay::None, 0, false, 0.0f, 0, 0},
     {BossCue::RiThrough, "arena.md", "Rift: a tom for each body that comes through (the four come through together: aggregated as one, six for a Surge's)",
      nullptr, SoundPlay::Custom, rc(Recipe::Tom), false, 0.5f, 0, 0},
@@ -329,6 +329,14 @@ const FightSound kRows[] = {
      rc(Recipe::Zap), false, 0.5f, 0, 0},
     {BossCue::StWarn, "arena.md", "Storm Cell: a crackle that rises as it nears (held for the event, denser and louder as it nears: FightScene)", nullptr,
      SoundPlay::None, 0, false, 0.0f, 0, 0},
+    // ---- Play test 3 (GAME_DESIGN 7.6, "Every hit on a boss is seen and heard"); the sim sends one of each a 1/32 step, f the
+    // step's gain within its beat (1, then 0.7 of the step before, down to 0.3). Each plays on the band's next 1/32 step at the
+    // row's gain times f.
+    {BossCue::HitWeak, "GAME_DESIGN 7.6", "a shot on a weak point: a bright tick in the Track's key, counted on the 1/32 step like kills (the "
+                                          "tick climbs the chord through a beat's steps: root, third, fifth, then the octave)",
+     nullptr, SoundPlay::Custom, rc(Recipe::Tick), false, 1.0f, 0, 0, NoteRule::None, 0, 0, 0, 0, 6},
+    {BossCue::HitArmour, "GAME_DESIGN 7.6", "a shot on armour: a dull low knock, counted on the 1/32 step like kills", nullptr, SoundPlay::Custom,
+     rc(Recipe::Knock), false, 1.0f, 0, 0},
 };
 static_assert(sizeof(kRows) / sizeof(kRows[0]) == static_cast<u32>(BossCue::Count), "one row per BossCue, in its order");
 
@@ -665,6 +673,20 @@ void playCustom(audio::CommandSink& s, FightVoices& voices, const FightSound& r,
         case BossCue::StStrike:
             for (i32 k = 0; k < 3; ++k) recipe(s, Recipe::Zap, chordNote(k, 5, NoteFrom::ChordTone), r.gain, pan, tick, 0.0f, 0.0f, 1);
             break;
+        case BossCue::HitWeak:
+        case BossCue::HitArmour: {
+            // Play test 3: on the band's next 1/32 step (as kills are), at the step's gain within its beat. The weak point's tick
+            // climbs the chord with the steps (its gain says which: 1, 0.7, 0.49, then 0.343 and the floor 0.3).
+            const float g = e.f > 0.0f ? std::fmin(e.f, 1.0f) : 1.0f;
+            if (r.cue == BossCue::HitArmour) {
+                recipe(s, Recipe::Knock, -1, r.gain * g, pan, -1.0);
+                break;
+            }
+            static const i32 kTone[4] = {0, 1, 2, 4};
+            const i32 step = g > 0.85f ? 0 : (g > 0.6f ? 1 : (g > 0.42f ? 2 : 3));
+            recipe(s, Recipe::Tick, chordNote(kTone[step], r.octave, NoteFrom::ChordTone), r.gain * g, pan, -1.0);
+            break;
+        }
         default: break;
     }
 }

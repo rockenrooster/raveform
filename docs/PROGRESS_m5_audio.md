@@ -6,18 +6,18 @@ under the phone lock (`m5audio`), with this branch's APK deployed right before t
 
 | Asked | Status | Evidence |
 |---|---|---|
-| Every row of `src/game/pending_sounds.cpp` plays what its page asks | **Done**: 132 rows, 0 with `pending` | `raveform_headless --render fights` prints the count |
+| Every row of `src/game/pending_sounds.cpp` plays what its page asks | **Done**: 134 rows (with main's two hit cues), 0 with `pending` | `raveform_headless --render fights` prints the count |
 | Colossus's ram toms level with the music | **Done**: +3.4 dB -> **-0.0 dB** | `--render upgrade-levels`, "Colossus: and a tom on the root for each enemy rammed" |
 | Kick Pulse's tom against a full Drop | **Audible, not raised**: in the 85 ms after each kick its 250 Hz octave is **-6.0 to -7.2 dB** under the rest of the mix there (First Light, Afterglow, Last Light) | `--render kick-pulse` |
 | The Choir's pad voice, reverb send 0.5 | **Done** (the Voices, a Voice's death, the held note, the Reprise's Choir solo) | content voice send (`VoiceStart mods[5]`) |
 | The worst case grown to two Boosts a player and Fusions, the fights on top | **Built**; Moto P95 31.5% first; with the lead's cuts and the new caps 29.0%; with held pads and drones at one voice **28.0%, 0 underruns** (the lead's band of 25-28%: accepted, over the 25% goal) | `--band max`; offline `--render max` / `max-upgrades` |
 | Play test 3, 1: the Nova's distortion | **Done**: a look-ahead limiter replaces the soft knee; THD+N of the worst instant **0.03-0.66%** (the old knee 0.02-5.8%) | `--render nova-check` |
 | Play test 3, 2: a chain of kills is one sound | **Done**: one family a 1/32 step, never louder than one large kill, 0.7 a further step of the beat down to 0.3 | test "the kill family" |
-| Play test 3, 3: hit confirmation on bosses | **Not done**: its rows are not on main yet | |
-| Play test 3, 4: Extra Life, the Orbitals' ring | **Engine done** (four cues); **the game does not post them yet** (no simulation events for them on main) | `audio::Cue` 19-22 |
-| Play test 3, 5: the Short form | **Checked, nothing to change**: every Track's Groove and Drop are 8 bars in its data; the engine's literals are the content engineer's change, not on main yet | below |
-| `scripts\test.ps1` | Audio suite (2714 checks) and the calibration pass; **the simulation, determinism and network parts fail on main `a008b71` itself** (`design/arena.json`'s Track 1 has no structures; the loader refuses it), not on anything here | |
-| Listening sheet | `captures\m5audio\sheets\fights.wav` (4:06, 16-bit) and `fights.txt` | |
+| Play test 3, 3: hit confirmation on bosses | **Done** (main `61a7f09` merged): a weak point's bright tick climbing the chord through a beat's steps, armour's dull knock; two new recipes; on the band's next 1/32 step at the sim's chain gain | sheet 3:53 and 4:00 |
+| Play test 3, 4: Extra Life, the Orbitals' ring | **Done**: the game posts the four cues from main's events (the pickup; the stab on the free Nova's blast; the ring broken; each shard relit, polled from `World::orbitalsLit`) | sheet 4:08 and 4:15 |
+| Play test 3, 5: the Short form | **Checked, nothing to change** in the data; main's engine literals (Standard retired) merged | below |
+| `scripts\test.ps1` | **All passed** after merging main `61a7f09`: audio 2716 checks, calibration current, simulation 5875, determinism, network 131,366, both 6-minute loopback soaks | |
+| Listening sheet | `captures\m5audio\sheets\fights.wav` (4:36, 16-bit, -14.2 LUFS) and `fights.txt`; play test 3's hits, Extra Life and ring from 3:53 | |
 
 ## What was built
 
@@ -49,8 +49,15 @@ under the phone lock (`m5audio`), with this branch's APK deployed right before t
   never over one large kill's (the crackle's level scaled with them), each further step of the same beat at 0.7 of the one
   before, down to 0.3, from 1 again on the next beat.
 - **Cues, appended** (play test 3, 4): `ExtraLifePickup` (the Cell's note, the player's lead at 0.85 an octave over the root,
-  and the fifth above it), `ExtraLifeUse` (the Nova's blast and the Track's tonic chord on the stab), `OrbitalsBreak` (the
-  glass crack two octaves down), `OrbitalsRelight` (value = the shard: the shaker a scale step higher each).
+  and the fifth above it), `ExtraLifeUse` (the Track's tonic chord on the stab, posted for the tick of the free Nova's blast:
+  the Nova itself, inhale and blast, is the game's own), `OrbitalsBreak` (the glass crack two octaves down), `OrbitalsRelight`
+  (value = the shard: the shaker a scale step higher each).
+- **Recipes, appended** (play test 3, 3; values 31-32): `Tick` (a bright tick at a note: the sine with its second and third
+  harmonics, 25 ms, over a 1 ms click of 4-10 kHz noise; baked MIDI 84-108), `Knock` (a dull low knock, unpitched: a sine
+  falling 220 -> 150 Hz, 25 ms, a woody partial at 2.3 x and a 4 ms thud of 250-1200 Hz noise). Levels 0.24 and 0.30: in the
+  sheet's Drop (Solar Wind, intensity 0.8, the player firing) a beat's first tick is **+2.0 dB** over the music's median in
+  1-2.5 kHz (20 ms windows, `--render fights --stems`), the knock **-2.5 dB** in 80-300 Hz and -3.5 dB in 300-1000 Hz; the
+  later steps of a beat fall under it (0.7 a step). Starting values for the user's ear. Cache version 9.
 - **Fixes found on the way**: Standing Wave took its slot on the block being planned (cutting what rang there at a block
   boundary: random bursts rendered differently once all its slots were busy); it now takes it on its own frame. A reversed
   cymbal asked for late still ends on its tick (what is left of it plays).
@@ -65,8 +72,8 @@ under the phone lock (`m5audio`), with this branch's APK deployed right before t
   fight's (Feedback's Howl: sixteen delay taps, the pad's tone, its echoes a note every 1/16; Event Horizon's sub; Cadence's stab
   at 1.2 and a bell arpeggio a bar; a cut of the pads and bass every two seconds). `--band full` and `stress` are the M2-era
   loads and are unchanged; `max` is their superset.
-- **Tools** (`raveform_headless`): `--render fights` (the sheet), `kick-pulse`, `nova-check`, `max-upgrades` (the worst case
-  without the fights); the profile has a `content` stage.
+- **Tools** (`raveform_headless`): `--render fights` (the sheet; `--stems dir` writes each bus), `kick-pulse`, `nova-check`,
+  `max-upgrades` (the worst case without the fights); the profile has a `content` stage.
 
 ### The rows (`src/game/pending_sounds.cpp`)
 
@@ -92,11 +99,16 @@ glided, re-panned and released there. The rows that were pending now play:
 | Weaver Prime | a crackle swelling over the beat into the cage's going off, the stab on it |
 | Deep Well | the thup a scale step higher each ring lit (aggregated); a reversed cymbal into each ring the bar's fill will give back (sent a beat and a half ahead), the stab on the ring |
 | Elites | Armored's short gong, Splitting's crack, Volatile's crackle, Regenerating's two bells, Magnetic's chirps falling, Phasing's gated fifth; the chosen ones (no sound on the page) keep what they played, marked "chosen" |
+| A boss hit (play test 3) | a weak point: the `Tick` on the chord's root in octave 6, then the third, the fifth and the octave for a beat's further steps (the sim's gain says which step: 1, 0.7, 0.49, 0.343 and the floor); armour: the `Knock`; both on the band's next 1/32 step at the row's gain times the sim's |
 | Arena | the Vault's bells up the chord with the glass; the Pylon's three bells; the nearest open Rift's drone on the chord's bass (one, by the lead's ruling; a Rift Surge's a fifth up for its second and third), its cutoff rising through the Build; a Rift's four bodies one aggregated tom; the Bumper's stab with its zap; the Lens's glass a fifth over its player's lead (aggregated); the Comet's announcing glide (the other events' pages name none); the Comet's Shards one aggregated bell a beat; the Eclipse's low-pass let go at its end; a Convoy tom a beat for each carrier, panned to it; the Storm Cell's zaps on the chord's three notes (aggregated) and its crackle, denser and louder as it nears |
 
 ### Hooks outside my files
 
-- `src/game/play.cpp`: `updateFightVoices` is given the world, this device's seat and the band's offset (one call).
+- `src/game/play.cpp`: `updateFightVoices` is given the world, this device's seat and the band's offset (one call); an
+  `EventType::ExtraLife` case hands the event to `UpgradeCues` (a spent one with the free Nova's blast tick).
+- `src/game/upgrade_sounds.h/.cpp`: a Hit that broke the Orbitals' ring counts `OrbitalsBreak`; an Extra Life picked up or
+  spent counts its cue; `flush` follows the ring's lit shards (`World::orbitalsLit`) and posts `OrbitalsRelight` for each one
+  relit while the ring was broken.
 - `CMakeLists.txt`: `src/game/pending_sounds.cpp` is built into `raveform_headless` (the sheet).
 - `src/tools/audio_render.cpp`, `tests/audio_tests.cpp`: the sheet, the checks, the tests.
 
@@ -150,7 +162,7 @@ longer pile on top (the input above was measured with it).
 
 ### Tests
 
-`raveform_tests`: 2714 checks, 0 failures (new: the fights' sounds: the cut, the high-pass, the pad's tone, a fight's lead
+`raveform_tests`: 2716 checks, 0 failures (every recipe sounds, the two new ones included; new: the fights' sounds: the cut, the high-pass, the pad's tone, a fight's lead
 (recorded an octave down, mirrored, bent, its cap), aggregation, the gate, the five-note stab; the kill family; the worst case
 with random bursts and the fights' feed, no steal, no allocation). Calibration current (no loudness moved: the staged renders
 are the same; `kDspVersion` unchanged).
@@ -160,15 +172,15 @@ are the same; `kDspVersion` unchanged).
 Every Track's `arrangement` in `design/music/track01-10.json` already has Groove 8, Build 4, Drop 8, Break 4 bars, every
 progression is four chords, and what the conductor plays in a Groove or a Drop repeats within 8 bars (the bass's alternate
 bar, the fill on the eighth, the Surge's two gears by halves of the section). No Track needed its phrases split between odd and
-even cycles. The engine's two literal copies of the section lengths (`planConductorBar`) are the content engineer's change on
-main; when it arrives here nothing else in the band needs to move.
+even cycles. The engine's two literal copies of the section lengths (`advanceCycle`, `planConductorBar`) came with the content
+engineer's batch (main `61a7f09`, merged): every Track Short, Standard retired; nothing else in the band needed to move (the
+conductor test walks every Track's 8 / 4 / 8 / 4).
 
 ## Not done or not verified
 
-- **Hit confirmation** (play test 3, 3): its rows are not on main; they sound when they reach this branch.
-- **Extra Life and the Orbitals' ring**: the band has the four cues; the simulation has no events for them on main, so the game
-  does not post them yet (`band.cue(Cue::ExtraLifePickup ...)` from wherever the pickup is decided).
-- **The budget**: 28.0% on the Moto after the rulings' cuts (above): in the accepted band, not under the 25% goal.
+- **The hit cues' levels** (0.24 and 0.30) are measured, not heard: a beat's first hit about level with the music in its own
+  band in a Drop, louder against a Groove; the user sets them by ear.
+- **The budget**: 28.0% on the Moto after the rulings' cuts (above): in the accepted band, not under the 25% goal. The hit cues
+  (one sample voice a 1/32 step at most) and the Extra Life / Orbitals cues came after that run and were not measured on it.
 - **By ear**: nothing here has been heard (this PC is silent). The sheet is for the user.
-- `scripts\test.ps1`'s simulation, determinism and network parts fail on main `a008b71` (the arena data); the audio parts pass.
 - The tablet and the OnePlus: not attached.
