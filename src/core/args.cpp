@@ -250,7 +250,7 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             usedNext = true;
         // M4 end
         } else if (is("--strip") && next) {
-            ok = parseUint(next, a.strip) && a.strip <= 64;
+            ok = parseUint(next, a.strip) && a.strip <= 600;  // (up to ten seconds of frames: the owner's videos, 2026-11-14)
             usedNext = true;
         } else if (is("--page") && next) {
             ok = parseUint(next, a.page) && a.page >= 1 && a.page <= 3;
