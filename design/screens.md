@@ -86,6 +86,7 @@ light, in the palette of Track 1, with the music at full level.
 | The ship | Under PLAY | Idles, turning toward the last touch |
 | Best | Bottom left, cap 14, gold | `BEST 1,204,880  TRACK 05  X412` |
 | Note | Bottom right, cap 14, white at 0.5 | `HEADPHONES RECOMMENDED`; on first launch the photosensitivity notice takes this screen first |
+| Version | Bottom right under the note, cap 11, white at 0.4 | The version, the build's commit and its date and minute: `V0.9.0  F0CD14F  2026-11-14 16:40` (the owner, 2026-11-14: "include a version # with build date at the bottom right at the main menu"); the version is `CMakeLists.txt`'s project version |
 
 ## Settings (M3)
 

@@ -76,6 +76,9 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | The thermal check (M7, Moto): Track 10's first Drop held for 5 minutes | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Seconds 300 -Warmup 5 -AppArgs '--drop 10.1 --drop-hold --nohits --tier low' -Deploy` |
 | The app icon (screens.md "App icon and name (M6)") | `python -I -B scripts\make_icon.py` (reads `design/glyphs.json`, `look.json`, `palettes.json`; writes the adaptive icon's layers into `android/app/src/main/res/mipmap-*` and `captures\m6\icon_512*.png`; a few minutes) |
 
+The version is `CMakeLists.txt`'s project VERSION (and `android/app/build.gradle`'s versionName, kept the same); every build writes
+`generated/build_stamp.h` (`cmake/build_stamp.cmake`: version, commit, date) and the title screen shows it bottom right.
+
 Desktop exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 benchmark aborted,
 5 screenshot failed. Device serials: Moto `ZY22BXMJG3`, OnePlus 12R `a0e622a5`, Galaxy Tab `R5GL362BEHX`.
 

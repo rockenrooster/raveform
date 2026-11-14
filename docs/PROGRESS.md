@@ -4,6 +4,20 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (evening), the bug check pass; the version on the title
+
+- "Include a version # with build date at the bottom right at the main menu": `cmake/build_stamp.cmake` writes
+  `generated/build_stamp.h` on every build (the version from `CMakeLists.txt`'s project VERSION, now 0.9.0; the commit read from
+  `.git` without git; the date and minute), rewritten only when it changes; `src/core/build_info.cpp` makes the line and the
+  title draws it under HEADPHONES RECOMMENDED (cap 11, white at 0.4: `V0.9.0  7775A64  2026-11-14 16:29`; screens.md "Title").
+  The APK's versionName 0.9.0 (0.0.1-m0).
+- "Now do a bug check pass", over this evening's work (f0624e5..7775a64): the diff read through (the output stage's two gains
+  and their reset, the Shards' homing and its guard, Black Hole on its owner's device only, the fork flag's bit, three Boost slots
+  and the HUD row, the tempo and health factors, the Reprise's cues and placement, the lethal-line helper's batches and their
+  capacities: every batch drops past its capacity, never overruns). Ran: audio 2,718 / sim 6,114 / net 131,368 / save 60 checks,
+  0 failures; calibration check, determinism, the clean loopback soak, nova-check, a 12-minute bot soak (Shards peaked at 1,729,
+  past the crowded line: the homing rule ran) PASS; Vulkan validation on the Reprise, Event Horizon and Track 5 at Low: 0 messages.
+
 ## 2026-11-14 (evening), a substantial glow on every red projectile; Weaver Prime's lines
 
 - "Do a pass on any red enemy projectiles (lines, dots, anything) and make sure they have a substantial glow": enemy bullets had

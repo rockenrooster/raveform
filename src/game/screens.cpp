@@ -10,6 +10,7 @@
 
 #include "audio/band.h"
 #include "content/icons.h"
+#include "core/build_info.h"
 #include "core/log.h"
 #include "game/play.h"
 #include "game/play_hud.h"
@@ -545,6 +546,9 @@ void Play::screenTitle(Ui& ui) {
             }
         }
         ui.text({W - std::fmax(132.0f * s, ui.insetMax().x), H - 54.0f * s}, 14.0f * s, white, 0.5f, "HEADPHONES RECOMMENDED", 1.0f);
+        // screens.md "Title" (the owner, 2026-11-14: "include a version # with build date at the bottom right at the main menu"):
+        // under the note, the version, the build's commit and its date and minute (src/core/build_info).
+        ui.text({W - std::fmax(132.0f * s, ui.insetMax().x), H - 30.0f * s}, 11.0f * s, white, 0.4f, buildStampLine(), 1.0f);
     }
     setHudFade(1.0f);
     // M4 stage B: why a co-op session ended (the host left, the connection was lost), for a few seconds.

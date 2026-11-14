@@ -3,7 +3,7 @@
 # Android: android/ Gradle project points externalNativeBuild here (SDK CMake 3.22.1, NDK r29).
 
 cmake_minimum_required(VERSION 3.22)
-project(raveform VERSION 0.0.1 LANGUAGES C CXX)
+project(raveform VERSION 0.9.0 LANGUAGES C CXX)  # (the title screen's version, src/core/build_info; android/app versionName too)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -430,6 +430,14 @@ endif()
 add_library(raveform_core OBJECT ${RF_CORE_SOURCES} ${RF_GENERATED})
 target_include_directories(raveform_core PUBLIC ${RF_ROOT}/src ${RF_GEN})
 target_link_libraries(raveform_core PUBLIC rf_volk SDL3::Headers)
+# The build stamp (the owner, 2026-11-14: the version and build date at the bottom right of the title): rewritten on every build
+# when its minute changes, so only build_info.cpp recompiles.
+add_custom_target(rf_build_stamp ALL
+  COMMAND ${CMAKE_COMMAND} -DOUT=${RF_GEN}/build_stamp.h -DSRC=${RF_ROOT} -DVERSION=${PROJECT_VERSION} -P ${RF_ROOT}/cmake/build_stamp.cmake
+  BYPRODUCTS ${RF_GEN}/build_stamp.h
+  COMMENT "build stamp")
+target_sources(raveform_core PRIVATE src/core/build_info.cpp)
+add_dependencies(raveform_core rf_build_stamp)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   set(RF_BUILD_NAME debug)
