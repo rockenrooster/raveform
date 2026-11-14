@@ -65,8 +65,8 @@
     "linkBeam": {
      "every": "second bar",
      "telegraphBars": 1,
-     "burnBeats": 2,
-     "when": "beats 3 and 4",
+     "burnBeats": 1,
+     "when": "beat 4",
      "note": "the link shows danger dashes for a bar and then burns: the aisle is still safe on the One, but nobody can live in it"
     },
     "ringSpeed": "Four's walls fly at 300",

@@ -423,3 +423,18 @@ The game explains itself once, in the world, while the player plays. No tutorial
   `design/glyphs.json` and `design/palettes.json` by a script, with the bloom of look.md section 7
   at half strength; a monochrome layer (ship and halo, no ground) for themed icons.
 - **Name:** `RAVEFORM` under the icon as the system draws it. The title screen is the name screen.
+
+## Credits (M7)
+
+`CREDITS` is the last row of SETTINGS. One screen in the title's style, scrolling by drag or stick,
+BACK top left. Cap 22 for headings in the accent, cap 14 for lines in white.
+
+| Heading | Lines |
+|---|---|
+| `RAVEFORM` | `MUSIC, PICTURES AND CODE MADE FOR THIS GAME` |
+| `BUILT ON` | `SDL 3  (ZLIB LICENCE)`, `OBOE  (APACHE 2.0)`, `ANDROID FRAME PACING  (APACHE 2.0)`, `ENET  (MIT)`, `VOLK  (MIT)`, `VULKAN HEADERS  (APACHE 2.0, MIT)` |
+| `LICENCES` | Each library's licence text in full, cap 10, as the library ships it (read from the fetched sources at build time, never retyped) |
+| `PLAY SAFE` | The first-launch notice's photosensitivity text again |
+
+The list is whatever the build really links: the build fails if a linked third-party library has no
+entry.

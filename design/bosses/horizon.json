@@ -142,7 +142,7 @@
     "jets": {
      "when": "a fed bar line",
      "telegraphBars": 1,
-     "burnBeats": 2,
+     "burnBeats": 1,
      "note": "two opposite beams along the Well's axis, shown as danger dashes for the bar before; the axis turns 45 degrees every bar"
     },
     "note": "four lanes and the Well comes for you; starving it now takes the whole build"
