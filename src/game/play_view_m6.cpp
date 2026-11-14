@@ -503,34 +503,62 @@ void PlayView::drawReprise(FrameDraw& d, const ViewInput& in) {
     // sandwhiched together". So it is one shockwave: from the death, ten thick see-through bands side by side, one in each Track's
     // colour (First Light's at the front, Last Light's at the back), leave the core together and spread as an explosion does, fast
     // and then slowing (its front at 80 + 1,420 x (1 - (1 - u)^2.5) wu: 330 wu at 0.14 s, 800 at 0.45 s, 1,250 at 0.9 s, 1,500 at
-    // the end), the whole growing from 160 to 360 wu thick, fading over 1.8 s; a thin white line at its front.
+    // the end), the whole growing from 160 to 360 wu thick, fading over 1.8 s.
+    // The owner on those bands: "each color line should be very thin but have a very thick glow". So each Track's colour is a
+    // thin line (1.5 ref px, the full colour), the ten a gap apart (16 wu growing to 36 as the wave spreads), and each line glows
+    // far past its width: the glow falls off linearly over 1.6 gaps on either side, so it fills the gaps (a gap's middle holds
+    // two thirds of each neighbour) and spills 3 gaps past the front and the back. The glow is drawn as glass strips between
+    // the lines, each edge carrying the summed glow there; the white front line of the bands is gone (it hid First Light's).
     if (s.dying && s.deathTick >= 0.0) {
         const float since = static_cast<float>((t - s.deathTick) / std::fmax(w.ticksPerSecond(), 1.0f));
-        constexpr float kWaveLife = 1.8f, kWaveWu = 1500.0f, kWaveStartWu = 80.0f, kWaveThick0 = 160.0f, kWaveThick1 = 360.0f;
+        constexpr float kWaveLife = 1.8f, kWaveWu = 1500.0f, kWaveStartWu = 80.0f, kGap0 = 16.0f, kGap1 = 36.0f;
+        constexpr float kLineHalfPx = 0.75f, kLineLevel = 1.6f, kGlowLevel = 0.35f, kGlowReach = 1.6f, kGlowTail = 3.0f;
+        constexpr float kSegmentWu = 100.0f;
         if (since >= 0.0f && since < kWaveLife) {
             const float rf = reduceFlashing_ ? 0.6f : 1.0f;
             const float u = since / kWaveLife;
             const float outer = kWaveStartWu + (kWaveWu - kWaveStartWu) * (1.0f - std::pow(1.0f - u, 2.5f));
-            const float layer = (kWaveThick0 + (kWaveThick1 - kWaveThick0) * u) / 10.0f;
+            const float gap = kGap0 + (kGap1 - kGap0) * u;
             const float fade = (1.0f - u) * rf;
-            const u32 n = 48;
+            // Knots from the front: the front tail's end (dark), the ten lines, the back tail's end (dark).
+            constexpr float kNear = 1.0f - 1.0f / kGlowReach;  // a neighbour's share of the glow on a line
+            Vec3 line[10], knot[12];
+            float rad[12];
+            for (u32 k = 0; k < 10; ++k) line[k] = accentOf(k + 1);
+            rad[0] = outer + kGlowTail * gap;
+            knot[0] = Vec3{};
             for (u32 k = 0; k < 10; ++k) {
-                const float r1 = outer - layer * static_cast<float>(k), r0 = r1 - layer;
-                if (r0 <= 0.0f) continue;
-                const Vec3 c = accentOf(k + 1) * (0.6f * fade);
+                rad[k + 1] = outer - gap * static_cast<float>(k);
+                Vec3 g = line[k];
+                if (k > 0) g = g + line[k - 1] * kNear;
+                if (k < 9) g = g + line[k + 1] * kNear;
+                knot[k + 1] = g * (kGlowLevel * fade);
+            }
+            rad[11] = rad[10] - kGlowTail * gap;
+            knot[11] = Vec3{};
+            const u32 n = static_cast<u32>(clampf(std::ceil(kTau * rad[0] / kSegmentWu), 32.0f, 96.0f));
+            for (u32 j = 0; j + 1 < 12; ++j) {
+                const float ro = rad[j], ri = std::fmax(rad[j + 1], 0.0f);
+                if (ro <= 0.0f) break;
+                const Vec3 co = knot[j], ci = knot[j + 1];
                 for (u32 q = 0; q < n; ++q) {
                     const float a0 = kTau * static_cast<float>(q) / n, a1 = kTau * static_cast<float>(q + 1) / n;
-                    const Vec2 o0 = pos + dirv(a0) * r1, o1 = pos + dirv(a1) * r1;
-                    if (!visible((o0 + o1) * 0.5f, 0.5f * length(o1 - o0) + layer)) continue;
-                    const Vec2 i0 = pos + dirv(a0) * r0, i1 = pos + dirv(a1) * r0;
-                    d.glass.tri(toScene(i0), c, toScene(o0), c, toScene(o1), c);
-                    d.glass.tri(toScene(i0), c, toScene(o1), c, toScene(i1), c);
+                    const Vec2 o0 = pos + dirv(a0) * ro, o1 = pos + dirv(a1) * ro;
+                    if (!visible((o0 + o1) * 0.5f, 0.5f * length(o1 - o0) + (ro - ri))) continue;
+                    const Vec2 i0 = pos + dirv(a0) * ri, i1 = pos + dirv(a1) * ri;
+                    d.glass.tri(toScene(i0), ci, toScene(o0), co, toScene(o1), co);
+                    d.glass.tri(toScene(i0), ci, toScene(o1), co, toScene(i1), ci);
                 }
             }
-            for (u32 q = 0; q < 96; ++q) {
-                const Vec2 p0 = pos + dirv(kTau * static_cast<float>(q) / 96.0f) * outer, p1 = pos + dirv(kTau * static_cast<float>(q + 1) / 96.0f) * outer;
-                if (!visible(p0, 40.0f) && !visible(p1, 40.0f)) continue;
-                d.scene.line(toScene(p0), toScene(p1), 1.0f * refPx_, W1 * (1.2f * fade), W1 * (1.2f * fade), 0);
+            for (u32 k = 0; k < 10; ++k) {
+                const float r = rad[k + 1];
+                if (r <= 0.0f) break;
+                const Vec3 c = line[k] * (kLineLevel * fade);
+                for (u32 q = 0; q < n; ++q) {
+                    const Vec2 p0 = pos + dirv(kTau * static_cast<float>(q) / n) * r, p1 = pos + dirv(kTau * static_cast<float>(q + 1) / n) * r;
+                    if (!visible((p0 + p1) * 0.5f, 0.5f * length(p1 - p0) + 4.0f)) continue;
+                    d.scene.line(toScene(p0), toScene(p1), kLineHalfPx * refPx_, c, c, 0);
+                }
             }
         }
     }

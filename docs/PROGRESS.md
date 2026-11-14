@@ -4,6 +4,22 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (evening), the Reprise's homecoming: one shockwave of thin lines with a thick glow; the co-op report
+
+- "They should all come out 'at once' like a real exp, just a thick transparent layer of each color sandwiched together" (230d128:
+  ten see-through bands side by side, leaving the core together), then "each color line should be very thin but have a very
+  thick glow": ten lines 1.5 ref px wide in each Track's full colour, a gap apart (16 wu growing to 36), each glowing over 1.6
+  gaps on either side (glass strips between the lines, each edge carrying the summed glow there) and 3 gaps past the front and
+  the back; the front at 80 + 1,420 x (1 - (1 - u)^2.5) wu over 1.8 s (`drawReprise`, look.md 5). The glass batch takes 12,288
+  vertices (6,144: the wave alone draws up to about 3,700). Debug run of `m5_rp_death`: 0 validation messages. Video
+  `captures\video\boss_death_reprise_v4.mp4`.
+- Co-op, "bullets on p2 and p3 are not rendering", then "intermittent ... killed and relaunched on the 3 devices and it's fixed":
+  not reproduced on this PC (three peers over UDP: a fresh run into Kaleidos at High and at Low, a retry after everyone went
+  down, the shared pause and its count-in; every peer draws the shots, the enemy bullets (74 = 74 in the fight) and the boss).
+  The clients get Kaleidos two ticks after the host (a picture on the host's entrance tick had looked like a client without
+  it). The Moto's log has no run since the 16:52 install and the other devices were not on this PC, so there is no log of
+  the failing session. Not verified on phones.
+
 ## 2026-11-14 (evening), the Reprise's rings slow as they spread; the title's demo aims as the owner does
 
 - "I like the rings in every Track's colour but it just races across the screen instead of the normal explosion with resistance

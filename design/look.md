@@ -455,11 +455,16 @@ reprise one is even more epic". Every boss's death (its own shards, facets or im
 **Kaleidos Reprise, the finale, is the biggest by far:** a 2,000 wu flash held 0.4 s with a gold one after
 it, six rings in its arms' colours, 400 gold sparks and 100 in each arm's colour, two distortion waves, a
 shake of 10, the gong with the impact and the action held three times as long; then **the whole set list
-comes home**: from its death a ring in each of the ten Tracks' colours leaves the core one after another
-and spreads as every explosion ring does, fast and then slowing against the air (the owner: "it just races
-across the screen instead of the normal explosion with resistance like the first one"; they raced at a
-constant 2,400 wu/s at first), to 1,100 wu and 120 more for each, fading over 1.2 s, then a white one to
-3,200 wu.
+comes home** as one shockwave: from its death ten thin lines, one in each Track's colour (First Light's
+at the front, Last Light's at the back), leave the core together and spread as an explosion does, fast and
+then slowing against the air (the front at 80 + 1,420 × (1 − (1 − u)^2.5) wu over 1.8 s, fading as it
+goes), a gap apart (16 wu, growing to 36 as it spreads). Each line is 1.5 ref px in its full colour with a
+glow far wider than itself: it falls off over 1.6 gaps on either side, so the glows fill the gaps (a gap's
+middle holds two thirds of each neighbour) and spill 3 gaps past the front and the back. The owner, in
+turn: the rings "just race across the screen instead of the normal explosion with resistance" (they had
+spread at a constant 2,400 wu/s); "they should all come out 'at once' like a real exp, just a thick
+transparent layer of each color sandwiched together" (they had left the core one after another); and of
+the thick bands that followed, "each color line should be very thin but have a very thick glow".
 
 ### Splits (the owner's play, 2026-11-14)
 

@@ -34,7 +34,7 @@ struct RendererDesc {
     u32 maxCapsules = 65536;  // per frame, dynamic
     u32 maxSparkles = 8192;
     u32 maxPools = 4096;  // (1,024 until every enemy bullet got a pooled glow, 2026-11-14)
-    u32 maxTriVertices = 6144;
+    u32 maxTriVertices = 12288;  // (6,144 until the Reprise's death glow, 2026-11-14: up to 3,700 of its own at once)
     u32 maxThreat = 16384;    // rims and cores each
     u32 maxHud = 16384;       // (M7: the credits screen's licence text, a screenful at cap 10)
     u32 maxGlyphs = 12288;    // scene glyph instances per frame

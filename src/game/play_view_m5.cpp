@@ -920,8 +920,9 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
                 // a point (drawReprise) and one white ripple crosses the whole lattice.
                 // The owner, the same evening: "make sure the reprise one is even more epic": a 2,000 wu flash held 0.4 s and a gold
                 // one after it, six rings in the arms' colours, 400 gold sparks and 100 in each arm's colour, two distortion waves,
-                // a shake of 10; then (drawReprise, from its death) the whole set list comes home: a ring in each of the ten Tracks'
-                // colours, one after another, and a white ripple across the whole lattice. The gong and the impact (play.cpp).
+                // a shake of 10; then (drawReprise, from its death) the whole set list comes home: one shockwave of ten thin lines,
+                // one in each Track's colour, each with a thick glow, and a white ripple across the whole lattice. The gong and the
+                // impact (play.cpp).
                 const Vec3 gold = palettes_->player[3];
                 // (the flashes a little softer than at first, 1.4 and 0.6: the ten-colour wave must read through them)
                 addPool(at, 80.0f, 1400.0f, whiteV(), reduceFlashing_ ? 0.45f : 1.0f, 0.0f, 0.3f, false, 1, false, false, t);
@@ -932,7 +933,7 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
                 r.b = whiteV();
                 r.t0 = t;
                 for (u32 k = 0; k < 6; ++k) {
-                    // (no staggered rings: the owner wants one explosion, drawn as ten bands in drawReprise)
+                    // (no staggered rings: the owner wants one explosion, drawn as ten thin glowing lines in drawReprise)
                     Vec3 c = palette_->accent;
                     for (u32 i = 0; i < palettes_->count; ++i)
                         if (palettes_->list[i].track == k + 1) c = palettes_->list[i].accent;
