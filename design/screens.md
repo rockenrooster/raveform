@@ -259,7 +259,18 @@ words' rules as for upgrades. In co-op each player sees it by their own shots.
 | Event Horizon | `STARVE IT: KILL ITS FOOD` | | Fata Morgana | `SHOOT HER OVER THE WATER` |
 | Polyrhythm | `SHOOT THROUGH THE GAPS` | | Kaleidos, Reprise | `SHOOT THE ARMS OFF` |
 
-A mini-boss with an armoured part gets a line the same way; they are written as each is reviewed.
+A mini-boss whose rule decides whether it can be hurt gets a line the same way (2026-11-13). The other six
+(Alpha Hound, Carom King, Moth Queen, Blink Star, Mirror Mimic, Weaver Prime) can be hurt anywhere at any
+time and need none.
+
+| Mini-boss | Hint |
+|---|---|
+| The Hive | `SHOOT THE QUEEN BEHIND IT` |
+| Battering Ram | `SHOOT IT AFTER IT CRASHES` |
+| Brood Mother | `KILL HER BROOD FIRST` |
+| Sentry Array | `SHOOT THE ONE WITH NO DOME` |
+| Twin Tether | `DASH THROUGH THE BEAM` |
+| Deep Well | `OVERFEED IT, THEN STRIKE` |
 
 **Extra Life (HUD, play test 3).** A held Extra Life is a small gold ship outline to the right of the
 Nova stock. Picking it up and spending it both show `EXTRA LIFE` as world text at the ship (cap 22,

@@ -448,7 +448,9 @@ die and does not say why, and the user never got past Longwave. So:
 
 - **Armour takes a quarter.** Any part a boss's page calls armoured, closed, silent, shut or fed
   takes 0.25 of a shot's damage (the pages' data say so now); the weak point takes what it took.
-  Knowing the rule is worth three or four times the damage, not all of it. A shot on armour still
+  Knowing the rule is worth three or four times the damage, not all of it. The same holds for a
+  mini-boss: the Ram's horns, the Sentry Array's domed turrets, the Brood Mother's dome and
+  whatever else of a mini-boss's own body took nothing take a quarter. A shot on armour still
   sparks and stops as armour does, and the boss's health bar still moves.
 - **The game says the rule.** Each boss has one hint line (design/screens.md, "Boss hint"), shown
   under its name as it arrives and again whenever a player's shots have met only armour for two
