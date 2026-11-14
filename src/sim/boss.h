@@ -368,6 +368,9 @@ struct HorizonState {
     float axis = 0.0f;         // phase 3: the jets' axis
     double jetFrom = -1e9, jetUntil = -1e9;
     u32 laneSerial = 0;        // the lane the next body walks in
+    // M4 net (co-op only): the phase the host decided by health and the beat it turns on (every device turns there).
+    u8 phaseNext = 0xFF;       // 0xFF: none decided
+    double phaseAt = -1.0;
 };
 
 // Polyrhythm's rings: each pulse's walls, a function of when and where it was fired; a hit or a Nova erases sectors.
@@ -543,6 +546,7 @@ enum BossGeom : u8 {
     kGeomPolyHemiola,  // M5 part 4: Polyrhythm's Hemiola begins (a.x: its first bar)
     kGeomMothCourt,    // M5 part 4: the Moth Queen's court (a: its centre)
     kGeomBlinkStar,    // M5 part 4: the Blink Star's star (a: its centre, b.x: its first point's direction)
+    kGeomHorizonPhase, // M4 net: Event Horizon's phase in co-op (a.x: the phase; the tick: the beat it turns on)
     kGeomCount
 };
 static_assert(kGeomCount <= 12, "BossState::geomTick holds twelve");

@@ -549,6 +549,33 @@ needs the phase change to land on the same tick everywhere: the host deciding it
 as thinning and the bar lines' verdicts already are), which changes when the phase turns on the host too. That is a
 rule of the fight (horizon.md: phases by health), so it is the lead's and the content engineer's to decide.
 
+**Ruled (the lead, 2026-11-13) and built:** in co-op Event Horizon's phase turns on the next beat (at least a quarter
+beat ahead) after its health crosses the line, decided by the host and sent ahead (`bossDecide kGeomHorizonPhase`,
+protocol **0x52460507**); a client turns only when the host says. Solo and the determinism hashes unchanged
+(`test.ps1` passes; hashes 6d23b6e1c53af52d / a6a9479e47ca796c as after the merge). src/sim:
+`world_horizon.cpp` (`updateHorizon`, co-op only), `world_boss.cpp` (`bossGeom`: the new decision), `boss.h`
+(`kGeomHorizonPhase`, `HorizonState::phaseNext` / `phaseAt`, not in the hash). The same four seeds, clean, in the
+fight:
+
+| seed | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|
+| before | 4.6 | 3.0 | 39.6 | 41.5 |
+| phase on the beat | **4.3** | **3.3** | **33.3** | **20.1** |
+
+The phase now never differs between devices (no sample with the phases apart). **Seeds 3 and 4 are still over 12**:
+seed 4's walkers are fixed (lanes 4.3) and its excess is the pulled bodies (36.5) while the Well's place differs by
+more than 10 wu (in Collapse the Well drifts toward the players' centre, each device's own, synced at 4 Hz); seed 3's
+is a few walkers placed 100-200 wu off right after a correction (lanes 38.2; 82% of the squared error from errors over
+96 wu): the cause is not found yet.
+
+### The phone host with the new budgets (clean, 5 minutes, `202359`)
+
+Moto hosting three PC bots, `5c17cb7`'s APK, our APK deployed first, shared phone: **1.50 / 2.99 / 2.15 wu** (limit
+12), 0 stalls, census 0 mismatches; worst second down 264-280 kbit/s (mean 218), up 38-42 (mean 31). The Moto: 17,969
+frames, **0 missed**, interval P95 17.73 ms, heap 0, main thread CPU P95 **5.61 ms** (P99 6.01; before the budget,
+`190701`: 6.14 / 6.83). The session runs on the main thread; its time is inside that figure. (The bots' FAIL flag is
+the run's end: the phone quits, one disconnect each.)
+
 ### (b) note: the earlier device figures in pulls and on spirals
 
 The device runs before `d531af0` measured a copy at correction against the host's sample carried by its velocity

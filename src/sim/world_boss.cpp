@@ -700,6 +700,12 @@ void World::bossGeom(u8 geom, Vec2 a, Vec2 b, double tick, bool host) {
     MiniState& m = s.mini;
     switch (geom) {
         case kGeomHorizonBar: horizonBar(tick, a.x > 0.5f, static_cast<u32>(a.y)); break;  // M5 part 4
+        case kGeomHorizonPhase:  // M4 net: the host's phase and the beat it turns on
+            if (s.kind == BossKind::EventHorizon && a.x >= 0.0f && a.x < 3.0f) {
+                s.hz.phaseNext = static_cast<u8>(a.x);
+                s.hz.phaseAt = tick;
+            }
+            break;
         case kGeomPolyHemiola:
             s.pr.phase = s.pr.phase < 1 ? 1 : s.pr.phase;
             s.pr.hemiolaBar0 = static_cast<i64>(a.x);

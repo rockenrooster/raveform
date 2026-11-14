@@ -161,6 +161,17 @@ void World::updateHorizon(float dt) {
     const float share = s.coreMax > 0.0f ? s.coreHp / s.coreMax : 0.0f;
     u8 ph = 0;
     while (ph < 2 && share < d.phases[ph].healthLo) ++ph;
+    if (coop()) {
+        // M4 net (co-op only; the lead's ruling of 2026-11-13): the phase turns on a beat, the same tick on every device.
+        // The host decides it from its health for the next beat at least a quarter beat away and sends it ahead (bossDecide
+        // kGeomHorizonPhase); a client turns only when the host says (its own copy of the health crossed early or late,
+        // and every walker turns with the lanes: hundreds of wu for those ticks).
+        if (role_ == NetRole::Host && ph > h.phase && (h.phaseNext == 0xFF || ph > h.phaseNext)) {
+            const double at = (std::floor((m1_ + 0.25 * kTicksPerBeat) / kTicksPerBeat) + 1.0) * kTicksPerBeat;
+            bossDecide(kGeomHorizonPhase, Vec2{static_cast<float>(ph), 0.0f}, Vec2{}, at);
+        }
+        ph = h.phaseNext != 0xFF && m1_ >= h.phaseAt ? h.phaseNext : h.phase;
+    }
     if (ph != h.phase) {
         h.phase = ph;
         s.phase = ph;
