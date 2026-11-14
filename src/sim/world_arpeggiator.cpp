@@ -185,7 +185,8 @@ void World::updateArpeggiator(float dt) {
 }
 
 bool World::arpBlockHit(Vec2 at, Vec2& from) const {
-    // A block: a bar 90 wu wide and 28 deep falling along its lane's middle at 420 wu/s.
+    // A block: a bar blockWidth wide and 28 deep falling along its lane's middle at blockSpeed (arpeggiator.json: 72 wu at 340 wu/s
+    // since 2fbb4b2).
     const BossState& s = boss_;
     if (s.kind != BossKind::Arpeggiator || !s.active || s.dying) return false;
     const ArpData& d = species_->arp;

@@ -537,7 +537,7 @@ struct CadenceData {
     bool load();
 };
 struct ArpData {
-    float health = 6400, coreRadius = 70, laneWidth = 200, laneLength = 900, blockWidth = 90, blockSpeed = 420;
+    float health = 6400, coreRadius = 70, laneWidth = 200, laneLength = 900, blockWidth = 72, blockSpeed = 340;
     u32 rewardShards = 340;
     float dmgLoading = 1.0f, dmgConsole = 0.25f;  // numbers.damageScale (7667dd7): the core (x 2 on the One: prose), the console
     bool load();

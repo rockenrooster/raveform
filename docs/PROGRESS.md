@@ -83,6 +83,13 @@ M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in
   ms). Note: with two-cycle Tracks the window does not stay in Track 10's first Drop: the Reprise falls inside it and the run
   ends in the loop's Track 11.
 - arena.json's events text (two cycles) is data text the code never read: nothing to change.
+- **The Arpeggiator's blocks** (design 2fbb4b2: 72 wu wide at 340 wu/s, were 90 at 420): data only. Everything reads
+  `ArpData::blockWidth` / `blockSpeed`: the blocks' life down their lanes and their hit (`world_arpeggiator.cpp`), the view, the
+  bell as a block passes the ship's row (`pending_sounds.cpp`, its delay from the lane distance over the speed, each frame), the
+  bots' dodging; the chart and the Nova's clearing do not depend on them. Only comments and two fallback defaults said 90 and
+  420 (now the data's); the test's data line reads 72 and 340. **The assist bar** (seeds 1-20, 60 minutes, the same run):
+  **19 of 20**; the one run that ended inside the ten Tracks ended against the Arpeggiator (19 of 20 first meetings won, 5.9
+  hits a fight, 5.1 of them its beams).
 
 ### F and G. Double-Time two ranks again; Split a lane a rank (eb10554; GAME_DESIGN 6.2 rows 1-2, screens.md's words)
 

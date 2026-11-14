@@ -88,7 +88,7 @@ struct FightScene {
     double weaverBurst = -1.0;   // Weaver Prime: the cage going off (band tick; < 0 none)
     bool mgOutside = false;      // Fata Morgana: this device's ship is outside the calm
     Vec2 apMachine[2], apDir[2];  // Arpeggiator: the machines' cores and their lanes' way
-    float apSpeed = 420.0f, apLength = 900.0f;
+    float apSpeed = 340.0f, apLength = 900.0f;  // (the data's, each frame: 2fbb4b2)
     // The arena: the open Rifts (the nearest one since the lead's ruling: pan, gain by distance, a Rift Surge's place 0-2 or
     // 0xFF), the Build's
     // progress (0..1), the Storm Cell (on, how near, pan), the Convoy's carriers alive (pans).

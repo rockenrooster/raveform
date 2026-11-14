@@ -107,8 +107,8 @@ u32 arpNote(const ArpState& a, u32 m, u32 k) {
 void PlayView::drawArpeggiator(FrameDraw& d, const ViewInput& in) {
     // arpeggiator.md "Parts": the console (900 x 120) with its core (radius 70) behind a shutter at its middle, four ports on
     // its lower edge and the chart above it (4 x 16 gold dots, 400 x 60, the next bar's notes lit, a white cursor in time);
-    // the lanes, five faint lines in the grid's colour with the lane's number at the far end; the blocks, danger bars 90 wide
-    // and 28 deep on the priority layer. The second machine is white. Its death: the chart reads GG and every block in flight
+    // the lanes, five faint lines in the grid's colour with the lane's number at the far end; the blocks, danger bars blockWidth wide
+    // (72 since 2fbb4b2) and 28 deep on the priority layer. The second machine is white. Its death: the chart reads GG and every block in flight
     // turns gold and climbs back up its lane.
     const World& w = *in.world;
     const BossState& s = w.boss();

@@ -2378,8 +2378,8 @@ void testCadence() {
 void testArpeggiator() {
     g_test = "arpeggiator";
     const ArpData& d = g_species->arp;
-    CHECK(d.health == 6400.0f && d.coreRadius == 70.0f && d.laneWidth == 200.0f && d.laneLength == 900.0f && d.blockWidth == 90.0f &&
-          d.blockSpeed == 420.0f && d.rewardShards == 340);
+    CHECK(d.health == 6400.0f && d.coreRadius == 70.0f && d.laneWidth == 200.0f && d.laneLength == 900.0f && d.blockWidth == 72.0f &&
+          d.blockSpeed == 340.0f && d.rewardShards == 340);  // (2fbb4b2: 72 wu at 340 wu/s; 90 at 420 before)
     CHECK(bossOfSong(7) == BossKind::Arpeggiator && bossHomeTrack(BossKind::Arpeggiator) == 8 && fightBuilt(BossKind::Arpeggiator));
     const Vec2 ship{0.0f, 0.0f};
     // A mini-boss leaves the cells alone.
