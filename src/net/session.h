@@ -49,6 +49,14 @@ struct SessionConfig {
     bool beacon = false;
     RemotePoses remotePoses = RemotePoses::Direct;  // (docs/PROGRESS_m4_net.md: 10 seeds, impaired 6.47 -> 6.03, clean 5.39 -> 5.19)
     bool motionCorrections = true;  // host: a moving Shoal's corrections are motion corrections (protocol.h NetMotion)
+    bool phaseBeat = true;          // host: a heartbeat at once when Event Horizon's phase changes
+    bool bossBeat = false;          // host (experiment): the heartbeat at 10 Hz while a boss fights (4 Hz otherwise)
+    bool bossClaimsAtPose = true;   // client: hits on the boss merged until the pose (else sent each tick)
+    // An interpolated remote ship's jump spread over kPoseSmoothS (round 4), as a predicted one's. Off: the simulation takes
+    // the smoothed place too, and enemies chasing a relayed player drifted from the host's (impaired ten seeds 6.22 -> 7.59).
+    bool relaySmooth = false;
+    bool ackWithPose = false;       // client (experiment): the link serviced on pose frames (and while a ping is out) only
+    bool claimsDense15 = true;      // client: above kClaimsDense claims a second, claims leave every third pose (10 Hz)
     // Host: the corrections' share of each client's downlink (bytes a second, every byte to the client counted) and how
     // fast each enemy family gains priority (experiments: raveform_headless --net-tune). Shoals twice as fast: boids
     // drift apart fastest (docs/PROGRESS_m4_net.md: 57-95% of the soaks' squared error; 4 starved the rest).
@@ -86,6 +94,11 @@ struct SessionStats {
     u32 maxDatagram = 0;                                // the largest UDP payload this device sent
     u32 droppedOutgoing = 0;                            // reliable data that could not be queued (must stay 0)
     u32 claimsDropped = 0;                              // client: claims not sent while the host was quiet
+    u64 claimItems = 0, claimHits = 0, claimDmgRuns = 0;  // client: claims sent (after merging), of them hits, damage changes in order
+    u64 bossClaimItems = 0, bossClaimMax = 0;            // client: boss claims sent, the most in one tick
+    u32 claimSecMax = 0, bossClaimSecMax = 0;            // client: the most claims / boss claims sent in one second (host time)
+    i64 claimSec = -1;
+    u32 claimSecN = 0, bossClaimSecN = 0;
     double totalUpBytes = 0.0, totalDownBytes = 0.0;    // since start, with headers
 };
 
@@ -125,6 +138,7 @@ struct NetDiag {
     double poseAgeSumMs[4] = {};
     float poseAgeMinMs[4] = {1e9f, 1e9f, 1e9f, 1e9f}, poseAgeMaxMs[4] = {-1e9f, -1e9f, -1e9f, -1e9f};
     u32 fills[4] = {}, extrapolated[4] = {};
+    u32 interpolatedDirect[4] = {};  // ticks a direct link was interpolated (fallen back: its poses too old or too uneven)
     double extrapSumMs[4] = {};
     float extrapMaxMs[4] = {};
     // The host's song anchors: each against the model it replaces, at its own host time (ms of song).
@@ -282,6 +296,9 @@ private:
     void reliable(F&& put);
     void flushReliable();
     void writeClaims();
+    void writeBossClaims();
+    void writeClaimsSorted();
+    void noteClaimSecond(u32 claims, u32 bossClaims);
     void sendTo(u32 peer, u8 channel, const PacketWriter& w, bool rel);
     void relayEvent(const MsgPlayerEvent& m, u32 exceptSeat);
     void sendCorrections(u32 seat, double hostMusic);
@@ -330,14 +347,26 @@ private:
     // Predicted remote players: the newest pose each estimate came from and the offset that spreads a new pose's jump.
     struct RemoteTrack {
         bool valid = false;
+        bool predicted = false;  // the mode of the last estimate (a direct link falls back to interpolation by itself)
         i64 stamp = 0, lastAt = 0;
         Vec2 pos, vel, off;
+        Vec2 out;                // the place given last (estimate + offset)
+        Vec2 raw, rawVel;        // the estimate given last, before the offset, and its velocity
     } track_[sim::kMaxPlayers];
+    // A direct link's poses: their age on arrival (ms), smoothed, and its spread; past the thresholds the link is
+    // interpolated instead of predicted (RemotePoses::Direct), back below them predicted again.
+    float poseAgeEma_[sim::kMaxPlayers] = {}, poseAgeDev_[sim::kMaxPlayers] = {};
+    bool linkFresh_[sim::kMaxPlayers] = {true, true, true, true};
 
     // Outgoing.
     PacketWriter rel_;      // reliable, being filled
     PacketWriter scratch_;  // one-off packets
     i64 nextPoseUs_ = 0, nextBeatUs_ = 0, nextCensusUs_ = 0, nextCorrUs_[sim::kMaxPlayers] = {};
+    u8 beatBossPhase_ = 0xFF;  // host: the boss's phase the last heartbeat carried (0xFF none); a change sends one at once
+    i64 pingOutUs_ = 0;        // client: when its last ping left (0: its pong came)
+    u32 claimPoses_ = 0;       // client: pose frames since its claims last left (dense seconds: every other pose)
+    i64 rawClaimSec_ = -1;     // client: the second (host time) its world's claims are being counted in
+    u32 rawClaimSecN_ = 0, rawClaimPrevN_ = 0;  // ... this second's and the last one's
     sim::World::DirectorSync sentDirector_;
     bool directorSent_ = false;
     u32 directorRun_ = 0xFFFFFFFFu;
@@ -353,6 +382,7 @@ private:
     NetMotion motions_[96];
     u8 motionRun_[sim::kMaxPlayers][sim::kMaxEnemies] = {};   // host: motion corrections since the last full one
     float fullHp_[sim::kMaxPlayers][sim::kMaxEnemies] = {};   // host: the health the last full one carried
+    u8 sentTarget_[sim::kMaxPlayers][sim::kMaxEnemies] = {};  // host: the player the last correction said it follows
     i64 lastPrioUs_ = 0;
     // Host: each client's downlink budget (bytes, with headers): corrections take what the rest leaves.
     float downBudget_[sim::kMaxPlayers] = {};
@@ -386,6 +416,11 @@ private:
     // Client: this player's claims since the last send (they leave with the pose, merged and sorted).
     static constexpr u32 kPendingClaims = 1024;
     sim::NetClaim pendClaims_[kPendingClaims];
+    // Hits on the boss, one a part (1-3) and pair until the pose takes them; a sum stays far under the parser's 1e6.
+    static constexpr u32 kPendingBossClaims = 3 * sim::kBossParts;
+    static constexpr float kMaxBossClaimSum = 1.0e5f;
+    sim::NetBossClaim pendBoss_[kPendingBossClaims];
+    u32 pendBossCount_ = 0;
     u32 pendClaimCount_ = 0;
     u16 pendRun_ = 0;
     bool hostQuiet_ = false;  // client: the host silent past kLinkSilentMs at the last send()

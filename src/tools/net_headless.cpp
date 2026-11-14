@@ -72,8 +72,13 @@ struct TrueDiag {
     NetDiagBin all, byFamily[16], byState[16], targetDiffers, stateDiffers, knocked, frozenDiffers, byAge[6], bySize[5], called;
     NetDiagBin shoalAge[6], otherAge[6];  // the age bins for Shoals (darts included) and for every other family
     NetDiagBin simPos;                    // the simulated position against the host's (without the drawn offset)
+    NetDiagBin byTrack[16], byBoss[32];   // the host's Track then; the fight then (a boss or a mini-boss, by kind)
     NetDiagBin byTarget[4];  // the host's copy follows: 0 this client's player, 1 the host's, 2 another client's, 3 none
     NetDiagBin perp;
+    NetDiagBin hzLane, hzOther, hzPhaseDiffers, hzPosDiffers;  // Event Horizon: lane walkers, the rest; the Well's phase or place differs
+    NetDiagBin fbTarget, fbState, fbCalled, fbKnocked, fbFamily[16];  // Feedback's fight: the kinds and the families
+    double hzPosSum2 = 0.0;
+    u64 hzPosN = 0;
     double tauSum = 0.0, tau2Sum = 0.0;
     u64 tauN = 0;
     void print(const char* title) const {
@@ -110,13 +115,75 @@ struct TrueDiag {
             std::snprintf(name, sizeof name, "%u", k);
             b(name, byFamily[k]);
         }
+        std::printf("\n[net]     Track (the host's):");
+        for (u32 k = 0; k < 16; ++k) {
+            if (!byTrack[k].n) continue;
+            std::snprintf(name, sizeof name, "%u", k);
+            b(name, byTrack[k]);
+        }
+        std::printf("\n[net]     fight:");
+        for (u32 k = 0; k < 32; ++k)
+            if (byBoss[k].n) b(bossId(static_cast<BossKind>(k)), byBoss[k]);
         std::printf("\n[net]     state:");
         for (u32 k = 0; k < 16; ++k) {
             std::snprintf(name, sizeof name, "%u", k);
             b(name, byState[k]);
         }
+        std::printf("\n[net]     Event Horizon:");
+        b("lane", hzLane);
+        b("rest", hzOther);
+        b("phase-differs", hzPhaseDiffers);
+        b("well-off>10wu", hzPosDiffers);
+        std::printf("; the Well's place against the host's RMS %.1f wu\n[net]     Feedback:", hzPosN ? std::sqrt(hzPosSum2 / static_cast<double>(hzPosN)) : 0.0);
+        b("target-differs", fbTarget);
+        b("state-differs", fbState);
+        b("called", fbCalled);
+        b("knocked", fbKnocked);
+        for (u32 k = 0; k < 16; ++k) {
+            std::snprintf(name, sizeof name, "f%u", k);
+            b(name, fbFamily[k]);
+        }
         std::printf("\n");
     }
+};
+
+// The remote ships as drawn (M4 net follow-up, the lead's point 2): each viewer's copy of another player against that
+// player's own position at the same song time, and the largest step in one frame its own motion does not explain.
+// Classes: 0 the host's view of a client, 1 a client's view of the host, 2 a client's view of a relayed client.
+struct ShipTruth {
+    static constexpr u32 kN = 256;
+    double music[kN] = {};
+    Vec2 pos[kN];
+    float aim[kN] = {};
+    u32 head = 0, n = 0;
+    void add(double m, Vec2 p, float a) {
+        if (n && music[(head + kN - 1) % kN] >= m) return;
+        music[head] = m;
+        pos[head] = p;
+        aim[head] = a;
+        head = (head + 1) % kN;
+        if (n < kN) ++n;
+    }
+    bool at(double m, Vec2& out, float* aimOut = nullptr) const {
+        for (u32 k = 1; k < n; ++k) {
+            const u32 b = (head + kN - k) % kN, a = (head + kN - k - 1) % kN;
+            if (music[a] <= m && m <= music[b]) {
+                const double t = music[b] > music[a] ? (m - music[a]) / (music[b] - music[a]) : 0.0;
+                out = pos[a] + (pos[b] - pos[a]) * static_cast<float>(t);
+                if (aimOut) *aimOut = aim[static_cast<double>(t) < 0.5 ? a : b];
+                return length(pos[b] - pos[a]) < 120.0f;  // (not across a teleport: a revive, a new run)
+            }
+        }
+        return false;
+    }
+};
+struct ShipView {
+    Hist err;
+    float maxStep = 0.0f;
+    u64 steps = 0, stepsOverHalfHull = 0;
+    double aimTurnSum2 = 0.0;  // a frame's turn of the drawn aim its own turn does not explain (radians)
+    float aimTurnMax = 0.0f;
+    u64 aimTurnsOver30 = 0;
 };
 
 struct PeerReport {
@@ -195,7 +262,16 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     auto* hist = new (std::nothrow) Hist;
     auto* tdiag = new (std::nothrow) TrueDiag;
     auto* cdiag = new (std::nothrow) NetDiag;  // the clients' corrections and poses, merged
-    if (!peers || !hist || !tdiag || !cdiag) return 2;
+    auto* truth = new (std::nothrow) ShipTruth[kMaxPlayers];
+    auto* ships = new (std::nothrow) ShipView[3];
+    if (!peers || !hist || !tdiag || !cdiag || !truth || !ships) return 2;
+    double shipLast[kMaxPlayers][kMaxPlayers];
+    Vec2 shipDrawn[kMaxPlayers][kMaxPlayers];
+    float shipAim[kMaxPlayers][kMaxPlayers] = {};
+    float ownAimLast[kMaxPlayers] = {};
+    u64 ownAimFrames = 0, ownAimFlicks = 0;
+    for (auto& row : shipLast)
+        for (double& v : row) v = -1.0;
     static const i64 kOffsets[kMaxPlayers] = {0, 1234567, -777000, 3210};
     static const double kPpm[kMaxPlayers] = {0.0, 60.0, -45.0, 20.0};
     for (u32 k = 0; k < players; ++k) {
@@ -237,6 +313,13 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     PeerReport rep[kMaxPlayers];
     double songSum2 = 0.0, songMax = 0.0;
     u64 songN = 0;
+    u64 thinChecks = 0, thinDiffers = 0, thinOwnerOn = 0;  // a copy's thinning against the owner's (GAME_DESIGN 6.6)
+    double thinLiveSum2 = 0.0;
+    u64 shStraight[2] = {}, shBent[2] = {}, shBentFirst[2] = {}, shCurve[2] = {};  // the host's screen: own 0, remote 1
+    double scrBoss2[32] = {}, lastScr2[kMaxPlayers] = {};  // the clients' at-correction error by fight (31: none)
+    u64 scrBossN[32] = {}, lastScrN[kMaxPlayers] = {};
+    double bossHpSum2 = 0.0, bossHpMax = 0.0;  // a client's boss health against the host's (shares of the whole)
+    u64 bossHpN = 0, bossHpAbove = 0, bossDeathLate = 0;
     u64 missing = 0;
     u64 allocs0 = 0;
     EnetPoolStats pool0;
@@ -268,6 +351,55 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
             if (dropped && k == dropPeer) continue;
             if (G < nextFrame[k]) continue;
             peers[k].frame(G);
+            {
+                // The remote ships as this peer now has them, against each player's own record (point 2).
+                const World& vw = peers[k].world();
+                const u32 me = peers[k].session().seat();
+                const double m = peers[k].music();
+                if (vw.player(me).present) {
+                    // The owner's own aim: how often it turns more than 30 degrees in one frame (the bot's aim flicking
+                    // between targets: behaviour, the same in solo play).
+                    const float a = angleOf(vw.player(me).aim);
+                    if (measuring && vw.player(me).alive) {
+                        ++ownAimFrames;
+                        if (std::fabs(wrapAngle(a - ownAimLast[me])) > 30.0f * kPi / 180.0f) ++ownAimFlicks;
+                    }
+                    ownAimLast[me] = a;
+                    truth[me].add(m, vw.player(me).pos, a);
+                }
+                for (u32 j = 0; j < players && measuring; ++j) {
+                    if (j == me || !vw.player(j).present || !vw.player(j).alive || vw.runId() != peers[0].world().runId()) continue;
+                    const u32 cls = k == 0 ? 0u : (j == 0 ? 1u : 2u);
+                    Vec2 t;
+                    if (!truth[j].at(m, t)) {
+                        shipLast[k][j] = -1.0;
+                        continue;
+                    }
+                    const Vec2 drawn = vw.player(j).pos;
+                    ships[cls].err.add(length(drawn - t));
+                    float aimT = 0.0f;
+                    truth[j].at(m, t, &aimT);
+                    const float aimD = angleOf(vw.player(j).aim);
+                    if (shipLast[k][j] >= 0.0) {
+                        Vec2 t0;
+                        float aimT0 = 0.0f;
+                        if (truth[j].at(shipLast[k][j], t0, &aimT0)) {
+                            const float step = length((drawn - shipDrawn[k][j]) - (t - t0));
+                            ++ships[cls].steps;
+                            if (step > ships[cls].maxStep) ships[cls].maxStep = step;
+                            if (step > kPlayerVisualRadius) ++ships[cls].stepsOverHalfHull;
+                            // The drawn aim's turn this frame against the player's own (the stream of its shots swings by it).
+                            const float turn = std::fabs(wrapAngle((aimD - shipAim[k][j]) - (aimT - aimT0)));
+                            ships[cls].aimTurnSum2 += static_cast<double>(turn) * turn;
+                            if (turn > ships[cls].aimTurnMax) ships[cls].aimTurnMax = turn;
+                            if (turn > 30.0f * kPi / 180.0f) ++ships[cls].aimTurnsOver30;
+                        }
+                    }
+                    shipLast[k][j] = m;
+                    shipDrawn[k][j] = drawn;
+                    shipAim[k][j] = aimD;
+                }
+            }
             jitterRng ^= jitterRng << 13;
             jitterRng ^= jitterRng >> 17;
             jitterRng ^= jitterRng << 5;
@@ -372,6 +504,72 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
             ++songN;
             if (std::fabs(ms) > songMax) songMax = std::fabs(ms);
         }
+        {
+            // Player shots on the host's screen (the game's `net: diag shots`): straight shots whose last tick bent more than
+            // a quarter from a straight step, the host's own player's against the remote players'.
+            const Shots& sh = peers[0].world().shots();
+            for (u32 i = 0; i < sh.count; ++i) {
+                if (sh.dead[i]) continue;
+                const u32 cls = sh.owner[i] == 0 ? 0u : 1u;
+                const float want = sh.speed[i] * kDt;
+                if (want < 1.0f) continue;
+                if (sh.mods[i] & (kShotSeek | kShotWave | kShotWaveNeg | kShotHelix | kShotHelixIn)) {
+                    ++shCurve[cls];
+                    continue;
+                }
+                ++shStraight[cls];
+                if (length(Vec2{sh.x[i] - sh.px[i], sh.y[i] - sh.py[i]} - Vec2{sh.dx[i], sh.dy[i]} * want) > 0.25f * want) {
+                    ++shBent[cls];
+                    if (sh.life0[i] - sh.life[i] < 1.5f * kDt) ++shBentFirst[cls];
+                }
+            }
+        }
+        {
+            // The boss's health on each client against the host's (a share of its whole), during fights; and the client's
+            // copy at the tick the host's boss starts to die (the host's verdict: the fight's end).
+            const BossState& hb = peers[0].world().boss();
+            for (u32 k = 1; k < players; ++k) {
+                if (dropped && k == dropPeer) continue;
+                const BossState& cb = peers[k].world().boss();
+                if (!hb.active || !cb.active || hb.kind != cb.kind || hb.coreMax <= 0.0f) continue;
+                if (hb.dying) {
+                    if (!cb.dying) ++bossDeathLate;
+                    continue;
+                }
+                const double d = static_cast<double>(cb.coreHp - hb.coreHp) / static_cast<double>(hb.coreMax);
+                bossHpSum2 += d * d;
+                ++bossHpN;
+                if (std::fabs(d) > bossHpMax) bossHpMax = std::fabs(d);
+                if (d > 0.0) ++bossHpAbove;
+            }
+        }
+        {
+            // The clients' error as each correction lands (the game's and the device runs' `scr`), by the host's fight then
+            // (31: no fight), to set beside the true error by fight.
+            const BossState& hb = peers[0].world().boss();
+            const u32 bk = hb.active && static_cast<u32>(hb.kind) < 31u ? static_cast<u32>(hb.kind) : 31u;
+            for (u32 k = 1; k < players; ++k) {
+                if (dropped && k == dropPeer) continue;
+                const SessionStats& st = peers[k].session().stats();
+                scrBoss2[bk] += st.screenErrSum2 - lastScr2[k];
+                scrBossN[bk] += st.screenErrN - lastScrN[k];
+                lastScr2[k] = st.screenErrSum2;
+                lastScrN[k] = st.screenErrN;
+            }
+        }
+        // Each viewer's copy of every other player's thinning (GAME_DESIGN 6.6, decided on a beat from the live shots this
+        // world holds) against the owner's own, and the live shot counts.
+        for (u32 v = 0; v < players; ++v) {
+            if (dropped && v == dropPeer) continue;
+            for (u32 o = 0; o < players; ++o) {
+                if (o == v || (dropped && o == dropPeer) || peers[v].world().runId() != peers[o].world().runId()) continue;
+                ++thinChecks;
+                if (peers[v].world().thinning(o) != peers[o].world().thinning(o)) ++thinDiffers;
+                if (peers[o].world().thinning(o)) ++thinOwnerOn;
+                const double dl = static_cast<double>(peers[v].world().shotsLive(o)) - static_cast<double>(peers[o].world().shotsLive(o));
+                thinLiveSum2 += dl * dl;
+            }
+        }
         // On-screen enemies: each client's drawn position against the host's, at the host's musical time.
         if ((G / 100000) % 3 != 0) continue;
         const World& hw = peers[0].world();
@@ -399,6 +597,23 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                 {
                     TrueDiag& g = *tdiag;
                     g.all.add(err);
+                    g.byTrack[hw.phrase().track & 15u].add(err);
+                    if (hw.boss().active) g.byBoss[static_cast<u32>(hw.boss().kind) & 31u].add(err);
+                    if (hw.boss().active && hw.boss().kind == BossKind::EventHorizon && cw.boss().active && cw.boss().kind == BossKind::EventHorizon) {
+                        (ce.state[i] == kLane ? g.hzLane : g.hzOther).add(err);
+                        if (cw.boss().hz.phase != hw.boss().hz.phase) g.hzPhaseDiffers.add(err);
+                        const float wellOff = length(cw.boss().pos - hw.boss().pos);
+                        if (wellOff > 10.0f) g.hzPosDiffers.add(err);
+                        g.hzPosSum2 += static_cast<double>(wellOff) * wellOff;
+                        ++g.hzPosN;
+                    }
+                    if (hw.boss().active && hw.boss().kind == BossKind::Feedback) {
+                        if (ce.target[i] != he.target[j]) g.fbTarget.add(err);
+                        if (ce.state[i] != he.state[j]) g.fbState.add(err);
+                        if (ce.flags[i] & kFlagCalled) g.fbCalled.add(err);
+                        if (std::fabs(ce.kx[i]) + std::fabs(ce.ky[i]) + std::fabs(he.kx[j]) + std::fabs(he.ky[j]) > 20.0f) g.fbKnocked.add(err);
+                        g.fbFamily[static_cast<u32>(cw.species().get(ce.species[i]).family) & 15u].add(err);
+                    }
                     g.simPos.add(length(Vec2{ce.x[i] + (ce.vx[i] + ce.kx[i]) * dx, ce.y[i] + (ce.vy[i] + ce.ky[i]) * dx} - Vec2{he.x[j], he.y[j]}));
                     g.byFamily[static_cast<u32>(cw.species().get(ce.species[i]).family) & 15u].add(err);
                     g.byState[ce.state[i] & 15u].add(err);
@@ -513,12 +728,37 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                     overflow == 0 && queueFull == 0 && poolFallbacks == 0 && allocs == 0 && pauseOk && pauseSame;
     // Diagnostics (docs/PROGRESS_m4_net.md), before the summary: the true error broken down, the clients' corrections and poses.
     tdiag->print("the true on-screen error broken down");
+    {
+        static const char* const kCls[3] = {"the host's view of a client", "a client's view of the host", "a client's view of a relayed client"};
+        for (u32 c = 0; c < 3; ++c)
+            std::printf("[net]   remote ships, %s: drawn against the truth RMS %.2f wu, P95 %.2f, max %.1f (%llu); the largest step its motion does "
+                        "not explain %.1f wu, %llu of %llu frames over half a hull (%.0f wu)\n",
+                        kCls[c], static_cast<double>(ships[c].err.rms()), static_cast<double>(ships[c].err.pct(0.95)), static_cast<double>(ships[c].err.max),
+                        static_cast<unsigned long long>(ships[c].err.n), static_cast<double>(ships[c].maxStep),
+                        static_cast<unsigned long long>(ships[c].stepsOverHalfHull), static_cast<unsigned long long>(ships[c].steps),
+                        static_cast<double>(kPlayerVisualRadius));
+        for (u32 c = 0; c < 3; ++c)
+            std::printf("[net]   remote aims, %s: the turn in a frame its own turn does not explain RMS %.1f deg, max %.0f deg, %llu frames over 30 deg\n",
+                        kCls[c], ships[c].steps ? std::sqrt(ships[c].aimTurnSum2 / static_cast<double>(ships[c].steps)) * 180.0 / kPi : 0.0,
+                        static_cast<double>(ships[c].aimTurnMax) * 180.0 / kPi, static_cast<unsigned long long>(ships[c].aimTurnsOver30));
+        std::printf("[net]   the players' own aims (each on its own device): %llu of %llu frames turn more than 30 deg\n",
+                    static_cast<unsigned long long>(ownAimFlicks), static_cast<unsigned long long>(ownAimFrames));
+    }
     for (u32 k = 1; k < players; ++k)
         if (!(dropped && k == dropPeer))
             std::printf("[net]   client %u's worst up second: %.1f kbit/s at %.0f s (reliable %.1f, unreliable %.1f, control %.1f payload; %u "
                         "datagrams), down worst %.1f at %.0f s\n",
                         k, rep[k].upMax, static_cast<double>(rep[k].upMaxAt - runFrom) * 1e-6, rep[k].upRel, rep[k].upUnrel, rep[k].upCtrl,
                         rep[k].upDatagrams, rep[k].downMax, static_cast<double>(rep[k].downMaxAt - runFrom) * 1e-6);
+    for (u32 k = 1; k < players; ++k) {
+        if (dropped && k == dropPeer) continue;
+        const SessionStats& st = peers[k].session().stats();
+        std::printf("[net]   client %u's claims: %llu items sent, %llu hits, the damage changes %llu times in order; boss claims %llu "
+                    "(at most %llu a tick); the most in one second: claims %u, boss claims %u\n", k,
+                    static_cast<unsigned long long>(st.claimItems), static_cast<unsigned long long>(st.claimHits),
+                    static_cast<unsigned long long>(st.claimDmgRuns), static_cast<unsigned long long>(st.bossClaimItems),
+                    static_cast<unsigned long long>(st.bossClaimMax), st.claimSecMax, st.bossClaimSecMax);
+    }
     {
         for (u32 k = 1; k < players; ++k)
             if (!(dropped && k == dropPeer)) mergeDiag(*cdiag, peers[k].session().diag());
@@ -543,6 +783,26 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     std::printf("[net]   the same as each correction lands (drawn against the host's sample): RMS %.2f wu, max %.1f (%llu)\n", scrRms,
                 scrMax, static_cast<unsigned long long>(scrN));
     std::printf("[net]   song clock offset against the host: RMS %.2f ms, max %.2f ms (limit %.0f)\n", songRms, songMax, kMaxSongOffsetMs);
+    std::printf("[net]   thinning: a copy's against its owner's differs in %llu of %llu looks (owner thinned in %llu); live shots off by %.1f RMS\n",
+                static_cast<unsigned long long>(thinDiffers), static_cast<unsigned long long>(thinChecks),
+                static_cast<unsigned long long>(thinOwnerOn), thinChecks ? std::sqrt(thinLiveSum2 / static_cast<double>(thinChecks)) : 0.0);
+    std::printf("[net]   at correction (the device runs' scr) by fight:");
+    for (u32 k = 0; k < 32; ++k)
+        if (scrBossN[k])
+            std::printf(" %s %.1f (%llu)", k == 31 ? "none" : bossId(static_cast<BossKind>(k)),
+                        std::sqrt(scrBoss2[k] / static_cast<double>(scrBossN[k])), static_cast<unsigned long long>(scrBossN[k]));
+    std::printf("\n");
+    std::printf("[net]   boss health, a client's against the host's: RMS %.2f%% of the whole, max %.2f%% (%llu looks, %llu above the "
+                "host's); looks with the host's boss dying and the client's not yet: %llu\n",
+                bossHpN ? 100.0 * std::sqrt(bossHpSum2 / static_cast<double>(bossHpN)) : 0.0, 100.0 * bossHpMax,
+                static_cast<unsigned long long>(bossHpN), static_cast<unsigned long long>(bossHpAbove),
+                static_cast<unsigned long long>(bossDeathLate));
+    std::printf("[net]   shots on the host's screen, straight ones bent more than a quarter in their last tick: own %llu of %llu (first tick "
+                "%llu), remote %llu of %llu (first tick %llu); curving own %llu, remote %llu\n",
+                static_cast<unsigned long long>(shBent[0]), static_cast<unsigned long long>(shStraight[0]),
+                static_cast<unsigned long long>(shBentFirst[0]), static_cast<unsigned long long>(shBent[1]),
+                static_cast<unsigned long long>(shStraight[1]), static_cast<unsigned long long>(shBentFirst[1]),
+                static_cast<unsigned long long>(shCurve[0]), static_cast<unsigned long long>(shCurve[1]));
     std::printf("[net]   per client: down %.1f kbit/s worst second (mean %.1f), up %.1f worst second (mean %.1f); limits %.0f / %.0f\n",
                 downMax, downMean, upMax, upMean, kMaxDownKbps, kMaxUpKbps);
     std::printf("[net]   largest datagram %u bytes (no IP fragmentation: <= %u); overflow %u, queue full %u, ENet pool fallbacks %llu "
@@ -566,6 +826,8 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     delete hist;
     delete tdiag;
     delete cdiag;
+    delete[] truth;
+    delete[] ships;
     wireUseSimClock(false);
     return ok ? 0 : 1;
 }

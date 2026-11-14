@@ -632,18 +632,47 @@ bool World::netSample(u32 i, NetEnemyState& s) const {
     return true;
 }
 
+Vec2 World::netHostPlace(const NetEnemyState& s, double hostMusic, u16 species, float* laneB) const {
+    // The host's position carried to this world's musical time by its own velocity (at most a quarter second); in Event
+    // Horizon's pull by the pull as well, and a lane walker along its lane (M4 net, clients only). netCorrect puts the
+    // copy there; the session's at-correction error measures against the same place.
+    const float tps = ticksPerSecond();
+    const float ds = clampf(static_cast<float>((m1_ - hostMusic) / static_cast<double>(tps)), -0.25f, 0.25f);
+    const bool hostWarping = s.state == kWarping;
+    Vec2 h{s.x, s.y};
+    if (!hostWarping) h = h + Vec2{s.vx + s.kx, s.vy + s.ky} * ds;
+    if (!hostWarping && s.state != kLane && !s.frozen && horizonOn()) {
+        // M4 net (clients only): Event Horizon's pull moves a body without its velocity, up to hundreds of wu/s near the
+        // Well, so the host's sample is carried by the pull too, a tick at a time (the pull grows toward the Well).
+        const HorizonData& hd = species_->horizon;
+        const float sign = ds < 0.0f ? -1.0f : 1.0f;
+        for (float left = std::fabs(ds); left > 0.0f; left -= kDt) {
+            const Vec2 to = boss_.pos - h;
+            const float l = length(to);
+            if (l > hd.pullRange || l < hd.horizonRadius) break;
+            h = h + to * (sign * horizonPullAt(h, hd.pullFodder) * std::fmin(left, kDt) / l);
+        }
+    }
+    // M4 net (clients only): an Event Horizon lane walker's place is its lane and its distance along it (horizonLane draws
+    // it from them every tick), so it takes the host's, the distance carried by the walk to this time, beat or not.
+    if (s.state == kLane && horizonOn()) {
+        const float b = horizonLaneCarry(species, s.a, s.b, ds);
+        if (laneB) *laneB = b;
+        h = horizonLanePoint(s.a, b);
+    }
+    return h;
+}
+
 float World::netCorrect(const NetEnemyState& s, double hostMusic) {
     const i32 idx = indexOfSerial(s.serial);
     if (idx < 0) return -1.0f;
     Enemies& e = enemies_;
     const u32 i = static_cast<u32>(idx);
     if (e.flags[i] & kFlagDead) return -1.0f;  // a death predicted here: the host will say
-    // The host's position carried to this world's musical time by its own velocity (at most a quarter second).
-    const float tps = ticksPerSecond();
-    const float ds = clampf(static_cast<float>((m1_ - hostMusic) / static_cast<double>(tps)), -0.25f, 0.25f);
     const bool hostWarping = s.state == kWarping;
-    Vec2 h{s.x, s.y};
-    if (!hostWarping) h = h + Vec2{s.vx + s.kx, s.vy + s.ky} * ds;
+    const bool lane = s.state == kLane && horizonOn();
+    float laneB = 0.0f;
+    const Vec2 h = netHostPlace(s, hostMusic, e.species[i], &laneB);
     const Vec2 c{e.x[i], e.y[i]};
     const Vec2 d = h - c;
     const float err = length(d);
@@ -665,7 +694,10 @@ float World::netCorrect(const NetEnemyState& s, double hostMusic) {
     e.frozenUntil[i] = s.frozen ? std::fmax(e.frozenUntil[i], m1_ + kTicksPerBar) : -1.0;
     const bool beatBetween = crossed(std::fmin(hostMusic, m1_), std::fmax(hostMusic, m1_), kTicksPerBeat);
     const bool landedHere = hostWarping && e.state[i] != kWarping;
-    if (!beatBetween && !landedHere) {
+    // M4 net (clients only): a walker the host has let off Event Horizon's lane (the Well died there first) leaves it here
+    // too, beat or not; on the lane this copy would be drawn back onto it every tick until the death arrives.
+    const bool leftLane = e.state[i] == kLane && s.state != kLane;
+    if ((!beatBetween && !landedHere) || leftLane) {
         e.vx[i] = s.vx;
         e.vy[i] = s.vy;
         e.kx[i] = s.kx;
@@ -681,6 +713,12 @@ float World::netCorrect(const NetEnemyState& s, double hostMusic) {
         e.step[i] = s.step;
         e.target[i] = s.target;
         e.flags[i] = static_cast<u8>((e.flags[i] & ~(kFlagEngaged | kFlagArriving | kFlagCalled)) | (s.flags & (kFlagEngaged | kFlagArriving | kFlagCalled)));
+    }
+    if (lane) {
+        e.state[i] = kLane;
+        e.a[i] = s.a;
+        e.b[i] = laneB;
+        e.flags[i] |= kFlagCalled;
     }
     // Health: never above what this device has already taken off (its own claims may still be on their way).
     if (s.hp < e.hp[i]) e.hp[i] = s.hp;

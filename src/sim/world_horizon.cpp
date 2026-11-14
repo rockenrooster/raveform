@@ -131,6 +131,27 @@ bool World::horizonLane(u32 i, float dt) {
     return true;
 }
 
+Vec2 World::horizonLanePoint(float lane, float b) const {
+    // M4 net (a client's corrections): where a lane walker stands, from its lane and its distance along it (horizonLane).
+    const BossState& s = boss_;
+    const HorizonData& d = species_->horizon;
+    const u32 lanes = d.phases[s.hz.phase < 3 ? s.hz.phase : 2].lanes;
+    const float lane0 = kTau * lane / static_cast<float>(lanes ? lanes : 1u);
+    const float theta = lane0 + kLaneWind * (1.0f - b / kLaneStartWu);
+    return s.pos + dirOf(theta) * b;
+}
+
+float World::horizonLaneCarry(u16 species, float lane, float b, float ds) const {
+    // M4 net: the host's distance along a lane carried by `ds` seconds of the walk (speed plus the pull, a tick at a time).
+    const float sign = ds < 0.0f ? -1.0f : 1.0f;
+    const float speed = species_->get(species).speed;
+    for (float left = std::fabs(ds); left > 0.0f; left -= kDt) {
+        const float v = speed + horizonPullAt(horizonLanePoint(lane, b), species_->horizon.pullFodder);
+        b = std::fmax(b - sign * v * std::fmin(left, kDt), 0.0f);
+    }
+    return b;
+}
+
 void World::updateHorizon(float dt) {
     BossState& s = boss_;
     HorizonState& h = s.hz;

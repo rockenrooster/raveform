@@ -798,6 +798,8 @@ public:
     // photon ring); the fight is on (past its entrance bar); a point inside the burning jets (from: where on the jet).
     float horizonPullAt(Vec2 at, float max) const;
     bool horizonOn() const;
+    Vec2 horizonLanePoint(float lane, float b) const;                        // M4 net: a lane walker's place
+    float horizonLaneCarry(u16 species, float lane, float b, float ds) const;  // M4 net: its distance after ds seconds
     bool horizonJetHits(Vec2 at, Vec2& from) const;
     // Polyrhythm (world_polyrhythm.cpp): the link's direction (Three to Four), a rotor's place and the direction of one of
     // its faces at a moment, a ring's radius, whether a point is on a wall, the link's burn (0 none, 1 its dashes, 2 burning).
@@ -916,6 +918,8 @@ public:
     // snaps). Returns the distance between the two before the correction (-1: not here, or gone).
     bool netSample(u32 index, NetEnemyState& out) const;
     float netCorrect(const NetEnemyState& s, double hostMusic);
+    // The host's sample carried to this world's musical time, as netCorrect places the copy (M4 net).
+    Vec2 netHostPlace(const NetEnemyState& s, double hostMusic, u16 species, float* laneB = nullptr) const;
     // The director's state as the host has it (the phrase, the Track, the boss's place in the run).
     struct DirectorSync {
         double startTick = 0.0;
