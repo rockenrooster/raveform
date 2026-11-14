@@ -157,6 +157,10 @@ M5 part 4; protocol `0x52460505` holds both).
   `mg_strip`, `rp_strip`, `wv_strip` (dev). The picture tables' shared index (`Play::m5Pic_`) passed 100 with these and the
   fights' pictures were read as the families' (out of bounds: the crash of `wv_knot` and the dead runs): widened to u16 with the
   other tables from 1000, 2000 and 3000 (a static_assert).
+- **Moto** (shared phone; 3be00a8's APK left installed): `--fight reprise:0:hold` (the Reprise's fans from four arms on the
+  two-step, the densest of the new fights) 60 s: panel 0% missed (PASS), main thread P95 4.5 ms, GPU 13.6 ms P95, 447 enemies
+  and 98 bullets in view at most, heap 0. Not measured on the phone (short runs only): Arpeggiator, Fata Morgana and batch 3.
+- Soaks (test.ps1, after the merge of m4-net f836e5e at 3be00a8): clean PASS, impaired PASS.
 - The halo-burn test (play test 2) sets its set list to three: at a set list of eight it had been testing nothing (no loop
   Track in its Tracks 4-8); at ten it failed.
 
