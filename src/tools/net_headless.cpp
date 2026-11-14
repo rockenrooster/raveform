@@ -316,6 +316,8 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     u64 thinChecks = 0, thinDiffers = 0, thinOwnerOn = 0;  // a copy's thinning against the owner's (GAME_DESIGN 6.6)
     double thinLiveSum2 = 0.0;
     u64 shStraight[2] = {}, shBent[2] = {}, shBentFirst[2] = {}, shCurve[2] = {};  // the host's screen: own 0, remote 1
+    double bossHpSum2 = 0.0, bossHpMax = 0.0;  // a client's boss health against the host's (shares of the whole)
+    u64 bossHpN = 0, bossHpAbove = 0, bossDeathLate = 0;
     u64 missing = 0;
     u64 allocs0 = 0;
     EnetPoolStats pool0;
@@ -518,6 +520,25 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                     ++shBent[cls];
                     if (sh.life0[i] - sh.life[i] < 1.5f * kDt) ++shBentFirst[cls];
                 }
+            }
+        }
+        {
+            // The boss's health on each client against the host's (a share of its whole), during fights; and the client's
+            // copy at the tick the host's boss starts to die (the host's verdict: the fight's end).
+            const BossState& hb = peers[0].world().boss();
+            for (u32 k = 1; k < players; ++k) {
+                if (dropped && k == dropPeer) continue;
+                const BossState& cb = peers[k].world().boss();
+                if (!hb.active || !cb.active || hb.kind != cb.kind || hb.coreMax <= 0.0f) continue;
+                if (hb.dying) {
+                    if (!cb.dying) ++bossDeathLate;
+                    continue;
+                }
+                const double d = static_cast<double>(cb.coreHp - hb.coreHp) / static_cast<double>(hb.coreMax);
+                bossHpSum2 += d * d;
+                ++bossHpN;
+                if (std::fabs(d) > bossHpMax) bossHpMax = std::fabs(d);
+                if (d > 0.0) ++bossHpAbove;
             }
         }
         // Each viewer's copy of every other player's thinning (GAME_DESIGN 6.6, decided on a beat from the live shots this
@@ -749,6 +770,11 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     std::printf("[net]   thinning: a copy's against its owner's differs in %llu of %llu looks (owner thinned in %llu); live shots off by %.1f RMS\n",
                 static_cast<unsigned long long>(thinDiffers), static_cast<unsigned long long>(thinChecks),
                 static_cast<unsigned long long>(thinOwnerOn), thinChecks ? std::sqrt(thinLiveSum2 / static_cast<double>(thinChecks)) : 0.0);
+    std::printf("[net]   boss health, a client's against the host's: RMS %.2f%% of the whole, max %.2f%% (%llu looks, %llu above the "
+                "host's); looks with the host's boss dying and the client's not yet: %llu\n",
+                bossHpN ? 100.0 * std::sqrt(bossHpSum2 / static_cast<double>(bossHpN)) : 0.0, 100.0 * bossHpMax,
+                static_cast<unsigned long long>(bossHpN), static_cast<unsigned long long>(bossHpAbove),
+                static_cast<unsigned long long>(bossDeathLate));
     std::printf("[net]   shots on the host's screen, straight ones bent more than a quarter in their last tick: own %llu of %llu (first tick "
                 "%llu), remote %llu of %llu (first tick %llu); curving own %llu, remote %llu\n",
                 static_cast<unsigned long long>(shBent[0]), static_cast<unsigned long long>(shStraight[0]),

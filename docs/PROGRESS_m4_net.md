@@ -307,6 +307,42 @@ test seed's worst up second to **42.8** (the error is bit-identical: the host's 
 seeds after main 17a36f7 was merged (`captures\m4net\seeds\r4_*`): worst up second **38.9-49.6 clean, 42.3-51.3
 impaired**, every seed under 60 (seed 5: 44.1; main measured 61.7 there).
 
+### Boss claims after main 8f5abeb (armour takes a quarter) and the boss's health on clients
+
+- On the wire: main sums a tick's hits on one part and pair in the client's log (`damageBossFinal`); this branch then
+  keeps one claim a part and pair until the pose takes them (30 Hz, `Session::writeBossClaims`). Both add the damage
+  as it is (the claimant's multiplier, armour's quarter included, already applied), and `damageBossFinal` on the host
+  is linear in it, so the host's health comes out the same: summing is what we want. One claim a part and pair a pose,
+  six bytes each; a parser cap of 1e6 per claim is far above any sum (`kMaxBossClaimSum` 1e5 splits a larger one).
+- The boss's health on each client against the host's (the soak's new `boss health` line, every 0.1 s of a fight,
+  a share of the whole): RMS 3.1-5.2%, at most 25-52% for a moment, and a client is above the host 27-40% of the time
+  (its bar waits for the others' damage, which reaches it in the 4 Hz heartbeat). The fights now end in seconds, so a
+  quarter second of four players' damage is a large share of a short fight. After a fight the copies agree (the host's
+  death decides; a client's boss was still alive 0.3-1.8 s in all while the host's was dying, the death's latency).
+  A 10 Hz heartbeat during fights was tried (`--net-tune bossbeat=1`): no clear gain in ten seeds, so it is off.
+
+### A fresh baseline on main 1dce5d3, and what round 2's rules cost now
+
+Main's own tree (exported with `git archive`, built in the scratchpad; main holds this branch's round 1 network code,
+not round 2's) against this branch after merging it, ten seeds, ten minutes (`captures\m4net\seeds\main1dce_*`,
+`r9_*`, `exp*_*`):
+
+| ten seeds, mean (worst) | clean | impaired |
+|---|---|---|
+| main 1dce5d3 | **4.07** (6.68) | **6.05** (8.28) |
+| this branch | 5.07 (6.91) | 7.06 (10.12) |
+| this branch, round 2's three client rules off (the dip, `firstHand`, the host's target as law) | 4.20 (5.49) | 6.00 (6.72) |
+| only `firstHand` off | 3.94 (4.83) | 6.76 (8.73) |
+| only the target rules off | 4.33 (6.90) | |
+| only the dip's co-op rule off | 4.50 (6.89) | |
+
+Each of round 2's rules, off on its own, lands at 3.9-4.5 clean; all three off match main. Measured in round 2 (on
+the content of that day) they cut the clean mean from 5.19 to 4.40; on today's content (Kick Pulse on the kick, armour
+taking a quarter, the novice retune) **together they cost about 1 wu**, clean and impaired. The ten-seed means swing
+by ±0.7 wu between builds that differ in nothing the runs reach (the 10 Hz heartbeat in fights: 4.86 against 5.73), so
+the single rules are not told apart; the three together are. They are the lead's rulings, so they stay as they are
+here; the experiment (a flag in each place) was taken out again. The lead decides.
+
 ### Main 5107877 and the test seed's clean figure (point 3)
 
 Measured on this branch after the merge: the test seed (seed 1) clean **4.55** wu, seed 5 clean 3.83; ten seeds
@@ -375,7 +411,7 @@ What can make player shots jump on the host's screen, with the evidence:
 
 | | Before | After | Files |
 |---|---|---|---|
-| Moto hosting 3 PC bots, 15 min, clean: on-screen error at correction per bot (limit 12) | 35.5 / 33.5 / 21.8 | relay fix: 10.5 / 10.7 / 9.4 (`122828`); + motion corrections: 10.2 / 15.1 / 7.2 (`130551`); + direct, Hive: 5.8 / 14.5 / 11.6 (`133303`); round 2: **4.84 / 6.32 / 6.12** (`141328`) | `captures\m4net\device\` |
+| Moto hosting 3 PC bots, 15 min, clean: on-screen error at correction per bot (limit 12) | 35.5 / 33.5 / 21.8 | relay fix: 10.5 / 10.7 / 9.4 (`122828`); + motion corrections: 10.2 / 15.1 / 7.2 (`130551`); + direct, Hive: 5.8 / 14.5 / 11.6 (`133303`); round 2: **4.84 / 6.32 / 6.12** (`141328`); final code (reaches Track 5 and Event Horizon): **8.45 / 6.39 / 9.25** (`174451`) | `captures\m4net\device\` |
 | the same, impaired (5% loss, 80 ms jitter, every peer) | 17.5 / 17.7 / 81.5 | direct, Hive: **11.45 / 6.92 / 6.59** (`135034`); round 2 merged: 12.14 / 11.26 / 13.35 FAIL (`163522`); round 3 before the lane fix: 24.6 / 29.3 / 27.2 FAIL (`171023`; the Horizon fight 124-150 wu, without it 10.0 / 15.4 / 11.6); final code: **20.3 / 15.8 / 14.3 FAIL** (`172745`; the 20 s round Event Horizon's end 170-182 wu, without them 13.2 / 12.4 / 10.7; 13-17 PC stalls a bot, my own idle soaks and builds on the same four cores) | |
 | PC bots' worst up second (limit 60) | 301-764 (the host gone) | clean runs 51-68 (the end, host gone) then held; impaired 46-80 in play (`135034`, bot 2: 80.3); boss claims merged: impaired 51.0 / 55.0 / 54.1 (`172745`) | |
 | The Moto's frames (contract: P95 one period, missed <= 5%) | 53,904, 0 missed | 53,903-53,904 frames, 0-1 missed, P95 1 period, max 21.0-25.6 ms, heap 0, every run; `171044`, `172805`: 53,904, 0 missed, P95 17.7 ms, max 21.1-23.9, heap 0 | `ZY22BXMJG3-bench_play-20261113-*.json` |
@@ -410,7 +446,10 @@ What can make player shots jump on the host's screen, with the evidence:
   phone host differs from the soak in the fight's length, 23 s, and in when the boss dies against the clients' copies).
   Without those 20 s two bots are still at 12.4-13.2 (Track 2's mini-boss, Track 4's mini-boss). That run also had
   13-17 PC stalls a bot from my own idle soaks and builds sharing the four cores. The clean run on the final code is
-  `<clean tag>` below.
+  `174451`: **8.45 / 6.39 / 9.25**, every bot under 12, 0 stalls, worst up second 41-50, the Moto 53,904 frames, 0
+  missed, P95 17.7 ms, heap 0 (the bots' FAIL flag is the run's end: the phone quits, one disconnect each). The
+  phone's own shot diagnostics in that run: straight shots bent in their last tick, own 1,980 of 6.19 M (1,739 in
+  their first tick), remote **0 of 6.06 M**; frames off the period 19 of 54,837.
 - Remote ships: a relayed seat under 80 ms of jitter still jumps (unexplained step up to 344 wu); nobody has looked
   at the remote ships on a screen.
 - The phone's shot numbers before the curving shots were left out (`171023`, `172745`): remote 4.6-9.0% of steps

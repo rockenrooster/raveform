@@ -49,6 +49,9 @@ struct SessionConfig {
     bool beacon = false;
     RemotePoses remotePoses = RemotePoses::Direct;  // (docs/PROGRESS_m4_net.md: 10 seeds, impaired 6.47 -> 6.03, clean 5.39 -> 5.19)
     bool motionCorrections = true;  // host: a moving Shoal's corrections are motion corrections (protocol.h NetMotion)
+    bool phaseBeat = true;          // host: a heartbeat at once when Event Horizon's phase changes
+    bool bossBeat = false;          // host (experiment): the heartbeat at 10 Hz while a boss fights (4 Hz otherwise)
+    bool bossClaimsAtPose = true;   // client: hits on the boss merged until the pose (else sent each tick)
     // Host: the corrections' share of each client's downlink (bytes a second, every byte to the client counted) and how
     // fast each enemy family gains priority (experiments: raveform_headless --net-tune). Shoals twice as fast: boids
     // drift apart fastest (docs/PROGRESS_m4_net.md: 57-95% of the soaks' squared error; 4 starved the rest).
@@ -288,6 +291,8 @@ private:
     void reliable(F&& put);
     void flushReliable();
     void writeClaims();
+    void writeBossClaims();
+    void writeClaimsSorted();
     void noteClaimSecond(u32 claims, u32 bossClaims);
     void sendTo(u32 peer, u8 channel, const PacketWriter& w, bool rel);
     void relayEvent(const MsgPlayerEvent& m, u32 exceptSeat);

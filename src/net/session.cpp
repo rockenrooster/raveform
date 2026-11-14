@@ -17,6 +17,7 @@ namespace {
 constexpr i64 kPoseEveryUs = 33333;     // TECH_SPEC 8.1: poses at 30 Hz
 constexpr i64 kCorrEveryUs = 66667;     // corrections 15 Hz per client
 constexpr i64 kBeatEveryUs = 250000;    // the song clock heartbeat, 4 Hz
+constexpr i64 kBossBeatEveryUs = 100000;  // ... 10 Hz while a boss fights (its health rides with it)
 constexpr i64 kCensusEveryUs = 2000000;
 constexpr i64 kPingFastUs = 50000, kPingUs = 250000;  // TECH_SPEC 8.2: 4 Hz (20 Hz until 16 samples)
 constexpr i64 kInterpUs = 66000;        // remote players drawn ~66 ms behind
@@ -87,6 +88,12 @@ bool parseNetTune(const char* spec, SessionConfig& c) {
             c.downBytesPerS = v;
         } else if (std::strcmp(key, "motion") == 0) {
             c.motionCorrections = v != 0.0f;
+        } else if (std::strcmp(key, "phasebeat") == 0) {
+            c.phaseBeat = v != 0.0f;
+        } else if (std::strcmp(key, "bossbeat") == 0) {
+            c.bossBeat = v != 0.0f;
+        } else if (std::strcmp(key, "bossmerge") == 0) {
+            c.bossClaimsAtPose = v != 0.0f;
         } else if (std::strncmp(key, "fam", 3) == 0) {
             const int f = std::atoi(key + 3);
             if (f < 0 || f > 15) return false;
@@ -1360,6 +1367,7 @@ void Session::afterTick() {
             }
             pendBoss_[pendBossCount_++] = c;
         }
+        if (!cfg_.bossClaimsAtPose) writeBossClaims();  // (experiment: each tick's, as before)
     }
     log.clear();
     collectLocalEvents();
@@ -1483,6 +1491,13 @@ void Session::noteClaimSecond(u32 claims, u32 bossClaims) {
 void Session::writeClaims() {
     // The claims since the last send, one per enemy where they can be: hits on one enemy add up, a Nova's kill takes
     // the hits' place (the host's result is the same), sorted by serial (a byte or two an item, putClaims).
+    writeBossClaims();
+    if (!pendClaimCount_) return;
+    std::sort(pendClaims_, pendClaims_ + pendClaimCount_, [](const NetClaim& a, const NetClaim& b) { return a.serial < b.serial; });
+    writeClaimsSorted();
+}
+
+void Session::writeBossClaims() {
     if (pendBossCount_) {
         // The boss's, one a part and pair (merged as they came).
         stats_.bossClaimItems += pendBossCount_;
@@ -1498,8 +1513,9 @@ void Session::writeClaims() {
         }
         pendBossCount_ = 0;
     }
-    if (!pendClaimCount_) return;
-    std::sort(pendClaims_, pendClaims_ + pendClaimCount_, [](const NetClaim& a, const NetClaim& b) { return a.serial < b.serial; });
+}
+
+void Session::writeClaimsSorted() {
     u32 m = 0;
     for (u32 k = 0; k < pendClaimCount_; ++k) {
         const NetClaim& c = pendClaims_[k];
@@ -1873,7 +1889,8 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
         // health it hears, and Event Horizon's lanes all turn with its phase: measured, docs/PROGRESS_m4_net.md).
         const BossState& bb = w.boss();
         const u8 bossPhase = bb.active && !bb.dying ? static_cast<u8>(bb.phase) : 0xFFu;
-        const bool phaseNow = bossPhase != beatBossPhase_;
+        // (Event Horizon only: for the other bosses ten seeds measured no gain, within the seeds' spread.)
+        const bool phaseNow = cfg_.phaseBeat && bossPhase != 0xFFu && bb.kind == BossKind::EventHorizon && bossPhase != beatBossPhase_;
         if ((localUs >= nextBeatUs_ || phaseNow) && song_.valid()) {
             beatBossPhase_ = bossPhase;
             MsgHeartbeat m;
@@ -1913,7 +1930,9 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
             if (n) scratch_.putStats(st, n);
             for (u32 s = 1; s < kMaxPlayers; ++s)
                 if (welcomed_[s] && seatPeer_[s] >= 0) sendTo(static_cast<u32>(seatPeer_[s]), kChUnreliable, scratch_, false);
-            nextBeatUs_ = localUs + kBeatEveryUs;
+            // In a fight 10 Hz: the boss's health rides with it, and with every player's damage a quarter second behind a
+            // client's bar stood up to a third of a short fight above the host's (measured, docs/PROGRESS_m4_net.md).
+            nextBeatUs_ = localUs + (cfg_.bossBeat && bossPhase != 0xFFu ? kBossBeatEveryUs : kBeatEveryUs);
         }
         // Corrections, each client every other pose (15 Hz).
         if (state_ == SessionState::Running) {
