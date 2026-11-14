@@ -203,6 +203,13 @@ void Play::buildInput(StickInput& in) {
     if (opt_.bot || opt_.autoplay || attract()) {
         // The bot plays (--bot, benchmarks, and the title's attract run).
         in = bot_.think(*world_, seat_, controller_, coop() ? netHeard_ : clock_.heardNow());
+        if (attract() && !opt_.bot && !opt_.autoplay) {
+            // The owner, 2026-11-14: "the demo camera doesn't seem to have the same easing as the auto aim camera movement".
+            // The bot aims by hand and its aim jumps from target to target, and the camera leans along the aim; in the title's
+            // attract run it steers and the auto-aim assist fires for it (its aim held on a target), as the owner plays.
+            in.aimActive = false;
+            in.assist = true;
+        }
         return;
     }
     in.assist = settings_.autoAim || !flow_;

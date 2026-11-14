@@ -493,13 +493,22 @@ void PlayView::drawReprise(FrameDraw& d, const ViewInput& in) {
         d.scene.line(toScene(p), toScene(p + dv * (2.2f * er)), hw, col, col, 0);
     }
     d.pools.glow(toScene(pos), R.armLength * 1.4f * pxPerWu_, acc * (0.06f * life));
-    // reprise.md "Death" (the owner, 2026-11-14: "make sure the reprise one is even more epic"): the whole set list comes home. From
-    // the death a ring in each of the ten Tracks' colours leaves the core 0.12 s after the one before at 2,400 wu/s, fading over
-    // 1.6 s; then a white ripple to 6,000 wu over 2.4 s (drawn here, past the six shock rings the view keeps at once).
+    // reprise.md "Death" (the owner, 2026-11-14: "make sure the reprise one is even more epic", then "I like the rings in every
+    // Track's colour but it just races across the screen instead of the normal explosion with resistance like the first one"):
+    // the whole set list comes home as explosion rings: from the death a ring in each of the ten Tracks' colours leaves the core
+    // 0.12 s after the one before and spreads as every shock ring does, fast and then slowing (radius x 0.25 + 0.75 x the square
+    // root of its age's share), to 1,100 wu for the first and 120 more for each after it, fading over 1.2 s; then a white one
+    // to 3,200 wu over 1.8 s. Drawn here, past the six shock rings the view keeps at once; they raced at 2,400 wu/s until then.
     if (s.dying && s.deathTick >= 0.0) {
         const float since = static_cast<float>((t - s.deathTick) / std::fmax(w.ticksPerSecond(), 1.0f));
-        const auto ring = [&](float rad, Vec3 c, float lv) {
-            if (rad <= 0.0f || lv <= 0.0f) return;
+        const float rf = reduceFlashing_ ? 0.6f : 1.0f;
+        const auto ring = [&](float start, float life, float toWu, Vec3 c) {
+            const float age = since - start;
+            if (age < 0.0f || age >= life) return;
+            const float u = age / life;
+            const float rad = toWu * (0.25f + 0.75f * std::sqrt(u));
+            const float lv = (1.0f - u) * rf;
+            // (lines in its colour end to end: the shock ring's glyph has a white core, which washed the Tracks' colours out)
             const u32 n = 96;
             for (u32 q = 0; q < n; ++q) {
                 const Vec2 p0 = pos + dirv(kTau * static_cast<float>(q) / n) * rad, p1 = pos + dirv(kTau * static_cast<float>(q + 1) / n) * rad;
@@ -507,13 +516,8 @@ void PlayView::drawReprise(FrameDraw& d, const ViewInput& in) {
                 d.scene.line(toScene(p0), toScene(p1), 1.6f * refPx_, c * lv, c * lv, 0);
             }
         };
-        const float rf = reduceFlashing_ ? 0.6f : 1.0f;
-        for (u32 k = 0; k < 10; ++k) {
-            const float age = since - 0.12f * static_cast<float>(k);
-            if (age < 0.0f || age > 1.6f) continue;
-            ring(age * 2400.0f, accentOf(k + 1) * 2.2f, (1.0f - age / 1.6f) * rf);
-        }
-        if (since >= 0.4f && since < 2.8f) ring((since - 0.4f) / 2.4f * 6000.0f, W1 * 1.6f, (1.0f - (since - 0.4f) / 2.4f) * rf);
+        for (u32 k = 0; k < 10; ++k) ring(0.12f * static_cast<float>(k), 1.2f, 1100.0f + 120.0f * static_cast<float>(k), accentOf(k + 1) * 2.2f);
+        ring(0.4f, 1.8f, 3200.0f, W1 * 1.4f);
     }
 }
 

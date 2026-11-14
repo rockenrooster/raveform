@@ -4,6 +4,17 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (evening), the Reprise's rings slow as they spread; the title's demo aims as the owner does
+
+- "I like the rings in every Track's colour but it just races across the screen instead of the normal explosion with resistance
+  like the first one": the ten rings spread as a shock ring does (radius x 0.25 + 0.75 x the square root of its age's share,
+  fading over 1.2 s, to 1,100 wu and 120 more for each; the white one to 3,200 over 1.8 s); they had raced at 2,400 wu/s. Lines
+  in each Track's colour end to end (the shock ring's glyph, tried first, has a white core that washed them out).
+- "The demo camera doesn't seem to have the same easing as the auto aim camera movement": the title's attract bot aimed by hand,
+  its aim jumping between targets, and the camera leans along the aim; it now steers and the auto-aim assist fires for it (the
+  aim held on a target), as the owner plays (`Play::input`; `--bot` and `--autoplay` keep their own aim).
+- Video `captures\video\boss_death_reprise_v2.mp4`.
+
 ## 2026-11-14 (evening), a boss falls; the Reprise falls hardest (look.md 5)
 
 - "Give the bosses a little bit for epic deaths, but not as epic as the track 10 boss": `PlayView::bossFall` for every boss

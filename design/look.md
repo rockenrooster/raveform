@@ -455,8 +455,11 @@ reprise one is even more epic". Every boss's death (its own shards, facets or im
 **Kaleidos Reprise, the finale, is the biggest by far:** a 2,000 wu flash held 0.4 s with a gold one after
 it, six rings in its arms' colours, 400 gold sparks and 100 in each arm's colour, two distortion waves, a
 shake of 10, the gong with the impact and the action held three times as long; then **the whole set list
-comes home**: from its death a ring in each of the ten Tracks' colours leaves the core one after another,
-and a white ripple crosses the whole lattice to 6,000 wu.
+comes home**: from its death a ring in each of the ten Tracks' colours leaves the core one after another
+and spreads as every explosion ring does, fast and then slowing against the air (the owner: "it just races
+across the screen instead of the normal explosion with resistance like the first one"; they raced at a
+constant 2,400 wu/s at first), to 1,100 wu and 120 more for each, fading over 1.2 s, then a white one to
+3,200 wu.
 
 ### Splits (the owner's play, 2026-11-14)
 
