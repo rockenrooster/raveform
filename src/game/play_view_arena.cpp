@@ -129,6 +129,22 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
             d.scene.line(toScene(c + dirv(a0) * r), toScene(c + dirv(a1) * r), 0.5f * wRef * refPx_, col, col, 0);
         }
     };
+    {
+        // M5 part 7 (arena.md): a Rift Surge's three joined by a faint triangle.
+        Vec2 surge[3];
+        u32 ns = 0;
+        for (u32 k = 0; k < World::kArenaBodies && ns < 3; ++k)
+            if (bodies[k].alive && bodies[k].surge && bodies[k].kind == static_cast<u8>(StructKind::Rift)) surge[ns++] = bodies[k].pos;
+        if (ns == 3)
+            for (u32 j = 0; j < 3; ++j) {
+                const Vec2 p0 = surge[j], p1 = surge[(j + 1) % 3];
+                for (u32 q = 0; q < 24; ++q) {
+                    const Vec2 a0 = p0 + (p1 - p0) * (static_cast<float>(q) / 24.0f), a1 = p0 + (p1 - p0) * (static_cast<float>(q + 1) / 24.0f);
+                    if (visible(a0, 40.0f) || visible(a1, 40.0f))
+                        d.scene.line(toScene(a0), toScene(a1), 0.5f * refPx_, palette_->hue[0] * 0.35f, palette_->hue[0] * 0.35f, 0);
+                }
+            }
+    }
     for (u32 k = 0; k < World::kArenaBodies; ++k) {
         const ArenaBody& b = bodies[k];
         if (!b.alive) continue;
@@ -185,9 +201,10 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
                 break;
             }
             case static_cast<u8>(StructKind::Rift): {
-                // Three broken rings in the first enemy hue turning against each other, sparks spiralling in (the black disc is not
-                // drawn: the scene is additive).
+                // Three broken rings in the first enemy hue turning against each other, sparks spiralling in; while open, the black
+                // disc inside them (M5 part 7: on the priority layer's black, which the scene's additive light cannot draw).
                 const bool open = b.from > 0.0;
+                if (open && shown(kMutePriority)) d.threatRims.line(toScreen(b.pos), toScreen(b.pos), 0.5f * R * pxPerWu_ * fade, Vec3{}, Vec3{}, 0);
                 const Vec3 hue = palette_->hue[0] * ((open ? 1.6f : 0.6f) * fade);
                 for (u32 r = 0; r < 3; ++r) {
                     const float rot = static_cast<float>(t / bar) * (r == 1 ? -0.5f : 0.35f) * kTau;

@@ -337,6 +337,7 @@ struct Bullets {
     float life[kCap];  // seconds left
     u8 dead[kCap];
     u8 echo[kCap];     // M5 part 4: a Feedback echo shot (1 + its player; drawn as the player's shot, turned)
+    u8 boss[kCap];     // M5 part 7: a fight's own (a boss's or a mini-boss's pattern: never the bullet refused)
 };
 
 // M5 part 4, Feedback (design/bosses/feedback.md): each player's last bars as the tape holds them (positions relative to
@@ -640,6 +641,9 @@ struct Rules {
     // M5 (GAME_DESIGN 7.6, calibration only): armour takes nothing, as before 2026-11-13 (the novice's calibration on the
     // build the user played); a health factor per boss and mini-boss on top of tuning.h (measurements: sims only).
     bool armourNothing = false;
+    // M5 part 7 (measurements only: the no-trap table, GAME_DESIGN 6.6): the loadout stays as set (no Trio opens, no Boost is
+    // taken) and the bosses keep no pace.
+    bool frozenLoadout = false, noPace = false;
     float healthLever[24] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
                              1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
 };
@@ -648,6 +652,9 @@ struct WorldCounters {
     u32 enemiesDropped = 0, bulletsDropped = 0, shotsDropped = 0, shardsDropped = 0, eventsDropped = 0;
     u32 kills = 0, deaths = 0, spawned = 0, restarts = 0;
     u32 shotsCapped = 0;  // play test 1: shots a player's hard cap held back (the soft cap's rules should keep it 0)
+    u32 bulletsBoss = 0, bulletsAll = 0;  // M5 part 7 (diagnostics): enemy bullets spawned by the fights and by everything
+    u32 bulletsEvicted = 0;               // ... the crowd's bullets a fight's took the place of (the pool full)
+    u32 bulletsHeld = 0;                  // ... the crowd's bullets not fired: the pool above kBulletPoolCrowd
     // M4 co-op.
     u32 netOpsDropped = 0, netLogDropped = 0;  // pool overflows of the network's queues
     u32 predicted = 0, confirmed = 0, undone = 0, lateSpawns = 0, unknownIds = 0, downs = 0, revives = 0;
@@ -1419,6 +1426,8 @@ private:
 
     const SpeciesTable* species_ = nullptr;
     u8 setList_ = static_cast<u8>(kBossesBuilt);  // M5: every Track with its fights (Play: those the music also has)
+    bool inBossUpdate_ = false;  // M5 part 7: the fights are firing (their bullets come first: spawnBullet)
+    u32 lastBullet_ = 0;         // the slot spawnBullet filled last
     u8 forcedMini_ = 0xFF;  // --fight (pictures, benchmarks): the mini-boss every middle Drop brings
     Rules rules_;
     Spawner spawner_;

@@ -79,12 +79,13 @@ float World::repriseScale(u8 part, u8 index, double t) const {
     // arms: white-edged in the Reprise (a quarter); in the Medley the soloist x 1, the others a quarter; the wave's crests x 1,
     // the rest of it a quarter.
     const RepriseState& r = boss_.rp;
+    const RepriseData& d = species_->reprise;
     const bool one = t - std::floor(t / kTicksPerBar) * kTicksPerBar < kTicksPerBeat;
-    if (part == 3) return r.phase == 1 ? kRpArmour : (one ? kRpOne : 1.0f);
+    if (part == 3) return r.phase == 1 ? d.dmgClosedCore : (one ? kRpOne : 1.0f);
     if (part != 2) return 0.0f;
-    if (index >= 8) return repriseCrest(index - 8u, t) ? 1.0f : kRpArmour;
+    if (index >= 8) return repriseCrest(index - 8u, t) ? 1.0f : d.dmgWaveOff;
     if (r.phase == 1 && index == r.solo) return 1.0f;
-    return kRpArmour;
+    return r.phase == 0 ? d.dmgArmEarly : d.dmgArmNotSolo;
 }
 
 void World::enterReprise(Vec2 centre) {

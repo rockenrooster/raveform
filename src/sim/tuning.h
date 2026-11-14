@@ -385,13 +385,11 @@ constexpr float kPolyHealthTune = 1.7f;     // (3.0 x 0.8 x 0.71) with elites fr
 constexpr u8 kBossEntranceCells = 2;       // GAME_DESIGN 5 (f32a441): "grows back up to two" as a boss arrives
 constexpr float kCadenceHealthTune = 7.0f;  // M5 part 6: the novice with the careful bot's build (--handover 7) 18 of 20, 83 s; x 1: 14 s
 constexpr float kArpHealthTune = 18.0f;     // M5 part 6 (tuned with the novice: docs/PROGRESS.md part 6)
-constexpr float kApArmour = 0.25f;          // GAME_DESIGN 7.6: "the console sheds shots": a quarter (not in arpeggiator.json yet)
 constexpr float kMorganaHealthTune = 14.0f;  // M5 part 6 (tuned with the novice: docs/PROGRESS.md part 6)
 constexpr float kMgFanSpreadDeg = 40.0f;    // morgana.md gives no spread for her fan of five (Cadence's 40 degrees)
 constexpr float kMgBulletLife = 4.0f;       // ... nor its life (Cadence's 4 s)
 constexpr float kMgMarginWu = 700.0f;       // the oases keep this far from the arena's walls
 constexpr float kRepriseHealthTune = 4.5f;  // M5 part 6 (tuned with the novice: docs/PROGRESS.md part 6)
-constexpr float kRpArmour = 0.25f;          // GAME_DESIGN 7.6: the arms "cannot be hurt yet", the closed core, the arms not soloing
 constexpr float kRpArmCircleR = 34.0f;      // an arm's hit circles (three along it; Kaleidos's hull is drawn, not given)
 constexpr float kRpWaveSpacing = 150.0f;    // Longwave's arm let go: its segments 150 wu apart across its way (not given)
 constexpr float kRpWaveAmp = 80.0f;         // ... swinging 80 wu along it, a swing a beat (not given)
@@ -408,7 +406,20 @@ constexpr float kMmPointWu = 24.0f;         // ... the mirror point's ring ("tou
 constexpr float kTtBeamWu = 12.0f;          // Twin Tether: the beam's width (not given; the lead's rule: a lethal beam is at most 12 wu)
 constexpr float kWvTrailWu = 12.0f;         // Weaver Prime: the trail's width (not given; at most 12 wu)
 constexpr float kWvBurstBeats = 0.5f;       // ... the burst lasts half a beat (not given)
-constexpr float kDwArmour = 0.25f;          // Deep Well: "it takes no harm" while it swallows: a quarter (GAME_DESIGN 7.6)
+// M5 part 7 (GAME_DESIGN 7.6, a boss keeps pace): what the novice does to each boss in its fight's first eight bars, after
+// armour, a player (measured from the fights' starts, docs/PROGRESS.md part 7; 0: not measured, the pace stays 1), and the
+// pace's bounds (quoted).
+constexpr float kBossPaceNovice[24] = {   // (by BossKind; the mini-bosses 0: they leave with their Drop)
+    234.0f, 450.0f, 1334.0f,                 // Kaleidos, Longwave, the Choir (the novice from the run's start)
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,      // (the twelve mini-bosses)
+    4188.0f, 2910.0f, 2792.0f,               // Event Horizon, Polyrhythm, Feedback (--handover 4, 5, 6)
+    6501.0f, 16772.0f, 21279.0f, 6200.0f};   // Cadence, Arpeggiator, Fata Morgana, Kaleidos Reprise (--handover 7, 8, 9, 10)
+constexpr float kBossPaceMin = 1.0f, kBossPaceMax = 4.0f;
+constexpr float kBossPaceDeadBand = 1.25f;  // ea472ab: a ratio under it counts as 1 (the novice's good bars; up to 1.5 if it must)
+constexpr u32 kBossPaceBars = 8;
+constexpr float kBulletPoolShooters = 0.70f;  // GAME_DESIGN 6.6 (quoted): no shooting species bought above 70% of the bullet pool
+constexpr float kBulletPoolCrowd = 0.95f;     // ... and the crowd's volleys held above 95% of it (the rest kept for the fights' patterns)
+constexpr float kDwArmour = 0.25f;          // Deep Well while it swallows: the fallback for minibosses.json damageScale.swallowing
 constexpr float kFeedbackHealthTune = 2.0f; // (2.5 x 0.8) the novice 15 of 17, 112 s (x 1.0: 181 s; the page: about two minutes)
 
 // ======================================================================================================

@@ -308,6 +308,121 @@ void applyLevers(World& w) {
     for (u32 k = 0; k < kBossKinds; ++k) w.rules().healthLever[k] = gHealthLever[k] > 0.0f ? gHealthLever[k] : 1.0f;
 }
 
+// M5 part 7 (GAME_DESIGN 6.6, "No pick is a trap"): on one reference build (Split 1 and Double-Time 1; the careful bot, hits
+// costing nothing, the loadout frozen, no boss pace) a stack of each weapon and rhythm Mod and a level of each Riff, against a
+// stack of Overcharge: kills a minute in Track 3's second Groove, and seconds to kill the Choir from its start (no crowd). Each
+// should be worth 0.6 to 1.5 of Overcharge in what it is made for (here: the better of the two). And the Downbeat Cannon: its
+// two ingredients at their caps, with and without the Fusion.
+int runPicks(const SpeciesTable& species, u32 seeds, u64 seed0) {
+    auto* world = new (std::nothrow) World;
+    if (!world) return 2;
+    struct Res {
+        double kpm = 0.0, secs = 0.0;
+        u32 won = 0, runs = 0;
+    };
+    const auto setup = [&](SimRunner& runner, u64 seed, const u8* ups, u32 nUps, u8 fusions, bool fight) {
+        world->init(&species);
+        runner.start(world, seed, fight ? Spawner::Mode::Off : Spawner::Mode::Slice, Bot::Policy::Play, 120.0f, true);
+        World& w = *world;
+        w.rules().frozenLoadout = true;
+        w.rules().noPace = true;
+        w.directorMut().track = 3;
+        for (u32 k = 0; k < nUps; ++k) w.grantUpgrade(0, ups[k]);
+        w.playerMut(0).loadout.fusions = fusions;
+    };
+    const auto measure = [&](const u8* ups, u32 nUps, u8 fusions) {
+        Res r;
+        for (u32 s = 0; s < seeds; ++s) {
+            SimRunner runner;
+            // Track 3's second Groove.
+            setup(runner, seed0 + s, ups, nUps, fusions, false);
+            World& w = *world;
+            u32 kills0 = 0;
+            u64 ticks = 0;
+            bool in = false;
+            // (a minute from the second cycle's Groove on: one Groove's 15 seconds swung by a third from seed to seed)
+            for (u32 t = 0; t < 60u * 60u * 5u; ++t) {
+                runner.step();
+                const Phrase& ph = w.phrase();
+                const bool g = ph.track == 3 && ph.cycle == 2 && ph.section == Section::Groove;
+                if (g && !in) {
+                    in = true;
+                    kills0 = w.counters().kills;
+                }
+                if (in) ++ticks;
+                if (in && ticks >= 3600u) break;
+            }
+            if (ticks) r.kpm += static_cast<double>(w.counters().kills - kills0) / (static_cast<double>(ticks) / 3600.0);
+            // The Choir from its start, alone.
+            SimRunner fightRunner;
+            setup(fightRunner, seed0 + s, ups, nUps, fusions, true);
+            for (u32 t = 0; t < 60; ++t) fightRunner.step();
+            const double enter = (std::floor(w.music() / kTicksPerBar) + 1.0) * kTicksPerBar;
+            w.spawnBossNow(enter, w.player(0).pos + Vec2{0.0f, -200.0f}, BossKind::Choir);
+            u32 t = 0;
+            for (; t < 60u * 60u * 4u && w.boss().active && !w.boss().dying; ++t) fightRunner.step();
+            const double secs = (w.music() - w.boss().fightTick) / static_cast<double>(w.ticksPerSecond());
+            if (w.boss().dying) {
+                r.secs += secs;
+                ++r.won;
+            }
+            ++r.runs;
+        }
+        r.kpm /= static_cast<double>(r.runs ? r.runs : 1u);
+        r.secs = r.won ? r.secs / r.won : 0.0;
+        return r;
+    };
+    const u8 refUps[2] = {kSplit, kDoubleTime};
+    u8 ups[8];
+    const auto withRef = [&](u8 extra, u32 times) {
+        u32 n = 0;
+        ups[n++] = refUps[0];
+        ups[n++] = refUps[1];
+        for (u32 k = 0; k < times; ++k) ups[n++] = extra;
+        return n;
+    };
+    const Res base = measure(refUps, 2, 0);
+    const Res oc = measure(ups, withRef(kOvercharge, 1), 0);
+    const Res sp = measure(ups, withRef(kSplit, 1), 0);
+    std::printf("[picks] reference (Split 1, Double-Time 1): %.0f kills a minute, the Choir in %.1f s (%u of %u); + Overcharge: %.0f, %.1f s; + Split: %.0f, %.1f s\n",
+                base.kpm, base.secs, base.won, base.runs, oc.kpm, oc.secs, sp.kpm, sp.secs);
+    std::printf("[picks]   (each pick's gain over the reference: in kills a minute against a stack of Split's, in the Choir's seconds against a stack\n"
+                "[picks]    of Overcharge's; the better of the two; band 0.60-1.50, ea472ab)\n");
+    u32 outside = 0;
+    const auto row = [&](const char* name, const Res& r) {
+        const double crowd = sp.kpm - base.kpm > 1.0 ? (r.kpm - base.kpm) / (sp.kpm - base.kpm) : 0.0;
+        const double boss = r.secs > 0.0 && base.secs - oc.secs > 0.1 ? (base.secs - r.secs) / (base.secs - oc.secs) : 0.0;
+        const double best = crowd > boss ? crowd : boss;
+        const bool in = best >= 0.6 && best <= 1.5;
+        if (!in) ++outside;
+        std::printf("[picks]   %-16s %6.0f kpm (%.2f)  %6.1f s (%.2f)  -> %.2f %s\n", name, r.kpm, crowd, r.secs, boss, best, in ? "" : "OUTSIDE");
+        logTagged("RFSIM", "{\"test\":\"picks\",\"pick\":\"%s\",\"kpm\":%.1f,\"crowd\":%.3f,\"secs\":%.1f,\"boss\":%.3f,\"best\":%.3f}", name, r.kpm, crowd, r.secs,
+                  boss, best);
+    };
+    for (u32 u = 0; u < kUpgradeCount; ++u) {
+        const bool weapon = u <= kGravityRounds, rhythm = u >= kOnBeatCrit && u <= kAfterparty, riff = isRiff(static_cast<u8>(u));
+        if (!(weapon || rhythm || riff) || u == kOvercharge) continue;
+        const Res r = measure(ups, withRef(static_cast<u8>(u), 1), 0);
+        row(upgradeInfo(static_cast<u8>(u)).name, r);
+    }
+    // The Downbeat Cannon: its ingredients at their caps, then with the Fusion.
+    const FusionInfo& fi = fusionInfo(kDownbeatCannon);
+    u32 n = 0;
+    ups[n++] = refUps[0];
+    ups[n++] = refUps[1];
+    for (u32 k = 0; k < upgradeInfo(fi.a).cap && n < 8; ++k) ups[n++] = fi.a;
+    for (u32 k = 0; k < upgradeInfo(fi.b).cap && n < 8; ++k) ups[n++] = fi.b;
+    const Res ing = measure(ups, n, 0);
+    const Res fus = measure(ups, n, static_cast<u8>(1u << kDownbeatCannon));
+    row("(its two capped)", ing);
+    row(fi.name, fus);
+    std::printf("[picks]   the Downbeat Cannon over its ingredients alone: kills a minute x %.2f, the Choir x %.2f\n", ing.kpm > 0.0 ? fus.kpm / ing.kpm : 0.0,
+                fus.secs > 0.0 ? ing.secs / fus.secs : 0.0);
+    std::printf("[picks] %u outside the band\n", outside);
+    delete world;
+    return 0;
+}
+
 int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, Bot::Policy policy, bool god, bool trace) {
     const u32 ticks = static_cast<u32>(minutes * 3600.0f);
     auto* world = new (std::nothrow) World;
@@ -346,6 +461,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     // M5 (GAME_DESIGN 7.6): each run's first meeting with each fight (1 won, 2 lost, 3 warped out; 0 none), its seconds when
     // won, and whether the first run (before any death) reached Track 2's boss.
     static u8 firstMeet[256][kBossKinds];
+    static float firstPace[256][kBossKinds], firstPaceDmg[256][kBossKinds];  // M5 part 7: the fight's pace and the 8-bar damage a player
     static float firstSecs[256][kBossKinds];
     static u8 firstCells[256][kBossKinds];  // the cells as the first meeting began
     static bool reachedT2[256];
@@ -485,6 +601,8 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     fightHits = fightBody = fightBeam = 0;
                     u8& fm = firstMeet[s][static_cast<u32>(bossKind)];
                     if (!fm) {
+                        firstPace[s][static_cast<u32>(bossKind)] = w.boss().pace;
+                        firstPaceDmg[s][static_cast<u32>(bossKind)] = w.boss().paceMeasured;
                         fm = w.boss().dying ? 1 : (gone ? 3 : 2);
                         if (fm == 1) firstSecs[s][static_cast<u32>(bossKind)] = static_cast<float>(t - bossFrom) / 60.0f;
                     }
@@ -771,12 +889,17 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         for (u32 s = 0; s < n; ++s) t2 += reachedT2[s] ? 1u : 0u;
         std::printf("[sim]   the first run reached Track 2's boss in %u of %u runs; first meetings (kind: met, won, lost, warped out; mean seconds of those won; cells as it began, won / lost):\n", t2, n);
         for (u32 k = 0; k < kBossKinds; ++k) {
-            u32 met = 0, won = 0, lost = 0, gone = 0;
-            double secs = 0.0, cellsWon = 0.0, cellsLost = 0.0;
+            u32 met = 0, won = 0, lost = 0, gone = 0, paced = 0;
+            double secs = 0.0, cellsWon = 0.0, cellsLost = 0.0, pace = 0.0, paceDmg = 0.0;
             for (u32 s = 0; s < n; ++s) {
                 const u8 fm = firstMeet[s][k];
                 if (!fm) continue;
                 ++met;
+                if (firstPaceDmg[s][k] >= 0.0f) {
+                    ++paced;
+                    pace += firstPace[s][k];
+                    paceDmg += firstPaceDmg[s][k];
+                }
                 if (fm == 1) {
                     ++won;
                     secs += firstSecs[s][k];
@@ -789,8 +912,9 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 }
             }
             if (!met) continue;
-            std::printf("[sim]     %-13s %3u %3u %3u %3u  %5.0f s  cells %.1f / %.1f\n", bossId(static_cast<BossKind>(k)), met, won, lost, gone, won ? secs / won : 0.0,
-                        won ? cellsWon / won : 0.0, lost ? cellsLost / lost : 0.0);
+            std::printf("[sim]     %-13s %3u %3u %3u %3u  %5.0f s  cells %.1f / %.1f  pace %.2f (8-bar damage a player %.0f, %u fights)\n",
+                        bossId(static_cast<BossKind>(k)), met, won, lost, gone, won ? secs / won : 0.0, won ? cellsWon / won : 0.0,
+                        lost ? cellsLost / lost : 0.0, paced ? pace / paced : 1.0, paced ? paceDmg / paced : 0.0, paced);
             logTagged("RFSIM", "{\"test\":\"first_meeting\",\"kind\":\"%s\",\"met\":%u,\"won\":%u,\"lost\":%u,\"gone\":%u,\"secs\":%.1f}",
                       bossId(static_cast<BossKind>(k)), met, won, lost, gone, won ? secs / won : 0.0);
         }
@@ -904,10 +1028,12 @@ int simHeadlessMain(int argc, char** argv) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes : 10.0f) * 60.0f, seed, bpm, false, policy);
     } else if (std::strcmp(mode, "crowd") == 0) {
         code = runCrowd(*species, seeds, minutes > 0.0f ? minutes : 30.0f, seed, policy, god, trace);
+    } else if (std::strcmp(mode, "picks") == 0) {
+        code = runPicks(*species, seeds, seed);  // M5 part 7: the no-trap table
     } else if (std::strcmp(mode, "stress") == 0) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes * 60.0f : 120.0f), seed, bpm, true, policy);
     } else {
-        std::printf("usage: raveform_headless --sim determinism|soak|crowd|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless|novice] [--god] [--trace] [--armour0] [--health id=x,...] [--handover N]\n");
+        std::printf("usage: raveform_headless --sim determinism|soak|crowd|picks|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless|novice] [--god] [--trace] [--armour0] [--health id=x,...] [--handover N]\n");
     }
     delete species;
     return code;

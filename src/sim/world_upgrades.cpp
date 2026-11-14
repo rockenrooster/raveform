@@ -123,6 +123,7 @@ void World::hitEnemy(u32 i, float dmg, u8 owner, Vec2 at, Vec2 dir) {
 // ---------------------------------------------------------------------------------------------- Trio
 
 void World::openTrio(u32 p, double closeTick, u8 kind, u16 level) {
+    if (rules_.frozenLoadout) return;  // (the no-trap table's measurements)
     TrioState& tr = trio_[p];
     PlayerState& pl = players_[p];
     u8 opts[kMaxOrbs];
@@ -597,6 +598,7 @@ void World::dropBoost(Vec2 pos, u8 type) {
 }
 
 void World::activateBoost(u32 p, u8 type) {
+    if (rules_.frozenLoadout) return;  // (the no-trap table's measurements)
     PlayerState& pl = players_[p];
     if (type >= kBoostCount) return;
     // Two at once; the same Boost refreshes itself, a third replaces the oldest (GAME_DESIGN 6.1).

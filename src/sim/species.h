@@ -104,6 +104,23 @@ struct Species {
         return variant == kVariantB && (family == Family::Hound || family == Family::Sentry || family == Family::Drifter ||
                                         family == Family::Flanker || family == Family::Moth);
     }
+    // M5 part 7 (GAME_DESIGN 6.6): it fires enemy bullets (every Sentry; Drifter, Hound, Carom, Flanker, Blink and Wyrm B; Moth,
+    // Well and Mimic B and C).
+    bool shoots() const {
+        switch (family) {
+            case Family::Sentry: return true;
+            case Family::Drifter:
+            case Family::Hound:
+            case Family::Carom:
+            case Family::Flanker:
+            case Family::Blink:
+            case Family::Wyrm: return variant == kVariantB;
+            case Family::Moth:
+            case Family::Well:
+            case Family::Mimic: return variant != kVariantA;
+            default: return false;
+        }
+    }
 };
 
 class SpeciesTable {
