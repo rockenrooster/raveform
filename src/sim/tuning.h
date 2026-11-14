@@ -346,10 +346,24 @@ constexpr float kStandingDamage = 1.5f;
 // The pages leave the health to the bot ("tune the segment health with the bot once it can surf", "tune the Voice health
 // with the bot", minibosses.md "25 to 35 seconds of fire ... tune with the bot"): the careful bot's time to kill each at its
 // home Track (8 seeds) brought into the page's window by these factors on the page's health (docs/PROGRESS.md, M5 part 1).
-constexpr float kLongwaveHealthTune = 2.2f;  // 70 s with the careful bot (M5 part 1; part 3, the Trio dealt: 1.4 -> 2.2; 2.7 gave 86 s but the careless bot 3 of 20 in the first pass)
-constexpr float kChoirHealthTune = 4.2f;      // 65 s with the careful bot (part 3, the Trio dealt: 4.5 -> 4.2; 4.8 gave 70 s, with the above)
-constexpr float kMiniHealthTune[8] = {6.5f, 5.0f, 2.0f, 4.8f,    // Alpha Hound, The Hive, Battering Ram, Carom King: 25-35 s
-                                     12.0f, 10.0f, 5.0f, 4.0f};  // M5 part 4: Moth Queen, Brood Mother, Blink Star, Sentry Array (x 1: 4, 5, 7, 11 s)
+// Since 2026-11-13 (GAME_DESIGN 7.6, fights are tuned for a person) they are tuned with the novice over seeds 1-20 (60 minutes;
+// docs/PROGRESS.md, "The boss rule checkpoint"): the part 4 factor x the novice's, in brackets.
+constexpr float kKaleidosHealthTune = 0.55f;  // the novice wins its first meeting in 19 of 20, 31 s (x 0.7: 18, 36 s)
+constexpr float kLongwaveHealthTune = 0.77f;  // (2.2 x 0.35) the novice 17 of 20, 98 s (the page's 150 s)
+constexpr float kChoirHealthTune = 1.26f;     // (4.2 x 0.3) the novice 17 of 20, 43 s
+constexpr float kMiniHealthTune[8] = {0.975f, 0.75f, 0.7f, 1.44f,  // (6.5, 5.0, 2.0, 4.8 x 0.15, 0.15, 0.35, 0.3) Alpha Hound, The Hive,
+                                                                     // Battering Ram, Carom King: the novice's wins 23-30 s
+                                     3.0f, 2.0f, 3.0f, 0.8f};      // (12, 10, 5, 4 x 0.25, 0.2, 0.6, 0.2) Moth Queen, Brood Mother, Blink Star,
+                                                                     // Sentry Array: 24-29 s
+// M5 (GAME_DESIGN 7.6, quoted starting values): the novice bot, a player's first week.
+constexpr float kNoviceAimLagS = 0.200f;     // it aims 200 ms behind where the body is
+constexpr float kNoviceWanderDeg = 6.0f;     // and wanders 6 degrees to either side
+constexpr double kNoviceLearnBars = 16.0;    // it ignores a boss's weak point for 16 bars, then aims at it half the time
+constexpr float kNoviceReactS = 0.250f;      // (its steering runs this far behind its decisions: bot.h kNoviceDelayTicks)
+constexpr float kNoviceLookS = 0.6f;         // calibration (mine): it minds bullets arriving within 0.6 s (the careful bot 1.4 s)
+constexpr float kNoviceDashShare = 0.5f;     // it dashes out of half the hits it sees coming
+constexpr u8 kNoviceNovaCells = 1;           // it fires its Nova at one cell
+constexpr float kNoviceFirstOrbShare = 0.5f; // it takes a Trio's first orb half the time, otherwise any
 // M5 part 4, mini-bosses batch 2 (minibosses.md gives no number for these).
 constexpr float kMqBurstSpeed = 200.0f;      // a court Moth's burst (as a Moth's own bullets)
 constexpr float kMqCourtSpeed = 600.0f;      // a court Moth's step inward (it reaches its place within the beat)
@@ -360,12 +374,12 @@ constexpr float kSaStepBeats = 1.0f;         // turrets step round to stand even
 
 // M5 part 4, Event Horizon (horizon.md gives no number for these).
 constexpr float kHzJetLengthWu = 1800.0f;  // the jets reach past the frame's edge at the fight's zoom (0.8)
-constexpr float kHzJetHalfWu = 22.0f;      // a beam as wide as the Choir's held note
-constexpr float kHorizonHealthTune = 16.0f; // the careful bot at home: x 1 9 s, x 6 25 s (the page: about 80 s)
+constexpr float kHzJetHalfWu = 6.0f;       // look.md v2.5: no lethal beam kills wider than 12 wu (part 4: 22)
+constexpr float kHorizonHealthTune = 8.0f;  // (16 x 0.5) the novice 18 of 20, 94 s (the page: about 80 s; at most 120)
 // Polyrhythm (polyrhythm.md gives no number for these).
-constexpr float kPrLinkBurnHalfWu = 16.0f;  // the burning link: a beam as wide as the Choir's cage strings
-constexpr float kPolyHealthTune = 3.0f;     // the careful bot at home: x 1 9 s, x 8 35 s with 7 wall hits a fight and half lost (the page: 100-120 s)
-constexpr float kFeedbackHealthTune = 2.5f; // the careful bot at home: x 1 34 s (the page: about two minutes)
+constexpr float kPrLinkBurnHalfWu = 6.0f;   // the burning link: look.md v2.5, 12 wu (part 4: 16)
+constexpr float kPolyHealthTune = 2.4f;     // (3.0 x 0.8) the novice 15 of 20, 45 s (x 1.0: 11 of 19; the page: 100-120 s)
+constexpr float kFeedbackHealthTune = 2.0f; // (2.5 x 0.8) the novice 15 of 17, 112 s (x 1.0: 181 s; the page: about two minutes)
 
 // ======================================================================================================
 // M4 STAGE A: co-op (GAME_DESIGN 10, TECH_SPEC 8). Quoted numbers are marked; the rest are chosen where the

@@ -651,7 +651,6 @@ void PlayView::drawBoss(FrameDraw& d, const ViewInput& in) {
     const float a = in.alpha;
     const Vec3 W1 = whiteV();
     const Vec3 acc = oklch(b.accentL, b.accentHue, b.accentChroma * 0.16f);
-    const Vec3 danger = palettes_->danger;
     const Vec2 pos = lerpv(s.prevPos, s.pos, a);
     const float wheel = s.prevAngle + wrapAngle(s.angle - s.prevAngle) * a;
     if (!visible(pos, b.radius * 0.5f) && !s.dying) {
@@ -743,14 +742,10 @@ void PlayView::drawBoss(FrameDraw& d, const ViewInput& in) {
             if (beam == 1) {
                 for (float u = 0.0f; u < reach; u += 60.0f) {
                     const Vec2 p0 = from + dv * u, p1 = from + dv * std::fmin(u + 30.0f, reach);
-                    if (visible(p0, 40.0f) || visible(p1, 40.0f)) telegraphLine(d, p0, p1, 1.0f);
+                    if (visible(p0, 40.0f) || visible(p1, 40.0f)) telegraphLine(d, p0, p1, 1.0f, b.phases[1].beamWidth);
                 }
             } else {
-                const float bw = 0.5f * b.phases[1].beamWidth * pxPerWu_;
-                d.scene.line(toScene(from), toScene(to), bw, danger * 3.0f, danger * 2.0f, 0);
-                d.scene.line(toScene(from), toScene(to), bw * 0.35f, W1 * 2.5f, W1 * 1.5f, 0);
-                d.threatRims.line(toScreen(from), toScreen(to), bw + 2.0f * refPx_, Vec3{}, Vec3{}, 0);
-                d.threatCores.line(toScreen(from), toScreen(to), bw, mix(danger, W1, 0.3f), mix(danger, W1, 0.3f), 0);
+                lethalBeam(d, from, to, b.phases[1].beamWidth);  // look.md v2.5: 10 wu, the model
             }
         }
     }

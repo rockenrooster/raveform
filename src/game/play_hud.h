@@ -90,7 +90,13 @@ struct HudState {
     u8 rank[4] = {};             // seats, the highest score first
     u8 rankCount = 0;
     u8 me = 0;                   // this device's seat
+    // M5 (screens.md "Boss hint"): the boss's rule in plain words, under its name; 0..1.
+    const char* bossHint = nullptr;
+    float bossHintLevel = 0.0f;
 };
+
+// The boss hint line (screens.md "Boss hint (HUD, M5)"); nullptr for a fight without one.
+const char* bossHint(sim::BossKind k);
 
 // The pause ring's centre and radius (top right corner, look.md 6), for its touch target.
 Vec2 pauseButtonCentre(float W, float H, Vec2 insetMin, Vec2 insetMax, float& radius);

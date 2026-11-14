@@ -447,6 +447,11 @@ die and does not say why, and the user never got past Longwave. So:
   18, with Longwave and the Choir in at least 16, with the bosses of Tracks 4 to 6 in at least 12.
   A fight it wins lasts at most 1.5 times the longer length on the boss's page. The careful bot's
   fight lasts at least half the shorter length. Where the two pull apart, the novice's line wins.
+- **What that costs, and until when.** Tuned for the novice (2026-11-13: Kaleidos at 0.55 of its
+  page's health, Longwave at 0.77), the careful bot kills Kaleidos in 9 s and Longwave in 18 s: a
+  strong player's fights are three to five times too short, and the careful bot's line is not held.
+  That stays until the balance pass, which makes a boss tougher for players who are hurting it
+  faster (measured in the fight itself, on its weak point) and never easier than the novice's tune.
 - **Calibration.** On the build the user played (part 3: Longwave's health at 2.2 times its page,
   armour at nothing) the novice must lose to Longwave in most runs. A novice that passes it there
   is not one.

@@ -28,6 +28,7 @@ public:
     const PlayerController& controller() const { return controller_; }
     double music() const { return music_; }
     u32 deaths() const { return deaths_; }
+    void setPolicy(Bot::Policy p) { bot_.setPolicy(p); }  // (M5 tuning: the careful bot hands the run to the novice)
     bool autoRetry = true;
 
 private:

@@ -144,19 +144,21 @@ float World::bossHealthScale(BossKind kind) const {
         if (inLoop(tr, director_.songs)) h *= std::pow(md.loopFactor, static_cast<float>(tr - director_.songs));
         const MiniData::Entry* e = md.find(kind);
         const u32 mk = static_cast<u32>(kind) - static_cast<u32>(BossKind::AlphaHound);
-        return scale * h * (e ? e->healthFactor : 1.0f) * (mk < 8 ? kMiniHealthTune[mk] : 1.0f);
+        return scale * h * (e ? e->healthFactor : 1.0f) * (mk < 8 ? kMiniHealthTune[mk] : 1.0f) * rules_.healthLever[static_cast<u32>(kind)];
     }
     // A boss's own health is for its home Track's build; elsewhere (the loop) it follows the build's growth since, and
     // the loop's ramp. GAME_DESIGN 8 (play test 1, second pass): the first boss of a run, Track 1's, is the teacher.
     const u32 home = bossHomeTrack(kind);
     scale *= buildGrowth(tr) / buildGrowth(home);
     if (tr == 1) scale *= kFirstBossHealth;
+    if (kind == BossKind::Kaleidos) scale *= kKaleidosHealthTune;
     scale *= loopRamp(kLoopHealthRamp, tr, director_.songs);
     if (kind == BossKind::Longwave) scale *= kLongwaveHealthTune;
     if (kind == BossKind::Choir) scale *= kChoirHealthTune;
     if (kind == BossKind::EventHorizon) scale *= kHorizonHealthTune;
     if (kind == BossKind::Polyrhythm) scale *= kPolyHealthTune;
     if (kind == BossKind::Feedback) scale *= kFeedbackHealthTune;
+    scale *= rules_.healthLever[static_cast<u32>(kind)];  // (measurements only)
     return scale;
 }
 
@@ -387,16 +389,30 @@ void World::damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir)
         return;
     }
     ++s.hits;
-    const float scale = part == 1 ? 0.0f : bossDamageScale(part, pair, m1_, dir);
-    if (scale <= 0.0f) {
-        // Armour: the shot sparks and stops (a lens plate, a closed jaw, a silent hood, a Ram's horns; Feedback's shutter).
+    // Polyrhythm's corners and bodies are armour on their rotor (they stop shots and take its armour's share).
+    u8 dpart = part;
+    float scale = 0.0f;
+    if (part == 1 && s.kind == BossKind::Polyrhythm) {
+        scale = species_->poly.dmgCorner;
+        dpart = 2;
+    } else if (part != 1) {
+        scale = bossDamageScale(part, pair, m1_, dir);
+    }
+    // Armour (GAME_DESIGN 7.6, a boss's rule is a bonus, not a wall): a multiplier below 1 (Kaleidos as built: only its
+    // lens plates, at nothing; its firing arms' third stays a hit).
+    const bool kaleidos = s.kind == BossKind::Kaleidos;
+    if (rules_.armourNothing && !kaleidos && scale < 1.0f) scale = 0.0f;  // (calibration: armour as before 2026-11-13)
+    if (kaleidos ? scale <= 0.0f : scale < 1.0f) {
+        // The shot sparks and stops (a lens plate, a closed jaw, a silent hood, a rotor's corner, a Ram's horns, Feedback's
+        // shutter) and does the share the page gives armour (a quarter; Kaleidos's plates and the Ram's horns: nothing).
         ev.c = 1;
-        ev.f = 0.0f;
+        ev.f = scale;
         emit(ev);
-        if (s.kind == BossKind::Feedback) feedbackSwallow();
+        if (s.kind == BossKind::Feedback && s.fb.open <= 0.0f) feedbackSwallow();
+        if (scale > 0.0f) damageBossFinal(dpart, pair, dmg * scale, owner, at, dir, -1.0f);
         return;
     }
-    damageBossFinal(part, pair, dmg * scale, owner, at, dir, scale);
+    damageBossFinal(dpart, pair, dmg * scale, owner, at, dir, scale);
 }
 
 void World::damageBossFinal(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir, float scale) {
@@ -419,7 +435,18 @@ void World::damageBossFinal(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2
         emit(ev);
     }
     const bool client = role_ == NetRole::Client;
-    if (client && netLog_.bossClaimCount < NetLog::kBossClaims) {
+    // (one claim a part a tick: since armour takes a quarter every shot on a boss claims, so the claims of a tick on the same
+    // part are summed rather than sent one by one)
+    bool merged = false;
+    for (u32 k = 0; client && k < netLog_.bossClaimCount && !merged; ++k) {
+        NetBossClaim& c = netLog_.bossClaims[k];
+        if (c.part == part && c.pair == pair) {
+            c.damage += dmg;
+            merged = true;
+        }
+    }
+    if (merged) {
+    } else if (client && netLog_.bossClaimCount < NetLog::kBossClaims) {
         NetBossClaim& c = netLog_.bossClaims[netLog_.bossClaimCount++];
         c.part = part;
         c.pair = pair;
@@ -449,8 +476,8 @@ void World::damageBossFinal(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2
 
 void World::bossNova(u32 p) {
     // GAME_DESIGN 5: heavy damage to bosses in view, a Nova's blast on each part that can be hurt, the core once open
-    // (Kaleidos: each living pair, the core once a pair is down; the others: every living part and the core, through
-    // their multipliers now, never through armour). Co-op: the Nova's owner deals it (a client claims it from the host).
+    // (Kaleidos: each living pair, the core once a pair is down; the others: every living part and the core; on armour the
+    // armour's share, GAME_DESIGN 7.6, never more). Co-op: the Nova's owner deals it (a client claims it from the host).
     BossState& s = boss_;
     const PlayerState& pl = players_[p];
     if (!isLocal(p) || !bossOn()) return;
@@ -472,9 +499,10 @@ void World::bossNova(u32 p) {
         if (q.part == 2 && !(s.alive & (1u << q.index))) continue;
         if (q.part == 2 && q.index < 32 && (struck & (1u << q.index))) continue;
         if (q.part == 2 && q.index < 32) struck |= 1u << q.index;
-        const float scale = bossDamageScale(q.part, q.index, m1_, normalizeOr(q.pos - pl.pos, Vec2{1.0f, 0.0f}));
+        float scale = bossDamageScale(q.part, q.index, m1_, normalizeOr(q.pos - pl.pos, Vec2{1.0f, 0.0f}));
+        if (rules_.armourNothing && scale < 1.0f) scale = 0.0f;
         if (scale <= 0.0f) continue;
-        damageBossFinal(q.part, q.index, kBossNovaDamage * kBossNovaShareM5, static_cast<u8>(p), q.pos, Vec2{1.0f, 0.0f}, -1.0f);
+        damageBossFinal(q.part, q.index, kBossNovaDamage * kBossNovaShareM5 * std::fmin(scale, 1.0f), static_cast<u8>(p), q.pos, Vec2{1.0f, 0.0f}, -1.0f);
     }
 }
 

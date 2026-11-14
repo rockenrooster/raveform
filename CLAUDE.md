@@ -64,6 +64,7 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | A Track's Drop, measured (M5) | `-AppArgs '--drop <track>.<cycle> --nohits --tier low'` with `bench_play` (that Track from its start, fast-forwarded to the cycle's Drop; no upgrades from earlier Tracks, so the crowd piles up) |
 | A fight's densest moment on the Moto (M5) | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Seconds 60 -Warmup 3 -AppArgs '--tier low --nohits --fight longwave:1:hold' -Deploy` (the Choir `choir:3:hold`; a mini-boss `alpha_hound:1:hold` ... `carom_king:3:hold` with `-Seconds 30`: its Drop's hold ends it; M5 part 4: `horizon:2:hold`, `polyrhythm:1:hold`, `feedback:2:hold`, `moth_queen:1:hold` ... `sentry_array:1:hold`) |
 | Every fight's numbers with the bots (M5) | `build\desktop-dev\raveform_headless.exe --sim crowd --seeds 20 --minutes 40 [--policy reckless] [--trace]` (the `fights` table: fought, won, lost, warped out, hits a fight by bullets / bodies / beams, seconds to kill by Track; `--trace`: a line a second of each fight and one a hit) |
+| The fights tuned for a person (GAME_DESIGN 7.6): the novice's first meetings | `build\desktop-dev\raveform_headless.exe --sim crowd --seeds 20 --minutes 60 --policy novice` (the `first meetings` table: met, won, lost, warped out and the seconds of each fight's first meeting in each run, and how many first runs reached Track 2's boss; the lines: Track 2's boss in 16, Kaleidos won in 18, Longwave and the Choir 16, Tracks 4-6 12; `--armour0`: armour takes nothing, as on the build the user played (the calibration: the novice must lose to Longwave there with `--health kaleidos=1.82,longwave=2.86,choir=3.33`); `--health id=x,...`: a factor on a fight's health on top of `tuning.h`; `--handover N`: the careful bot plays to Track N with hits costing nothing, then the policy asked for takes its build on to Track N's boss) |
 | M4 two peers' views of one moment (desktop, two windows started together) | `run-desktop.ps1 -NoBuild -Res 2400x1080 -Screenshot captures\m4\host.png -AppArgs '--host --players 2 --bind 127.0.0.1 --bot --net-capture-bar 40 [--net-overlay] [--net-view-seat 0]'` and `-Screenshot captures\m4\client.png -AppArgs '--join 127.0.0.1 --bind 127.0.0.1 --bot --net-capture-bar 40 ...'` (`--net-view-seat 0`: both cameras on the host's ship) |
 
 Desktop exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 benchmark aborted,
@@ -161,7 +162,11 @@ rosters, budgets and crowd targets; families with behaviour so far: the slice's 
 dealt (6.1: the first orb firepower, the others by `tuning::kDeal*` weights; up to six orbs with Lucky Break and a Fusion's gold
 orb); the bot picks by `kBotUpgradeScore` (`sim/bot.cpp`). Co-op: what moves or stops enemies because of one player's upgrade is
 shared by player events or decided by the host (Gravity Rounds, Freeze Frame in the corrections). `World::setSongBarShift` (Play,
-each tick) keeps Singularity's and the Sweeper's phase on the band's song bars.
+each tick) keeps Singularity's and the Sweeper's phase on the band's song bars. A boss's rule is a bonus, not a wall (GAME_DESIGN
+7.6, since 2026-11-13): armour (a multiplier below 1; Kaleidos as built) sparks and stops a shot and does its share
+(`World::damageBoss`), the HUD shows each boss's hint line under its name (`bossHint`, `Play::bossHintTick`: by this player's own
+shots), the bosses' and mini-bosses' health factors in `tuning.h` are tuned with the novice bot (`Bot::Policy::Novice`), and every
+lethal beam is drawn by `PlayView::lethalBeam` (its kill width, at most 12 wu, a white-pink axis and a danger glow).
 
 Audio (M2, `src/audio/audio_args.h`): `--scenario audio_test|sync` (the band on heard time with its
 controls; the sync calibration screen of `design/screens.md`), `--band off|play|staged|full|stress|metronome`

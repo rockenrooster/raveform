@@ -586,6 +586,11 @@ struct Rules {
                                     // Nova from the stock instead (this device's players; the CONTROLS switch)
     float scoreMultiplier = 1.0f;   // Surge x2 (GAME_DESIGN 4.1, stage B)
     float magnetMultiplier = 1.0f;  // Surge x2
+    // M5 (GAME_DESIGN 7.6, calibration only): armour takes nothing, as before 2026-11-13 (the novice's calibration on the
+    // build the user played); a health factor per boss and mini-boss on top of tuning.h (measurements: sims only).
+    bool armourNothing = false;
+    float healthLever[24] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+                             1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 struct WorldCounters {

@@ -863,14 +863,15 @@ void testAutoNova() {
         CHECK(w->player(0).cells == 0 && w->player(0).novas == novas && countEvents(*w, EventType::NovaPress) == 0);
         delete w;
     }
-    // The first boss of a run has 0.7 of its health (Track 1's); the cap of the living crowd is 900 solo.
+    // The first boss of a run has 0.7 of its health (Track 1's; M5: x the novice's factor); the cap of the living crowd is 900 solo.
     {
         World* w = quietWorld();
         double music = 0.0;
         stepWorld(*w, music, Vec2{});
         w->spawnBossNow(kTicksPerBar, Vec2{600.0f, 0.0f});
-        CHECK(std::fabs(w->boss().partMax - 0.7f * g_species->boss.pairHealth) < 1e-3f);
-        CHECK(std::fabs(w->boss().coreMax - 0.7f * g_species->boss.coreHealth) < 1e-3f);
+        const float k = 0.7f * tuning::kKaleidosHealthTune;
+        CHECK(std::fabs(w->boss().partMax - k * g_species->boss.pairHealth) < 1e-3f);
+        CHECK(std::fabs(w->boss().coreMax - k * g_species->boss.coreHealth) < 1e-3f);
         delete w;
     }
     CHECK(tuning::kDirectorAliveCap == 900);
@@ -1663,7 +1664,7 @@ void testLongwave() {
         if (trough == 99 && (((static_cast<i64>(k) + 1 - n - 6) % 8) + 8) % 8 == 0) trough = k;
     }
     CHECK_MSG(crests == 3, "%u crests", crests);
-    // A shot into the crest counts (x 1); into a trough it sparks off the armour.
+    // A shot into the crest counts (x 1); into a trough it sparks off the armour and does a quarter (GAME_DESIGN 7.6).
     {
         Vec2 tan;
         const Vec2 c = w->longwavePoint(t, static_cast<float>(crest + 1), 0.0f, &tan);
@@ -1674,11 +1675,22 @@ void testLongwave() {
         const Vec2 q = w->longwavePoint(t, static_cast<float>(trough + 1), 0.0f, &tan);
         const float hq = s.partHp[trough];
         w->shootBoss(q - Vec2{-tan.y, tan.x} * 140.0f, q, 7.0f);
-        CHECK(s.partHp[trough] == hq);
-        CHECK(w->bossDamageScale(2, static_cast<u8>(trough), t, Vec2{1.0f, 0.0f}) == 0.0f);
+        CHECK_MSG(std::fabs(hq - s.partHp[trough] - 1.75f) < 1e-3f, "trough took %.2f", hq - s.partHp[trough]);
+        CHECK(w->bossDamageScale(2, static_cast<u8>(trough), t, Vec2{1.0f, 0.0f}) == 0.25f);
+        // (the armour's spark: an impact on part 1 with the armour's share)
+        bool spark = false;
+        for (u32 k = 0; k < w->eventCount(); ++k)
+            spark = spark || (w->events()[k].type == EventType::Impact && w->events()[k].c == 1 && w->events()[k].f == 0.25f);
+        CHECK(spark);
+        // Calibration (the build the user played): armour at nothing.
+        w->rules().armourNothing = true;
+        const float hr = s.partHp[trough];
+        w->shootBoss(q - Vec2{-tan.y, tan.x} * 140.0f, q, 7.0f);
+        CHECK(s.partHp[trough] == hr);
+        w->rules().armourNothing = false;
     }
     // Rule 5: the jaw opens for beat 1 only.
-    CHECK(!w->longwaveJawOpen(t) && w->longwaveJawOpen(4.0 * kTicksPerBar + 10.0) && w->bossDamageScale(3, 0, t, Vec2{1.0f, 0.0f}) == 0.0f);
+    CHECK(!w->longwaveJawOpen(t) && w->longwaveJawOpen(4.0 * kTicksPerBar + 10.0) && w->bossDamageScale(3, 0, t, Vec2{1.0f, 0.0f}) == 0.25f);
     // Rule 4: the troughs fire on every step: one bullet to each side in the Swell (three troughs, six bullets a step).
     {
         const u32 b0 = w->bullets().count;
@@ -1734,13 +1746,13 @@ void testChoir() {
     double t = w->music();
     CHECK(w->choirSinging(0, t) && !w->choirSinging(4, t) && !w->choirSinging(1, t));
     CHECK_MSG(w->bullets().count - b0 == 5, "%u bullets", w->bullets().count - b0);
-    // Rule 2: a singing Voice takes x 1; a silent one sparks.
+    // Rule 2: a singing Voice takes x 1; a silent one sparks and takes a quarter.
     {
         const Vec2 v0 = s.body[1], v2 = s.body[3];
         const float h0 = s.partHp[0], h2 = s.partHp[2];
         w->shootBoss(s.ch.centre + (v0 - s.ch.centre) * 0.5f, v0, 9.0f);
         w->shootBoss(s.ch.centre + (v2 - s.ch.centre) * 0.5f, v2, 9.0f);
-        CHECK_MSG(std::fabs(h0 - s.partHp[0] - 9.0f) < 1e-3f && s.partHp[2] == h2, "%.2f %.2f", h0 - s.partHp[0], h2 - s.partHp[2]);
+        CHECK_MSG(std::fabs(h0 - s.partHp[0] - 9.0f) < 1e-3f && std::fabs(h2 - s.partHp[2] - 2.25f) < 1e-3f, "%.2f %.2f", h0 - s.partHp[0], h2 - s.partHp[2]);
     }
     runTo(*w, music, 3.0 * kTicksPerBar + kTicksPerBeat + 10.0, ship);
     t = w->music();
@@ -1799,7 +1811,7 @@ void testHorizon() {
     CHECK(d.horizonRadius == 120.0f && d.photonRadius == 136.0f && d.phases[0].lanes == 2 && d.phases[1].lanes == 3 && d.phases[2].lanes == 4);
     CHECK(d.phases[0].hunger == 5 && d.phases[1].hunger == 7 && d.phases[2].stream == 26 && d.phases[1].wave && !d.phases[0].wave);
     CHECK(d.phases[2].jets && !d.phases[1].jets && d.phases[2].drift == 90.0f && d.phases[1].pullScale == 1.25f);
-    CHECK(d.pullShip == 260.0f && d.fed == 0.15f && d.starved == 1.0f && d.zoom == 0.8f && d.meterCells == 12);
+    CHECK(d.pullShip == 260.0f && d.fed == 0.25f && d.starved == 1.0f && d.zoom == 0.8f && d.meterCells == 12);
     CHECK(bossOfSong(3) == BossKind::EventHorizon && bossHomeTrack(BossKind::EventHorizon) == 4 && fightBuilt(BossKind::EventHorizon));
     World* w = quietWorld();
     w->rules().godMode = true;
@@ -1939,8 +1951,8 @@ void testPolyrhythm() {
     CHECK_MSG(three == 3 && four == 4 && one == 1, "%u %u %u", three, four, one);
     // Between pulses Three turns 40 degrees (its gaps step round).
     CHECK(std::fabs(wrapAngle(w->polyFace(0, 4.0 * kTicksPerBar + kTicksPerBar / 3.0) - w->polyLinkAngle(4.0 * kTicksPerBar + kTicksPerBar / 3.0) - 40.0f * kTau / 360.0f)) < 1e-3f);
-    // Only the faces can be hurt.
-    CHECK(w->bossDamageScale(2, 0, w->music(), Vec2{1.0f, 0.0f}) == 1.0f && w->bossDamageScale(1, 0, w->music(), Vec2{1.0f, 0.0f}) == 0.0f);
+    // The faces take x 1; the corners and the body are armour (a quarter, GAME_DESIGN 7.6).
+    CHECK(w->bossDamageScale(2, 0, w->music(), Vec2{1.0f, 0.0f}) == 1.0f && w->bossDamageScale(1, 0, w->music(), Vec2{1.0f, 0.0f}) == 0.25f);
     // A wall hits; it is erased where it hit.
     {
         w->rules().godMode = false;
@@ -2036,7 +2048,7 @@ void testFeedback() {
             if (w->bullets().echo[i] && !w->bullets().dead[i]) turned = w->bullets().vx[i] < -300.0f && w->bullets().x[i] < 0.0f;
         CHECK(turned);
     }
-    CHECK_MSG(s.fb.playing & 1u && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 0.0f, "playing %u open %.2f", s.fb.playing, s.fb.open);
+    CHECK_MSG(s.fb.playing & 1u && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 0.25f, "playing %u open %.2f", s.fb.playing, s.fb.open);
     runTo(*w, music, 4.0 * kTicksPerBar + 2.0 * kTicksPerBeat + 3.0 * kTicksPerStep, ship);
     CHECK_MSG(!(s.fb.playing & 1u) && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 1.0f, "playing %u open %.2f", s.fb.playing, s.fb.open);
     // Its body hurts; player shots are not stopped by it (it is not a part).

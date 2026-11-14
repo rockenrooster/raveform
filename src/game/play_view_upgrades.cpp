@@ -6,6 +6,7 @@
 #include <cmath>
 #include <initializer_list>
 
+#include "core/args.h"
 #include "game/play_view.h"
 #include "sim/tuning.h"
 
@@ -22,6 +23,9 @@ const Vec3 kIce{0.55f, 0.85f, 1.0f};
 const Vec3 kFire{1.0f, 0.42f, 0.08f};
 constexpr float kBoltS = 0.09f;       // look.md 5: a zap's 90 ms
 constexpr float kBeatPeakS = 2.0f / 60.0f, kBeatFallS = 0.110f;  // look.md 5 (a beam on a beat), 7
+// A held beam's core moves between 1.0 and 1.2 on the 1/32 grid (look.md v2.5 says 1.0-1.4; the lead's checkpoint after part 4:
+// the core's bloom widened the Beam Boost's haze, so 1.2).
+constexpr float kHeldCoreSwing = 0.2f;
 }  // namespace
 
 void PlayView::drawBeam(FrameDraw& d, Vec2 from, Vec2 dir, float len, float w, float corePx, Vec3 noseCol, Vec3 farCol, Vec3 glowCol,
@@ -38,13 +42,44 @@ void PlayView::drawBeam(FrameDraw& d, Vec2 from, Vec2 dir, float len, float w, f
     const float radius = sigma * look_->glowRadiusOverSigma;
     // (a disc's peak c gives c x sigma x sqrt(2 pi) / step on the axis)
     const float c = glowLevel * step / (sigma * 2.5066283f);
+    // look.md §3: soft light under 16 ref px is a sparkle (full resolution), from 16 up a pool. The checkpoint after part 4
+    // measured the Beam Boost's glow (w 20 wu, sigma 4 wu) drawn as quarter-resolution pools at 25 wu full width at half
+    // maximum, the haze three times its width; as sparkles it keeps its sigma.
+    GlowBatch& soft = radius * pxPerWu_ < 16.0f * refPx_ ? d.sparkles : d.pools;
     for (float u = 0.0f; u <= len; u += step) {
         const Vec2 p = from + dir * u;
         if (!visible(p, radius)) continue;
         const float rise = u < 20.0f ? u / 20.0f : 1.0f;
-        d.pools.glow(toScene(p), radius * pxPerWu_, glowCol * (c * rise));
+        soft.glow(toScene(p), radius * pxPerWu_, glowCol * (c * rise));
     }
 }
+void PlayView::lethalBeam(FrameDraw& d, Vec2 a, Vec2 b, float killWu, float level) {
+    // look.md v2.5 ("A lethal beam is a laser too"): danger red on the priority layer, its capsule exactly as wide as it kills
+    // (a threat's picture is its hit box), a white-pink line of 2 px down its axis; round it a glow of the danger colour drawn
+    // as the players' is, 0.25 on the axis (reduce flashing 0.15), sigma twice the kill width, that hurts nobody.
+    const Vec3 danger = palettes_->danger, W1 = whiteU();
+    const Vec3 pink = mix(danger, W1, 0.7f);
+    const float len = length(b - a);
+    if (len < 1e-3f) return;
+    const Vec2 dir = (b - a) * (1.0f / len);
+    if (shown(kMuteBullet)) {
+        d.scene.line(toScene(a), toScene(b), refPx_, pink * (1.6f * level), pink * (1.6f * level), 0);
+        const float sigma = 2.0f * killWu;
+        const float step = 2.0f * sigma;
+        const float radius = sigma * look_->glowRadiusOverSigma;
+        const float c = (reduceFlashing_ ? 0.15f : 0.25f) * level * step / (sigma * 2.5066283f);
+        for (float u = 0.0f; u <= len; u += step) {
+            const Vec2 p = a + dir * u;
+            if (visible(p, radius)) d.pools.glow(toScene(p), radius * pxPerWu_, danger * c);
+        }
+    }
+    if (!shown(kMutePriority)) return;
+    const float hw = 0.5f * killWu * pxPerWu_;
+    d.threatRims.line(toScreen(a), toScreen(b), hw + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
+    d.threatCores.line(toScreen(a), toScreen(b), hw, danger * level, danger * level, 0);
+    d.threatCores.line(toScreen(a), toScreen(b), refPx_, pink * level, pink * level, 0);
+}
+
 void PlayView::eventUpgrade(const World& w, const Event& e, float t) {
     const u32 q = e.a < kMaxPlayers ? e.a : w.viewPlayer();
     const float lvl = q == w.viewPlayer() ? 1.0f : 0.6f;
@@ -148,7 +183,7 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
                 if (age > static_cast<float>(kTicksPerBar / tps)) continue;
                 const u32 step32 = static_cast<u32>(std::floor(in.music / (kTicksPerStep * 0.5)));
                 gl = glowPeak * lvl;
-                cl = shotLvl * (1.0f + 0.4f * static_cast<float>((step32 * 2654435761u >> 28) & 15u) / 15.0f);
+                cl = shotLvl * (1.0f + kHeldCoreSwing * static_cast<float>((step32 * 2654435761u >> 28) & 15u) / 15.0f);
             } else {
                 const float e = age <= kBeatPeakS ? 1.0f : clampU(1.0f - (age - kBeatPeakS) / kBeatFallS);
                 if (e <= 0.0f) continue;
@@ -171,10 +206,10 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
 
         // Beam: the primary as a held laser while it fires (look.md 5: edges and fill steady, the core on the 1/32 grid).
         if (pq.boost(kBeam) && (in.music - pq.beamTick) < 2.0 * w.leadGrid(q) + 2.0) {
-            const float half = tuning::kBeamHalfWu + 4.0f * static_cast<float>(pq.beamLanes);
+            const float half = tuning::kBeamHalfWu + 4.0f * static_cast<float>(pq.beamLanes > 1u ? pq.beamLanes - 1u : 0u);  // (as World::beamVolley)
             const float shotLvl = look_->lines.playerShot.intensity * lvl;
             const u32 step32 = static_cast<u32>(std::floor(in.music / (kTicksPerStep * 0.5)));
-            const float cl = shotLvl * (1.0f + 0.4f * static_cast<float>((step32 * 2654435761u >> 28) & 15u) / 15.0f);
+            const float cl = shotLvl * (1.0f + kHeldCoreSwing * static_cast<float>((step32 * 2654435761u >> 28) & 15u) / 15.0f);
             const Vec3 own = palettes_->player[q];
             drawBeam(d, ship + aim * tuning::kMuzzleWu, aim, tuning::kBeamLengthWu - tuning::kMuzzleWu, 2.0f * half, 2.0f,
                      reduceFlashing_ ? own : mix(own, W1, 0.7f), palettes_->playerLight[q] * lvl, own, cl, (reduceFlashing_ ? 0.15f : 0.25f) * lvl);
@@ -342,8 +377,7 @@ void PlayView::drawHazards(FrameDraw& d, const ViewInput& in) {
         for (u32 k = 0; k < n; ++k) {
             if (!visible((a[k] + b[k]) * 0.5f, length(b[k] - a[k]) * 0.5f + 20.0f)) continue;
             const float flick = 0.85f + 0.15f * std::sin(t * 40.0f + static_cast<float>(k));
-            d.scene.line(toScene(a[k]), toScene(b[k]), std::fmax(0.5f * width * pxPerWu_, 1.0f * refPx_), danger * (1.6f * flick), danger * (1.6f * flick), 0);
-            d.scene.line(toScene(a[k]), toScene(b[k]), 1.2f * refPx_, mix(danger, W1, 0.7f) * (1.4f * flick), mix(danger, W1, 0.7f) * (1.4f * flick), 0);
+            lethalBeam(d, a[k], b[k], width, flick);  // (look.md v2.5: 6 wu, a laser like every lethal beam)
         }
     }
     const World::Trail* tr = w.trails();
