@@ -327,6 +327,7 @@ struct MiniData {
         char glyph[16] = {};         // "hound_5"
         float radius = 64, healthFactor = 1;
         bool pen = false;
+        float dmgChoked = 2.0f, dmgSwallowing = 0.25f;  // Deep Well's damageScale (7667dd7; the others have none)
     };
     Entry entries[kMax];
     u32 count = 0;
@@ -346,6 +347,7 @@ struct MiniData {
 
 // ---------------------------------------------------------------------------------------------- state
 
+constexpr u32 kMaxPlayersBoss = 4;  // (sim_types' kMaxPlayers: the boss state keeps a number a player)
 constexpr u32 kBossParts = 32;   // parts with their own health (Kaleidos's pairs, Longwave's segments, Voices, Princes)
 constexpr u32 kBossBodies = 34;  // positions kept for the view and the hits: the parts, plus the head / Queen / body
 
@@ -526,6 +528,7 @@ struct CadenceData {
 struct ArpData {
     float health = 6400, coreRadius = 70, laneWidth = 200, laneLength = 900, blockWidth = 90, blockSpeed = 420;
     u32 rewardShards = 340;
+    float dmgLoading = 1.0f, dmgConsole = 0.25f;  // numbers.damageScale (7667dd7): the core (x 2 on the One: prose), the console
     bool load();
 };
 struct ArpState {
@@ -549,6 +552,8 @@ struct ArpState {
 struct RepriseData {
     float health = 9000, coreRadius = 80, armLength = 300;
     u32 rewardShards = 500;
+    // numbers.damageScale (7667dd7): an arm before the Medley, the closed core, an arm not soloing, a wave segment off its crest.
+    float dmgArmEarly = 0.25f, dmgClosedCore = 0.25f, dmgArmNotSolo = 0.25f, dmgWaveOff = 0.25f;
     u8 arpSemis[4][16] = {};  // First Light's arpeggio by the progression's chord: semitones above the bar's lowest note
     u8 arpMidi[4][16] = {};   // ... and its notes
     bool load();
@@ -631,6 +636,11 @@ struct BossState {
     ArpState ap;      // M5 part 6
     MorganaState mg;  // M5 part 6
     RepriseState rp;  // M5 part 6
+    // M5 part 7 (GAME_DESIGN 7.6, a boss keeps pace): the damage each player did in the fight's first eight bars (after armour),
+    // the pace set from it at the end of the eighth (1 until then; the host's in co-op) and that damage a player.
+    float paceDmg[kMaxPlayersBoss] = {};
+    float pace = 1.0f, paceMeasured = -1.0f;
+    bool paceSet = false;
     double payoutTick = -1.0;  // dying: its Shards and Cells come at this tick (Event Horizon's flash, Polyrhythm's break)
     float scale = 1.0f;        // health scale it entered with (players, Track, loop)
     double geomTick[16] = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
@@ -658,6 +668,7 @@ enum BossGeom : u8 {
     kGeomHorizonDrift, // M4 net: the point Event Horizon drifts toward in Collapse, co-op (a: the point; from the tick, a beat)
     kGeomWeaverCage,   // M5 part 6: Weaver Prime's cage (a: its centre, b.x: where its laps begin)
     kGeomWellBar,      // M5 part 6: Deep Well's bar line (a.x: the damage it swallowed, a.y: 1 it chokes)
+    kGeomBossPace,     // M5 part 7: a boss's pace (a.x: the pace; a.y: the players' damage a player in its first eight bars)
     kGeomCount
 };
 static_assert(kGeomCount <= 16, "BossState::geomTick holds sixteen");

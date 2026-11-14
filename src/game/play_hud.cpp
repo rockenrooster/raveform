@@ -659,9 +659,15 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             const float cap = (mini ? 40.0f : 72.0f) * s;
             font.drawField(d.hud, {cx - 0.5f * textW(font, cap, name), 0.30f * H}, cap, (mini ? 1.8f : 3.0f) * s, col(white, 2.0f * fade),
                            col(gold, 2.0f * fade), col(amber, 2.0f * fade), name);
-            char sub[48];
-            if (mini) std::snprintf(sub, sizeof sub, "MINI-BOSS");
-            else std::snprintf(sub, sizeof sub, "BOSS OF %s", st.trackName);
+            char sub[64];
+            if (mini) {
+                // M5 part 7: from Track 9 a mini-boss carries elite traits: they are named under it.
+                const u8 tr = boss.mini.traits;
+                std::snprintf(sub, sizeof sub, "MINI-BOSS%s%s%s", (tr & sim::traitBit(sim::kArmored)) ? "  ARMORED" : "", (tr & sim::traitBit(sim::kSwift)) ? "  SWIFT" : "",
+                              (tr & sim::traitBit(sim::kRegenerating)) ? "  REGENERATING" : "");
+            } else {
+                std::snprintf(sub, sizeof sub, "BOSS OF %s", st.trackName);
+            }
             const float c2 = (mini ? 12.0f : 14.0f) * s;
             // (Under the name: the origin is the top of the caps; the stage B card drew it across the name.)
             font.drawField(d.hud, {cx - 0.5f * textW(font, c2, sub), 0.30f * H + cap + 18.0f * s}, c2, 0.6f * s, col(gold, 1.2f * fade),

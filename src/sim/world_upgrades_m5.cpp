@@ -529,6 +529,17 @@ void World::steerShots(float dt) {
     // again every third tick (staggered by its index).
     Shots& s = shots_;
     const Enemies& e = enemies_;
+    // M5 part 7: a fight's bodies are targets too: its parts that can be hurt (the Choir's centre, Cadence's or Polyrhythm's,
+    // has nothing in it: the shots steered there never hit).
+    BossPart parts[kBossBodies + 4];
+    u32 partCount = 0;
+    if (boss_.active && !boss_.dying && m1_ >= boss_.fightTick && boss_.kind != BossKind::Kaleidos) {
+        partCount = bossParts(parts, kBossBodies + 4);
+        u32 keep = 0;
+        for (u32 k = 0; k < partCount; ++k)
+            if (parts[k].part != 1) parts[keep++] = parts[k];
+        partCount = keep;
+    }
     for (u32 i = 0; i < s.count; ++i) {
         if (s.dead[i] || !(s.mods[i] & kShotSeek) || ((tick_ + i) % 3u) != 0) continue;
         const PlayerState& pl = players_[s.owner[i] < kMaxPlayers ? s.owner[i] : 0];
@@ -545,9 +556,21 @@ void World::steerShots(float dt) {
         const i32 t = nearestEnemy(at, reach, -1);
         Vec2 goal = t >= 0 ? Vec2{e.x[t], e.y[t]} : at;
         if (boss_.active && !boss_.dying && m1_ >= boss_.fightTick) {
-            // The fight's body is a target too, when it is the nearer.
-            const float bd = lengthSq(boss_.pos - at);
-            if (bd < reach * reach * 4.0f && (t < 0 || bd < lengthSq(goal - at))) goal = boss_.pos;
+            // The fight's body is a target too, when it is the nearer (Kaleidos: the wheel; the others: their nearest part
+            // that can be hurt).
+            Vec2 bp = boss_.pos;
+            float bd = lengthSq(boss_.pos - at);
+            if (boss_.kind != BossKind::Kaleidos) {
+                bd = 1e30f;
+                for (u32 k = 0; k < partCount; ++k) {
+                    const float d2 = lengthSq(parts[k].pos - at);
+                    if (d2 < bd) {
+                        bd = d2;
+                        bp = parts[k].pos;
+                    }
+                }
+            }
+            if (bd < reach * reach * 4.0f && (t < 0 || bd < lengthSq(goal - at))) goal = bp;
         }
         if (goal.x == at.x && goal.y == at.y) continue;
         const float h = turnToward(angleOf(Vec2{s.dx[i], s.dy[i]}), angleOf(goal - at), turn * dt * 3.0f);

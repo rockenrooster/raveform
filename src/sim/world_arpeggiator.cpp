@@ -56,9 +56,10 @@ float World::arpScale(u8 part, u8 index, double t) const {
     // The core: x 2 on the first beat of every bar (the shutter open as it loads the chart), x 1 at other times; the console:
     // a quarter (it sheds shots).
     (void)index;
-    if (part == 1) return kApArmour;
+    const ArpData& d = species_->arp;
+    if (part == 1) return d.dmgConsole;
     const bool one = t - std::floor(t / kTicksPerBar) * kTicksPerBar < kTicksPerBeat;
-    return one ? kApOne : 1.0f;
+    return one ? kApOne : d.dmgLoading;
 }
 
 void World::enterArpeggiator(Vec2 centre) {

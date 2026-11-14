@@ -175,7 +175,9 @@ void World::tick(const TickInput& in) {
     updateElites(dt * stretch_);  // M5 part 5: shields, Regenerating, Twins, the Commanders' reach (before the motion)
     updateEnemies(dt * stretch_);
     updateTrails();  // M5 part 4: Weaver trails, Ram B's wake
+    inBossUpdate_ = true;
     updateBoss(dt);
+    inBossUpdate_ = false;
     updateRiffs(dt);
     updateRiffsM5(dt);     // M5 part 3: Riffs 4-12
     updateUpgradesM5(dt);  // M5 part 3: the bar's and the beat's Mods, the Boosts that act every tick
@@ -968,12 +970,34 @@ i32 World::spawnEnemyAs(u16 speciesIndex, Vec2 pos, float heading, double landTi
 
 bool World::spawnBullet(Vec2 pos, Vec2 vel, float advanceS, float lifeS) {
     Bullets& b = bullets_;
-    if (b.count >= Bullets::kCap) {
-        ++counters_.bulletsDropped;
+    u32 i = b.count;
+    if (!inBossUpdate_ && static_cast<float>(b.count) >= kBulletPoolCrowd * static_cast<float>(Bullets::kCap)) {
+        // M5 part 7: the crowd's shooters hold a volley the pool's last 5% would take (kept for the fights' own patterns).
+        ++counters_.bulletsHeld;
         return false;
     }
+    if (b.count >= Bullets::kCap) {
+        // M5 part 7 (GAME_DESIGN 6.6): a fight's own pattern is never what is refused: it takes the place of the crowd's
+        // bullet nearest its end (the pool does not grow).
+        i32 slot = -1;
+        float least = 1e30f;
+        for (u32 k = 0; inBossUpdate_ && k < b.count; ++k)
+            if (!b.boss[k] && b.life[k] < least) {
+                least = b.life[k];
+                slot = static_cast<i32>(k);
+            }
+        if (slot < 0) {
+            ++counters_.bulletsDropped;
+            return false;
+        }
+        i = static_cast<u32>(slot);
+        ++counters_.bulletsEvicted;
+    } else {
+        ++b.count;
+    }
     vel = vel * loopBulletSpeed_;  // the loop speeds up every enemy bullet (GAME_DESIGN 8; 1 in the first pass)
-    const u32 i = b.count++;
+    ++counters_.bulletsAll;
+    if (inBossUpdate_) ++counters_.bulletsBoss;
     b.px[i] = pos.x;
     b.py[i] = pos.y;
     b.x[i] = pos.x + vel.x * advanceS;
@@ -983,6 +1007,8 @@ bool World::spawnBullet(Vec2 pos, Vec2 vel, float advanceS, float lifeS) {
     b.life[i] = (lifeS > 0.0f ? lifeS : kBulletLifeS) - advanceS;
     b.dead[i] = 0;
     b.echo[i] = 0;
+    b.boss[i] = inBossUpdate_ ? 1 : 0;
+    lastBullet_ = i;
     return true;
 }
 
@@ -1082,6 +1108,7 @@ void World::compact() {
         b.life[i] = b.life[l];
         b.dead[i] = b.dead[l];
         b.echo[i] = b.echo[l];
+        b.boss[i] = b.boss[l];
     }
     Shots& s = shots_;
     for (u32 i = 0; i < s.count;) {

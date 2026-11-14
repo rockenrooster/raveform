@@ -4,7 +4,86 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both).
 
-## M5 part 6 "Tracks 7 to 10" — in progress (2026-11-13)
+## M5 part 7 "The ten-Track whole" — in progress (2026-11-13)
+
+### The armour numbers from the data (7667dd7)
+
+- Read in place of the tuning constants: arpeggiator.json `numbers.damageScale` (`loading` 1.0: the core outside its One, whose
+  x 2 stays the page's prose; `console` 0.25), reprise.json `numbers.damageScale` (`armBeforeTheMedley`, `closedCore`,
+  `armNotSoloing`, `waveSegmentOffTheCrest`: 0.25 each), minibosses.json Deep Well `damageScale` (`swallowing` 0.25, its fill
+  counting the whole; `choked` 2.0). `kApArmour` and `kRpArmour` are gone; `kDwArmour` is only the fallback.
+- The Weaver's burst (the lead's ruling): drawn as an area, two danger edge lines 40 wu apart and a fill of 0.12 between them
+  for its half beat (`wv_burst` retaken).
+
+### The bullet pool with four players (GAME_DESIGN 6.6, 286d14d)
+
+- The director buys no shooting species while the enemy bullets alive are above 70% of their pool (`kBulletPoolShooters`;
+  `Species::shoots()`: every Sentry, Drifter, Hound, Carom, Flanker, Blink and Wyrm B, Moth, Well and Mimic B and C; the
+  crowd's picks, the threats' and the elites').
+- A fight's own patterns come first: bullets spawned while the fights update (`World::inBossUpdate_`, and the Deep Well's ring
+  on a client) are flagged `Bullets::boss`; with the pool full one takes the place of the crowd bullet nearest its end.
+- The 70% rule alone did not move the refusals (the soak below: 3,992 refused on the host): the shooters already alive keep the
+  pool full (by the nearest body: Caroms' bounce fans 4,519 of the host's 10,340 bullets, Drifters 2,603, Sentries 522).
+  Added (decision taken alone): **the crowd's volleys are held above 95% of the pool** (`kBulletPoolCrowd`, counted as held,
+  not refused), so the last 5% stays the fights'.
+- `raveform_headless --net soak --fight twin_tether --minutes 3` (four players, Track 7): **0 refused** on every peer
+  (host: 10,277 fired, the fights 2,190; 4,188 crowd bullets held; none in a crowd bullet's place), soak PASS. The pool does
+  not grow (2,048).
+
+### A boss keeps pace (GAME_DESIGN 7.6, 286d14d)
+
+- `BossState::paceDmg` counts each player's damage to a boss (after armour) in its fight's first eight bars; at the end of the
+  eighth bar the host (or solo) sets the pace = that damage a player over the novice's (`tuning::kBossPaceNovice`), held
+  between 1 and 4, and sends it (`kGeomBossPace`); from then on the boss takes its damage divided by the pace (a client's
+  claim is noted undivided: the host divides by its own). Mini-bosses keep none.
+- The novice's numbers (8-bar damage a player, from the fights' starts as each was tuned: Tracks 1-3 from the run's start,
+  4-10 `--handover N`): Kaleidos 234, Longwave 450, the Choir 1,334, Event Horizon 4,188, Polyrhythm 2,910, Feedback 2,792,
+  Cadence 6,501, Arpeggiator 16,772, Fata Morgana 21,279, Kaleidos Reprise 6,200.
+- First built at the eighth bar alone: the careful bot killed Kaleidos (10 s), the Choir (15 s), Polyrhythm (15 s) and often
+  Longwave (26 s) before it. The lead's ruling (ea472ab): **on every bar line of the first eight** the pace = the damage so far
+  over the novice's number in proportion (k/8 at bar k), a ratio under 1.25 counting as 1 (`kBossPaceDeadBand`), between 1 and
+  4; after the eighth it stands (each bar's pace is the host's `kGeomBossPace`; the eighth's sets it for good).
+- From the fights' starts with it (20 runs, first meetings): the careful bot Kaleidos **23 s** (its line 30: short by a
+  little, accepted), Longwave **52 s** (line 35), the Choir **25 s** (line 40: short), Polyrhythm **20 s** (line 50: short),
+  Event Horizon 58 s (line 40), Feedback 47-72 s, Cadence 74 s, Arpeggiator 97 s (the last two at the eight-bar rule). The
+  Choir and Polyrhythm die before the pace has grown (mean pace 3.0 and 2.1-2.8): no second mechanism (the ruling).
+- The novice with it (from the run's start): Kaleidos 18 of 20 (42 s; 19-20 of 20, 37-41 s without), Longwave 14 of 20 (102 s;
+  14-15, 93-95 s without), the Choir 14 of 15 met (42 s; 16-18 met, 40-48 s without), Event Horizon 11 of 11. Its lines
+  hold as before; its fights are about a tenth longer (its mean pace 1.4-1.5: its good early bars pass the dead band).
+
+### No pick is a trap (GAME_DESIGN 6.6; `raveform_headless --sim picks [--seeds N]`)
+
+- The reference build Split 1 and Double-Time 1 (the careful bot, hits costing nothing, the loadout frozen: `Rules::
+  frozenLoadout`; no pace: `Rules::noPace`). Each weapon and rhythm Mod's stack and each Riff's level: its gain over the
+  reference in kills a minute (a minute from Track 3's second Groove) against a stack of Split's, and in seconds to kill the
+  Choir from its start (alone) against a stack of Overcharge's (the lead's yardsticks, ea472ab); the better of the two, band
+  0.6-1.5. And the Downbeat Cannon over its two ingredients at their caps.
+- **The instrument is noisy**: a minute's kills swing by a fifth from seed set to seed set (the reference 1,457, 1,361, 1,023
+  kills a minute on three sets), and a stack of Split adds only about a quarter to them, so a crowd figure is good to about
+  +-0.5. The boss figures are steady (the Choir 92.7-93.3 s on every set).
+- Far above on every set (crowd): Burn x 7-20, Arc x 3-10, Shatter x 3-14 (their chains through the crowd), Ricochet x 2-5,
+  Heavy Step x 2-7, Pierce x 1.7-5, Pulse Ring x 2-4, On-Beat Crit x 1.3-6, the Downbeat Cannon x 3.5-6 (x 1.25 the Choir over
+  its ingredients). Within on its boss figure: Split 1.07, Double-Time 0.65, Crescendo 0.94, Echo 0.59, On-Beat Crit 0.50.
+- **Seeker** never killed the Choir: its shots curved to the fight's `pos` (the Choir's empty centre). Fixed: they curve to
+  the nearest part that can be hurt (`steerShots`); the Choir in 98.5 s with it.
+- Tuning of the picks and the balance pass: **on hold** (the lead, after the owner's play test notes). A first step on Arc,
+  Burn and Shatter was tried and reverted.
+
+### The not-built lists (parts 4-6), in the order a player would notice
+
+- Built: the mini-bosses' elite traits shown (their names under the MINI-BOSS card, a white ring swelling on the beat round
+  the body, a gold second for Armored); the Rift's black disc while it is open (on the priority layer's black: the scene's
+  additive light cannot draw black); a Rift Surge's three joined by a faint triangle; the loop's species one tier higher
+  for each time round (species.json; `pickSpecies`, to tier 5); the Weaver's burst as an area (the ruling above).
+- Left (each more than an hour, or another's): Phasing's every other hull segment hidden (the glyph is drawn whole); Swift's
+  x 1.3 turn (each family turns by its own code); Wyrm heads and Tether pairs as elites; Swift on the mini-bosses but the
+  Tether and the Well; the "family met" condition for Tracks 9 and 10's mini-bosses (every family has debuted by Track 6, so
+  it would choose nothing); Fata Morgana's lattice whipped along the wind and tinted in the oasis (the lattice has no
+  directional push and no tint by region); Riffs other than shots and the Nova on a Vault; Feedback's and the Reprise's
+  echoes of Riffs that fire nothing; the sounds the rows of `pending_sounds.cpp` list (the sound engineer's branch).
+- Pictures retaken: `wv_burst`, `st_rift`, `ev_rift_surge`.
+
+## M5 part 6 "Tracks 7 to 10" — 2026-11-13
 
 ### Elites from Track 3 (the lead's design commit d59062f)
 

@@ -230,8 +230,11 @@ i32 World::pickSpecies(int kind) {
     // M5: the roster runs to Track 10; in the loop (after the set list) everything that debuted in the set list's Tracks,
     // and only families with behaviour code (sim/species.h familyBuilt).
     const bool loop = inLoop(t, director_.songs);
+    // M5 part 7 (GAME_DESIGN 6.6): no shooting species while the enemy bullets alive are above 70% of their pool.
+    const bool poolFull = static_cast<float>(bullets_.count) > kBulletPoolShooters * static_cast<float>(Bullets::kCap);
     const auto debuted = [&](const SpeciesTable::RosterEntry& r) {
         if (!familyBuilt(species_->get(r.species).family)) return false;
+        if (poolFull && species_->get(r.species).shoots()) return false;
         if (loop) return r.track <= director_.songs;
         return r.track < t || (r.track == t && r.cycle <= c);
     };
@@ -247,6 +250,13 @@ i32 World::pickSpecies(int kind) {
         const bool fodder = species_->get(r.species).hue == 0;  // look.md 2: hue 1 = fodder
         if ((kind == 1 && !fodder) || (kind == 2 && fodder)) continue;
         cand[n] = r.species;
+        if (loop) {
+            // M5 part 7 (species.json: "every species comes back one tier higher for each time round"), to tier 5.
+            const Species& sp = species_->get(r.species);
+            const u32 rounds = director_.songs ? (t - 1u) / director_.songs : 0u;
+            const u32 tier = sp.tier + rounds < 5u ? sp.tier + rounds : 5u;
+            if (r.species < SpeciesTable::kFamilySpecies) cand[n] = SpeciesTable::index(sp.family, tier, sp.variant);
+        }
         weight[n] = (!loop && static_cast<u32>(r.track) * 16 + r.cycle == newest) ? 2.0f : 1.0f;
         ++n;
     }

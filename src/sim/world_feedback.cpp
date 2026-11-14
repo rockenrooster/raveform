@@ -113,7 +113,7 @@ void World::feedbackSwallow() {
 
 bool World::spawnEchoShot(Vec2 pos, Vec2 vel, float advanceS, float lifeS, u8 player) {
     if (!spawnBullet(pos, vel, advanceS, lifeS)) return false;
-    bullets_.echo[bullets_.count - 1] = static_cast<u8>(1u + player);
+    bullets_.echo[lastBullet_] = static_cast<u8>(1u + player);
     return true;
 }
 

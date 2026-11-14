@@ -686,10 +686,34 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
                     if (w.weaverLap(k, lap, t, c, r, a0, dir, u0, u1)) trail(c, r, a0, dir, u0, u1, tuning::kWvTrailWu, 1.0f);
                 }
             if (!s.dying && m.cageTick >= 0.0 && t >= m.cageTick && t < m.cageTick + tuning::kWvBurstBeats * kTicksPerBeat && lengthSq(m.prevCage) > 0.0f) {
+                // The burst is a blast, drawn as an area (the lead's ruling, minibosses.md): two danger edge lines 40 wu apart and
+                // a fill of at most 0.12 between them for its half beat, never a filled bar.
                 const float lv = 1.0f - clamp01(static_cast<float>((t - m.cageTick) / (tuning::kWvBurstBeats * kTicksPerBeat)));
+                const u32 seg = 40;
                 for (u32 lap = 2; lap < 4; ++lap)
-                    for (u32 k = 0; k < (m.half ? 2u : 1u); ++k)
-                        trail(m.prevCage, prose::kWvRadii[lap] - (k ? 25.0f : 0.0f), m.prevCageAng, 1.0f, 0.0f, 1.0f, prose::kWvBurstWu, lv);
+                    for (u32 k = 0; k < (m.half ? 2u : 1u); ++k) {
+                        const float r = prose::kWvRadii[lap] - (k ? 25.0f : 0.0f);
+                        const Vec2 c = m.prevCage;
+                        for (u32 j = 0; j < seg; ++j) {
+                            const float a0 = m.prevCageAng + kTau * static_cast<float>(j) / seg, a1 = m.prevCageAng + kTau * static_cast<float>(j + 1) / seg;
+                            if (!visible(c + dirv(a0) * r, 60.0f)) continue;
+                            for (float edge : {-0.5f, 0.5f}) {
+                                const float re = r + edge * prose::kWvBurstWu;
+                                const Vec2 p0 = c + dirv(a0) * re, p1 = c + dirv(a1) * re;
+                                if (shown(kMuteBullet)) d.scene.line(toScene(p0), toScene(p1), 0.6f * refPx_, danger * (1.6f * lv), danger * (1.6f * lv), 0);
+                                if (shown(kMutePriority)) {
+                                    d.threatRims.line(toScreen(p0), toScreen(p1), 1.2f * refPx_ + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
+                                    d.threatCores.line(toScreen(p0), toScreen(p1), 1.2f * refPx_, danger * lv, danger * lv, 0);
+                                }
+                            }
+                            // The fill: a quad between the edges at most 0.12.
+                            const Vec2 q0 = c + dirv(a0) * (r - 0.5f * prose::kWvBurstWu), q1 = c + dirv(a1) * (r - 0.5f * prose::kWvBurstWu);
+                            const Vec2 q2 = c + dirv(a1) * (r + 0.5f * prose::kWvBurstWu), q3 = c + dirv(a0) * (r + 0.5f * prose::kWvBurstWu);
+                            const Vec3 fill = danger * (0.12f * lv);
+                            d.glass.tri(toScene(q0), fill, toScene(q1), fill, toScene(q2), fill);
+                            d.glass.tri(toScene(q0), fill, toScene(q2), fill, toScene(q3), fill);
+                        }
+                    }
             }
             break;
         }
@@ -727,6 +751,19 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
                 drawBody(pp, prose::kPrinceRadius, s.bodyAng[1 + k], hue, partner, level * 0.85f, t < m.hot[1 + k]);
             }
             break;
+        }
+    }
+    if (m.traits && !s.dying && s.kind != BossKind::SentryArray) {
+        // M5 part 7: a mini-boss with elite traits (Tracks 9 and 10, the loop) wears the elite's white mark: a ring that swells
+        // on the beat, a second in gold when Armored.
+        const u32 n = 40;
+        const float r0 = me->radius * (1.6f + 0.06f * beat_);
+        for (u32 j = 0; j < n; ++j) {
+            d.scene.line(toScene(body + dirv(kTau * j / n) * r0), toScene(body + dirv(kTau * (j + 1) / n) * r0), 0.7f * refPx_, W1 * (1.4f * life),
+                         W1 * (1.4f * life), 0);
+            if (m.traits & traitBit(kArmored))
+                d.scene.line(toScene(body + dirv(kTau * j / n) * (r0 + 10.0f)), toScene(body + dirv(kTau * (j + 1) / n) * (r0 + 10.0f)), 0.6f * refPx_,
+                             gold * (1.4f * life), gold * (1.4f * life), 0);
         }
     }
     d.pools.glow(toScene(body), me->radius * 2.4f * pxPerWu_, hue * (0.07f * life));

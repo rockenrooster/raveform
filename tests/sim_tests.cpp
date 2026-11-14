@@ -206,8 +206,10 @@ void testPools() {
     double m2 = 0.0;
     u32 ok = 0;
     for (u32 i = 0; i < kMaxEnemyBullets + 5; ++i) ok += b->spawnBullet(Vec2{3000.0f, 0.0f}, Vec2{0.0f, 10.0f}, 0.0f) ? 1u : 0u;
-    CHECK(ok == kMaxEnemyBullets);
-    CHECK(b->counters().bulletsDropped == 5);
+    // (M5 part 7: the crowd's bullets stop at 95% of the pool, the rest kept for the fights' patterns)
+    const u32 crowdMax = static_cast<u32>(std::ceil(tuning::kBulletPoolCrowd * static_cast<float>(kMaxEnemyBullets)));
+    CHECK_MSG(ok == crowdMax, "%u bullets", ok);
+    CHECK(b->counters().bulletsDropped == 0 && b->counters().bulletsHeld == kMaxEnemyBullets + 5 - crowdMax);
     for (u32 t = 0; t < 250; ++t) stepWorld(*b, m2, Vec2{});
     CHECK(b->bullets().count == 0);  // four seconds of life
     delete b;

@@ -642,6 +642,8 @@ bool ArpData::load() {
     num("numbers.laneLength", laneLength);
     num("numbers.blockWidth", blockWidth);
     num("numbers.blockSpeed", blockSpeed);
+    num("numbers.damageScale.loading", dmgLoading);
+    num("numbers.damageScale.console", dmgConsole);
     float r = static_cast<float>(rewardShards);
     num("numbers.rewardShards", r);
     rewardShards = static_cast<u32>(r);
@@ -694,6 +696,10 @@ bool RepriseData::load() {
     num(doc, "numbers.health", health);
     num(doc, "numbers.coreRadius", coreRadius);
     num(doc, "numbers.armLength", armLength);
+    num(doc, "numbers.damageScale.armBeforeTheMedley", dmgArmEarly);
+    num(doc, "numbers.damageScale.closedCore", dmgClosedCore);
+    num(doc, "numbers.damageScale.armNotSoloing", dmgArmNotSolo);
+    num(doc, "numbers.damageScale.waveSegmentOffTheCrest", dmgWaveOff);
     float r = static_cast<float>(rewardShards);
     num(doc, "numbers.rewardShards", r);
     rewardShards = static_cast<u32>(r);
@@ -888,6 +894,8 @@ bool MiniData::load() {
         e.healthFactor = static_cast<float>(doc.number("healthFactor", 1.0, nullptr, m));
         const JsonValue* pen = doc.member(m, "pen");
         e.pen = pen && pen->type == JsonValue::Type::Bool && pen->boolean;
+        e.dmgChoked = static_cast<float>(doc.number("damageScale.choked", 2.0, nullptr, m));
+        e.dmgSwallowing = static_cast<float>(doc.number("damageScale.swallowing", 0.25, nullptr, m));
         ++count;
     }
     for (BossKind k : {BossKind::AlphaHound, BossKind::Hive, BossKind::BatteringRam, BossKind::CaromKing})
