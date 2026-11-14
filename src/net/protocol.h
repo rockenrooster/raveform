@@ -177,6 +177,8 @@ public:
 // Validates the whole packet, then (only if it is well formed) hands every message to the sink. Returns
 // false for a malformed packet (nothing handed on).
 bool parsePacket(const u8* data, u32 size, PacketSink& sink);
+// Diagnostics: the type of the last message that made a packet be refused (0 none).
+inline u8 g_lastBadMessage = 0;
 
 // Builds packets of at most kMaxPacketBytes. Each put*() returns false when the message does not fit in what
 // is left (send the packet, reset, put it again). List messages take as many items as fit and say how many.

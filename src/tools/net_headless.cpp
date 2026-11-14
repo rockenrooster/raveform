@@ -234,6 +234,16 @@ bool flag(int argc, char** argv, const char* name) {
 RemotePoses g_remotePoses = SessionConfig{}.remotePoses;
 // --fight <id>: the soak starts in that fight's home Track and measures from the fight on, for --minutes.
 bool g_fightOn = false;
+// Census diagnostics: the host's enemies by serial (a ring), to name the deaths a client heard for enemies it never had.
+struct HostSeen {
+    u32 serial = 0;
+    u16 species = 0, traits = 0, group = 0;
+    u8 state = 0, flags = 0, track = 0, boss = 0xFF;
+    double firstMusic = 0.0;
+};
+constexpr u32 kSeenRing = 1u << 16;
+HostSeen* g_seen = nullptr;
+u32 g_lastMismatch = 0;
 BossKind g_fightKind = BossKind::Kaleidos;
 // --net-tune down=..,famN=..: the host's correction budget and family weights (experiments, net/session.h).
 const char* g_tune = nullptr;
@@ -286,7 +296,8 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     auto* cdiag = new (std::nothrow) NetDiag;  // the clients' corrections and poses, merged
     auto* truth = new (std::nothrow) ShipTruth[kMaxPlayers];
     auto* ships = new (std::nothrow) ShipView[3];
-    if (!peers || !hist || !tdiag || !cdiag || !truth || !ships) return 2;
+    if (!g_seen) g_seen = new (std::nothrow) HostSeen[kSeenRing];
+    if (!peers || !hist || !tdiag || !cdiag || !truth || !ships || !g_seen) return 2;
     double shipLast[kMaxPlayers][kMaxPlayers];
     Vec2 shipDrawn[kMaxPlayers][kMaxPlayers];
     float shipAim[kMaxPlayers][kMaxPlayers] = {};
@@ -591,6 +602,54 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                 if (d > 0.0) ++bossHpAbove;
             }
         }
+        if (players > 1 && peers[1].world().counters().censusMismatches != g_lastMismatch) {
+            // Census diagnostics: client 1 just counted otherwise than the host; the enemies the two sets disagree on now.
+            g_lastMismatch = peers[1].world().counters().censusMismatches;
+            const World& hw = peers[0].world();
+            const World& cw = peers[1].world();
+            const Enemies& he = hw.enemies();
+            const Enemies& ce = cw.enemies();
+            std::printf("[net] census mismatch %u (client 1 count - host %d), host music %.0f, last refused message type %u:", g_lastMismatch,
+                        cw.counters().censusLastDiff, hw.music(), net::g_lastBadMessage);
+            u32 shown = 0;
+            for (u32 i = 0; i < ce.count && shown < 6; ++i) {
+                const bool live = !(ce.flags[i] & kFlagDead) || (ce.flags[i] & kFlagPredicted);
+                if (!live) continue;
+                const i32 j = hw.indexOfSerial(ce.serial[i]);
+                if (j >= 0 && !(he.flags[j] & kFlagDead)) continue;
+                ++shown;
+                std::printf(" [client has %u sp %u st %u fl 0x%02x; host %s]", ce.serial[i], ce.species[i], ce.state[i], ce.flags[i],
+                            j < 0 ? "gone" : "dead");
+            }
+            for (u32 j = 0; j < he.count && shown < 12; ++j) {
+                if (he.flags[j] & kFlagDead) continue;
+                if (cw.indexOfSerial(he.serial[j]) >= 0) continue;
+                ++shown;
+                std::printf(" [host has %u sp %u st %u fl 0x%02x; client none]", he.serial[j], he.species[j], he.state[j], he.flags[j]);
+            }
+            std::printf("\n");
+        }
+        {
+            // Census diagnostics: what each host enemy was (by serial, a ring), to name the deaths a client heard for enemies
+            // it never had (printed at the end).
+            const World& hw = peers[0].world();
+            const Enemies& he = hw.enemies();
+            for (u32 j = 0; j < he.count; ++j) {
+                HostSeen& r = g_seen[he.serial[j] & (kSeenRing - 1u)];
+                if (r.serial != he.serial[j]) {
+                    r = HostSeen{};
+                    r.serial = he.serial[j];
+                    r.species = he.species[j];
+                    r.track = hw.phrase().track;
+                    r.boss = hw.boss().active ? static_cast<u8>(hw.boss().kind) : 0xFF;
+                    r.firstMusic = hw.music();
+                }
+                r.state = he.state[j];
+                r.flags = he.flags[j];
+                r.traits = he.traits[j];
+                r.group = he.group[j];
+            }
+        }
         {
             // The clients' error as each correction lands (the game's and the device runs' `scr`), by the host's fight then
             // (31: no fight), to set beside the true error by fight.
@@ -851,6 +910,22 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
     std::printf("[net]   disconnects %u, stalls %u; census %u checks, %u mismatches; predicted kills %u (confirmed %u, undone %u); "
                 "late spawns %u, unknown ids %u; enemies on a client's screen not on the host's %llu\n",
                 disconnects, stalls, census, mismatches, predicted, confirmed, undone, late, unknown, static_cast<unsigned long long>(missing));
+    for (u32 k = 1; k < players; ++k) {
+        // Census diagnostics: the deaths client k heard for enemies it never had, as the host had them.
+        const WorldCounters& c = peers[k].world().counters();
+        for (u32 q = 0; q < c.unknownIds && q < 8u; ++q) {
+            const u32 sn = c.unknownSerial[q];
+            const HostSeen& r = g_seen[sn & (kSeenRing - 1u)];
+            if (r.serial != sn) {
+                std::printf("[net]   client %u heard the death of %u, never seen on the host either\n", k, sn);
+                continue;
+            }
+            std::printf("[net]   client %u heard the death of %u, which it never had: species %u family %u state %u flags 0x%02x traits "
+                        "0x%04x group %u, Track %u, fight %s, first seen at music %.0f\n", k, sn, r.species,
+                        static_cast<u32>(peers[0].world().species().get(r.species).family), r.state, r.flags, r.traits, r.group, r.track,
+                        r.boss != 0xFF ? bossId(static_cast<BossKind>(r.boss)) : "none", r.firstMusic);
+        }
+    }
     std::printf("[net]   on-screen enemy position error against the host: RMS %.2f wu, P95 %.2f, max %.1f (%llu samples; limit RMS %.0f)\n",
                 errRms, errP95, hist->max, static_cast<unsigned long long>(hist->n), kMaxErrRmsWu);
     std::printf("[net]   of which a mini-boss's called bodies: RMS %.2f wu (%llu samples)\n", calledN ? std::sqrt(calledSum2 / static_cast<double>(calledN)) : 0.0,

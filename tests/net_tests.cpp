@@ -428,6 +428,26 @@ void testFuzz() {
     w.reset();
     w.putBoss(bm);
     CHECK(!parsePacket(w.data(), w.size(), c));  // not a number
+    {
+        // A boss decision's values are not always a place (M5 part 7's pace carries a damage): accepted when finite and
+        // bounded, and a spawn after it in the same packet still lands (a refused one took the packet's spawns with it).
+        MsgBoss pace;
+        pace.kind = 1;
+        pace.pair = static_cast<u8>(sim::kBossGeomBase + sim::kGeomBossPace);
+        pace.x = 1.25f;
+        pace.y = 48000.0f;
+        NetSpawn sp;
+        sp.serial = 7;
+        sp.species = 1;
+        w.reset();
+        w.putBoss(pace);
+        w.putSpawns(1, 0.0, &sp, 1);
+        CHECK(parsePacket(w.data(), w.size(), c));
+        pace.y = std::nanf("");
+        w.reset();
+        w.putBoss(pace);
+        CHECK(!parsePacket(w.data(), w.size(), c));  // still refused when not a number
+    }
     // Claims: no items, a varint longer than 5 bytes, a hit with no damage yet, a kill with a damage, serial 0.
     const auto raw = [&](const u8* bytes, u32 n) {
         w.reset();

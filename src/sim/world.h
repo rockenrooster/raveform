@@ -677,6 +677,7 @@ struct WorldCounters {
     u32 predicted = 0, confirmed = 0, undone = 0, lateSpawns = 0, unknownIds = 0, downs = 0, revives = 0;
     u32 censusChecks = 0, censusMismatches = 0;
     i32 censusLastDiff = 0;  // this world's count minus the host's at the last mismatch
+    u32 unknownSerial[8] = {};  // M4 net diagnostics: the serials of the last deaths heard for enemies this world never had
 };
 
 // ---------------------------------------------------------------------------------------------- spawner
