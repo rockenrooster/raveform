@@ -21,6 +21,7 @@ Vec2 lerpv(Vec2 a, Vec2 b, float t) { return a + (b - a) * t; }
 Vec2 rot(Vec2 p, float c, float s) { return {p.x * c - p.y * s, p.x * s + p.y * c}; }
 Vec3 whiteV() { return {1.0f, 1.0f, 1.0f}; }
 float clamp01(float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
+constexpr float kBossHitFlashS = 0.060f;  // GAME_DESIGN 7.6 (play test 3, quoted): a weak point's hit flashes its part 60 ms
 u32 bitsIn(u32 m) {
     u32 n = 0;
     for (; m; m &= m - 1) ++n;
@@ -116,6 +117,7 @@ void PlayView::drawFight(FrameDraw& d, const ViewInput& in) {
         case BossKind::Reprise: drawReprise(d, in); break;
         default: drawMini(d, in); break;
     }
+    drawBossHitFlash(d, in);  // play test 3 (GAME_DESIGN 7.6)
 }
 
 // ---------------------------------------------------------------------------------------------- Longwave
@@ -686,10 +688,34 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
                     if (w.weaverLap(k, lap, t, c, r, a0, dir, u0, u1)) trail(c, r, a0, dir, u0, u1, tuning::kWvTrailWu, 1.0f);
                 }
             if (!s.dying && m.cageTick >= 0.0 && t >= m.cageTick && t < m.cageTick + tuning::kWvBurstBeats * kTicksPerBeat && lengthSq(m.prevCage) > 0.0f) {
+                // The burst is a blast, drawn as an area (the lead's ruling, minibosses.md): two danger edge lines 40 wu apart and
+                // a fill of at most 0.12 between them for its half beat, never a filled bar.
                 const float lv = 1.0f - clamp01(static_cast<float>((t - m.cageTick) / (tuning::kWvBurstBeats * kTicksPerBeat)));
+                const u32 seg = 40;
                 for (u32 lap = 2; lap < 4; ++lap)
-                    for (u32 k = 0; k < (m.half ? 2u : 1u); ++k)
-                        trail(m.prevCage, prose::kWvRadii[lap] - (k ? 25.0f : 0.0f), m.prevCageAng, 1.0f, 0.0f, 1.0f, prose::kWvBurstWu, lv);
+                    for (u32 k = 0; k < (m.half ? 2u : 1u); ++k) {
+                        const float r = prose::kWvRadii[lap] - (k ? 25.0f : 0.0f);
+                        const Vec2 c = m.prevCage;
+                        for (u32 j = 0; j < seg; ++j) {
+                            const float a0 = m.prevCageAng + kTau * static_cast<float>(j) / seg, a1 = m.prevCageAng + kTau * static_cast<float>(j + 1) / seg;
+                            if (!visible(c + dirv(a0) * r, 60.0f)) continue;
+                            for (float edge : {-0.5f, 0.5f}) {
+                                const float re = r + edge * prose::kWvBurstWu;
+                                const Vec2 p0 = c + dirv(a0) * re, p1 = c + dirv(a1) * re;
+                                if (shown(kMuteBullet)) d.scene.line(toScene(p0), toScene(p1), 0.6f * refPx_, danger * (1.6f * lv), danger * (1.6f * lv), 0);
+                                if (shown(kMutePriority)) {
+                                    d.threatRims.line(toScreen(p0), toScreen(p1), 1.2f * refPx_ + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
+                                    d.threatCores.line(toScreen(p0), toScreen(p1), 1.2f * refPx_, danger * lv, danger * lv, 0);
+                                }
+                            }
+                            // The fill: a quad between the edges at most 0.12.
+                            const Vec2 q0 = c + dirv(a0) * (r - 0.5f * prose::kWvBurstWu), q1 = c + dirv(a1) * (r - 0.5f * prose::kWvBurstWu);
+                            const Vec2 q2 = c + dirv(a1) * (r + 0.5f * prose::kWvBurstWu), q3 = c + dirv(a0) * (r + 0.5f * prose::kWvBurstWu);
+                            const Vec3 fill = danger * (0.12f * lv);
+                            d.glass.tri(toScene(q0), fill, toScene(q1), fill, toScene(q2), fill);
+                            d.glass.tri(toScene(q0), fill, toScene(q2), fill, toScene(q3), fill);
+                        }
+                    }
             }
             break;
         }
@@ -727,6 +753,19 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
                 drawBody(pp, prose::kPrinceRadius, s.bodyAng[1 + k], hue, partner, level * 0.85f, t < m.hot[1 + k]);
             }
             break;
+        }
+    }
+    if (m.traits && !s.dying && s.kind != BossKind::SentryArray) {
+        // M5 part 7: a mini-boss with elite traits (Tracks 9 and 10, the loop) wears the elite's white mark: a ring that swells
+        // on the beat, a second in gold when Armored.
+        const u32 n = 40;
+        const float r0 = me->radius * (1.6f + 0.06f * beat_);
+        for (u32 j = 0; j < n; ++j) {
+            d.scene.line(toScene(body + dirv(kTau * j / n) * r0), toScene(body + dirv(kTau * (j + 1) / n) * r0), 0.7f * refPx_, W1 * (1.4f * life),
+                         W1 * (1.4f * life), 0);
+            if (m.traits & traitBit(kArmored))
+                d.scene.line(toScene(body + dirv(kTau * j / n) * (r0 + 10.0f)), toScene(body + dirv(kTau * (j + 1) / n) * (r0 + 10.0f)), 0.6f * refPx_,
+                             gold * (1.4f * life), gold * (1.4f * life), 0);
         }
     }
     d.pools.glow(toScene(body), me->radius * 2.4f * pxPerWu_, hue * (0.07f * life));
@@ -863,19 +902,80 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
             // It warps out: a ring contracting where it was.
             addShockRings(at, 1, 300.0f, palette_->hue[1], palette_->hue[2], t, 0.5f);
             break;
-        case EventType::Impact: {
-            SparkReq r{};
-            r.at = at;
-            r.dir = Vec2{-e.x2, -e.y2};
-            r.count = static_cast<u16>(e.c == 1 ? 3 : 4);
-            r.kind = 3;
-            r.a = e.c == 1 ? whiteV() * 0.8f : (s.kind == BossKind::Choir ? choirHue_[e.a % 8] : palette_->hue[e.a % 3]);
-            r.b = e.f > 1.5f ? whiteV() : r.a;
-            r.t0 = t;
-            sparkRequest(r);
+        case EventType::Impact:
+            bossHit(w, e, t, s.kind == BossKind::Choir ? choirHue_[e.a % 8] : palette_->hue[e.a % 3]);
             break;
-        }
         default: break;
+    }
+}
+
+void PlayView::bossHit(const World& w, const Event& e, float t, Vec3 hue) {
+    // GAME_DESIGN 7.6 (play test 3): a shot on a weak point (any hit that takes its full share or more): six sparks in the
+    // part's hue back along the shot and the part white for 60 ms; on armour (a plate, or below x 1): three grey sparks thrown
+    // sideways, no flash. Boss sparks go first into the particle pool (SparkReq::prio).
+    (void)w;
+    const bool armour = e.c == 1 || e.f < 1.0f - 1e-3f;
+    SparkReq r{};
+    r.at = Vec2{e.x, e.y};
+    r.dir = normalizeOr(Vec2{-e.x2, -e.y2}, Vec2{1.0f, 0.0f});
+    r.t0 = t;
+    r.prio = 1;
+    if (armour) {
+        r.count = 3;
+        r.kind = 9;
+        r.a = Vec3{0.55f, 0.56f, 0.6f};
+        r.b = Vec3{0.4f, 0.4f, 0.44f};
+        sparkRequest(r);
+        return;
+    }
+    r.count = 6;
+    r.kind = 3;
+    r.a = hue;
+    r.b = e.f > 1.5f ? whiteV() : hue;
+    sparkRequest(r);
+    HitFlash& f = hitFlash_[hitFlashNext_];
+    hitFlashNext_ = (hitFlashNext_ + 1) % kHitFlashes;
+    f.part = e.c;
+    f.index = e.a;
+    f.t = t;
+}
+
+void PlayView::drawBossHitFlash(FrameDraw& d, const ViewInput& in) {
+    // The part hit on its weak point, white for 60 ms: a white copy of its outline at 2.0 (Kaleidos: the pair's arms or its
+    // core; the others: the part's circles, as the hits find them).
+    const World& w = *in.world;
+    const BossState& s = w.boss();
+    if (!s.active || s.dying) return;
+    const float now = static_cast<float>(in.time);
+    const Vec3 W1 = whiteV();
+    BossPart parts[kBossBodies + 4];
+    u32 n = 0;
+    bool partsRead = false;
+    for (const HitFlash& f : hitFlash_) {
+        if (now - f.t < 0.0f || now - f.t > kBossHitFlashS) continue;
+        if (s.kind == BossKind::Kaleidos) {
+            if (f.part == 3) {
+                glyph(d.glyphs, gRing32_, false, s.pos, 0.0f, 0.0f, w.bossData().coreRingRadius[0], 2.0f, 1.0f, kGlyphFlat, W1, W1);
+            } else if (f.part == 2) {
+                for (u32 k = 0; k < 6; ++k) {
+                    if (k % 3 != f.index % 3u || !(s.alive & (1u << (k % 3)))) continue;
+                    const Vec2 dv = dirv(w.bossArmAngle(k));
+                    d.scene.line(toScene(s.pos + dv * tuning::kBossArmInner), toScene(s.pos + dv * tuning::kBossArmOuter), 2.2f * refPx_, W1 * 2.0f,
+                                 W1 * 2.0f, 0);
+                }
+            }
+            continue;
+        }
+        if (!partsRead) {
+            n = w.bossParts(parts, kBossBodies + 4);
+            partsRead = true;
+        }
+        for (u32 k = 0; k < n; ++k) {
+            if (parts[k].part != f.part || parts[k].index != f.index) continue;
+            if (!visible(parts[k].pos, parts[k].radius + 20.0f)) continue;
+            glyph(d.glyphs, gRing32_, false, parts[k].pos, 0.0f, 0.0f, parts[k].radius, 2.0f, 1.0f, kGlyphFlat, W1, W1);
+            d.pools.glow(toScene(parts[k].pos), parts[k].radius * 1.6f * pxPerWu_, W1 * 0.25f);
+        }
     }
 }
 

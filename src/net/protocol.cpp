@@ -336,7 +336,7 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             m.x = r.f32v();
             m.y = r.f32v();
             m.type = r.u8v();
-            if (r.bad() || !inWorld(m.x, m.y) || m.type >= kBoostCount) return false;
+            if (r.bad() || !inWorld(m.x, m.y) || (m.type >= kBoostCount && !sim::isExtraLifeDrop(m.type))) return false;  // (play test 3: an Extra Life)
             if (sink) sink->onBoostDrop(m);
             return true;
         }
@@ -378,7 +378,7 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 case kPeHit: bMax = kMaxCells; break;
                 case kPeTrioOpen: bMax = sim::kMaxOrbs; break;
                 case kPeTrioTake: bMax = 255; break;  // an upgrade or a Boost orb (play test 2), checked below
-                case kPeBoostTake: bMax = kBoostCount - 1; break;
+                case kPeBoostTake: bMax = m.b == sim::kPickupExtraLife ? 255u : kBoostCount - 1; break;  // (play test 3: an Extra Life)
                 case kPeHalo: bMax = 3; break;
                 case kPeWell: bMax = sim::kRiffMaxLevel; break;
                 case kPeDash:

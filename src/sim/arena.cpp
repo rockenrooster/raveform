@@ -96,8 +96,9 @@ bool ArenaData::load() {
             EventKind k;
             if (eventFromId(doc.string(v), k)) events[t][eventCount[t]++] = static_cast<u8>(k);
         }
-        if (!structCount[t] || !eventCount[t]) {
-            RF_ERR("arena: Track %u has no structures or no events", t);
+        // (play test 3, arena.md: Track 1 has no structure; every Track has an event)
+        if (!eventCount[t] || (!structCount[t] && !(s && s->type == JsonValue::Type::Array))) {
+            RF_ERR("arena: Track %u has no structure list or no events", t);
             ok = false;
         }
     }

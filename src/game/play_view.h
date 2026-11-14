@@ -107,10 +107,11 @@ private:
     struct SparkReq {
         Vec2 at, dir;
         u16 count;
-        u8 kind;  // 0 small burst, 1 large, 3 impact, 5 medium, 6 nova inhale, 7 nova front, 8 player death
+        u8 kind;  // 0 small burst, 1 large, 3 impact, 5 medium, 6 nova inhale, 7 nova front, 8 player death, 9 thrown sideways
         Vec3 a, b;
         float t0;  // birth time (view clock)
         float extra;  // inhale: seconds until the blast
+        u8 prio = 0;  // play test 3 (GAME_DESIGN 7.6): a boss hit's sparks, never the ones dropped when the pool is full
     };
 
     // Effects.
@@ -184,6 +185,21 @@ private:
     float hzEatAt_ = -1e9f;     // the last body eaten (view time): its cell flashes white
     void eventFight(const sim::World& w, const sim::Event& e, float t);
     void fightChevron(FrameDraw& d, const ViewInput& in, Vec2 at, Vec3 colour);
+    // Play test 3 (GAME_DESIGN 7.6, "Every hit on a boss is seen and heard"): a weak point's hit flashes its part white for
+    // 60 ms and throws six sparks in its hue back along the shot; armour three grey sparks sideways and no flash.
+    void bossHit(const sim::World& w, const sim::Event& e, float t, Vec3 hue);
+    void drawBossHitFlash(FrameDraw& d, const ViewInput& in);
+    struct HitFlash {
+        u8 part = 0, index = 0;
+        float t = -1e9f;
+    };
+    static constexpr u32 kHitFlashes = 8;
+    HitFlash hitFlash_[kHitFlashes];
+    u32 hitFlashNext_ = 0;
+    // Play test 3 (GAME_DESIGN 5, screens.md): EXTRA LIFE as world text at the ship for a bar (view time it began).
+    float extraLifeT_[sim::kMaxPlayers] = {-1e9f, -1e9f, -1e9f, -1e9f};
+    // Play test 3 (GAME_DESIGN 6.3 row 1): the Orbitals' ring breaking (its shards fly) and relighting.
+    void ringBreak(const sim::World& w, u32 p, Vec2 at, float t);
     // Lines a fight has shown (a pack's charge, the Hive's spear), each until its moment.
     struct FightLine {
         Vec2 from, dir;

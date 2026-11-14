@@ -49,6 +49,9 @@ float buildGrowth(u32 t) {
 }
 }  // namespace
 
+static_assert(kMaxPlayersBoss == kMaxPlayers, "the boss's pace keeps a number a player");
+static_assert(sizeof(kBossPaceNovice) / sizeof(kBossPaceNovice[0]) >= kBossKinds, "a novice's number a boss");
+
 u32 bossScaledCount(u32 n, float scale, u32 least) {
     // A count scaled by a lever (play test 1), rounded, never below `least` (an exact count at scale 1).
     if (scale == 1.0f) return n;
@@ -420,6 +423,88 @@ float World::bossDamageScale(u8 part, u8 index, double tick, Vec2 dir) const {
     }
 }
 
+bool World::assistBossAim(Vec2 from, double tick, Vec2& at) const {
+    // GAME_DESIGN 2 (play test 3): in a boss or mini-boss fight the assist aims at the boss: its open weak point when it has
+    // one (a part a hit multiplies, judged when the shot arrives), else its nearest part that takes damage, else its nearest
+    // part. Everything is led by the shot's flight. (The ordinary enemy within 250 wu that comes first: PlayerController.)
+    const BossState& s = boss_;
+    if (!s.active || s.dying || tick < s.fightTick) return false;
+    const float reach = kShotSpeed * kShotLifeS;
+    const float tps = ticksPerSecond();
+    if (s.kind == BossKind::Kaleidos) {
+        // The core through an open sector (a dead pair's direction, or every pair dead); else the nearest resting arm (the
+        // weak point, rule 1); else the nearest arm. The arm's middle, led along the wheel's turn.
+        const Vec2 rel = from - s.pos;
+        if (length(rel) > reach + kBossArmOuter) return false;
+        bool open = s.alive == 0;
+        for (u32 k = 0; k < 6 && !open; ++k) {
+            if (s.alive & (1u << (k % 3))) continue;
+            if (std::fabs(wrapAngle(angleOf(rel) - bossArmAngle(k))) < kAssistSectorRad) open = true;
+        }
+        if (open) {
+            at = s.pos;
+            return true;
+        }
+        const float spin = wrapAngle(s.angle - s.prevAngle) / kDt;
+        const float mid = 0.5f * (kBossArmInner + kBossArmOuter);
+        float best = 1e30f;
+        bool any = false;
+        for (u32 pass = 0; pass < 2 && !any; ++pass) {
+            for (u32 k = 0; k < 6; ++k) {
+                const u32 pr = k % 3;
+                if (!(s.alive & (1u << pr))) continue;
+                const Vec2 now = s.pos + dirOf(bossArmAngle(k)) * mid;
+                const float flight = length(now - from) / kShotSpeed;
+                if (pass == 0 && !bossResting(pr, tick + static_cast<double>(flight * tps))) continue;
+                const Vec2 led = s.pos + dirOf(bossArmAngle(k) + spin * flight) * mid;
+                const float d = lengthSq(led - from);
+                if (d < best) {
+                    best = d;
+                    at = led;
+                    any = true;
+                }
+            }
+        }
+        return any;
+    }
+    // Tiers: 3 an open weak point (the most it multiplies, then the nearest), 2 a full hit, 1 armour's share, 0 any part.
+    BossPart parts[kBossBodies + 4];
+    const u32 n = bossParts(parts, kBossBodies + 4);
+    float best[4] = {-1e30f, -1e30f, -1e30f, -1e30f};
+    Vec2 bestAt[4] = {};
+    for (u32 k = 0; k < n; ++k) {
+        const BossPart& q = parts[k];
+        const float d = length(q.pos - from) - q.radius;
+        if (d > reach) continue;
+        // (its motion: the nearest of the fight's bodies)
+        u32 bi = 0;
+        float bd = 1e30f;
+        for (u32 j = 0; j < kBossBodies; ++j) {
+            const float dj = lengthSq(s.body[j] - q.pos);
+            if (dj < bd) {
+                bd = dj;
+                bi = j;
+            }
+        }
+        const float flight = (d > 0.0f ? d : 0.0f) / kShotSpeed;
+        const Vec2 led = q.pos + (s.body[bi] - s.bodyPrev[bi]) * (flight / kDt);
+        const float scale = q.part == 1 ? 0.0f
+                                        : bossDamageScale(q.part, q.index, tick + static_cast<double>(flight * tps), normalizeOr(led - from, Vec2{1.0f, 0.0f}));
+        const u32 tier = scale > 1.0f + 1e-3f ? 3u : (scale >= 1.0f - 1e-3f ? 2u : (scale > 0.0f ? 1u : 0u));
+        const float score = (tier == 3 ? scale * 1000.0f : 0.0f) - d * 0.1f;
+        if (score > best[tier]) {
+            best[tier] = score;
+            bestAt[tier] = led;
+        }
+    }
+    for (u32 t = 4; t-- > 0;)
+        if (best[t] > -1e29f) {
+            at = bestAt[t];
+            return true;
+        }
+    return false;
+}
+
 void World::damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir) {
     BossState& s = boss_;
     Event ev;
@@ -435,6 +520,7 @@ void World::damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir)
     if (!s.active || s.dying || m1_ < s.fightTick) {
         ev.c = 1;  // the entrance: nothing gets through yet
         emit(ev);
+        bossHitCue(false, at, owner);
         return;
     }
     ++s.hits;
@@ -445,7 +531,7 @@ void World::damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir)
         scale = species_->poly.dmgCorner;
         dpart = 2;
     } else if (part == 1 && s.kind == BossKind::Arpeggiator) {
-        scale = kApArmour;  // M5 part 6: the console sheds shots (a quarter on the core's health)
+        scale = species_->arp.dmgConsole;  // M5 part 6: the console sheds shots (arpeggiator.json: a quarter on the core's health)
         dpart = 3;
     } else if (part != 1) {
         scale = bossDamageScale(part, pair, m1_, dir);
@@ -460,6 +546,7 @@ void World::damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir)
         ev.c = 1;
         ev.f = scale;
         emit(ev);
+        bossHitCue(false, at, owner);
         if (s.kind == BossKind::Feedback && s.fb.open <= 0.0f) feedbackSwallow();
         if (scale > 0.0f) damageBossFinal(dpart, pair, dmg * scale, owner, at, dir, -1.0f);
         return;
@@ -485,6 +572,7 @@ void World::damageBossFinal(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2
         ev.y2 = dir.y;
         ev.f = scale;
         emit(ev);
+        bossHitCue(scale >= 1.0f - 1e-3f && part != 1, at, owner);
     }
     const bool client = role_ == NetRole::Client;
     // (one claim a part a tick: since armour takes a quarter every shot on a boss claims, so the claims of a tick on the same
@@ -505,6 +593,12 @@ void World::damageBossFinal(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2
         c.damage = dmg;
     } else if (client) {
         ++netLog_.overflow;
+    }
+    if (!isMiniBoss(s.kind)) {
+        // M5 part 7 (GAME_DESIGN 7.6, a boss keeps pace): the first eight bars' damage is counted a player; from the pace on
+        // the boss takes its damage divided by it (after a client's claim is noted: the host divides by its own).
+        if (!s.paceSet && owner < kMaxPlayersBoss) s.paceDmg[owner] += dmg;
+        dmg /= s.pace > 0.0f ? s.pace : 1.0f;
     }
     if (isMiniBoss(s.kind)) {
         s.mini.lastHurt = m1_;                                   // (Regenerating: quiet beats)
@@ -796,6 +890,13 @@ void World::bossGeom(u8 geom, Vec2 a, Vec2 b, double tick, bool host) {
             m.ringAt = a;
             m.ringAng = b.x;
             break;
+        case kGeomBossPace:  // M5 part 7: the fight's pace on a bar line of its first eight (the host's); after the eighth it stands
+            s.pace = clampf(a.x, kBossPaceMin, kBossPaceMax);
+            if (b.x >= static_cast<float>(kBossPaceBars) - 0.5f) {
+                s.paceMeasured = a.y;
+                s.paceSet = true;
+            }
+            break;
         case kGeomWeaverCage:  // M5 part 6: a new cage (the last one's laps go off)
             if (m.cageTick >= 0.0 && tick > m.cageTick) {
                 m.prevCage = m.cage;
@@ -818,10 +919,13 @@ void World::bossGeom(u8 geom, Vec2 a, Vec2 b, double tick, bool host) {
             const u32 now = m.half ? n / 2u : n;
             m.ringLeft = static_cast<u16>(n - now);
             const float a0 = static_cast<float>(hash32(static_cast<u32>(tick), 0xD3E0u) % 360u) * kTau / 360.0f;
+            const bool was = inBossUpdate_;
+            inBossUpdate_ = true;  // (on a client the host's word comes outside updateBoss: still the fight's own)
             for (u32 j = 0; j < now; ++j) {
                 const float ang = a0 + kTau * static_cast<float>(j) / static_cast<float>(now ? now : 1u);
                 spawnBullet(s.body[0] + dirOf(ang) * 70.0f, dirOf(ang) * prose::kDwRingSpeed, tickAgeOf(tick), 0.0f);
             }
+            inBossUpdate_ = was;
             emitCue(BossCue::DwRing, tick, 0, 0.0f, s.body[0]);
             break;
         }
@@ -922,6 +1026,21 @@ void World::bossFire(double t) {
             emit(ev);
         }
     }
+}
+
+void World::bossHitCue(bool weak, Vec2 at, u8 owner) {
+    // GAME_DESIGN 7.6 (play test 3): every hit on a boss is heard, by the shooter's device: a bright tick on a weak point, a
+    // dull knock on armour. Counted on the 1/32 step like kills: at most one of each a step; each further step of the same
+    // beat at 0.7 of the one before, down to 0.3 (the cue's f).
+    if (owner < kMaxPlayers && !isLocal(owner)) return;
+    const u32 k = weak ? 0u : 1u;
+    const double step = 0.5 * kTicksPerStep;
+    const double slot = std::floor(m1_ / step) * step;
+    if (slot <= hitCueTick_[k]) return;
+    const bool sameBeat = std::floor(slot / kTicksPerBeat) == std::floor(hitCueTick_[k] / kTicksPerBeat);
+    hitCueGain_[k] = sameBeat ? std::fmax(hitCueGain_[k] * 0.7f, 0.3f) : 1.0f;
+    hitCueTick_[k] = slot;
+    emitCue(weak ? BossCue::HitWeak : BossCue::HitArmour, m1_, 0, hitCueGain_[k], at);
 }
 
 void World::emitCue(BossCue c, double tick, u8 b, float f, Vec2 at) {
@@ -1060,6 +1179,24 @@ void World::updateBoss(float dt) {
         }
         if (m1_ >= s.deathTick + s.deathBars * kTicksPerBar) s.active = false;
         return;
+    }
+    // M5 part 7 (GAME_DESIGN 7.6, ea472ab): on each bar line of a boss fight's first eight bars its pace: the players' damage a
+    // player so far over the novice's eight-bar number in proportion to the bars gone (k/8 of it at bar k), held between 1 and
+    // 4, a ratio under the dead band counting as 1; after the eighth it stands. The host's (or solo's) decision, sent; a client
+    // waits for it.
+    if (!isMiniBoss(s.kind) && !s.paceSet && role_ != NetRole::Client && m1_ >= s.fightTick) {
+        forCrossings(m0_, m1_, kTicksPerBar, [&](double t, i64) {
+            const double k = std::floor((t - s.fightTick) / kTicksPerBar + 0.5);
+            if (k < 1.0 || k > static_cast<double>(kBossPaceBars) || s.paceSet) return;
+            float sum = 0.0f;
+            for (u32 p = 0; p < kMaxPlayersBoss; ++p) sum += s.paceDmg[p];
+            const u32 players = presentCount() ? presentCount() : 1u;
+            const float per = sum / static_cast<float>(players);
+            const float novice = static_cast<u32>(s.kind) < 24u ? kBossPaceNovice[static_cast<u32>(s.kind)] : 0.0f;
+            const float ratio = novice > 0.0f ? per / (novice * static_cast<float>(k) / static_cast<float>(kBossPaceBars)) : 0.0f;
+            const float pace = rules_.noPace || ratio < kBossPaceDeadBand ? 1.0f : clampf(ratio, kBossPaceMin, kBossPaceMax);
+            bossDecide(kGeomBossPace, Vec2{pace, per}, Vec2{static_cast<float>(k), 0.0f}, t);
+        });
     }
     if (scriptKillParts_ || scriptKillCore_) {
         for (u32 k = 0; k < kBossParts; ++k)

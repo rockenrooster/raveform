@@ -56,6 +56,8 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask) {
     crowdInFrame_ = 0;
     crowdGoal_ = 0.0f;
     restartPending_ = false;
+    hitCueTick_[0] = hitCueTick_[1] = -1e18;  // play test 3
+    arcing_ = 0;
     m0_ = m1_ = startTick;
     playerCount_ = players < 1 ? 1 : (players > kMaxPlayers ? kMaxPlayers : players);
     for (u32 p = 0; p < kMaxPlayers; ++p) {
@@ -175,7 +177,9 @@ void World::tick(const TickInput& in) {
     updateElites(dt * stretch_);  // M5 part 5: shields, Regenerating, Twins, the Commanders' reach (before the motion)
     updateEnemies(dt * stretch_);
     updateTrails();  // M5 part 4: Weaver trails, Ram B's wake
+    inBossUpdate_ = true;
     updateBoss(dt);
+    inBossUpdate_ = false;
     updateRiffs(dt);
     updateRiffsM5(dt);     // M5 part 3: Riffs 4-12
     updateUpgradesM5(dt);  // M5 part 3: the bar's and the beat's Mods, the Boosts that act every tick
@@ -282,15 +286,17 @@ void World::applyPlayers(const TickInput& in) {
     }
 }
 
-bool World::pressNova(u32 p) {
+bool World::pressNova(u32 p, bool free) {
     PlayerState& pl = players_[p];
-    if (!rules_.novas || pl.novas == 0 || pl.novaPending) return false;
+    if (!rules_.novas || (pl.novas == 0 && !free) || pl.novaPending) return false;
     // R6: invulnerable at once; the blast lands on the next beat. The band plays the inhale from the press and the
     // blast on a beat of its write time, which is ahead of the heard time by the output latency, and moves to the
     // following beat when the next one is closer than six ticks (engine.cpp, CmdType::Nova): the same rule here, so
     // picture and sound land together.
-    --pl.novas;
-    ++pl.novasUsed;
+    if (!free) {
+        --pl.novas;
+        ++pl.novasUsed;
+    }
     pl.novaPending = true;
     const double earliest = m1_ + static_cast<double>(latencyTicks_) + 6.0;
     pl.novaBlastTick = std::ceil(earliest / kTicksPerBeat) * kTicksPerBeat;
@@ -747,7 +753,15 @@ void World::hitPlayer(u32 p, Vec2 from) {
     // Auto Nova (GAME_DESIGN 5, play test 1 second pass; on unless switched off): a hit that would take the last Shield
     // cell (or end the run, with none left) fires a Nova from the stock instead and costs nothing; the Nova keeps R6
     // (invulnerable at once, the blast on the next beat). With no Nova in stock the hit lands as before.
+    // Play test 3 (GAME_DESIGN 6.3 row 1): the Orbitals' guard ring, every shard lit, takes the hit instead of a cell (first:
+    // it is a spare cell).
+    if (breakRing(p, from)) return;
     if (rules_.autoNova && pl.cells <= 1 && pressNova(p)) return;
+    // Play test 3 (GAME_DESIGN 5): the hit that would end the run (co-op: put the ship down) spends an Extra Life instead.
+    if (pl.cells == 0 && pl.extraLives) {
+        spendExtraLife(p, from);
+        return;
+    }
     ++pl.hitsTaken;
     if (pl.cells == 0 && coop()) {
         // GAME_DESIGN 10: in co-op the ship shatters into a beacon; the run goes on while anyone stands.
@@ -847,6 +861,8 @@ void World::killEnemy(u32 i, u8 killer) {
             director_.boostDue = false;
             director_.boostTicks = static_cast<i32>(rng_.range(kBoostEveryLoS, kBoostEveryHiS) / kDt);
         }
+        // Play test 3 (GAME_DESIGN 5): the Track's Extra Life, from a kill in the first cycle's Drop.
+        if (spawner_.mode == Spawner::Mode::Slice) extraLifeDrop(Vec2{e.x[i], e.y[i]});
     }
     dropShards(i, killer);
     if (role_ == NetRole::Host) logDeath(i, killer, kDeathKill);
@@ -968,12 +984,34 @@ i32 World::spawnEnemyAs(u16 speciesIndex, Vec2 pos, float heading, double landTi
 
 bool World::spawnBullet(Vec2 pos, Vec2 vel, float advanceS, float lifeS) {
     Bullets& b = bullets_;
-    if (b.count >= Bullets::kCap) {
-        ++counters_.bulletsDropped;
+    u32 i = b.count;
+    if (!inBossUpdate_ && static_cast<float>(b.count) >= kBulletPoolCrowd * static_cast<float>(Bullets::kCap)) {
+        // M5 part 7: the crowd's shooters hold a volley the pool's last 5% would take (kept for the fights' own patterns).
+        ++counters_.bulletsHeld;
         return false;
     }
+    if (b.count >= Bullets::kCap) {
+        // M5 part 7 (GAME_DESIGN 6.6): a fight's own pattern is never what is refused: it takes the place of the crowd's
+        // bullet nearest its end (the pool does not grow).
+        i32 slot = -1;
+        float least = 1e30f;
+        for (u32 k = 0; inBossUpdate_ && k < b.count; ++k)
+            if (!b.boss[k] && b.life[k] < least) {
+                least = b.life[k];
+                slot = static_cast<i32>(k);
+            }
+        if (slot < 0) {
+            ++counters_.bulletsDropped;
+            return false;
+        }
+        i = static_cast<u32>(slot);
+        ++counters_.bulletsEvicted;
+    } else {
+        ++b.count;
+    }
     vel = vel * loopBulletSpeed_;  // the loop speeds up every enemy bullet (GAME_DESIGN 8; 1 in the first pass)
-    const u32 i = b.count++;
+    ++counters_.bulletsAll;
+    if (inBossUpdate_) ++counters_.bulletsBoss;
     b.px[i] = pos.x;
     b.py[i] = pos.y;
     b.x[i] = pos.x + vel.x * advanceS;
@@ -983,6 +1021,8 @@ bool World::spawnBullet(Vec2 pos, Vec2 vel, float advanceS, float lifeS) {
     b.life[i] = (lifeS > 0.0f ? lifeS : kBulletLifeS) - advanceS;
     b.dead[i] = 0;
     b.echo[i] = 0;
+    b.boss[i] = inBossUpdate_ ? 1 : 0;
+    lastBullet_ = i;
     return true;
 }
 
@@ -1082,6 +1122,7 @@ void World::compact() {
         b.life[i] = b.life[l];
         b.dead[i] = b.dead[l];
         b.echo[i] = b.echo[l];
+        b.boss[i] = b.boss[l];
     }
     Shots& s = shots_;
     for (u32 i = 0; i < s.count;) {
@@ -1346,6 +1387,8 @@ u64 World::hash() const {
         val(pl.decoyUntil);
         val(pl.wellFrom);
         val(pl.holeFrom);
+        val(pl.ringBroke);    // play test 3
+        val(pl.extraLives);
         for (const PlayerState::Mine& m : pl.mines) val(m.blowTick);
         for (const PlayerState::Comet& c : pl.comets) val(c.start);
         for (const PlayerState::Echo& ec : pl.echoes) val(ec.tick);

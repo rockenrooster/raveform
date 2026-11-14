@@ -29,6 +29,11 @@
  ],
  "numbers": {
   "health": 6400,
+  "damageScale": {
+   "loading": 1.0,
+   "console": 0.25,
+   "note": "the console sheds shots: they do a quarter, taken from the core's health"
+  },
   "coreRadius": 70.0,
   "laneWidth": 200.0,
   "laneLength": 900.0,

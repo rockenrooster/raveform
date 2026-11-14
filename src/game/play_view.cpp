@@ -320,7 +320,17 @@ void PlayView::addDistortion(Vec2 at, float toWu, float lifeS, float amountRefPx
 }
 
 void PlayView::sparkRequest(const SparkReq& r) {
-    if (sparkReqCount_ < sparkReqCap_) sparkReqs_[sparkReqCount_++] = r;
+    if (sparkReqCount_ < sparkReqCap_) {
+        sparkReqs_[sparkReqCount_++] = r;
+        return;
+    }
+    // Play test 3 (GAME_DESIGN 7.6): a boss hit's sparks take the place of the newest ordinary request.
+    if (!r.prio) return;
+    for (u32 k = sparkReqCount_; k-- > 0;)
+        if (!sparkReqs_[k].prio) {
+            sparkReqs_[k] = r;
+            return;
+        }
 }
 
 void PlayView::shatterGlyph(int g, Vec2 at, float heading, float scale, Vec3 colour, float speedLo, float speedHi, float t) {
@@ -531,6 +541,16 @@ void PlayView::onEvents(const World& w, double tickEnd) {
             case EventType::Hit: {
                 // Shield cell lost (look.md §5): the arc shatters outward, a panic ring pushes out.
                 if (mine) hitT_ = t;
+                if (e.c == 1 || e.c == 2) {
+                    // Play test 3: the Orbitals' guard ring took it (its shards fly, no arc is lost), or an Extra Life was spent
+                    // (a gold ring: the ship is back with its cells).
+                    if (e.c == 1) ringBreak(w, owner, at, t);
+                    else addShockRings(at, 2, kPanicRadiusWu, palettes_->player[3], white(), t, kPanicRingS);
+                    addShockRings(at, 1, kPanicRadiusWu, player, light, t, kPanicRingS);
+                    push(kImpHit, at, 260.0f, 120.0f, t);
+                    if (mine && kHitShakeRefPx > shakeAmp_) shakeAmp_ = kHitShakeRefPx;
+                    break;
+                }
                 const u8 left = e.b;
                 // The lost arc, the last of the halo it was (play test 2: the halo glyphs are ornament, which shatterGlyph skips).
                 if (left < 8) shatterArcs(at, left + 1u, left, left + 1u, mix(player, white(), 0.3f) * 2.0f, t);
@@ -852,8 +872,11 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     if (d.particles) {
         const Look::Explosions& boom = look_->boom;
         const float levels[4] = {2.4f, 3.4f, 4.6f, 5.6f};
+        // (play test 3: a boss hit's sparks first, so a full pool drops others)
+        for (u32 pass = 0; pass < 2; ++pass)
         for (u32 r = 0; r < sparkReqCount_; ++r) {
             const SparkReq& q = sparkReqs_[r];
+            if ((q.prio != 0) != (pass == 0)) continue;
             for (u32 k = 0; k < q.count; ++k) {
                 ParticleGpu* sp = d.particles->spawn();
                 if (!sp) {
@@ -875,6 +898,13 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
                         v = (q.dir + dir(rng_.range(0.0f, kTau)) * 0.5f) * rng_.range(150.0f, 300.0f);
                         life = boom.impactLifeS;
                         break;
+                    case 9: {  // play test 3 (GAME_DESIGN 7.6): armour's sparks, thrown sideways off the shot's line
+                        const Vec2 side = Vec2{-q.dir.y, q.dir.x} * ((k & 1u) ? 1.0f : -1.0f);
+                        v = (side + q.dir * 0.25f + dir(rng_.range(0.0f, kTau)) * 0.2f) * rng_.range(160.0f, 280.0f);
+                        life = boom.impactLifeS;
+                        level = 1.6f * crowd;
+                        break;
+                    }
                     case 6: {  // Nova inhale: from a 600 wu ring to the centre, arriving on the beat
                         const float ang = rng_.range(0.0f, kTau);
                         const float span = q.extra > 0.05f ? q.extra : 0.05f;

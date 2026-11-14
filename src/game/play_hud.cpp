@@ -319,6 +319,19 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
             star4(d.hud, c, 16.0f * s, 0.9f * s, col(white, 0.3f), col(white, 0.3f));
         }
     }
+    // Play test 3 (screens.md "Extra Life (HUD)"): a held Extra Life is a small gold ship outline to the right of the Nova stock.
+    if (st.extraLife) {
+        const Vec2 c{W - mr - 150.0f * s + 46.0f * s, top + 62.0f * s};
+        const float r = 13.0f * s;
+        // (the ship's arrowhead: a nose up, two wings and the notch at its tail)
+        const Vec2 nose{c.x, c.y - r}, wl{c.x - 0.8f * r, c.y + 0.85f * r}, wr{c.x + 0.8f * r, c.y + 0.85f * r}, tail{c.x, c.y + 0.4f * r};
+        const Vec3 g = col(gold, 2.0f);
+        d.hud.line(nose, wl, 0.9f * s, g, g, 0);
+        d.hud.line(wl, tail, 0.9f * s, g, g, 0);
+        d.hud.line(tail, wr, 0.9f * s, g, g, 0);
+        d.hud.line(wr, nose, 0.9f * s, g, g, 0);
+        d.pools.glow(c, 24.0f * s, gold * 0.22f);
+    }
     // Dash charge (for keyboard and gamepad; on touch the button carries a cooldown ring too): a short
     // bar under the stars, lit when the Dash is ready.
     {
@@ -659,9 +672,15 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             const float cap = (mini ? 40.0f : 72.0f) * s;
             font.drawField(d.hud, {cx - 0.5f * textW(font, cap, name), 0.30f * H}, cap, (mini ? 1.8f : 3.0f) * s, col(white, 2.0f * fade),
                            col(gold, 2.0f * fade), col(amber, 2.0f * fade), name);
-            char sub[48];
-            if (mini) std::snprintf(sub, sizeof sub, "MINI-BOSS");
-            else std::snprintf(sub, sizeof sub, "BOSS OF %s", st.trackName);
+            char sub[64];
+            if (mini) {
+                // M5 part 7: from Track 9 a mini-boss carries elite traits: they are named under it.
+                const u8 tr = boss.mini.traits;
+                std::snprintf(sub, sizeof sub, "MINI-BOSS%s%s%s", (tr & sim::traitBit(sim::kArmored)) ? "  ARMORED" : "", (tr & sim::traitBit(sim::kSwift)) ? "  SWIFT" : "",
+                              (tr & sim::traitBit(sim::kRegenerating)) ? "  REGENERATING" : "");
+            } else {
+                std::snprintf(sub, sizeof sub, "BOSS OF %s", st.trackName);
+            }
             const float c2 = (mini ? 12.0f : 14.0f) * s;
             // (Under the name: the origin is the top of the caps; the stage B card drew it across the name.)
             font.drawField(d.hud, {cx - 0.5f * textW(font, c2, sub), 0.30f * H + cap + 18.0f * s}, c2, 0.6f * s, col(gold, 1.2f * fade),
@@ -690,19 +709,28 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         const float thick = mini ? 1.0f : 2.0f;
         d.hud.line({x0, y}, {x0 + bw, y}, 0.5f * thick * s, col(white, 0.18f), col(white, 0.18f), 0);
         if (f > 0.0f) d.hud.line({x0, y}, {x0 + bw * f, y}, thick * s, col(gold, 1.8f), col(amber, 1.8f), 0);
+        // Play test 3 (GAME_DESIGN 7.6): a weak point's hit flashes its segment of the bar white (the whole bar: the last 40 px of
+        // its fill; a pair's, segment's or Voice's pip: that pip).
+        const bool pips = boss.kind == BossKind::Kaleidos || boss.kind == BossKind::Choir || boss.kind == BossKind::Longwave;
+        if (st.bossFlash > 0.0f && f > 0.0f && (!pips || st.bossFlashPart == 0xFF)) {
+            const float xe = x0 + bw * f, xs = std::fmax(x0, xe - 40.0f * s);
+            d.hud.line({xs, y}, {xe, y}, (thick + 1.0f) * s, col(white, 2.4f * st.bossFlash), col(white, 2.4f * st.bossFlash), 0);
+        }
+        const auto pipFlash = [&](u32 k) { return st.bossFlash > 0.0f && st.bossFlashPart == k ? st.bossFlash : 0.0f; };
         if (boss.kind == BossKind::Kaleidos) {
             for (u32 p = 0; p < 3; ++p) {
                 const float pf = boss.partMax > 0.0f ? clampf(boss.partHp[p] / boss.partMax, 0.0f, 1.0f) : 0.0f;
                 const float px = x0 + bw + 20.0f * s + static_cast<float>(p) * 30.0f * s;
                 d.hud.line({px, y}, {px + 22.0f * s, y}, 0.8f * s, col(palette.hue[p], 0.3f), col(palette.hue[p], 0.3f), 0);
-                if (pf > 0.0f) d.hud.line({px, y}, {px + 22.0f * s * pf, y}, 1.8f * s, col(palette.hue[p], 1.6f), col(palette.hue[p], 1.6f), 0);
+                const Vec3 pc = mix(palette.hue[p], white, pipFlash(p));
+                if (pf > 0.0f) d.hud.line({px, y}, {px + 22.0f * s * pf, y}, 1.8f * s, col(pc, 1.6f + pipFlash(p)), col(pc, 1.6f + pipFlash(p)), 0);
             }
         } else if (boss.kind == BossKind::Choir || boss.kind == BossKind::Longwave) {
             // A pip for each Voice / segment still standing, after the bar (the Choir's in pearl, Longwave's in its hues).
             const float step = (boss.kind == BossKind::Choir ? 16.0f : 6.0f) * s, len = (boss.kind == BossKind::Choir ? 11.0f : 3.5f) * s;
             for (u32 k = 0; k < parts; ++k) {
                 const float px = x0 + bw + 20.0f * s + static_cast<float>(k) * step;
-                const Vec3 c = boss.kind == BossKind::Choir ? mix(white, palette.hue[k % 3], 0.25f) : palette.hue[k * 3 / (parts + 1)];
+                const Vec3 c = mix(boss.kind == BossKind::Choir ? mix(white, palette.hue[k % 3], 0.25f) : palette.hue[k * 3 / (parts + 1)], white, pipFlash(k));
                 const bool live = boss.alive & (1u << k);
                 const float pf = live && boss.partMax > 0.0f ? clampf(boss.partHp[k] / boss.partMax, 0.0f, 1.0f) : 0.0f;
                 d.hud.line({px, y}, {px + len, y}, 0.8f * s, col(c, 0.25f), col(c, 0.25f), 0);

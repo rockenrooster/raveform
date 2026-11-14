@@ -71,7 +71,10 @@ float World::mini3Scale(u8 part, u8 index, double t) const {
         case BossKind::MirrorMimic: return mimicCopying(t) ? 2.0f : 1.0f;
         case BossKind::TwinTether: return part == 2 && tetherSlack(t) ? 2.0f : 1.0f;
         case BossKind::WeaverPrime: return weaverKnot(index, t) ? 2.0f : 1.0f;
-        case BossKind::DeepWell: return wellChoked(t) ? 2.0f : kDwArmour;
+        case BossKind::DeepWell: {
+            const MiniData::Entry* e = species_->minis.find(s.kind);
+            return wellChoked(t) ? (e ? e->dmgChoked : 2.0f) : (e ? e->dmgSwallowing : kDwArmour);
+        }
         default: return 1.0f;
     }
 }
@@ -210,7 +213,8 @@ void World::mini3Feed(float dmg) {
     BossState& s = boss_;
     MiniState& m = s.mini;
     if (s.kind != BossKind::DeepWell || wellChoked(m1_)) return;
-    m.fill += dmg / kDwArmour;
+    const MiniData::Entry* e = species_->minis.find(s.kind);
+    m.fill += dmg / (e && e->dmgSwallowing > 0.0f ? e->dmgSwallowing : kDwArmour);
     ++m.swallowed;
     if (m1_ - m.lastThup >= kTicksPerStep) {
         m.lastThup = m1_;
@@ -220,7 +224,10 @@ void World::mini3Feed(float dmg) {
     }
 }
 
-void World::wellFeedNow(float dmg) { mini3Feed(dmg * kDwArmour); }
+void World::wellFeedNow(float dmg) {
+    const MiniData::Entry* e = species_->minis.find(BossKind::DeepWell);
+    mini3Feed(dmg * (e ? e->dmgSwallowing : kDwArmour));
+}
 
 void World::miniTraitsTick() {
     // Regenerating (traits.json): after two quiet beats it heals 8% of its health a beat (the host's: its health is the host's).

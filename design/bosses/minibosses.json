@@ -262,7 +262,7 @@
    "pattern": [
     "beat 1 of every bar: the knot. It stands still for the beat where the lap began, tying the trail's end to its start",
     "beats 2 to 4: the next lap, 50 wu inside the last. The cage's centre is where the player stood at the first knot; it does not follow",
-    "after the fourth lap, on the next bar line, the cage goes off: every trail segment alive bursts 40 wu wide. The middle of the last lap is clear; near the trail is not. Then a new cage, round wherever the player is",
+    "after the fourth lap, on the next bar line, the cage goes off: every trail segment alive bursts 40 wu wide (a blast, drawn by its two edges with a faint fill, not a bar). The middle of the last lap is clear; near the trail is not. Then a new cage, round wherever the player is",
     "a Dash crosses a trail unharmed"
    ],
    "weakPoint": "the knot: for the beat it stands still on every One, damage x 2. On its laps it takes x 1 and moves at about 1,000 wu/s",
@@ -286,7 +286,11 @@
     "on every One it gives back what the last bar fed it: a ring of bullets, one for every 3 damage swallowed, at most 48, 220 wu/s",
     "its stomach holds 5% of the Track's mini-boss health in one bar. Fed more than that inside a bar, it chokes: no ring on the next One, and for that whole bar its rings are gold and it cannot swallow"
    ],
-   "weakPoint": "choked: for the bar after it is overfed it takes real damage, x 2. That is the only time it can be hurt",
+   "weakPoint": "choked: for the bar after it is overfed it takes real damage, x 2. While it swallows it takes a quarter (M5: it was none), and the swallowed damage still counts in full toward its fill",
+   "damageScale": {
+    "choked": 2.0,
+    "swallowing": 0.25
+   },
    "half": "it holds half as much again, drifts at 90 wu/s, and gives the bar back as two rings, on beats 1 and 3",
    "death": "it bursts: a ring of Shards, one for everything it swallowed in the fight, to 300",
    "sound": "each swallowed shot is a soft low thup, a step higher for each ring lit, so the fill can be heard; choking is the gong with the bed low-passed for the bar; a ring given back is a reversed cymbal into the One and a stab",

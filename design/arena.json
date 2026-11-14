@@ -202,9 +202,7 @@
  ],
  "byTrack": {
   "1": {
-   "structures": [
-    "vault"
-   ],
+   "structures": [],
    "events": [
     "comet"
    ]

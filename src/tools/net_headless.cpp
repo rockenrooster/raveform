@@ -27,6 +27,7 @@
 #include "net/peer.h"
 #include "sim/species.h"
 #include "sim/tuning.h"
+#include "sim/tuning.h"
 
 using namespace rf;
 using namespace rf::net;
@@ -747,12 +748,18 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
         if (dropped && k == 0) expectedDrops = s.disconnects;  // the host's: the one that died
         stalls += p.stats().dropped;
         overflow += overflowOf(p.world()) + s.droppedOutgoing;
+    {
+        const WorldCounters& bc = p.world().counters();
+        std::printf("[net]   peer %u enemy bullets: %u fired (the fights %u), %u held by the crowd above %.0f%% of the pool, %u in the crowd's place, %u refused\n", k,
+                    bc.bulletsAll, bc.bulletsBoss, bc.bulletsHeld, 100.0 * sim::tuning::kBulletPoolCrowd, bc.bulletsEvicted, bc.bulletsDropped);
+    }
         if (overflowOf(p.world()) + s.droppedOutgoing) {
             const WorldCounters& oc = p.world().counters();
             std::printf("[net]   peer %u overflow: enemies %u, bullets %u, shots %u, Shards %u, events %u, net ops %u, net log %u, "
                         "outgoing %u\n",
                         k, oc.enemiesDropped, oc.bulletsDropped, oc.shotsDropped, oc.shardsDropped, oc.eventsDropped, oc.netOpsDropped,
                         oc.netLogDropped, s.droppedOutgoing);
+
         }
         const WireStats ws = p.session().link().wire();
         maxDg = std::max(maxDg, ws.maxDatagram);

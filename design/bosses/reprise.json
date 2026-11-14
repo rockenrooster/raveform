@@ -25,6 +25,13 @@
  ],
  "numbers": {
   "health": 9000,
+  "damageScale": {
+   "armBeforeTheMedley": 0.25,
+   "closedCore": 0.25,
+   "armNotSoloing": 0.25,
+   "waveSegmentOffTheCrest": 0.25,
+   "note": "wherever the page says a part cannot be hurt yet it takes a quarter; in the Medley the closed core's quarter goes to the soloist's sixth"
+  },
   "coreRadius": 80.0,
   "armLength": 300.0,
   "turn": "one revolution every eight bars; it keeps 450 to 650 wu from the nearest player as Kaleidos does",

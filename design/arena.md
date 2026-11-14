@@ -210,7 +210,7 @@ GAME_DESIGN 9 called this structure 'Prism'; it is the Lens here so that it is n
 
 | Track | Structures | Events (one is drawn; two from Track 4) |
 |---|---|---|
-| 1 | Vault | Comet |
+| 1 | none | Comet |
 | 2 | Vault, Pylon × 2 | Vault Drop, Comet |
 | 3 | Vault, Pylon, Rift | Rift Surge, Vault Drop, Comet |
 | 4 | Bumper × 3, Vault, Rift | Elite Hunt, Meteor Rain |
@@ -221,4 +221,11 @@ GAME_DESIGN 9 called this structure 'Prism'; it is the Lens here so that it is n
 | 9 | Current × 2, Lens, Rift × 2 | Storm Cell, Eclipse |
 | 10 | Vault, Pylon, Rift, Bumper, Current, Lens | Elite Hunt, Meteor Rain, Convoy, Storm Cell |
 
-Track 1 has no event before its third cycle (the Comet). In the loop each Track keeps its list.
+Track 1 has two cycles since play test 3 and its Comet comes in the Groove of the second. In the
+loop each Track keeps its list. An event never outlasts its Groove: every Groove is 8 bars now, and
+an event written longer ends with it (the Elite Hunt's twelve bars are eight).
+
+**A Vault says what it is** (play test 3: after a retry the owner took Track 1's Vault, standing
+alone on the first downbeat, for a dead boss's body). Track 1 has no structure. From Track 2 a
+Vault carries its name, `VAULT`, as world text above it (cap 22, gold) until its first hit, and a
+gold edge chevron while it is off screen within 1,200 wu, like any pickup worth going to.

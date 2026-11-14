@@ -292,6 +292,13 @@ const FightSound kRows[] = {
      rc(Recipe::Zap), false, 0.5f, 0, 0},
     {BossCue::StWarn, "arena.md", "Storm Cell: a crackle that rises as it nears", "a held crackle voice (a short sweep plays)", SoundPlay::Recipe,
      rc(Recipe::Sweep), false, 0.3f, 1, 0},
+    // ---- Play test 3 (GAME_DESIGN 7.6, "Every hit on a boss is seen and heard"); the sim sends one of each a 1/32 step, f the
+    // step's gain within its beat (1, then 0.7 of the step before, down to 0.3), which no row reads yet.
+    {BossCue::HitWeak, "GAME_DESIGN 7.6", "a shot on a weak point: a bright tick in the Track's key, counted on the 1/32 step like kills",
+     "a bright tick of its own and the step's gain (f) (the glass on the chord's root plays, quietly)", SoundPlay::Recipe, rc(Recipe::Glass), false,
+     0.22f, 0, 0},
+    {BossCue::HitArmour, "GAME_DESIGN 7.6", "a shot on armour: a dull low knock, counted on the 1/32 step like kills",
+     "a dull low knock and the step's gain (f) (the tom plays, quietly)", SoundPlay::Recipe, rc(Recipe::Tom), false, 0.3f, 0, 0},
 };
 static_assert(sizeof(kRows) / sizeof(kRows[0]) == static_cast<u32>(BossCue::Count), "one row per BossCue, in its order");
 }  // namespace

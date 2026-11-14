@@ -75,6 +75,8 @@ void World::eliteBar(const Phrase& ph, double land) {
         const SpeciesTable::RosterEntry& r = species_->roster[k];
         const Family f = species_->get(r.species).family;
         if (!familyBuilt(f) || f == Family::Shoal || f == Family::Wyrm || f == Family::Tether) continue;
+        if (static_cast<float>(bullets_.count) > kBulletPoolShooters * static_cast<float>(Bullets::kCap) && species_->get(r.species).shoots())
+            continue;  // M5 part 7 (GAME_DESIGN 6.6): no shooters while the pool is above 70%
         const bool debuted = inLoop(ph.track, d.songs) ? r.track <= d.songs : (r.track < ph.track || (r.track == ph.track && r.cycle <= ph.cycle));
         if (debuted) cand[n++] = r.species;
     }

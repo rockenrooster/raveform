@@ -260,7 +260,7 @@ Nothing in the game requires a Perfect Dash (rule R7), and nothing here does: an
 | Moves | It circles the nearest player leaving a lethal trail that lasts two bars: each lap takes three beats, starts and ends at the same point, and is 50 wu tighter than the last (300, 250, 200, 150) |
 | Pattern | Beat 1 of every bar: the knot. It stands still for the beat where the lap began, tying the trail's end to its start |
 |  | Beats 2 to 4: the next lap, 50 wu inside the last. The cage's centre is where the player stood at the first knot; it does not follow |
-|  | After the fourth lap, on the next bar line, the cage goes off: every trail segment alive bursts 40 wu wide. The middle of the last lap is clear; near the trail is not. Then a new cage, round wherever the player is |
+|  | After the fourth lap, on the next bar line, the cage goes off: every trail segment alive bursts 40 wu wide. It is a blast, not a beam, so look.md's 12 wu line for lethal beams does not bind it; it is drawn as an area is (two danger edge lines 40 wu apart and a fill of at most 0.12 for its half beat), never as a filled bar. The middle of the last lap is clear; near the trail is not. Then a new cage, round wherever the player is |
 |  | A Dash crosses a trail unharmed |
 | **× 2** | The knot: for the beat it stands still on every One, damage x 2. On its laps it takes x 1 and moves at about 1,000 wu/s |
 | Half health | Warp and weft: a second Weaver draws the other way round, a lap of its own between the first one's laps, its knot on beat 3 |
@@ -281,7 +281,7 @@ The cage is drawn where the player stood, not where they are: leaving it early i
 | Pattern | It swallows every player shot that reaches it and takes no harm. Its four rings light from the inside out as the bar's fill rises |
 |  | On every One it gives back what the last bar fed it: a ring of bullets, one for every 3 damage swallowed, at most 48, 220 wu/s |
 |  | Its stomach holds 5% of the Track's mini-boss health in one bar. Fed more than that inside a bar, it chokes: no ring on the next One, and for that whole bar its rings are gold and it cannot swallow |
-| **× 2** | Choked: for the bar after it is overfed it takes real damage, x 2. That is the only time it can be hurt |
+| **× 2** | Choked: for the bar after it is overfed it takes real damage, x 2. While it swallows it takes a quarter (M5, GAME_DESIGN 7.6: it was none); the swallowed damage still counts in full toward its fill |
 | Half health | It holds half as much again, drifts at 90 wu/s, and gives the bar back as two rings, on beats 1 and 3 |
 | Death | It bursts: a ring of Shards, one for everything it swallowed in the fight, to 300 |
 | Sound | Each swallowed shot is a soft low thup, a step higher for each ring lit, so the fill can be heard; choking is the gong with the bed low-passed for the bar; a ring given back is a reversed cymbal into the One and a stab |
