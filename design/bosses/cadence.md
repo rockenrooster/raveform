@@ -1,5 +1,9 @@
 # CADENCE — boss of Track 7, Afterglow
 
+> **M5, 2026-11-13.** Armour takes a quarter: a closed pillar takes 0.25 of a shot's damage, where this
+> page says only the open one can be hurt (`numbers.damageScale` in the data; GAME_DESIGN 7.6, "A boss's rule
+> is a bonus, not a wall"). Hint line (screens.md): `SHOOT THE SILENT ONE`. The health is tuned with the novice bot.
+
 The boss is the chord progression. Four great bodies stand round the players, one for each chord; the one whose chord the band is playing is silent and open, and the other three fire.
 
 156 BPM, D flat major: D flat, A flat, B flat minor, G flat (I, V, vi, IV). Data: `design/bosses/cadence.json` (load it, do not retype it). Picture: `design/previews/bosses_7_10.png`.
