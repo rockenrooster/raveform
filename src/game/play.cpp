@@ -412,7 +412,9 @@ void Play::afterTick() {
     holdFight();  // M5 --fight ...:hold (benchmarks)
     if (opt_.loadoutMax) maxLoadout();  // M5 --loadout max (benchmarks)
     // M5: the fights' held voices end on time, and all of them when no fight is on.
-    if (bandDrives_) updateFightVoices(*band_, fightVoices_, band_->view().heardTick, !w.boss().active || w.boss().dying);
+    if (bandDrives_)  // (M5 audio: the held voices follow the world: this device's seat, the band's offset)
+        updateFightVoices(*band_, fightVoices_, band_->view().heardTick, !w.boss().active || w.boss().dying, &w, seat_,
+                          coop() ? netBandOffset_ : clock_.offset());
     bossHintTick(w);
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];

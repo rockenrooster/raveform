@@ -530,7 +530,7 @@ void Band::update(i64 displayLeadNs) {
     releaseHeard();
     computeShots(t0, displayLeadNs);
     if (fullLoad_ && maxLoad_) {
-        Command feed[40];
+        Command feed[64];
         const u32 n = maxLoadFrame(fullFrame_++, feed, countOf(feed));
         for (u32 i = 0; i < n; ++i) post(feed[i]);
     } else if (fullLoad_) {

@@ -111,8 +111,23 @@ enum class Recipe : u8 {
                    // semitones (default 12)
     DrivenKick,    // the Track's kick through more drive: tanh(p1 x kick) (p1 default 3), its peak kept
     RimShot,       // a rim shot at a note (Carom King's walls: chordNote(0..3, 5, NoteFrom::ChordTone))
+    // Appended 2026-11-13, the fights' pending sounds (game/pending_sounds.cpp; docs/PROGRESS_m5_audio.md).
+    Clap,          // the band's clap (the Moth Queen's burst on the downbeat)
+    Snare,         // the band's snare; at a low gain a ghost note (a mirage's blink, "a soft tick on the snare")
+    Stab,          // the band's stab synth on the music's stab bus: the chord at the tick (midi -1), or up to five notes given
+                   // with stabNotes(); gain = its velocity (1.2 allowed); p1 = its length x (default 1)
+    Crack,         // a glass crack: a 3 ms burst of 3-9 kHz noise into the glass's three sines (a note's pitch class, octave 7)
+    CrackleShot,   // the crackle as a one-shot (baked): p1 = beats long (default 1); p2 = 1: swelling (density and level rising
+                   // to its end, which lands on the tick given: the Weaver's cage "swelling into the chord's stab")
+    DashReverse,   // the Dash's sweep reversed (the Mirror Mimic's late Dash)
+    Thup,          // Gravity Rounds' soft low thup at a note (default its own, about 120 Hz; the Deep Well's swallow)
+    SubSine,       // voice: a sine at a note, held (Event Horizon's drone); setVoice glides it
+    EliteGated,    // the elite's arrival fifth (in the Track's key) gated on the eighths from the tick: sounding on the beat's first
+                   // eighth, silent on its second (traits.md Phasing)
     Count
 };
+// The held recipes (startVoice); the rest are one-shots (playRecipe).
+constexpr bool recipeHeld(Recipe r) { return r == Recipe::Drone || r == Recipe::PadVoice || r == Recipe::Crackle || r == Recipe::SubSine; }
 constexpr u32 kRecipeCount = static_cast<u32>(Recipe::Count);
 constexpr u32 kRecipeVoices = 16;  // held voices the game addresses by slot (0..15): startVoice / setVoice / stopVoice
 
@@ -121,10 +136,25 @@ constexpr u32 kRecipeVoices = 16;  // held voices the game addresses by slot (0.
 // scale steps of the Track's scale, or semitones, or chord tones (0 root, 1 third, 2 fifth, 3 seventh, 4 octave, 5 the
 // third an octave up ...; found in the chord's own notes, else the scale's) above the chord's root in `octave` (MIDI
 // octaves: 4 holds 60..71). Scale steps and semitones may be negative (down).
-enum class NoteFrom : u8 { ScaleSteps, Semitones, ChordTone };
+// Appended 2026-11-13 (the fights' pending sounds): Arp, the bar's arpeggio note `amount` (0..15, the lead's own) with the
+// octave field as a shift (4: as written, 3: an octave down); ArpRank, the bar's arpeggio's distinct pitches from the lowest
+// (amount 0, 1, ...; past the last, an octave up), the octave field a shift as for Arp; Lead, a player's last lead note
+// (the octave field: the player) plus `amount` semitones.
+enum class NoteFrom : u8 { ScaleSteps, Semitones, ChordTone, Arp, ArpRank, Lead };
 constexpr i32 kChordNote = 0x10000;  // a `midi` at or above this is a chordNote()
 constexpr i32 chordNote(i32 amount, i32 octave = 4, NoteFrom from = NoteFrom::ScaleSteps) {
     return kChordNote | (static_cast<i32>(from) << 12) | ((octave & 15) << 8) | ((amount + 128) & 255);
+}
+// A chordNote resolved `ticks` (up to 8191) before the tick it plays on: an Arpeggiator block sounds its own note (the one of
+// the step it left on) when it passes the player's row.
+constexpr i32 chordNoteAt(i32 note, i32 ticksBefore) { return note | ((ticksBefore & 8191) << 17); }
+// Recipe::Stab's notes (MIDI, up to five), for the `midi` of playRecipe: a chord that is not the bar's (Cadence's pillars, the
+// Blink Star's five).
+constexpr i32 kStabNotes = 0x40000000;
+constexpr i32 stabNotes(i32 n0, i32 n1 = 0, i32 n2 = 0, i32 n3 = 0, i32 n4 = 0) {
+    // Each note as 0..63 above MIDI 36 (C2..D#7); 0 for none (the root C2 cannot be given, nor wanted).
+    const auto p = [](i32 n) { return n <= 36 || n > 99 ? 0 : n - 36; };
+    return kStabNotes | p(n0) | (p(n1) << 6) | (p(n2) << 12) | (p(n3) << 18) | (p(n4) << 24);
 }
 
 }  // namespace rf::audio

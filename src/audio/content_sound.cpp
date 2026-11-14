@@ -43,9 +43,23 @@ float recipeLevel(Recipe r, const SoundParams& s) {
         case Recipe::TomRoll: return s.mix.pulse;
         case Recipe::DrivenKick: return s.mix.kick;
         case Recipe::RimShot: return 0.25f;           // a woodblock's neighbour (engine choice)
+        // M5, the fights' pending sounds: the band's own voices at their mix levels; the rest beside their neighbours.
+        case Recipe::Clap: return s.mix.clap;
+        case Recipe::Snare: return s.mix.snare;
+        case Recipe::Stab: return 1.0f;               // a velocity on the stab bus (the stab's own mix level applies there)
+        case Recipe::Crack: return 0.15f;             // the glass's
+        case Recipe::CrackleShot: return 0.08f;       // Burn's crackle level
+        case Recipe::DashReverse: return sfxLevel(Sfx::Dash);
+        case Recipe::Thup: return s.mix.pulse;        // the tom's
+        case Recipe::SubSine: return s.mix.impact * 0.5f;  // the impact's sine, held under the band (engine choice)
+        case Recipe::EliteGated: return sfxLevel(Sfx::Elite);
         default: return 0.2f;
     }
 }
+
+// M5 follow-up (engine choice): Colossus's ram toms were +3.4 dB over the music (render upgrade-levels); -3.4 dB brings them
+// level with it.
+constexpr float kColossusRam = 0.676f;
 
 // Content voices: the game's held slots, the one-shot SawGlides, a Burn crackle a player, then the upgrades' own: the
 // Sweeper's drone, a Beam drone a player, Standing Wave's held notes.
@@ -113,6 +127,18 @@ struct Engine::ContentVoice {
     u32 burstLeft = 0, gapLeft = 0;
     float burstEnv = 0.0f, bp1 = 0.0f, bp2 = 0.0f;
     Random rng{1};
+    // M5 (the fights' pending sounds): its reverb send above the effects' (choir.md's pad voice: 0.5 in all); a chordNote it
+    // follows from bar to bar (VoiceStart mods[6]: a Rift's drone on the chord's bass note), its parts as encodeNote's.
+    float send = 0.0f;
+    bool follow = false;
+    u8 followNote[3] = {};
+    float base = 0.0f;  // its gain times the recipe's level (setVoice's new pan)
+    // M5 audio (a fix): Standing Wave's next held note takes this slot on the frame it starts (restartAt), not on the block
+    // being planned, so what was ringing in the slot is cut where the note begins, whatever the device's callbacks.
+    i64 restartAt = -1;
+    i16 reNote = 0;
+    float reGain = 0.0f, rePan = 0.0f;
+    u32 reLength = 0;
 };
 
 bool Engine::initContent() {
@@ -127,11 +153,16 @@ void Engine::freeContent() {
 
 void Engine::stopContent() {
     if (!content_) return;
-    for (u32 i = 0; i < kContentVoices; ++i) content_[i].active = false;
+    for (u32 i = 0; i < kContentVoices; ++i) {
+        content_[i].active = false;
+        content_[i].restartAt = -1;
+    }
     for (auto& row : cueCount_)
         for (u8& n : row) n = 0;
     for (float& b : burn_) b = 0.0f;
     bedFramesLeft_ = 0;
+    aggCount_ = 0;
+    stabNotesN_ = 0;
 }
 
 i32 Engine::chordRootMidi(i32 octave) const {
@@ -189,14 +220,42 @@ const Chord& Engine::chordAtTick(double tick) const {
 }
 
 i32 Engine::resolveNote(const Command& c, double tick) const {
+    if (c.c == 253) return -1;  // M5: Recipe::Stab's notes (stabNotes_)
     if (c.c != 254) return c.c == 255 ? -1 : c.c;
-    // A chordNote (cues.h): amount above the chord's root in an octave, by scale steps, semitones or chord tones.
+    // A chordNote (cues.h): amount above the chord's root in an octave, by scale steps, semitones or chord tones. M5
+    // (chordNoteAt): resolved some ticks before the tick it plays on.
+    const u32 back = static_cast<u32>(c.mods[3]) | (static_cast<u32>(c.mods[4]) << 8);
+    if (back && tick >= 0.0) tick = tick - static_cast<double>(back) >= 0.0 ? tick - static_cast<double>(back) : 0.0;
     const Chord& ch = chordAtTick(tick);
     const NoteFrom from = static_cast<NoteFrom>(c.mods[0]);
     const i32 octave = c.mods[1], amount = static_cast<i32>(c.mods[2]) - 128;
     const i32 root = 12 * (octave + 1) + ch.bass % 12;
     i32 note = root;
-    if (from == NoteFrom::Semitones) {
+    if (from == NoteFrom::Arp) {
+        // M5: the bar's arpeggio (the lead's own notes), the octave field a shift (4: as written).
+        note = ch.arp[static_cast<u32>(amount < 0 ? 0 : amount) % 16] + 12 * (octave - 4);
+    } else if (from == NoteFrom::ArpRank) {
+        // M5: the arpeggio's distinct pitches from the lowest (the Arpeggiator's laneOfNote ranks them so); past the last, an
+        // octave up.
+        u8 sorted[16];
+        u32 n = 0;
+        for (u32 i = 0; i < 16; ++i) {
+            bool seen = false;
+            for (u32 j = 0; j < n; ++j) seen = seen || sorted[j] == ch.arp[i];
+            if (seen) continue;
+            u32 at = n++;
+            while (at && sorted[at - 1] > ch.arp[i]) {
+                sorted[at] = sorted[at - 1];
+                --at;
+            }
+            sorted[at] = ch.arp[i];
+        }
+        const u32 k = static_cast<u32>(amount < 0 ? 0 : amount);
+        note = (n ? sorted[k % n] + 12 * static_cast<i32>(k / n) : root) + 12 * (octave - 4);
+    } else if (from == NoteFrom::Lead) {
+        // M5: a player's last lead note (the octave field: the player) and semitones above it (a Lens: a fifth).
+        note = playerLastNote(static_cast<u32>(octave) < kMaxPlayers ? static_cast<u32>(octave) : 0u) + amount;
+    } else if (from == NoteFrom::Semitones) {
         note = root + amount;
     } else if (from == NoteFrom::ChordTone) {
         const i32 k = amount < 0 ? 0 : amount;
@@ -235,7 +294,8 @@ void Engine::startContentVoice(ContentVoice& v, Recipe r, i32 midi, float gain, 
     v.note = static_cast<i16>(midi);
     v.rng.reseed(static_cast<u64>(frame_) * 31 + static_cast<u64>(r));
     const float sr = static_cast<float>(sr_);
-    panGains(pan, gain * recipeLevel(r, *sp_), v.gl, v.gr);
+    v.base = gain * recipeLevel(r, *sp_);
+    panGains(pan, v.base, v.gl, v.gr);
     v.gain = v.gainTarget = 1.0f;
     v.attackStep = 1.0f / (0.005f * sr);
     v.releaseMul = std::exp(-1.0f / (0.15f * sr));
@@ -290,6 +350,12 @@ void Engine::startContentVoice(ContentVoice& v, Recipe r, i32 midi, float gain, 
             v.k = 1.0f / 0.9f;
             v.c = svfCoefs(svfG(3500.0f, sr), v.k);
             break;
+        case Recipe::SubSine:
+            // M5 (horizon.md "The drone"): a sine at the note (saw[0] carries its phase and increment), 50 ms in, 300 ms out.
+            v.saw[0].dt = static_cast<float>(midiHz(midi) / sr_);
+            v.attackStep = 1.0f / (0.05f * sr);
+            v.releaseMul = std::exp(-1.0f / (0.3f * sr));
+            break;
         default: v.active = false; break;
     }
 }
@@ -320,6 +386,28 @@ void Engine::holdDrone(u32 slot, bool on, i32 midi, float cutoff, float gain, u8
     }
 }
 
+void Engine::followChordVoices(i64 barFrame) {
+    // M5: a held voice started on a chordNote that follows the chord (a Rift's drone on the chord's bass note) glides to the
+    // new bar's over 20 ms, as the upgrades' drones do.
+    for (u32 i = 0; i < kRecipeVoices; ++i) {
+        ContentVoice& v = content_[i];
+        if (!v.active || !v.follow || v.releasing) continue;
+        Command k;
+        k.c = 254;
+        k.mods[0] = v.followNote[0];
+        k.mods[1] = v.followNote[1];
+        k.mods[2] = v.followNote[2];
+        const i32 midi = resolveNote(k, -1.0);
+        if (midi < 0 || midi == v.note || v.saw[0].dt <= 0.0f) continue;
+        const double hz = midiHz(midi);
+        v.retune[0] = static_cast<float>(hz / sr_);
+        v.retune[1] = v.retune[0] * (v.saw[1].dt / v.saw[0].dt);
+        v.retuneAt = barFrame;
+        v.retuneN = 0;
+        v.note = static_cast<i16>(midi);
+    }
+}
+
 void Engine::playRecipeAt(Recipe r, i32 midi, float gain, float pan, i64 frame, double tick, float p1, float p2) {
     const float level = recipeLevel(r, *sp_) * gain;
     const double beatS = 60.0 / trackBpm();
@@ -337,6 +425,11 @@ void Engine::playRecipeAt(Recipe r, i32 midi, float gain, float pan, i64 frame, 
         }
         case Recipe::Gong: {  // the bell two octaves under the note (default: the chord's root, octave 5)
             const i32 note = (midi >= 0 ? midi : chordRootMidi(5)) - 24;
+            if (p1 >= 1.0f) {  // M5 (traits.md Armored: "a gong, short"): the 0.7 s gong
+                const i32 id = bank_->recipe(r, note, 1);
+                if (id >= 0) playSample(id, Bus::Sfx, frame, level, pan, static_cast<float>(std::exp2((note - bank_->sample(id).midi) / 12.0)));
+                break;
+            }
             pitched(note, note);
             break;
         }
@@ -380,8 +473,13 @@ void Engine::playRecipeAt(Recipe r, i32 midi, float gain, float pan, i64 frame, 
             const double want = (p1 > 0.0f ? p1 : 1.0f) * beatS * sr_;
             const double have = bank_->sample(id).frames;
             const float rate = want > have ? static_cast<float>(have / want) : 1.0f;
-            const double from = want > have ? 0.0 : have - want;
-            playSample(id, Bus::Sfx, frame - static_cast<i64>(want), level, pan, rate, from);
+            double from = want > have ? 0.0 : have - want;
+            i64 start = frame - static_cast<i64>(want);
+            if (start < frame_) {  // M5: asked for late, it still ends on its tick (what is left of it plays)
+                from += static_cast<double>(frame_ - start) * rate;
+                start = frame_;
+            }
+            playSample(id, Bus::Sfx, start, level, pan, rate, from);
             break;
         }
         case Recipe::Roll: {
@@ -461,7 +559,60 @@ void Engine::playRecipeAt(Recipe r, i32 midi, float gain, float pan, i64 frame, 
             pitched(note, note);
             break;
         }
-        default: break;  // Drone, PadVoice, Crackle: held voices (startVoice)
+        // M5, the fights' pending sounds (appended).
+        case Recipe::Clap: playSample(bank_->clap(), Bus::Sfx, frame, level, pan); break;
+        case Recipe::Snare: playSample(bank_->snare(), Bus::Sfx, frame, level, pan); break;
+        case Recipe::Stab: {
+            // The band's stab, on its own bus (the music's: ducked, its reverb send): the chord at the tick, or the notes given.
+            // (Its notes reach here in stabNotes_: resolveNote can say one note only.)
+            if (stabNotesN_) {
+                playStabNotes(stabNotes_, stabNotesN_, gain, pan, frame, p1 > 0.0f ? p1 : 1.0f);
+            } else {
+                const Chord& ch = chordAtTick(tick);
+                playStab(ch, gain, pan, frame, p1 > 0.0f ? p1 : 1.0f);
+            }
+            stabNotesN_ = 0;
+            break;
+        }
+        case Recipe::Crack: {  // the note's pitch class in the seventh octave, as the glass's
+            const i32 note = 96 + ((midi >= 0 ? midi : chordRootMidi(5)) % 12);
+            pitched(note, note);
+            break;
+        }
+        case Recipe::CrackleShot: {
+            // A second baked: p1 beats of it (stretched only when it is longer), ending on the frame given when it swells.
+            const bool swell = p2 >= 1.0f;
+            const i32 id = bank_->recipe(r, -1, swell ? 1 : 0);
+            if (id < 0) break;
+            const double want = (p1 > 0.0f ? p1 : 1.0f) * beatS * sr_, have = bank_->sample(id).frames;
+            const float rate = want > have ? static_cast<float>(have / want) : 1.0f;
+            if (!swell) {
+                playSample(id, Bus::Sfx, frame, level, pan, rate);
+                break;
+            }
+            double from = want > have ? 0.0 : have - want;
+            i64 start = frame - static_cast<i64>(want);
+            if (start < frame_) {
+                from += static_cast<double>(frame_ - start) * rate;
+                start = frame_;
+            }
+            playSample(id, Bus::Sfx, start, level, pan, rate, from);
+            break;
+        }
+        case Recipe::DashReverse: playSample(bank_->recipe(r), Bus::Sfx, frame, level, pan); break;
+        case Recipe::Thup: {
+            const i32 id = bank_->recipe(r);
+            if (id >= 0) playSample(id, Bus::Sfx, frame, level, pan, midi >= 0 ? static_cast<float>(std::exp2((midi - 47) / 12.0)) : 1.0f);
+            break;
+        }
+        case Recipe::EliteGated: {
+            // The arrival's fifth as playSfx keys it (the Track's root), under a gate on the eighths from this frame.
+            const i32 id = bank_->sfx(Sfx::Elite);
+            if (id < 0 || bank_->sample(id).channels != 1) break;
+            gateSample(playSample(id, Bus::Sfx, frame, level, pan, keyRate_), framesFor(beatS * 0.5, sr_), frame > frame_ ? frame : frame_);
+            break;
+        }
+        default: break;  // Drone, PadVoice, Crackle, SubSine: held voices (startVoice)
     }
     emit(BeatKind::Sfx, frame, tick, static_cast<u8>(64 + static_cast<u32>(r)), 0, 0, level, 0, static_cast<double>(midi));
 }
@@ -492,15 +643,39 @@ void Engine::applyContentCommand(const Command& c) {
         }
         case CmdType::Recipe: {
             if (c.a >= kRecipeCount) break;
+            const Recipe r = static_cast<Recipe>(c.a);
             double tick = c.tick;
             if (c.when != Timing::AtTick) {
                 tick = std::ceil(tempo_.tickAt(static_cast<double>(frame_)) / 12.0) * 12.0;
                 // Without a tick, the ones that end on their tick start now and end p1 beats on.
-                const Recipe r = static_cast<Recipe>(c.a);
-                if (r == Recipe::Roll || r == Recipe::RevCymbal || r == Recipe::TomRoll)
+                if (r == Recipe::Roll || r == Recipe::RevCymbal || r == Recipe::TomRoll || (r == Recipe::CrackleShot && c.level >= 1.0f))
                     tick += (c.z > 0.0f ? c.z : (r == Recipe::Roll ? 4.0 : (r == Recipe::TomRoll ? 2.0 : 1.0))) * kPpq;
             }
-            playRecipeAt(static_cast<Recipe>(c.a), resolveNote(c, tick), c.x, c.y, frameOf(tick), tick, c.z, c.level);
+            const i32 midi = resolveNote(c, tick);
+            if (c.b == 1 && !recipeHeld(r)) {
+                // M5 (sound_m5.json: what a hit, a kill or a bounce triggers): aggregated, one shot of it at its note on a
+                // 1/32 step (flushAgg: the first step at or after its tick, and not before the next), the latest pan.
+                const double now = tempo_.tickAt(static_cast<double>(frame_));
+                const double step = std::ceil((tick > now ? tick : now) / 12.0) * 12.0;
+                AggShot* s = nullptr;
+                for (u32 k = 0; k < aggCount_ && !s; ++k)
+                    if (agg_[k].r == r && agg_[k].midi == midi && agg_[k].tick == step) s = &agg_[k];
+                if (!s && aggCount_ < kAggShots) {
+                    s = &agg_[aggCount_++];
+                    *s = AggShot{r, midi, 0, c.x, c.y, c.z, c.level, step};
+                }
+                if (s) {
+                    s->count += c.mods[7] ? c.mods[7] : 1u;  // (mods[7]: how many at once, as a cue's count)
+                    s->pan = c.y;
+                    s->gain = std::fmax(s->gain, c.x);
+                }
+                break;
+            }
+            stabNotesN_ = 0;
+            if (c.c == 253)
+                for (u32 k = 0; k < 5; ++k)
+                    if (c.mods[k]) stabNotes_[stabNotesN_++] = c.mods[k];
+            playRecipeAt(r, midi, c.x, c.y, frameOf(tick), tick, c.z, c.level);
             break;
         }
         case CmdType::VoiceStart: {
@@ -511,6 +686,14 @@ void Engine::applyContentCommand(const Command& c) {
             ContentVoice& v = content_[c.a];
             startContentVoice(v, r, midi, c.x, c.y, c.z, 0.0f, 0.0f);
             v.held = true;
+            // M5: its own reverb send (mods[5], percent: choir.md's 0.5), and the chordNote it follows bar by bar (mods[6]).
+            if (c.mods[5]) v.send = std::fmax(0.0f, static_cast<float>(c.mods[5]) * 0.01f - kSfxReverbSend);
+            if (c.mods[6] && c.c == 254) {
+                v.follow = true;
+                v.followNote[0] = c.mods[0];
+                v.followNote[1] = c.mods[1];
+                v.followNote[2] = c.mods[2];
+            }
             break;
         }
         case CmdType::VoiceSet:
@@ -518,6 +701,7 @@ void Engine::applyContentCommand(const Command& c) {
                 ContentVoice& v = content_[c.a];
                 v.paramTarget = c.x;
                 if (c.y >= 0.0f) v.gainTarget = c.y;
+                if (c.mods[5]) panGains(c.level, v.base, v.gl, v.gr);  // M5: a new pan (a Rift's drone as the ship moves)
                 // M5 (cues.h, setVoice): a note to glide to over z seconds (a Voice's death falls, the held note rises).
                 if (c.c != 0 && c.c != 255 && v.active && v.kind != Recipe::Crackle && v.saw[0].dt > 0.0f) {
                     const i32 midi = resolveNote(c, -1.0);
@@ -543,8 +727,161 @@ void Engine::applyContentCommand(const Command& c) {
             muffleStep_ = 1.0f / (0.15f * static_cast<float>(sr_));
             bedFramesLeft_ = static_cast<i64>(static_cast<double>(c.y) * sr_);
             break;
+        // M5, the fights' pending sounds.
+        case CmdType::CutBed: {
+            const i64 from = c.when == Timing::AtTick ? frameOf(c.tick) : frame_;
+            if (c.y <= 0.0f) {
+                cutTo_ = frame_;  // lifted now (the gains ramp back)
+                cutHats_ = false;
+                break;
+            }
+            cutMask_ = static_cast<u16>(c.mods[0] | (c.mods[1] << 8));
+            cutHats_ = c.b == 1;
+            cutFrom_ = from > frame_ ? from : frame_;
+            cutTo_ = from + static_cast<i64>(static_cast<double>(c.y) * sr_);
+            break;
+        }
+        case CmdType::HighPassBed: {
+            if (c.x <= 0.0f) {
+                bedHpTo_ = frame_;
+                break;
+            }
+            if (c.x != bedHpHz_ || bedHpMix_ <= 0.0f) {
+                bedHpHz_ = c.x;
+                for (Biquad& b : bedHp_) b.setHighpass(c.x, sr_);
+            }
+            const i64 from = c.when == Timing::AtTick ? frameOf(c.tick) : frame_;
+            bedHpFrom_ = from > frame_ ? from : frame_;
+            bedHpTo_ = from + static_cast<i64>(static_cast<double>(c.y) * sr_);
+            break;
+        }
+        case CmdType::PadTone:
+            padToneTarget_ = c.x > 0.0f ? c.x : 1.0f;
+            padGainTarget_ = c.y >= 0.0f ? c.y : 1.0f;
+            padRampPerBlock_ = c.z > 0.0f ? static_cast<float>(kBlock) / (c.z * static_cast<float>(sr_)) : 1.0f;
+            break;
+        case CmdType::DelayBoost: {
+            const float boost = c.x > 0.0f ? c.x : 0.0f;
+            const u32 repeats = boost > 0.0f ? c.a : 0u;
+            if (boost != delayBoost_ || repeats != delayBoostRepeats_) {
+                delayBoost_ = boost;
+                delayBoostRepeats_ = repeats;
+                if (tr_) applyDelay();
+            }
+            break;
+        }
+        case CmdType::LeadEcho: leadEcho(c); break;
         default: break;
     }
+}
+
+void Engine::flushAgg(double tick) {
+    // The fights' aggregated recipes due on this 1/32 step: one shot each, its gain 1 - e^(-count / 2.5) (at most 1.6 x one).
+    u32 keep = 0;
+    for (u32 k = 0; k < aggCount_; ++k) {
+        const AggShot s = agg_[k];
+        if (s.tick > tick + 1e-6) {
+            agg_[keep++] = s;
+            continue;
+        }
+        playRecipeAt(s.r, s.midi, s.gain * aggGain(s.count), s.pan, frameOf(tick), tick, s.p1, s.p2);
+    }
+    aggCount_ = keep;
+}
+
+void Engine::applyCuts(u32 n) {
+    // CutBed: each bus of the mask ramps to silence inside the window and back outside it (8 ms), the rest stay as they are.
+    const float step = 1.0f / (0.008f * static_cast<float>(sr_));
+    bool any = false;
+    for (u32 b = 0; b < kBusCount; ++b) {
+        const bool masked = (cutMask_ >> b) & 1u;
+        float g = cutGain_[b];
+        if (!masked && g >= 1.0f) continue;
+        for (u32 ch = 0; ch < 2; ++ch) {
+            float gg = g;
+            float* x = bus_[b][ch];
+            for (u32 i = 0; i < n; ++i) {
+                const i64 at = frame_ + static_cast<i64>(i);
+                const float target = masked && at >= cutFrom_ && at < cutTo_ ? 0.0f : 1.0f;
+                gg = target < gg ? std::fmax(target, gg - step) : std::fmin(target, gg + step);
+                x[i] *= gg;
+            }
+            if (ch == 1) g = gg;
+        }
+        cutGain_[b] = g;
+        any = any || g < 1.0f || (masked && cutTo_ > frame_);
+    }
+    if (!any) cutMask_ = 0;  // over: nothing to do until the next cut
+}
+
+void Engine::stepPadTone(u32 n) {
+    // PadTone: linear, a whole unit (a doubling of the cutoff from 1 to 2, the gain from 0 to 1) over the ramp asked for.
+    const float r = padRampPerBlock_ * static_cast<float>(n) / static_cast<float>(kBlock);
+    const auto toward = [&](float& v, float target) {
+        const float d = target - v;
+        v = std::fabs(d) <= r ? target : v + (d > 0.0f ? r : -r);
+    };
+    toward(padTone_, padToneTarget_);
+    toward(padGain_, padGainTarget_);
+}
+
+i32 Engine::leadNoteAt(u32 player, double tick) const {
+    // The note the player's lead played on that tick: the latest at or before it (within a beat), else the arpeggio's there.
+    if (player < kMaxPlayers) {
+        const u32 head = leadMarkHead_[player];
+        for (u32 k = 0; k < kLeadMarks && k < head; ++k) {
+            const LeadMark& m = leadMarks_[player][(head - 1 - k) % kLeadMarks];
+            if (m.tick <= tick + 0.5) {
+                if (tick - m.tick <= static_cast<double>(kPpq)) return m.note;
+                break;
+            }
+        }
+    }
+    const Chord& ch = chordBack(tick);
+    const double inBar = std::fmod(tick < 0.0 ? 0.0 : tick, static_cast<double>(kTicksPerBar));
+    return ch.arp[static_cast<u32>(inBar / static_cast<double>(kTicksPerStep)) % 16];
+}
+
+const Chord& Engine::chordBack(double tick) const {
+    // The chord a past tick was played over (this Track's; at most the song's first bar), or a later one's (chordAtTick).
+    if (tick < 0.0 || !plan_ || !plan_->chord) return currentChord();
+    const i64 ahead = static_cast<i64>(tick) / kTicksPerBar - plan_->tick / kTicksPerBar;
+    if (ahead >= 0) return chordAtTick(tick);
+    const i64 bar = static_cast<i64>(chordBar_) - 1 + ahead;
+    return tr_->chordAtBar(static_cast<u32>(bar > 0 ? bar : 0));
+}
+
+void Engine::leadEcho(const Command& c) {
+    // M5 (feedback.md, minibosses.md Mirror Mimic, reprise.md, horizon.md): a note of a player's lead played again on the
+    // fight's own lead (kFightLeadPlayer, at most kFightLeadVoices notes at once): as recorded, mirrored about the chord's root,
+    // with its envelope reversed, or a note given; moved by octaves, bent, low-passed.
+    const u8 player = c.a < kMaxPlayers ? c.a : 0;
+    const LeadEchoMode mode = static_cast<LeadEchoMode>(c.b);
+    const double now = tempo_.tickAt(static_cast<double>(frame_));
+    const double tick = c.when == Timing::AtTick ? c.tick : now;
+    i32 note = 0;
+    if (mode == LeadEchoMode::Note) {
+        note = resolveNote(c, tick);  // a MIDI note or a chordNote (encodeNote: mods[0..4])
+        if (note < 0) return;
+    } else {
+        const double played = tick - static_cast<double>(c.level);
+        note = leadNoteAt(player, played);
+        if (mode == LeadEchoMode::Mirror) {
+            // As far below its chord's root as the note is above it (the root at or below the note).
+            const i32 rootPc = chordBack(played).bass % 12;
+            const i32 root = note - (((note - rootPc) % 12) + 12) % 12;
+            note = 2 * root - note;
+        }
+    }
+    note += 12 * static_cast<i8>(c.mods[6]);
+    if (note < 12 || note > 120) return;
+    const Timbre tb = c.mods[5] < static_cast<u8>(Timbre::Count) ? static_cast<Timbre>(c.mods[5]) : playerTimbre(player);
+    const i64 f = frameOf(tick < now ? now : tick);
+    const float bend = static_cast<float>(static_cast<i8>(c.mods[7]));
+    // A bend plays the note it lands on, gliding in from the note asked for (Event Horizon's count: down a fifth); a cutoff
+    // (Feedback's echo at 1.2 kHz, the second darker); the Reprise's Echo reversed.
+    shapeLead(playLead(kFightLeadPlayer, tb, static_cast<float>(note) + bend, 0.9f, sp_->mix.lead * c.x, c.y, f), -bend, c.z,
+              mode == LeadEchoMode::Reverse);
 }
 
 // The cues: on each 1/32 step (Storm Coil on each triplet eighth), one sound a kind a player, aggregated. A negative
@@ -612,8 +949,8 @@ void Engine::flushCues(i64 tickIn) {
                     playSample(bank_->sfx(Sfx::Dash), Bus::Sfx, frameOf(tick + beatTicks), sfxLevel(Sfx::Dash) * 0.5f, pan);
                     break;
                 case Cue::ShockstepDash:  // a tom on the root; a Perfect Dash a second a fifth above
-                case Cue::ColossusRam:
-                    playRecipeAt(Recipe::Tom, chordRootMidi(3), g, pan, f, tick, 0.0f, 0.0f);
+                case Cue::ColossusRam:    // (M5 follow-up: Colossus's toms brought level with the music)
+                    playRecipeAt(Recipe::Tom, chordRootMidi(3), cue == Cue::ColossusRam ? g * kColossusRam : g, pan, f, tick, 0.0f, 0.0f);
                     if (cue == Cue::ShockstepDash && value >= 1.0f) playRecipeAt(Recipe::Tom, chordRootMidi(3) + 7, g, pan, f, tick, 0.0f, 0.0f);
                     break;
                 case Cue::AegisBlock:  // conductor.json mods.aegis (f7cd516): 6 dB under the Shard chirp
@@ -967,11 +1304,13 @@ void Engine::leadUpgrades(u32 i, i64 tick, i64 inBar, u32 k, u8 note, float vel,
         const i64 every = acc >= 3 ? kPpq : (acc == 2 ? kTicksPerBar / 2 : kTicksPerBar);
         if (inBar % every == 0) {
             if (playerFusion(i, Fusion::StandingWave)) {
+                // (M5 audio: it takes its slot on its own frame: renderContent starts it there, cutting what rang in the slot)
                 ContentVoice& v = content_[kStandVoice + standNext_++ % kStandVoices];
-                startContentVoice(v, Recipe::PadVoice, note, kStandingWave * level, pan, 0.0f, 0.0f, 0.0f);
-                v.bus = Bus::Pad;
-                v.delay = f > frame_ ? static_cast<u32>(f - frame_) : 0u;
-                v.length = static_cast<u32>(frameOf(tk + static_cast<double>(kTicksPerBar)) - f);
+                v.restartAt = f > frame_ ? f : frame_;
+                v.reNote = static_cast<i16>(note);
+                v.reGain = kStandingWave * level;
+                v.rePan = pan;
+                v.reLength = static_cast<u32>(frameOf(tk + static_cast<double>(kTicksPerBar)) - f);
                 upgradeEvent(UpgradeSound::StandingWave, f, tk, kStandingWave * level, note);
             } else {
                 stabAcc_ += r.accentStab * level;
@@ -1074,8 +1413,15 @@ u32 maxLoadSetup(Command* out, u32 cap) {
                                     {Mod::RearGuard, 2},  {Mod::Syncopation, 2}, {Mod::BarLine, 3},   {Mod::Crescendo, 2},  {Mod::KickPulse, 3},
                                     {Mod::Afterparty, 2}, {Mod::Fork, 2},       {Mod::Arc, 3},        {Mod::Burn, 3},       {Mod::Shatter, 3},
                                     {Mod::GravityRounds, 2}};
-    // A Boost each: the heaviest on the lead (two more notes a step; Fractal's land later and overlap more).
-    static constexpr Boost kBoost[4] = {Boost::Fractal, Boost::Fractal, Boost::Chorus, Boost::Prism};
+    // M5 audio (the worst case has grown: two Boosts a player, and Fusions): two Boosts each, the heaviest where they cost on
+    // this device. The local player's lead takes the extra notes (Fractal's land later and overlap, Chorus two a step); a
+    // teammate's extra notes are its own device's, so theirs are the shared layers: Beam's drone each, Colossus's doubled bass,
+    // Chain Storm's zaps, Freeze Frame's high-pass on the music. The local player owns all eight Fusions (Quartet's four-part
+    // lead, Standing Wave's held pads, Murmuration's trill, Tesla Bloom's zaps ...; each takes its ingredients' part).
+    static constexpr Boost kBoost[4][2] = {{Boost::Fractal, Boost::Chorus},
+                                           {Boost::Beam, Boost::Colossus},
+                                           {Boost::Beam, Boost::ChainStorm},
+                                           {Boost::Beam, Boost::FreezeFrame}};
     for (u8 p = 0; p < 4; ++p) {
         put(cmd(CmdType::SetFire, p, 1));
         put(cmd(CmdType::SetTimbre, p, p));
@@ -1087,12 +1433,14 @@ u32 maxLoadSetup(Command* out, u32 cap) {
             for (u32 k = 0; k < m.c; ++k) m.mods[k] = stacks[first + k];
             put(m);
         }
-        put(cmd(CmdType::SetBoost, p, static_cast<u8>(kBoost[p]), 1));
+        put(cmd(CmdType::SetBoost, p, static_cast<u8>(kBoost[p][0]), 1));
+        put(cmd(CmdType::SetBoost, p, static_cast<u8>(kBoost[p][1]), 1));
+        if (p == 0) put(cmd(CmdType::SetFusions, p, 0xFF));
     }
     return n;
 }
 
-u32 maxLoadFrame(u32 frame, Command* out, u32 cap) {
+u32 maxLoadFrame(u32 frame, Command* out, u32 cap, bool fights) {
     u32 n = 0;
     const auto put = [&](CmdType t, u8 a, u8 b, u8 c, float x, Timing when = Timing::Now) {
         if (n >= cap) return;
@@ -1121,6 +1469,60 @@ u32 maxLoadFrame(u32 frame, Command* out, u32 cap) {
         if ((frame + p) % 2 == 1) put(CmdType::Cue, static_cast<u8>(Cue::GravityHit), p, 3, 0.0f, Timing::Next32);
         if (frame % 60 == p) put(CmdType::Cue, static_cast<u8>(Cue::BurnCount), p, 1, 20.0f, Timing::Next32);
     }
+    if (!fights) return n;
+    // M5 audio: the fights' sounds on top, more at once than any one moment of the game has (a fight's held voices and the
+    // arena's never sound together): the arena's three Rift drones following the chord and the Storm Cell's crackle, Event
+    // Horizon's sub, Feedback's Howl (the delay's sixteen taps, the pad's tone) and its echoes on the fight's own lead (a note
+    // every 1/16, four held at most), the aggregated hits (a Lens's glass, a Rift's toms, a Storm Cell's three zaps) every
+    // frame, a bar's stab and bell arpeggio, a beat's cut of the pads and bass every two seconds.
+    const auto fill = [&](CmdType t, u8 a, u8 b, float x, float y, float z, float level, i32 midi, u8 m5, u8 m6, u8 m7, Timing when = Timing::Now) {
+        if (n >= cap) return;
+        Command k;
+        k.type = t;
+        k.when = when;
+        k.a = a;
+        k.b = b;
+        k.x = x;
+        k.y = y;
+        k.z = z;
+        k.level = level;
+        encodeNote(k, midi);
+        k.mods[5] = m5;
+        k.mods[6] = m6;
+        k.mods[7] = m7;
+        out[n++] = k;
+    };
+    if (frame == 0) {
+        for (u8 s = 0; s < 3; ++s)
+            fill(CmdType::VoiceStart, static_cast<u8>(10 + s), static_cast<u8>(Recipe::Drone), 0.7f, -0.5f + 0.5f * s, 300.0f, 0.0f,
+                 chordNote(s == 0 ? 0 : (s == 1 ? 4 : 8), 2), 0, 1, 0);
+        fill(CmdType::VoiceStart, 13, static_cast<u8>(Recipe::Crackle), 1.0f, 0.3f, 80.0f, 0.0f, -1, 0, 0, 0);
+        fill(CmdType::VoiceStart, 8, static_cast<u8>(Recipe::SubSine), 0.6f, 0.0f, 0.0f, 0.0f, chordNote(0, 1, NoteFrom::ChordTone), 0, 0, 0);
+        fill(CmdType::DelayBoost, 16, 0, 0.25f, 0.0f, 0.0f, 0.0f, -1, 0, 0, 0);
+        fill(CmdType::PadTone, 0, 0, 0.55f, 0.5f, 0.15f, 0.0f, -1, 0, 0, 0);
+    }
+    if (frame % 15 == 0)  // the drones' cutoff sweeping (the Build), the crackle's density
+        for (u8 s = 0; s < 3; ++s)
+            fill(CmdType::VoiceSet, static_cast<u8>(10 + s), 0, 300.0f + 2100.0f * static_cast<float>((frame / 15 + s * 3) % 8) / 7.0f, -1.0f, 0.0f, 0.0f, -1, 0, 0, 0);
+    if (frame % 4 == 0)
+        fill(CmdType::LeadEcho, static_cast<u8>(frame / 4 % 4), static_cast<u8>(LeadEchoMode::Recorded), 0.355f, 0.8f, 1200.0f, 384.0f, -1, 255, 0xFF, 0);
+    fill(CmdType::Recipe, static_cast<u8>(Recipe::Glass), 1, 0.25f, 0.2f, 0.0f, 0.0f, chordNote(7, 0, NoteFrom::Lead), 0, 0, 2, Timing::Next32);
+    fill(CmdType::Recipe, static_cast<u8>(Recipe::Tom), 1, 0.5f, -0.2f, 0.0f, 0.0f, -1, 0, 0, 4, Timing::Next32);
+    for (i32 k = 0; k < 3; ++k)
+        fill(CmdType::Recipe, static_cast<u8>(Recipe::Zap), 1, 0.5f, 0.0f, 0.0f, 0.0f, chordNote(k, 5, NoteFrom::ChordTone), 0, 0, 3, Timing::Next32);
+    if (frame % 30 == 0) {
+        fill(CmdType::Recipe, static_cast<u8>(Recipe::Stab), 0, 1.2f, 0.0f, 0.0f, 0.0f, -1, 0, 0, 0, Timing::Next32);
+        for (i32 k = 0; k < 4; ++k)
+            fill(CmdType::Recipe, static_cast<u8>(Recipe::Bell), 0, 0.8f, 0.0f, 0.0f, 0.0f, chordNote(k, 5, NoteFrom::ChordTone), 0, 0, 0, Timing::Next32);
+    }
+    if (frame % 120 == 60) {
+        Command k;
+        k.type = CmdType::CutBed;
+        k.mods[0] = static_cast<u8>((1u << static_cast<u32>(Bus::Pad)) | (1u << static_cast<u32>(Bus::Bass)));
+        k.mods[1] = static_cast<u8>(((1u << static_cast<u32>(Bus::Pad)) | (1u << static_cast<u32>(Bus::Bass))) >> 8);
+        k.y = 0.4f;
+        if (n < cap) out[n++] = k;
+    }
     return n;
 }
 
@@ -1134,19 +1536,19 @@ void Engine::renderContent(u32 n) {
     const float sr = static_cast<float>(sr_);
     const ConductorRules& rules = music_->conductor;
     const bool script = mode_ == Mode::Script;
-    for (u32 vi = 0; vi < kContentVoices; ++vi) {
-        ContentVoice& v = content_[vi];
-        if (!v.active) continue;
-        if (v.delay >= n) {
-            v.delay -= n;
-            continue;
+    // A voice's samples [its delay, end) of this block.
+    const auto run = [&](ContentVoice& v, u32 end) {
+        if (!v.active) return;
+        if (v.delay >= end) {
+            v.delay -= end;
+            return;
         }
         const u32 i0 = v.delay;
         v.delay = 0;
         const u32 bus = static_cast<u32>(script ? Bus::Sfx : v.bus);
         float* L = bus_[bus][0];
         float* R = bus_[bus][1];
-        for (u32 i = i0; i < n; ++i) {
+        for (u32 i = i0; i < end; ++i) {
             const i64 at = frame_ + static_cast<i64>(i);
             if (v.retuneAt >= 0 && at >= v.retuneAt) {  // M5: a drone following the chord glides there over 20 ms (or as asked)
                 const u32 glideN = v.retuneN ? v.retuneN : framesFor(kDroneGlideS, sr_);
@@ -1185,7 +1587,20 @@ void Engine::renderContent(u32 n) {
                 }
             }
             float x = 0.0f;
-            if (v.kind == Recipe::Crackle) {
+            if (v.kind == Recipe::SubSine) {
+                // M5: a sine (Event Horizon's drone), gliding as setVoice asks.
+                x = sinTurns(v.saw[0].phase);
+                v.saw[0].phase += v.saw[0].dt;
+                if (v.saw[0].phase >= 1.0f) v.saw[0].phase -= 1.0f;
+                if (v.glideLeft) {
+                    --v.glideLeft;
+                    v.saw[0].dt *= v.glideMul;
+                    if (!v.glideLeft && v.glideTo[0] > 0.0f) {
+                        v.saw[0].dt = v.glideTo[0];
+                        v.glideTo[0] = 0.0f;
+                    }
+                }
+            } else if (v.kind == Recipe::Crackle) {
                 // M5 (cost): the bursts as a Poisson process drawn burst by burst (the gap to the next one exponential at the
                 // density), not a draw every sample.
                 if (!v.burstLeft) {
@@ -1233,12 +1648,33 @@ void Engine::renderContent(u32 n) {
             const float y = x * v.env * v.gain;
             L[i] += y * v.gl;
             R[i] += y * v.gr;
+            if (v.send > 0.0f && !script) {  // M5: its own reverb send above the effects' (choir.md: 0.5)
+                sendL_[i] += y * v.gl * v.send;
+                sendR_[i] += y * v.gr * v.send;
+                sendUsed_ = true;
+            }
             ++v.age;
             if (letGo && v.env < 1e-4f) {
                 v.active = false;
                 break;
             }
         }
+    };
+    for (u32 vi = 0; vi < kContentVoices; ++vi) {
+        ContentVoice& v = content_[vi];
+        if (v.restartAt >= 0 && v.restartAt < frame_ + static_cast<i64>(n)) {
+            // M5 audio: Standing Wave's next note takes the slot on its own frame (what rang there until then).
+            const u32 cut = v.restartAt > frame_ ? static_cast<u32>(v.restartAt - frame_) : 0u;
+            run(v, cut);
+            const i16 note = v.reNote;
+            const float gain = v.reGain, pan = v.rePan;
+            const u32 length = v.reLength;
+            startContentVoice(v, Recipe::PadVoice, note, gain, pan, 0.0f, 0.0f, 0.0f);  // (restartAt back to -1)
+            v.bus = Bus::Pad;
+            v.length = length;
+            v.delay = cut;
+        }
+        run(v, n);
     }
 }
 

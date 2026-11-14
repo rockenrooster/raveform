@@ -1000,7 +1000,7 @@ void testRecipesAndCues() {
         Command c;
         if (isRecipe) {
             const Recipe r = static_cast<Recipe>(k);
-            const bool held = r == Recipe::Drone || r == Recipe::PadVoice || r == Recipe::Crackle;
+            const bool held = recipeHeld(r);  // M5 audio: and the sub sine
             c = cmd(held ? CmdType::VoiceStart : CmdType::Recipe, held ? 5 : static_cast<u8>(r), held ? static_cast<u8>(r) : 0, 255, 1.0f);
             c.z = r == Recipe::Crackle ? 40.0f : (r == Recipe::Drone ? 800.0f : 1.0f);
             c.level = r == Recipe::SawGlide || r == Recipe::Sweep ? 1.0f : 0.0f;
@@ -1014,7 +1014,7 @@ void testRecipesAndCues() {
         runEngine(e, cap, static_cast<u64>(kRate) * 4, 256);
         if (isRecipe) {
             const Recipe r = static_cast<Recipe>(k);
-            if (r == Recipe::Drone || r == Recipe::PadVoice || r == Recipe::Crackle) {
+            if (recipeHeld(r)) {
                 // Stop it: the voice releases to silence.
                 e.post(cmd(CmdType::VoiceStop, 5, 0, 0, 0.1f));
                 Capture tail;
@@ -1909,9 +1909,9 @@ void testUpgradesWorstCase() {
         auto* s = new Session(400000);
         s->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
         for (u32 i = 0; i < n; ++i) s->post(setup[i]);
-        Command feed[40];
+        Command feed[64];
         for (u32 f = 0; f < 60 * 8; ++f) {
-            const u32 m = maxLoadFrame(f, feed, 40);
+            const u32 m = maxLoadFrame(f, feed, 64);
             for (u32 i = 0; i < m; ++i) s->post(feed[i]);
             s->run(kRate / 60, 240);
         }
@@ -1919,6 +1919,204 @@ void testUpgradesWorstCase() {
                   g_music->tracks[t].id, s->e.stats().steals.load(), static_cast<unsigned long long>(s->allocs), s->offGrid);
         std::printf("  worst case %s: voices peak %u (lead %u)\n", g_music->tracks[t].id, s->e.stats().voicesPeak.load(), s->e.stats().leadPeak.load());
         delete s;
+    }
+}
+
+// M5 audio, the fights' pending sounds: the bus cut (the pads and bass out for its window, back after it), the timed
+// high-pass, the pad's tone, a fight's lead notes (a recorded note an octave down, its mirror about the chord's root, a bend,
+// their cap), the aggregated recipes (one shot a 1/32 step at 1 - e^(-n / 2.5)), the gated fifth (silent on the off-eighths),
+// the stab of five notes; none allocates.
+struct BusTap {
+    double pad = 0.0, bass = 0.0, drums = 0.0;
+    double low = 0.0, all = 0.0;  // the master: below ~150 Hz (a one-pole low-pass), and all of it
+    float lp = 0.0f;
+};
+void busTap(void* user, const float* const* busL, const float* const*, const float*, const float*, u32 n) {
+    auto* t = static_cast<BusTap*>(user);
+    for (u32 i = 0; i < n; ++i) {
+        t->pad += static_cast<double>(busL[static_cast<u32>(Bus::Pad)][i]) * busL[static_cast<u32>(Bus::Pad)][i];
+        t->bass += static_cast<double>(busL[static_cast<u32>(Bus::Bass)][i]) * busL[static_cast<u32>(Bus::Bass)][i];
+        t->drums += static_cast<double>(busL[static_cast<u32>(Bus::Drums)][i]) * busL[static_cast<u32>(Bus::Drums)][i];
+    }
+}
+void testFightSounds() {
+    const double bar = barFrames(0);
+    // The cut and the pad's tone: Track 1's Drop, the pads and the bass measured on their buses (stems) bar by bar.
+    {
+        auto* s = new Session(100000);
+        BusTap tap;
+        s->e.setStemTap(busTap, &tap);
+        s->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
+        s->post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+        s->post(cmd(CmdType::SetSection, static_cast<u8>(Section::Drop)));
+        s->post(cmd(CmdType::HoldSection, 1));
+        s->run(static_cast<u64>(bar * 2));
+        const auto barOf = [&]() {
+            tap = BusTap{};
+            s->run(static_cast<u64>(bar));
+            return tap;
+        };
+        const BusTap open = barOf();
+        Command cut = cmd(CmdType::CutBed);
+        cut.mods[0] = static_cast<u8>((1u << static_cast<u32>(Bus::Pad)) | (1u << static_cast<u32>(Bus::Bass)));
+        cut.mods[1] = static_cast<u8>(((1u << static_cast<u32>(Bus::Pad)) | (1u << static_cast<u32>(Bus::Bass))) >> 8);
+        cut.y = static_cast<float>(bar / kRate * 1.2);
+        s->post(cut);
+        const BusTap shut = barOf();
+        s->run(static_cast<u64>(bar));
+        const BusTap back = barOf();
+        CHECK_MSG(open.pad > 0.0 && open.bass > 0.0 && shut.pad < 0.01 * open.pad && shut.bass < 0.01 * open.bass && shut.drums > 0.5 * open.drums,
+                  "the cut: pad %.3g -> %.3g, bass %.3g -> %.3g, drums %.3g -> %.3g", open.pad, shut.pad, open.bass, shut.bass, open.drums, shut.drums);
+        CHECK_MSG(back.pad > 0.5 * open.pad && back.bass > 0.5 * open.bass, "after the cut: pad %.3g, bass %.3g", back.pad, back.bass);
+        Command tone = cmd(CmdType::PadTone, 0, 0, 0, 1.0f);
+        tone.y = 0.5f;
+        tone.z = 0.01f;
+        s->post(tone);
+        s->run(static_cast<u64>(bar));
+        const BusTap ducked = barOf();
+        CHECK_MSG(ducked.pad > 0.15 * back.pad && ducked.pad < 0.35 * back.pad, "the pad ducked by half: energy x %.3f", ducked.pad / back.pad);
+        CHECK_MSG(s->allocs == 0, "allocations %llu", static_cast<unsigned long long>(s->allocs));
+        delete s;
+    }
+    // The timed high-pass: the music's lows go for its window (Goertzel at 55 Hz, the kick's and the bass's).
+    {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Staged), 0, 0));
+        Capture warm, a, b;
+        runEngine(e, warm, kRate * 8, 256);
+        runEngine(e, a, kRate * 2, 256);
+        Command hp = cmd(CmdType::HighPassBed, 0, 0, 0, 800.0f);
+        hp.y = 3.0f;
+        e.post(hp);
+        runEngine(e, b, kRate * 2, 256);
+        const auto lows = [](const Capture& c) {
+            double s = 0.0, y = 0.0;
+            for (u64 i = 0; i < c.frames; ++i) {
+                y += (c.out[2 * i] - y) * 0.02;  // ~150 Hz one-pole
+                s += y * y;
+            }
+            return s;
+        };
+        CHECK_MSG(lows(b) < 0.1 * lows(a), "the high-pass: lows x %.3f", lows(b) / (lows(a) + 1e-30));
+        CHECK(a.allocs == 0 && b.allocs == 0);
+        freeCapture(warm);
+        freeCapture(a);
+        freeCapture(b);
+    }
+    // A fight's lead: the player fires a bar; then its note of a bar before an octave down (Recorded), its mirror about the
+    // chord's root (Mirror), a bend; at most kFightLeadVoices sound at once.
+    {
+        auto* s = new Session(100000);
+        s->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 0, 0));
+        s->post(cmd(CmdType::SetIntensity, 0, 0, 0, 0.0f));
+        s->post(cmd(CmdType::HoldSection, 1));
+        s->post(cmd(CmdType::SetFire, 0, 1));
+        s->run(static_cast<u64>(bar + 1000));  // a bar of the lead (and a little)
+        s->post(cmd(CmdType::SetFire, 0, 0));
+        const auto echo = [&](LeadEchoMode m, double back, i8 octaves, i8 bend) {
+            Command k = cmd(CmdType::LeadEcho, 0, static_cast<u8>(m), 255, 1.0f);
+            k.level = static_cast<float>(back);
+            k.z = 1200.0f;
+            k.mods[5] = 255;
+            k.mods[6] = static_cast<u8>(octaves);
+            k.mods[7] = static_cast<u8>(bend);
+            s->post(k);
+            s->run(256);
+            LeadVoiceInfo info[128];
+            const u32 n = s->e.leadVoices(info, 128);
+            double hz = 0.0;
+            i64 latest = -1;
+            for (u32 i = 0; i < n; ++i)
+                if (info[i].player == kFightLeadPlayer && info[i].start > latest) {
+                    latest = info[i].start;
+                    hz = info[i].hz;
+                }
+            return hz > 0.0 ? midiOf(hz) : -1.0;
+        };
+        // The note on the bar's first step (tick 0 at the song's start: the arpeggio's first note, A minor's).
+        const Chord& am = g_music->tracks[0].chordAtBar(0);
+        const double now = s->e.tempo().tickAt(static_cast<double>(s->frame));
+        const double back = now - 0.0;
+        const double rec = echo(LeadEchoMode::Recorded, back, -1, 0);
+        CHECK_MSG(std::fabs(rec - (am.arp[0] - 12)) < 0.01, "recorded: %.2f, want %d", rec, am.arp[0] - 12);
+        const double now2 = s->e.tempo().tickAt(static_cast<double>(s->frame));
+        const double mir = echo(LeadEchoMode::Mirror, now2 - 24.0 * 2, 0, 0);  // step 2's note
+        const i32 note = am.arp[2], rootPc = am.bass % 12, root = note - (((note - rootPc) % 12) + 12) % 12;
+        CHECK_MSG(std::fabs(mir - (2 * root - note)) < 0.01, "mirror: %.2f, want %d (note %d, root %d)", mir, 2 * root - note, note, root);
+        const double bent = echo(LeadEchoMode::Recorded, s->e.tempo().tickAt(static_cast<double>(s->frame)), 0, -7);
+        CHECK_MSG(std::fabs(bent - (am.arp[0] - 7)) < 0.01, "bend: lands on %.2f, want %d", bent, am.arp[0] - 7);
+        for (u32 k = 0; k < 8; ++k) echo(LeadEchoMode::Recorded, 384.0, 0, 0);
+        LeadVoiceInfo info[128];
+        const u32 n = s->e.leadVoices(info, 128);
+        u32 fight = 0;
+        for (u32 i = 0; i < n; ++i) fight += info[i].player == kFightLeadPlayer && info[i].length > static_cast<u32>(s->frame - info[i].start);
+        CHECK_MSG(fight <= kFightLeadVoices + 1, "%u fight lead voices sounding (cap %u)", fight, kFightLeadVoices);
+        CHECK_MSG(s->allocs == 0, "allocations %llu", static_cast<unsigned long long>(s->allocs));
+        delete s;
+    }
+    // The aggregated recipes: five toms on one 1/32 step are one tom at 1 - e^(-5 / 2.5) of one (normalised), a second step's
+    // one is one.
+    {
+        auto* s = new Session(100000);
+        s->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), 0, 0));
+        s->run(4096);
+        for (u32 k = 0; k < 5; ++k) {
+            Command t = cmd(CmdType::Recipe, static_cast<u8>(Recipe::Tom), 1, 255, 1.0f);
+            t.when = Timing::Next32;
+            s->post(t);
+        }
+        s->run(kRate / 2);
+        Command t = cmd(CmdType::Recipe, static_cast<u8>(Recipe::Tom), 1, 255, 1.0f);
+        t.mods[7] = 1;
+        s->post(t);
+        s->run(kRate / 2);
+        float v[4] = {};
+        u32 got = 0;
+        for (u32 i = 0; i < s->count; ++i)
+            if (s->log[i].kind == BeatKind::Sfx && s->log[i].a == 64 + static_cast<u8>(Recipe::Tom) && got < 4) v[got++] = s->log[i].value;
+        const float want = std::fmin(1.6f, (1.0f - std::exp(-5.0f / 2.5f)) / (1.0f - std::exp(-1.0f / 2.5f)));  // (the cues' cap: 1.6 x)
+        CHECK_MSG(got == 2 && std::fabs(v[0] / v[1] - want) < 1e-3f, "aggregated: %u shots, ratio %.3f (want %.3f)", got, got == 2 ? v[0] / v[1] : 0.0f, want);
+        delete s;
+    }
+    // The gated fifth: the off-eighths of each beat near silent against the on-eighths (Script, Track 1 at 120: an eighth is
+    // 0.25 s).
+    {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), 0, 0));
+        Command g = cmd(CmdType::Recipe, static_cast<u8>(Recipe::EliteGated), 0, 255, 1.0f);
+        e.post(g);
+        Capture c;
+        runEngine(e, c, kRate, 256);
+        u64 first = 0;
+        while (first < c.frames && std::fabs(c.out[2 * first]) < 1e-6f) ++first;
+        double on = 0.0, off = 0.0;
+        const u64 eighth = kRate / 4;
+        for (u64 i = first; i < first + 4 * eighth && i < c.frames; ++i) {
+            const u64 k = (i - first) / eighth;
+            const u64 inK = (i - first) % eighth;
+            if (inK < 200 || inK > eighth - 200) continue;  // (the ramps)
+            (k % 2 ? off : on) += static_cast<double>(c.out[2 * i]) * c.out[2 * i];
+        }
+        CHECK_MSG(on > 0.0 && off < 1e-6 * on, "the gate: on %.3g, off %.3g", on, off);
+        CHECK(c.allocs == 0);
+        freeCapture(c);
+    }
+    // The stab of five notes (the Blink Star's) sounds in a sheet and does not allocate.
+    {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), 0, 0));
+        Command st = cmd(CmdType::Recipe, static_cast<u8>(Recipe::Stab), 0, 255, 1.0f);
+        encodeNote(st, stabNotes(69, 72, 74, 76, 79));
+        e.post(st);
+        Capture c;
+        runEngine(e, c, kRate / 2, 256);
+        double en = 0.0;
+        for (u64 i = 0; i < c.frames * 2; ++i) en += static_cast<double>(c.out[i]) * c.out[i];
+        CHECK_MSG(en > 1e-4 && c.allocs == 0, "the five-note stab: energy %.3g, allocations %llu", en, static_cast<unsigned long long>(c.allocs));
+        freeCapture(c);
     }
 }
 
@@ -2038,6 +2236,7 @@ int main() {
         {"the Fusions replace their ingredients (M5)", testFusions},
         {"the upgrades' worst case: bursts, allocations, steals (M5)", testUpgradesWorstCase},
         {"notes against the chord, the pad's glide, the eight new recipes (M5)", testChordNotesAndNewRecipes},
+        {"the fights' sounds: the cut, the high-pass, the pad's tone, a fight's lead, aggregation, the gate, the stab (M5 audio)", testFightSounds},
     };
     for (const Test& t : tests) {
         g_test = t.name;

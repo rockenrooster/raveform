@@ -128,7 +128,9 @@ enum class CmdType : u8 {
     SetModStacks,  // a = player, b = the first Mod, c = how many (<= 8), stacks in `mods`
     SetFusions,    // a = player, b = Fusion bits
     Cue,           // a = Cue, b = player, c = count (<= 255), x = value, y = pan; timing Next32 or AtTick
-    Recipe,        // a = Recipe, c = MIDI (255: the default), x = gain, y = pan, z = p1, level = p2; timing Now / Next32 / AtTick
+    Recipe,        // a = Recipe, c = MIDI (255: the default), x = gain, y = pan, z = p1, level = p2; timing Now / Next32 / AtTick;
+                   // M5: b = 1 aggregated (one shot of the recipe at its note on a 1/32 step, its gain 1 - e^(-count / 2.5);
+                   // mods[7] = how many this command counts for, 0: one)
     VoiceStart,    // a = voice slot, b = Recipe, c = MIDI (255: the default), x = gain, y = pan, z = param
     VoiceSet,      // a = voice slot, x = param, y = gain (< 0: unchanged); M5: c = a note to glide to (0 or 255: none),
                    // z = the glide in seconds
@@ -136,7 +138,26 @@ enum class CmdType : u8 {
                    // mods[0..2]: encodeNote)
     VoiceStop,     // a = voice slot, x = release in seconds
     LowPassBed,    // x = cutoff in Hz, y = seconds (then the bus opens again over 150 ms)
+    // Appended 2026-11-13, the fights' pending sounds (game/pending_sounds.cpp):
+    CutBed,        // music buses silenced for a while: mods[0] | mods[1] << 8 = the buses (bit Bus::X), b = 1: the hats and the
+                   // shaker too (the drums but the kick); timing Now or AtTick (from the tick); y = seconds (0: lift it now)
+    HighPassBed,   // the music bus high-passed: x = cutoff in Hz (0: lift it), y = seconds; timing Now or AtTick
+    PadTone,       // the band's pad: x = its cutoff x (1: as written), y = its gain x (1), z = the ramp in seconds
+    DelayBoost,    // the lead's delay: x = feedback added (0: as written), a = repeats (0: as written)
+    LeadEcho,      // a note of a player's lead played again (a fight's), on the fight's own lead (at most kFightLeadVoices):
+                   // a = player, b = LeadEchoMode, c (and mods[0..4]) = the note (Note mode; encodeNote: a MIDI note or a
+                   // chordNote), x = gain (x the lead's level), y = pan, z = cutoff Hz (0: the patch's own), level = the ticks
+                   // back the note was played (Recorded, Mirror, Reverse: the player's note then); timing Now or AtTick;
+                   // mods[5] = Timbre (255: the player's own), mods[6] = the octaves it moves (signed), mods[7] = a bend in
+                   // semitones (signed: it glides that far over its length)
 };
+// VoiceStart (M5): mods[5] = the voice's reverb send in percent (0: the effects' own), mods[6] = 1: its chordNote is resolved
+// again on every bar line (it follows the chord). VoiceSet (M5): mods[5] = 1: a new pan in `level`.
+// LeadEcho's modes: the note as recorded; its mirror about the chord's root (as far below it as the note is above); as recorded
+// with its envelope reversed (a swell cut off); a note given (c).
+enum class LeadEchoMode : u8 { Recorded, Mirror, Reverse, Note };
+constexpr u8 kFightLeadPlayer = 6;   // the lead voices a fight plays (its own cap: kFightLeadVoices); 7 is Kaleidos's bells
+constexpr u32 kFightLeadVoices = 4;
 
 struct Command {
     CmdType type = CmdType::Reset;
@@ -148,15 +169,21 @@ struct Command {
 };
 
 // M5: a recipe command's note (Recipe, VoiceStart, VoiceSet): c = the MIDI note, 255 none (the recipe's default), 254 a
-// chordNote() with its parts in mods[0..2].
+// chordNote() with its parts in mods[0..2] (and mods[3..4]: chordNoteAt's ticks before), 253 stabNotes() in mods[0..4].
 inline void encodeNote(Command& c, i32 midi) {
-    if (midi >= kChordNote) {
+    if (midi >= kStabNotes) {
+        c.c = 253;
+        for (u32 k = 0; k < 5; ++k) c.mods[k] = static_cast<u8>(((midi >> (6 * k)) & 63) ? ((midi >> (6 * k)) & 63) + 36 : 0);
+    } else if (midi >= kChordNote) {
         c.c = 254;
         c.mods[0] = static_cast<u8>((midi >> 12) & 15);
         c.mods[1] = static_cast<u8>((midi >> 8) & 15);
         c.mods[2] = static_cast<u8>(midi & 255);
+        const u32 back = static_cast<u32>(midi >> 17) & 8191u;
+        c.mods[3] = static_cast<u8>(back & 255u);
+        c.mods[4] = static_cast<u8>(back >> 8);
     } else {
-        c.c = static_cast<u8>(midi >= 0 && midi < 254 ? midi : 255);
+        c.c = static_cast<u8>(midi >= 0 && midi < 253 ? midi : 255);
     }
 }
 
@@ -180,16 +207,18 @@ struct EngineStats {
 
 // M5, the worst case for the phone (--band max; raveform_headless --render max): the full band's load test (the Drop held,
 // four players firing, intensity 1) with every Riff at level 5 among the four players (and Mirror for each), the heaviest
-// Mods at their caps and a Boost each (content_sound.cpp says which). maxLoadSetup: the commands that set it up (after
-// SetMode); maxLoadFrame: the game's events of one 1/60 s frame (kills, Shards, the Mods' and Riffs' cues). Each returns how
-// many it wrote (at most `cap`).
+// Mods at their caps, two Boosts each and the local player's eight Fusions (M5 audio; content_sound.cpp says which).
+// maxLoadSetup: the commands that set it up (after SetMode); maxLoadFrame: the game's events of one 1/60 s frame (kills,
+// Shards, the Mods' and Riffs' cues; M5 audio, `fights`: the fights' and the arena's sounds on top). Each returns how many it
+// wrote (at most `cap`, which should be 64).
 u32 maxLoadSetup(Command* out, u32 cap);
-u32 maxLoadFrame(u32 frame, Command* out, u32 cap);
+u32 maxLoadFrame(u32 frame, Command* out, u32 cap, bool fights = true);
 
 // Offline profiling: nanoseconds spent per stage of renderBlock (set with Engine::setProfile).
 // M5: the lead per timbre (each voice timed: a few percent of overhead, profiling runs only).
 struct EngineProfile {
-    enum Stage : u32 { Lead, LeadSquare, LeadBell, LeadStab, Bass, Stab, Pad, Samples, BusFx, Delay, Reverb, SfxReverb, Master, Count };
+    // M5 audio: Content, the held recipe voices (the fights' and the upgrades' drones, pad voices, crackles), was in Samples.
+    enum Stage : u32 { Lead, LeadSquare, LeadBell, LeadStab, Bass, Stab, Pad, Samples, BusFx, Delay, Reverb, SfxReverb, Master, Content, Count };
     u64 ns[Count] = {};
     static const char* name(u32 s);
 };
@@ -276,6 +305,57 @@ private:
     float cueValue_[kMaxPlayers][kCueCount] = {}, cuePan_[kMaxPlayers][kCueCount] = {};
     u32 arcStep_ = 0, stormStep_ = 0;
     i64 bedFramesLeft_ = 0;  // recipes.low_pass_bed: frames until the bus opens again
+    // M5, the fights' pending sounds (content_sound.cpp). A Recipe command with b = 1 is aggregated like the cues: one shot of
+    // a recipe at a note on each 1/32 step, its gain 1 - e^(-count / 2.5) (sound_m5.json), the latest pan.
+    struct AggShot {
+        Recipe r = Recipe::Tom;
+        i32 midi = -1;
+        u32 count = 0;
+        float gain = 0.0f, pan = 0.0f, p1 = 0.0f, p2 = 0.0f;
+        double tick = 0.0;  // the 1/32 step it plays on
+    };
+    static constexpr u32 kAggShots = 16;
+    AggShot agg_[kAggShots];
+    u32 aggCount_ = 0;
+    void flushAgg(double tick);
+    // CutBed: these music buses (and the hats) silent from cutFrom_ to cutTo_, ramped over 8 ms; each bus's gain now.
+    u16 cutMask_ = 0;
+    bool cutHats_ = false;
+    i64 cutFrom_ = 0, cutTo_ = -1;
+    float cutGain_[kBusCount] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    bool hatsCut(i64 frame) const { return cutHats_ && frame >= cutFrom_ && frame < cutTo_; }
+    void applyCuts(u32 n);
+    // HighPassBed: the music bus high-passed from bedHpFrom_ to bedHpTo_ (faded in and out over 50 ms, as Freeze Frame's).
+    Biquad bedHp_[2];
+    float bedHpMix_ = 0.0f, bedHpHz_ = 0.0f;
+    i64 bedHpFrom_ = 0, bedHpTo_ = -1;
+    // PadTone: the band's pad cutoff and gain multipliers, ramped toward their targets once a block.
+    float padTone_ = 1.0f, padToneTarget_ = 1.0f, padGain_ = 1.0f, padGainTarget_ = 1.0f, padRampPerBlock_ = 1.0f;
+    void stepPadTone(u32 n);
+    // DelayBoost: feedback added to the lead's delay, and its repeats (0: the patch's).
+    float delayBoost_ = 0.0f;
+    u32 delayBoostRepeats_ = 0;
+    // LeadEcho: each player's main lead notes as played (song tick, MIDI), the newest last, for a fight that plays them again.
+    struct LeadMark {
+        double tick = -1e18;
+        u8 note = 0;
+    };
+    static constexpr u32 kLeadMarks = 64;
+    LeadMark leadMarks_[kMaxPlayers][kLeadMarks];
+    u32 leadMarkHead_[kMaxPlayers] = {};
+    void markLead(u32 player, double tick, u8 note) {
+        leadMarks_[player][leadMarkHead_[player] % kLeadMarks] = {tick, note};
+        ++leadMarkHead_[player];
+    }
+    i32 leadNoteAt(u32 player, double tick) const;  // the note it played on that tick (the latest at or before it)
+    const Chord& chordBack(double tick) const;      // the chord a past tick was played over (or a later one's)
+    void leadEcho(const Command& c);
+    // The content voices' own reverb send above the effects' (choir.md's pad voice: 0.5), summed here a block.
+    float sendL_[kBlock] = {}, sendR_[kBlock] = {};
+    bool sendUsed_ = false;
+    u8 stabNotes_[5] = {};  // Recipe::Stab's notes for the command being applied (stabNotes())
+    u32 stabNotesN_ = 0;
+    void followChordVoices(i64 barFrame);  // the held voices that follow the chord (VoiceStart mods[6]) retune on the bar line
 
     // M5 (content_sound.cpp): the patterned sound of the upgrades (conductor.json "mods", "riffs", "boosts"; sound_m5.json
     // "fusions"), on the band's own clock from each player's loadout. Nothing here runs unless someone owns an upgrade.
@@ -338,6 +418,10 @@ private:
               double x = 0.0);
     SampleVoice* playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate = 1.0f, double from = 0.0);
     void driveSample(SampleVoice* v, float drive);  // M5 (the driven kick): the voice through tanh(drive x), its peak kept
+    void gateSample(SampleVoice* v, u32 gateN, i64 origin);  // M5 (Phasing's fifth): sounding gateN frames, silent as many
+    // M5 (LeadEcho): a fight's lead note bent (gliding in from `bend` semitones off, over its length), low-passed at `cutoff` Hz
+    // (> 0), or its envelope reversed (a swell cut off).
+    void shapeLead(LeadVoice* v, float bend, float cutoff, bool reverse);
     i32 resolveNote(const Command& c, double tick) const;  // M5: a command's note (encodeNote) at a tick (< 0: now); -1: none
     const Chord& chordAtTick(double tick) const;           // M5: the chord that plays on a tick (this bar's or a later one's)
     // cullAt (M5, >= 0): a note that starts later (Fractal's, Fork's) makes room under its player's cap at this frame (now),
@@ -348,6 +432,7 @@ private:
     BassVoice* playBass(float midi, float vel, float steps, i64 frame, float decayScale = 1.0f, float lengthS = -1.0f, Bus bus = Bus::Bass);
     void fastBass(BassVoice* v);  // M5 (cost): an upgrade's bass note saturates by fastTanh
     void playStab(const Chord& chord, float vel, float pan, i64 frame, float lengthScale = 1.0f);
+    void playStabNotes(const u8* notes, u32 count, float vel, float pan, i64 frame, float lengthScale = 1.0f);  // M5: up to five
     void playPad(const Chord& chord, float level, float bright, i64 frame);
     void playKick(float gain, float velocity, i64 frame, double tick);
     void playSfx(Sfx kind, i32 midi, float gain, float pan, i64 frame, double tick, float rateMul = 1.0f);
