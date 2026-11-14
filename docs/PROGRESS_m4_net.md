@@ -390,6 +390,23 @@ from `d5be6ea`. Shared phone; our APK deployed first. **0 PC stalls** on every b
 over 20 wu are in Track 5 (cycle 2 to the boss, 30-50 wu a window) and Track 6; the soaks put Track 5 impaired at
 7-10. The Event Horizon windows fell from 170-182 to 19-58 on the same measure.
 
+Repeated on round 4's APK (`190641`, `d531af0`: claims at 10 Hz in dense seconds, the new at-correction measure;
+0 PC stalls, Moto 53,904 frames, 0 missed, P95 17.8 ms, heap 0):
+
+| bot | whole run | outside Event Horizon | Event Horizon (bars 368-383) | worst up / down |
+|---|---|---|---|---|
+| 1 | 12.06 | 12.13 | 5.1 | 45.2 / 209.0 |
+| 2 | **23.52** | 23.68 | 9.4 | 54.8 / 226.0 |
+| 3 | **18.38** | 17.17 | 61.5 | 44.9 / 211.9 |
+
+**Not met.** Bot 2's figure is one 10-second window at 300 s (Track 2, 211 wu over a few hundred samples); bot 3 is
+25-57 wu through Tracks 4 and 5. Two runs of the same profile differ this much (12-13 against 12-24), so one 15-minute
+phone run does not tell builds apart; the soaks' ten seeds do (impaired 6.0-6.2). Event Horizon on the new measure:
+5-62 wu. What the device's Track 4-5 windows are made of (bot 3's 841 s line on `182905`): copies **not corrected for
+over 4 s** carry 94% of the squared error, and enemies following another (relayed) player 85%: on the phone host, under
+the impaired profile, its corrections do not reach every enemy on a client's screen in time. That is the next thing
+to measure (the host's queue on the phone: what it sends a client a second against what the client's screen holds).
+
 ### (b) The device-only spike in Event Horizon: the measure
 
 The device runs' `scr` (a client's drawn copy against the host's sample as each correction lands) carried the
@@ -399,6 +416,56 @@ measure itself read tens to hundreds of wu while the copies stood where the host
 worlds at the same song time) does not carry anything. Now `World::netHostPlace` carries the sample the way
 `netCorrect` places the copy (velocity, pull, lane), and the session's measure uses it; for every other enemy it is
 unchanged. The soak prints this measure by fight (`at correction ... by fight`) beside the true error by fight.
+
+Measured in the soak (40 minutes, `captures\m4net\long\r11_*`, `r12_*`), Event Horizon: at correction 55.7-59.5 wu
+where the true error is 14.4-42.5 (impaired seed 2: 14.8 against 13.7). So the soak shows the same inflation on the
+device runs' measure, even carried as `netCorrect` carries: as a correction lands, a fast walker's drawn copy still
+holds the last correction's offset (it decays over 150 ms) while its simulated place is right. **The device run has
+nothing the soak lacks**: the phone's 19-58 wu in that fight is the measure's reading of a fight the soak puts at
+14-43 true. The other fights read 1.3-2x their true error at correction (Moth Queen 23-29 against 13-18).
+
+### (c) The loop's uplink
+
+Two changes, measured over 40 minutes (seeds 1 and 2; `captures\m4net\long\`):
+
+- **Claims at 10 Hz in a dense second**: when a client's world has made more than 400 claims in the current or the
+  last second, its claims (and boss claims) leave with every third pose instead of every pose: more hits on one enemy
+  merge, fewer reliable datagrams go. The claimant's own kills show at once as before; a teammate sees one at most
+  67 ms later (the lead's rule: 100 ms). `--net-tune dense15=0` switches it off.
+- **Acknowledgements only with the pose** (`ackpose=1`, off by default): a running client services its link on pose
+  frames only (every frame while a ping is out, so the clock's pongs are timed as they land). It saved only 1.6 kbit/s
+  on the mean and moved the host's worst down second from 220 to 242-258 (over 250): the acknowledgements arriving up
+  to 33 ms later make the host send in bursts. Kept as a switch, off.
+
+| 40 minutes, worst up second (limit 60) | clean s1 | clean s2 | impaired s1 | impaired s2 |
+|---|---|---|---|---|
+| before (part5g, round 3) | 68.1 | 72.1 | 79.8 | 70.9 |
+| neither change (`r11base`) | 64.3 | 68.1 | 81.8 (worst of the two) | |
+| claims at 15 Hz only (`r11dense`) | 58.4 | 62.2 | 67.6 | 71.6 |
+| both, 15 Hz (`r11`) | 56.2 | 59.8 | 71.5 (worst of the two) | |
+| **claims at 10 Hz (`r12`, default)** | **58.5** | **59.3** | **67.2** | **67.0** |
+
+Clean is now under 60 in the loop; **impaired is not (67)**. In those seconds the payload is 29-46 kbit/s (claims
+16-35, poses 11) and ENet's own share (UDP/IP and ENet headers of ~55 datagrams, acknowledgements of the host's
+reliable stream, resends under 5% loss) is the other 21-37. Ten seeds (`r12_*`, `r13_clean`): clean 4.24 (worst 5.69),
+impaired 6.22 (8.05), worst up second 44.4 / 47.4 (seed 5: under 60 now). Left: fewer acknowledgements need fewer
+reliable messages from the host (the reliable stream is spawns, deaths, events and claims' verdicts), or the limit's
+reading for the loop under loss.
+
+### (d) Relayed seats under jitter
+
+The interpolated seats now spread a pose's jump over 100 ms as a predicted one's (`relaysmooth=1`). Measured (impaired
+default seed, `captures\m4net\r4\relay*.txt`): a client's view of a relayed client, frames with an unexplained step
+over half a hull 6,487 -> **2,320** of 85,000, but drawn against the truth RMS 39.6 -> 49.1 wu, and the simulation
+takes that place too: enemies chasing a relayed player drift from the host's, impaired ten seeds **6.22 -> 7.59**
+(worst 8.05 -> 10.83). Off by default; the steps above 120 wu are snaps either way (a revive, a respawn). The way to
+have both is an offset in the view only (the ship drawn smoothed, the simulation's pose unsmoothed): in the game's
+view code, not done.
+
+### (e) Moth Queen and Brood Mother
+
+Not done this round. Moth Queen in the 40-minute soaks: true 13-18 impaired (at correction 23-29). Brood Mother is
+still not drawn by the soaks' seeds; `--fight brood_mother` is a game argument, the soak has no such start yet.
 
 ## The jumpy player shots the user saw on the Moto (the lead's question)
 
