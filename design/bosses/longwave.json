@@ -380,7 +380,8 @@
      "telegraphBeats": 4,
      "dashWu": 700,
      "dashBeats": 1,
-     "note": "a dashed line from the head through where the nearest player stood at the start of the telegraph bar; on the next downbeat the head dashes along it and its jaw stays open for two beats"
+     "followBeatsPerSegment": 0.25,
+     "note": "a dashed line from the head through where the nearest player stood at the start of the telegraph bar; on the next downbeat the head dashes along it and its jaw stays open for two beats. The body follows: segment k makes the head's move k sixteenths later (followBeatsPerSegment), so the dash runs down the body like a whip; the path goes on from where the head landed. Nothing jumps"
     }
    },
    {
@@ -394,7 +395,8 @@
      "every": "bar",
      "telegraphBeats": 3,
      "dashWu": 700,
-     "dashBeats": 1
+     "dashBeats": 1,
+     "followBeatsPerSegment": 0.25
     },
     "headBurst": {
      "on": "beats 2 and 4",
@@ -438,7 +440,8 @@
    }
   ],
   "entrance": "on the Drop's downbeat the head breaks in from the nearest wall and the body follows it onto the figure of eight over two bars, already waving; the name card LONGWAVE holds for two bars",
-  "segmentDeath": "the segment shatters along the wave's direction, its neighbours snap together with a white flash at the join, and the crest skips on without missing a step",
+  "segmentDeath": "the segment shatters along the wave's direction; the body behind it slides up along the spine to close the gap over segmentCloseSteps steps, each segment's swing easing to its new place in the wave, with a white flash at the join; the crest counts the new body at once and skips on without missing a step",
+  "segmentCloseSteps": 1,
   "death": "the jaw locks open, the clamped white flash, what is left of the body unravels tail-first one segment per sixteenth, each a medium kill, then the head as a boss break: three rings, 300+ sparks, 30 px distortion ring, 50 ms hit-stop, then 200 Shards"
  }
 }
