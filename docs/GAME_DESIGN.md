@@ -555,6 +555,15 @@ with a safe place that moves, and recognising six fights inside a seventh.
 
 ## 8. Director and difficulty
 
+- **Enemy bullets by Track** (the owner, 2026-11-14: "tone down the number of enemy bullets by like
+  0.5x in tracks 1-3, 4-7 can be 0.75x"). Every enemy bullet the game would fire (a shooter's shot,
+  a fan, a ring, a spray, a boss's or mini-boss's pattern, an elite's, an arena event's) is counted
+  at **0.5 in Tracks 1 to 3** and **0.75 in Tracks 4 to 7**; Tracks 8 to 10 and the loop fire as
+  written. A pattern keeps its shape: a fan or ring loses bullets evenly round it, keeping its
+  symmetry and never going below the smallest count its page allows; a shooter whose volley is one
+  bullet fires on every second volley (Tracks 1 to 3) or three volleys in four (4 to 7), on the beat
+  as before. Lethal beams, bodies, the Arpeggiator's blocks and trails are not bullets and stay. Co-op
+  the same. The fights' health is not tuned again for it.
 - **Threat budget.** Each bar has a budget `B = base(track, cycle, section) × players × assist`. Every
   species has a threat cost; the director spends the budget on **formations** rather than single
   spawns: ring around a player, edge sweep, corner swarms, pincer, spiral rain, Rift bursts, escort

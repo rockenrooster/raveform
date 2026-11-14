@@ -2,7 +2,9 @@
 
 > **M5, 2026-11-13.** Armour takes a quarter: the fed Well (0.15 before) takes 0.25 of a shot's damage, where this
 > page says none (`damageScale` in the data; GAME_DESIGN 7.6, "A boss's rule is a bonus, not a wall").
-> Hint line (screens.md): `STARVE IT: KILL ITS FOOD`. The health is tuned with the novice bot.
+> Hint line (screens.md): `STARVE IT: KILL ITS FOOD`. The health is tuned with the novice bot, and then
+> halved on the owner's play (2026-11-14: "way too much hp, needs like 0.5x"; GAME_DESIGN 7.6: what a
+> person says after playing outranks the bots).
 
 A well: a disc of true black 240 wu across, ringed by light, that pulls in everything near it — the
 crowd, bullets, Shards, the players' own shots and the grid itself. It arrives on the last Drop of

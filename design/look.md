@@ -328,7 +328,13 @@ Other signature effects:
   is 30 px across, a Ram's 130); elites and bosses start at 90 wu. A hundred enemies a second arrive
   in the endgame, so the ring is sized to what it announces.
 - **Telegraphs (danger colour):** lasers show a thin dashed line for their charge time, then the full
-  beam; dashes show chevrons along the path; shooters glint one beat before firing.
+  beam; dashes show chevrons along the path; shooters glint one beat before firing. **A tell is a
+  warning, not a threat, so it is see-through** (2026-11-14, the owner: "the red dotted line before
+  a laser needs to be transparent"): it is drawn in the scene light only, never on the priority layer
+  (no dark rim, no opaque core), its dashes 1.5 px in the danger colour at 0.35, so the lattice,
+  enemies and shots under it show through; over the charge's last beat it rises to 0.6, so the moment
+  it fires still reads. Every laser's and lethal beam's dashed line, the Longwave lunge's line and
+  every other dashed tell follow this.
 - **Nova:** on press, sparks appear on a 600 wu ring and fall inward while the screen dims; on the beat
   a thick white front expands to 1400 wu in 0.35 s with 400 radial sparks and a bloom pump (+60% for
   120 ms; +20% in reduce-flashing mode).
@@ -664,7 +670,7 @@ draw the game:
 | **Disc** | A capsule of zero length: a filled circle with the same one-pixel edge. Additive |
 | **Soft light** | The Gaussian disc of §3 (sparkle or pool). Additive, feeds the bloom |
 | **Triangle** | A flat triangle with a colour per corner, for glass. Additive |
-| **Priority capsule** (`thr` in scene files) | A capsule drawn after tone mapping with ordinary alpha: first every dark rim (black, half width + rim), then the cores of ships, then the cores of threats. Colour is display-linear, clamped to 0–1. Threats: enemy bullets, lethal beams and trails, telegraphs. Ships: each player's hull (2.3 px in 55% light + 45% white, 2.0 px rim) and halo (1.6 px in 75% player + 25% white, 1.2 px rim), in addition to their scene light |
+| **Priority capsule** (`thr` in scene files) | A capsule drawn after tone mapping with ordinary alpha: first every dark rim (black, half width + rim), then the cores of ships, then the cores of threats. Colour is display-linear, clamped to 0–1. Threats: enemy bullets, lethal beams and trails (not telegraphs: §5, a tell is see-through). Ships: each player's hull (2.3 px in 55% light + 45% white, 2.0 px rim) and halo (1.6 px in 75% player + 25% white, 1.2 px rim), in addition to their scene light |
 | **Background** | The gradient and clouds of §7, added after the bloom, not bloomed |
 
 ### Scene files
