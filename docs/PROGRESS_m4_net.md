@@ -462,6 +462,19 @@ takes that place too: enemies chasing a relayed player drift from the host's, im
 have both is an offset in the view only (the ship drawn smoothed, the simulation's pose unsmoothed): in the game's
 view code, not done.
 
+### After merging main d59062f (M5 part 5: the arena and the elites; protocol 0x52460506)
+
+`b708c50` (the merge took main's tip, d59062f, though its message names 5f5d672). `scripts\test.ps1`: net tests 0
+failures, both soaks pass (2.86 / 4.60), determinism hashes now 9a5a34b5b7459ba8 / d5d6d0ed37d0c355 (main's new
+content); **one simulation test fails**, `[arena]` at sim_tests.cpp:2248 (the elites' Tracks and two traits'
+numbers), which main's design commit d59062f changed ahead of its code: the same on main. (The audio suite's `seq
+latest` failed once while soaks ran beside it and passed on a quiet PC.)
+
+40 minutes, seed 1 (`captures\m4net\long\r14\`): clean 7.40 (pass; up 53.4, down 220), **impaired 17.2 FAIL** (at
+correction 21.6; up 62.1, down 235.6). The loop now carries Track 6 and on at 18.7 clean (40% of the squared error
+from 6% of the samples) and 21.7-28.8 impaired: the arena and the elites, new this merge, not yet broken down. Census
+0 mismatches, no overflow.
+
 ### (e) Moth Queen and Brood Mother
 
 Not done this round. Moth Queen in the 40-minute soaks: true 13-18 impaired (at correction 23-29). Brood Mother is
