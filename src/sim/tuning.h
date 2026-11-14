@@ -341,7 +341,8 @@ constexpr float kShockRingWu[4] = {0.0f, 140.0f, 180.0f, 220.0f}, kShockDamage[4
 constexpr float kAegisArcDeg[4] = {0.0f, 60.0f, 90.0f, 120.0f}, kAegisInWu = 30.0f, kAegisOutWu = 60.0f;
 constexpr float kLastLightWu = 420.0f;                      // Last Light: the mini-Nova's reach (the Nova's front: 1,400)
 constexpr float kProspectorChance = 0.25f;                  // quoted
-constexpr u32 kCollectorEvery[3] = {0, 250, 150};           // quoted
+constexpr u32 kCollectorEvery[3] = {0, 500, 500};           // quoted (the owner, 2026-11-14: "every 500 shards at rank 1 and
+                                                             // capped at rank 1"; 250 then 150 until then)
 constexpr float kSyncopationDamage[3] = {1.0f, 1.5f, 2.0f}; // quoted +50%, then chosen +100%
 constexpr u8 kSyncopationPierce = 2;
 constexpr float kBarLineWu[4] = {0.0f, 900.0f, 900.0f, 1800.0f}, kBarLineHalfWu = 16.0f, kBarLineDamage = 5.0f;

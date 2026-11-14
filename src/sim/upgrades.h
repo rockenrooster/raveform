@@ -39,7 +39,8 @@ enum Boost : u8 {
     kBoostCount,
     kNoBoost = 0xFF
 };
-constexpr u32 kBoostSlots = 2;  // GAME_DESIGN 6.1: two at once; a third refreshes the oldest
+constexpr u32 kBoostSlots = 3;  // GAME_DESIGN 6.4: three at once (two until the owner's "can only seem to have 2 temp powerups
+                                // active at a time", 2026-11-14); a fourth replaces the oldest
 
 // GAME_DESIGN 6.5 (1-8): both ingredients maxed brings the Fusion as a gold fourth orb.
 enum Fusion : u8 { kHelixArray, kStandingWave, kTeslaBloom, kShardHalo, kDownbeatCannon, kCollapseField, kMurmuration, kQuartet, kFusionCount };

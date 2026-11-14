@@ -754,7 +754,8 @@ void World::activateBoost(u32 p, u8 type) {
     if (rules_.frozenLoadout) return;  // (the no-trap table's measurements)
     PlayerState& pl = players_[p];
     if (type >= kBoostCount) return;
-    // Two at once; the same Boost refreshes itself, a third replaces the oldest (GAME_DESIGN 6.1).
+    // Three at once (kBoostSlots; two until the owner's play of 2026-11-14); the same Boost refreshes itself, one more replaces the
+    // oldest (GAME_DESIGN 6.4).
     ActiveBoost* slot = nullptr;
     for (ActiveBoost& a : pl.boosts)
         if (a.type == type) slot = &a;

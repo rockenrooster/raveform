@@ -204,7 +204,7 @@ name (`ARC` for Aegis, `SINGULARITY` for the Black Hole). At most 26 characters.
 | Nova Stock | `+1 NOVA` |
 | Encore | `BOOSTS LAST +1 BAR` |
 | Lucky Break | `ONE MORE CHOICE` |
-| Collector | `A BOOST PER 250 SHARDS`, `A BOOST PER 150 SHARDS` |
+| Collector | `A BOOST PER 500 SHARDS` |
 | Syncopation | `OFF-BEATS PIERCE, +50%`, `OFF-BEATS +100%` |
 | Bar Line | `A LASER CROSS EACH BAR`, `AND DIAGONALS`, `LONGER LASERS` |
 | Crescendo | `DAMAGE CLIMBS WHILE UNHIT`, `CLIMBS TWICE AS HIGH` |

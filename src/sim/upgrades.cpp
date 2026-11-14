@@ -41,7 +41,7 @@ const UpgradeInfo kInfo[kUpgradeCount] = {
     {"NOVA STOCK", "nova_stock", 3, false},
     {"ENCORE", "encore", 3, false},
     {"LUCKY BREAK", "lucky_break", 2, false},
-    {"COLLECTOR", "collector", 2, false},
+    {"COLLECTOR", "collector", 1, false},  // (the owner, 2026-11-14: "too op late game ... capped at rank 1"; it was 2)
     {"ON-BEAT CRIT", "on_beat_crit", 3, true},
     {"SYNCOPATION", "syncopation", 2, true},
     {"BAR LINE", "bar_line", 3, true},
@@ -162,7 +162,7 @@ const char* upgradeWords(u8 u, u32 level) {
         case kNovaStock: return "+1 NOVA";
         case kEncore: return "BOOSTS LAST +1 BAR";
         case kLuckyBreak: return "ONE MORE CHOICE";
-        case kCollector: return lv <= 1 ? "A BOOST PER 250 SHARDS" : "A BOOST PER 150 SHARDS";
+        case kCollector: return "A BOOST PER 500 SHARDS";
         case kOnBeatCrit:
             std::snprintf(buf, sizeof buf, "BEAT SHOTS X%u", static_cast<u32>(onBeatCritMultiplier(lv)));
             return buf;

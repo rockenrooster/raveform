@@ -4,6 +4,17 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (evening), Collector one rank, three Boosts at once, Meteor Rain's landing
+
+- Collector "too op late game": a Boost every **500** Shards, **one rank** (250, then 150 at two; `kCollectorEvery`, the cap in
+  `kMods`). Its words `A BOOST PER 500 SHARDS`.
+- "Can only seem to have 2 temp powerups active at a time": **three** at once (`kBoostSlots` 3; a fourth replaces the oldest).
+  The HUD's Boost row puts a gap between each pair (it counted one gap for any number).
+- "Meteor rain needs more of a visual impact on where it lands": the meteor falls onto its ring over the two beats (a white-hot
+  head and a gold tail from the upper right, faster as it comes); the landing a 1.4 flash the size of the ring, three rings,
+  a danger crater glowing for 0.9 s, 36 sparks, a distortion ring, a lattice dent of 200 and a shake of 5 (arena.md).
+- sim 6,114 checks / net 131,368 / audio 2,718, 0 failures; determinism PASS. Picture `captures\m5\part5\ev_meteor_rain`.
+
 ## 2026-11-14 (evening), thinner lethal lines with more glow; what an area means (look.md 5)
 
 - "Can you make them thinner and make the glow more to compensate?": `lethalBeam`'s core is half the kill width, never under

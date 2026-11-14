@@ -804,9 +804,11 @@ void testUpgradeStacking() {
     CHECK(p->leadGrid(0) == 12.0 && p->player(0).loadout.mods[kDoubleTime] == 2);
     p->grantBoost(0, kHyper);
     CHECK(p->leadGrid(0) == 6.0);
-    // Two Boosts at once: a third replaces the oldest (Prism, taken first).
+    // Three Boosts at once (the owner, 2026-11-14; two before): a fourth replaces the oldest (Prism, taken first).
     p->grantBoost(0, kHalo);
-    CHECK(!p->player(0).boost(kPrism) && p->player(0).boost(kHyper) && p->player(0).boost(kHalo));
+    CHECK(p->player(0).boost(kPrism) && p->player(0).boost(kHyper) && p->player(0).boost(kHalo));
+    p->grantBoost(0, kChorus);
+    CHECK(!p->player(0).boost(kPrism) && p->player(0).boost(kHyper) && p->player(0).boost(kHalo) && p->player(0).boost(kChorus));
     // Halo absorbs three hits, then it is gone and the next costs a cell.
     const u8 cells = p->player(0).cells;
     for (u32 hit = 0; hit < 4; ++hit) {
@@ -3612,8 +3614,10 @@ void testUpgradesM5() {
         w->grantBoost(0, kHyper);
         const ActiveBoost& b = w->player(0).boosts[0];
         CHECK(b.type == kHyper && std::fabs((b.until - b.from) - 5.0 * bar) < 1e-6);
+        // Collector (the owner, 2026-11-14): a Boost every 500 Shards, one rank only.
+        CHECK(upgradeInfo(kCollector).cap == 1 && tuning::kCollectorEvery[1] == 500);
         w->grantUpgrade(0, kCollector);
-        w->collectShardsNow(0, 249);
+        w->collectShardsNow(0, 499);
         const u32 before = w->player(0).boostsTaken;
         w->collectShardsNow(0, 1);
         CHECK(w->player(0).boostsTaken == before + 1);

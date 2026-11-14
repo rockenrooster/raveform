@@ -892,7 +892,7 @@ void World::freezeView(u32 p, double until) {
 }
 
 void World::collectorShard(u32 p) {
-    // Collector: every 250 Shards (150 at two stacks) spawn a Boost.
+    // Collector: every 500 Shards spawn a Boost (one rank since the owner's play of 2026-11-14: 250, then 150 at two, before).
     PlayerState& pl = players_[p];
     const u8 st = pl.loadout.mods[kCollector];
     if (!st) return;

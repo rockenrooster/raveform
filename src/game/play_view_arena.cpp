@@ -21,6 +21,8 @@ Vec2 dirv(float a) { return {std::cos(a), std::sin(a)}; }
 Vec3 whiteV() { return {1.0f, 1.0f, 1.0f}; }
 float clamp01(float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
 constexpr float kVaultChevronWu = 1200.0f;  // arena.md (play test 3, quoted): a Vault's gold chevron while off screen this near
+// arena.md Meteor Rain (the owner, 2026-11-14): the meteor falls from this far up its line over the warning, its tail this long.
+constexpr float kMeteorFallWu = 800.0f, kMeteorTailWu = 160.0f;
 }  // namespace
 
 void PlayView::arenaShape(FrameDraw& d, const ArenaGlyph& g, Vec2 pos, float rot, float scale, Vec3 c0, Vec3 c1, Vec3 c2, float widthRef, u8 layers) {
@@ -302,7 +304,20 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
     for (u32 k = 0; k < World::kArenaMeteors; ++k) {
         const ArenaMeteor& m = w.meteors()[k];
         if (m.land < 0.0 || !visible(m.at, 150.0f)) continue;
-        fillRing(m.at, prose::kArMeteorWu, clamp01(1.0f - static_cast<float>((m.land - t) / (prose::kArMeteorBeats * kTicksPerBeat))), m.land);
+        const float u = clamp01(1.0f - static_cast<float>((m.land - t) / (prose::kArMeteorBeats * kTicksPerBeat)));
+        fillRing(m.at, prose::kArMeteorWu, u, m.land);
+        // The owner, 2026-11-14 ("meteor rain needs more of a visual impact on where it lands"): the meteor itself falls onto its
+        // ring over the warning's two beats, from high on the frame's upper right, faster as it comes, landing at the centre on
+        // the beat: a white-hot head with a gold tail.
+        if (shown(kMuteFx) && u > 0.0f && t < m.land) {
+            const Vec2 fall = normalizeOr(Vec2{0.45f, -1.0f}, Vec2{0.0f, -1.0f});
+            const float k1 = (1.0f - u) * (1.0f - u);
+            const Vec2 head = m.at + fall * (kMeteorFallWu * k1);
+            const Vec2 tail = head + fall * (kMeteorTailWu * (0.4f + 0.6f * u));
+            const float lv = 0.5f + 1.5f * u;
+            d.scene.line(toScene(tail), toScene(head), 1.4f * refPx_, gold * 0.0f, W1 * (1.6f * lv), 0);
+            d.sparkles.glow(toScene(head), 16.0f * refPx_, gold * (0.8f * lv));
+        }
     }
     // The event: its announcement (a gold edge chevron and its name at the place; the Comet a white chevron two beats ahead),
     // the Storm Cell's ring with the lattice hot inside, the hunted elite's dotted trail.
@@ -380,12 +395,26 @@ void PlayView::eventArena(const World& w, const Event& e, float t) {
             break;
         }
         case BossCue::ElBurst:
-        case BossCue::MeLand:
-            addShockRings(at, 2, e.f + 40.0f, danger, W1, t, 0.35f);
-            addPool(at, 20.0f, e.f, W1, reduceFlashing_ ? 0.4f : 0.8f, 0.0f, 0.2f, false, 1, false, false, t);
-            push(kImpBoss, at, 160.0f, e.f * 1.5f, t);
-            shakeAmp_ = std::fmax(shakeAmp_, 3.0f);
+        case BossCue::MeLand: {
+            // The owner, 2026-11-14 ("meteor rain needs more of a visual impact on where it lands"): a white-hot flash the size of
+            // the ring, three rings past it, a crater glowing in the danger colour for most of a bar, debris in gold and white, a
+            // distortion ring and a harder shake (two rings, a 0.8 flash and a shake of 3 until then).
+            addShockRings(at, 3, e.f + 80.0f, danger, W1, t, 0.45f);
+            addPool(at, 30.0f, e.f * 1.2f, W1, reduceFlashing_ ? 0.6f : 1.4f, 0.0f, 0.25f, false, 1, false, false, t);
+            addPool(at, e.f * 0.9f, e.f, danger, reduceFlashing_ ? 0.3f : 0.55f, 0.0f, 0.9f, false, 1, false, false, t);
+            SparkReq r{};
+            r.at = at;
+            r.count = 36;
+            r.kind = 3;
+            r.a = gold;
+            r.b = W1;
+            r.t0 = t;
+            sparkRequest(r);
+            addDistortion(at, e.f * 1.6f, 0.35f, 16.0f, 22.0f, t);
+            push(kImpBoss, at, 200.0f, e.f * 1.6f, t);
+            shakeAmp_ = std::fmax(shakeAmp_, 5.0f);
             break;
+        }
         case BossCue::ElStun: addShockRings(at, 1, e.f, palette_->hue[2], W1, t, 0.3f); break;
         case BossCue::VaBreak:
         case BossCue::CoBreak:

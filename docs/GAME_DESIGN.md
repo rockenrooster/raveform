@@ -279,7 +279,7 @@ Economy
 | 27 | Nova Stock | +1 Nova capacity and gain one | 3 |
 | 28 | Encore | Boosts last one bar longer | 3 |
 | 29 | Lucky Break | Trios offer one more option | 2 |
-| 30 | Collector | Every 250 Shards spawns a Boost; then every 150 | 2 |
+| 30 | Collector | Every 500 Shards spawns a Boost (the owner, 2026-11-14: "too op late game (make it every 500 shards at rank 1 and capped at rank 1)"; every 250, then 150 at two ranks, until then) | 1 |
 
 Rhythm
 
@@ -310,6 +310,9 @@ Rhythm
 | 12 | Flak | On beats 2 and 4, a radial burst of pellets | Count; pellets explode | Snare accent layer |
 
 ### 6.4 Boosts (16) — timed pickups, 4 bars unless noted
+
+**Three at once** (the owner, 2026-11-14: "can only seem to have 2 temp powerups active at a time"; two until then):
+the same Boost taken again refreshes itself, and one more replaces the oldest.
 
 | # | Boost | Effect |
 |---|---|---|

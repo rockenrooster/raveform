@@ -177,7 +177,7 @@ GAME_DESIGN 9 called this structure 'Prism'; it is the Lens here so that it is n
 |---|---|
 | Rules | For four bars, on every beat, three dashed danger rings of 110 wu appear in the frame, one of them where a player stands |
 |  | Two beats later, on the beat, each one lands: a cell from any ship inside, 20 x the Track's number to every enemy inside |
-| Look | The ring fills from its edge to its centre over the two beats, on the priority layer; the impact is a large kill in white with a hot lattice dent |
+| Look | The ring fills from its edge to its centre over the two beats, on the priority layer, and **the meteor itself falls onto it**: a white-hot head with a gold tail coming down from high on the frame's upper right, faster as it comes, landing at the centre on the beat. **The impact** (the owner, 2026-11-14: "meteor rain needs more of a visual impact on where it lands"): a white-hot flash the size of the ring, three rings past it, a crater glowing in the danger colour for most of a bar, debris in gold and white, a distortion ring, a hot lattice dent and a harder shake (until then a large kill in white with a hot lattice dent) |
 | Sound | Each warning is a saw glide falling over its two beats; each impact the sub drop and a crash, on the beat |
 
 ### Convoy

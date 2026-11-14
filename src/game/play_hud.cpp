@@ -551,11 +551,12 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             width[k] = std::fmax(nameW[k], words[k] ? textW(font, capW, bi.words) : 0.0f);
             ++count;
         }
-        float total = 0.0f;
+        // (three at once since 2026-11-14: a gap between each neighbouring pair)
+        const float gaps = count > 1 ? 48.0f * s * static_cast<float>(count - 1) : 0.0f;
+        float total = gaps;
         for (u32 k = 0; k < kBoostSlots; ++k) total += width[k];
-        total += count > 1 ? 48.0f * s : 0.0f;
         if (total > 900.0f * s) {
-            total = count > 1 ? 48.0f * s : 0.0f;
+            total = gaps;
             for (u32 k = 0; k < kBoostSlots; ++k) {
                 words[k] = false;
                 width[k] = nameW[k];
