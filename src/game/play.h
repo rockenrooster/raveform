@@ -501,6 +501,14 @@ private:
     bool transGodHeld_ = false;
     void homeArrives(double line);
     void transGod(bool hold);
+    // c9218dc (screens.md "Every other way in or out of a run"): leaving the pause for RESTART's drop-in or QUIT RUN's home (the
+    // run's clock back on the band's whole bars, the band released); co-op's home once its screen has left (or at once when the
+    // host has gone), with a line under PLAY for two bars.
+    void leavePause();
+    void homeLeaveCoop(const char* note);
+    char titleNote_[48] = {};
+    double titleNoteAt_ = -1.0;  // run ticks: the line stands under PLAY from here for two bars
+    double netSongRun_ = 0.0;    // co-op: the song's run position now, not held by a pause (the transitions' clock)
     double transNow() const;    // run ticks now (the view's position; co-op: the heard song)
     float transBeats(double from) const { return static_cast<float>((transNow() - from) / sim::kTicksPerBeat); }
     void dropInTap(Screen from);

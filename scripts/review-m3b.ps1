@@ -62,7 +62,7 @@ $singles = @('screen_notice', 'screen_title', 'screen_settings_sound', 'screen_s
            @(0..10 | ForEach-Object { "m6_hint_$_" }) +
            @('m6_ended_by', 'm6_set_complete', 'm6_set_complete_over', 'm6_title_star', 'm6_uiscale_90', 'm6_uiscale_130', 'm6_mini_stays',
              'm6_flash_longwave', 'm6_flash_choir', 'm6_flash_alpha', 'm6_credits', 'm6_credits_licences')
-$strips = @('trio_take', 'boss_pair_death', 'boss_death', 'boss_hit', 'm6_lw_entrance', 'm6_lw_lunge', 'm6_lw_close', 'm6_drop_title', 'm6_drop_retry', 'm6_home')
+$strips = @('trio_take', 'boss_pair_death', 'boss_death', 'boss_hit', 'm6_lw_entrance', 'm6_lw_lunge', 'm6_lw_close', 'm6_drop_title', 'm6_drop_retry', 'm6_home', 'm6_pause_restart', 'm6_pause_quit')
 if ($Only.Count) {
     $singles = @($singles | Where-Object { $Only -contains $_ })
     $strips = @($strips | Where-Object { $Only -contains $_ })

@@ -198,7 +198,8 @@ void Play::buildInput(StickInput& in) {
     }
     // M6 (screens.md "Transitions"): the ship of a run being left (the title's in the drop-in's wait, a quit run on home's way)
     // is gone: it neither moves nor fires.
-    if (flow_ && ((trans_ == Trans::Wait && transFrom_ == Screen::Title) || (trans_ == Trans::Home && screen_ != Screen::Title))) return;
+    if (flow_ && ((trans_ == Trans::Wait && (transFrom_ == Screen::Title || transFrom_ == Screen::Paused)) || (trans_ == Trans::Home && screen_ != Screen::Title)))
+        return;
     if (opt_.bot || opt_.autoplay || attract()) {
         // The bot plays (--bot, benchmarks, and the title's attract run).
         in = bot_.think(*world_, seat_, controller_, coop() ? netHeard_ : clock_.heardNow());

@@ -600,7 +600,13 @@ void World::damageBossFinal(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2
     if (!isMiniBoss(s.kind)) {
         // M5 part 7 (GAME_DESIGN 7.6, a boss keeps pace): the first eight bars' damage is counted a player; from the pace on
         // the boss takes its damage divided by it (after a client's claim is noted: the host divides by its own).
-        if (!s.paceSet && owner < kMaxPlayersBoss) s.paceDmg[owner] += dmg;
+        // c9218dc (GAME_DESIGN 7.6, "only aimed damage counts"): what a player does while firing through the assist is the
+        // novice's own fire and never raises the pace (a player whose pose is the assist's, fire 2, or not firing); the whole
+        // is kept as the measured number (the novice's references are its whole eight bars).
+        if (!s.paceSet && owner < kMaxPlayersBoss) {
+            s.paceDmg[owner] += dmg;
+            if (owner < kMaxPlayers && players_[owner].fire == 1) s.paceAimed[owner] += dmg;
+        }
         dmg /= s.pace > 0.0f ? s.pace : 1.0f;
     }
     if (isMiniBoss(s.kind)) {
@@ -1212,12 +1218,16 @@ void World::updateBoss(float dt) {
         forCrossings(m0_, m1_, kTicksPerBar, [&](double t, i64) {
             const double k = std::floor((t - s.fightTick) / kTicksPerBar + 0.5);
             if (k < 1.0 || k > static_cast<double>(kBossPaceBars) || s.paceSet) return;
-            float sum = 0.0f;
-            for (u32 p = 0; p < kMaxPlayersBoss; ++p) sum += s.paceDmg[p];
+            float sum = 0.0f, aimed = 0.0f;
+            for (u32 p = 0; p < kMaxPlayersBoss; ++p) {
+                sum += s.paceDmg[p];
+                aimed += s.paceAimed[p];
+            }
             const u32 players = presentCount() ? presentCount() : 1u;
             const float per = sum / static_cast<float>(players);
+            const float perAimed = aimed / static_cast<float>(players);
             const float novice = static_cast<u32>(s.kind) < 24u ? kBossPaceNovice[static_cast<u32>(s.kind)] : 0.0f;
-            const float ratio = novice > 0.0f ? per / (novice * static_cast<float>(k) / static_cast<float>(kBossPaceBars)) : 0.0f;
+            const float ratio = novice > 0.0f ? perAimed / (novice * static_cast<float>(k) / static_cast<float>(kBossPaceBars)) : 0.0f;
             const float pace = rules_.noPace || ratio < kBossPaceDeadBand ? 1.0f : clampf(ratio, kBossPaceMin, kBossPaceMax);
             bossDecide(kGeomBossPace, Vec2{pace, per}, Vec2{static_cast<float>(k), 0.0f}, t);
         });

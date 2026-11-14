@@ -128,6 +128,7 @@ void Play::netFrame(float realDt) {
     const bool songOk = s.songValid();
     const double tpsNow = songOk ? s.tpsAt(hostNow) : 192.0;
     netHeard_ = songOk ? s.songAt(hostNow) - s.runOffset() : music1_;
+    netSongRun_ = netHeard_;  // (M6, the transitions' clock: not held by the pause below)
     if (s.paused() && netHeard_ > s.pauseTick()) netHeard_ = s.pauseTick();
 
     // Input, once a frame (as solo play).

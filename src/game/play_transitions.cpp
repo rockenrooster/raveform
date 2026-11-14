@@ -44,7 +44,7 @@ constexpr float kHaloRefPx = 46.0f;
 }  // namespace
 
 double Play::transNow() const {
-    if (coop() && session_ && session_->songValid()) return netHeard_;
+    if (coop() && session_ && session_->songValid()) return netSongRun_;  // (not held by a co-op pause: LEAVE RUN's home runs on)
     return musicPrev_ + (music1_ - musicPrev_) * static_cast<double>(alpha_);
 }
 
@@ -79,7 +79,8 @@ void Play::transitionAudio() {
     const double bpm = band_->view().bpm > 1.0 ? static_cast<double>(band_->view().bpm) : 120.0;
     const float beatS = static_cast<float>(60.0 / bpm);
     const double wait = std::fmax((transLine_ - transNow()) / kTicksPerBeat, 0.5);
-    bandFilter(kWaitLowpassHz, static_cast<float>(wait) * beatS);
+    // (the pause's RESTART: the pause's filter lifts over the wait instead, c9218dc)
+    bandFilter(transFrom_ == Screen::Paused ? 0.0f : kWaitLowpassHz, static_cast<float>(wait) * beatS);
     const double riser = std::fmin(wait, 4.0);
     band_->playRecipe(audio::Recipe::Whoosh, -1, 1.0f, 0.0f, transLine_ - riser * kTicksPerBeat + offset, static_cast<float>(riser));
     audio::Command k;
@@ -101,6 +102,12 @@ void Play::dropInTap(Screen from) {
     // The levels the screen leaves from: a tap while home is still building the title starts from where the title is.
     waitFrom_ = from == Screen::Title ? titleLook() : TitleLook{};
     waitRun_ = transRunLight();
+    if (from == Screen::Paused) {
+        // c9218dc: the pause's RESTART is RETRY's drop-in; the run goes on, unseen, to the bar line (its line from the clock as
+        // it comes back from the pause).
+        leavePause();
+        world_->requestRestartAt((std::floor((transNow() + 2.0 * kTicksPerBeat) / kTicksPerBar) + 1.0) * kTicksPerBar);
+    }
     if (!world_->restartPending()) world_->requestRestart();  // (co-op: the host's START or RETRY scheduled it)
     trans_ = Trans::Wait;
     transFrom_ = from;
@@ -110,7 +117,7 @@ void Play::dropInTap(Screen from) {
     transLine_ = world_->restartTick();
     transBeat_ = (std::floor(transTap_ / kTicksPerBeat) + 1.0) * kTicksPerBeat;  // a game-over screen leaves on the next beat
     titleShipFrom_ = titleShipAngle_;
-    if (from == Screen::Title && !coop()) transGod(true);
+    if ((from == Screen::Title || from == Screen::Paused) && !coop()) transGod(true);
     if (band_) band_->playSfx(audio::Sfx::UiConfirm);
     pulse(0);
     transitionAudio();
@@ -156,21 +163,26 @@ void Play::dropInLands(double line) {
 void Play::homeTap() {
     if (trans_ == Trans::Home) return;
     transFrom_ = screen_ == Screen::Paused ? Screen::Paused : Screen::GameOver;
-    homeFromExposure_ = transFrom_ == Screen::Paused ? 0.2f : 0.45f;
+    homeFromExposure_ = transFrom_ == Screen::Paused || coop() ? 0.2f : 0.45f;
+    if (coop()) {
+        // c9218dc: co-op's HOME and LEAVE RUN: the screen leaves in its beat while the session still runs; then the session ends
+        // and the title builds from the next bar line of this device's own song (homeLeaveCoop, from transitionFrame).
+        trans_ = Trans::Home;
+        askQuit_ = false;
+        backAt_ = -1.0;
+        transTap_ = transNow();
+        transBeat_ = (std::floor(transTap_ / kTicksPerBeat) + 1.0) * kTicksPerBeat;
+        transLine_ = -1.0;
+        homeFrom_ = *palette_;
+        if (band_) band_->playSfx(audio::Sfx::UiBack);
+        pulse(0);
+        const double bpm = band_ && band_->view().bpm > 1.0 ? static_cast<double>(band_->view().bpm) : 120.0;
+        bandFilter(kHomeLowpassHz, static_cast<float>(60.0 / bpm));
+        return;
+    }
     if (transFrom_ == Screen::Paused) {
-        // QUIT RUN: the paused run goes on, unseen, to the title's bar line. Its clock comes back to the band's whole bars
-        // (as a count-in would), moved on by less than a bar; nothing of the run is drawn by then.
-        countIn_ = false;
-        if (bandDrives_ && band_ && band_->view().running) {
-            const double heard = band_->view().heardTick;
-            const double off = std::floor((heard - pauseMusic_) / kTicksPerBar) * kTicksPerBar;
-            clock_.resume(heard - off, off);
-            musicPrev_ = music1_ = std::fmax(music1_, heard - off);
-        }
-        if (bandDrives_) band_->setHold(false);
-        plannedLine_ = -1e9;
-        transGod(true);
-        screen_ = Screen::GameOver;
+        // QUIT RUN: the paused run goes on, unseen, to the title's bar line.
+        leavePause();
     }
     trans_ = Trans::Home;
     askQuit_ = askRestart_ = false;
@@ -189,6 +201,57 @@ void Play::homeTap() {
         band_->playRecipe(audio::Recipe::Impact, -1, 1.0f, 0.0f, transLine_ + (coop() ? netBandOffset_ : clock_.offset()));
     }
     RF_LOG("play: home: tapped at %.0f, the game over leaves on %.0f, the title on bar line %.0f", transTap_, transBeat_, transLine_);
+}
+
+void Play::leavePause() {
+    // The run's clock comes back to the band's whole bars (as a count-in would), moved on by less than a bar; the band lets go
+    // of the section it held; nothing of the run is drawn by then, and its ship neither moves nor comes to harm.
+    countIn_ = false;
+    askQuit_ = askRestart_ = false;
+    if (bandDrives_ && band_ && band_->view().running) {
+        const double heard = band_->view().heardTick;
+        const double off = std::floor((heard - pauseMusic_) / kTicksPerBar) * kTicksPerBar;
+        clock_.resume(heard - off, off);
+        musicPrev_ = music1_ = std::fmax(music1_, heard - off);
+    }
+    if (bandDrives_) band_->setHold(false);
+    plannedLine_ = -1e9;
+    transGod(true);
+    screen_ = Screen::GameOver;  // (the pause's screen is drawn leaving: renderScreens)
+    applySettings();             // (the pause's dip and its filter's own ramp; the drop-in's wait slows the filter's lift)
+}
+
+void Play::homeLeaveCoop(const char* note) {
+    // Co-op's home once its screen has left, or at once when the host has gone: the session ends, the title's run starts on the
+    // next bar line of this device's own song and the title builds from there (its clock first brought to the band's, so the
+    // solo world starts where the music is).
+    const bool bandOn = bandDrives_ && band_ && band_->active() && band_->view().running;
+    const double now = bandOn ? band_->view().heardTick - clock_.offset() : clock_.heardNow();
+    clock_.resume(now, clock_.offset());
+    leaveCoop("");
+    coopMessage_[0] = 0;
+    musicPrev_ = music1_ = now;
+    transLine_ = (std::floor(now / kTicksPerBar) + 1.0) * kTicksPerBar;
+    world_->requestRestartAt(transLine_);
+    trans_ = Trans::Home;
+    transFrom_ = Screen::GameOver;
+    homeFromExposure_ = 0.2f;
+    transTap_ = now;
+    transBeat_ = now - 2.0 * kTicksPerBeat;  // (the screen it left has gone)
+    homeFrom_ = *palette_;
+    screen_ = Screen::GameOver;  // (nothing drawn: renderScreens finds its screen gone)
+    transGod(true);
+    titleNote_[0] = 0;
+    if (note && *note) {
+        std::snprintf(titleNote_, sizeof titleNote_, "%s", note);
+        titleNoteAt_ = transLine_ + 3.0 * kTicksPerBeat;  // (it stands under PLAY from when PLAY comes in, for two bars)
+    }
+    if (bandOn) {
+        const double bpm = band_->view().bpm > 1.0 ? static_cast<double>(band_->view().bpm) : 120.0;
+        bandFilter(kHomeLowpassHz, static_cast<float>(60.0 / bpm));
+        band_->playRecipe(audio::Recipe::Impact, -1, 1.0f, 0.0f, transLine_ + clock_.offset());
+    }
+    RF_LOG("play: home from co-op%s%s: the title on bar line %.0f", note && *note ? ": " : "", note ? note : "", transLine_);
 }
 
 void Play::homeArrives(double line) {
@@ -226,6 +289,10 @@ void Play::transitionFrame() {
             if (transBeats(transLine_) >= 2.0f) trans_ = Trans::None;
             break;
         case Trans::Home:
+            if (coop()) {
+                if (transBeats(transBeat_) >= 1.0f) homeLeaveCoop("");  // (co-op: its screen has left; the session ends)
+                break;
+            }
             if (screen_ != Screen::Title && now >= transLine_ + 2.0) homeArrives(transLine_);  // (the Restart event's own, normally)
             if (screen_ == Screen::Title && transBeats(transLine_) >= 8.0f) {
                 trans_ = Trans::None;
@@ -311,8 +378,13 @@ float Play::transRunLight() const {
 float Play::transExposure(float screenLevel) const {
     // The light of the run behind a screen: the drop-in's downbeat brings it to the run's full light over its beat; home
     // moves it from the game over's (or the pause's) to the title's over the title's bar.
+    if (trans_ == Trans::Wait && transFrom_ == Screen::Paused) {
+        const double span = transLine_ - transTap_;
+        const float p = span > 1.0 ? clamp01(static_cast<float>((transNow() - transTap_) / span)) : 1.0f;
+        return 0.2f + 0.8f * smooth01(p);  // (c9218dc: the pause's dim lifts over RESTART's wait)
+    }
     if (trans_ == Trans::Arrive) {
-        const float from = transFrom_ == Screen::GameOver ? (coop() ? 0.2f : 0.45f) : 0.33f;
+        const float from = transFrom_ == Screen::Paused ? 1.0f : (transFrom_ == Screen::GameOver ? (coop() ? 0.2f : 0.45f) : 0.33f);
         return from + (1.0f - from) * smooth01(transBeats(transLine_));
     }
     if (trans_ == Trans::Home) {
@@ -332,7 +404,8 @@ bool Play::transInputLocked() const {
 }
 
 float Play::gameOverOut() const {
-    if (trans_ == Trans::Home || (trans_ == Trans::Wait && transFrom_ == Screen::GameOver)) return clamp01(transBeats(transBeat_));
+    if (trans_ == Trans::Home || (trans_ == Trans::Wait && (transFrom_ == Screen::GameOver || transFrom_ == Screen::Paused)))
+        return clamp01(transBeats(transBeat_));
     return 0.0f;
 }
 

@@ -651,6 +651,7 @@ struct BossState {
     // M5 part 7 (GAME_DESIGN 7.6, a boss keeps pace): the damage each player did in the fight's first eight bars (after armour),
     // the pace set from it at the end of the eighth (1 until then; the host's in co-op) and that damage a player.
     float paceDmg[kMaxPlayersBoss] = {};
+    float paceAimed[kMaxPlayersBoss] = {};  // c9218dc (GAME_DESIGN 7.6): of it, what a player did while aiming (only that sets the pace)
     float pace = 1.0f, paceMeasured = -1.0f;
     bool paceSet = false;
     double payoutTick = -1.0;  // dying: its Shards and Cells come at this tick (Event Horizon's flash, Polyrhythm's break)

@@ -54,6 +54,36 @@ M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in
   Break opening at once, nothing waiting on a level-up Trio in a cycle's Break.
 - The headless crowd table prints the first run's Trios by Track (level-ups + the boss's).
 
+### The follow-up (design c9218dc): aimed pace, every way in or out of a run, the band's worst case
+
+- **Only aimed damage raises a boss's pace** (GAME_DESIGN 7.6): `BossState::paceAimed` keeps, beside the whole eight bars'
+  damage (`paceDmg`, still the measured number the novice's references are made of), what each player did while its pose was
+  aimed (`fire 1`); the pace is set from that. Through the assist (`fire 2`) or not firing, nothing counts, so a player who
+  never aims meets the novice's boss. Co-op: per player, the host's decision as before (it holds every player's pose). Test:
+  the same damage to Kaleidos sets a pace above 1.5 aimed and exactly 1 through the assist.
+- **The assist bar after it** (`--policy assist`, seeds 1-20, 60 minutes, the same run as before): **18 of 20**, every pace 1.00.
+  Both runs that ended inside the ten Tracks ended against the Arpeggiator in Track 8 (it won 18 of its 20 first meetings;
+  5.4 hits a fight, 4.75 of them its beams); nothing else lost a first meeting. Over the hour's retries the fights took 15 of
+  35 last cells, the crowd 18 (drifter bullets 7, shoals 3), events 2. Not tuned further (the coordinator's word).
+- **Every other way in or out of a run** (screens.md): the pause's RESTART is RETRY's drop-in (the pause screen leaves on the
+  next beat, its dim lifts from 0.2 over the wait and its filter opens over it; the run's clock comes back on the band's whole
+  bars as a count-in's would, `leavePause`); QUIT RUN is home (as since b12310b); co-op's HOME and LEAVE RUN are home (the screen
+  leaves in its beat while the session runs, then the session ends and the title builds from the next bar line of this
+  device's own song, `homeLeaveCoop`); a peer whose host has gone (seated: in the lobby or the run) goes home at once with
+  `THE HOST LEFT` under PLAY for two bars (it went to the join screen); the lobby's START is the drop-in, the lobby fading as the
+  title's controls do (over the wait's first beat). The transitions' clock in co-op is the song unheld by a pause
+  (`netSongRun_`). Strips: `captures\transitions\strip_m6_pause_restart_sheet.png`, `strip_m6_pause_quit_sheet.png`.
+- **The band's worst case** (`--band max`, `content_sound.cpp`'s table): Split 4 and Double-Time 2.
+- **The upgrades' worst case on the Moto** (shared phone; `bench_play --drop 10.1 --nohits --tier low --loadout max`, 60 s,
+  `captures\bench\ZY22BXMJG3-bench_play-20261114-103235.json`): 3,594 frames, missed 0 on the panel (the M5 part 3 run: 10,
+  0.28%); present intervals p95 17.7, max 19.3 ms (the CPU-side line fails at 16.9 as it always has; the panel passes); GPU
+  total 12.7 / 14.0 / 16.4 ms (p50 / p95 / max; scene 3.7 / 5.2 / 7.6; it was 12.1 / 13.8 / 15.6, scene 3.2 / 3.9 / 4.7); the
+  sim tick 0.67 / 1.19 / 3.1 ms with up to 903 enemies; the band (its own game mode with the loadout) callback load 0.15 / 0.21 /
+  0.26 / 0.57 (p50 / p95 / p99 / max of the 5 ms burst), 159 voices at the peak, 17 steals, no underrun (worst callback 1.35
+  ms). Note: with two-cycle Tracks the window does not stay in Track 10's first Drop: the Reprise falls inside it and the run
+  ends in the loop's Track 11.
+- arena.json's events text (two cycles) is data text the code never read: nothing to change.
+
 ### F and G. Double-Time two ranks again; Split a lane a rank (eb10554; GAME_DESIGN 6.2 rows 1-2, screens.md's words)
 
 - **F**: Double-Time's cap is 2: the fire grid 1/16, 1/16 triplet, 1/32 (`World::leadGrid` and the band's `leadGridIndex`

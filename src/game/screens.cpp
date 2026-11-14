@@ -292,18 +292,23 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
             break;
         case Screen::Paused:
             params.exposurePump *= 0.2f;
-            if (coop()) screenPauseCoop(ui_);
-            else screenPause(ui_);
+            if (coop()) {
+                setHudFade(trans_ == Trans::Home ? 1.0f - gameOverOut() : 1.0f);  // (c9218dc: LEAVE RUN's home)
+                screenPauseCoop(ui_);
+                setHudFade(1.0f);
+            } else {
+                screenPause(ui_);
+            }
             break;
         case Screen::GameOver:
             // screens.md: in co-op the run behind the game over is dimmed to a fifth, as in the pause.
             params.exposurePump *= transExposure(coop() ? 0.2f : 0.45f);
             if (coop()) {
-                setHudFade(trans_ == Trans::Wait ? 1.0f - gameOverOut() : 1.0f);  // (M6: a co-op RETRY's wait)
+                setHudFade(trans_ == Trans::Wait || trans_ == Trans::Home ? 1.0f - gameOverOut() : 1.0f);  // (M6: a co-op RETRY's wait, HOME)
                 screenGameOverCoop(ui_);
                 setHudFade(1.0f);
-            } else if (trans_ == Trans::Home && transFrom_ == Screen::Paused) {
-                // (M6: QUIT RUN takes home's way: the pause screen fades out in its beat, the run behind fades with it)
+            } else if ((trans_ == Trans::Home || trans_ == Trans::Wait) && transFrom_ == Screen::Paused) {
+                // (M6: QUIT RUN takes home's way, RESTART RETRY's drop-in (c9218dc): the pause screen fades out in its beat)
                 const float out = gameOverOut();
                 if (out < 1.0f) {
                     setHudFade(1.0f - out);
@@ -327,8 +332,9 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
             params.exposurePump *= 0.33f;
             // M6 (screens.md "Transitions"): the host's START landed: the lobby fades out over the drop-in's wait.
             if (trans_ == Trans::Wait) {
-                const double span = transLine_ - transTap_;
-                setHudFade(span > 1.0 ? 1.0f - clamp01(static_cast<float>((transNow() - transTap_) / span)) : 0.0f);
+                // (c9218dc: its screen leaves as the title's controls do, over the wait's first beat)
+                const float u = clamp01(transBeats(transTap_));
+                setHudFade(1.0f - u * u * (3.0f - 2.0f * u));
             }
             screenCoopLobby(ui_);
             setHudFade(1.0f);
@@ -544,6 +550,17 @@ void Play::screenTitle(Ui& ui) {
     // M4 stage B: why a co-op session ended (the host left, the connection was lost), for a few seconds.
     coopMessageT_ += frameDt_;
     if (coopMessage_[0] && coopMessageT_ < 10.0f && trans_ == Trans::None) ui.text({cx, 870.0f * s}, 18.0f * s, palettes_->danger, 1.5f, coopMessage_);
+    // c9218dc (screens.md "Every other way in or out of a run"): a peer whose host has left came home; the line stands under
+    // PLAY for two bars.
+    if (titleNote_[0] && titleNoteAt_ >= 0.0) {
+        const float b = static_cast<float>((transNow() - titleNoteAt_) / kTicksPerBeat);
+        if (b >= 8.0f) {
+            titleNote_[0] = 0;
+        } else if (b >= 0.0f) {
+            const float level = clamp01(b * 2.0f) * clamp01((8.0f - b) * 2.0f);
+            ui.text({cx, 870.0f * s}, 18.0f * s, palettes_->danger, 1.5f * level, titleNote_);
+        }
+    }
     // Back in the drop-in's wait cancels it.
     if (waiting && keyBack_) dropInCancel();
     keyPrimary_ = keyBack_ = false;
@@ -595,8 +612,7 @@ void Play::screenPause(Ui& ui) {
                 toTitle();
             } else {
                 endRun(false);
-                screen_ = Screen::Run;
-                restartRun();
+                dropInTap(Screen::Paused);  // c9218dc: the pause's RESTART is RETRY's drop-in
             }
         }
         if (ui.pill(31, {cx + 200.0f * s, 700.0f * s}, {320.0f * s, 100.0f * s}, "NO", 30.0f * s, true) || keyBack_) askQuit_ = askRestart_ = false;

@@ -1499,13 +1499,13 @@ u32 maxLoadSetup(Command* out, u32 cap) {
                                          {Riff::Lancer, Riff::Minelayer, Riff::StormCoil, Riff::Mirror},
                                          {Riff::Swarm, Riff::Singularity, Riff::Comet, Riff::Mirror},
                                          {Riff::Sweeper, Riff::Flak, Riff::Lancer, Riff::Mirror}};
-    // The Mods that add sound, at their caps (GAME_DESIGN 6.2; play test 3, 2026-11-13: Split 2, Double-Time 1, Fork 1, set
-    // here by the audio engineer to the lead's message ahead of the content engineer's change).
+    // The Mods that add sound, at their caps (GAME_DESIGN 6.2; play test 3, 2026-11-13: Fork 1; the owner, 2026-11-14, eb10554:
+    // Split 4, a harmony note a rank, and Double-Time 2, the 1/32 lead; set by the content engineer at the coordinator's word).
     struct Cap {
         Mod m;
         u8 stacks;
     };
-    static constexpr Cap kMods[] = {{Mod::Split, 2},      {Mod::DoubleTime, 1}, {Mod::Pierce, 3},     {Mod::Overcharge, 5}, {Mod::OnBeatCrit, 3},
+    static constexpr Cap kMods[] = {{Mod::Split, 4},      {Mod::DoubleTime, 2}, {Mod::Pierce, 3},     {Mod::Overcharge, 5}, {Mod::OnBeatCrit, 3},
                                     {Mod::Seeker, 3},     {Mod::HeavyStep, 3},  {Mod::Accent, 3},     {Mod::Echo, 2},       {Mod::Wave, 2},
                                     {Mod::RearGuard, 2},  {Mod::Syncopation, 2}, {Mod::BarLine, 3},   {Mod::Crescendo, 2},  {Mod::KickPulse, 3},
                                     {Mod::Afterparty, 2}, {Mod::Fork, 1},       {Mod::Arc, 3},        {Mod::Burn, 3},       {Mod::Shatter, 3},

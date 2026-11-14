@@ -1142,6 +1142,30 @@ void testPlayTest1() {
 
 void testBoss() {
     g_test = "boss";
+    // c9218dc (GAME_DESIGN 7.6, a boss keeps pace): only aimed damage raises the pace; the same damage done through the assist's
+    // fire (fire 2) leaves the novice's boss.
+    for (u8 mode = 1; mode <= 2; ++mode) {
+        World* pw = quietWorld();
+        pw->rules().godMode = true;
+        double pm = 0.0;
+        stepWorld(*pw, pm, Vec2{});
+        pw->spawnBossNow(kTicksPerBar, Vec2{550.0f, 0.0f});
+        const BossState& ps = pw->boss();
+        i64 lastBar = -1;
+        while (pm < ps.fightTick + 9.0 * kTicksPerBar && ps.active && !ps.dying) {
+            stepWorld(*pw, pm, Vec2{}, mode);
+            const i64 fb = pm >= ps.fightTick ? static_cast<i64>(std::floor((pm - ps.fightTick) / kTicksPerBar)) : -1;
+            if (fb < 0 || fb == lastBar) continue;
+            lastBar = fb;
+            for (u32 arm = 0; arm < 3; ++arm) {
+                const Vec2 d = dirOf(pw->bossArmAngle(arm));
+                pw->shootBoss(ps.pos + d * 400.0f, ps.pos + d * 180.0f, 20.0f);
+            }
+        }
+        CHECK_MSG(ps.paceSet && (mode == 1 ? ps.pace > 1.5f : ps.pace == 1.0f), "fire %u: pace %.2f (set %d, measured %.0f)", mode, ps.pace,
+                  ps.paceSet ? 1 : 0, ps.paceMeasured);
+        delete pw;
+    }
     World* w = quietWorld();
     double music = 0.0;
     stepWorld(*w, music, Vec2{});

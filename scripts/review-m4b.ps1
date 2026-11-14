@@ -16,7 +16,7 @@
 #   hud                             the co-op HUD 30 s in (the team's score, each player's ranked)
 #   pause_menu, pause               the shared pause (a client paused it) and its shared count-in, on the host's screen
 #   over, over_client               the co-op game over from the host (RETRY) and from a client (WAITING FOR HOST)
-#   host_left                       the host quits in the run: the client's join screen with the message
+#   host_left                       the host quits in the run: the client comes home, THE HOST LEFT under PLAY (c9218dc)
 #   scripts\review-m4b.ps1 [-Out captures\m4b] [-Config debug|dev] [-Only lobby_host,hud]
 # Debug (the default) runs with validation: a picture whose logs show validation messages, or a control within 24 px of
 # another ("ui:" warnings, screens.md), is reported at the end and the script exits 1.

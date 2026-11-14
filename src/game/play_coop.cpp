@@ -256,6 +256,12 @@ void Play::coopFlow() {
         else
             std::snprintf(msg, sizeof msg, "THE CONNECTION WAS LOST");
         RF_LOG("net: the session ended (%s)", why);
+        if (gone && coopSeated_) {
+            // c9218dc (screens.md "Every other way in or out of a run"): a peer whose host has left goes home, the host's message
+            // under PLAY for two bars (its score kept: leaveCoop).
+            homeLeaveCoop("THE HOST LEFT");
+            return;
+        }
         leaveCoop(msg);
         openCoop();  // back to the join screen, the message on it (screens.md: the join screen's message line)
         return;
@@ -475,6 +481,11 @@ void Play::coopScreenShot() {
     if (!opt_.coopShot[0] || coopShotReady_ || session_) return;
     const char* shot = opt_.coopShot;
     const auto is = [&](const char* name) { return std::strcmp(shot, name) == 0; };
+    // c9218dc: a peer whose host has gone comes home, THE HOST LEFT under PLAY (the picture a beat after it shows).
+    if (is("message") && screen_ == Screen::Title && titleNote_[0] && titleNoteAt_ >= 0.0 && transNow() > titleNoteAt_ + kTicksPerBeat) {
+        coopShotReady_ = true;
+        return;
+    }
     if (screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission) {
         coopShotT_ += frameDt_;
     } else {

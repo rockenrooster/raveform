@@ -17,7 +17,7 @@ using namespace sim;
 
 namespace {
 enum class M6 : u8 { Hint, EndedBy, SetCard, SetOver, TitleStar, UiScale, MiniStays, Flash, Credits, LwEntrance, LwLunge, LwClose, DropTitle,
-                     DropRetry, Home };
+                     DropRetry, Home, PauseRestart, PauseQuit };
 struct M6Pic {
     const char* name;   // m6_<name>
     M6 kind;
@@ -44,6 +44,9 @@ const M6Pic kM6Pics[] = {
     // (PLAY on a bar's second beat: three beats of wait, the downbeat, the run's first bar), RETRY's drop-in from game over, and
     // home (HOME on a bar's second beat: the game over leaving, the title building over the next bar, its run fading up).
     {"drop_title", M6::DropTitle, 0, nullptr}, {"drop_retry", M6::DropRetry, 0, nullptr}, {"home", M6::Home, 0, nullptr},
+    // c9218dc (screens.md "Every other way in or out of a run"): the pause's RESTART (RETRY's drop-in) and QUIT RUN (home), the
+    // pause taken on a bar's second beat, the choice half a second later.
+    {"pause_restart", M6::PauseRestart, 0, nullptr}, {"pause_quit", M6::PauseQuit, 0, nullptr},
 };
 constexpr u32 kM6Count = sizeof(kM6Pics) / sizeof(kM6Pics[0]);
 constexpr u32 kM6At = 300;  // after the run's Track card (2.25 bars)
@@ -84,10 +87,12 @@ bool Play::scriptSetupM6() {
         case M6::SetOver:
         case M6::DropRetry:
         case M6::Home:
+        case M6::PauseRestart:
+        case M6::PauseQuit:
             flow_ = true;
             screen_ = Screen::Run;
             w.spawner().mode = Spawner::Mode::Slice;
-            if (pic.kind == M6::DropRetry || pic.kind == M6::Home) stripStride_ = static_cast<u32>(std::lround(3600.0 / std::fmax(w.tempoAt(0.0), 30.0f)));
+            if (pic.kind != M6::EndedBy && pic.kind != M6::SetOver) stripStride_ = static_cast<u32>(std::lround(3600.0 / std::fmax(w.tempoAt(0.0), 30.0f)));
             break;
         case M6::DropTitle:
             flow_ = true;
@@ -189,6 +194,22 @@ bool Play::scriptInputM6(StickInput& in) {
             }
             if (t == 202) w.rules().godMode = true;
             if (captureFrom_ < 0 && t == kM6At + (pic.arg == 7 ? 60u : 0u)) captureFrom_ = now;
+            return true;
+        }
+        case M6::PauseRestart:
+        case M6::PauseQuit: {
+            const double inBar = std::fmod(music1_, kTicksPerBar);
+            in = screen_ == Screen::Run && trans_ == Trans::None ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+            if (screen_ == Screen::Run && trans_ == Trans::None && t >= kM6At && captureFrom_ < 0 && inBar >= kTicksPerBeat && inBar < kTicksPerBeat + 4.0) {
+                pauseRun();
+                placedAt_ = t;
+            }
+            if (screen_ == Screen::Paused && captureFrom_ < 0 && t >= placedAt_ + 30u) {
+                endRun(false);
+                if (pic.kind == M6::PauseRestart) dropInTap(Screen::Paused);
+                else toTitle();
+                captureFrom_ = now + static_cast<i64>(std::lround(1.25 * stripStride_));
+            }
             return true;
         }
         case M6::DropTitle:

@@ -460,9 +460,8 @@ void Play::screenPauseCoop(Ui& ui) {
         ui.text({cx, 560.0f * s}, 24.0f * s, white, 1.3f, "LEAVE THIS RUN? THE OTHERS PLAY ON");
         if (ui.pill(30, {cx - 200.0f * s, 700.0f * s}, {320.0f * s, 100.0f * s}, "YES", 30.0f * s, false)) {
             askQuit_ = false;
-            leaveCoop("");
-            if (band_) band_->playSfx(audio::Sfx::UiBack);
             keyPrimary_ = keyBack_ = false;
+            homeTap();  // c9218dc (screens.md "Every other way in or out of a run"): LEAVE RUN takes home's way
             return;
         }
         if (ui.pill(31, {cx + 200.0f * s, 700.0f * s}, {320.0f * s, 100.0f * s}, "NO", 30.0f * s, true) || keyBack_) askQuit_ = false;
@@ -572,10 +571,9 @@ void Play::screenGameOverCoop(Ui& ui) {
         if (band_) band_->playSfx(audio::Sfx::UiConfirm);
     }
     if (!host) ui.text({right - 300.0f * s, H - 162.0f * s}, 14.0f * s, white, 0.8f, "WAITING FOR HOST");
-    if (ui.pill(41, {right - 165.0f * s, H - 90.0f * s}, {330.0f * s, 90.0f * s}, "HOME", 28.0f * s, false) || keyBack_) {
-        leaveCoop("");
-        if (band_) band_->playSfx(audio::Sfx::UiBack);
-    }
+    if ((ui.pill(41, {right - 165.0f * s, H - 90.0f * s}, {330.0f * s, 90.0f * s}, "HOME", 28.0f * s, false, true, trans_ == Trans::Home) || keyBack_) &&
+        trans_ == Trans::None)
+        homeTap();  // c9218dc: co-op's HOME is home
     keyPrimary_ = keyBack_ = false;
 }
 
