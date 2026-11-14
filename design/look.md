@@ -396,6 +396,24 @@ hotter each time, and never near the danger colour.
   map bleaches anything brighter, which is why the first build's fan looked pale. Glow, sparks and
   mini-refractions take the lane's colour.
 
+### A lethal line reads at a glance (the owner, 2026-11-14)
+
+"Do a pass on any red line enemy stuff, make sure that they are all visible enough, have enough glow."
+Every lethal line is drawn alike, whatever makes it: a boss's beam, a Tether's, a link, a Weaver's trail,
+a Ram's wake, Weaver Prime's laps, Polyrhythm's walls, the edges of a lethal band (Feedback's Howl and
+its Nulls), and Fata Morgana's sand (which marks the storm and hurts nobody itself):
+
+- on the priority layer, never dimmed by the crowd, its capsule as wide as it kills but **never under
+  3 px**, with the dark rim and a white-pink line of 2 px down its axis;
+- round it a danger glow that hurts nobody: sigma half its kill width but **at least 6 wu**, **0.35** on
+  the axis (reduce flashing 0.25). Until now it was 0.20 with sigma half the kill width, so a Tether's
+  6 wu beam glowed for 3 wu, a thin line in a crowd, and the trails and wakes had no glow at all;
+- a trail or a wake is **whole for as long as it kills**: it dims only to 0.6 in its last tenth (it faded
+  with its age before, so its oldest part looked gone while it still killed);
+- an echo shot (Feedback's, the Reprise's) has a core at least 3 px wide and a glow at its head.
+
+A tell is not a lethal line: it stays see-through (section 5, 0449eb3).
+
 ### Splits (the owner's play, 2026-11-14)
 
 A Fork or Fractal split is drawn, not only heard: at the hit a **Y of light**, two straight arms 70 wu long

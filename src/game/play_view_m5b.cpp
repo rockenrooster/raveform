@@ -20,6 +20,9 @@ Vec2 dirv(float a) { return {std::cos(a), std::sin(a)}; }
 Vec2 lerpv(Vec2 a, Vec2 b, float t) { return a + (b - a) * t; }
 Vec3 whiteV() { return {1.0f, 1.0f, 1.0f}; }
 float clamp01(float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
+// look.md §5 (the owner's red-line pass, 2026-11-14): a lethal band (Feedback's Howl, a Null's front) is drawn by its edges, each a
+// lethal line this wide with its glow.
+constexpr float kBandEdgeWu = 4.0f;
 }  // namespace
 
 // ---------------------------------------------------------------------------------------------- Event Horizon
@@ -246,19 +249,18 @@ float hueDist(float a, float b) {
 }  // namespace
 
 void PlayView::polyWalls(FrameDraw& d, const ViewInput& in) {
-    // The walls: arcs in the danger colour on the priority layer, 3 px with the threat rim, thinning to 2 px in their last
-    // half second; the gaps (and what a hit or a Nova erased) plainly empty.
+    // The walls: arcs in the danger colour on the priority layer, drawn as every lethal line is (look.md §5; 3 px until the owner's
+    // red-line pass, 2026-11-14), dimmer in their last half second; the gaps (and what a hit or a Nova erased) plainly empty.
     const World& w = *in.world;
     const BossState& s = w.boss();
     const PolyData& P = w.species().poly;
-    const Vec3 danger = palettes_->danger;
     const double t = in.music;
     const float tps = std::fmax(in.bpm, 60.0f) * static_cast<float>(kTicksPerBeat) / 60.0f;
     for (const PolyRing& r : s.pr.rings) {
         if (!w.polyRingAlive(r, t)) continue;
         const float rad = w.polyRingRadius(r, t);
         const float age = static_cast<float>((t - r.tick) / tps);
-        const float px = (P.wallLife - age < prose::kPrWallThinS ? 2.0f : 3.0f) * 0.5f * refPx_;
+        const bool thin = P.wallLife - age < prose::kPrWallThinS;
         const u32 n = r.sides ? r.sides : 3u;
         const float half = 0.5f * r.arcDeg * kTau / 360.0f;
         const u32 segs = static_cast<u32>(std::ceil(r.arcDeg / 6.0f));
@@ -269,10 +271,8 @@ void PlayView::polyWalls(FrameDraw& d, const ViewInput& in) {
                 if (!w.polyWallAt(r, 0.5f * (a0 + a1))) continue;  // erased there
                 const Vec2 p0 = r.at + dirv(a0) * rad, p1 = r.at + dirv(a1) * rad;
                 if (!visible(p0, 30.0f) && !visible(p1, 30.0f)) continue;
-                if (shown(kMuteBullet)) d.scene.line(toScene(p0), toScene(p1), px * 1.4f, danger * 0.9f, danger * 0.9f, 0);
-                if (!shown(kMutePriority)) continue;
-                d.threatRims.line(toScreen(p0), toScreen(p1), px + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
-                d.threatCores.line(toScreen(p0), toScreen(p1), px, danger, danger, 0);
+                // look.md §5 (the owner's red-line pass): a lethal line as every one is drawn, its kill width, dimmer as it thins.
+                lethalBeam(d, p0, p1, P.wallThickness, thin ? 0.7f : 1.0f);
             }
         }
     }
@@ -514,9 +514,7 @@ void PlayView::drawFeedback(FrameDraw& d, const ViewInput& in) {
                 const Vec2 p0 = c + dirv(a0) * r, p1 = c + dirv(a1) * r;
                 if (!visible(p0, 30.0f) && !visible(p1, 30.0f)) continue;
                 if (hot) {
-                    d.scene.line(toScene(p0), toScene(p1), hw * 1.6f, danger * 1.6f, danger * 1.6f, 0);
-                    d.threatRims.line(toScreen(p0), toScreen(p1), 0.5f * F.loopWidthPx * refPx_ * 2.0f + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
-                    d.threatCores.line(toScreen(p0), toScreen(p1), 0.5f * F.loopWidthPx * refPx_ * 2.0f, danger, danger, 0);
+                    lethalBeam(d, p0, p1, kBandEdgeWu);  // (look.md §5: the lethal band's edges, as every lethal line is drawn)
                 } else if (level > 0.0f) {
                     d.scene.line(toScene(p0), toScene(p1), 0.5f * F.loopWidthPx * refPx_, W1 * (1.3f * level), W1 * (1.3f * level), 0);
                 }
@@ -647,11 +645,7 @@ void PlayView::drawFeedback(FrameDraw& d, const ViewInput& in) {
         for (u32 j = 0; j < segs; ++j) {
             const Vec2 p0 = n.at + dirv(kTau * j / segs) * r, p1 = n.at + dirv(kTau * (j + 1) / segs) * r;
             if (!visible(p0, 30.0f) && !visible(p1, 30.0f)) continue;
-            d.scene.line(toScene(p0), toScene(p1), hw * 3.0f, danger * 2.0f, danger * 2.0f, 0);
-            if (shown(kMutePriority)) {
-                d.threatRims.line(toScreen(p0), toScreen(p1), 2.0f * refPx_ + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
-                d.threatCores.line(toScreen(p0), toScreen(p1), 2.0f * refPx_, danger, danger, 0);
-            }
+            lethalBeam(d, p0, p1, kBandEdgeWu);  // (look.md §5: the Null's front, as every lethal line is drawn)
         }
     }
 }

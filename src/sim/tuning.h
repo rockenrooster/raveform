@@ -286,11 +286,9 @@ constexpr float kBossEnterWu = 500.0f;        // kaleidos.md (quoted): enters 50
 // ======================================================================================================
 constexpr float kBossBulletScaleM5 = 1.0f;    // the new fights' bullet density lever (1 = the pages' counts; Kaleidos keeps 0.7)
 // GAME_DESIGN 8, "Enemy bullets by Track" (the owner, 2026-11-14, 0449eb3; quoted): every enemy bullet (the crowd's, the fights',
-// the mini-bosses') counted at 0.5 in Tracks 1-3 and 0.75 in Tracks 4-7 (World::trackCount); the owner's play of f0624e5 ("red
-// line enemy projectiles in track 9 ... are too frequent, tune down to like 0.25x"): 0.25 in Tracks 9 and 10; Track 8 as written.
+// the mini-bosses') counted at 0.5 in Tracks 1-3 and 0.75 in Tracks 4-7 (World::trackCount).
 constexpr float kBulletsEarly = 0.5f;
 constexpr float kBulletsMiddle = 0.75f;
-constexpr float kBulletsLate = 0.25f;
 constexpr float kBossNovaShareM5 = 1.0f;      // a Nova's blast on each part of theirs it can hurt (x kBossNovaDamage)
 constexpr u32 kLwSegmentShards = 4;           // Shards a Longwave segment drops (24 of them)
 constexpr u32 kChoirVoiceShards = 20;         // Shards a Voice drops (as Kaleidos's pair)

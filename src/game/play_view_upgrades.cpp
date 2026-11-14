@@ -3,6 +3,7 @@
 // Downbeat Cannon, Bar Line, Beam, the Sweeper's arms) are capsules; bodies (wingmen, the decoy, mines, comets, bombs,
 // wells) are glyphs; lightning is a jagged line that fades in 0.15 s. Cosmetic only.
 
+#include <algorithm>
 #include <cmath>
 #include <initializer_list>
 
@@ -26,6 +27,8 @@ constexpr float kBoltS = 0.09f;       // look.md 5: a zap's 90 ms
 // arms along the halves' paths in their colour (60 degrees round the hue wheel while they can split again, 120 for the last).
 constexpr u8 kBoltForkMore = 4, kBoltForkLast = 5;
 constexpr float kForkArmWu = 70.0f, kForkShowS = 0.25f;
+// look.md §5 "A lethal line reads at a glance" (the owner, 2026-11-14): no lethal line under 3 px, its glow at least 6 wu.
+constexpr float kLethalMinPx = 3.0f, kLethalGlowMinWu = 6.0f;
 constexpr float kBeatPeakS = 2.0f / 60.0f, kBeatFallS = 0.110f;  // look.md 5 (a beam on a beat), 7
 // A held beam's core moves between 1.0 and 1.2 on the 1/32 grid (look.md v2.5 says 1.0-1.4; the lead's checkpoint after part 4:
 // the core's bloom widened the Beam Boost's haze, so 1.2).
@@ -58,10 +61,12 @@ void PlayView::drawBeam(FrameDraw& d, Vec2 from, Vec2 dir, float len, float w, f
     }
 }
 void PlayView::lethalBeam(FrameDraw& d, Vec2 a, Vec2 b, float killWu, float level) {
-    // look.md v2.5 ("A lethal beam is a laser too"): danger red on the priority layer, its capsule exactly as wide as it kills
-    // (a threat's picture is its hit box), a white-pink line of 2 px down its axis; round it a glow of the danger colour drawn
-    // as the players' is, 0.20 on the axis (reduce flashing 0.15), sigma half the kill width, that hurts nobody (look.md
-    // 1dce5d3: twice the width was a red band 180 px wide behind Event Horizon's jets).
+    // look.md v2.5 ("A lethal beam is a laser too") and §5 "A lethal line reads at a glance" (the owner, 2026-11-14: "do a pass on
+    // any red line enemy stuff, make sure that they are all visible enough, have enough glow"): danger red on the priority layer,
+    // its capsule as wide as it kills but never under kLethalMinPx, a white-pink line of 2 px down its axis; round it a glow of
+    // the danger colour drawn as the players' is, sigma half the kill width but at least kLethalGlowMinWu, 0.35 on the axis
+    // (reduce flashing 0.25), that hurts nobody (it was 0.20 with sigma half the kill width: a Tether's 6 wu beam glowed for 3
+    // wu). The glow's discs sit in the middles of equal pieces, so a polyline drawn piece by piece glows evenly.
     const Vec3 danger = palettes_->danger, W1 = whiteU();
     const Vec3 pink = mix(danger, W1, 0.7f);
     const float len = length(b - a);
@@ -69,18 +74,19 @@ void PlayView::lethalBeam(FrameDraw& d, Vec2 a, Vec2 b, float killWu, float leve
     const Vec2 dir = (b - a) * (1.0f / len);
     if (shown(kMuteBullet)) {
         d.scene.line(toScene(a), toScene(b), refPx_, pink * (1.6f * level), pink * (1.6f * level), 0);
-        const float sigma = 0.5f * killWu;
-        const float step = 2.0f * sigma;
+        const float sigma = std::fmax(0.5f * killWu, kLethalGlowMinWu);
+        const u32 n = std::max(1u, static_cast<u32>(std::lround(len / (2.0f * sigma))));
+        const float stepWu = len / static_cast<float>(n);
         const float radius = sigma * look_->glowRadiusOverSigma;
-        const float c = (reduceFlashing_ ? 0.15f : 0.20f) * level * step / (sigma * 2.5066283f);
+        const float c = (reduceFlashing_ ? 0.25f : 0.35f) * level * stepWu / (sigma * 2.5066283f);
         GlowBatch& soft = radius * pxPerWu_ < 16.0f * refPx_ ? d.sparkles : d.pools;  // (look.md §3, as drawBeam)
-        for (float u = 0.0f; u <= len; u += step) {
-            const Vec2 p = a + dir * u;
+        for (u32 k = 0; k < n; ++k) {
+            const Vec2 p = a + dir * (stepWu * (static_cast<float>(k) + 0.5f));
             if (visible(p, radius)) soft.glow(toScene(p), radius * pxPerWu_, danger * c);
         }
     }
     if (!shown(kMutePriority)) return;
-    const float hw = 0.5f * killWu * pxPerWu_;
+    const float hw = std::fmax(0.5f * killWu * pxPerWu_, 0.5f * kLethalMinPx * refPx_);
     d.threatRims.line(toScreen(a), toScreen(b), hw + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
     d.threatCores.line(toScreen(a), toScreen(b), hw, danger * level, danger * level, 0);
     d.threatCores.line(toScreen(a), toScreen(b), refPx_, pink * level, pink * level, 0);
@@ -397,8 +403,10 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
 
 void PlayView::drawHazards(FrameDraw& d, const ViewInput& in) {
     // M5 part 4 (look.md 2, 5): what is lethal is the danger colour and nothing else. A Tether's beam is one line (under 20
-    // wu: edges and core are one) with a white core; a Weaver's trail (and Ram B's wake) a danger polyline fading with its
-    // age; a Well is drawn by its glyph and the edge of its pull (an area by its edge, no fill).
+    // wu: edges and core are one) with a white core; a Weaver's trail (and Ram B's wake) a lethal polyline, whole while it
+    // kills (the owner's red-line pass, 2026-11-14: it faded with its age, so its oldest part looked gone while it still
+    // killed; now it dims only to 0.6 in its last tenth); a Well is drawn by its glyph and the edge of its pull (an area by
+    // its edge, no fill).
     const World& w = *in.world;
     const Vec3 danger = palettes_->danger, W1 = whiteU();
     const float t = static_cast<float>(in.time);
@@ -420,10 +428,8 @@ void PlayView::drawHazards(FrameDraw& d, const ViewInput& in) {
             const u32 j0 = (tl.head + World::Trail::kCap - j) % World::Trail::kCap, j1 = (tl.head + World::Trail::kCap - j - 1) % World::Trail::kCap;
             const Vec2 p0{tl.x[j0], tl.y[j0]}, p1{tl.x[j1], tl.y[j1]};
             if (!visible(p0, 40.0f)) continue;
-            const float age0 = static_cast<float>((in.music - tl.t[j0]) / tl.life), age1 = static_cast<float>((in.music - tl.t[j1]) / tl.life);
-            const float l0 = 1.4f * (1.0f - clampU(age0)), l1 = 1.4f * (1.0f - clampU(age1));
-            d.scene.line(toScene(p0), toScene(p1), std::fmax(0.5f * tl.width * pxPerWu_, 0.8f * refPx_), danger * l0, danger * l1, 0);
-            if (tl.kind == 2) d.scene.line(toScene(p0), toScene(p1), 0.8f * refPx_, W1 * (0.5f * l0), W1 * (0.5f * l1), 0);
+            const float age = clampU(static_cast<float>((in.music - 0.5 * (tl.t[j0] + tl.t[j1])) / tl.life));
+            lethalBeam(d, p0, p1, tl.width, age < 0.9f ? 1.0f : 1.0f - 4.0f * (age - 0.9f));
         }
     }
     // Skitter B's mines (a danger ring and a core that blinks faster as it ages), Blink C's decoys (white copies), Sentry C's

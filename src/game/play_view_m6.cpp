@@ -249,7 +249,8 @@ void PlayView::drawArpeggiator(FrameDraw& d, const ViewInput& in) {
 // ---------------------------------------------------------------------------------------------- Fata Morgana
 
 void PlayView::drawMorgana(FrameDraw& d, const ViewInput& in) {
-    // morgana.md "Parts": the storm, sixty streaks of sand in the danger colour at 0.5 streaming across the frame on the priority
+    // morgana.md "Parts": the storm, fifteen streaks of sand in the danger colour at 0.8 (sixty at 0.5 until the owner's red-line
+    // pass) streaming across the frame, each drawn as a lethal line is, on the priority
     // layer outside the calm (never a fill); the oasis, a ring in the palette's accent at 2.2 with a second 12 wu inside it that
     // swells on the beat; Morgana, three veils (broken arcs) round a white core, turning against each other. The mirage is drawn
     // as the oasis and goes out on the snares; in the Crossing the next oasis is dashed for the bar before the leap, then the old
@@ -260,7 +261,7 @@ void PlayView::drawMorgana(FrameDraw& d, const ViewInput& in) {
     const MorganaData& M = w.species().morgana;
     const double t = in.music;
     const float now = static_cast<float>(in.time);
-    const Vec3 W1 = whiteV(), danger = palettes_->danger, accent = palette_->accent;
+    const Vec3 W1 = whiteV(), accent = palette_->accent;
     const float entrance = clamp01(static_cast<float>((t - s.enterTick) / kTicksPerBar));
     const float level = s.dying ? clamp01(1.0f - static_cast<float>((t - s.deathTick) / kTicksPerBar)) : entrance;
     const float R = M.oasisRadius;
@@ -285,7 +286,10 @@ void PlayView::drawMorgana(FrameDraw& d, const ViewInput& in) {
         const float wind = 0.35f + 0.25f * std::sin(now * 0.13f);
         const Vec2 wd = dirv(wind), wp{-wd.y, wd.x};
         const auto h01 = [](u32 i, u32 salt) { return static_cast<float>(hash32(i, salt) & 0xFFFFu) / 65535.0f; };
-        const Vec3 sand = danger * (prose::kMgSandLevel * entrance);
+        // morgana.md (the owner's red-line pass, 2026-11-14: "thin red lines streaking across the screen ... too small, not visible
+        // enough and are too frequent, tune down to like 0.25x"): fifteen streaks, each a lethal line's look (it hurts nobody: the
+        // storm does), flaring on every kick, when the storm hurts.
+        const float sandLevel = prose::kMgSandLevel * entrance * (1.0f + 0.6f * kick_);
         for (u32 i = 0; i < prose::kMgSandStreaks; ++i) {
             const float speed = 700.0f + 500.0f * h01(i, 0x5A1u), len = 70.0f + 110.0f * h01(i, 0x5A2u);
             const float along = std::fmod(h01(i, 0x5A3u) * 2.0f * diag + now * speed, 2.0f * diag) - diag;
@@ -293,8 +297,7 @@ void PlayView::drawMorgana(FrameDraw& d, const ViewInput& in) {
             const Vec2 head = cam_ + wd * along + wp * across;
             if (!visible(head, 20.0f) || w.morganaCalm(head, t)) continue;
             const Vec2 tail = head - wd * len;
-            if (shown(kMuteBullet)) d.scene.line(toScene(tail), toScene(head), 0.7f * refPx_, sand * 0.6f, sand * 0.6f, 0);
-            if (shown(kMutePriority)) d.threatCores.line(toScreen(tail), toScreen(head), 1.0f * refPx_, sand, sand, 0);
+            lethalBeam(d, tail, head, prose::kMgSandWu, sandLevel);
         }
     }
     // The oases: the real one, the mirage (out on the snares), the next one dashed, the old one shrinking and the corridor.

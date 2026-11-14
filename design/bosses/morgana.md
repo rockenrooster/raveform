@@ -17,7 +17,7 @@ What it teaches:
 
 | Part | What it is |
 |---|---|
-| **The storm** | Everything outside the oasis. It hurts on the kick: a ship outside the calm when a kick lands (this Track's broken kick: steps 0, 6 and 10) loses a cell. Drawn as sixty streaks of sand in the danger colour at 0.5 streaming across the frame on the priority layer, with the lattice whipped 10 wu along the wind; never a fill |
+| **The storm** | Everything outside the oasis. It hurts on the kick: a ship outside the calm when a kick lands (this Track's broken kick: steps 0, 6 and 10) loses a cell. Drawn as fifteen streaks of sand in the danger colour at 0.8 streaming across the frame, each drawn as a lethal line is (look.md section 5: a 4 wu capsule with the dark rim, a white-pink axis and a glow), flaring on every kick, when the storm hurts; with the lattice whipped 10 wu along the wind; never a fill (the owner, 2026-11-14: "thin red lines streaking across the screen ... too small, not visible enough and are too frequent, tune down to like 0.25x"; sixty thin ones at 0.5 until then). The streaks hurt nobody: the storm does, outside the oasis, on the kick |
 | **The oasis** | A disc of calm 260 wu in radius. Its edge is a ring in the palette's accent at 2.2 with a second ring 12 wu inside it that swells on the beat; inside, the lattice is at rest and tinted with the accent |
 | **Morgana** | A body of radius 76 made of three veils (broken arcs) round a white core, turning against each other. She rides the storm just outside the oasis's edge |
 
@@ -45,7 +45,7 @@ What it teaches:
 | Weak point | X 2 while she crosses the resting oasis (one bar in four), and for the beat after each leap in the last phase |
 | Crowd | Half of the Drop's crowd, fodder only, unless the page says otherwise |
 | Camera | Holds 0.85 for the fight (GAME_DESIGN 9) |
-| Caps | One body, 90 bullets, 60 streaks of sand (light only) |
+| Caps | One body, 90 bullets, 15 streaks of sand (light only; 60 until 2026-11-14) |
 | On the grid | Everything it does lands on the song's grid and is computed from the song's clock, so every device in a co-op run sees the same fight with nothing new on the wire |
 
 ## Death

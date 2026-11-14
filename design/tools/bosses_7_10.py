@@ -96,7 +96,7 @@ BOSSES = [
                  "A mirage blinks on the snare. The real water never blinks.",
                  "It crosses the water every fourth bar: that is when it can be caught."],
         parts=[
-            ("The storm", "Everything outside the oasis. It hurts on the kick: a ship outside the calm when a kick lands (this Track's broken kick: steps 0, 6 and 10) loses a cell. Drawn as sixty streaks of sand in the danger colour at 0.5 streaming across the frame on the priority layer, with the lattice whipped 10 wu along the wind; never a fill"),
+            ("The storm", "Everything outside the oasis. It hurts on the kick: a ship outside the calm when a kick lands (this Track's broken kick: steps 0, 6 and 10) loses a cell. Drawn as fifteen streaks of sand in the danger colour at 0.8 streaming across the frame, each drawn as a lethal line is (look.md section 5: a 4 wu capsule with the dark rim, a white-pink axis and a glow), flaring on every kick, when the storm hurts; with the lattice whipped 10 wu along the wind; never a fill (the owner, 2026-11-14: \"thin red lines streaking across the screen ... too small, not visible enough and are too frequent, tune down to like 0.25x\"; sixty thin ones at 0.5 until then). The streaks hurt nobody: the storm does, outside the oasis, on the kick"),
             ("The oasis", "A disc of calm 260 wu in radius. Its edge is a ring in the palette's accent at 2.2 with a second ring 12 wu inside it that swells on the beat; inside, the lattice is at rest and tinted with the accent"),
             ("Morgana", "A body of radius 76 made of three veils (broken arcs) round a white core, turning against each other. She rides the storm just outside the oasis's edge"),
         ],
@@ -116,7 +116,7 @@ BOSSES = [
         sound=["The storm is a crackle and a whoosh that are heard outside the oasis; outside it the music bus is also low-passed at 2 kHz, so the calm is where the song sounds whole",
                "A mirage's blink is a soft tick on the snare", "The leap is the lead's arpeggio as a run of chirps, up",
                "While she is over the water, a bell on every beat"],
-        caps="one body, 90 bullets, 60 streaks of sand (light only)",
+        caps="one body, 90 bullets, 15 streaks of sand (light only; 60 until 2026-11-14)",
     ),
     dict(
         id="reprise", name="Kaleidos, Reprise", track=10, trackName="Last Light", bpm=174, key="A minor: First Light's chords and lead",

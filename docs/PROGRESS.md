@@ -4,6 +4,21 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (evening), the owner's red-line pass (look.md 5 "A lethal line reads at a glance")
+
+- The owner on f0cd14f: "Track 9 red projectiles: no these were thin red lines streaking across the screen": Fata Morgana's
+  sand, not the bullets. **Undone: the 0.25 on Tracks 9 and 10's bullets** (`kBulletsLate` gone; Tracks 8-10 as written again;
+  the bullets stay drawn larger). **The sand**: fifteen streaks (sixty) at 0.8 (0.5), each drawn as a lethal line (4 wu) and
+  flaring on the kick, when the storm hurts (`boss_prose.h` `kMgSand*`; morgana.md, its tool `bosses_7_10.py`).
+- "Do a pass on any red line enemy stuff, make sure that they are all visible enough, have enough glow": every lethal line goes
+  through `PlayView::lethalBeam`: the priority capsule as wide as it kills but never under 3 px, the rim, the white-pink axis,
+  and a glow of sigma max(half the kill width, 6 wu) at 0.35 on the axis (0.20 at half the kill width: a 6 wu Tether glowed 3
+  wu), its discs centred on equal pieces so polylines glow evenly. Now drawn by it too: the Weaver's trails and Ram B's wakes
+  (scene-only lines fading with their age before; now whole while they kill, 0.6 in their last tenth), the Battering Ram's
+  wake, Weaver Prime's laps, Polyrhythm's walls (3 px; now their 10 wu kill width), the edges of Feedback's Howl and its Nulls
+  (4 wu). Echo shots: a core of at least 3 px and a glow at the head. Tells stay see-through (0449eb3).
+- sim tests 6,112 checks, 0 failures; determinism PASS. Pictures `captures\pt4\red_*` (Morgana, Polyrhythm, Feedback, Track 7).
+
 ## 2026-11-14 (evening), the owner's play of f0624e5: the mix, Arcadia's blocks, Track 9's bullets, Boosts that show, the grade, the first level, Shards, the tempo
 
 Done by the lead alone (the owner: "fix these yourself with no subagents"); design and code in one commit.

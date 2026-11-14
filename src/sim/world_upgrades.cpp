@@ -1143,10 +1143,11 @@ u32 World::shooterCount(u32 base, u32& rngState) const {
 
 float World::bulletTrackScale() const {
     // GAME_DESIGN 8, "Enemy bullets by Track" (the owner, 2026-11-14, 0449eb3): every enemy bullet at 0.5 in Tracks 1-3 and 0.75
-    // in Tracks 4-7; the owner's play of f0624e5: 0.25 in Tracks 9 and 10; Track 8 and the loop as written.
+    // in Tracks 4-7; Tracks 8-10 and the loop as written. (f0cd14f's 0.25 in Tracks 9 and 10 was a misreading of the owner's
+    // "red line enemy projectiles in track 9", which were Fata Morgana's sand streaks: undone.)
     const u32 t = phrase_.track;
     if (rules_.bulletsAsWritten || t == 0 || inLoop(t, director_.songs)) return 1.0f;
-    return t <= 3u ? kBulletsEarly : (t <= 7u ? kBulletsMiddle : (t == 8u ? 1.0f : kBulletsLate));
+    return t <= 3u ? kBulletsEarly : (t <= 7u ? kBulletsMiddle : 1.0f);
 }
 
 namespace {

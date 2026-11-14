@@ -532,10 +532,8 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
                 }
                 telegraphLine(d, body + m.lockDir * me->radius, body + m.lockDir * reach, m.cueTick);
             }
-            if (m.wake && (t < m.wakeUntil || m.state == 2)) {
-                d.scene.line(toScene(m.wakeFrom), toScene(m.wakeTo), 0.5f * tuning::kRamWakeWu * pxPerWu_, danger * 2.2f, danger * 2.2f, 0);
-                d.threatCores.line(toScreen(m.wakeFrom), toScreen(m.wakeTo), 0.35f * tuning::kRamWakeWu * pxPerWu_, danger, danger, 0);
-            }
+            if (m.wake && (t < m.wakeUntil || m.state == 2))
+                lethalBeam(d, m.wakeFrom, m.wakeTo, tuning::kRamWakeWu);  // (look.md §5: a lethal line, as every one is drawn)
             break;
         }
         case BossKind::MothQueen: {
@@ -697,11 +695,7 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
                     const float q0 = std::fmax(s0, u0), q1 = std::fmin(s1, u1);
                     const Vec2 p0 = c + dirv(a0 + dir * kTau * q0) * r, p1 = c + dirv(a0 + dir * kTau * q1) * r;
                     if (!visible(p0, widthWu) && !visible(p1, widthWu)) continue;
-                    if (shown(kMuteBullet)) d.scene.line(toScene(p0), toScene(p1), 0.5f * refPx_, danger * (1.4f * lv), danger * (1.4f * lv), 0);
-                    if (shown(kMutePriority)) {
-                        d.threatRims.line(toScreen(p0), toScreen(p1), 0.5f * widthWu * pxPerWu_ + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
-                        d.threatCores.line(toScreen(p0), toScreen(p1), 0.5f * widthWu * pxPerWu_, danger * lv, danger * lv, 0);
-                    }
+                    lethalBeam(d, p0, p1, widthWu, lv);  // (look.md §5: a lethal line, as every one is drawn)
                 }
             };
             for (u32 k = 0; k < (m.half ? 2u : 1u) && !s.dying; ++k)

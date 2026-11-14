@@ -1266,10 +1266,15 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
                 // the threat rim.
                 const Vec2 dv = normalizeOr(Vec2{bl.vx[i], bl.vy[i]}, Vec2{1.0f, 0.0f});
                 const Vec2 tail = p - dv * w.species().feedback.streak;
-                if (shown(kMuteBullet)) d.scene.line(toScene(tail), toScene(p), 0.5f * look_->lines.enemyBullet.width * refPx_, danger * 0.4f, danger * 1.6f, 0);
+                // look.md §5 (the owner's red-line pass, 2026-11-14): its core at least 3 px, a glow at its head.
+                const float echoCore = std::fmax(coreHalf, 1.5f), echoRim = echoCore + look_->threat.bulletRim;
+                if (shown(kMuteBullet)) {
+                    d.scene.line(toScene(tail), toScene(p), 0.5f * look_->lines.enemyBullet.width * refPx_, danger * 0.4f, danger * 1.6f, 0);
+                    d.sparkles.glow(toScene(p), 12.0f * refPx_, danger * 0.6f);
+                }
                 if (shown(kMutePriority)) {
-                    d.threatRims.line(toScreen(tail), toScreen(p), rimHalf * refPx_, Vec3{}, Vec3{}, 0);
-                    d.threatCores.line(toScreen(tail), toScreen(p), coreHalf * refPx_, threatCore, threatCore, 0);
+                    d.threatRims.line(toScreen(tail), toScreen(p), echoRim * refPx_, Vec3{}, Vec3{}, 0);
+                    d.threatCores.line(toScreen(tail), toScreen(p), echoCore * refPx_, threatCore, threatCore, 0);
                 }
                 continue;
             }

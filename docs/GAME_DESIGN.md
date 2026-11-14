@@ -575,14 +575,13 @@ with a safe place that moves, and recognising six fights inside a seventh.
 - **Enemy bullets by Track** (the owner, 2026-11-14: "tone down the number of enemy bullets by like
   0.5x in tracks 1-3, 4-7 can be 0.75x"). Every enemy bullet the game would fire (a shooter's shot,
   a fan, a ring, a spray, a boss's or mini-boss's pattern, an elite's, an arena event's) is counted
-  at **0.5 in Tracks 1 to 3** and **0.75 in Tracks 4 to 7**, and **0.25 in Tracks 9 and 10** (the
-  owner's next play, 2026-11-14: "red line enemy projectiles in track 9 are too small, not visible
-  enough and are too frequent, tune down to like 0.25x"; Track 10 with it, as dense as written);
-  Track 8 and the loop fire as written. The bullets are drawn a third larger (look.md section 4), their
-  hit radius unchanged. A pattern keeps its shape: a fan or ring loses bullets evenly round it, keeping its
+  at **0.5 in Tracks 1 to 3** and **0.75 in Tracks 4 to 7**; Tracks 8 to 10 and the loop fire as
+  written. The bullets are drawn a third larger since 2026-11-14 (look.md section 4), their hit radius
+  unchanged. (The owner's "red line enemy projectiles in track 9 ... tune down to like 0.25x" of the
+  same day was Fata Morgana's sand streaks, not bullets: `design/bosses/morgana.md`.) A pattern keeps its shape: a fan or ring loses bullets evenly round it, keeping its
   symmetry and never going below the smallest count its page allows; a shooter whose volley is one
-  bullet fires on every second volley (Tracks 1 to 3), three volleys in four (4 to 7) or one in
-  four (9 and 10), on the beat as before. Lethal beams, bodies, the Arpeggiator's blocks and trails are not bullets and stay. Co-op
+  bullet fires on every second volley (Tracks 1 to 3) or three volleys in four (4 to 7), on the beat
+  as before. Lethal beams, bodies, the Arpeggiator's blocks and trails are not bullets and stay. Co-op
   the same. The fights' health is not tuned again for it.
 - **Threat budget.** Each bar has a budget `B = base(track, cycle, section) × players × assist`. Every
   species has a threat cost; the director spends the budget on **formations** rather than single

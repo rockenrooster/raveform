@@ -1908,8 +1908,8 @@ u32 cuesUntil(World& w, double& music, double until, Vec2 ship, BossCue c) {
     return n;
 }
 
-// 0449eb3 (GAME_DESIGN 8, "Enemy bullets by Track"): every enemy bullet counted at 0.5 in Tracks 1-3, 0.75 in Tracks 4-7 and 0.25
-// in Tracks 9 and 10, as written in Track 8 and in the loop: the crowd's shooters (a Hound's fan of three, a Sentry's turning arms, a Flanker's and
+// 0449eb3 (GAME_DESIGN 8, "Enemy bullets by Track"): every enemy bullet counted at 0.5 in Tracks 1-3 and 0.75 in Tracks 4-7, as
+// written from Track 8 and in the loop: the crowd's shooters (a Hound's fan of three, a Sentry's turning arms, a Flanker's and
 // a Drifter's single shots, a Moth's opposite petals) over eight bars of a Track's Groove against the same run as written.
 void testBulletsByTrack() {
     g_test = "bullets by Track";
@@ -1940,15 +1940,13 @@ void testBulletsByTrack() {
         delete w;
         return n;
     };
-    // (The owner's play of f0624e5: 0.25 in Tracks 9 and 10, Track 8 as written.)
     u32 s0 = 0, s2 = 0, s5 = 0, s8 = 0, s9 = 0;
     const u32 all = fired(2, true, s0), t2 = fired(2, false, s2), t5 = fired(5, false, s5), t8 = fired(8, false, s8), t9 = fired(9, false, s9);
     const float r2 = static_cast<float>(t2) / static_cast<float>(all ? all : 1u), r5 = static_cast<float>(t5) / static_cast<float>(all ? all : 1u);
-    const float r9 = static_cast<float>(t9) / static_cast<float>(all ? all : 1u);
-    CHECK_MSG(all > 100 && r2 > 0.42f && r2 < 0.58f && r5 > 0.67f && r5 < 0.83f && t8 == all && r9 > 0.17f && r9 < 0.33f,
-              "as written %u, Track 2 %u (%.2f), Track 5 %u (%.2f), Track 8 %u, Track 9 %u (%.2f)", all, t2, r2, t5, r5, t8, t9, r9);
-    std::printf("  [bullets by Track] eight bars of five shooters: as written %u, Track 2 %u (x %.2f), Track 5 %u (x %.2f), Track 8 %u, Track 9 %u "
-                "(x %.2f); a Drifter's shots %u, %u, %u, %u\n", all, t2, r2, t5, r5, t8, t9, r9, s0, s2, s5, s9);
+    CHECK_MSG(all > 100 && r2 > 0.42f && r2 < 0.58f && r5 > 0.67f && r5 < 0.83f && t8 == all && t9 == all,
+              "as written %u, Track 2 %u (%.2f), Track 5 %u (%.2f), Track 8 %u, Track 9 %u", all, t2, r2, t5, r5, t8, t9);
+    std::printf("  [bullets by Track] eight bars of five shooters: as written %u, Track 2 %u (x %.2f), Track 5 %u (x %.2f), Track 8 %u, Track 9 %u; "
+                "a Drifter's shots %u, %u, %u, %u\n", all, t2, r2, t5, r5, t8, t9, s0, s2, s5, s9);
 }
 
 void testHorizon() {
