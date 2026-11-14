@@ -376,12 +376,13 @@ What can make player shots jump on the host's screen, with the evidence:
 | | Before | After | Files |
 |---|---|---|---|
 | Moto hosting 3 PC bots, 15 min, clean: on-screen error at correction per bot (limit 12) | 35.5 / 33.5 / 21.8 | relay fix: 10.5 / 10.7 / 9.4 (`122828`); + motion corrections: 10.2 / 15.1 / 7.2 (`130551`); + direct, Hive: 5.8 / 14.5 / 11.6 (`133303`); round 2: **4.84 / 6.32 / 6.12** (`141328`) | `captures\m4net\device\` |
-| the same, impaired (5% loss, 80 ms jitter, every peer) | 17.5 / 17.7 / 81.5 | direct, Hive: **11.45 / 6.92 / 6.59** (`135034`) | |
-| PC bots' worst up second (limit 60) | 301-764 (the host gone) | clean runs 51-68 (the end, host gone) then held; impaired 46-80 in play (`135034`, bot 2: 80.3) | |
-| The Moto's frames (contract: P95 one period, missed <= 5%) | 53,904, 0 missed | 53,903-53,904 frames, 0-1 missed, P95 1 period, max 21.0-25.6 ms, heap 0, every run | `ZY22BXMJG3-bench_play-20261113-*.json` |
-| Loopback soak, default seed (limit 12) | main: impaired 12.48 FAIL, clean 10.33 | impaired 9.13, clean 3.15 | `test.ps1` |
-| Ten seeds each | merged: impaired 9.33 (worst 12.94, 8 of 10 pass), clean 8.28 (13.90, 9 of 10) | impaired 6.63 (10.18), clean 4.40 (8.33), 20 of 20 pass | `captures\m4net\seeds\r2_*` |
-| Soak bandwidth, worst second (limits 250 / 60) | 233 / 56 | 233 / 57 | |
+| the same, impaired (5% loss, 80 ms jitter, every peer) | 17.5 / 17.7 / 81.5 | direct, Hive: **11.45 / 6.92 / 6.59** (`135034`); round 2 merged: 12.14 / 11.26 / 13.35 FAIL (`163522`); round 3 before the lane fix: 24.6 / 29.3 / 27.2 FAIL (`171023`; the Horizon fight 124-150 wu, without it 10.0 / 15.4 / 11.6); final code: **20.3 / 15.8 / 14.3 FAIL** (`172745`; the 20 s round Event Horizon's end 170-182 wu, without them 13.2 / 12.4 / 10.7; 13-17 PC stalls a bot, my own idle soaks and builds on the same four cores) | |
+| PC bots' worst up second (limit 60) | 301-764 (the host gone) | clean runs 51-68 (the end, host gone) then held; impaired 46-80 in play (`135034`, bot 2: 80.3); boss claims merged: impaired 51.0 / 55.0 / 54.1 (`172745`) | |
+| The Moto's frames (contract: P95 one period, missed <= 5%) | 53,904, 0 missed | 53,903-53,904 frames, 0-1 missed, P95 1 period, max 21.0-25.6 ms, heap 0, every run; `171044`, `172805`: 53,904, 0 missed, P95 17.7 ms, max 21.1-23.9, heap 0 | `ZY22BXMJG3-bench_play-20261113-*.json` |
+| Loopback soak, default seed (limit 12) | main: impaired 12.48 FAIL, clean 10.33 | round 2: impaired 9.13, clean 3.15; after main 17a36f7: impaired 7.73, clean 4.55 | `test.ps1` |
+| Ten seeds each | merged: impaired 9.33 (worst 12.94, 8 of 10 pass), clean 8.28 (13.90, 9 of 10) | round 2: impaired 6.63 (10.18), clean 4.40 (8.33); after main 17a36f7: impaired 7.77 (10.88), clean 5.13 (9.31); 20 of 20 pass | `captures\m4net\seeds\r2_*`, `r4_*` |
+| Soak bandwidth, worst second (limits 250 / 60) | 233 / 56 (main 17a36f7, seed 5: 61.7 up FAIL) | 10 minutes, ten seeds: 223 / 51.3, all pass; 40 minutes (the loop): 231 / 68-80 **FAIL** | |
+| The Event Horizon fight (40-minute soaks, clean / impaired) | 14.2-26.6 / 77.5-82.1 | 7.0-11.9 / 25.6-30.1 | `captures\m4net\part5\`, `part5g\` |
 
 ## Changes outside src/net (for the merge)
 
@@ -397,20 +398,33 @@ What can make player shots jump on the host's screen, with the evidence:
   as well as by its velocity (clients only).
 - `src/sim/world_upgrades_m5.cpp`: Kick Pulse's shove, Colossus's shove, Black Hole's, Singularity's and Collapse
   Field's pulls only where `firstHand`.
+- `src/sim/world_horizon.cpp`, `world.h` (round 3): `horizonLanePoint`, `horizonLaneCarry` (const helpers for the
+  clients' corrections; nothing on the host or in solo calls them).
 - `src/tools/net_headless.cpp`, `tests/net_tests.cpp`, `scripts/coop-device.ps1`, `scripts/net-seeds.ps1` (new).
 
 ## Not verified, not done
 
-- The Moto-hosted criterion: met by round 2's clean run (4.84 / 6.32 / 6.12, `141328`) and by the impaired run before
-  it (11.45 / 6.92 / 6.59, `135034`, round 1 code); the impaired run is not yet repeated on round 2's code. In the
-  clean run one bot's worst up second was 86.4 kbit/s (limit 60): the uplink is the open item.
-- Direct mode's per-link fallback (point 2) is not built; its threshold is proposed above. Nobody has looked at the
-  remote ships on a screen.
-- The phone-side shot numbers and the strips of the jumpy-shots question; the shot soft cap's thinning is not counted.
-- Point 5 (Tracks 4-6 and the new fights in co-op) waits for main to hold this branch.
-- Uplink headroom: the soaks' worst second is 56-60 kbit/s against 60; the worst seconds are kill claims (which
-  cannot wait), the ENet and IP overhead of ~55 datagrams a second, and under the impaired profile resends (80.3
-  kbit/s on the Moto run). Sending acknowledgements only with the 30 Hz pose would save about 8 kbit/s (not done).
+- **The Moto-hosted criterion under the impaired profile is not met** on the current code (`172745`: 20.3 / 15.8 /
+  14.3). The runs now reach Track 5 in 15 minutes, so Event Horizon is in every run, and its 20 s on the phone measure
+  170-182 wu, far above the soaks' 26-30: the device's Horizon fight is not explained yet (real time over UDP with a
+  phone host differs from the soak in the fight's length, 23 s, and in when the boss dies against the clients' copies).
+  Without those 20 s two bots are still at 12.4-13.2 (Track 2's mini-boss, Track 4's mini-boss). That run also had
+  13-17 PC stalls a bot from my own idle soaks and builds sharing the four cores. The clean run on the final code is
+  `<clean tag>` below.
+- Remote ships: a relayed seat under 80 ms of jitter still jumps (unexplained step up to 344 wu); nobody has looked
+  at the remote ships on a screen.
+- The phone's shot numbers before the curving shots were left out (`171023`, `172745`): remote 4.6-9.0% of steps
+  bent, own 0.04-12.5%, both dominated by Wave and Helix Array; the final APK's diagnostics separate them.
+- Brood Mother has not been drawn in any soak; Event Horizon's impaired 26-30, Moth Queen's 15-24.
+- The loop's uplink (above); the 40-minute soaks fail at correction under the impaired profile (15-16 wu).
+- `scripts\test.ps1` after merging main 17a36f7: the net tests pass (131,366 checks), the determinism hashes are
+  unchanged (78fd9381c93838c6, fcbe62dd9e1c369a), both soaks pass; **7 simulation tests fail** (longwave, choir,
+  horizon, polyrhythm, feedback): they check the bosses' armour at 0 damage and horizon.json's numbers, which main's
+  design commit 514e4ea changed ahead of its code (the lead's "coming on main next"). Not this branch's.
+- Uplink headroom: with the boss claims merged the 10-minute soaks' worst second is 38.9-51.3 kbit/s and the impaired
+  Moto run's 51-55; the loop's (40-minute soaks) is 61-80: enemy claims (1,100-1,400 a second after merging), the
+  ENet and IP overhead of ~55-65 datagrams a second and, impaired, resends. Sending acknowledgements only with the
+  30 Hz pose would save about 8 kbit/s; claims at 15 Hz would merge more (not done).
 - The PC host from the phone (Windows Firewall), the OnePlus 12R and the tablet: as in M4 stage B.
 
 ## Lines for CLAUDE.md
@@ -420,8 +434,9 @@ What can make player shots jump on the host's screen, with the evidence:
 - `scripts\coop-device.ps1 -Run long_moto_host [-Players 2..4] [-Minutes 15] [-Impaired] -LockRoot <main checkout>
   -LockName <name> [-PhoneArgs '...'] [-BotArgs ...]` (saves the phone's log; deploys the APK as built).
 - `raveform_headless --net soak|host|join ... [--remote-poses interp|predict|direct] [--net-tune down=B,famN=W,motion=0|1]`;
-  the soak prints the true error broken down, the remote ships and aims against the truth, and the worst up second's
-  makeup; `join`/`host` print `corr`, `poses`, `frames` diagnostics every 10 s; the game logs `net: diag` every 20 s.
+  the soak prints the true error broken down (by Track, by fight, Event Horizon's and Feedback's own lines), the
+  remote ships and aims against the truth, the worst up second's makeup, each client's claims (the most in a second),
+  thinning against the owner's and the player shots on the host's screen; `join`/`host` print `corr`, `poses`, `frames` diagnostics every 10 s; the game logs `net: diag` every 20 s.
 - Protocol `0x52460505` (main's part 4 with this branch's motion corrections).
 - `--net-capture-bar B --strip N`: the picture at bar B and the next N-1 frames (`<name>_<k>.png`; co-op runs on the
   wall clock, so a strip's frames are one to three ticks apart).

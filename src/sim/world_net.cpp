@@ -677,7 +677,10 @@ float World::netCorrect(const NetEnemyState& s, double hostMusic) {
     if (s.target < kMaxPlayers || s.target == 0xFF) e.target[i] = s.target;
     const bool beatBetween = crossed(std::fmin(hostMusic, m1_), std::fmax(hostMusic, m1_), kTicksPerBeat);
     const bool landedHere = hostWarping && e.state[i] != kWarping;
-    if (!beatBetween && !landedHere) {
+    // M4 net (clients only): a walker the host has let off Event Horizon's lane (the Well died there first) leaves it here
+    // too, beat or not; on the lane this copy would be drawn back onto it every tick until the death arrives.
+    const bool leftLane = e.state[i] == kLane && s.state != kLane;
+    if ((!beatBetween && !landedHere) || leftLane) {
         e.vx[i] = s.vx;
         e.vy[i] = s.vy;
         e.kx[i] = s.kx;
