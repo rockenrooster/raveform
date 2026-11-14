@@ -328,6 +328,11 @@ Rhythm
   in kills a minute against a Groove's crowd, or in seconds to kill the Track's boss, whichever the
   upgrade is made for. One outside the band has its numbers changed, not its odds of being offered.
 - No upgrade may break the entity caps (TECH_SPEC §7): effects that multiply projectiles carry their own caps.
+- **The crowd may not break them either** (M5, 2026-11-13: with four players Track 7 refused 2,650 to
+  4,030 enemy bullets in three minutes, the pool full). The director buys no shooting species while
+  the enemy bullets alive are above 70% of their pool, and a boss's or mini-boss's own patterns come
+  first: nothing a page scripts is ever the bullet that is refused. The pool does not grow: the
+  phone's frame was measured with it.
 - **Thinning never flickers** (M5, 2026-11-13; part 3 fired the outer Split lanes on alternate steps
   above a player's soft cap, and the fan changed shape from step to step). While a player is over
   the soft cap every lane still fires on every step, and the lanes beyond the middle three fly half
@@ -452,6 +457,16 @@ die and does not say why, and the user never got past Longwave. So:
   strong player's fights are three to five times too short, and the careful bot's line is not held.
   That stays until the balance pass, which makes a boss tougher for players who are hurting it
   faster (measured in the fight itself, on its weak point) and never easier than the novice's tune.
+- **A boss keeps pace** (the balance pass's rule, written 2026-11-13). A boss's health is the
+  novice's tune. At the end of the fight's eighth bar the game sets the fight's **pace**: the
+  damage the players have done to the boss in those eight bars (after armour, per player in
+  co-op), divided by what the novice does in them (one number a boss, measured, in `tuning.h`),
+  held between 1 and 4. From then on the boss takes its damage divided by the pace. Nothing
+  jumps on the health bar; a player who knows the rule and has the build simply meets a boss
+  that lasts about as long as the novice's does, which is the length on its page. A novice's pace
+  is 1 by construction. Bosses only: a mini-boss leaves with its Drop. In co-op the host sets the
+  pace and applies it; solo is the same code. With it the careful bot's line (a fight at least
+  half the page's shorter length) is held again.
 - **Counting a line.** Twenty runs cannot tell 15 from 17. A result within two of its line is run
   again over forty seeds and judged there (the line scaled: 32 for 16). What a person says after
   playing outranks both.
