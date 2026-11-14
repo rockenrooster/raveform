@@ -445,7 +445,12 @@ are what corrections exist for.
 
 ### 8.4 Budgets and tests
 
-- Per client at endgame: ≤ 250 kbit/s down, ≤ 60 kbit/s up. No IP fragmentation.
+- Per client, worst second: ≤ 500 kbit/s down, ≤ 120 kbit/s up. No IP fragmentation. The mean over a run is
+  reported and expected well under half of each. (The lead's ruling of 2026-11-13: the first limits, 250 down and 60
+  up, were set for M4's three Tracks; the game now has six Tracks of larger crowds with elites and the arena, four
+  more are coming, and co-op is LAN play. The extra downlink goes where the measurements point, to the copies a
+  client can see that have gone longest without a correction and to the enemies following a relayed player, not
+  evenly; the phone as host keeps its frame contract with it. The 12 wu position limit does not move.)
 - A loopback transport runs host and clients in one process; a network simulator injects delay,
   jitter, loss, duplication and reordering. Soak test: one host and three bots for ten simulated
   minutes, asserting position error, entity-set consistency, bandwidth and song-clock offset.

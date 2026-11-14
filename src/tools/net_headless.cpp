@@ -37,7 +37,7 @@ namespace {
 // Limits of the M4 stage A acceptance (TECH_SPEC 8.4, PLAN 7).
 constexpr float kMaxErrRmsWu = 12.0f;
 constexpr float kMaxSongOffsetMs = 10.0f;
-constexpr float kMaxDownKbps = 250.0f, kMaxUpKbps = 60.0f;
+constexpr float kMaxDownKbps = 500.0f, kMaxUpKbps = 120.0f;  // TECH_SPEC 8.4 (the lead's ruling of 2026-11-13; were 250 / 60)
 constexpr u32 kMaxDatagramNoFrag = 1472;
 
 struct Hist {

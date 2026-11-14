@@ -475,6 +475,48 @@ correction 21.6; up 62.1, down 235.6). The loop now carries Track 6 and on at 18
 from 6% of the samples) and 21.7-28.8 impaired: the arena and the elites, new this merge, not yet broken down. Census
 0 mismatches, no overflow.
 
+## Round 5 (the lead's rulings on 7458156)
+
+### The budgets (TECH_SPEC 8.4, the lead's ruling of 2026-11-13)
+
+New limits per client, worst second: **500 kbit/s down, 120 up** (were 250 / 60; written into TECH_SPEC 8.4 with the
+reason; `net_headless.cpp`'s pass limits moved with them). The extra downlink is spent where the measurements point:
+
+- Corrections go to a client **30 times a second** (15 before; one packet a time, so the rate needs the cadence) out of
+  **30,000 B/s** of that client's downlink (20,000 before), `SessionConfig::downBytesPerS` / `corrEveryUs`.
+- An enemy on a client's screen that follows **a relayed player** (another client, whom this client sees late) gains
+  three times the priority (`relayedFollowWeight`); the clients' requests for on-screen copies uncorrected for 0.75 s
+  (the attention list, 5 Hz) keep their boost. Off-screen weights are as before.
+- `--net-tune down=B,corrhz=H,relayw=W` for the experiments.
+
+Ten seeds, after main d59062f (the arena and elites from Track 3), impaired unless said:
+
+| corrections' budget a client | error, mean (worst) | down, mean / worst second (kbit/s) |
+|---|---|---|
+| 20,000 B/s at 15 Hz (before) | 6.61 (8.63) | 141.7 / 222.2 |
+| 26,000 at 30 Hz | 5.05 (10.50) | 183.5 / 257.9 |
+| **30,000 at 30 Hz (default)** | **4.58 (9.35)**; clean **2.52 (4.27)** | **210.3 / 288.4**; clean 220.5 / 300.6 |
+| 40,000 at 30 Hz | 2.83 (3.76); clean 2.30 (5.42) | 272.3 / 362.3 |
+
+40,000 was the closest but its mean (272) is over half the limit; the lead wants the mean well under half, so 30,000
+(mean 210-220, 42-44% of 500). Uplink unchanged (worst second 44-49, mean 32).
+
+40 minutes, seed 1 (`captures\m4net\long\b2\`): **clean 7.32, impaired 7.08, both pass** (after the merge, before
+this: 7.40 and **17.2 FAIL**); Track 6 (the arena and elites) 8.2 clean / 7.5 impaired, was 18.7 / 21.7. Worst
+second down 296-308, mean 211-220; up 55-64. `scripts\test.ps1`: net tests pass, soaks 2.52 / 3.40 wu; the one failing
+simulation test is the lead's `[arena]` (design ahead of code on main).
+
+The phone as host with the larger budget (its frame contract, the main thread's P95, the session's time) is measured
+in the three impaired runs below. The session runs on the main thread: its time is inside the bench's `cpu_ms`
+(before, `190701`: P95 6.14 ms, `work_ms` P99 6.89).
+
+### (b) note: the earlier device figures in pulls and on spirals
+
+The device runs before `d531af0` measured a copy at correction against the host's sample carried by its velocity
+alone. Bodies in Event Horizon's pull and walkers on its spirals are not where that line puts them, so those figures
+(the 170-182 wu of `171023`/`172745`, the 19-58 of `182905`) read high for that reason; from `d531af0` the measure
+carries the sample as the copy is placed.
+
 ### (e) Moth Queen and Brood Mother
 
 Not done this round. Moth Queen in the 40-minute soaks: true 13-18 impaired (at correction 23-29). Brood Mother is

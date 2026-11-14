@@ -15,7 +15,6 @@ using namespace rf::sim;
 
 namespace {
 constexpr i64 kPoseEveryUs = 33333;     // TECH_SPEC 8.1: poses at 30 Hz
-constexpr i64 kCorrEveryUs = 66667;     // corrections 15 Hz per client
 constexpr i64 kBeatEveryUs = 250000;    // the song clock heartbeat, 4 Hz
 constexpr i64 kBossBeatEveryUs = 100000;  // ... 10 Hz while a boss fights (its health rides with it)
 constexpr i64 kPingWaitUs = 500000;       // a client services every frame this long after a ping, or until its pong
@@ -46,8 +45,9 @@ constexpr u8 kFullEvery = 4;
 constexpr u8 kTargetUnsent = 0xFE;
 constexpr float kRetargetBoost = 200.0f, kKnockedWuS = 30.0f, kKnockedWeight = 6.0f;
 constexpr double kBar = 384.0, kBeat = 96.0;
-// TECH_SPEC 8.4: at most 250 kbit/s down per client. Everything sent to a client is counted on the wire against
-// 160 kbit/s with 1.5 KB saved at most; corrections fill what the rest leaves. The margin to 250 is for a reliable
+// TECH_SPEC 8.4: at most 500 kbit/s down per client (the lead's ruling of 2026-11-13; 250 before). Everything sent to a
+// client is counted on the wire against SessionConfig::downBytesPerS (240 kbit/s; 160 under the old limit) with 1.5 KB
+// saved at most; corrections (30 Hz; 15 before) fill what the rest leaves. The margin to the limit is for a reliable
 // burst (a wave's spawns, a Break's dissolve) on top of a full second, and for jitter bunching arrivals. (Play test 1,
 // second pass: 184 -> 160 kbit/s; the stronger build's runs reach the denser Tracks and kill faster, and its bursts
 // reached 264 kbit/s.)
@@ -89,6 +89,11 @@ bool parseNetTune(const char* spec, SessionConfig& c) {
         p = end;
         if (std::strcmp(key, "down") == 0) {
             c.downBytesPerS = v;
+        } else if (std::strcmp(key, "corrhz") == 0) {
+            if (v < 1.0f) return false;
+            c.corrEveryUs = static_cast<i64>(1.0e6f / v);
+        } else if (std::strcmp(key, "relayw") == 0) {
+            c.relayedFollowWeight = v;
         } else if (std::strcmp(key, "motion") == 0) {
             c.motionCorrections = v != 0.0f;
         } else if (std::strcmp(key, "phasebeat") == 0) {
@@ -1671,8 +1676,12 @@ void Session::updatePriorities(float dt) {
             // once, where it was spawned) and the faster it moves; one that has not landed hardly at all.
             const float dx = std::fabs(e.x[i] - c.x), dy = std::fabs(e.y[i] - c.y);
             float wgt = 0.6f;
-            if (dx <= 1100.0f && dy <= 520.0f) wgt = 8.0f;        // on the screen (and a margin)
+            const bool onScreen = dx <= 1100.0f && dy <= 520.0f;
+            if (onScreen) wgt = 8.0f;                              // on the screen (and a margin)
             else if (dx <= 1700.0f && dy <= 800.0f) wgt = 2.0f;   // about two frames
+            // (TECH_SPEC 8.4, 2026-11-13) following a relayed player: this client sees that player late, so its copy drifts.
+            const u8 tg = e.target[i];
+            if (onScreen && tg < kMaxPlayers && tg != 0 && tg != s) wgt *= cfg_.relayedFollowWeight;
             if (e.state[i] == kWarping) {
                 wgt *= 0.05f;
             } else if (e.state[i] == kMoving && w.music() - e.until[i] >= 0.0 && w.music() - e.until[i] < landedRecently) {
@@ -1978,7 +1987,8 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
             for (u32 s = 1; s < seats_; ++s) {
                 if (!welcomed_[s] || seatPeer_[s] < 0 || localUs < nextCorrUs_[s]) continue;
                 sendCorrections(s, w.music());
-                nextCorrUs_[s] = localUs - nextCorrUs_[s] > kCorrEveryUs ? localUs + kCorrEveryUs : nextCorrUs_[s] + kCorrEveryUs;
+                const i64 every = cfg_.corrEveryUs;
+                nextCorrUs_[s] = localUs - nextCorrUs_[s] > every ? localUs + every : nextCorrUs_[s] + every;
             }
         }
     }
