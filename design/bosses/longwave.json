@@ -332,7 +332,7 @@
      17
     ],
     "crestStep": "1/8",
-    "lapBars": 16,
+    "lapBars": 24,
     "crestSpeedWu": 420,
     "note": "slower than the ship: fly along with a crest",
     "fire": {
@@ -349,7 +349,7 @@
      9
     ],
     "crestStep": "1/8 triplet",
-    "lapBars": 12,
+    "lapBars": 20,
     "crestSpeedWu": 630,
     "note": "just faster than the ship: each crest overtakes you slowly",
     "fire": {
@@ -366,7 +366,7 @@
      1
     ],
     "crestStep": "1/16",
-    "lapBars": 8,
+    "lapBars": 16,
     "crestSpeedWu": 840,
     "note": "crests whip past; the body is short, so stay beside it",
     "fire": {
@@ -378,8 +378,8 @@
     "lunge": {
      "every": "second bar",
      "telegraphBeats": 4,
-     "dashWu": 700,
-     "dashBeats": 1,
+     "dashWu": 500,
+     "dashBeats": 2,
      "followBeatsPerSegment": 0.25,
      "note": "a dashed line from the head through where the nearest player stood at the start of the telegraph bar; on the next downbeat the head dashes along it and its jaw stays open for two beats. The body follows: segment k makes the head's move k sixteenths later (followBeatsPerSegment), so the dash runs down the body like a whip; the path goes on from where the head landed. Nothing jumps"
     }
@@ -394,8 +394,8 @@
     "lunge": {
      "every": "bar",
      "telegraphBeats": 3,
-     "dashWu": 700,
-     "dashBeats": 1,
+     "dashWu": 500,
+     "dashBeats": 2,
      "followBeatsPerSegment": 0.25
     },
     "headBurst": {

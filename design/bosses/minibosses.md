@@ -14,7 +14,7 @@ retype it). Pictures: `design/previews/minibosses_1.png`, `minibosses_2.png`, `m
 
 ## Rules for every mini-boss
 
-- **When.** On the downbeat of the middle cycle's Drop from Track 2 on, in place of the mega-wave.
+- **When.** On the downbeat of the first cycle's Drop from Track 2 on, in place of the mega-wave (the middle cycle's until 2026-11-14, when every Track became two cycles; the boss has the second). It drops the Track's Extra Life as it dies if the player holds none (GAME_DESIGN 5).
   A small name card holds for one bar.
 - **Which.** The run's seed draws one whose family the run has already met, never the one met in
   the Track before. In batch 1, Track 2 draws from Alpha Hound and The Hive, Track 3 from Battering
@@ -29,7 +29,7 @@ retype it). Pictures: `design/previews/minibosses_1.png`, `minibosses_2.png`, `m
 - **Health** by Track: 600 · 1,100 · 1,700 · 2,400 · 3,200 for Tracks 2 to 6 and 4,100 · 5,100 ·
   6,200 · 7,400 for Tracks 7 to 10, × 1.25 for each Track
   of the loop, × the mini-boss's own factor, × (1 + 0.5 per extra player). That is 25 to 35 seconds
-  of fire with the build of that Track's middle cycle. Tune with the bot.
+  of fire with the build of that Track's first cycle. Tune with the bot.
 - **Crowd.** Three quarters of the Drop's crowd, fodder only, on top of what the mini-boss calls.
   In a Pen fight: 0.35 of the Drop's crowd and never more than 120 bodies inside the Pen. (The first
   build put three quarters of a Drop inside it, up to 580 in view, and the lock line and the bounces

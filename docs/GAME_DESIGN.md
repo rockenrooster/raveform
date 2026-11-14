@@ -88,14 +88,17 @@ engine move through them together, always on bar lines.
 Forms: **Short** = 8 / 4 / 8 / 4 bars (24 bars); **Standard** = 12 / 4 / 16 / 4 bars (36 bars: the
 Drop is the longest part). Until play test 2 (2026-11-12) Standard was 16 / 8 / 16 / 8; the user
 asked for Tracks three quarters as long. **Play test 3 (2026-11-13): "tracks are still too long ...
-lets try 0.5x". Every Track now uses the Short form and Standard is retired.**
+lets try 0.5x". Every Track now uses the Short form and Standard is retired.** And on 2026-11-14:
+"tracks should be the same length as track 1": every Track is two Short cycles.
 
 ### 4.2 Tracks
 
-A Track is a block with its own tempo, key, palette, enemy families and boss. Track 1 is two Short
-cycles (48 bars, about 1.6 minutes); the first upgrade arrives within 45 seconds. Later Tracks are three
-Short cycles (72 bars: 2.3 minutes at 126 BPM, 1.7 at 174), half of what they first were. A mini-boss
-arrives on the Drop of the middle cycle from Track 2 on; the boss arrives on the last Drop. What was
+A Track is a block with its own tempo, key, palette, enemy families and boss. **Every Track is two Short
+cycles, 48 bars** (the owner, 2026-11-14: "tracks should be the same length as track 1"; Tracks 2 to 10
+were three): 96 seconds at Track 1's 120 BPM, 91 at 126, 66 at 174, before its boss. The first upgrade
+arrives within 45 seconds. A mini-boss arrives on the first cycle's Drop from Track 2 on; the boss
+arrives on the second, the last. A Track deals two Trios (its Break and its boss's), as Track 1 always
+has; the Shard levels come on top. What was
 written in bars for the longer Tracks keeps its bars unless said otherwise (elites come as many bars
 apart as before, so half as many a Track); an arena event never outlasts its Groove. Killing the boss ends the Track, grants a bonus Trio and starts the
 next Track's Break, during which tempo, key and palette cross-fade.
@@ -124,8 +127,9 @@ lead does (broken chords, a three-note cell, a pedal point, a mallet, a harp). A
 bosses' full pages (7.6 has the concepts) and their rosters.
 
 **A run plays all ten, in order** (the user's call, 2026-11-12; the alternative offered was five
-drawn for each run). That is about 19 minutes of music before the encore (29 until play test 3): 48
-bars at 120, then nine Tracks of 72 bars at 126 to 174, each a little shorter than the last. The loop of section 8 begins
+drawn for each run). That is about 13 minutes of music before the encore, plus the fights (19 until
+2026-11-14, 29 until play test 3): ten Tracks of 48 bars at 120 to 174, each a little shorter than the
+last. The loop of section 8 begins
 after the last Track the game has — after Track 3 in the build of 2026-11-12, after Track 10 when the
 set list is complete — so nothing in the loop may be counted from a fixed Track number.
 
@@ -145,7 +149,8 @@ and a single RETRY button.
 | Size | Visual radius 14 wu; hit radius 5 wu (forgiving) |
 | Primary weapon | One shot per 1/16 step, 1400 wu/s, lead-arp note per shot |
 | Shield cells | Start 4, up to 8 with Extra Cell; one cell comes back at every Break, more with Regen, and **Cells** dropped by enemies restore one each (section 6.1). A hit removes one, fires a panic pulse (clears bullets within 220 wu, shoves enemies), grants 2.5 s invulnerability and halves the Chain. Health is shown on the ship itself: its halo has one arc per cell. **Nobody meets a boss on their last cell** (M5, 2026-11-13): as a boss arrives, a player with fewer than three cells grows back up to three (two at first; M6, 2026-11-14: with the crowd eased the novice's runs ended in the fights, 32 of 41 run-ending hits), the arcs drawing themselves over its entrance bar as Regen's do. And **a boss pays for its phases**: at each phase change it drops one Cell for each player, at the boss, drifting to them. The novice bot went into the Longwave fights it lost with 1.2 cells on average and into those it won with 3.1 |
-| Extra Life | (Play test 3: "a revive powerup to grant a 1x revive to continue without starting over".) A gold ship-shaped orb, a pickup of its own kind and not a Boost: it takes no Boost slot and is never offered in a Trio. In each Track one drops from a kill during the first cycle's Drop if the player holds none; it lies for 8 bars with a gold edge chevron while off screen. A player holds at most one, shown beside the Nova stock. It is spent on the hit that would end the run (after Auto Nova): the ship comes back at once with two cells, a free Nova blast, one bar of invulnerability and half its Chain, under the words `EXTRA LIFE`. Co-op: each player their own; it is spent instead of going down. None drop in the loop; one held is carried in |
+| Extra Life | (Play test 3: "a revive powerup to grant a 1x revive to continue without starting over".) A gold ship-shaped orb, a pickup of its own kind and not a Boost: it takes no Boost slot and is never offered in a Trio. In each Track one drops if the player holds none: in Track 1 from a kill during the first cycle's
+Drop, from Track 2 from the mini-boss as it dies (it shares that Drop since every Track is two cycles); it lies for 8 bars with a gold edge chevron while off screen. A player holds at most one, shown beside the Nova stock. It is spent on the hit that would end the run (after Auto Nova): the ship comes back at once with two cells, a free Nova blast, one bar of invulnerability and half its Chain, under the words `EXTRA LIFE`. Co-op: each player their own; it is spent instead of going down. None drop in the loop; one held is carried in |
 | Nova | Start with 3, capacity 4 (up to 6 with Mods); one comes back at every Break. Rule R6. Clears bullets and non-boss enemies in view; heavy damage to bosses. **Auto Nova** (on by default, a switch under CONTROLS): a hit that would take the last Shield cell fires a Nova from the stock instead and costs no cell |
 | Dash | One charge, recharges in 2 beats. 220 wu in 0.12 s, invulnerable throughout. Perfect Dash refunds half the recharge and emits a small shock ring |
 
@@ -614,8 +619,9 @@ with a safe place that moves, and recognising six fights inside a seventh.
   careful bot between minutes 26 and 36, the careless bot between 17 and 25, nobody in the first
   pass; a change that moves either median out of its band needs a reason. Whether an encore of
   ten to twenty minutes is too long is the user's to say at the next play test. If it is, the
-  lever is the clock itself (the loop's Tracks play two cycles instead of three, so the halo
-  burns down a third sooner), not more damage.
+  lever is the clock itself (every Track has played two cycles since 2026-11-14, so the halo
+  burns down a third sooner than when this was measured), not more damage. These loop numbers are
+  measured again at the balance pass, not before.
 - **The ten-Track run** (2026-11-12). The numbers above were measured on a pass of three Tracks.
   With all ten in a run the encore begins at Track 11, about half an hour in, and half an hour
   without danger would be flat: from Track 4 on the first pass has to climb. Targets to tune toward

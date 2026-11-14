@@ -16,7 +16,7 @@ Pen, is in `design/bosses/minibosses.md`.
 - **Scale.** The mini-boss health of that Track in design/bosses/minibosses.json (Track 1 uses 300), times the fraction given: *trackScale* below.
 - **Where and when.** A structure stands in the world for one Track; an event is a few bars long. Both are placed by the run's seed relative to the players' centre, never inside a player's frame, never within 400 wu of a wall, and never while a boss or a mini-boss is alive.
 - **Structures** are placed on the first downbeat of the Track, 1,000 to 1,800 wu from the players' centre, at least 700 wu from each other; the last Track's dissolve over the Track change's Break unless a player is within 600 wu, in which case they stay until that player leaves.
-- **Events:** Track 1 has one, the Comet, in the Groove of its third cycle; from Track 2 one event a Track, in the Groove of its second cycle; from Track 4 a second one in the Groove of its third cycle. Drawn by the seed from the Track's list, never the event of the Track before. Announced one bar ahead by a gold edge chevron and its name as world text at the place (cap 22, gold), then it runs.
+- **Events:** Track 1 has one, the Comet, in the Groove of its second cycle; from Track 2 one event a Track, in the Groove of its second cycle; from Track 4 a second one in the Groove of its first cycle (every Track is two cycles since 2026-11-14). Drawn by the seed from the Track's list, never the event of the Track before. Announced one bar ahead by a gold edge chevron and its name as world text at the place (cap 22, gold), then it runs.
 - **Indicators:** structures get no edge chevron (they are found); events get the gold one; a Rift's is the enemy hue with a ring at its tip.
 - **Co-op:** placed round the players' centre; every reward is for each player (Boost orbs and Shards are each player's own, as everywhere).
 - **Caps:** at most 6 structures and 1 event alive; what an event or a structure spawns counts against the enemy and bullet caps.
@@ -221,7 +221,7 @@ GAME_DESIGN 9 called this structure 'Prism'; it is the Lens here so that it is n
 | 9 | Current × 2, Lens, Rift × 2 | Storm Cell, Eclipse |
 | 10 | Vault, Pylon, Rift, Bumper, Current, Lens | Elite Hunt, Meteor Rain, Convoy, Storm Cell |
 
-Track 1 has two cycles since play test 3 and its Comet comes in the Groove of the second. In the
+Track 1 has two cycles since play test 3 and every other Track since 2026-11-14; Track 1's Comet comes in the Groove of the second, and from Track 4 the second event comes in the first cycle's Groove. In the
 loop each Track keeps its list. An event never outlasts its Groove: every Groove is 8 bars now, and
 an event written longer ends with it (the Elite Hunt's twelve bars are eight).
 

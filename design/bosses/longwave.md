@@ -54,13 +54,16 @@ Picture: `design/previews/boss_longwave.png`. Tool: `design/tools/boss_longwave.
 The phase is how many segments are left. The wave speeds up; the body speeds up; it never jumps.
 **Nothing on it is ever placed, only moved** (2026-11-14, the owner: it "jumps across the screen every so
 often"): no part of the boss travels farther in a frame than its speed allows, and the body only ever
-moves the way the head went.
+moves the way the head went. **And it swims slowly** (the owner: "It should move slower"): a lap of the
+figure of eight takes 24, 20 and 16 bars (it was 16, 12 and 8), so the head swims at about 150, 180 and
+230 wu/s, never near the ship's 520, and the lunge is 500 wu over two beats (it was 700 over one). The
+crest's run down the body keeps its steps: that is the music, and the body itself does not travel with it.
 
 | Phase | Segments | Crest step | Crest speed | Lap of the path | Attack |
 |---|---|---|---|---|---|
-| 1 **Swell** | 24–17 | 1/8 | 420 wu/s | 16 bars | Each trough: one bullet to each side on its step |
-| 2 **Chop** | 16–9 | 1/8 triplet | 630 wu/s | 12 bars | Each trough: a fan of three to each side, 16° apart. The crest now outruns the ship: each one overtakes you slowly, and the next is close behind |
-| 3 **Whitecap** | 8–1 | 1/16 | 840 wu/s | 8 bars | Troughs as phase 1, on sixteenths. Every second bar the head **lunges**: a dashed line for a bar through where the nearest player stood, then the head dashes 700 wu along it over the downbeat's beat, jaw open for two beats. The body follows down the spine: each segment makes the same move a sixteenth after the one ahead of it, so the dash runs down the body like a crack of the whip, and the figure of eight goes on from where the head landed |
+| 1 **Swell** | 24–17 | 1/8 | 420 wu/s | 24 bars | Each trough: one bullet to each side on its step |
+| 2 **Chop** | 16–9 | 1/8 triplet | 630 wu/s | 20 bars | Each trough: a fan of three to each side, 16° apart. The crest now outruns the ship: each one overtakes you slowly, and the next is close behind |
+| 3 **Whitecap** | 8–1 | 1/16 | 840 wu/s | 16 bars | Troughs as phase 1, on sixteenths. Every second bar the head **lunges**: a dashed line for a bar through where the nearest player stood, then the head dashes 500 wu along it over two beats from the downbeat, jaw open for those two beats. The body follows down the spine: each segment makes the same move a sixteenth after the one ahead of it, so the dash runs down the body like a crack of the whip, and the figure of eight goes on from where the head landed |
 | **Bare head** | 0 | — | — | — | A lunge every bar; a ring of 16 on beats 2 and 4, alternate rings turned half a step. The open jaw takes triple damage |
 
 On the downbeat after each phase change the tail **cracks**: a ring of 32 from its tip.
