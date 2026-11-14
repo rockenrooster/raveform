@@ -83,7 +83,7 @@ engine move through them together, always on bar lines.
 | **Groove** | Normal spawning to the threat budget | Drums, bass, the players' layers | Steady pulse | Farm Shards, build Chain |
 | **Build** | Spawn rate ramps; a Rift may open | Snare roll, riser, filter opens; last bar the drums drop out | Colours drain toward white, grid tightens, slow zoom-in; last bar darkens and time dips to 85% | Tension |
 | **Drop** | Mega-wave, mini-boss or boss enters on the downbeat | Full arrangement | Bloom burst, shockwave from every player, zoom snaps out, palette accent swaps | **Surge** for the first half, in two gears: fire grid one step faster for its first half, two steps for its second (triplets, then double time; capped at 1/32), score ×2, magnet ×2 |
-| **Break** | Fodder dissolves into Shards in the first bar; nothing dangerous spawns | Pads, filtered drums | Cool, desaturated, slow drifting particles | Upgrade **Trio** appears; new-species spotlight in the last two beats |
+| **Break** | Fodder dissolves into Shards in the first bar; nothing dangerous spawns | Pads, filtered drums | Cool, desaturated, slow drifting particles | New-species spotlight in the last two beats. No Trio (2026-11-14, the owner: "Remove The Break's Trio"), except a boss's in the Break that follows its death |
 
 Forms: **Short** = 8 / 4 / 8 / 4 bars (24 bars); **Standard** = 12 / 4 / 16 / 4 bars (36 bars: the
 Drop is the longest part). Until play test 2 (2026-11-12) Standard was 16 / 8 / 16 / 8; the user
@@ -97,8 +97,8 @@ A Track is a block with its own tempo, key, palette, enemy families and boss. **
 cycles, 48 bars** (the owner, 2026-11-14: "tracks should be the same length as track 1"; Tracks 2 to 10
 were three): 96 seconds at Track 1's 120 BPM, 91 at 126, 66 at 174, before its boss. The first upgrade
 arrives within 45 seconds. A mini-boss arrives on the first cycle's Drop from Track 2 on; the boss
-arrives on the second, the last. A Track deals two Trios (its Break and its boss's), as Track 1 always
-has; the Shard levels come on top. What was
+arrives on the second, the last. A Track's Trios are its Shard levels and its boss's (the
+cycle's Break deals none since 2026-11-14). What was
 written in bars for the longer Tracks keeps its bars unless said otherwise (elites come as many bars
 apart as before, so half as many a Track); an arena event never outlasts its Groove. Killing the boss ends the Track, grants a bonus Trio and starts the
 next Track's Break, during which tempo, key and palette cross-fade.
@@ -172,16 +172,22 @@ except settings, local high scores and lifetime stats.
 
 ### 6.1 How upgrades arrive
 
-- **Trio.** At every Break, three orbs appear on a ring of 170 wu around each player, each showing an
-  icon, its name, a two-to-four-word effect and its stack pips. **A choice is never an accident**
-  (user play test, 2026-11-12: orbs were taken by flying through them): the orbs cannot be taken for
-  the Break's first two beats, and after that one is taken by **staying inside it for two beats**
-  while its ring fills. Flying through does nothing; leaving empties the ring. The others pop. The
-  ring is the clock; if none is taken, the one nearest the ship is taken at the end of the Break.
-  There is no pause and no menu. Layout: `design/screens.md`, "The Trio".
+- **Trio.** Three orbs on a ring of 170 wu around each player, each showing an icon, its name, a
+  two-to-four-word effect and its stack pips. A Trio comes with each **Shard level** (below) and with
+  each **boss's death** (in the Track-change Break that follows). **The cycle's Break deals none**
+  (2026-11-14, the owner: "Remove The Break's Trio"; with Shard levels it was one Trio too many).
+  **A choice is never an accident** (user play test, 2026-11-12: orbs were taken by flying through
+  them): the orbs cannot be taken for their first two beats, and after that one is taken by
+  **staying inside it for two beats** while its ring fills. Flying through does nothing; leaving
+  empties the ring. The others pop. The ring is the clock; if none is taken, the one nearest the
+  ship is taken when it runs out (a level's four bars, the boss's Break). There is no pause and no
+  menu. Layout: `design/screens.md`, "The Trio".
 - **How a Trio is dealt** (M5, 2026-11-13: with all 36 Mods and 12 Riffs in an even draw a build
   spread thin, and the bots killed so slowly that the bosses' health had to be cut to a third).
   Every Mod and Riff can be offered from the first Trio of a run: nothing is locked behind a Track.
+  - **The first Trio of a run offers Split and Double-Time** (the owner, 2026-11-14), the third orb
+    drawn as the other orbs are (never a third staple twice). In co-op, each player's first Trio.
+    After it the rules below hold.
   - **The first orb is firepower.** It is drawn from what makes the build the player has hit
     harder: the weapon and rhythm Mods they hold, the Riffs they hold, and the four staples (Split,
     Double-Time, Overcharge, On-Beat Crit) whether held or not; whatever is at its cap is left out.
@@ -209,8 +215,8 @@ except settings, local high scores and lifetime stats.
   the next Trio opens on the bar line after the last one closes. A level-up Trio lasts four bars
   (the ring is the clock; the nearest orb is taken at the end). The fight does not step back for
   it, so the orbs are shelters: nothing spawns inside the ring, **a ship inside an orb's ring
-  cannot be hurt**, and bodies touching that ring are shoved away. The Break's Trio stays as it
-  is, free of charge. When every Mod and Riff is at its cap the orbs offer three different Boosts.
+  cannot be hurt**, and bodies touching that ring are shoved away. A boss's Trio is held the same
+  way, for the whole Break after the boss. When every Mod and Riff is at its cap the orbs offer three different Boosts.
 - **Cells** (health pickups; play test 2). A Cell restores one Shield cell. Kills drop them only
   while the player is below full health: about one every 40 seconds with one cell missing, about
   one every 15 seconds on the last cell (director controlled, like Boosts; at most two loose at

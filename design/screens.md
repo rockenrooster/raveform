@@ -121,18 +121,18 @@ Rules:
 
 ## The Trio (M3)
 
-Not a screen: the upgrade choice happens in the world, at the Break, with the run still going
-(GAME_DESIGN §6.1). Pictures: `design/previews/trio.png` (both cases), `screen_trio_break.png`,
+Not a screen: the upgrade choice happens in the world, at a Shard level or after a boss, with the run still
+going (GAME_DESIGN §6.1; the cycle's Break deals no Trio since 2026-11-14). Pictures: `design/previews/trio.png` (both cases), `screen_trio_break.png`,
 `screen_trio_fusion.png`, drawn by `design/tools/trio.py`. Sizes in world units (1.5 px at 2400×1080).
 
 | Element | Place | Behaviour |
 |---|---|---|
-| **Choice ring** | A circle of 170 wu around where the ship was when the Break began; it does not follow the ship | It is also the clock: the lit arc (accent ↔ white, 2 px at 1.3, a bright bead at its end) is the Break that is left; the spent part is white at 0.16. When it runs out, the orb nearest the ship is taken |
+| **Choice ring** | A circle of 170 wu around where the ship was when the Trio opened; it does not follow the ship | It is also the clock: the lit arc (accent ↔ white, 2 px at 1.3, a bright bead at its end) is the time that is left (a level's four bars, a boss's Break); the spent part is white at 0.16. When it runs out, the orb nearest the ship is taken |
 | **Orbs** | Three on the ring: top, lower left, lower right | The upgrade's own icon in its frame (`design/icons.json`): Mods 38 wu, Riffs ×1.14. A thin white ring at 1.42 × that around it. They swell 6% on the beat |
 | Words | Always outside the ring: above the top orb, left of the left one, right of the right one | Name, cap 20 wu (30 px), white at 1.3. Effect under it, cap 11 wu, palette accent: two to four words, a number where there is one (`+1 SHOT LANE`, `LEVEL 3: SECOND RING`) |
 | Stack pips | Under the words | One dot per stack or level the upgrade can have: owned ones white, the one this pick adds gold with a ring, the rest empty outlines |
 | **Closing on one** | Within 110 wu of an orb, or flying at it | That orb answers: icon ×1.12, its ring in the player colour at 2.0 with a dashed outer ring, a pool of the player colour, a line of light from the ship to it, its words at 1.9. The other two do not change |
-| **Locked** | The Break's first two beats | The ring draws itself in one beat and the orbs fade in over the next, as outlines at 0.5 with their words already readable. Nothing can be taken yet. On the third beat they light with a chime |
+| **Locked** | The Trio's first two beats | The ring draws itself in one beat and the orbs fade in over the next, as outlines at 0.5 with their words already readable. Nothing can be taken yet. On the third beat they light with a chime |
 | **Holding** | The ship inside the orb's thin ring (1.42 × the icon) | The thin ring fills as a solid arc in the player colour, clockwise from twelve o'clock, over two beats, with two rising notes. Flying through does nothing. Leaving empties it at once and silences it |
 | **Taking it** | The arc closes | The orb folds into the ship in two beats' worth of sparks in its two colours, the icon flies to the band row of the HUD, the other two pop into sparks of their own colours, the ring closes. The pickup sound is the "upgrade taken" chord, on the next sixteenth |
 | Hint | Bottom centre, cap 14 px, white at 0.7 | `STAY ON ONE TO TAKE IT`, on the first three Trios of a run |
