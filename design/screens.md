@@ -88,6 +88,17 @@ light, in the palette of Track 1, with the music at full level.
 | Note | Bottom right, cap 14, white at 0.5 | `HEADPHONES RECOMMENDED`; on first launch the photosensitivity notice takes this screen first |
 | Version | Bottom right under the note, cap 11, white at 0.4 | The version, the build's commit and its date and minute: `V0.9.0  F0CD14F  2026-11-14 16:40` (the owner, 2026-11-14: "include a version # with build date at the bottom right at the main menu"); the version is `CMakeLists.txt`'s project version |
 
+**The quiet title** (the owner, 2026-11-14: "after waiting at the main menu for a while the menu fades away so you can see
+the demo until you tap the screen and the menu fades back in"). The title at rest (no transition, no co-op session) that hears
+no input for **8 bars** (17.5 s at Track 1's 110 BPM) leaves on the next bar line, as home builds it but backwards, each piece
+over a beat: the best, the note and the version with CO-OP and SETTINGS on the bar's first beat, PLAY and its ship on the
+second, the tagline and the beat dots half a beat later, the logo on the third, the waveform on the fourth; over the same bar
+the demo comes up from a third of its light to its full light. Any input brings it all back over a beat from where it stood:
+a tap anywhere, the pointer moving (a mouse, more than 4 px), a key, a gamepad button, a stick or trigger past half. That input
+does nothing else (a tap where PLAY was does not start a run), and nothing takes a tap until the title is back; the count of
+8 bars starts again from it. Picture `m6_title_idle` (a strip a beat apart from a beat before it leaves; `--strip 600` every
+frame, with the tap on PLAY's place two and a half bars after it left).
+
 ## Settings (M3)
 
 A sound check, not a form. The music keeps playing, so every change is heard as it is made. Three

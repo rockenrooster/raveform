@@ -41,6 +41,9 @@ constexpr float kWaitLowpassHz = 700.0f;
 constexpr float kHomeLowpassHz = 900.0f;
 // (chosen) The halo's radius on screen at 1080 lines, about: PLAY's outline shrinks to it.
 constexpr float kHaloRefPx = 46.0f;
+// (chosen; screens.md "Title") The title at rest leaves after this many bars without an input (17.5 s at Track 1's 110 BPM),
+// on the next bar line.
+constexpr double kTitleQuietBars = 8.0;
 }  // namespace
 
 double Play::transNow() const {
@@ -351,9 +354,63 @@ Play::TitleLook Play::titleLook() const {
                 t.side = up(backFrom_.side);
                 t.best = up(backFrom_.best);
             }
+            if (titleHideLine_ >= 0.0 && (titleWakeAt_ >= 0.0 || transBeats(titleHideLine_) > 0.0f)) {
+                // screens.md "Title": the quiet title leaves as home builds it, backwards, a beat apart: the best and the note
+                // with the side controls, PLAY and its ship, the tagline and the beat dots, the logo, the waveform. Nothing takes
+                // a tap until it is all back (the input that wakes it presses nothing).
+                t.best *= 1.0f - titleGone(0.0f);
+                t.side *= 1.0f - titleGone(0.25f);
+                t.play *= 1.0f - titleGone(1.0f);
+                t.tag *= 1.0f - titleGone(1.5f);
+                t.logo *= 1.0f - titleGone(2.0f);
+                t.wave *= 1.0f - titleGone(3.0f);
+                t.playTaps = t.sideTaps = false;
+            }
             return t;
     }
     return t;
+}
+
+float Play::titleGone(float fromBeat, float beats) const {
+    if (titleHideLine_ < 0.0) return 0.0f;
+    // Leaving: from its beat of the bar it leaves on, over `beats`. Waking: back from where it stood over a beat.
+    const float into = titleWakeAt_ >= 0.0 ? titleWakeFrom_ : transBeats(titleHideLine_);
+    float g = smooth01((into - fromBeat) / beats);
+    if (titleWakeAt_ >= 0.0) g *= 1.0f - smooth01(transBeats(titleWakeAt_));
+    return g;
+}
+
+void Play::titleIdleFrame(UiPointer& ptr) {
+    const bool input = uiActivity_;
+    uiActivity_ = false;
+    const double now = transNow();
+    if (!(flow_ && screen_ == Screen::Title && trans_ == Trans::None && !session_)) {
+        titleQuietFrom_ = titleHideLine_ = titleWakeAt_ = -1.0;  // (not at rest: the count starts when it is)
+        return;
+    }
+    if (titleQuietFrom_ < 0.0 || now < titleQuietFrom_) titleQuietFrom_ = now;
+    if (titleHideLine_ >= 0.0) {
+        if (titleWakeAt_ >= 0.0) {
+            if (now < titleWakeAt_ || transBeats(titleWakeAt_) >= 1.0f) titleHideLine_ = titleWakeAt_ = -1.0;  // back
+        } else if (input && transBeats(titleHideLine_) <= 0.0f) {
+            titleHideLine_ = -1.0;  // an input before the bar line it would leave on: it stays (and the input is the screen's)
+        } else if (input) {
+            // The input that wakes it: everything comes back over a beat from where it stood, and the input does nothing else.
+            titleWakeFrom_ = std::fmin(transBeats(titleHideLine_), 5.0f);
+            titleWakeAt_ = now;
+            ptr.pressed = ptr.released = ptr.down = false;
+            keyPrimary_ = keyBack_ = false;
+        } else if (now < titleHideLine_ - kTicksPerBar) {
+            titleHideLine_ = now - 5.0 * kTicksPerBeat;  // (the clock ran back under it: it stays gone)
+        }
+        if (input) titleQuietFrom_ = now;
+        return;
+    }
+    if (input) {
+        titleQuietFrom_ = now;
+        return;
+    }
+    if (now - titleQuietFrom_ >= kTitleQuietBars * kTicksPerBar) titleHideLine_ = (std::floor(now / kTicksPerBar) + 1.0) * kTicksPerBar;
 }
 
 float Play::transRunLight() const {

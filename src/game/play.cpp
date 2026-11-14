@@ -1243,6 +1243,8 @@ void Play::returnFromSync() {
 // ---------------------------------------------------------------------------------------------- input
 
 void Play::uiPointer(Vec2 pos, bool down) {
+    // screens.md "Title": a tap or the pointer moving (a mouse; more than 4 px, not its jitter) is an input that wakes the title.
+    if ((down && !uiPtr_.down) || lengthSq(pos - uiPtr_.pos) > 16.0f) uiActivity_ = true;
     uiPtr_.pos = pos;
     if (down && !uiPtr_.down) uiPtr_.pressed = true;
     if (!down && uiPtr_.down) uiPtr_.released = true;
@@ -1251,6 +1253,7 @@ void Play::uiPointer(Vec2 pos, bool down) {
 
 bool Play::key(int k, bool down) {
     const bool dead = !world_->player(seat_).alive;
+    if (down && k != SDLK_F1 && k != SDLK_F12) uiActivity_ = true;  // (screens.md "Title": a key wakes the quiet title)
     if (coop() && k == SDLK_P) {
         // M4: any player may pause; it holds for everyone on the next beat (GAME_DESIGN 10). P again resumes.
         if (down) session_->requestPause(!session_->paused() && !session_->resuming());
@@ -1392,6 +1395,7 @@ void Play::touchUp(u64 id) {
 }
 
 void Play::padAxis(int axis, float v) {
+    if (std::fabs(v) > 0.5f) uiActivity_ = true;  // (screens.md "Title": a stick or trigger pushed wakes the quiet title)
     switch (axis) {
         case SDL_GAMEPAD_AXIS_LEFTX: padMove_.x = v; break;
         case SDL_GAMEPAD_AXIS_LEFTY: padMove_.y = v; break;
@@ -1402,6 +1406,7 @@ void Play::padAxis(int axis, float v) {
 }
 
 void Play::padButton(int button, bool down) {
+    if (down) uiActivity_ = true;  // (screens.md "Title": a button wakes the quiet title)
     switch (button) {
         case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: padNova_ = down; break;  // GAME_DESIGN 2: RB / R1
         case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: padDash_ = down; break;   // LB / L1

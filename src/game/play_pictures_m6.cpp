@@ -19,7 +19,7 @@ using namespace sim;
 
 namespace {
 enum class M6 : u8 { Hint, EndedBy, SetCard, SetOver, TitleStar, UiScale, MiniStays, Flash, Credits, LwEntrance, LwLunge, LwClose, DropTitle,
-                     DropRetry, Home, PauseRestart, PauseQuit, HzWave, HzTouch };
+                     DropRetry, Home, PauseRestart, PauseQuit, HzWave, HzTouch, TitleIdle };
 struct M6Pic {
     const char* name;   // m6_<name>
     M6 kind;
@@ -53,6 +53,10 @@ const M6Pic kM6Pics[] = {
     // Tidal phase held: a tidal wave reaching a ship standing still 380 wu out (from a sixteenth before it), and a ship flying into
     // the horizon and thrown out over half a beat.
     {"hz_wave", M6::HzWave, 1, "horizon"}, {"hz_touch", M6::HzTouch, 1, "horizon"},  // (phase 1: Tidal, 0-based as --fight)
+    // screens.md "Title" (the owner, 2026-11-14): the quiet title leaving over its bar, and a tap on PLAY's place two and a half
+    // bars later bringing it back (PLAY not pressed): eight frames a beat apart from a beat before the bar line it leaves on, or
+    // with --strip above 8 every frame from there (the video).
+    {"title_idle", M6::TitleIdle, 0, nullptr},
 };
 constexpr u32 kM6Count = sizeof(kM6Pics) / sizeof(kM6Pics[0]);
 constexpr u32 kM6At = 300;  // after the run's Track card (2.25 bars)
@@ -105,6 +109,11 @@ bool Play::scriptSetupM6() {
             screen_ = Screen::Title;
             w.spawner().mode = Spawner::Mode::Slice;
             stripStride_ = static_cast<u32>(std::lround(3600.0 / std::fmax(w.tempoAt(0.0), 30.0f)));
+            break;
+        case M6::TitleIdle:
+            flow_ = true;
+            screen_ = Screen::Title;
+            w.spawner().mode = Spawner::Mode::Slice;
             break;
         case M6::SetCard:
             w.spawner().mode = Spawner::Mode::Slice;
@@ -295,6 +304,27 @@ bool Play::scriptInputM6(StickInput& in) {
             in = bot_.think(w, 0, controller_, clock_.heardNow());
             if (captureFrom_ < 0 && t == kM6At) captureFrom_ = now;
             return true;
+        case M6::TitleIdle: {
+            in = bot_.think(w, 0, controller_, clock_.heardNow());
+            const Vec2 play{0.5f * layoutW_, 759.0f * layoutH_ / 1080.0f};  // (PLAY's centre, screenTitle)
+            if (captureFrom_ < 0 && titleHideLine_ >= 0.0 && titleWakeAt_ < 0.0) {
+                const double beat = 3600.0 / std::fmax(w.tempoAt(music1_), 30.0f);  // frames a beat
+                const double toLine = (titleHideLine_ - music1_) / static_cast<double>(w.ticksPerSecond()) * 60.0;
+                stripStride_ = stripFrames_ > 8 ? 1u : static_cast<u32>(std::lround(beat));
+                captureFrom_ = now + std::max<i64>(0, static_cast<i64>(std::lround(toLine - beat)));
+                placedAt_ = t + static_cast<u32>(std::lround(toLine + 10.0 * beat));
+                RF_LOG("play: picture '%s': the title leaves in %.0f frames, the tap %u frames after that", opt_.picture, toLine,
+                       placedAt_ - t - static_cast<u32>(std::lround(toLine)));
+            }
+            if (captureFrom_ >= 0 && t == placedAt_) uiPointer(play, true);
+            if (captureFrom_ >= 0 && t == placedAt_ + 6u) {
+                uiPointer(play, false);
+                RF_LOG("play: picture '%s': tapped PLAY's place; the screen is %s", opt_.picture, screen_ == Screen::Title && trans_ == Trans::None ? "still the title (right)" : "not the title (wrong)");
+            }
+            if (captureFrom_ >= 0 && t == placedAt_ + 200u)
+                RF_LOG("play: picture '%s': 200 frames after the tap the screen is %s", opt_.picture, screen_ == Screen::Title && trans_ == Trans::None ? "the title (right)" : "not the title (wrong)");
+            return true;
+        }
         case M6::UiScale:
             in = bot_.think(w, 0, controller_, clock_.heardNow());
             if (!ffRunning_ && captureFrom_ < 0 && t == 24) captureFrom_ = now;

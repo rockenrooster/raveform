@@ -4,6 +4,15 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (night), the quiet title
+
+- "Like maybe after waiting at the main menu for a while the menu fades away so you can see the demo until you tap the screen
+  and the menu fades back in?": after 8 bars without an input the title leaves on the next bar line, home's order backwards a
+  beat apart, and the demo comes up from a third of its light to full; any input (a tap, the pointer moving more than 4 px, a
+  key, a button, a stick) brings it back over a beat and does nothing else (screens.md "Title"; `Play::titleIdleFrame`,
+  `titleGone`, `uiActivity_`). Picture `m6_title_idle` (new): the title left over its bar and, after a tap on PLAY's place two
+  and a half bars later, back as the title (the run did not start; the picture logs it). Video `captures\video\title_idle.mp4`.
+
 ## 2026-11-14 (evening), the Reprise's homecoming: one shockwave of thin lines with a thick glow; the co-op report
 
 - "They should all come out 'at once' like a real exp, just a thick transparent layer of each color sandwiched together" (230d128:

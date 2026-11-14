@@ -492,6 +492,17 @@ private:
         bool playTaps = true, sideTaps = true;
     };
     TitleLook titleLook() const;
+    // screens.md "Title" (the owner, 2026-11-14: "after waiting at the main menu for a while the menu fades away so you can see the
+    // demo until you tap the screen and the menu fades back in"): the title at rest with no input for kTitleQuietBars leaves on the
+    // next bar line, piece by piece over that bar, while the demo behind it comes up to its full light; any input brings it back
+    // over a beat and does nothing else.
+    double titleQuietFrom_ = -1.0;  // run ticks: the title came to rest or last heard an input here (-1: not at rest)
+    double titleHideLine_ = -1.0;   // run ticks: the bar line it leaves on (-1: none)
+    double titleWakeAt_ = -1.0;     // run ticks: an input brought it back from here (-1: none)
+    float titleWakeFrom_ = 0.0f;    // how many beats it had been leaving for when that input came
+    bool uiActivity_ = false;       // an input since the last frame: a tap, the pointer moving, a key, a button, a stick
+    void titleIdleFrame(UiPointer& ptr);  // (renderScreens) the quiet count, the leaving, the waking (its input eaten)
+    float titleGone(float fromBeat, float beats = 1.0f) const;  // how far a piece of the title has left (0 shown, 1 gone)
     TitleLook waitFrom_, backFrom_;  // the title as a drop-in's wait began; as Back cancelled it
     double backAt_ = -1.0;           // run ticks: Back cancelled the wait here (everything fades back in over a beat)
     float waitRun_ = 1.0f, backRun_ = 1.0f;  // the run's light as the wait began; as it was cancelled

@@ -264,6 +264,7 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
     // (M4: the primary controls carry this device's player colour, P1's in solo.) M6 (screens.md "Transitions"): while a screen
     // is on its way out, or not yet in, it takes no taps (Back still cancels the drop-in's wait on the title).
     UiPointer ptr = uiPtr_;
+    titleIdleFrame(ptr);  // screens.md "Title": the quiet title leaves; the input that brings it back is eaten here
     if (transInputLocked()) {
         ptr.pressed = ptr.released = ptr.down = false;
         keyPrimary_ = false;
@@ -280,7 +281,8 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
             screenNotice(ui_);
             break;
         case Screen::Title:
-            params.exposurePump *= transExposure(0.33f);
+            // (screens.md "Title": as the quiet title leaves, the demo behind it comes up to its full light over the bar)
+            params.exposurePump *= transExposure(0.33f + 0.67f * titleGone(0.0f, 4.0f));
             screenTitle(ui_);
             break;
         case Screen::Run:
