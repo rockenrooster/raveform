@@ -439,6 +439,8 @@ bool SpeciesTable::load() {
     if (!feedback.load()) ok = false;
     if (!minis.load()) ok = false;
     crowd.miniDrop = minis.crowdScale;
+    if (!arena.load()) ok = false;   // M5 part 5
+    if (!traits.load()) ok = false;
     return ok;
 }
 

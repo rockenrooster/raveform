@@ -2239,6 +2239,172 @@ float sidewaysWorst(const World& w) {
     return worst;
 }
 
+// M5 part 5: elites and their traits (design/traits.md), the arena's structures and events (design/arena.md).
+void testArena() {
+    g_test = "arena";
+    const TraitData& td = g_species->traits;
+    const ArenaData& ad = g_species->arena;
+    CHECK(td.scale == 1.3f && td.health == 6.0f && td.score == 10.0f && td.threat == 4.0f && td.shards == 20 && td.alive[0] == 3 && td.alive[1] == 5);
+    CHECK(td.fromTrack[kArmored] == 2 && td.fromTrack[kVolatile] == 4 && td.fromTrack[kPhasing] == 7 && td.twinHealth == 1.6f && td.volatileRing == 160.0f);
+    CHECK(ad.radius[static_cast<u32>(StructKind::Vault)] == 60.0f && ad.radius[static_cast<u32>(StructKind::Lens)] == 160.0f &&
+          ad.eventBars[static_cast<u32>(EventKind::Eclipse)] == 8);
+    CHECK(ad.structCount[1] == 1 && ad.structs[1][0] == static_cast<u8>(StructKind::Vault) && ad.eventCount[1] == 1 &&
+          ad.events[1][0] == static_cast<u8>(EventKind::Comet) && ad.structCount[4] == 5 && ad.glyph[ArenaData::gVault].count == 18);
+    const Vec2 ship{0.0f, 0.0f};
+    const u16 drifter = SpeciesTable::index(Family::Drifter, 3, kVariantA);
+    const Species& ds = g_species->get(drifter);
+    // An elite: x 1.3 its size, x 6 its health (Armored x 2 again).
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        const i32 i = w->spawnEliteNow(drifter, Vec2{600.0f, 0.0f}, traitBit(kArmored));
+        CHECK(i >= 0);
+        const Enemies& e = w->enemies();
+        CHECK(std::fabs(e.radius[i] - ds.radius * 1.3f) < 1e-3f && std::fabs(e.hp[i] - ds.health * 12.0f) < 1e-2f && (e.traits[i] & kEliteBit));
+        CHECK(w->elitesAlive() == 1);
+        // Its death: a large kill, 20 Shards and a Cell for the player, x 10 its score.
+        const u64 score0 = w->player(0).score;
+        w->hitEnemyNow(static_cast<u32>(i), 1e6f, 0);
+        bool large = false;
+        for (u32 k = 0; k < w->eventCount(); ++k) large = large || (w->events()[k].type == EventType::Kill && w->events()[k].a == 2);
+        CHECK(large && w->shards().count == 20 && w->cellPickups().count == 1);
+        CHECK_MSG(w->player(0).score - score0 == static_cast<u64>(std::llround(ds.score * 10.0f)), "score %llu", static_cast<unsigned long long>(w->player(0).score - score0));
+        delete w;
+    }
+    // Twin: two bodies, one health bar; they die together.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        const i32 i = w->spawnEliteNow(drifter, Vec2{600.0f, 0.0f}, traitBit(kTwin));
+        const Enemies& e = w->enemies();
+        CHECK(e.count == 2 && e.twin[i] != 0);
+        const i32 j = w->enemyIndex(e.twin[i]);
+        CHECK(j >= 0 && std::fabs(e.hp[i] - ds.health * 6.0f * 1.6f) < 1e-2f);
+        w->hitEnemyNow(static_cast<u32>(i), 10.0f, 0);
+        CHECK(std::fabs(e.hp[j] - e.hp[i]) < 1e-3f);
+        w->hitEnemyNow(static_cast<u32>(i), 1e6f, 0);
+        CHECK((e.flags[i] & kFlagDead) && (e.flags[j] & kFlagDead));
+        delete w;
+    }
+    // Splitting: two copies, 0.6 of its size and 30% of its health, no trait.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        const i32 i = w->spawnEliteNow(drifter, Vec2{600.0f, 0.0f}, traitBit(kSplitting));
+        const Enemies& e = w->enemies();
+        const float r = e.radius[i], hmax = e.hpMax[i];
+        w->hitEnemyNow(static_cast<u32>(i), 1e6f, 0);
+        u32 copies = 0;
+        for (u32 k = 0; k < e.count; ++k)
+            if (!(e.flags[k] & kFlagDead) && !e.traits[k] && std::fabs(e.radius[k] - r * 0.6f) < 1e-3f && std::fabs(e.hp[k] - hmax * 0.3f) < 1e-2f) ++copies;
+        CHECK_MSG(copies == 2, "%u copies", copies);
+        delete w;
+    }
+    // Volatile: its ring bursts two beats on, 30 x the Track's number to every enemy inside; Regenerating heals after two quiet
+    // beats; Shielded sheds a shot from its front.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        const i32 v = w->spawnEliteNow(drifter, Vec2{600.0f, 0.0f}, traitBit(kVolatile));
+        const i32 near = w->spawnEnemy(drifter, Vec2{650.0f, 40.0f}, 0.0f, music);
+        const Enemies& e = w->enemies();
+        const u32 nearSerial = e.serial[near];
+        w->setEnemyHp(static_cast<u32>(near), 100.0f);
+        w->hitEnemyNow(static_cast<u32>(v), 1e6f, 0);
+        CHECK(w->bombs()[0].burst > music);
+        runTo(*w, music, w->bombs()[0].burst + 10.0, ship);
+        i32 nk = -1;
+        for (u32 k = 0; k < e.count; ++k)
+            if (e.serial[k] == nearSerial) nk = static_cast<i32>(k);
+        CHECK_MSG(nk >= 0 && std::fabs(e.hp[nk] - 70.0f) < 1e-2f, "hp %.1f", nk >= 0 ? e.hp[nk] : -1.0f);
+        const i32 g = w->spawnEliteNow(drifter, Vec2{-600.0f, 0.0f}, traitBit(kRegenerating) | traitBit(kShielded));
+        const u32 gs = e.serial[g];
+        w->hitEnemyNow(static_cast<u32>(g), 50.0f, 0, Vec2{-1.0f, 0.0f});
+        float hp0 = 0.0f, hpMax = 0.0f;
+        for (u32 k = 0; k < e.count; ++k)
+            if (e.serial[k] == gs) {
+                hp0 = e.hp[k];
+                hpMax = e.hpMax[k];
+            }
+        runTo(*w, music, music + 4.0 * kTicksPerBeat, ship);
+        for (u32 k = 0; k < e.count; ++k)
+            if (e.serial[k] == gs) {
+                CHECK_MSG(e.hp[k] > hp0 && e.hp[k] <= hpMax, "regen %.1f -> %.1f of %.1f", hp0, e.hp[k], hpMax);
+                // (its shield turns to the ship: a shot from the ship meets its front)
+                const float before = e.hp[k];
+                w->hitEnemyNow(k, 30.0f, 0, normalizeOr(Vec2{e.x[k], e.y[k]} - ship, Vec2{-1.0f, 0.0f}));
+                CHECK(e.hp[k] == before);
+            }
+        delete w;
+    }
+    // A Vault: shots break it for a Boost and 40 Shards; a Lens splits a shot in three; a Current carries; a Bumper kicks.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        const i32 s = w->placeStructureNow(StructKind::Vault, Vec2{300.0f, 0.0f}, 0.0f);
+        CHECK(s >= 0 && std::fabs(w->arenaBodies()[s].hp - 300.0f * 0.33f) < 1e-2f);  // Track 1's trackScale is 300
+        u32 fired = 0;
+        w->arenaBodyMut(static_cast<u32>(s)).hp = 20.0f;  // (the base stream does about 8 a second)
+        for (u32 k = 0; k < 600 && w->arenaBodies()[s].alive; ++k) {
+            stepWorld(*w, music, ship, 1);
+            fired = fired > w->shots().count ? fired : w->shots().count;
+        }
+        CHECK_MSG(!w->arenaBodies()[s].alive, "vault hp %.1f, shots at most %u", w->arenaBodies()[s].hp, fired);
+        CHECK(!w->arenaBodies()[s].alive && w->boostPickups().count == 1 && w->shards().count >= 40);
+        const i32 l = w->placeStructureNow(StructKind::Lens, Vec2{200.0f, 0.0f}, 0.5f * kPi);
+        u32 most = 0, splits = 0;
+        for (u32 k = 0; k < 90; ++k) {
+            stepWorld(*w, music, ship, 1);
+            if (w->shots().count > most) most = w->shots().count;
+            splits += cuesIn(*w, BossCue::LeSplit);
+        }
+        CHECK_MSG(l >= 0 && splits >= 1 && most >= 3, "%u splits, %u shots at most", splits, most);
+        const i32 c = w->placeStructureNow(StructKind::Current, Vec2{0.0f, 1000.0f}, 0.0f);
+        CHECK(c >= 0 && std::fabs(w->currentFlow(Vec2{100.0f, 1050.0f}).x - 260.0f) < 1e-3f && w->currentFlow(Vec2{100.0f, 1300.0f}).x == 0.0f);
+        const i32 b = w->placeStructureNow(StructKind::Bumper, Vec2{-1000.0f, 0.0f}, 0.0f);
+        Vec2 p{-960.0f, 0.0f}, vel{-200.0f, 0.0f};
+        CHECK(b >= 0 && w->bumperBounce(p, vel, 12.0f) && vel.x == 600.0f);
+        delete w;
+    }
+    // Events: the Comet crosses at 700 wu/s once announced; Meteor Rain's rings land two beats after they show.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        w->startEventNow(EventKind::Comet);
+        runTo(*w, music, music + 3.0 * kTicksPerBeat, ship);  // (its chevron shows two beats ahead)
+        i32 comet = -1;
+        for (u32 k = 0; k < World::kArenaBodies; ++k)
+            if (w->arenaBodies()[k].alive && w->arenaBodies()[k].kind == kBodyComet) comet = static_cast<i32>(k);
+        CHECK(comet >= 0 && std::fabs(length(w->arenaBodies()[comet].vel) - 700.0f) < 1e-2f);
+        delete w;
+        w = quietWorld();
+        w->rules().godMode = true;
+        music = 0.0;
+        stepWorld(*w, music, ship);
+        w->startEventNow(EventKind::MeteorRain);
+        u32 warn = 0, land = 0;
+        while (music < 4.0 * kTicksPerBar) {
+            stepWorld(*w, music, ship);
+            warn += cuesIn(*w, BossCue::MeWarn);
+            land += cuesIn(*w, BossCue::MeLand);
+        }
+        CHECK_MSG(warn >= 30 && land >= 30, "%u warnings, %u landings", warn, land);
+        delete w;
+    }
+}
+
 void testShotStream() {
     g_test = "shot stream";
     const Vec2 ship{0.0f, 0.0f};
@@ -3111,6 +3277,7 @@ int main() {
     testFeedback();
     testMinibosses2();
     testShotStream();
+    testArena();
     testMinibosses();
     testFamiliesM5();
     testUpgradesM5();

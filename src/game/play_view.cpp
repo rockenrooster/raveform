@@ -10,6 +10,7 @@
 #include "core/args.h"
 #include "core/half.h"
 #include "core/log.h"
+#include "sim/boss_prose.h"
 #include "sim/tuning.h"
 
 namespace rf {
@@ -839,7 +840,12 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         stats_.crowdGain = crowdGain_;
         stats_.swarmGain = swarmGain_;
     }
-    const float crowd = crowdGain_, swarm = swarmGain_;
+    // M5 part 5 (arena.md, Eclipse): the scene's light x 0.15 between beats, back for the kick's flash (reduce flashing: x 0.4,
+    // the flash adds 0.3); the players' own light untouched.
+    eclipseK_ = 1.0f;
+    if (in.world->eclipse())
+        eclipseK_ = reduceFlashing_ ? prose::kArEclipseCalm + prose::kArEclipseCalmFlash * kick_ : prose::kArEclipseScene + (1.0f - prose::kArEclipseScene) * kick_;
+    const float crowd = crowdGain_ * eclipseK_, swarm = swarmGain_ * eclipseK_;
 
     // ---- Sparks born since the last frame (stateless; TECH_SPEC 5.3).
     stats_.sparksBorn = stats_.sparksDropped = 0;
@@ -929,8 +935,8 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     bg.radius = look_->bgRadius;
     bg.power = look_->bgPower;
     bg.cloudCount = 0;
-    if (!shown(kMuteBackground)) bg.edge = bg.centre = Vec3{};
-    if (tier_.background && shown(kMuteBackground)) {
+    if (!shown(kMuteBackground) || eclipseK_ < 1.0f) bg.edge = bg.centre = Vec3{};  // (an Eclipse: the background off)
+    if (tier_.background && shown(kMuteBackground) && eclipseK_ >= 1.0f) {
         const Vec2 pc = cam_ * look_->back.nebulaParallax;
         for (u32 i = 0; i < cloudCount_ && bg.cloudCount < 8 && tier_.nebula; ++i) {
             const Cloud& c = clouds_[i];
@@ -1006,6 +1012,11 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         ls.hotIntensity *= 1.0f - 0.8f * trioRest_;
         ls.heatGain *= 1.0f - trioRest_;
     }
+    if (eclipseK_ < 1.0f) {  // (an Eclipse: the lattice at 0.05)
+        ls.restIntensity = prose::kArEclipseLattice;
+        ls.warmIntensity *= eclipseK_;
+        ls.hotIntensity *= eclipseK_;
+    }
     lattice_.setWells(nullptr, 0, 0.0f);
     if (shown(kMuteGrid)) lattice_.draw(d.scene, lv, ls);
 
@@ -1038,6 +1049,8 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         }
     }
 
+    drawArena(d, in);  // M5 part 5: the structures and the event, under the bodies
+
     // ---- Enemies.
     const Enemies& e = w.enemies();
     const SpeciesTable& table = w.species();
@@ -1062,6 +1075,12 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             edgeChevron(d, pos, danger, false, 1.0f);
             ++stats_.indicators;
         }
+        // M5 part 5 (look.md 6): a white edge chevron for an elite off screen.
+        const bool elite = (e.traits[i] & kEliteBit) != 0;
+        if (!inView && elite && stats_.indicators < 8 && shown(kMutePriority)) {
+            edgeChevron(d, pos, W1, false, 1.0f);
+            ++stats_.indicators;
+        }
         if (!visible(pos, 2.5f * scale + 40.0f)) continue;
         if (inView) ++stats_.enemiesInView;
         if (e.state[i] == kWarping) {
@@ -1082,7 +1101,19 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             partner = grey(partner);
         }
         float intensity = (look_->lines.enemyHullTier1.intensity + le.hullIntensityPerTier * (static_cast<float>(s.tier) - 1.0f)) * crowd * enemyLight_;
-        const float halfWidth = 0.5f * look_->lines.enemyHullTier1.width;
+        float halfWidth = 0.5f * look_->lines.enemyHullTier1.width;
+        float eliteLevel = 1.0f;
+        if (elite) {
+            // look.md 3: hull + 0.6 at 2.3, never dimmed by the light budget (an Eclipse dims it); Cloaked at 8% between beats and
+            // full on the beat's flash; Phasing faint off its solid half.
+            const u16 tr = e.traits[i];
+            eliteLevel = eclipseK_;
+            if (hasTrait(tr, kCloaked)) eliteLevel *= w.species().traits.cloaked + (1.0f - w.species().traits.cloaked) * kick_;
+            if (w.elitePhased(i)) eliteLevel *= 0.35f;
+            intensity = (look_->lines.enemyHullTier1.intensity + le.hullIntensityPerTier * (static_cast<float>(s.tier) - 1.0f) + le.eliteIntensityAdd) *
+                        enemyLight_ * eliteLevel;
+            halfWidth = 0.5f * le.eliteWidth;
+        }
         const float phase = static_cast<float>(e.serial[i] % 997u) * 0.61803f * kTau;
         float rot0, rot1;
         if (gd.facesHeading) {
@@ -1092,8 +1123,9 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             rot1 = phase + kTau * le.ornamentTurnsPerBar * static_cast<float>(steppedBars);
         }
         const bool lod = scale * pxPerWu_ < tier_.lodRadiusPx;
-        if (shown(kMuteEnemy)) {
-            glyph(d.glyphs, g, lod, pos, rot0, rot1, scale, intensity, halfWidth, kGlyphEnemy, hue, partner);
+        if (elite) drawElite(d, in, i, pos, rot0, rot1, scale, hue, g, eliteLevel);  // M5 part 5
+        if (shown(elite ? kMuteElite : kMuteEnemy)) {
+            glyph(d.glyphs, g, lod && !elite, pos, rot0, rot1, scale, intensity, halfWidth, kGlyphEnemy, hue, partner);
             if (s.variant != kVariantA) {
                 const int mark = s.variant == kVariantC ? gMarkC_ : (gd.facesHeading ? gMarkBHeading_ : gMarkBSpin_);
                 glyph(d.glyphs, mark, false, pos, rot0, rot0, scale, look_->lines.variantMark.intensity * crowd,

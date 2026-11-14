@@ -670,6 +670,10 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
             break;
         case EventType::BossCue: {
             const BossCue cue = static_cast<BossCue>(e.a);
+            if (cue >= BossCue::ElArrive) {  // M5 part 5: the arena's and the elites' moments
+                eventArena(w, e, t);
+                break;
+            }
             // The lattice answers the fights: under each crest on its step, under each Voice as it sings.
             if (cue == BossCue::LwRun && s.kind == BossKind::Longwave) {
                 for (u32 k = 0; k < kBossParts; ++k)

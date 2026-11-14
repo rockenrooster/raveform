@@ -170,6 +170,7 @@ void World::updateEnemies(float dt) {
             emit(ev);
         }
         if (e.frozenUntil[i] > m1_) continue;  // M5: Freeze Frame holds it where it is (no motion, no fire)
+        if (e.stunUntil[i] > m1_) continue;    // M5 part 5: a Commander's death stuns those near it for a beat
         const Species& s = species_->get(e.species[i]);
         const FamilyData& fd = species_->family(s.family);
         const float x = e.x[i], y = e.y[i];
@@ -178,7 +179,8 @@ void World::updateEnemies(float dt) {
         const Vec2 to = target - Vec2{x, y};
         const bool engaged = engagedBy(x, y);
         e.flags[i] = static_cast<u8>(engaged ? (e.flags[i] | kFlagEngaged) : (e.flags[i] & ~kFlagEngaged));
-        if (p0.alive && std::fabs(x - p0.pos.x) <= kFrameHalfWWu && std::fabs(y - p0.pos.y) <= kFrameHalfHWu) threatInView_ += s.threat;
+        if (p0.alive && std::fabs(x - p0.pos.x) <= kFrameHalfWWu && std::fabs(y - p0.pos.y) <= kFrameHalfHWu)
+            threatInView_ += s.threat * ((e.traits[i] & kEliteBit) ? species_->traits.threat : 1.0f);  // M5 part 5: an elite x 4
 
         switch (minionMotion(i, dt) ? Family::Count : s.family) {
             case Family::Drifter: {
@@ -387,8 +389,11 @@ void World::updateEnemies(float dt) {
 
         // Integrate (own motion, faster in the loop (GAME_DESIGN 8), plus the decaying knockback), then the walls.
         const Vec2 was{e.x[i], e.y[i]};
-        e.x[i] += (e.vx[i] * loopSpeed_ + e.kx[i]) * dt;
-        e.y[i] += (e.vy[i] * loopSpeed_ + e.ky[i]) * dt;
+        // M5 part 5: Swift and a Commander's reach; a Giant cannot be shoved.
+        const float sp = (e.traits[i] || commanderCount_) ? eliteSpeed(i) : 1.0f;
+        if ((e.traits[i] & kEliteBit) && hasTrait(e.traits[i], kGiant)) e.kx[i] = e.ky[i] = 0.0f;
+        e.x[i] += (e.vx[i] * loopSpeed_ * sp + e.kx[i]) * dt;
+        e.y[i] += (e.vy[i] * loopSpeed_ * sp + e.ky[i]) * dt;
         e.kx[i] *= knock;
         e.ky[i] *= knock;
         const float r = e.radius[i];

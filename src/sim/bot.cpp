@@ -293,6 +293,21 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
             escape = escape + away;
         }
     }
+    // M5 part 5 (design/arena.md, traits.md): the rings that take a cell when they land (a Volatile's bomb, Meteor Rain) and the
+    // Storm Cell: out of them before they land.
+    if (careful) {
+        const auto avoid = [&](Vec2 c, float r) {
+            const Vec2 d = pos - c;
+            const float l = length(d), reach = r + 70.0f;
+            if (l < reach) force = force + normalizeOr(d, dirOf(wander_)) * (2.5f * (reach - l) / reach);
+        };
+        for (u32 k = 0; k < World::kArenaBombs; ++k)
+            if (w.bombs()[k].burst >= 0.0) avoid(w.bombs()[k].at, w.species().traits.volatileRing);
+        for (u32 k = 0; k < World::kArenaMeteors; ++k)
+            if (w.meteors()[k].land >= 0.0) avoid(w.meteors()[k].at, 110.0f);
+        const ArenaEventState& ae = w.arenaEvent();
+        if (ae.kind == static_cast<u8>(EventKind::StormCell) && ae.stage == 1) avoid(ae.pos, 320.0f);
+    }
     // Shards: the nearest few pull.
     const Shards& s = w.shards();
     for (u32 k = 0; k < s.count; ++k) {

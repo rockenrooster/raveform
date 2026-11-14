@@ -299,7 +299,9 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 c.part = r.u8v();
                 c.pair = r.u8v();
                 c.damage = r.f32v();
-                if (r.bad() || c.part < 1 || c.part > 3 || c.pair >= sim::kBossParts || !finite(c.damage) || c.damage < 0.0f || c.damage > 1e6f)
+                // (M5 part 5: a hit on an arena body is a claim on part kArenaPartBase + its slot)
+                const bool body = c.part >= sim::kArenaPartBase && c.part < sim::kArenaPartBase + 16 && c.pair == 0;
+                if (r.bad() || (!body && (c.part < 1 || c.part > 3 || c.pair >= sim::kBossParts)) || !finite(c.damage) || c.damage < 0.0f || c.damage > 1e6f)
                     return false;
                 if (sink) sink->onBossClaim(run, c);
             }
@@ -318,10 +320,12 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             m.y2 = r.f32v();
             m.tick = r.f64v();
             m.changeBar = r.u32v();
+            // M5 part 5: the host's arena decisions (pair kArenaOpBase + the operation, its a in oss, its b in killer).
+            const bool arena = m.kind == 1 && m.pair >= sim::kArenaOpBase && m.pair < sim::kArenaOpBase + 16;
             const bool partOk = m.pair < sim::kBossParts || (m.pair >= sim::kBossStepBase && m.pair < sim::kBossStepBase + 8) ||
-                                (m.pair >= sim::kBossGeomBase && m.pair < sim::kBossGeomBase + sim::kGeomCount);
-            if (r.bad() || m.kind > 2 || !partOk || m.boss >= sim::kBossKinds || !killerOk(m.killer) || !inWorld(m.x, m.y) ||
-                !inWorld(m.x2, m.y2) || !finite(m.tick))
+                                (m.pair >= sim::kBossGeomBase && m.pair < sim::kBossGeomBase + sim::kGeomCount) || arena;
+            if (r.bad() || m.kind > 2 || !partOk || (!arena && (m.boss >= sim::kBossKinds || !killerOk(m.killer))) || (arena && m.boss >= 32) ||
+                !inWorld(m.x, m.y) || !inWorld(m.x2, m.y2) || !finite(m.tick))
                 return false;
             if (sink) sink->onBoss(m);
             return true;

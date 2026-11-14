@@ -13,12 +13,12 @@
   "look": "look.md 3: hull + 0.6, 2.3 px, a white copy of the hull, glass, an aura at 0.22; a white edge chevron while it is off screen; never dimmed by the light budget",
   "arrival": "warps in like any enemy but from 90 wu and with the elite's low fifth (root and fifth of the Track's key); its trait's mark sounds a beat later",
   "when": {
-   "from": "Track 2, cycle 2",
-   "pace": "the director buys an elite with the threat budget about once in 16 bars in Track 2, falling evenly to once in 8 bars by Track 6 and staying there; never in a Break, a boss fight or a mini-boss fight",
+   "from": "Track 3, cycle 1",
+   "pace": "the director buys an elite with the threat budget about once in 16 bars in Track 3, falling evenly to once in 8 bars by Track 6 and staying there; never in a Break, a boss fight or a mini-boss fight",
    "alive": {
     "tracks2to6": 3,
     "tracks7to10": 5,
-    "note": "at most this many at once, for all players together"
+    "note": "at most this many at once, for all players together; no elite before Track 3 (the key keeps its name)"
    }
   },
   "traitsCarried": {
@@ -32,7 +32,7 @@
   {
    "id": "armored",
    "name": "Armored",
-   "fromTrack": 2,
+   "fromTrack": 3,
    "effect": "health x 2 again. While its outer hull holds (the first half of its health) shots spark off it without the hit flash; at half health the outer hull shatters and it is an ordinary elite",
    "numbers": {
     "healthFactor": 2.0,
@@ -43,7 +43,7 @@
   {
    "id": "swift",
    "name": "Swift",
-   "fromTrack": 2,
+   "fromTrack": 3,
    "effect": "moves at 1.6 times its speed and turns 1.3 times as fast",
    "numbers": {
     "speedFactor": 1.6,
@@ -55,6 +55,7 @@
    "id": "giant",
    "name": "Giant",
    "fromTrack": 3,
+   "fromCycle": 2,
    "effect": "1.8 times the size (on top of the elite's 1.3), health x 2.5, cannot be shoved; its death is a large kill",
    "numbers": {
     "scaleFactor": 1.8,
@@ -66,6 +67,7 @@
    "id": "splitting",
    "name": "Splitting",
    "fromTrack": 3,
+   "fromCycle": 2,
    "effect": "when it dies two copies leave it, 0.6 of its size, each with 30% of its health and no trait; they do not split again",
    "numbers": {
     "copies": 2,
