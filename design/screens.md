@@ -162,7 +162,7 @@ Effect words (final, 2026-11-12; plain words, no music terms, so a first-time pl
 | Upgrade | Words by stack or level |
 |---|---|
 | Split | `+2 SHOT LANES` |
-| Double-Time | `FIRE RATE X1.5`, then `FIRE RATE X2` |
+| Double-Time | `FIRE RATE X1.5` |
 | Pierce | `SHOTS PIERCE +2` |
 | Ricochet | `SHOTS BOUNCE +2` |
 | Overcharge | `+50% SHOT DAMAGE` |
@@ -170,7 +170,7 @@ Effect words (final, 2026-11-12; plain words, no music terms, so a first-time pl
 | Regen | `CELL REGROWS: 16 BARS`, then `8 BARS`, `4 BARS` |
 | Magnet | `SHARD PULL X2`, then `X3`, `X4`, `X5` |
 | On-Beat Crit | `BEAT SHOTS X3`, `X5`, `X8` |
-| Orbitals | `NEW RIFF: THREE ORBITERS`, then `LEVEL 2: FIVE ORBITERS` and so on by twos |
+| Orbitals | `NEW RIFF: A GUARD RING`, `LEVEL 2: FIVE SHARDS`, `LEVEL 3: RELIGHTS FASTER`, `LEVEL 4: NINE SHARDS`, `LEVEL 5: RELIGHTS FASTER` |
 | Pulse Ring | `NEW RIFF: BEAT RINGS`, `LEVEL 2: SECOND RING`, `LEVEL 3: WIDER RINGS`, `LEVEL 4: HEAVIER RINGS`, `LEVEL 5: TWICE AS OFTEN` |
 | Sentinel | `NEW RIFF: OFF-BEAT DRONE`, `LEVEL 2: BURST OF 4`, `LEVEL 3: SECOND DRONE`, `LEVEL 4: BURST OF 5`, `LEVEL 5: THIRD DRONE` |
 | Boosts (HUD) | Prism `FIVE-WAY RAINBOW FAN`, Hyper `FIRE RATE X2`, Halo `BLOCKS THREE HITS`, Magnet Storm `PULLS EVERY SHARD` |
@@ -183,14 +183,14 @@ name (`ARC` for Aegis, `SINGULARITY` for the Black Hole). At most 26 characters.
 
 | Mod | Words by stack |
 |---|---|
-| Fork | `SHOTS FORK ON A HIT`, then `FORKS FORK AGAIN` |
+| Fork | `SHOTS FORK ON A HIT` |
 | Seeker | `SHOTS HOME IN`, `TIGHTER HOMING`, `SHOTS HUNT` |
 | Heavy Step | `EVERY 4TH SHOT EXPLODES`, `BIGGER BLASTS`, `HEAVIER BLASTS` |
 | Accent | `A LANCE EACH BAR`, `TWO LANCES A BAR`, `A LANCE EVERY BEAT` |
 | Echo | `SHOTS ECHO A BEAT LATER`, `TWO ECHOES` |
 | Wave | `WAVY SHOTS HIT WIDER`, `WIDER WAVES` |
 | Rear Guard | `ALSO FIRE BACKWARD`, `AND SIDEWAYS` |
-| Arc | `KILLS ARC TO 2 MORE`, then the number that stack reaches |
+| Arc | `KILLS ARC TO 1 MORE`, then the number that stack reaches |
 | Burn | `HITS IGNITE`, `HOTTER FIRE`, `FIERCE FIRE` |
 | Shatter | `KILLS THROW SHRAPNEL`, `MORE SHRAPNEL` |
 | Gravity Rounds | `HITS PULL ENEMIES IN`, `A STRONGER PULL` |
@@ -260,6 +260,10 @@ words' rules as for upgrades. In co-op each player sees it by their own shots.
 | Polyrhythm | `SHOOT THROUGH THE GAPS` | | Kaleidos, Reprise | `SHOOT THE ARMS OFF` |
 
 A mini-boss with an armoured part gets a line the same way; they are written as each is reviewed.
+
+**Extra Life (HUD, play test 3).** A held Extra Life is a small gold ship outline to the right of the
+Nova stock. Picking it up and spending it both show `EXTRA LIFE` as world text at the ship (cap 22,
+gold) for one bar. Its orb is a gold ship outline in a ring, the Boost orb's size.
 
 ## Track name card (M3)
 

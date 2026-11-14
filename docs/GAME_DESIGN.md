@@ -40,7 +40,10 @@ Rules:
   10 mm, buttons at least 9 mm — so phones and the tablet feel the same. Positions and sizes are
   adjustable in settings; left/right can be swapped.
 - **Auto-aim assist (on by default):** while the aim stick is idle the ship fires at the nearest threat
-  on a half-rate grid. One thumb is enough to play; two thumbs are clearly stronger.
+  on the full fire grid (play test 3, 2026-11-13: it was half rate). In a boss or mini-boss fight
+  the assist aims at the boss: its open weak point when it has one, else its nearest part; an
+  ordinary enemy within 250 wu of the ship comes first. One thumb is enough to play **and to finish
+  the run** (7.6, "Beatable with the assist alone"); a second thumb chooses what dies first.
 - When the right thumb leaves the stick to press Nova or Dash, firing continues along the last aim
   direction for 400 ms.
 - Buttons show a clear pressed state (filled, brighter, slightly larger) and a cooldown ring.
@@ -81,14 +84,17 @@ engine move through them together, always on bar lines.
 
 Forms: **Short** = 8 / 4 / 8 / 4 bars (24 bars); **Standard** = 12 / 4 / 16 / 4 bars (36 bars: the
 Drop is the longest part). Until play test 2 (2026-11-12) Standard was 16 / 8 / 16 / 8; the user
-asked for Tracks three quarters as long.
+asked for Tracks three quarters as long. **Play test 3 (2026-11-13): "tracks are still too long ...
+lets try 0.5x". Every Track now uses the Short form and Standard is retired.**
 
 ### 4.2 Tracks
 
-A Track is a block with its own tempo, key, palette, enemy families and boss. Track 1 uses three Short
-cycles (72 bars, about 2.4 minutes) so the first upgrade arrives within 45 seconds. Later Tracks use three
-Standard cycles (108 bars, about 3.4 minutes). A mini-boss arrives on the Drop of the middle cycle from Track 2 on; the
-boss arrives on the last Drop. Killing the boss ends the Track, grants a bonus Trio and starts the
+A Track is a block with its own tempo, key, palette, enemy families and boss. Track 1 is two Short
+cycles (48 bars, about 1.6 minutes); the first upgrade arrives within 45 seconds. Later Tracks are three
+Short cycles (72 bars: 2.3 minutes at 126 BPM, 1.7 at 174), half of what they first were. A mini-boss
+arrives on the Drop of the middle cycle from Track 2 on; the boss arrives on the last Drop. What was
+written in bars for the longer Tracks keeps its bars unless said otherwise (elites come as many bars
+apart as before, so half as many a Track); an arena event never outlasts its Groove. Killing the boss ends the Track, grants a bonus Trio and starts the
 next Track's Break, during which tempo, key and palette cross-fade.
 
 | Track | BPM | Key / progression | Feel | Palette | New families | Boss |
@@ -115,8 +121,8 @@ lead does (broken chords, a three-note cell, a pedal point, a mallet, a harp). A
 bosses' full pages (7.6 has the concepts) and their rosters.
 
 **A run plays all ten, in order** (the user's call, 2026-11-12; the alternative offered was five
-drawn for each run). That is about 29 minutes of music before the encore: 72 bars at 120, then nine
-Tracks of 108 bars at 126 to 174, each a little shorter than the last. The loop of section 8 begins
+drawn for each run). That is about 19 minutes of music before the encore (29 until play test 3): 48
+bars at 120, then nine Tracks of 72 bars at 126 to 174, each a little shorter than the last. The loop of section 8 begins
 after the last Track the game has — after Track 3 in the build of 2026-11-12, after Track 10 when the
 set list is complete — so nothing in the loop may be counted from a fixed Track number.
 
@@ -136,6 +142,7 @@ and a single RETRY button.
 | Size | Visual radius 14 wu; hit radius 5 wu (forgiving) |
 | Primary weapon | One shot per 1/16 step, 1400 wu/s, lead-arp note per shot |
 | Shield cells | Start 4, up to 8 with Extra Cell; one cell comes back at every Break, more with Regen, and **Cells** dropped by enemies restore one each (section 6.1). A hit removes one, fires a panic pulse (clears bullets within 220 wu, shoves enemies), grants 2.5 s invulnerability and halves the Chain. Health is shown on the ship itself: its halo has one arc per cell. **Nobody meets a boss on their last cell** (M5, 2026-11-13): as a boss arrives, a player with fewer than two cells grows back up to two, the arcs drawing themselves over its entrance bar as Regen's do. The novice bot went into the Longwave fights it lost with 1.2 cells on average and into those it won with 3.1 |
+| Extra Life | (Play test 3: "a revive powerup to grant a 1x revive to continue without starting over".) A gold ship-shaped orb, a pickup of its own kind and not a Boost: it takes no Boost slot and is never offered in a Trio. In each Track one drops from a kill during the first cycle's Drop if the player holds none; it lies for 8 bars with a gold edge chevron while off screen. A player holds at most one, shown beside the Nova stock. It is spent on the hit that would end the run (after Auto Nova): the ship comes back at once with two cells, a free Nova blast, one bar of invulnerability and half its Chain, under the words `EXTRA LIFE`. Co-op: each player their own; it is spent instead of going down. None drop in the loop; one held is carried in |
 | Nova | Start with 3, capacity 4 (up to 6 with Mods); one comes back at every Break. Rule R6. Clears bullets and non-boss enemies in view; heavy damage to bosses. **Auto Nova** (on by default, a switch under CONTROLS): a hit that would take the last Shield cell fires a Nova from the stock instead and costs no cell |
 | Dash | One charge, recharges in 2 beats. 220 wu in 0.12 s, invulnerable throughout. Perfect Dash refunds half the recharge and emits a small shock ring |
 
@@ -212,11 +219,11 @@ Weapon
 
 | # | Mod | Effect per stack | Cap | Sound / look |
 |---|---|---|---|---|
-| 1 | Split | +2 projectiles in a tight fan: 3, 5, then 7 lanes | 3 | Adds a harmony note to each shot (3rd, 5th, octave, 7th) |
-| 2 | Double-Time | Fire grid 1/16 → 1/16 triplet → 1/32 | 2 | Lead doubles in speed |
+| 1 | Split | +2 projectiles in a tight fan: 3, then 5 lanes (play test 3: one rank fewer; seven lanes and more are Prism's to give) | 2 | Adds a harmony note to each shot (3rd, 5th, octave, 7th) |
+| 2 | Double-Time | Fire grid 1/16 → 1/16 triplet (play test 3: one rank; 1/32 belongs to the Surge, Hyper and Afterparty) | 1 | Lead doubles in speed |
 | 3 | Pierce | Shots pass through +2 enemies | 3 | Longer shots, longer note release |
 | 4 | Ricochet | +2 bounces: off walls and structures, and from each enemy hit to the nearest other enemy within 300 wu | 3 | Pitch-up blip per bounce |
-| 5 | Fork | On first hit, split into 2 half-damage shots | 2 | Y-shaped flash |
+| 5 | Fork | On first hit, split into 2 half-damage shots (play test 3: one rank; forking again is Fractal's) | 1 | Y-shaped flash |
 | 6 | Seeker | Shots curve toward targets | 3 | Slight portamento on the lead |
 | 7 | Heavy Step | Every 4th shot is a slow orb that explodes | 3 | Low octave thump |
 | 8 | Accent | The shot on beat 1 is a full-length piercing lance; then beats 1+3; then every beat | 3 | Accented note, white flash line |
@@ -224,9 +231,9 @@ Weapon
 | 10 | Wave | Shots travel in sine paths with a wider hit radius (M5: one wave to a beat of flight, 28 then 40 wu to each side; every shot of the stream on the same curve; look.md v2.5) | 2 | Vibrato |
 | 11 | Overcharge | +50% damage, larger hotter shots: the shot's head changes colour with every stack (look.md section 5, "The build on the shots") | 5 | More drive on the lead |
 | 12 | Rear Guard | Also fire backward on off-beats; then sideways too | 2 | Off-beat counter-melody |
-| 13 | Arc | Kills chain lightning to 2 more enemies | 3 | Zap arpeggio |
-| 14 | Burn | Hits ignite for 2 beats; burning enemies ignite neighbours on death | 3 | Crackle layer |
-| 15 | Shatter | Killed enemies' line segments fly out as damaging shrapnel | 3 | Glassy burst |
+| 13 | Arc | Kills chain lightning to 1 more enemy within 160 wu, then 2, then 3; an arc's own kill arcs no further (play test 3: half of what it was) | 3 | Zap arpeggio |
+| 14 | Burn | Hits ignite for 2 beats; a burning enemy that dies ignites neighbours within 45 wu, once: their fire spreads no further (play test 3: half) | 3 | Crackle layer |
+| 15 | Shatter | Killed enemies' line segments fly out as damaging shrapnel: 2, 3, then 4 pieces; a piece's kill throws none (play test 3: half) | 3 | Glassy burst |
 | 16 | Gravity Rounds | Hits tug nearby enemies toward the impact | 2 | Grid dimples at each hit |
 
 Defence and movement
@@ -268,7 +275,7 @@ Rhythm
 
 | # | Riff | Pattern and effect | Levels add | Instrument layer |
 |---|---|---|---|---|
-| 1 | Orbitals | 3 shards orbit you, one turn per bar; they also destroy enemy bullets they touch | +2 shards each (3, 5, 7, 9, 11) | Shaker ticks as they pass 12 o'clock |
+| 1 | Orbitals | **A guard ring** (play test 3: "doesn't seem to do a whole lot ... maybe it can be like an extra shield with a regen component"). 3 shards orbit you 64 wu out, one turn per bar; each is 14 wu across, cuts what it touches for 3 damage an eighth note and destroys enemy bullets it touches. While every shard is lit the ring is a spare cell: a hit on the ship breaks the ring instead of taking a cell (the panic pulse and one second of invulnerability as for any hit). The shards then go dark and relight one by one; the ring guards again when all are back, 8 bars after it broke | Levels 2 and 4: +2 shards (5, 9). Levels 3 and 5: it relights faster (6 bars, then 4) and +2 shards (7, 11) | Shaker ticks as they pass 12 o'clock |
 | 2 | Pulse Ring | Expanding damaging ring every beat, twice the first build's damage | Double ring; wider; heavier; a ring on every eighth | Tom / sub thump |
 | 3 | Sentinel | Drone fires a burst of 3 at the nearest enemy on off-beats | Burst size; a second drone at level 3, a third at level 5 | Off-beat stab |
 | 4 | Lancer | Charges 3 beats, fires a full-length beam along your aim on beat 4 | Width; every 2 beats | Chord hit |
@@ -287,10 +294,10 @@ Rhythm
 |---|---|---|
 | 1 | Prism | Every shot refracts into a 5-way rainbow fan; hits spawn mini-refractions. The fan is a real rainbow in saturated colour (play test 2: the first build's lanes were too pale): the centre lane keeps the player's colour, the lanes beside it sit 60° and 120° round the hue wheel to either side at lightness 0.70 and full chroma, coloured end to end (look.md section 5); the mini-refractions take their lane's hue |
 | 2 | Hyper | Primary and all Riffs run at double grid |
-| 3 | Supernova Rounds | Every shot explodes on impact |
+| 3 | Supernova Rounds | Every shot explodes on impact for half the shot's damage (play test 3) |
 | 4 | Colossus | Ship ×3 size, invulnerable, rams through enemies (2 bars) |
 | 5 | Time Stretch | World at half speed, you at full; music drops to half-time (2 bars). In co-op the world slows for everyone and every player keeps full speed: it is a gift to the team |
-| 6 | Freeze Frame | Enemies in view freeze for 2 bars and shatter in one hit, chaining |
+| 6 | Freeze Frame | Enemies in view freeze for 2 bars and shatter in one hit, chaining to at most 12 at a time (play test 3) |
 | 7 | Halo | Absorbs up to 3 hits (until broken, at most 8 bars) |
 | 8 | Magnet Storm | All your Shards on the map fly to you; kills drop double |
 | 9 | Black Hole | Your next Nova becomes a 3-beat singularity that drags the screen in, then explodes |
@@ -332,6 +339,11 @@ Rhythm
   and every crowd pick looked many times too strong.) One outside the band has its numbers
   changed, not its odds of being offered.
 - No upgrade may break the entity caps (TECH_SPEC §7): effects that multiply projectiles carry their own caps.
+- **A chain of kills is one sound, not a hundred** (play test 3: "too loud (multiple enemy pops at the
+  same time)"). Everything a kill sets off counts as one family on a 1/32 step: the kill pops of
+  every size and every upgrade's blast, crack, zap or crackle together are never louder than one
+  large kill, and a chain that goes on plays each further step of the same beat at 0.7 of the one
+  before, down to 0.3.
 - **The crowd may not break them either** (M5, 2026-11-13: with four players Track 7 refused 2,650 to
   4,030 enemy bullets in three minutes, the pool full). The director buys no shooting species while
   the enemy bullets alive are above 70% of their pool, and a boss's or mini-boss's own patterns come
@@ -465,8 +477,8 @@ die and does not say why, and the user never got past Longwave. So:
   novice's tune. On every bar line of the fight's first eight bars the game sets the fight's
   **pace**: the damage the players have done to the boss so far (after armour, per player in
   co-op), divided by what the novice has done by that bar (its eight-bar number, measured, in
-  `tuning.h`, taken in proportion to the bars gone), held between 1 and 4; a ratio under 1.25
-  counts as 1, so a novice having a good bar is not punished for it. After the eighth bar it
+  `tuning.h`, taken in proportion to the bars gone), held between 1 and 4; a ratio under 1.5
+  counts as 1 (1.25 at first: the novice's own good bars got past it), so a novice having a good bar is not punished for it. After the eighth bar it
   stands. (First written as one reading at the eighth bar: the careful bot kills Kaleidos, the
   Choir and Polyrhythm before that bar comes.) From each bar line on the boss takes its damage
   divided by the pace. Nothing
@@ -475,6 +487,20 @@ die and does not say why, and the user never got past Longwave. So:
   is 1 by construction. Bosses only: a mini-boss leaves with its Drop. In co-op the host sets the
   pace and applies it; solo is the same code. With it the careful bot's line (a fight at least
   half the page's shorter length) is held again.
+- **Beatable with the assist alone** (play test 3, the owner: "this is meant to be an 'easy' game,
+  it should be 100% beatable with just auto aim"). This is the difficulty bar, above every other
+  line here. The novice bot no longer aims: it moves as it did and fires only through the assist
+  (section 2), which now aims at a boss's weak point. In Feedback's fight the assist rests on
+  every second bar, so the Head opens for a player who never lifts a thumb. A second policy,
+  **assist**, is the careful bot's movement with the assist's fire: it must finish the ten Tracks
+  in at least 19 runs of 20, so aim is never what ends a run. Health is tuned with the novice as
+  before, from fight starts.
+- **Every hit on a boss is seen and heard** (play test 3: "no hit confirmation effects"). A shot on
+  a weak point: the part flashes white for 60 ms (a white copy of its hull at 2.0), six sparks in
+  the part's hue fly back along the shot, its segment of the health bar flashes, and a bright tick
+  sounds in the Track's key. A shot on armour: three grey sparks thrown sideways, no flash, a dull
+  low knock. Both sounds are counted on the 1/32 step like kills. Boss sparks are never the ones
+  dropped when the particle pool is full.
 - **Counting a line.** Twenty runs cannot tell 15 from 17. A result within two of its line is run
   again over forty seeds and judged there (the line scaled: 32 for 16). What a person says after
   playing outranks both.
