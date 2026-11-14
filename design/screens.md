@@ -432,7 +432,7 @@ BACK top left. Cap 22 for headings in the accent, cap 14 for lines in white.
 | Heading | Lines |
 |---|---|
 | `RAVEFORM` | `MUSIC, PICTURES AND CODE MADE FOR THIS GAME` |
-| `BUILT ON` | `SDL 3  (ZLIB LICENCE)`, `OBOE  (APACHE 2.0)`, `ANDROID FRAME PACING  (APACHE 2.0)`, `ENET  (MIT)`, `VOLK  (MIT)`, `VULKAN HEADERS  (APACHE 2.0, MIT)` |
+| `BUILT ON` | `SDL 3  (ZLIB LICENCE)`, `OBOE  (APACHE 2.0)`, `ANDROID FRAME PACING  (APACHE 2.0)`, `ENET  (MIT)`, `VOLK  (MIT)`, `VULKAN HEADERS  (APACHE 2.0, MIT)`, `LIBC++  (APACHE 2.0, LLVM EXCEPTION)` |
 | `LICENCES` | Each library's licence text in full, cap 10, as the library ships it (read from the fetched sources at build time, never retyped) |
 | `PLAY SAFE` | The first-launch notice's photosensitivity text again |
 
