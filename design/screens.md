@@ -81,7 +81,7 @@ light, in the palette of Track 1, with the music at full level.
 | **Logo** `RAVEFORM` | Centred, cap height 190, top at 216 | Tubes 11 px wide in the same colour field as the waveform, white copy 3.2 px, a pool of the first enemy hue behind, two four-arm flares on its corners. Swells 2% on the kick |
 | Tagline `SOUND BECOMES LIGHT` | Under the logo, cap height 22, accent | — |
 | Beat dots | Four, under the tagline | The current beat is lit; beat 1 in the accent |
-| **PLAY** | Centre, 600 × 140, label 52, player colour | One tap starts a run on the next bar line. This is the control a thumb finds first |
+| **PLAY** | Centre, 600 × 140, label 52, player colour | One tap starts a run ("Transitions": the drop-in). This is the control a thumb finds first |
 | CO-OP, SETTINGS | Left and right of it, 330 × 104, label 30, white | — |
 | The ship | Under PLAY | Idles, turning toward the last touch |
 | Best | Bottom left, cap 14, gold | `BEST 1,204,880  TRACK 05  X412` |
@@ -297,8 +297,8 @@ The palette is the one the run ended in. The score is the headline; everything e
 | What ended it (M6) | One line under the four numbers, cap 14 | `ENDED BY` in the accent and the name of what took the last cell in white, as the game names it (`CAROM`, `LONGWAVE`, `A VOLATILE BLAST`, `METEOR RAIN`); an enemy's bullet names the enemy. Nothing when the run ended by finishing the set |
 | **Set list** | A bar across the width | The run drawn as the song it was: one segment per Track, as long as the time spent in it, in that Track's accent colour with its name under it. A white star where a boss fell, a gold tick for each upgrade taken, a danger-coloured cross for each hit taken. It plays back as a ten-second medley of the run while the screen is up |
 | Your band | Under the set list | The icons of the Riffs and the most-stacked Mods the run ended with |
-| **RETRY** | Bottom right, 600 × 140, label 52, player colour | One tap: a new run starts on the next bar line |
-| HOME | Under it, 330 × 90 | — |
+| **RETRY** | Bottom right, 600 × 140, label 52, player colour | One tap: a new run ("Transitions": the drop-in, from game over) |
+| HOME | Under it, 330 × 90 | Back to the title ("Transitions": home) |
 
 **A finished run (M6).** When the tenth Track's boss falls the run has been won, and the game says so
 before the loop begins: the Track name card's place shows `SET COMPLETE` (cap 44, gold) with the score
@@ -438,3 +438,67 @@ BACK top left. Cap 22 for headings in the accent, cap 14 for lines in white.
 
 The list is whatever the build really links: the build fails if a linked third-party library has no
 entry.
+
+## Transitions (M6)
+
+(2026-11-14, the owner: going from the title into the first Track and from game over back to the title
+"are a little jarring and sudden with poor UX". As built, PLAY cut the title away in one frame and left
+the bot's run on screen at full light until the bar line, which then cut to an empty new run; HOME put
+the title over the dead run, which cut to the bot's new run a bar later.)
+
+Rules for every transition:
+
+- **Nothing cuts.** Everything that leaves fades, slides or streaks out; everything that arrives
+  draws itself in. No frame shows two screens' controls at once, and no frame is a jump.
+- **Lengths are in beats**, so they follow the tempo, and every change of what is on screen lands on
+  a beat. The run itself only ever starts or ends on a bar line.
+- **A tap is answered at once** (pressed state, sound, haptic tick) even though what it asks for waits
+  for the beat. A second tap on the same control does nothing. The control that was tapped stays lit
+  until its screen has gone.
+- **The music carries it**, as a DJ would: the bed never stops, and a new section enters on the
+  downbeat with a crash, never mid-bar.
+- **Reduce flashing:** the flashes and the lattice ring below are left out; the fades stay.
+
+### The drop-in (title → the run's first bar)
+
+PLAY is tapped. The run starts on the first bar line at least two beats away (two to six beats, one to
+three seconds at 120 BPM): **the wait**.
+
+| When | What is seen | What is heard |
+|---|---|---|
+| The tap | PLAY takes its pressed state and keeps it, and four dots under its label count the beats to the bar line (the settings cards' `NEXT BAR` dots). | The confirm chord |
+| The wait's first beat | CO-OP, SETTINGS, the best score and the note fade out. The bot's run behind dissolves: its enemies and shots fade out over the wait and its ship is gone; nothing new spawns. | The band's high end filters down (a low-pass closing over the wait) and a one-bar riser starts under it, timed to end on the bar line |
+| The wait's last beat | The tagline and beat dots fade. The logo holds; the waveform line flattens toward a straight line. | The drums drop out for the last beat, as in a Build's last bar |
+| **The downbeat** | The logo's letters streak out to both sides (as the Track name card's do). The waveform line, now straight, snaps outward as a ring from the ship and becomes the lattice: the lattice lights from the ship to the edges over one beat, one impulse of 140. PLAY shrinks into the ship over one beat and its outline becomes the halo's four cell arcs, drawing themselves. The ship is the title's ship: it glides from under PLAY to the centre of the frame over that beat. | A crash, and the run's first Groove from its first kick (Track 1's bar 1, never mid-phrase) |
+| Beat 2 | The HUD fades in over one beat. The Track name card (`TRACK 1  FIRST LIGHT`) writes itself as it always does. The first-run hint, if it is due, waits for bar 2. | — |
+| The first two bars | **A grace**: nothing spawns in the first bar, and for two bars nothing hostile spawns within 600 wu of the ship. The first formations come in from the edges. | — |
+
+The ship can be moved from the downbeat. Back during the wait cancels it: PLAY lets go, everything
+fades back in over a beat, the riser stops and the filter opens.
+
+**RETRY** from game over is the same drop-in. In its wait the game-over screen leaves as in "Home"
+below (step 1), the dead run is already dimmed; on the downbeat there is no logo to streak out, and
+the ship draws itself at the centre with its halo. **Co-op:** when the host's START or RETRY lands,
+every peer plays the drop-in from its own screen on the same bar line.
+
+### Home (game over → title)
+
+HOME is tapped (or Back). The title is built over the next bar; the bot's run behind it starts on the
+bar line after.
+
+| When | What is seen | What is heard |
+|---|---|---|
+| The tap | HOME takes its pressed state and keeps it; RETRY fades to its disabled look. | The back chord |
+| The next beat | **The game-over screen leaves in one beat:** the score and `RUN OVER` streak out to both sides; the four numbers, `ENDED BY`, the set list and the band fade and sink 30 px. The dead run behind fades from its fifth to nothing, leaving the background gradient. | The set list's medley ends on this beat. The bed carries on filtered |
+| The bar line | The palette cross-fades to Track 1's (Ultraviolet) over one bar, as a Track change does. The waveform line draws itself outward from the centre over one beat, the logo writes itself over the next two (its tubes stroking on, as the Track name card's letters do), then the tagline and the beat dots. | Track 1's title bed enters with a crash, its filter opening over the bar |
+| The bar's last beat | PLAY, CO-OP and SETTINGS fade in, PLAY first. PLAY takes a tap from the moment it starts to fade in. The best score and the note fade in. | — |
+| The next bar line | The bot's new run starts empty behind the title and fades up to the title's third of its light over a bar. | — |
+
+A tap on PLAY while the title is still building starts the drop-in from where the title is; its wait
+is still at least two beats.
+
+### Death → game over (unchanged, for the record)
+
+The last hit, the ship's break and the game-over sound; the run goes on behind, dimmed to a fifth
+over the next beat; the score starts counting up after a breath. This one is not changed by the rule
+above; it is named here so that every way in and out of a run is on this page.
