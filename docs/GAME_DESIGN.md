@@ -233,8 +233,8 @@ Weapon
 
 | # | Mod | Effect per stack | Cap | Sound / look |
 |---|---|---|---|---|
-| 1 | Split | +2 projectiles in a tight fan: 3, then 5 lanes (play test 3: one rank fewer; seven lanes and more are Prism's to give) | 2 | Adds a harmony note to each shot (3rd, 5th, octave, 7th) |
-| 2 | Double-Time | Fire grid 1/16 → 1/16 triplet (play test 3: one rank; 1/32 belongs to the Surge, Hyper and Afterparty) | 1 | Lead doubles in speed |
+| 1 | Split | +1 projectile a rank in a tight fan: 2, 3, 4, then 5 lanes (the owner, 2026-11-14: "not such drastic jumps every time"; it was 3 then 5 in two ranks since play test 3, 3-5-7 before). Neighbouring lanes keep the fan's spacing, so the fan widens a lane a rank; an even count straddles the aim line. Seven lanes and more are Prism's to give | 4 | Adds a harmony note to each new lane, one a rank (3rd, 5th, octave, 7th) |
+| 2 | Double-Time | Fire grid 1/16 → 1/16 triplet → 1/32 (the original two ranks again, the owner, 2026-11-14; play test 3 had cut it to one) | 2 | Lead doubles in speed |
 | 3 | Pierce | Shots pass through +2 enemies | 3 | Longer shots, longer note release |
 | 4 | Ricochet | +2 bounces: off walls and structures, and from each enemy hit to the nearest other enemy within 300 wu | 3 | Pitch-up blip per bounce |
 | 5 | Fork | On first hit, split into 2 half-damage shots (play test 3: one rank; forking again is Fractal's) | 1 | Y-shaped flash |

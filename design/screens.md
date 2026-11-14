@@ -161,8 +161,8 @@ Effect words (final, 2026-11-12; plain words, no music terms, so a first-time pl
 
 | Upgrade | Words by stack or level |
 |---|---|
-| Split | `+2 SHOT LANES` |
-| Double-Time | `FIRE RATE X1.5` |
+| Split | `+1 SHOT LANE` |
+| Double-Time | `FIRE RATE X1.5`, the second rank `FIRE RATE X2` |
 | Pierce | `SHOTS PIERCE +2` |
 | Ricochet | `SHOTS BOUNCE +2` |
 | Overcharge | `+50% SHOT DAMAGE` |
