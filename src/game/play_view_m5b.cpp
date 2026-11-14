@@ -155,6 +155,15 @@ void PlayView::drawHorizon(FrameDraw& d, const ViewInput& in) {
     const float R = H.horizonRadius * scale * open;
     if (R > 1.0f) d.threatRims.line(toScreen(c), toScreen(c), R * pxPerWu_, Vec3{}, Vec3{}, 0);
     if (!fight) return;
+    // look.md §5 "What an area means" (the owner, 2026-11-14: "some areas aren't clear if they are safe or not"): touching the
+    // horizon costs a cell, so its edge is a lethal line.
+    if (R > 1.0f && !s.dying) {
+        const u32 n = 48;
+        for (u32 j = 0; j < n; ++j) {
+            const float a0 = kTau * static_cast<float>(j) / n, a1 = kTau * static_cast<float>(j + 1) / n;
+            lethalBeam(d, c + dirv(a0) * (R + 2.0f), c + dirv(a1) * (R + 2.0f), kBandEdgeWu);
+        }
+    }
     // Starved: the rim gold and the core shown, a gold four-point star with a four-arm flare (gold is the weak point).
     if (starved) {
         const u32 n = 48;

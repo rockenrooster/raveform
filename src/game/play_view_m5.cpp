@@ -615,22 +615,33 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
             u32 n = 0;
             for (u32 k = 0; k < 8; ++k)
                 if (s.alive & (1u << k)) order[n++] = k;
+            // look.md §5 "What an area means" (the owner, 2026-11-14: "some areas aren't clear if they are safe or not (like the
+            // big circles in track 5?)"): the fence holds ships (a solid line in its hue, never white or danger); the domes only
+            // stop shots (a dotted ring in its hue at half its light); white had read as a wall that might hurt.
             for (u32 j = 0; j < n && !s.dying; ++j) {
                 const Vec2 p0 = lerpv(s.bodyPrev[1 + order[j]], s.body[1 + order[j]], a), p1 = lerpv(s.bodyPrev[1 + order[(j + 1) % n]], s.body[1 + order[(j + 1) % n]], a);
-                if (n > 1) d.scene.line(toScene(p0), toScene(p1), 1.0f * refPx_, W1 * 1.2f, W1 * 1.2f, 0);
+                if (n > 1) d.scene.line(toScene(p0), toScene(p1), 0.75f * refPx_, hue * (1.4f * level), hue * (1.4f * level), 0);
             }
             for (u32 j = 0; j < n; ++j) {
                 const u32 k = order[j];
                 const Vec2 p = lerpv(s.bodyPrev[1 + k], s.body[1 + k], a);
                 const bool open = static_cast<i32>(k) == hand;
                 drawBody(p, me->radius, s.bodyAng[1 + k], hue, partner, level, open);
+                // look.md §5 "What an area means": a turret is a body (touching it hurts), not an area: a faint fill of its hue.
+                {
+                    const u32 fan = 24;
+                    const Vec3 fill = hue * (0.08f * level);
+                    const float rb = me->radius * tuning::kContactShrink;
+                    for (u32 q = 0; q < fan; ++q)
+                        d.glass.tri(toScene(p), fill, toScene(p + dirv(kTau * q / fan) * rb), fill, toScene(p + dirv(kTau * (q + 1) / fan) * rb), fill);
+                }
                 if (open) {
                     d.sparkles.glow(toScene(p), 16.0f * refPx_, gold * 2.2f);
                 } else {
-                    const u32 seg = 20;
-                    for (u32 q = 0; q < seg; ++q)
+                    const u32 seg = 40;
+                    for (u32 q = 0; q < seg; q += 2)  // (dotted: every other piece)
                         d.scene.line(toScene(p + dirv(kTau * q / seg) * (me->radius * 1.3f)), toScene(p + dirv(kTau * (q + 1) / seg) * (me->radius * 1.3f)),
-                                     0.7f * refPx_, W1 * 0.9f, W1 * 0.9f, 0);
+                                     0.6f * refPx_, hue * (0.7f * level), hue * (0.7f * level), 0);
                 }
             }
             if (!s.dying && t >= s.fightTick) {

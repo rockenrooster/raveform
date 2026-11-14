@@ -27,8 +27,11 @@ constexpr float kBoltS = 0.09f;       // look.md 5: a zap's 90 ms
 // arms along the halves' paths in their colour (60 degrees round the hue wheel while they can split again, 120 for the last).
 constexpr u8 kBoltForkMore = 4, kBoltForkLast = 5;
 constexpr float kForkArmWu = 70.0f, kForkShowS = 0.25f;
-// look.md §5 "A lethal line reads at a glance" (the owner, 2026-11-14): no lethal line under 3 px, its glow at least 6 wu.
-constexpr float kLethalMinPx = 3.0f, kLethalGlowMinWu = 6.0f;
+// look.md §5 "A lethal line reads at a glance" (the owner, 2026-11-14, then "make them thinner and make the glow more to
+// compensate"): a thin core, half the kill width and never under 2 px; a strong glow, sigma 0.6 of the kill width and at least
+// 8 wu, 0.55 on the axis.
+constexpr float kLethalMinPx = 2.0f, kLethalCoreShare = 0.5f, kLethalGlowMinWu = 8.0f, kLethalGlowShare = 0.6f;
+constexpr float kLethalGlow = 0.55f, kLethalGlowReduced = 0.4f;
 constexpr float kBeatPeakS = 2.0f / 60.0f, kBeatFallS = 0.110f;  // look.md 5 (a beam on a beat), 7
 // A held beam's core moves between 1.0 and 1.2 on the 1/32 grid (look.md v2.5 says 1.0-1.4; the lead's checkpoint after part 4:
 // the core's bloom widened the Beam Boost's haze, so 1.2).
@@ -62,11 +65,12 @@ void PlayView::drawBeam(FrameDraw& d, Vec2 from, Vec2 dir, float len, float w, f
 }
 void PlayView::lethalBeam(FrameDraw& d, Vec2 a, Vec2 b, float killWu, float level) {
     // look.md v2.5 ("A lethal beam is a laser too") and §5 "A lethal line reads at a glance" (the owner, 2026-11-14: "do a pass on
-    // any red line enemy stuff, make sure that they are all visible enough, have enough glow"): danger red on the priority layer,
-    // its capsule as wide as it kills but never under kLethalMinPx, a white-pink line of 2 px down its axis; round it a glow of
-    // the danger colour drawn as the players' is, sigma half the kill width but at least kLethalGlowMinWu, 0.35 on the axis
-    // (reduce flashing 0.25), that hurts nobody (it was 0.20 with sigma half the kill width: a Tether's 6 wu beam glowed for 3
-    // wu). The glow's discs sit in the middles of equal pieces, so a polyline drawn piece by piece glows evenly.
+    // any red line enemy stuff, make sure that they are all visible enough, have enough glow", then "make them thinner and make
+    // the glow more to compensate"): danger red on the priority layer, a thin core (kLethalCoreShare of the kill width, never
+    // under kLethalMinPx) with a white-pink line down its axis; round it a strong glow of the danger colour drawn as the players'
+    // is, sigma kLethalGlowShare of the kill width but at least kLethalGlowMinWu, kLethalGlow on the axis, that hurts nobody and
+    // shows how far the line kills. The glow's discs sit in the middles of equal pieces, so a polyline drawn piece by piece
+    // glows evenly.
     const Vec3 danger = palettes_->danger, W1 = whiteU();
     const Vec3 pink = mix(danger, W1, 0.7f);
     const float len = length(b - a);
@@ -74,11 +78,11 @@ void PlayView::lethalBeam(FrameDraw& d, Vec2 a, Vec2 b, float killWu, float leve
     const Vec2 dir = (b - a) * (1.0f / len);
     if (shown(kMuteBullet)) {
         d.scene.line(toScene(a), toScene(b), refPx_, pink * (1.6f * level), pink * (1.6f * level), 0);
-        const float sigma = std::fmax(0.5f * killWu, kLethalGlowMinWu);
+        const float sigma = std::fmax(kLethalGlowShare * killWu, kLethalGlowMinWu);
         const u32 n = std::max(1u, static_cast<u32>(std::lround(len / (2.0f * sigma))));
         const float stepWu = len / static_cast<float>(n);
         const float radius = sigma * look_->glowRadiusOverSigma;
-        const float c = (reduceFlashing_ ? 0.25f : 0.35f) * level * stepWu / (sigma * 2.5066283f);
+        const float c = (reduceFlashing_ ? kLethalGlowReduced : kLethalGlow) * level * stepWu / (sigma * 2.5066283f);
         GlowBatch& soft = radius * pxPerWu_ < 16.0f * refPx_ ? d.sparkles : d.pools;  // (look.md §3, as drawBeam)
         for (u32 k = 0; k < n; ++k) {
             const Vec2 p = a + dir * (stepWu * (static_cast<float>(k) + 0.5f));
@@ -86,10 +90,10 @@ void PlayView::lethalBeam(FrameDraw& d, Vec2 a, Vec2 b, float killWu, float leve
         }
     }
     if (!shown(kMutePriority)) return;
-    const float hw = std::fmax(0.5f * killWu * pxPerWu_, 0.5f * kLethalMinPx * refPx_);
+    const float hw = std::fmax(0.5f * kLethalCoreShare * killWu * pxPerWu_, 0.5f * kLethalMinPx * refPx_);
     d.threatRims.line(toScreen(a), toScreen(b), hw + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
     d.threatCores.line(toScreen(a), toScreen(b), hw, danger * level, danger * level, 0);
-    d.threatCores.line(toScreen(a), toScreen(b), refPx_, pink * level, pink * level, 0);
+    d.threatCores.line(toScreen(a), toScreen(b), std::fmin(refPx_, 0.5f * hw), pink * level, pink * level, 0);
 }
 
 void PlayView::eventUpgrade(const World& w, const Event& e, float t) {
@@ -451,8 +455,17 @@ void PlayView::drawHazards(FrameDraw& d, const ViewInput& in) {
         Vec2 da[16];
         float dr[16];
         const u32 nd = w.domes(da, dr, 16);
-        for (u32 k = 0; k < nd; ++k)
-            if (visible(da[k], dr[k])) glyph(d.glyphs, gRing128_, false, da[k], 0.0f, 0.0f, dr[k], 1.0f, 0.5f, kGlyphRingW, palette_->hue[2], W1);
+        // look.md §5 "What an area means" (the owner, 2026-11-14): a dome only stops shots, so it is a dotted ring in its hue at
+        // half its light (a solid ring with white until then).
+        const Vec3 dh = palette_->hue[2] * 0.7f;
+        for (u32 k = 0; k < nd; ++k) {
+            if (!visible(da[k], dr[k])) continue;
+            const u32 seg = 48;
+            for (u32 q = 0; q < seg; q += 2) {
+                const float a0 = kTau * static_cast<float>(q) / seg, a1 = kTau * static_cast<float>(q + 1) / seg;
+                d.scene.line(toScene(da[k] + Vec2{std::cos(a0), std::sin(a0)} * dr[k]), toScene(da[k] + Vec2{std::cos(a1), std::sin(a1)} * dr[k]), 0.6f * refPx_, dh, dh, 0);
+            }
+        }
     }
     const Enemies& e = w.enemies();
     const FamilyData& wf = w.species().family(Family::Well);

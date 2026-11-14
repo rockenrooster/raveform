@@ -329,7 +329,18 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
             font_->drawField(d.scene, Vec2{sc.x - 0.5f * wText, sc.y - 80.0f * pxPerWu_ - cap}, cap, 0.9f * refPx_, g, g, g, name);
         }
         if (k == EventKind::StormCell && ev.stage == 1) {
-            ring(ev.pos, prose::kArStormWu, accent * 1.4f, 1.2f, 72, 0.0f);
+            // look.md §5 "What an area means" (the owner, 2026-11-14: "some areas aren't clear if they are safe or not"): it hurts
+            // a ship that stays inside, so its edge is a lethal line and it has a faint danger fill (an accent ring until then).
+            const u32 n = 72;
+            const float R = prose::kArStormWu;
+            const Vec3 fill = danger * 0.05f;
+            for (u32 j = 0; j < n; ++j) {
+                const float a0 = kTau * static_cast<float>(j) / n, a1 = kTau * static_cast<float>(j + 1) / n;
+                const Vec2 p0 = ev.pos + dirv(a0) * R, p1 = ev.pos + dirv(a1) * R;
+                if (!visible(p0, 30.0f) && !visible(p1, 30.0f)) continue;
+                lethalBeam(d, p0, p1, 4.0f);
+                d.glass.tri(toScene(ev.pos), fill, toScene(p0), fill, toScene(p1), fill);
+            }
         }
     }
     // The Storm Cell's strikes: zigzag lines for one beat in white and the accent.

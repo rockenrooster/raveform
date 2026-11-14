@@ -4,6 +4,21 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (evening), thinner lethal lines with more glow; what an area means (look.md 5)
+
+- "Can you make them thinner and make the glow more to compensate?": `lethalBeam`'s core is half the kill width, never under
+  2 px (the whole kill width, at least 3 px), its axis line at most half the core; the glow sigma 0.6 of the kill width, at
+  least 8 wu, 0.55 on the axis (reduce flashing 0.4) (0.5, 6 wu, 0.35). Echo shots back to their thin core with a stronger glow
+  at the head and down the middle.
+- "Some areas aren't clear if they are safe or not (like the big circles in track 5?)": the Sentry Array's (Track 5's first
+  Drop). Look.md 5 now gives every area one of five looks: hurts (a lethal-line edge and a faint danger fill), holds (a solid
+  line in the enemy's hue), shields (a dotted ring in its hue), pulls (its hue, rings drifting in), shelters (white or gold).
+  Changed: the Sentry Array's fence blue (white) and its domes dotted in its hue (white), its turrets filled faintly as bodies
+  (touching one hurts); Sentry C's domes dotted (a solid ring with white); the **Storm Cell** (Tracks 5, 9, 10; it takes a
+  cell from a ship that stays inside) a danger edge and a 0.05 danger fill (an accent ring); **Event Horizon's** black disc a
+  danger edge (touching it costs a cell).
+- sim tests 6,112 checks, 0 failures. Pictures `captures\pt4\t5_drop2`, `red_t7b`, `red_horizon`, `captures\m5\part5\ev_storm_cell`.
+
 ## 2026-11-14 (evening), the owner's red-line pass (look.md 5 "A lethal line reads at a glance")
 
 - The owner on f0cd14f: "Track 9 red projectiles: no these were thin red lines streaking across the screen": Fata Morgana's

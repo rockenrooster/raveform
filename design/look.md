@@ -403,16 +403,38 @@ Every lethal line is drawn alike, whatever makes it: a boss's beam, a Tether's, 
 a Ram's wake, Weaver Prime's laps, Polyrhythm's walls, the edges of a lethal band (Feedback's Howl and
 its Nulls), and Fata Morgana's sand (which marks the storm and hurts nobody itself):
 
-- on the priority layer, never dimmed by the crowd, its capsule as wide as it kills but **never under
-  3 px**, with the dark rim and a white-pink line of 2 px down its axis;
-- round it a danger glow that hurts nobody: sigma half its kill width but **at least 6 wu**, **0.35** on
-  the axis (reduce flashing 0.25). Until now it was 0.20 with sigma half the kill width, so a Tether's
-  6 wu beam glowed for 3 wu, a thin line in a crowd, and the trails and wakes had no glow at all;
+- on the priority layer, never dimmed by the crowd, a **thin core: half its kill width, never under 2
+  px**, with the dark rim and a white-pink line down its axis;
+- round it a **strong danger glow** that hurts nobody and shows how far the line kills: sigma 0.6 of its
+  kill width but **at least 8 wu**, **0.55** on the axis (reduce flashing 0.4). (The owner, the same
+  evening, on the first pass: "can you make them thinner and make the glow more to compensate?". The
+  first pass drew the core its whole kill width, at least 3 px, with a glow of at least 6 wu at 0.35;
+  before it the glow was 0.20 at half the kill width, so a Tether's 6 wu beam glowed for 3 wu, and the
+  trails and wakes had no glow at all);
 - a trail or a wake is **whole for as long as it kills**: it dims only to 0.6 in its last tenth (it faded
   with its age before, so its oldest part looked gone while it still killed);
 - an echo shot (Feedback's, the Reprise's) has a core at least 3 px wide and a glow at its head.
 
 A tell is not a lethal line: it stays see-through (section 5, 0449eb3).
+
+### What an area means, by its look (the owner, 2026-11-14)
+
+"Some areas aren't clear if they are safe or not (like the big circles in track 5?)" (the Sentry Array's
+domes, white rings that only stop shots). Every area in the game is one of five, and looks like it:
+
+| Kind | What it does | Look |
+|---|---|---|
+| **Hurts** | Takes a cell from a ship inside or touching it | Its edge drawn as a lethal line (danger, thin core, strong glow) and a faint danger fill (0.08) inside while it can hurt; before it can, its tell (dashed, filling) |
+| **Holds** | Stops ships (a fence, the Pen's wall) | A solid line in the enemy's own hue, 1.5 px, never white, never danger |
+| **Shields** | Stops shots only: a ship flies through it unharmed (domes) | A dotted ring in the enemy's hue at half its light, no fill, never white, never danger |
+| **Pulls** | Moves ships, hurts nobody (Wells, Event Horizon's reach) | A ring in the enemy's hue with rings drifting inward |
+| **Shelters** | Nothing can hurt a ship inside (a Trio's orbs, Fata Morgana's oasis) | White or gold, solid, as built |
+
+What hurts, Track by Track (beyond bullets, beams and bodies): Meteor Rain's rings (Tracks 4, 8, 10)
+and a Volatile elite's bomb (from Track 4): dashed danger rings that fill, then land; a Skitter's mine:
+a danger ring; the **Storm Cell** (Tracks 5, 9, 10: until now an accent ring, now a danger edge and
+fill); **Event Horizon's** black disc (Track 4: now with a danger edge); Feedback's Howl and Nulls
+(Track 6); Weaver Prime's bursts; and outside Fata Morgana's oasis on the kick (Track 9: the sand).
 
 ### Splits (the owner's play, 2026-11-14)
 
