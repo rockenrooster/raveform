@@ -538,8 +538,8 @@ u32 upgradeSheetPlan(const char* kind, UpEntry* e, u32 cap) {
         add("Magnet Storm (first slice): the Shard runs climb twice as fast (Track 1)", 0, 0.35f, false, 2, 4, L(), L().boost(Boost::MagnetStorm), Feed::Shards,
             true);
     } else if (eq(kind, "fusions")) {
-        add("Helix Array (Split 3 + Wave 2, then fused): the harmony sways against the lead (Track 3, firing)", 2, 0.35f, true, 3, 4,
-            L().mod(Mod::Split, 3).mod(Mod::Wave, 2), L().mod(Mod::Split, 3).mod(Mod::Wave, 2).fusion(Fusion::HelixArray));
+        add("Helix Array (Split 2 + Wave 2, then fused): the harmony sways against the lead (Track 3, firing)", 2, 0.35f, true, 3, 4,
+            L().mod(Mod::Split, 2).mod(Mod::Wave, 2), L().mod(Mod::Split, 2).mod(Mod::Wave, 2).fusion(Fusion::HelixArray));
         add("Standing Wave (Echo 2 + Accent 3, then fused): each accented note held a bar as a pad voice (Track 1, firing)", 0, 0.35f, true, 3, 4,
             L().mod(Mod::Echo, 2).mod(Mod::Accent, 3), L().mod(Mod::Echo, 2).mod(Mod::Accent, 3).fusion(Fusion::StandingWave));
         add("Tesla Bloom (Pulse Ring 5 + Arc 3, then fused): each ring's tom carries zaps; Arc's chains are quiet (Track 4)", 3, 0.6f, false, 3, 4,

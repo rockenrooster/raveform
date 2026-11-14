@@ -63,6 +63,9 @@ struct HudState {
     bool levelFull = false;   // a level waits for its Trio (the bar stays full, flashing white)
     float levelFlash = 0.0f;  // 1 as a level fills, decaying
     u32 novas = 0, novaCap = 3;
+    bool extraLife = false;     // play test 3 (screens.md "Extra Life (HUD)"): one held: a small gold ship right of the Novas
+    float bossFlash = 0.0f;     // play test 3 (GAME_DESIGN 7.6): a weak point's hit: its segment of the boss's bar flashes
+    u8 bossFlashPart = 0xFF;    // ... the part (Kaleidos's pair, a Longwave segment, a Voice; 0xFF the whole bar)
     float dashCharge = 1.0f;
     bool alive = true;
     bool retryPending = false;

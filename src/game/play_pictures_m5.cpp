@@ -361,8 +361,8 @@ constexpr u8 N = kNoUpgrade;
 constexpr u8 NB = kNoBoost;
 const UpPic kUpPics[] = {
     {"up_weapons", {kFork, kFork, kSeeker, kSeeker, kHeavyStep, kHeavyStep, kHeavyStep, kEcho, kEcho, kOvercharge, N}, {NB, NB}, 0, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 340, 0},
-    {"up_wave", {kSplit, kSplit, kSplit, kWave, kWave, N}, {NB, NB}, 0, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 330, 0},
-    {"up_helix", {kSplit, kSplit, kSplit, kWave, kWave, N}, {NB, NB}, 1u << kHelixArray, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 330, 0},
+    {"up_wave", {kSplit, kSplit, kWave, kWave, N}, {NB, NB}, 0, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 330, 0},
+    {"up_helix", {kSplit, kSplit, kWave, kWave, N}, {NB, NB}, 1u << kHelixArray, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 330, 0},
     {"up_accent", {kAccent, kAccent, kAccent, kOnBeatCrit, N}, {NB, NB}, 0, 10, kUpAhead, 400.0f, true, kUpNone, kFxLance, kLanceAccent, 300, 2},
     {"up_standing_wave", {kAccent, kAccent, kAccent, kEcho, kEcho, N}, {NB, NB}, 1u << kStandingWave, 10, kUpAhead, 400.0f, true, kUpNone, kFxLance, kLanceAccent, 300, 20},
     {"up_kills", {kArc, kArc, kArc, kBurn, kBurn, kBurn, kShatter, kShatter, kShatter, kGravityRounds, kGravityRounds, kSplit, kSplit, N}, {NB, NB}, 0, 40, kUpCrowd, 6.0f, true, kUpNone, kFxArc, 0xFF, 300, 1},

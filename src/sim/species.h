@@ -172,9 +172,8 @@ public:
         float strayFrameScale = 2.0f;  // stray: outside every frame grown this much ...
         u32 strayBars = 2;             // ... for this many bars
     } crowd;
-    // Track 1 runs three Short cycles (24 bars), later Tracks three Standard ones (36 bars since play test 2)
-    // (species.json note, GAME_DESIGN 4).
-    static constexpr u32 kCycleBars[2] = {24, 36};
+    // Every Track runs Short cycles of 24 bars since play test 3 (Track 1 two, later Tracks three; GAME_DESIGN 4).
+    static constexpr u32 kCycleBars[2] = {24, 24};
 
     // The bosses (design/bosses/*.json), loaded with the species: Kaleidos (the first slice's), and since M5 part 1
     // Longwave, The Choir and the mini-bosses.

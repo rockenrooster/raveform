@@ -423,6 +423,88 @@ float World::bossDamageScale(u8 part, u8 index, double tick, Vec2 dir) const {
     }
 }
 
+bool World::assistBossAim(Vec2 from, double tick, Vec2& at) const {
+    // GAME_DESIGN 2 (play test 3): in a boss or mini-boss fight the assist aims at the boss: its open weak point when it has
+    // one (a part a hit multiplies, judged when the shot arrives), else its nearest part that takes damage, else its nearest
+    // part. Everything is led by the shot's flight. (The ordinary enemy within 250 wu that comes first: PlayerController.)
+    const BossState& s = boss_;
+    if (!s.active || s.dying || tick < s.fightTick) return false;
+    const float reach = kShotSpeed * kShotLifeS;
+    const float tps = ticksPerSecond();
+    if (s.kind == BossKind::Kaleidos) {
+        // The core through an open sector (a dead pair's direction, or every pair dead); else the nearest resting arm (the
+        // weak point, rule 1); else the nearest arm. The arm's middle, led along the wheel's turn.
+        const Vec2 rel = from - s.pos;
+        if (length(rel) > reach + kBossArmOuter) return false;
+        bool open = s.alive == 0;
+        for (u32 k = 0; k < 6 && !open; ++k) {
+            if (s.alive & (1u << (k % 3))) continue;
+            if (std::fabs(wrapAngle(angleOf(rel) - bossArmAngle(k))) < kAssistSectorRad) open = true;
+        }
+        if (open) {
+            at = s.pos;
+            return true;
+        }
+        const float spin = wrapAngle(s.angle - s.prevAngle) / kDt;
+        const float mid = 0.5f * (kBossArmInner + kBossArmOuter);
+        float best = 1e30f;
+        bool any = false;
+        for (u32 pass = 0; pass < 2 && !any; ++pass) {
+            for (u32 k = 0; k < 6; ++k) {
+                const u32 pr = k % 3;
+                if (!(s.alive & (1u << pr))) continue;
+                const Vec2 now = s.pos + dirOf(bossArmAngle(k)) * mid;
+                const float flight = length(now - from) / kShotSpeed;
+                if (pass == 0 && !bossResting(pr, tick + static_cast<double>(flight * tps))) continue;
+                const Vec2 led = s.pos + dirOf(bossArmAngle(k) + spin * flight) * mid;
+                const float d = lengthSq(led - from);
+                if (d < best) {
+                    best = d;
+                    at = led;
+                    any = true;
+                }
+            }
+        }
+        return any;
+    }
+    // Tiers: 3 an open weak point (the most it multiplies, then the nearest), 2 a full hit, 1 armour's share, 0 any part.
+    BossPart parts[kBossBodies + 4];
+    const u32 n = bossParts(parts, kBossBodies + 4);
+    float best[4] = {-1e30f, -1e30f, -1e30f, -1e30f};
+    Vec2 bestAt[4] = {};
+    for (u32 k = 0; k < n; ++k) {
+        const BossPart& q = parts[k];
+        const float d = length(q.pos - from) - q.radius;
+        if (d > reach) continue;
+        // (its motion: the nearest of the fight's bodies)
+        u32 bi = 0;
+        float bd = 1e30f;
+        for (u32 j = 0; j < kBossBodies; ++j) {
+            const float dj = lengthSq(s.body[j] - q.pos);
+            if (dj < bd) {
+                bd = dj;
+                bi = j;
+            }
+        }
+        const float flight = (d > 0.0f ? d : 0.0f) / kShotSpeed;
+        const Vec2 led = q.pos + (s.body[bi] - s.bodyPrev[bi]) * (flight / kDt);
+        const float scale = q.part == 1 ? 0.0f
+                                        : bossDamageScale(q.part, q.index, tick + static_cast<double>(flight * tps), normalizeOr(led - from, Vec2{1.0f, 0.0f}));
+        const u32 tier = scale > 1.0f + 1e-3f ? 3u : (scale >= 1.0f - 1e-3f ? 2u : (scale > 0.0f ? 1u : 0u));
+        const float score = (tier == 3 ? scale * 1000.0f : 0.0f) - d * 0.1f;
+        if (score > best[tier]) {
+            best[tier] = score;
+            bestAt[tier] = led;
+        }
+    }
+    for (u32 t = 4; t-- > 0;)
+        if (best[t] > -1e29f) {
+            at = bestAt[t];
+            return true;
+        }
+    return false;
+}
+
 void World::damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir) {
     BossState& s = boss_;
     Event ev;
@@ -438,6 +520,7 @@ void World::damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir)
     if (!s.active || s.dying || m1_ < s.fightTick) {
         ev.c = 1;  // the entrance: nothing gets through yet
         emit(ev);
+        bossHitCue(false, at, owner);
         return;
     }
     ++s.hits;
@@ -463,6 +546,7 @@ void World::damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir)
         ev.c = 1;
         ev.f = scale;
         emit(ev);
+        bossHitCue(false, at, owner);
         if (s.kind == BossKind::Feedback && s.fb.open <= 0.0f) feedbackSwallow();
         if (scale > 0.0f) damageBossFinal(dpart, pair, dmg * scale, owner, at, dir, -1.0f);
         return;
@@ -488,6 +572,7 @@ void World::damageBossFinal(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2
         ev.y2 = dir.y;
         ev.f = scale;
         emit(ev);
+        bossHitCue(scale >= 1.0f - 1e-3f && part != 1, at, owner);
     }
     const bool client = role_ == NetRole::Client;
     // (one claim a part a tick: since armour takes a quarter every shot on a boss claims, so the claims of a tick on the same
@@ -941,6 +1026,21 @@ void World::bossFire(double t) {
             emit(ev);
         }
     }
+}
+
+void World::bossHitCue(bool weak, Vec2 at, u8 owner) {
+    // GAME_DESIGN 7.6 (play test 3): every hit on a boss is heard, by the shooter's device: a bright tick on a weak point, a
+    // dull knock on armour. Counted on the 1/32 step like kills: at most one of each a step; each further step of the same
+    // beat at 0.7 of the one before, down to 0.3 (the cue's f).
+    if (owner < kMaxPlayers && !isLocal(owner)) return;
+    const u32 k = weak ? 0u : 1u;
+    const double step = 0.5 * kTicksPerStep;
+    const double slot = std::floor(m1_ / step) * step;
+    if (slot <= hitCueTick_[k]) return;
+    const bool sameBeat = std::floor(slot / kTicksPerBeat) == std::floor(hitCueTick_[k] / kTicksPerBeat);
+    hitCueGain_[k] = sameBeat ? std::fmax(hitCueGain_[k] * 0.7f, 0.3f) : 1.0f;
+    hitCueTick_[k] = slot;
+    emitCue(weak ? BossCue::HitWeak : BossCue::HitArmour, m1_, 0, hitCueGain_[k], at);
 }
 
 void World::emitCue(BossCue c, double tick, u8 b, float f, Vec2 at) {

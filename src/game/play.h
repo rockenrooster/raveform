@@ -428,6 +428,8 @@ private:
     float spotlightT_ = -100.0f;
     float takenT_ = -100.0f;
     float levelUpT_ = -100.0f;  // play test 2: the local player's last Shard level (the HUD's flash)
+    float bossHitT_ = -100.0f;  // play test 3 (GAME_DESIGN 7.6): the last hit on a boss's weak point (its bar's segment flashes)
+    u8 bossHitPart_ = 0xFF;     // ... the part it hit (Kaleidos's pair, a Longwave segment, a Voice; 0xFF the whole)
     // M5 (GAME_DESIGN 7.6, screens.md "Boss hint"): this device's player's shots on the boss, bar by bar of the fight.
     double hintFight_ = -1.0;   // the fight being followed (its fightTick)
     i64 hintBar_ = -1;          // the fight bar being counted

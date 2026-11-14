@@ -208,6 +208,9 @@ enum class EventType : u8 {
     Upgrade,
     // M5 part 4: a Weaver C trail blows on the bar line (x, y: one of its points; tick).
     TrailBlast,
+    // Play test 3 (GAME_DESIGN 5): an Extra Life: a = player, b = 0 picked up, 1 spent (the ship back with two cells); x, y.
+    // (A Hit's c: 1 the Orbitals' guard ring broke instead of a cell; 2 an Extra Life was spent.)
+    ExtraLife,
 };
 enum UpgradeFx : u8 {
     kFxFork,          // a shot forked: x, y
@@ -242,6 +245,7 @@ enum UpgradeFx : u8 {
     kFxBurnSpread,    // a burning death lit its neighbours: x, y; c = how many
     kFxEcho,          // a ghost volley: x, y
     kFxBounce,        // Ricochet (Ricochet Fever): a shot bounced: x, y; c = the bounce's number
+    kFxRingLit,       // play test 3: the Orbitals' guard ring is whole again (every shard relit): x, y; c = shards
 };
 enum LanceKind : u8 { kLanceAccent = 0, kLanceLancer, kLanceCannon, kLanceBarLine };
 // M5: BossEnter carries a = the BossKind; BossPair c = the BossKind (a = the part: a pair, a segment, a Voice, a Prince);
@@ -285,6 +289,7 @@ enum EnemyState : u8 {
     kStateCount
 };
 enum EnemyFlag : u8 { kFlagDead = 1, kFlagEngaged = 2, kFlagArriving = 4, kFlagPredicted = 8, kFlagCalled = 16 };  // arriving: crowd fodder on its way into the frame
+constexpr u8 kBurnSpread = 0x80;  // Enemies::burnLevel: the fire was caught from a burning death (play test 3: it spreads no further)
 // kFlagCalled (M5): a mini-boss called it (the Alpha's pack, the Hive's darts); sent with its spawn.
 // kFlagPredicted (co-op client, with kFlagDead): its own hit killed it and the host has not answered yet; it
 // stays in the pool (gone for everything else) until the host confirms the death, or comes back after 300 ms.
@@ -309,7 +314,7 @@ struct Enemies {
     u8 step[kCap];                               // M5: a family's own counter (a Blink's hops round its star)
     double burnUntil[kCap];                      // M5 (Burn): ignited until then (musical ticks; < 0 never)
     double frozenUntil[kCap];                    // M5 (Freeze Frame): frozen until then
-    u8 burnOwner[kCap], burnLevel[kCap];         // whose fire, its Burn stacks
+    u8 burnOwner[kCap], burnLevel[kCap];         // whose fire, its Burn stacks (| kBurnSpread: caught from a death, spreads no more)
     // M5 part 5 (design/traits.md): an elite's traits (kEliteBit and the trait bits; 0 an ordinary body), its full health, the
     // tick it was last hit (Regenerating), its partner (Twin: a handle), its shield's facing (Shielded), the Shards it holds
     // (Magnetic) and a Commander's death stun.
@@ -406,7 +411,8 @@ struct Shots {
 // both the pair inside it, In alone the next (1, 2/3, 1/3 of the amplitude); kShotWaveNeg the mirror strand of its pair.
 enum ShotMod : u8 { kShotSeek = 1, kShotWave = 2, kShotWaveNeg = 4, kShotGhost = 8, kShotBlast = 16, kShotFever = 32, kShotHelix = 64, kShotHelixIn = 128 };
 // kShotRefracted (play test 1): a Prism shot refracts on its first hit only.
-enum ShotFlag : u8 { kShotCrit = 1, kShotPrism = 2, kShotLaneMask = 7u << 2, kShotRefracted = 32 };
+// kShotPiece (play test 3): a Shatter piece; its kill throws none (GAME_DESIGN 6.2 row 15).
+enum ShotFlag : u8 { kShotCrit = 1, kShotPrism = 2, kShotLaneMask = 7u << 2, kShotRefracted = 32, kShotPiece = 64 };
 // M3 stage C2: a Prism shot's lane in its fan (-2..2, GAME_DESIGN 7: the rainbow), kept in flags bits 2-4 (0: none);
 // its mini-refractions carry it on.
 inline u8 shotLaneFlags(i32 lane) { return static_cast<u8>((lane + 3) << 2); }
@@ -415,6 +421,11 @@ inline i32 shotLane(u8 flags) { return static_cast<i32>((flags & kShotLaneMask) 
 
 // Boosts lying in the arena (GAME_DESIGN 6.4), until collected or eight bars old. Loot is instanced
 // (GAME_DESIGN 10): in co-op each drop is one orb per player, only its owner can take it.
+// Play test 3 (GAME_DESIGN 5): an Extra Life lies among them as a pickup of its own kind (type kPickupExtraLife; never a
+// Boost: it takes no Boost slot and no Trio offers it), one orb for its owner. In a drop's message (BoostDrop) its type is
+// kPickupExtraLife + the owner.
+constexpr u8 kPickupExtraLife = 0xF0;
+inline bool isExtraLifeDrop(u8 type) { return type >= kPickupExtraLife && type < kPickupExtraLife + kMaxPlayers; }
 struct BoostPickups {
     static constexpr u32 kCap = 32;
     u32 count = 0;
@@ -623,6 +634,12 @@ struct PlayerState {
     float shockR = 0.0f, shockDamage = 0.0f;  // (damage > 0: its ring hurts this tick, once the grid is built)
     double kickTick = -1e9;      // the last Kick Pulse ring
     float kickR = 0.0f;
+    // Play test 3 (GAME_DESIGN 6.3 row 1): the Orbitals' guard ring broke on this tick (< 0: every shard lit, it guards); its
+    // shards relight one by one over the level's bars.
+    double ringBroke = -1.0;
+    // Play test 3 (GAME_DESIGN 5): an Extra Life held (at most one), spent on the hit that would end the run.
+    u8 extraLives = 0;
+    u32 extraLivesTaken = 0, extraLivesSpent = 0, ringBreaks = 0;
     bool invulnerable() const { return invulS > 0.0f || novaInvulS > 0.0f || dashing || boost(kColossus); }
     bool boost(u8 b) const {
         for (const ActiveBoost& a : boosts)
@@ -750,6 +767,13 @@ public:
     const CellPickups& cellPickups() const { return cellPickups_; }
     // Play test 2: a ship inside one of its own level-up Trio's orb rings (the shelter: it cannot be hurt).
     bool sheltered(u32 p) const;
+    // Play test 3 (GAME_DESIGN 6.3 row 1): how many of player p's Orbitals shards are lit at `tick` (all of them while the
+    // ring guards; after it broke, one by one over its relight bars), and whether the ring guards (every shard lit).
+    u32 orbitalsLit(u32 p, double tick) const;
+    bool ringGuards(u32 p) const;
+    // Pictures and tests: an Extra Life for player p (or its orb at pos, kPickupExtraLife + p), a ring broken now.
+    void dropExtraLifeNow(Vec2 pos, u32 p) { dropBoost(pos, static_cast<u8>(kPickupExtraLife + p)); }
+    void breakRingNow(u32 p) { breakRing(p, players_[p].pos); }
     // A player's Regen period in bars now (0: no Regen); the loop stretches it (GAME_DESIGN 8).
     u32 regenPeriod(u32 p) const;
     // Pictures and tests: a Cell for a player; Shards collected as if picked up (the level meter).
@@ -919,6 +943,10 @@ public:
     u8 bossFiringMask(double stepTick) const;         // pairs whose tips fire on the step at `stepTick`
     u8 bossBeamState(u32 pair, double tick) const;    // 0 none, 1 telegraph, 2 firing
     u32 bossFightBar(double tick) const;
+    // GAME_DESIGN 2 (play test 3): where the auto-aim assist shoots in a boss or mini-boss fight, from `from` at `tick`: the
+    // open weak point when there is one, else the nearest part that takes damage, else the nearest part; led by the shot's
+    // flight. False outside a fight or out of a shot's reach.
+    bool assistBossAim(Vec2 from, double tick, Vec2& at) const;
     // Tests: a shot's path from a to b against the boss, with its damage; returns the part it hit (0 none,
     // 1 lens plate, 2 arm, 3 core).
     u8 shootBoss(Vec2 a, Vec2 b, float damage);
@@ -1072,7 +1100,8 @@ public:
 private:
     // world.cpp
     void applyPlayers(const TickInput& in);
-    bool pressNova(u32 p);  // R6: invulnerable at once, the blast on the next beat (false: none to spend)
+    bool pressNova(u32 p, bool free = false);  // R6: invulnerable at once, the blast on the next beat (false: none to spend;
+                                               // free: an Extra Life's, from no stock)
     void spawnShots(const TickInput& in);
     void fireShot(u32 p, float advanceS, double stepTick);
     void updateNovas();
@@ -1137,7 +1166,13 @@ private:
     // Play test 1: a beat shot's burst (On-Beat Crit) around its hit; the nearest other enemy a Ricochet goes on to.
     void critBurst(u32 hit, u8 owner, Vec2 at, float damage);
     i32 ricochetTarget(u32 hit, Vec2 at) const;
-    void orbitalBullets(const PlayerState& pl, u32 n);
+    void orbitalBullets(u32 p, u32 n);
+    // Play test 3 (GAME_DESIGN 6.3 row 1, 5): the Orbitals' guard ring (it breaks on a hit instead of a cell) and the Extra
+    // Life (the host drops it; it is taken, and spent on the hit that would end the run).
+    bool breakRing(u32 p, Vec2 from);
+    void extraLifeDrop(Vec2 at);
+    void takeExtraLife(u32 p);
+    void spendExtraLife(u32 p, Vec2 from);
     // world_upgrades_m5.cpp (M5 part 3): the rest of the Mods, Riffs, Boosts and the Fusions.
     Vec2 chaseTarget(u32 p) const;  // where the enemies chasing player p go (Afterimage's decoy)
     void emitFx(u32 p, u8 fx, Vec2 at, Vec2 to, u8 c, float f, double tick);
@@ -1247,6 +1282,7 @@ private:
     void bossDecide(u8 geom, Vec2 a, Vec2 b, double tick);
     void bossGeom(u8 geom, Vec2 a, Vec2 b, double tick, bool host);
     void emitCue(BossCue c, double tick, u8 b, float f, Vec2 at);
+    void bossHitCue(bool weak, Vec2 at, u8 owner);  // play test 3: a hit on a boss heard (weak point or armour)
     // world_longwave.cpp
     void enterLongwave(Vec2 centre);
     void placeLongwave(double t);
@@ -1447,6 +1483,10 @@ private:
     i32 lastShot_ = -1;
     float stretch_ = 1.0f;
     u8 extrasDepth_ = 0;
+    u8 arcing_ = 0;  // play test 3: inside an arc's hits (an arc's own kill arcs no further)
+    // Play test 3: the last 1/32 step a boss hit's cue sounded on (weak point, armour) and its gain in that beat (events only).
+    double hitCueTick_[2] = {-1e18, -1e18};
+    float hitCueGain_[2] = {1.0f, 1.0f};
     u8 flungMask_ = 0;
     u32 fxThisTick_ = 0;
     u8 songShift_ = 0;  // the song's bar index minus this world's, mod 4

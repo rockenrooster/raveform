@@ -8,7 +8,7 @@
 //       The bot plays the stage A game (the simple spawner, Track 1's tempo), retrying after each death.
 //       Checks every tick: no NaN or infinity, no pool overflow; reports kills, deaths, peak entity counts
 //       and the tick's time (P50 / P95 / max). Exit 0 = clean.
-//   raveform_headless --sim crowd [--seeds 20] [--minutes 30] [--seed 1] [--policy play|reckless|novice] [--god]
+//   raveform_headless --sim crowd [--seeds 20] [--minutes 30] [--seed 1] [--policy play|reckless|novice|assist] [--god]
 //       The crowd and the difficulty over many seeds (M3 stage C): enemies near the ship during Groove
 //       against the target per Track and cycle, Drop peaks, first death, Tracks reached, kills a minute.
 //       --god: hits cost nothing, so every Track and cycle is measured (no difficulty numbers then).
@@ -140,7 +140,7 @@ int runDeterminism(const SpeciesTable& species, float minutes, u64 seed, float b
         if (!firstDiffC && hashA[k] != hashC[k]) firstDiffC = (k + 1) * every;
     }
     const bool ok = finalA == finalB && finalA == finalC && finalA != finalD && !firstDiffB && !firstDiffC;
-    const char* pname = policy == Bot::Policy::Reckless ? "reckless" : (policy == Bot::Policy::Novice ? "novice" : "play");
+    const char* pname = policy == Bot::Policy::Reckless ? "reckless" : (policy == Bot::Policy::Novice ? "novice" : (policy == Bot::Policy::Assist ? "assist" : "play"));
     std::printf("[sim] determinism (%s bot): %u ticks (%.1f min), seed %llu, %llu kills, %u deaths and %u restarts in run A\n",
                 pname, ticks, minutes, static_cast<unsigned long long>(seed), static_cast<unsigned long long>(killsA), deathsA,
                 restartsA);
@@ -443,6 +443,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     u32 nan = 0, shotsPeak = 0;
     // What hit the ship (C2 tuning): a body of each family within reach, else a bullet or a beam.
     u64 hitsBy[kFamilyCount + 1] = {}, hitsInBossFight = 0, hitsBySection[4] = {};
+    u64 livesTaken = 0, livesSpent = 0, ringBreaks = 0;  // play test 3
     // (the lead, 2026-11-13: what takes the cells in Track 2 before Longwave, in the first run: bodies by family, bullets or
     // beams, the mini-boss's fight; and the cells regained there)
     u64 t2Hits[kFamilyCount + 2] = {}, t2Runs = 0, t2Regained = 0;
@@ -653,6 +654,12 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                             b.coreHp, b.hits, b.hitsBody, b.hitsBeam, p.alive ? "" : " DOWN",
                             w.pen().up ? (w.penInside(p.pos, 0.0f) ? " in the Pen" : " OUTSIDE the Pen") : "");
             }
+            for (u32 k = 0; k < w.eventCount(); ++k) {
+                // Play test 3: Extra Lives taken and spent, the Orbitals' guard ring broken.
+                const Event& ev = w.events()[k];
+                if (ev.type == EventType::ExtraLife) ++(ev.b ? livesSpent : livesTaken);
+                if (ev.type == EventType::Hit && ev.c == 1) ++ringBreaks;
+            }
             if (p.hitsTaken < lastHits) lastHits = p.hitsTaken;  // a new run
             if (p.hitsTaken > lastHits) {
                 lastHits = p.hitsTaken;
@@ -786,7 +793,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     runner.deaths(), seedShards, c.enemiesDropped - c0.enemiesDropped, c.bulletsDropped - c0.bulletsDropped,
                     c.shotsDropped - c0.shotsDropped, c.eventsDropped - c0.eventsDropped);
     }
-    const char* botName = policy == Bot::Policy::Reckless ? "careless" : (policy == Bot::Policy::Novice ? "novice" : "careful");
+    const char* botName = policy == Bot::Policy::Reckless ? "careless" : (policy == Bot::Policy::Novice ? "novice" : (policy == Bot::Policy::Assist ? "assist" : "careful"));
     std::printf("[sim] crowd (%s bot%s): %u seeds x %.0f min\n", botName, god ? ", god mode" : "", seeds, minutes);
     std::printf("[sim]   Track cycle  target  in view (Groove)  ratio  counted  alive  Drop peak in view (runs)  peak/target\n");
     for (u32 tr = 0; tr < 4; ++tr) {
@@ -842,6 +849,13 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
             std::printf("[sim]   the median first death falls in Track %u (0: no death)\n", ta);
         else
             std::printf("[sim]   the median first death falls between Tracks %u and %u (the two middle runs; 0: no death)\n", ta, tb);
+        // Play test 3 (GAME_DESIGN 7.6): the runs that finished the set list (reached the Track after its last before a first death).
+        u32 finished = 0;
+        for (u32 k = 0; k < n; ++k)
+            finished += (firstDeath[k] <= minutes ? firstDeathTrack[k] > kBossesBuilt : maxTrack[k] > kBossesBuilt) ? 1u : 0u;
+        std::printf("[sim]   finished the %u Tracks (the first run reached Track %u): %u of %u runs; Extra Lives taken %llu, spent %llu; guard rings broken %llu\n",
+                    kBossesBuilt, kBossesBuilt + 1, finished, n, static_cast<unsigned long long>(livesTaken), static_cast<unsigned long long>(livesSpent),
+                    static_cast<unsigned long long>(ringBreaks));
         std::printf("[sim]   first deaths in Tracks 1-3: %u of %u runs; in the first pass (Tracks 1-%u): %u; first deaths by run (min/Track):", firstPass, n,
                     kBossesBuilt, firstSet);
         for (u32 k = 0; k < n; ++k) {
@@ -976,7 +990,10 @@ int simHeadlessMain(int argc, char** argv) {
             seconds = static_cast<float>(std::atof(next));
             ++i;
         } else if (std::strcmp(a, "--policy") == 0 && next) {
-            policy = std::strcmp(next, "reckless") == 0 ? Bot::Policy::Reckless : (std::strcmp(next, "novice") == 0 ? Bot::Policy::Novice : Bot::Policy::Play);
+            policy = std::strcmp(next, "reckless") == 0 ? Bot::Policy::Reckless
+                     : std::strcmp(next, "novice") == 0 ? Bot::Policy::Novice
+                     : std::strcmp(next, "assist") == 0 ? Bot::Policy::Assist
+                                                        : Bot::Policy::Play;
             ++i;
         } else if (std::strcmp(a, "--seed") == 0 && next) {
             seed = std::strtoull(next, nullptr, 10);
@@ -1033,7 +1050,7 @@ int simHeadlessMain(int argc, char** argv) {
     } else if (std::strcmp(mode, "stress") == 0) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes * 60.0f : 120.0f), seed, bpm, true, policy);
     } else {
-        std::printf("usage: raveform_headless --sim determinism|soak|crowd|picks|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless|novice] [--god] [--trace] [--armour0] [--health id=x,...] [--handover N]\n");
+        std::printf("usage: raveform_headless --sim determinism|soak|crowd|picks|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless|novice|assist] [--god] [--trace] [--armour0] [--health id=x,...] [--handover N]\n");
     }
     delete species;
     return code;

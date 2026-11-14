@@ -374,15 +374,18 @@ i32 World::ricochetTarget(u32 hit, Vec2 at) const {
     return best;
 }
 
-void World::orbitalBullets(const PlayerState& pl, u32 n) {
-    // Orbitals (play test 1): the shards also destroy the enemy bullets they touch (on every device, like the Nova).
+void World::orbitalBullets(u32 p, u32 n) {
+    // Orbitals (play test 1): the shards also destroy the enemy bullets they touch (on every device, like the Nova). Play
+    // test 3: only the lit ones (a broken ring's dark shards do nothing until they relight).
     Bullets& b = bullets_;
+    const PlayerState& pl = players_[p];
     const double turn = pl.boost(kHyper) ? kTicksPerBar * 0.5 : kTicksPerBar;
     const double ph = std::fmod(m1_ - director_.startTick, turn) / turn;
     const float hit = kOrbitalHitWu + species_->bulletRadius;
     const float reach = kOrbitalRadiusWu + hit;
     Vec2 o[16];
     const u32 m = n < 16 ? n : 16u;
+    const u32 lit = orbitalsLit(p, m1_);
     for (u32 k = 0; k < m; ++k) {
         const float a = static_cast<float>(ph) * kTau + kTau * static_cast<float>(k) / static_cast<float>(m) - 0.25f * kTau;
         o[k] = pl.pos + dirOf(a) * kOrbitalRadiusWu;
@@ -391,12 +394,133 @@ void World::orbitalBullets(const PlayerState& pl, u32 n) {
         if (b.dead[i]) continue;
         const float dx = b.x[i] - pl.pos.x, dy = b.y[i] - pl.pos.y;
         if (std::fabs(dx) > reach || std::fabs(dy) > reach) continue;
-        for (u32 k = 0; k < m; ++k)
+        for (u32 k = 0; k < m && k < lit; ++k)
             if (lengthSq(Vec2{b.x[i], b.y[i]} - o[k]) <= hit * hit) {
                 b.dead[i] = 1;
                 break;
             }
     }
+}
+
+u32 World::orbitalsLit(u32 p, double tick) const {
+    const PlayerState& pl = players_[p < kMaxPlayers ? p : 0];
+    const u8 lv = pl.loadout.riffs[riffIndex(kOrbitals)];
+    const u32 n = orbitalCount(lv);
+    if (!n || pl.ringBroke < 0.0) return n;
+    const double span = static_cast<double>(kRingRelightBars[lv < 5 ? lv : 5]) * kTicksPerBar;
+    if (tick - pl.ringBroke >= span) return n;
+    // One by one: shard k relights at (k + 1) / n of the span.
+    const double u = (tick - pl.ringBroke) / span;
+    const u32 lit = u > 0.0 ? static_cast<u32>(std::floor(u * static_cast<double>(n))) : 0u;
+    return lit < n ? lit : n;
+}
+
+bool World::ringGuards(u32 p) const {
+    const PlayerState& pl = players_[p < kMaxPlayers ? p : 0];
+    return pl.loadout.riffs[riffIndex(kOrbitals)] > 0 && pl.ringBroke < 0.0;
+}
+
+bool World::breakRing(u32 p, Vec2 from) {
+    // GAME_DESIGN 6.3 row 1 (play test 3): while every shard is lit the ring is a spare cell. The hit breaks it instead: the
+    // panic pulse, kRingInvulS of invulnerability and the Chain halved, as for any hit; no cell is taken.
+    if (!ringGuards(p)) return false;
+    PlayerState& pl = players_[p];
+    pl.ringBroke = m1_;
+    ++pl.ringBreaks;
+    ++pl.hitsTaken;
+    pl.invulS = kRingInvulS;
+    pl.chain = pl.chain / 2 > 1 ? pl.chain / 2 : 1u;
+    dipS_ = kHitDipS;
+    const Vec2 c = pl.pos;
+    const float r2 = kPanicRadiusWu * kPanicRadiusWu;
+    for (u32 b = 0; b < bullets_.count; ++b) {
+        const float dx = bullets_.x[b] - c.x, dy = bullets_.y[b] - c.y;
+        if (dx * dx + dy * dy <= r2) bullets_.dead[b] = 1;
+    }
+    Enemies& e = enemies_;
+    for (u32 i = 0; i < e.count; ++i) {
+        const float dx = e.x[i] - c.x, dy = e.y[i] - c.y;
+        const float d2 = dx * dx + dy * dy;
+        if (d2 > r2 || d2 < 1e-6f) continue;
+        const float d = std::sqrt(d2);
+        e.kx[i] += dx / d * kPanicShoveWu;
+        e.ky[i] += dy / d * kPanicShoveWu;
+    }
+    Event ev;
+    ev.type = EventType::Hit;
+    ev.a = static_cast<u8>(p);
+    ev.b = pl.cells;
+    ev.c = 1;  // the ring, not a cell
+    ev.x = c.x;
+    ev.y = c.y;
+    ev.x2 = from.x;
+    ev.y2 = from.y;
+    ev.tick = m1_;
+    emit(ev);
+    hitExtras(p);  // (Crescendo starts again, Last Light: a hit as any other)
+    return true;
+}
+
+void World::extraLifeDrop(Vec2 at) {
+    // GAME_DESIGN 5 (play test 3): in each Track of the set list one Extra Life drops from a kill in the first cycle's Drop,
+    // an orb for each player who holds none (co-op: each their own; the host decides). None in the loop.
+    if (role_ == NetRole::Client) return;
+    const Phrase& ph = phrase_;
+    if (ph.trackChange || ph.cycle != 1 || ph.section != Section::Drop || inLoop(ph.track, director_.songs)) return;
+    if (director_.extraLifeTrack == ph.track) return;
+    director_.extraLifeTrack = ph.track;
+    for (u32 p = 0; p < playerCount_; ++p) {
+        const PlayerState& pl = players_[p];
+        if (!pl.present || pl.extraLives) continue;
+        dropBoost(at, static_cast<u8>(kPickupExtraLife + p));
+    }
+}
+
+void World::takeExtraLife(u32 p) {
+    PlayerState& pl = players_[p];
+    pl.extraLives = 1;
+    ++pl.extraLivesTaken;
+    Event ev;
+    ev.type = EventType::ExtraLife;
+    ev.a = static_cast<u8>(p);
+    ev.b = 0;
+    ev.x = pl.pos.x;
+    ev.y = pl.pos.y;
+    emit(ev);
+}
+
+void World::spendExtraLife(u32 p, Vec2 from) {
+    // GAME_DESIGN 5 (play test 3): spent on the hit that would end the run (after Auto Nova): the ship comes back at once with
+    // two cells, a free Nova blast, one bar of invulnerability and half its Chain, under the words EXTRA LIFE. Co-op: spent
+    // instead of going down.
+    PlayerState& pl = players_[p];
+    pl.extraLives = 0;
+    ++pl.extraLivesSpent;
+    ++pl.hitsTaken;
+    pl.cells = static_cast<u8>(pl.cellCap < kExtraLifeCells ? pl.cellCap : kExtraLifeCells);
+    pl.chain = pl.chain / 2 > 1 ? pl.chain / 2 : 1u;
+    const float tps = ticksPerSecond();
+    pl.invulS = tps > 0.0f ? static_cast<float>(kTicksPerBar) / tps : 2.0f;
+    dipS_ = kHitDipS;
+    Event ev;
+    ev.type = EventType::Hit;
+    ev.a = static_cast<u8>(p);
+    ev.b = pl.cells;
+    ev.c = 2;  // an Extra Life spent
+    ev.x = pl.pos.x;
+    ev.y = pl.pos.y;
+    ev.x2 = from.x;
+    ev.y2 = from.y;
+    ev.tick = m1_;
+    emit(ev);
+    Event el;
+    el.type = EventType::ExtraLife;
+    el.a = static_cast<u8>(p);
+    el.b = 1;
+    el.x = pl.pos.x;
+    el.y = pl.pos.y;
+    emit(el);
+    pressNova(p, true);  // the free Nova blast (it clears the bullets and the bodies in view)
 }
 
 // ---------------------------------------------------------------------------------------------- Riffs
@@ -414,14 +538,19 @@ void World::updateRiffs(float dt) {
 
         // Orbitals (GAME_DESIGN 6.3, play test 1): 3, 5, 7, 9, 11 shards circle the ship once a bar (twice under
         // Hyper); each hurts what it touches once an eighth note (a sixteenth under Hyper) and destroys the enemy
-        // bullets it touches.
+        // bullets it touches. Play test 3: a guard ring; once broken its shards are dark until they relight, one by one.
         if (const u8 lv = l.riffs[riffIndex(kOrbitals)]) {
             const u32 n = orbitalCount(lv);
-            orbitalBullets(pl, n);
+            if (pl.ringBroke >= 0.0 && orbitalsLit(p, m1_) >= n) {
+                pl.ringBroke = -1.0;  // every shard lit again: it guards
+                emitFx(p, kFxRingLit, pl.pos, pl.pos, static_cast<u8>(n), 0.0f, m1_);
+            }
+            orbitalBullets(p, n);
             const double turn = hyper ? kTicksPerBar * 0.5 : kTicksPerBar;
             forCrossings(m0_, m1_, hyper ? kTicksPerStep : 2.0 * kTicksPerStep, [&](double t, i64) {
                 const double ph = std::fmod(t - director_.startTick, turn) / turn;
-                for (u32 k = 0; k < n; ++k) {
+                const u32 lit = orbitalsLit(p, t);
+                for (u32 k = 0; k < n && k < lit; ++k) {
                     const float a = static_cast<float>(ph) * kTau + kTau * static_cast<float>(k) / static_cast<float>(n) - 0.25f * kTau;
                     const Vec2 o = pl.pos + dirOf(a) * kOrbitalRadiusWu;
                     const float reach = kOrbitalHitWu + 40.0f;
@@ -566,6 +695,25 @@ void World::dropBoost(Vec2 pos, u8 type) {
     BoostPickups& b = boostPickups_;
     const float x = clampf(pos.x, -kArenaHalfW + 40.0f, kArenaHalfW - 40.0f);
     const float y = clampf(pos.y, -kArenaHalfH + 40.0f, kArenaHalfH - 40.0f);
+    if (isExtraLifeDrop(type)) {
+        // Play test 3 (GAME_DESIGN 5): an Extra Life, one orb for its owner (kPickupExtraLife + the owner).
+        const u32 owner = static_cast<u32>(type - kPickupExtraLife);
+        if (b.count >= BoostPickups::kCap || owner >= playerCount_) return;
+        const u32 i = b.count++;
+        b.x[i] = x;
+        b.y[i] = y;
+        b.born[i] = m1_;
+        b.type[i] = kPickupExtraLife;
+        b.dead[i] = 0;
+        b.owner[i] = static_cast<u8>(owner);
+        if (role_ == NetRole::Host && netLog_.boostCount < NetLog::kBoosts) {
+            NetLog::Boost& o = netLog_.boosts[netLog_.boostCount++];
+            o.x = pos.x;
+            o.y = pos.y;
+            o.type = type;
+        }
+        return;
+    }
     const u8 t = type < kBoostCount ? type : kPrism;
     // Loot is instanced (GAME_DESIGN 10): in co-op one orb per player, each only its owner can take.
     u32 made = 0;
@@ -699,6 +847,13 @@ void World::updateBoosts() {
             if (b.owner[i] != p || !isLocal(p)) continue;  // M4: only its owner takes it, on the owner's device
             const float r = kBoostPickupWu + kPlayerVisualRadius;
             if (lengthSq(pl.pos - Vec2{b.x[i], b.y[i]}) > r * r) continue;
+            if (b.type[i] == kPickupExtraLife) {
+                // Play test 3 (GAME_DESIGN 5): an Extra Life; a player holds at most one (a second waits where it lies).
+                if (pl.extraLives) continue;
+                b.dead[i] = 1;
+                takeExtraLife(p);
+                break;
+            }
             b.dead[i] = 1;
             activateBoost(p, b.type[i]);
             break;

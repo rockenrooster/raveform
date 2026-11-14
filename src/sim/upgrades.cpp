@@ -9,14 +9,14 @@ namespace rf::sim {
 using namespace tuning;
 
 namespace {
-// GAME_DESIGN 6.2 / 6.3 (names, caps; play test 1: Split 3; play test 2: Extra Cell 4, Regen 3); icons from
+// GAME_DESIGN 6.2 / 6.3 (names, caps; play test 2: Extra Cell 4, Regen 3; play test 3: Split 2, Double-Time 1, Fork 1); icons from
 // design/icons.json. In the tables' order.
 const UpgradeInfo kInfo[kUpgradeCount] = {
-    {"SPLIT", "split", 3, true},
-    {"DOUBLE-TIME", "double_time", 2, true},
+    {"SPLIT", "split", 2, true},
+    {"DOUBLE-TIME", "double_time", 1, true},
     {"PIERCE", "pierce", 3, true},
     {"RICOCHET", "ricochet", 3, true},
-    {"FORK", "fork", 2, true},
+    {"FORK", "fork", 1, true},
     {"SEEKER", "seeker", 3, true},
     {"HEAVY STEP", "heavy_step", 3, true},
     {"ACCENT", "accent", 3, true},
@@ -126,10 +126,10 @@ const char* upgradeWords(u8 u, u32 level) {
     const u32 lv = level < 1 ? 1u : level;
     switch (u) {
         case kSplit: return "+2 SHOT LANES";
-        case kDoubleTime: return level <= 1 ? "FIRE RATE X1.5" : "FIRE RATE X2";
+        case kDoubleTime: return "FIRE RATE X1.5";  // play test 3: one rank
         case kPierce: return "SHOTS PIERCE +2";
         case kRicochet: return "SHOTS BOUNCE +2";
-        case kFork: return lv <= 1 ? "SHOTS FORK ON A HIT" : "FORKS FORK AGAIN";
+        case kFork: return "SHOTS FORK ON A HIT";  // play test 3: one rank (forking again is Fractal's)
         case kSeeker: return lv <= 1 ? "SHOTS HOME IN" : (lv == 2 ? "TIGHTER HOMING" : "SHOTS HUNT");
         case kHeavyStep: return lv <= 1 ? "EVERY 4TH SHOT EXPLODES" : (lv == 2 ? "BIGGER BLASTS" : "HEAVIER BLASTS");
         case kAccent: return lv <= 1 ? "A LANCE EACH BAR" : (lv == 2 ? "TWO LANCES A BAR" : "A LANCE EVERY BEAT");
@@ -138,7 +138,7 @@ const char* upgradeWords(u8 u, u32 level) {
         case kOvercharge: return "+50% SHOT DAMAGE";
         case kRearGuard: return lv <= 1 ? "ALSO FIRE BACKWARD" : "AND SIDEWAYS";
         case kArc:
-            std::snprintf(buf, sizeof buf, "KILLS ARC TO %u MORE", lv + 1u);
+            std::snprintf(buf, sizeof buf, "KILLS ARC TO %u MORE", lv);  // play test 3: 1, 2, 3
             return buf;
         case kBurn: return lv <= 1 ? "HITS IGNITE" : (lv == 2 ? "HOTTER FIRE" : "FIERCE FIRE");
         case kShatter: return lv <= 1 ? "KILLS THROW SHRAPNEL" : "MORE SHRAPNEL";
@@ -172,9 +172,11 @@ const char* upgradeWords(u8 u, u32 level) {
         case kKickPulse: return lv <= 1 ? "KICK DRUM SHOVES ENEMIES" : (lv == 2 ? "THE SHOVE HURTS" : "A WIDER SHOVE");
         case kAfterparty: return "LONGER, FASTER SURGE";
         case kOrbitals: {
+            // screens.md (play test 3): the guard ring; levels 2 and 4 count its shards, 3 and 5 relight it faster.
             const u32 n = orbitalCount(lv);
-            if (lv <= 1) std::snprintf(buf, sizeof buf, "NEW RIFF: %s ORBITERS", kNumberWords[n < 12 ? n : 11]);
-            else std::snprintf(buf, sizeof buf, "LEVEL %u: %s ORBITERS", lv, kNumberWords[n < 12 ? n : 11]);
+            if (lv <= 1) return "NEW RIFF: A GUARD RING";
+            if (lv == 3 || lv >= 5) std::snprintf(buf, sizeof buf, "LEVEL %u: RELIGHTS FASTER", lv);
+            else std::snprintf(buf, sizeof buf, "LEVEL %u: %s SHARDS", lv, kNumberWords[n < 12 ? n : 11]);
             return buf;
         }
         default:

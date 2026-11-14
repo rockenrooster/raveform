@@ -140,7 +140,8 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
 
     // ---- Fire (GAME_DESIGN 2, R2): the aim stick fires along its direction on every grid step; when the
     // right thumb leaves it (to press Nova or Dash) firing continues along the last aim for 400 ms; with
-    // the stick idle, the auto-aim assist fires at the nearest threat on a half-rate grid.
+    // the stick idle, the auto-aim assist fires at the nearest threat on the full grid (play test 3; it was half rate), and
+    // in a fight at the boss.
     if (in.aimActive && lengthSq(in.aim) > 1e-8f) {
         lastAim_ = normalizeOr(in.aim, lastAim_);
         p.aim = lastAim_;
@@ -179,16 +180,33 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
                     const float d = dx * dx + dy * dy;
                     if (d < range2 && d <= nearestD * kAutoAimKeep * kAutoAimKeep) use = held;
                 }
-                if (use >= 0) {
+                // GAME_DESIGN 2 (play test 3): in a boss or mini-boss fight the boss comes first (its open weak point, else its
+                // nearest part), unless an ordinary enemy is within 250 wu of the ship.
+                Vec2 bossAt{};
+                const bool enemyNear = nearest >= 0 && nearestD <= kAssistNearWu * kAssistNearWu;
+                if (!enemyNear && world.assistBossAim(p.pos, musicTick, bossAt)) {
+                    targetHandle_ = 0;
+                    p.aim = normalizeOr(bossAt - p.pos, lastAim_);
+                    p.fire = 1;
+                } else if (use >= 0) {
                     targetHandle_ = e.handle[use];
                     // Lead the target by the shot's flight time.
                     const Vec2 at{e.x[use], e.y[use]};
                     const float t = length(at - p.pos) / kShotSpeed;
                     const Vec2 lead = at + Vec2{e.vx[use], e.vy[use]} * t;
                     p.aim = normalizeOr(lead - p.pos, lastAim_);
-                    p.fire = 2;
+                    p.fire = 1;  // play test 3: the full grid (it was every other step)
                 } else {
                     targetHandle_ = 0;
+                }
+                // Feedback (GAME_DESIGN 7.6, play test 3): the assist rests on every second bar, so the Echoes fall silent and
+                // the Head opens for a player who never lifts a thumb. In Regeneration the second Echo plays two bars behind:
+                // there it rests two bars of three (else the Head would never open for it).
+                const BossState& bs = world.boss();
+                if (p.fire && bs.active && !bs.dying && bs.kind == BossKind::Feedback && musicTick >= bs.fightTick) {
+                    const i64 bar = static_cast<i64>(std::floor(musicTick / kTicksPerBar));
+                    const bool rest = bs.fb.phase == 1 ? (bar % 3) != 0 : (bar & 1) != 0;
+                    if (rest) p.fire = 0;
                 }
             }
         }
