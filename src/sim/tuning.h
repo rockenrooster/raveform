@@ -439,7 +439,10 @@ constexpr float kMorganaHealthTune = 1.7325f; // (15.4 x 0.1125) --handover 9: 2
 constexpr float kMgFanSpreadDeg = 40.0f;    // morgana.md gives no spread for her fan of five (Cadence's 40 degrees)
 constexpr float kMgBulletLife = 4.0f;       // ... nor its life (Cadence's 4 s)
 constexpr float kMgMarginWu = 700.0f;       // the oases keep this far from the arena's walls
-constexpr float kRepriseHealthTune = 0.347f;  // (0.914 x 0.38) --handover 10: 20 of 20, 50 s (at 0.914: 26 of 30, 100 s; x 0.42: 28 of 30, 56 s)
+constexpr float kRepriseHealthTune = 0.659f;  // (0.347 x 1.9) bccb4eb ("the finale is the longest", about 60 s): --handover 10, 20 of 20,
+                                              // median 60 s, mean 74 s (4 of 20 over two minutes: weak inherited builds; 22-77 s the
+                                              // rest); at 0.347 on 5cd026a: 20 of 20, 35 s; x 1.71: 19 of 20, 51 s; x 2.1: 20 of 20, 65 s.
+                                              // 02c28ab: 0.914 x 0.38 (at 0.914: 26 of 30, 100 s)
 constexpr float kRpArmCircleR = 34.0f;      // an arm's hit circles (three along it; Kaleidos's hull is drawn, not given)
 constexpr float kRpWaveSpacing = 150.0f;    // Longwave's arm let go: its segments 150 wu apart across its way (not given)
 constexpr float kRpWaveAmp = 80.0f;         // ... swinging 80 wu along it, a swing a beat (not given)
@@ -468,8 +471,9 @@ constexpr float kBossPaceNovice[24] = {   // (by BossKind; the mini-bosses 0: th
                                              // Longwave since 02c28ab --handover 2 at its new health: it was 126)
     996.0f, 1030.0f, 183.0f,                 // Event Horizon, Polyrhythm, Feedback (--handover 4, 5, 6; 02c28ab: Event Horizon and
                                              // Feedback at their new health, 18 and 21 fights; they were 985, 509; it was 4,721, 6,000, 3,170)
-    1240.0f, 2450.0f, 5206.0f, 1097.0f};     // Cadence, Arpeggiator, Fata Morgana, Kaleidos Reprise (--handover 7-10; 02c28ab: Cadence,
-                                             // the Arpeggiator and the Reprise at their new health, 17-20 fights; they were 1,615,
+    1240.0f, 2450.0f, 5206.0f, 1708.0f};     // Cadence, Arpeggiator, Fata Morgana, Kaleidos Reprise (--handover 7-10; 02c28ab: Cadence,
+                                             // the Arpeggiator and the Reprise at their new health, 17-20 fights; bccb4eb: the Reprise
+                                             // at 0.659, 20 fights (it was 1,097 at 0.347); they were 1,615,
                                              // 2,063, 1,292; it was 8,860, 14,400, 23,250, 6,060)
 constexpr float kBossPaceMin = 1.0f, kBossPaceMax = 4.0f;
 constexpr float kBossPaceDeadBand = 1.5f;  // GAME_DESIGN 7.6 (play test 3): a ratio under it counts as 1 (1.25 at first)

@@ -4,6 +4,17 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14, Kaleidos Reprise about 60 s (design bccb4eb; GAME_DESIGN 7.6, "the finale is the longest")
+
+- `kRepriseHealthTune` 0.347 -> **0.659** (x 1.9, from the length ratio 60 / 35). The novice from Track 10's start
+  (`--handover 10`, seeds 1-20, the build as committed): **20 of 20**, won in a **median 60 s**, mean 74 s: four runs took
+  two to three and a half minutes (127, 128, 149, 154, 202 s: the weakest builds the careful bot hands over), the rest 22-77 s.
+  Measured on the way: x 1.71 19 of 20, 51 s; x 1.9 as a lever on 0.347 19 of 20, 61 s; x 2.1 20 of 20, 65 s (means of the won
+  fights; one long win more or less moves a 20-seed mean by 5-10 s here, hence the median).
+- Its pace reference (`kBossPaceNovice`, the novice's first eight bars a player) measured again at 0.659: 1,097 -> **1,708**
+  (20 fights). No fight's handover runs through the Reprise, so nothing else moved.
+- sim tests 6,108 checks, 0 failures; determinism PASS. The dev APK on the Moto (installed, not launched).
+
 ## 2026-11-14 (afternoon), the owner's play of af4b101 (design 0449eb3, 3283249, a09dd2c-02c28ab): enemy bullets by Track, see-through tells, Event Horizon's pushes, every fight 30-60 s
 
 The engineer before me was stopped in the middle of this job; its diff (the bullets by Track, 1b) is kept and finished: what it
