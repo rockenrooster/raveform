@@ -616,6 +616,93 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                 if (dc < 200.0f && dc > 1e-3f) force = force + rel * (1.5f / dc);
                 break;
             }
+            case BossKind::Arpeggiator: {
+                // M5 part 6 (both bots: the blocks are plain to see): a block coming down the lane the ship stands in, within a
+                // second, pushes it sideways to the nearer lane line (a block is 90 wu of a 200 wu lane: the lines are clear).
+                const ArpData& A = w.species().arp;
+                const float tps = w.ticksPerSecond();
+                for (const ArpState::Block& b : boss.ap.blocks) {
+                    if (b.tick < 0.0 || musicTick < b.tick) continue;
+                    const float dist = static_cast<float>(musicTick - b.tick) / tps * A.blockSpeed;
+                    const Vec2 rel = pos - (b.from + b.dir * dist);
+                    const float ahead = dot(rel, b.dir);
+                    if (ahead < -40.0f || ahead > A.blockSpeed || dist + ahead > A.laneLength + 30.0f) continue;
+                    const Vec2 axis = perpOf(b.dir);
+                    const float side = dot(rel, axis);
+                    const float half = 0.5f * A.blockWidth + 40.0f;
+                    if (std::fabs(side) > half) continue;
+                    const float sgn = side >= 0.0f ? 1.0f : -1.0f;
+                    force = force + axis * (sgn * 3.0f * (half - std::fabs(side)) / half);
+                    if (ahead < 0.15f * A.blockSpeed) {
+                        contactSoon = true;
+                        escape = escape + axis * sgn;
+                    }
+                }
+                break;
+            }
+            case BossKind::Morgana: {
+                // M5 part 6 (both bots: the storm is plain to see): stay well inside the calm, toward the real oasis (the novice:
+                // the nearer water until it has learned the mirage's blink, kNoviceLearnBars into the fight); after a leap, along
+                // the corridor to the new one. Outside the calm the other pulls count for less.
+                const float R = w.species().morgana.oasisRadius;
+                Vec2 goal = w.morganaOasis(musicTick);
+                Vec2 mp;
+                bool lit = false;
+                if (novice && fightBars < tuning::kNoviceLearnBars && w.morganaMirage(musicTick, mp, lit) && lengthSq(mp - pos) < lengthSq(goal - pos))
+                    goal = mp;
+                if (!w.morganaCalm(pos, musicTick + 0.5 * kTicksPerBeat)) force = force * 0.3f;
+                const float keep = R - 140.0f;
+                const Vec2 to = goal - pos;
+                const float l = length(to);
+                if (l > 1e-3f) {
+                    force = force + to * (0.4f * std::fmin(l / keep, 1.0f) / l);
+                    if (l > keep) force = force + to * (4.0f * std::fmin((l - keep) / 50.0f, 3.0f) / l);
+                }
+                break;
+            }
+            case BossKind::TwinTether: {
+                // M5 part 6 (both bots): off the rope as it sweeps round; as it is about to reach the ship, a Dash through it (a
+                // Dash is invulnerable and cuts a strand: minibosses.md), against its sweep.
+                Vec2 b0, b1;
+                if (!w.tetherBeam(b0, b1)) break;
+                const Vec2 dv = b1 - b0;
+                const float u = clampf(dot(pos - b0, dv) / std::fmax(lengthSq(dv), 1e-6f), 0.0f, 1.0f);
+                const Vec2 near = b0 + dv * u;
+                const Vec2 side = pos - near;
+                const float off = length(side);
+                const Vec2 pivot = boss.alive == 0x3u ? boss.body[0] : b0;
+                const Vec2 sweep = normalizeOr(perpOf(pos - pivot), Vec2{1.0f, 0.0f});  // (the rope turns counter-clockwise)
+                if (off < 160.0f) force = force + normalizeOr(side, sweep * -1.0f) * (2.0f * (160.0f - off) / 160.0f);
+                if (off < 45.0f && dot(side, sweep) > 0.0f) {
+                    contactSoon = true;
+                    escape = escape + sweep * -1.0f;
+                }
+                break;
+            }
+            case BossKind::WeaverPrime: {
+                // M5 part 6 (both bots): out of the cage before it closes (leaving early is allowed), and off its laps' trail; a
+                // trail about to be crossed is crossed with a Dash (a Dash crosses a trail unharmed).
+                const MiniState& mm = boss.mini;
+                if (mm.cageTick < 0.0) break;
+                const Vec2 rel = pos - mm.cage;
+                const float rho = length(rel);
+                const Vec2 out = normalizeOr(rel, dirOf(wander_));
+                if (rho < 360.0f) force = force + out * (1.6f * (360.0f - rho) / 360.0f);
+                for (u32 k = 0; k < (mm.half ? 2u : 1u); ++k)
+                    for (u32 lap = 0; lap < 4; ++lap) {
+                        Vec2 c;
+                        float r = 0.0f, a0 = 0.0f, dir = 1.0f, u0 = 0.0f, u1 = 0.0f;
+                        if (!w.weaverLap(k, lap, musicTick + 0.25 * kTicksPerBeat, c, r, a0, dir, u0, u1)) continue;
+                        const float gap = rho - r;
+                        if (std::fabs(gap) > 70.0f) continue;
+                        force = force + out * ((gap >= 0.0f ? 2.5f : -2.5f) * (70.0f - std::fabs(gap)) / 70.0f);
+                        if (std::fabs(gap) < 25.0f) {
+                            contactSoon = true;
+                            escape = escape + out;
+                        }
+                    }
+                break;
+            }
             case BossKind::AlphaHound:
                 if (m.state == 1 || m.state == 2) offLine(boss.body[0], m.lockDir, 140.0f);
                 break;
@@ -772,6 +859,25 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
             if (outward > 0.0f) force = force - out * (outward * (room <= 0.0f ? 1.3f : std::fmin(1.0f, 1.0f - room / 140.0f)));
         }
     }
+    // M5 part 6, Fata Morgana (both bots: the storm is plain to see): nothing (the crowd, Shards, a dodge) takes the ship out of
+    // the water it keeps to across its edge; the outward part of the pull fades out before the edge.
+    Vec2 mgWater{};
+    bool mgKeep = false;
+    if (careful && boss.active && !boss.dying && boss.kind == BossKind::Morgana && musicTick >= boss.enterTick) {
+        mgWater = w.morganaOasis(musicTick);
+        Vec2 mp;
+        bool lit = false;
+        if (novice && fightBars < tuning::kNoviceLearnBars && w.morganaMirage(musicTick, mp, lit) && lengthSq(mp - pos) < lengthSq(mgWater - pos)) mgWater = mp;
+        const Vec2 rel = pos - mgWater;
+        const float dc = length(rel);
+        const float room = w.species().morgana.oasisRadius - 90.0f - dc;
+        mgKeep = dc < w.species().morgana.oasisRadius + 40.0f;
+        if (dc > 1e-3f && room < 160.0f && mgKeep) {
+            const Vec2 out = rel * (1.0f / dc);
+            const float outward = dot(force, out);
+            if (outward > 0.0f) force = force - out * (outward * (room <= 0.0f ? 1.5f : std::fmin(1.0f, 1.0f - room / 160.0f)));
+        }
+    }
     if (holding) force = force * 0.25f + holdPull;
     const float f = length(force);
     in.move = f > 0.05f ? force * (std::fmin(f, 1.0f) / f) : Vec2{};
@@ -791,6 +897,16 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     if (careful && contactSoon && (!novice || novDash_) && controller.dashCharge(musicTick) >= 1.0f && !pose.dashing) {
         dash = true;
         in.move = normalizeOr(escape, normalizeOr(force, dirOf(wander_)));
+        if (mgKeep) {
+            // (Fata Morgana: a Dash that would leave the water goes along its edge instead)
+            const Vec2 rel = pos - mgWater;
+            const float dc = length(rel);
+            if (dc > 1e-3f) {
+                const Vec2 out = rel * (1.0f / dc);
+                const float outward = dot(in.move, out);
+                if (outward > 0.0f && dc + kDashWu * outward > w.species().morgana.oasisRadius - 30.0f) in.move = normalizeOr(in.move - out * (1.2f * outward), perpOf(out));
+            }
+        }
     }
     in.dash = dash && !dashLast_;
     dashLast_ = dash;
@@ -799,6 +915,15 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
                               : ((close >= 7 && me.novas >= 2) || bulletsNear >= 10 || (me.cells == 0 && contactSoon && !dash)));
     in.nova = nova && !novaLast_;
     novaLast_ = nova;
+    if (boss.active && !boss.dying && boss.kind == BossKind::MirrorMimic && musicTick >= boss.fightTick && careful && (!novice || novRule)) {
+        // M5 part 6, Mirror Mimic (minibosses.md: fire in phrases): two beats on, two off (the novice only in the bars it uses the
+        // rule).
+        const i64 beat = static_cast<i64>(std::floor(musicTick / kTicksPerBeat));
+        if ((beat % 4) >= 2) {
+            in.aimActive = false;
+            in.assist = false;
+        }
+    }
     if (boss.active && !boss.dying && boss.kind == BossKind::Feedback && musicTick >= boss.fightTick && (!novice || novRule)) {
         // Feedback (feedback.md: play, then listen): fire in phrases the Echoes leave silent a bar later. Slapback: two beats
         // on, two off, swapped the next bar; Regeneration: a bar on, two off; Howl: two beats on, four off. A Nova would come

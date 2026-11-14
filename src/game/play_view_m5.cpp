@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <initializer_list>
 
+#include "core/args.h"
 #include "game/play_view.h"
 #include "sim/boss_prose.h"
 #include "sim/tuning.h"
@@ -72,6 +73,10 @@ Family miniFamily(BossKind k) {
         case BossKind::BroodMother: return Family::Brood;
         case BossKind::BlinkStar: return Family::Blink;
         case BossKind::SentryArray: return Family::Sentry;
+        case BossKind::MirrorMimic: return Family::Mimic;  // M5 part 6: batch 3
+        case BossKind::TwinTether: return Family::Tether;
+        case BossKind::WeaverPrime: return Family::Weaver;
+        case BossKind::DeepWell: return Family::Well;
         default: return Family::Carom;
     }
 }
@@ -106,6 +111,9 @@ void PlayView::drawFight(FrameDraw& d, const ViewInput& in) {
         case BossKind::Polyrhythm: drawPoly(d, in); break;
         case BossKind::Feedback: drawFeedback(d, in); break;
         case BossKind::Cadence: drawCadence(d, in); break;
+        case BossKind::Arpeggiator: drawArpeggiator(d, in); break;
+        case BossKind::Morgana: drawMorgana(d, in); break;
+        case BossKind::Reprise: drawReprise(d, in); break;
         default: drawMini(d, in); break;
     }
 }
@@ -610,6 +618,103 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
             d.pools.glow(toScene(c), prose::kSaRingWu * 2.0f * pxPerWu_, hue * (0.05f * life));
             return;
         }
+        // ---- M5 part 6: batch 3.
+        case BossKind::MirrorMimic: {
+            // Its image (and from half health the second, across the level line); gold while caught in its copy; the mirror point
+            // a small white ring.
+            const bool caught = w.mimicCopying(t);
+            const Vec3 h = caught ? mix(hue, W1, 0.4f) : hue;
+            drawBody(body, me->radius, s.bodyAng[0], h, partner, level, caught);
+            if (m.half) drawBody(lerpv(s.bodyPrev[1], s.body[1], a), me->radius, s.bodyAng[1], h, partner, level, caught);
+            if (caught) d.sparkles.glow(toScene(body), 20.0f * refPx_, gold * 2.2f);
+            const u32 n = 20;
+            for (u32 j = 0; j < n && !s.dying; ++j)
+                d.scene.line(toScene(m.ringAt + dirv(kTau * j / n) * tuning::kMmPointWu), toScene(m.ringAt + dirv(kTau * (j + 1) / n) * tuning::kMmPointWu),
+                             0.8f * refPx_, W1 * 1.8f, W1 * 1.8f, 0);
+            break;
+        }
+        case BossKind::TwinTether: {
+            // Two nodes and the lethal rope between them (gold, the rope dark, while slack); the circle it sweeps, faint.
+            const bool slack = w.tetherSlack(t);
+            for (u32 k = 0; k < 2; ++k)
+                if (s.alive & (1u << k)) drawBody(lerpv(s.bodyPrev[1 + k], s.body[1 + k], a), me->radius, s.bodyAng[1 + k], slack ? mix(hue, W1, 0.4f) : hue, partner, level, slack);
+            Vec2 b0, b1;
+            if (!s.dying && w.tetherBeam(b0, b1)) {
+                lethalBeam(d, b0, b1, tuning::kTtBeamWu);
+            } else if (!s.dying && s.alive == 0x3u) {
+                const Vec2 p0 = lerpv(s.bodyPrev[1], s.body[1], a), p1 = lerpv(s.bodyPrev[2], s.body[2], a);
+                for (float u = 0.0f; u < 1.0f; u += 0.1f)
+                    d.scene.line(toScene(lerpv(p0, p1, u)), toScene(lerpv(p0, p1, u + 0.05f)), 0.6f * refPx_, gold * 1.4f, gold * 1.4f, 0);
+            }
+            if (slack) d.sparkles.glow(toScene(body), 16.0f * refPx_, gold * 1.8f);
+            if (s.alive == 0x3u && !s.dying) {
+                const u32 n = 48;
+                const float r = 0.5f * prose::kTtApart;
+                for (u32 j = 0; j < n; ++j)
+                    d.scene.line(toScene(body + dirv(kTau * j / n) * r), toScene(body + dirv(kTau * (j + 1) / n) * r), 0.4f * refPx_, hue * 0.35f, hue * 0.35f, 0);
+            }
+            break;
+        }
+        case BossKind::WeaverPrime: {
+            // The Weaver (and from half health the second, drawing the other way), gold on its knot; its laps' lethal trail on the
+            // priority layer, a lap drawn as it goes and gone two bars on; the last cage's laps bursting 40 wu wide as a new one
+            // begins.
+            for (u32 k = 0; k < (m.half ? 2u : 1u); ++k) {
+                const bool knot = w.weaverKnot(k, t);
+                drawBody(lerpv(s.bodyPrev[k], s.body[k], a), me->radius, s.bodyAng[k], knot ? mix(hue, W1, 0.4f) : hue, partner, level, knot);
+                if (knot) d.sparkles.glow(toScene(lerpv(s.bodyPrev[k], s.body[k], a)), 18.0f * refPx_, gold * 2.0f);
+            }
+            const auto trail = [&](Vec2 c, float r, float a0, float dir, float u0, float u1, float widthWu, float lv) {
+                const u32 seg = 20;
+                for (u32 j = 0; j < seg; ++j) {
+                    const float s0 = static_cast<float>(j) / seg, s1 = static_cast<float>(j + 1) / seg;
+                    if (s1 <= u0 || s0 >= u1) continue;
+                    const float q0 = std::fmax(s0, u0), q1 = std::fmin(s1, u1);
+                    const Vec2 p0 = c + dirv(a0 + dir * kTau * q0) * r, p1 = c + dirv(a0 + dir * kTau * q1) * r;
+                    if (!visible(p0, widthWu) && !visible(p1, widthWu)) continue;
+                    if (shown(kMuteBullet)) d.scene.line(toScene(p0), toScene(p1), 0.5f * refPx_, danger * (1.4f * lv), danger * (1.4f * lv), 0);
+                    if (shown(kMutePriority)) {
+                        d.threatRims.line(toScreen(p0), toScreen(p1), 0.5f * widthWu * pxPerWu_ + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
+                        d.threatCores.line(toScreen(p0), toScreen(p1), 0.5f * widthWu * pxPerWu_, danger * lv, danger * lv, 0);
+                    }
+                }
+            };
+            for (u32 k = 0; k < (m.half ? 2u : 1u) && !s.dying; ++k)
+                for (u32 lap = 0; lap < 4; ++lap) {
+                    Vec2 c;
+                    float r = 0.0f, a0 = 0.0f, dir = 1.0f, u0 = 0.0f, u1 = 0.0f;
+                    if (w.weaverLap(k, lap, t, c, r, a0, dir, u0, u1)) trail(c, r, a0, dir, u0, u1, tuning::kWvTrailWu, 1.0f);
+                }
+            if (!s.dying && m.cageTick >= 0.0 && t >= m.cageTick && t < m.cageTick + tuning::kWvBurstBeats * kTicksPerBeat && lengthSq(m.prevCage) > 0.0f) {
+                const float lv = 1.0f - clamp01(static_cast<float>((t - m.cageTick) / (tuning::kWvBurstBeats * kTicksPerBeat)));
+                for (u32 lap = 2; lap < 4; ++lap)
+                    for (u32 k = 0; k < (m.half ? 2u : 1u); ++k)
+                        trail(m.prevCage, prose::kWvRadii[lap] - (k ? 25.0f : 0.0f), m.prevCageAng, 1.0f, 0.0f, 1.0f, prose::kWvBurstWu, lv);
+            }
+            break;
+        }
+        case BossKind::DeepWell: {
+            // Four rings round it lit from the inside out as the bar's fill rises; gold for the bar it is choked (open: x 2); the
+            // ground it draws ships from, faint.
+            const bool choked = w.wellChoked(t);
+            drawBody(body, me->radius, s.bodyAng[0], choked ? mix(hue, W1, 0.3f) : hue, partner, level, choked);
+            const float st = w.wellStomach();
+            const float fill = st > 0.0f ? clamp01(m.fill / st) : 0.0f;
+            for (u32 q = 0; q < 4 && !s.dying; ++q) {
+                const bool lit = choked || fill * 4.0f > static_cast<float>(q);
+                const float r = me->radius * (1.35f + 0.3f * static_cast<float>(q));
+                const Vec3 col = choked ? gold * 1.8f : (lit ? mix(hue, W1, 0.5f) * 1.8f : hue * 0.45f);
+                const u32 n = 32;
+                for (u32 j = 0; j < n; ++j)
+                    d.scene.line(toScene(body + dirv(kTau * j / n) * r), toScene(body + dirv(kTau * (j + 1) / n) * r), 0.7f * refPx_, col * level, col * level, 0);
+            }
+            if (choked) d.sparkles.glow(toScene(body), 22.0f * refPx_, gold * 2.0f);
+            const u32 n = 48;
+            for (u32 j = 0; j < n && !s.dying; j += 2)
+                d.scene.line(toScene(body + dirv(kTau * j / n) * prose::kDwPull), toScene(body + dirv(kTau * (j + 1) / n) * prose::kDwPull), 0.4f * refPx_,
+                             hue * 0.3f, hue * 0.3f, 0);
+            break;
+        }
         default: {
             // Carom King: a size smaller at each split; gold for a beat after each bounce; its Princes on the half beats.
             const float r = prose::kKingRadii[m.splits < 4 ? m.splits : 3];
@@ -731,6 +836,12 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
             if (static_cast<BossKind>(e.a) == BossKind::EventHorizon || static_cast<BossKind>(e.a) == BossKind::Polyrhythm ||
                 static_cast<BossKind>(e.a) == BossKind::Feedback)
                 break;
+            if (static_cast<BossKind>(e.a) == BossKind::Reprise) {
+                // reprise.md: no burst; the core dims to a point (drawReprise) and one white ripple crosses the whole lattice.
+                push(kImpBoss, at, 700.0f, 4200.0f, t);
+                addShockRings(at, 1, 4200.0f, whiteV(), whiteV(), t, 1.6f);
+                break;
+            }
             const bool mini = isMiniBoss(static_cast<BossKind>(e.a));
             const Vec3 c = static_cast<BossKind>(e.a) == BossKind::Choir ? choirHue_[0] : palette_->hue[mini ? 2 : 1];
             addPool(at, 60.0f, mini ? 260.0f : 420.0f, whiteV(), reduceFlashing_ ? 0.45f : 0.9f, 0.0f, 0.12f, false, 1, false, false, t);

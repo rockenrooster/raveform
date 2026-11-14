@@ -10,7 +10,7 @@
 
 namespace rf::net {
 
-constexpr u32 kProtocolVersion = 0x52460506u;  // 'R' 'F', M5 part 5 (the arena's operations and claims on its bodies); 0x...505 M5 part 4 (the enemy states kLane, kCourt, kEgg; the fights' new decisions) and M4 net's follow-up (motion corrections, 0x...504 on its branch); 0x...503 M5 part 3
+constexpr u32 kProtocolVersion = 0x52460507u;  // 'R' 'F', M5 part 6 (the bosses of Tracks 8 to 10 and mini-bosses batch 3: new kinds, two new decisions); 0x...506 M5 part 5 (the arena's operations and claims on its bodies); 0x...505 M5 part 4 (the enemy states kLane, kCourt, kEgg; the fights' new decisions) and M4 net's follow-up (motion corrections, 0x...504 on its branch); 0x...503 M5 part 3
 constexpr u32 kMaxPacketBytes = 1200;
 
 enum class Msg : u8 {

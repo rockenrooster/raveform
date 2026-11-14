@@ -12,6 +12,7 @@
 
 #include "core/alloc_counter.h"
 #include "game/rng.h"
+#include "sim/boss_prose.h"
 #include "sim/grid.h"
 #include "sim/sim_runner.h"
 #include "sim/species.h"
@@ -1419,6 +1420,7 @@ void testPlayTest2() {
         w->init(g_species);
         w->spawner().mode = Spawner::Mode::Off;
         w->resetRun(41, 0.0, 2);  // co-op's rule too: every ship burns alike
+        w->setSetList(3);         // (a set list of three: the loop from Track 4, as the test is written; it grows as bosses are built)
         for (u32 k = 0; k < 4; ++k) w->grantUpgrade(0, kExtraCell);
         w->grantUpgrade(1, kExtraCell);
         w->grantUpgrade(1, kExtraCell);
@@ -2095,7 +2097,7 @@ u32 calledIn(const World& w, u8 state) {
 
 void testMinibosses2() {
     g_test = "minibosses batch 2";
-    CHECK(fightBuilt(BossKind::MothQueen) && fightBuilt(BossKind::SentryArray) && !fightBuilt(BossKind::MirrorMimic));
+    CHECK(fightBuilt(BossKind::MothQueen) && fightBuilt(BossKind::SentryArray) && fightBuilt(BossKind::MirrorMimic));
     CHECK(bossHomeTrack(BossKind::MothQueen) == 4 && bossHomeTrack(BossKind::BlinkStar) == 5);
     const Vec2 ship{0.0f, 0.0f};
     // The Moth Queen: the court of twelve warps in round the player and spirals in; a rosette of five on every eighth; on
@@ -2274,6 +2276,301 @@ void testCadence() {
     const u32 c2 = w->cadenceChord(w->music());
     CHECK(s.cd.phase == 2 && w->cadenceScale(c2, w->music()) == 0.25f && w->cadenceScale((c2 + 1) % 4, w->music()) == 1.0f);
     delete w;
+}
+
+// M5 part 6: Arpeggiator (design/bosses/arpeggiator.md), and the entrance rule (nobody meets a boss on their last cell).
+void testArpeggiator() {
+    g_test = "arpeggiator";
+    const ArpData& d = g_species->arp;
+    CHECK(d.health == 6400.0f && d.coreRadius == 70.0f && d.laneWidth == 200.0f && d.laneLength == 900.0f && d.blockWidth == 90.0f &&
+          d.blockSpeed == 420.0f && d.rewardShards == 340);
+    CHECK(bossOfSong(7) == BossKind::Arpeggiator && bossHomeTrack(BossKind::Arpeggiator) == 8 && fightBuilt(BossKind::Arpeggiator));
+    const Vec2 ship{0.0f, 0.0f};
+    // A mini-boss leaves the cells alone.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        w->playerMut(0).cells = 1;
+        w->spawnBossNow(kTicksPerBar, Vec2{600.0f, 0.0f}, BossKind::AlphaHound);
+        CHECK(w->player(0).cells == 1);
+        delete w;
+    }
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    stepWorld(*w, music, ship);
+    // The entrance rule: one cell grows back to two as the boss arrives (an arc, as Regen's).
+    w->playerMut(0).cells = 1;
+    w->spawnBossNow(kTicksPerBar, Vec2{}, BossKind::Arpeggiator);
+    CHECK_MSG(w->player(0).cells == 2 && countEvents(*w, EventType::CellTake) == 1, "cells %u", w->player(0).cells);
+    const BossState& s = w->boss();
+    CHECK(s.kind == BossKind::Arpeggiator && s.fightTick == 2.0 * kTicksPerBar);
+    // The machine stands above the players, 380 wu out; its four lanes 200 wu apart run down toward them.
+    const Vec2 m0 = w->arpMachine(0);
+    CHECK_MSG(std::fabs(m0.x) < 1.0f && std::fabs(m0.y + 380.0f) < 1.0f, "machine at %.1f %.1f", m0.x, m0.y);
+    Vec2 f1, d1, f4, d4;
+    CHECK(w->arpLane(0, 1, f1, d1) && w->arpLane(0, 4, f4, d4) && std::fabs(length(f4 - f1) - 600.0f) < 1.0f && d1.y > 0.99f);
+    CHECK(!w->arpLane(1, 1, f1, d1));
+    // Quarter notes: four blocks a bar, in G's lanes (1 3 3 1 on steps 0 4 8 12... as kApLanesG).
+    const auto blocksIn = [&](double until, u32* lanes) {
+        u32 n = 0;
+        while (music + kTicksPerSimTick <= until + 1e-9) {
+            stepWorld(*w, music, ship);
+            for (u32 i = 0; i < w->eventCount(); ++i) {
+                const Event& e = w->events()[i];
+                if (e.type == EventType::BossCue && e.a == static_cast<u8>(BossCue::ApBlock)) {
+                    if (lanes && n < 16) lanes[n] = e.b + 1u;
+                    ++n;
+                }
+            }
+        }
+        return n;
+    };
+    runTo(*w, music, 2.0 * kTicksPerBar - 2.0, ship);
+    u32 lanes[16] = {};
+    const u32 q = blocksIn(3.0 * kTicksPerBar - 2.0, lanes);
+    CHECK_MSG(q == 4 && lanes[0] == prose::kApLanesG[0] && lanes[1] == prose::kApLanesG[4] && lanes[2] == prose::kApLanesG[8] && lanes[3] == prose::kApLanesG[12],
+              "%u blocks, lanes %u %u %u %u", q, lanes[0], lanes[1], lanes[2], lanes[3]);
+    // The core: x 2 on the One, x 1 after it; the console a quarter.
+    runTo(*w, music, 3.0 * kTicksPerBar + 10.0, ship);
+    CHECK(w->arpScale(3, 0, w->music()) == 2.0f && w->arpScale(1, 0, w->music()) == 0.25f);
+    runTo(*w, music, 3.0 * kTicksPerBar + kTicksPerBeat + 10.0, ship);
+    CHECK(w->arpScale(3, 0, w->music()) == 1.0f);
+    // A block hurts where it falls; a Nova clears the lanes.
+    bool hit = false;
+    const float tps = w->ticksPerSecond();
+    for (const ArpState::Block& b : s.ap.blocks) {
+        if (b.tick < 0.0) continue;
+        const float dist = static_cast<float>(w->music() - b.tick) / tps * d.blockSpeed;
+        Vec2 from;
+        if (dist > 0.0f && dist < d.laneLength) hit = hit || w->arpBlockHit(b.from + b.dir * dist, from);
+    }
+    CHECK(hit);
+    stepWorld(*w, music, ship, 0, true);
+    runTo(*w, music, 4.0 * kTicksPerBar - 30.0, ship);
+    u32 left = 0;
+    for (const ArpState::Block& b : s.ap.blocks) left += b.tick >= 0.0 && b.tick < 4.0 * kTicksPerBar - 2.0 * kTicksPerBeat ? 1u : 0u;
+    CHECK_MSG(left == 0, "%u blocks left after the Nova", left);
+    // Eighth notes below two thirds: eight a bar; every fourth bar it moves to the next side.
+    w->bossHealthNow(0.6f);
+    runTo(*w, music, 5.0 * kTicksPerBar - 2.0, ship);
+    const u32 e8 = blocksIn(6.0 * kTicksPerBar - 2.0, nullptr);
+    CHECK_MSG(s.ap.phase == 1 && e8 == 8, "phase %u, %u blocks", s.ap.phase, e8);
+    runTo(*w, music, 10.0 * kTicksPerBar + 2.0, ship);
+    CHECK_MSG(s.ap.side[0] == 1, "side %u", s.ap.side[0]);
+    // Two hands below a third: the second machine at right angles; the stab's six on top of the quarter notes.
+    w->bossHealthNow(0.3f);
+    runTo(*w, music, 11.0 * kTicksPerBar - 2.0, ship);
+    const u32 two = blocksIn(12.0 * kTicksPerBar - 2.0, nullptr);
+    CHECK_MSG(s.ap.two && s.ap.side[1] == ((s.ap.side[0] + 1u) & 3u) && two == 10, "two %d, %u blocks", s.ap.two ? 1 : 0, two);
+    delete w;
+}
+
+// M5 part 6: Fata Morgana (design/bosses/morgana.md): the storm on the kick, the drift and the rest, the mirage, the leaps.
+void testMorgana() {
+    g_test = "morgana";
+    const MorganaData& d = g_species->morgana;
+    CHECK(d.health == 7600.0f && d.oasisRadius == 260.0f && d.bodyRadius == 76.0f && d.fanBullets == 5 && d.bulletSpeed == 200.0f && d.rewardShards == 380);
+    CHECK(bossOfSong(8) == BossKind::Morgana && bossHomeTrack(BossKind::Morgana) == 9 && fightBuilt(BossKind::Morgana));
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    Vec2 ship{0.0f, 0.0f};
+    stepWorld(*w, music, ship);
+    w->spawnBossNow(kTicksPerBar, Vec2{}, BossKind::Morgana);
+    const BossState& s = w->boss();
+    CHECK(s.kind == BossKind::Morgana && s.fightTick == 2.0 * kTicksPerBar);
+    // The oasis starts where the players are; she circles 70 wu outside its edge.
+    runTo(*w, music, 2.0 * kTicksPerBar + 10.0, ship);
+    const Vec2 o = w->morganaOasis(w->music());
+    CHECK_MSG(length(o) < 40.0f && w->morganaCalm(Vec2{}, w->music()) && !w->morganaCalm(Vec2{500.0f, 0.0f}, w->music()), "oasis at %.1f %.1f", o.x, o.y);
+    CHECK_MSG(std::fabs(length(w->morganaBody(w->music()) - o) - 330.0f) < 1.0f, "body %.1f out", length(w->morganaBody(w->music()) - o));
+    // It drifts at 110 wu/s along its figure.
+    const Vec2 o1 = w->morganaOasis(w->music() + kTicksPerBeat);
+    const float v = length(o1 - o) / (static_cast<float>(kTicksPerBeat) / w->ticksPerSecond());
+    CHECK_MSG(w->morganaResting(w->music()) || std::fabs(v - 110.0f) < 6.0f, "drift %.1f wu/s", v);
+    // The storm hurts on the kick: a ship outside the calm loses a cell (god mode off just over one kick, far from her fans).
+    runTo(*w, music, 3.0 * kTicksPerBar + 5.0 * kTicksPerStep, ship);
+    ship = Vec2{1500.0f, 900.0f};
+    w->rules().godMode = false;
+    const u8 cells = w->player(0).cells;
+    runTo(*w, music, 3.0 * kTicksPerBar + 7.0 * kTicksPerStep, ship);
+    CHECK_MSG(w->player(0).cells + 1 == cells, "cells %u -> %u", cells, w->player(0).cells);
+    w->rules().godMode = true;
+    ship = Vec2{};
+    // A rest bar (the last of four): she crosses the water, x 2 while over it.
+    double rest = -1.0;
+    for (double t = w->music(); t < w->music() + 5.0 * kTicksPerBar && rest < 0.0; t += kTicksPerBar / 8.0)
+        if (w->morganaResting(t)) rest = std::floor(t / kTicksPerBar) * kTicksPerBar;
+    CHECK(rest > 0.0);
+    CHECK(w->morganaScale(rest + 0.5 * kTicksPerBar) == 2.0f && w->morganaScale(rest + 0.02 * kTicksPerBar) == 1.0f && w->morganaScale(rest + 1.2 * kTicksPerBar) == 1.0f);
+    CHECK(length(w->morganaBody(rest + 0.5 * kTicksPerBar) - w->morganaOasis(rest + 0.5 * kTicksPerBar)) < 5.0f);
+    // The Mirage (below two thirds): a second oasis 500 wu away at the next fourth bar line, out on the snares, gone after two bars.
+    w->bossHealthNow(0.6f);
+    double mt = -1.0;
+    for (u32 k = 0; k < 6 * 120 && mt < 0.0; ++k) {
+        stepWorld(*w, music, w->morganaOasis(music));
+        mt = s.mg.mirageTick;
+    }
+    Vec2 mp;
+    bool lit = false;
+    CHECK(mt > 0.0 && w->morganaMirage(mt + 10.0, mp, lit) && lit && std::fabs(length(mp - w->morganaOasis(mt + 10.0)) - 500.0f) < 1.0f);
+    CHECK(w->morganaMirage(mt + 4.5 * kTicksPerStep, mp, lit) && !lit && w->morganaMirage(mt + 6.5 * kTicksPerStep, mp, lit) && lit);
+    CHECK(!w->morganaMirage(mt + 2.0 * kTicksPerBar + 1.0, mp, lit));
+    // The Crossing (below a third): every second bar a leap of 600 wu; the old one shrinks while a corridor joins them; x 2 a beat.
+    w->bossHealthNow(0.3f);
+    for (u32 k = 0; k < 6 * 120 && s.mg.leapTick < 0.0; ++k) stepWorld(*w, music, w->morganaOasis(music));
+    const MorganaState& g = s.mg;
+    CHECK(g.leapTick > 0.0 && std::fabs(length(g.at - g.from) - 600.0f) < 1.0f);
+    const double lt = g.leapTick;
+    CHECK(w->morganaScale(lt + 10.0) == 2.0f && w->morganaScale(lt + kTicksPerBeat + 10.0) == 1.0f);
+    CHECK(w->morganaCalm((g.at + g.from) * 0.5f, lt + 0.5 * kTicksPerBar) && !w->morganaCalm((g.at + g.from) * 0.5f, lt + 1.01 * kTicksPerBar));
+    CHECK(g.nextTick == lt + 2.0 * kTicksPerBar);
+    delete w;
+}
+
+// M5 part 6: Kaleidos, Reprise (design/bosses/reprise.md): the Reprise's fans and armour, the Medley's solos and shares, Last
+// Light's arpeggio (First Light's, from design/music/track01.json).
+void testReprise() {
+    g_test = "reprise";
+    const RepriseData& d = g_species->reprise;
+    CHECK(d.health == 9000.0f && d.coreRadius == 80.0f && d.armLength == 300.0f && d.rewardShards == 500);
+    CHECK(d.arpMidi[0][0] == 69 && d.arpSemis[0][3] == 12 && d.arpSemis[0][12] == 10 && d.arpMidi[3][0] == 62 && d.arpSemis[3][12] == 14);
+    CHECK(bossOfSong(9) == BossKind::Reprise && bossHomeTrack(BossKind::Reprise) == 10 && fightBuilt(BossKind::Reprise) && kBossesBuilt == 10);
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    const Vec2 ship{0.0f, 0.0f};
+    stepWorld(*w, music, ship);
+    w->spawnBossNow(kTicksPerBar, Vec2{500.0f, 0.0f}, BossKind::Reprise);
+    const BossState& s = w->boss();
+    CHECK(s.kind == BossKind::Reprise && s.fightTick == 2.0 * kTicksPerBar && s.alive == 0x3Fu);
+    // The Reprise: fans of five on the two-step's hits from the four arms whose pair is not resting; the core x 2 on the One.
+    runTo(*w, music, 2.0 * kTicksPerBar - 2.0, ship);
+    const u32 b0 = w->bullets().count;
+    runTo(*w, music, 2.0 * kTicksPerBar + 4.0, ship);
+    CHECK_MSG(w->bullets().count - b0 == 20u, "%u bullets", w->bullets().count - b0);
+    CHECK(w->repriseScale(3, 0, w->music()) == 2.0f && w->repriseScale(2, 1, w->music()) == 0.25f);
+    runTo(*w, music, 2.0 * kTicksPerBar + kTicksPerBeat + 4.0, ship);
+    CHECK(w->repriseScale(3, 0, w->music()) == 1.0f);
+    // The Medley (below 70%): each arm a sixth of the phase's health; the solos two bars each, from Kaleidos's arm; the soloist
+    // alone open.
+    w->bossHealthNow(0.6f);
+    runTo(*w, music, 3.0 * kTicksPerBar + 4.0, ship);
+    CHECK_MSG(s.rp.phase == 1 && std::fabs(s.partHp[0] - 0.4f / 6.0f * s.coreMax) < 1.0f, "phase %u, arm %.1f", s.rp.phase, s.partHp[0]);
+    CHECK(s.rp.solo == 0 && w->repriseScale(2, 0, w->music()) == 1.0f && w->repriseScale(2, 2, w->music()) == 0.25f && w->repriseScale(3, 0, w->music()) == 0.25f);
+    runTo(*w, music, 5.0 * kTicksPerBar + 4.0, ship);
+    CHECK(s.rp.solo == 1 && w->repriseWaveOut(w->music()));
+    // Longwave's arm let go: its wave's crests open, the rest a quarter.
+    u32 crests = 0;
+    for (u32 j = 0; j < 8; ++j) crests += w->repriseCrest(j, w->music()) ? 1u : 0u;
+    CHECK(crests >= 1 && crests <= 4);
+    // Shooting the soloist off: its share goes, the core's health with it; its solo is skipped from then on.
+    w->killBossNextTick(0x2u, false);
+    stepWorld(*w, music, ship);
+    CHECK(!(s.alive & 0x2u) && std::fabs(s.coreHp - (0.2f + 5.0f * 0.4f / 6.0f) * s.coreMax) < 2.0f);
+    runTo(*w, music, 6.0 * kTicksPerBar + 4.0, ship);
+    CHECK_MSG(s.rp.solo == 2, "solo %u", s.rp.solo);
+    // Last Light: every arm off; the core fires First Light's arpeggio, a bullet a sixteenth.
+    w->killBossNextTick(0x3Fu, false);
+    stepWorld(*w, music, ship);
+    stepWorld(*w, music, ship);
+    CHECK(s.rp.phase == 2 && s.rp.lastTick == 7.0 * kTicksPerBar);
+    runTo(*w, music, 7.0 * kTicksPerBar - 2.0, ship);
+    u32 notes = 0;
+    while (music + kTicksPerSimTick <= 8.0 * kTicksPerBar - 2.0) {
+        stepWorld(*w, music, ship);
+        for (u32 i = 0; i < w->eventCount(); ++i)
+            notes += w->events()[i].type == EventType::BossCue && w->events()[i].a == static_cast<u8>(BossCue::RpArp) ? 1u : 0u;
+    }
+    CHECK_MSG(notes == 16u, "%u notes in a bar", notes);
+    delete w;
+}
+
+// M5 part 6: mini-bosses batch 3 (minibosses.md "Batch 3") and the picks of Tracks 6 to 10.
+void testMinis3() {
+    g_test = "minibosses batch 3";
+    const Vec2 ship{0.0f, 0.0f};
+    const auto fight = [&](BossKind k, double& music) {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        stepWorld(*w, music, ship);
+        w->spawnBossNow(kTicksPerBar, Vec2{500.0f, 0.0f}, k, Vec2{});
+        return w;
+    };
+    // Mirror Mimic: through the mirror point (where the players' centre was), x 2 while it copies a Dash a beat late.
+    {
+        double music = 0.0;
+        World* w = fight(BossKind::MirrorMimic, music);
+        const Vec2 p{200.0f, 100.0f};
+        runTo(*w, music, 3.0 * kTicksPerBar, p);
+        const Vec2 m = w->mimicImage(0);
+        CHECK_MSG(std::fabs(m.x + 200.0f) < 1.0f && std::fabs(m.y + 100.0f) < 1.0f, "mimic at %.1f %.1f", m.x, m.y);
+        CHECK(w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 1.0f);
+        delete w;
+    }
+    // Twin Tether: two nodes 520 wu apart, the rope between them lethal; each half the health.
+    {
+        double music = 0.0;
+        World* w = fight(BossKind::TwinTether, music);
+        runTo(*w, music, 3.0 * kTicksPerBar, ship);
+        const BossState& s = w->boss();
+        CHECK(std::fabs(length(s.body[1] - s.body[2]) - 520.0f) < 1.0f && std::fabs(s.partHp[0] - 0.5f * s.coreMax) < 1.0f);
+        Vec2 a, b;
+        CHECK(w->tetherBeam(a, b) && !w->tetherSlack(w->music()));
+        delete w;
+    }
+    // Weaver Prime: a cage round where the player stood at its first knot, laps of 300, 250, ...; x 2 on the knot.
+    {
+        double music = 0.0;
+        World* w = fight(BossKind::WeaverPrime, music);
+        const Vec2 p{100.0f, 0.0f};
+        runTo(*w, music, 2.0 * kTicksPerBar + 10.0, p);
+        const MiniState& m = w->boss().mini;
+        CHECK_MSG(m.cageTick == 2.0 * kTicksPerBar && length(m.cage - p) < 1.0f, "cage at %.1f (%.1f %.1f)", m.cageTick, m.cage.x, m.cage.y);
+        CHECK(w->weaverKnot(0, w->music()) && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 2.0f);
+        runTo(*w, music, 2.0 * kTicksPerBar + 2.5 * kTicksPerBeat, p);
+        CHECK(std::fabs(length(w->weaverPos(0, w->music()) - m.cage) - 300.0f) < 1.0f && !w->weaverKnot(0, w->music()));
+        Vec2 c;
+        float r = 0.0f, a0 = 0.0f, dir = 0.0f, u0 = 0.0f, u1 = 0.0f;
+        CHECK(w->weaverLap(0, 0, w->music(), c, r, a0, dir, u0, u1) && r == 300.0f && u1 > 0.4f && u1 < 0.6f);
+        runTo(*w, music, 3.0 * kTicksPerBar + 2.5 * kTicksPerBeat, p);
+        CHECK(std::fabs(length(w->weaverPos(0, w->music()) - m.cage) - 250.0f) < 1.0f);
+        delete w;
+    }
+    // Deep Well: it swallows (a quarter) and fills; overfed in a bar it chokes for the next (x 2), else it gives a ring back.
+    {
+        double music = 0.0;
+        World* w = fight(BossKind::DeepWell, music);
+        runTo(*w, music, 2.0 * kTicksPerBar + 10.0, ship);
+        CHECK(w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 0.25f && w->wellStomach() > 0.0f);
+        const Vec2 at = w->boss().body[0];
+        const u32 b0 = w->bullets().count;
+        const float st = w->wellStomach();
+        w->shootBoss(at - Vec2{200.0f, 0.0f}, at, 0.9f * st);
+        CHECK(w->boss().mini.fill > 0.89f * st && w->boss().mini.swallowed == 1);
+        runTo(*w, music, 3.0 * kTicksPerBar + 4.0, ship);
+        const u32 want = static_cast<u32>(0.9f * st / 3.0f);
+        CHECK_MSG(w->bullets().count + 1u >= b0 + want && !w->wellChoked(w->music()), "%u bullets back (%u)", w->bullets().count - b0, want);
+        w->shootBoss(at - Vec2{200.0f, 0.0f}, w->boss().body[0], st * 1.2f);
+        runTo(*w, music, 4.0 * kTicksPerBar + 4.0, ship);
+        CHECK(w->wellChoked(w->music()) && w->bossDamageScale(3, 0, w->music(), Vec2{1.0f, 0.0f}) == 2.0f);
+        delete w;
+    }
+    // The picks: Track 6 Mirror Mimic; Track 7 Twin Tether or Weaver Prime; Track 8 Deep Well or the other.
+    {
+        World* w = quietWorld();
+        CHECK(w->pickMini(6) == BossKind::MirrorMimic);
+        const BossKind t7 = w->pickMini(7);
+        CHECK(t7 == BossKind::TwinTether || t7 == BossKind::WeaverPrime);
+        w->directorMut().minisMet = static_cast<u16>(1u << (static_cast<u32>(t7) - static_cast<u32>(BossKind::AlphaHound)));
+        w->directorMut().lastMini = static_cast<u8>(t7);
+        const BossKind t8 = w->pickMini(8);
+        CHECK(t8 == BossKind::DeepWell || (t8 != t7 && (t8 == BossKind::TwinTether || t8 == BossKind::WeaverPrime)));
+        delete w;
+    }
 }
 
 // M5 part 5: elites and their traits (design/traits.md), the arena's structures and events (design/arena.md).
@@ -3316,6 +3613,10 @@ int main() {
     testShotStream();
     testArena();
     testCadence();
+    testArpeggiator();
+    testMorgana();
+    testReprise();
+    testMinis3();
     testMinibosses();
     testFamiliesM5();
     testUpgradesM5();

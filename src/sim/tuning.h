@@ -98,7 +98,7 @@ constexpr u32 kDirectorAliveCap = 900;       // no new bodies while this many en
 // firstSlice.crowd): the reference view, 2400 x 1080 px at 1.5 px a wu and zoom 1 (look.md), centred on the ship.
 constexpr float kFrameHalfWWu = 800.0f, kFrameHalfHWu = 360.0f;
 // The crowd's formations (GAME_DESIGN 8 names floods along a frame edge, rings and corner swarms; where
-// they land is species.json's rrive; the shares and the spacing are chosen): a flood lands in clusters
+// they land is species.json's `arrive`; the shares and the spacing are chosen): a flood lands in clusters
 // of up to 8, at most 220 wu apart along the edge.
 constexpr float kCrowdFloodShare = 0.5f, kCrowdRingShare = 0.25f;
 constexpr float kCrowdFloodSpacingWu = 220.0f;
@@ -351,10 +351,13 @@ constexpr float kStandingDamage = 1.5f;
 constexpr float kKaleidosHealthTune = 0.55f;  // the novice wins its first meeting in 19 of 20, 31 s (x 0.7: 18, 36 s)
 constexpr float kLongwaveHealthTune = 0.77f;  // (2.2 x 0.35) the novice 17 of 20, 98 s (the page's 150 s)
 constexpr float kChoirHealthTune = 1.26f;     // (4.2 x 0.3) the novice 17 of 20, 43 s
-constexpr float kMiniHealthTune[8] = {0.975f, 0.75f, 0.7f, 1.44f,  // (6.5, 5.0, 2.0, 4.8 x 0.15, 0.15, 0.35, 0.3) Alpha Hound, The Hive,
+constexpr float kMiniHealthTune[12] = {0.975f, 0.75f, 0.7f, 1.44f,  // (6.5, 5.0, 2.0, 4.8 x 0.15, 0.15, 0.35, 0.3) Alpha Hound, The Hive,
                                                                      // Battering Ram, Carom King: the novice's wins 23-30 s
-                                     3.0f, 2.0f, 3.0f, 0.8f};      // (12, 10, 5, 4 x 0.25, 0.2, 0.6, 0.2) Moth Queen, Brood Mother, Blink Star,
+                                     3.0f, 2.0f, 3.0f, 0.8f,       // (12, 10, 5, 4 x 0.25, 0.2, 0.6, 0.2) Moth Queen, Brood Mother, Blink Star,
                                                                      // Sentry Array: 24-29 s
+                                     0.5f, 1.0f, 2.5f, 1.3f};      // M5 part 6, batch 3 (the novice from the fight's start, x 1: Mirror
+                                                                     // Mimic 8 won, 12 warped out; Twin Tether 8 of 9, 26 s; Weaver Prime
+                                                                     // 11 of 11, 10 s; Deep Well 7 of 9, 15 s)
 // M5 (GAME_DESIGN 7.6, quoted starting values): the novice bot, a player's first week.
 constexpr float kNoviceAimLagS = 0.200f;     // it aims 200 ms behind where the body is
 constexpr float kNoviceWanderDeg = 6.0f;     // and wanders 6 degrees to either side
@@ -379,8 +382,33 @@ constexpr float kHorizonHealthTune = 8.0f;  // (16 x 0.5) given back with elites
 // Polyrhythm (polyrhythm.md gives no number for these).
 constexpr float kPrLinkBurnHalfWu = 6.0f;   // the burning link: look.md v2.5, 12 wu (part 4: 16)
 constexpr float kPolyHealthTune = 1.7f;     // (3.0 x 0.8 x 0.71) with elites from Track 3: the novice 15 of 19, 25 s (2.0: 11 of 20; 2.4: 10 of 19)
+constexpr u8 kBossEntranceCells = 2;       // GAME_DESIGN 5 (f32a441): "grows back up to two" as a boss arrives
 constexpr float kCadenceHealthTune = 7.0f;  // M5 part 6: the novice with the careful bot's build (--handover 7) 18 of 20, 83 s; x 1: 14 s
-constexpr float kCdArmour = 0.25f;           // GAME_DESIGN 7.6: a pillar the page says cannot be hurt takes a quarter (not in cadence.json yet)
+constexpr float kArpHealthTune = 18.0f;     // M5 part 6 (tuned with the novice: docs/PROGRESS.md part 6)
+constexpr float kApArmour = 0.25f;          // GAME_DESIGN 7.6: "the console sheds shots": a quarter (not in arpeggiator.json yet)
+constexpr float kMorganaHealthTune = 14.0f;  // M5 part 6 (tuned with the novice: docs/PROGRESS.md part 6)
+constexpr float kMgFanSpreadDeg = 40.0f;    // morgana.md gives no spread for her fan of five (Cadence's 40 degrees)
+constexpr float kMgBulletLife = 4.0f;       // ... nor its life (Cadence's 4 s)
+constexpr float kMgMarginWu = 700.0f;       // the oases keep this far from the arena's walls
+constexpr float kRepriseHealthTune = 4.5f;  // M5 part 6 (tuned with the novice: docs/PROGRESS.md part 6)
+constexpr float kRpArmour = 0.25f;          // GAME_DESIGN 7.6: the arms "cannot be hurt yet", the closed core, the arms not soloing
+constexpr float kRpArmCircleR = 34.0f;      // an arm's hit circles (three along it; Kaleidos's hull is drawn, not given)
+constexpr float kRpWaveSpacing = 150.0f;    // Longwave's arm let go: its segments 150 wu apart across its way (not given)
+constexpr float kRpWaveAmp = 80.0f;         // ... swinging 80 wu along it, a swing a beat (not given)
+constexpr float kRpWaveTravel = 1800.0f;    // ... 1,800 wu out from the wheel over its two bars ("crosses the frame once")
+constexpr float kRpCrestAt = 0.7f;          // ... a crest: its swing above 0.7 of the way forward
+constexpr u32 kRpVolley = 7;                // the Choir's arm: a volley of seven, 50 degrees, 220 wu/s (the page gives no numbers)
+constexpr float kRpVolleySpreadDeg = 50.0f;
+constexpr float kRpVolleySpeed = 220.0f;
+constexpr float kRpRingGapDeg = 60.0f;      // Polyrhythm's arm: rings of 24 with a gap of 60 degrees; the "three" ring at
+constexpr float kRpThreeSpeed = 240.0f;     // 240 wu/s, its gap 120 degrees on each bar; the "four" ring at 180 wu/s, 90 degrees
+constexpr float kRpFourSpeed = 180.0f;
+constexpr float kMmBulletLife = 3.0f;       // Mirror Mimic: its answer's life (not given)
+constexpr float kMmPointWu = 24.0f;         // ... the mirror point's ring ("touching the mirror point is touching the Mimic")
+constexpr float kTtBeamWu = 12.0f;          // Twin Tether: the beam's width (not given; the lead's rule: a lethal beam is at most 12 wu)
+constexpr float kWvTrailWu = 12.0f;         // Weaver Prime: the trail's width (not given; at most 12 wu)
+constexpr float kWvBurstBeats = 0.5f;       // ... the burst lasts half a beat (not given)
+constexpr float kDwArmour = 0.25f;          // Deep Well: "it takes no harm" while it swallows: a quarter (GAME_DESIGN 7.6)
 constexpr float kFeedbackHealthTune = 2.0f; // (2.5 x 0.8) the novice 15 of 17, 112 s (x 1.0: 181 s; the page: about two minutes)
 
 // ======================================================================================================

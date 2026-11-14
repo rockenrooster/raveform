@@ -228,6 +228,27 @@ add_custom_command(OUTPUT ${RF_GEN}/minibosses.json.inc
   JOB_POOL rf_jobs
   VERBATIM)
 # M5 part 6: the bosses of Tracks 7 to 10.
+add_custom_command(OUTPUT ${RF_GEN}/arpeggiator.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/arpeggiator.json -DOUT=${RF_GEN}/arpeggiator.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/bosses/arpeggiator.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed arpeggiator.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
+add_custom_command(OUTPUT ${RF_GEN}/morgana.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/morgana.json -DOUT=${RF_GEN}/morgana.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/bosses/morgana.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed morgana.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
+add_custom_command(OUTPUT ${RF_GEN}/reprise.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/reprise.json -DOUT=${RF_GEN}/reprise.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/bosses/reprise.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed reprise.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
 add_custom_command(OUTPUT ${RF_GEN}/cadence.json.inc
   COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/bosses/cadence.json -DOUT=${RF_GEN}/cadence.json.inc
           -P ${RF_ROOT}/cmake/EmbedText.cmake
@@ -264,6 +285,9 @@ add_library(raveform_sim STATIC
   src/sim/world_arena.cpp
   src/sim/world_boss.cpp
   src/sim/world_cadence.cpp
+  src/sim/world_arpeggiator.cpp
+  src/sim/world_morgana.cpp
+  src/sim/world_reprise.cpp
   src/sim/world_choir.cpp
   src/sim/world_enemies.cpp
   src/sim/world_families.cpp
@@ -273,6 +297,7 @@ add_library(raveform_sim STATIC
   src/sim/world_longwave.cpp
   src/sim/world_miniboss.cpp
   src/sim/world_miniboss2.cpp
+  src/sim/world_miniboss3.cpp
   src/sim/world_net.cpp
   src/sim/world_polyrhythm.cpp
   src/sim/world_spawner.cpp
@@ -282,6 +307,10 @@ add_library(raveform_sim STATIC
   ${RF_GEN}/arena.json.inc
   ${RF_GEN}/traits.json.inc
   ${RF_GEN}/cadence.json.inc
+  ${RF_GEN}/arpeggiator.json.inc
+  ${RF_GEN}/morgana.json.inc
+  ${RF_GEN}/reprise.json.inc
+  ${RF_GEN}/music_track01.json.inc
   ${RF_GEN}/species.json.inc
   ${RF_GEN}/kaleidos.json.inc
   ${RF_GEN}/longwave.json.inc

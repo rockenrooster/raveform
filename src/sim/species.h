@@ -169,6 +169,9 @@ public:
     FeedbackData feedback;  // M5 part 4
     MiniData minis;
     CadenceData cadence;  // M5 part 6
+    ArpData arp;
+    MorganaData morgana;
+    RepriseData reprise;
     ArenaData arena;    // M5 part 5: design/arena.json
     TraitData traits;   // M5 part 5: design/traits.json
 

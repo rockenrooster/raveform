@@ -26,8 +26,9 @@ M5 part 4; protocol `0x52460505` holds both).
   beat on every bar line the song comes back to I and adds a fan of seven on the snare; Inversion (below 33%) turns the rule
   over (the sounding pillar alone fires a rosette of sixteen on the One and twelve on three; the other three open). Death: the
   four burst in turn on the last bar's beats, the Shards (300) with the tonic.
-- **Armour** (GAME_DESIGN 7.6): the closed pillars (the page: "the only one that can be hurt") take a quarter
-  (`tuning::kCdArmour`, for cadence.json's `damageScale`).
+- **Armour** (GAME_DESIGN 7.6): the closed pillars (the page: "the only one that can be hurt") take a quarter; since f32a441
+  read from cadence.json `numbers.damageScale` (open 1.0, openOnTheOne 2.0, closed 0.25; in Inversion the sounding pillar is
+  the closed one).
 - **Hint**: `SHOOT THE SILENT ONE` (the page's weak point is the open pillar, which is the silent one: it matches).
 - **Health** x 7 (`kCadenceHealthTune`): the novice with the careful bot's build at Track 7 (`--handover 7`) wins **18 of
   20** in **83 s** (x 1: 14 s; x 5: 66 s); the careful bot **73 s** (x 1: 9 s). The page asks 80-100 s.
@@ -38,6 +39,126 @@ M5 part 4; protocol `0x52460505` holds both).
 - Soaks: clean 2.91, impaired 5.38 wu RMS, census 0 mismatches.
 - The flaky audio check "seq latest" failed once more: its writer now goes on publishing until the reader has read (the
   lead's rule), instead of a rerun.
+
+### The boss entrance (the lead's f32a441)
+
+- Nobody meets a boss on their last cell: as a boss arrives (`spawnBossNow`, bosses only, not mini-bosses) each of this
+  device's players with fewer than two cells grows back up to two (never past their capacity), with Regen's `CellTake` event
+  (the arcs draw over the entrance bar). Test: `arpeggiator` (one cell -> two; a mini-boss leaves it at one).
+- The forty-seed recount of the first pass was withdrawn by the lead (short runs only); not run.
+
+### Arpeggiator (Track 8; design/bosses/arpeggiator.md)
+
+- A machine (a console 900 x 120, its core of 70 behind a shutter, four ports, the 4 x 16 gold chart above it) stands 380 wu
+  from the players' centre on its side, following along its axis at 120 wu/s; four lanes 200 wu wide and 900 long; the
+  blocks (90 x 28 danger bars on the priority layer, 420 wu/s, `bossBeamsHit`) leave the ports on the lead's steps in the lane
+  of the note (G's ranks, `kApLanesG`). Quarter notes: steps 0, 4, 8, 12; Eighth notes (below 66%): every second step, and
+  every fourth bar it moves to the next side (its lanes dashed for the bar before); Two hands (below 33%): a second machine,
+  white, at right angles, the stab's rhythm (steps 0, 3, 6, 9, 12, 14) in lanes 1-4 in turn. A Nova clears the lanes. Death:
+  the chart reads GG, the blocks climb back up their lanes in gold, chirps up the scale over two beats, the Shards (340) on
+  the One that ends the Track.
+- **Floored part**: the console ("sheds shots") takes a quarter on the core's health (`tuning::kApArmour`; not in
+  arpeggiator.json). Core x 2 on the One (the shutter open), x 1 at other times.
+- **Hint** `SHOOT IT AS IT LOADS` (the page's weak point: it matches).
+- **Health** x 18 (`kArpHealthTune`): the novice with the careful bot's build (`--handover 8`) wins **17 of 20** in **98 s**
+  (x 1: 10 s; x 10: 18 of 20, 62 s; x 16: 17, 89 s); the careful bot **73 s**, 20 of 20. The page asks 90-110 s. Both bots
+  step to a lane line as a block comes down their lane (a block is 90 wu of a 200 wu lane).
+- Decisions taken alone: every chord uses G's lane ranks (the page gives G's); Two hands' stab lanes 1, 2, 3, 4, 1, 2; a
+  block's note sounds as it leaves its port (the page: as it passes the nearest player's row); the second machine takes the
+  next side clockwise.
+- Co-op: the blocks follow the song's clock; the machines stand from the players' centre on every device. **No host decision.**
+
+### Fata Morgana (Track 9; design/bosses/morgana.md)
+
+- The oasis (260 wu) drifts along a figure of eight 900 wu wide (a lemniscate of Gerono, 450 tall) at 110 wu/s of arc from
+  where the players were, a function of the song's clock (`morganaDrift`: the rest bars taken out). The storm hurts on the
+  kick (steps 0, 6, 10): a ship whose centre is outside the calm loses a cell. Every fourth bar of the song the oasis rests
+  and she crosses it through its middle (x 2 over the water; she does not fire then). She circles 70 wu outside its edge, a
+  turn in four bars, firing a fan of five (40 degrees, 200 wu/s, 4 s) at the nearest player on each kick. Mirage (below
+  66%): on the song's fourth bar lines a second oasis 500 wu away, one of them real (the seed and the bar; the real one
+  moving the drift with it); the mirage is calm while shown, blinks out on the snares, is gone after two bars. Crossing (below
+  33%): the drift stops; every second bar the oasis leaps 600 wu (shown dashed the bar before; the way from the seed and the
+  bar, clear of the walls), the old one shrinking over the bar and a corridor 160 wu wide joining them; x 2 the beat after.
+  Death: the storm drops; the Shards (380).
+- No floored part (the page names none that cannot be hurt).
+- **Hint**: the lead's `SHOOT WHERE THE WALL THINS` does not fit the page (it has no wall; its weak point is her crossing the
+  water and the beat after a leap): `SHOOT HER OVER THE WATER`.
+- Bots: both keep inside the water they go for (the novice the nearer water until it has learned the blink): nothing takes
+  them out across its edge, a Dash that would goes along it.
+- **Health** x 14 (`kMorganaHealthTune`): the novice (`--handover 9`) wins **15 of 20** in **61 s** (x 1: 20 of 20, 8 s;
+  x 17: 9 then, with the bots' stronger hold on the water, 11 of 20, 69 s); the careful bot at x 17 20 of 20, 60 s. Shorter
+  than the page's 90-120 s: the novice's line comes first (most of its lost cells are the storm's, 8 a fight).
+- Not built: the lattice whipped 10 wu along the wind, the oasis's tint on the lattice and the death's tint edge to edge (the
+  lattice has no directional push and no tint by region); the storm's crackle (a held voice); the 2 kHz low-pass is the band's
+  bed low-pass (`lowPassBed`), not the whole music bus.
+- Co-op: the drift, the rests, her orbit and the kicks follow the song's clock; the mirage and the leaps are drawn from the
+  run's seed and the song's bar, acting on bar lines; each device hurts its own players. **No host decision.**
+
+### Kaleidos, Reprise (Track 10; design/bosses/reprise.md)
+
+- Kaleidos's wheel a quarter larger (its facets to arms of 300 wu, a core of 80), each arm in the accent of its boss's Track,
+  a turn in eight bars, 450-650 wu from the nearest player. Reprise (100-70%): fans of five from the arms of the two pairs not
+  resting (Kaleidos's Bloom) on the two-step's hits (steps 0, 4, 10, 12); core x 1, x 2 on the One. Medley (70-20%): each arm
+  a sixth of the phase's health; solos of two bars round the wheel from Kaleidos's arm (a dead arm skipped): Kaleidos (fans
+  from the soloist and the arm opposite on the eighths), Longwave (the arm lets go: eight segments 150 wu apart sweep 1,800 wu
+  out toward the nearest player over the two bars, swinging 80 wu a beat; only the crests open), the Choir (a volley of seven
+  on the One, answered on three by the arm opposite), Event Horizon (ships and enemy bullets drawn to the wheel at 200 wu/s;
+  a ring of 24 on its second bar line), Polyrhythm (two rings of 24 each One, a gap each: the three's 120 degrees on a bar at
+  240 wu/s, the four's 90 at 180, meeting on its first One), Feedback (an Echo of the nearest player plays back its last bar
+  from the far side of the wheel: Feedback's tape and echo shots). Last Light (20-0%): First Light's arpeggio from
+  `design/music/track01.json` (`RepriseData::arpSemis`), a bullet a sixteenth at 15 degrees a semitone above the bar's lowest,
+  the figure turning 45 degrees a bar, 260 wu/s; core x 1, x 2 on the One; the palette cross-fades from Last Light to
+  Ultraviolet by the health left (`Play::updatePalette`). Death: no burst, the core dims to a point, one white ripple across
+  the lattice; the Shards (500) and the ENCORE card on the bar line.
+- **Floored parts** (a quarter, `tuning::kRpArmour`): the arms in the Reprise ("cannot be hurt yet"); in the Medley the
+  closed core (its quarter goes to the soloist's sixth) and every arm but the soloist; the wave's segments but its crests.
+- **Hint** `SHOOT THE ARMS OFF` (kept: the page's weak point is the soloist in the Medley; in the Reprise and Last Light it is
+  the core on the One).
+- **Health** x 4.5 (`kRepriseHealthTune`): the novice (`--handover 10`) wins **20 of 20** in **131 s** (x 1: 31 s); the careful
+  bot 20 of 20, **88 s**. The page asks 110-140 s.
+- Co-op: the turn, the fans, the solos and the last pattern follow the song's clock and the arms alive (the host decides an
+  arm's death); the wheel is the heartbeat's sync point; what reads where the players are (the wave's way, the volleys' aim,
+  the Echo's player, the rings' first gap) is each device's reading. **No host decision.**
+
+### Mini-bosses batch 3 (design/bosses/minibosses.md "Batch 3")
+
+- **Mirror Mimic** (Track 6, always): it stands where the player nearest the mirror point (the players' centre as it arrived)
+  would be through it; one bullet a step from it along that player's aim turned half round (400 wu/s, 3 s, at most 60) while
+  they fire; it copies their Dash a beat late, and for that beat and the next it holds fire and takes x 2. The mirror point
+  hurts (24 wu). Half: a second image across the level line through the point. Death: glass, its last volley as Shards.
+- **Twin Tether** (Track 7 or 8): two nodes 520 wu apart, a turn in two bars, the middle following the nearest player at 60
+  wu/s; the rope between them lethal (12 wu); a Dash through it (this device's players) goes slack for a beat (two after a
+  Perfect Dash): the rope off, both nodes x 2. Each node half the health; one dead: the survivor's flail (420 wu, a turn a
+  bar).
+- **Weaver Prime** (Track 7 or 8): a cage round where the nearest player stood at its first knot (the host's); laps of 300,
+  250, 200, 150 wu in beats 2-4 of four bars, the trail lethal (12 wu) for two bars; the knot on every One (x 2); after the
+  fourth lap a new cage, the last one's third and fourth laps bursting 40 wu wide for half a beat (the page's 40, above the 12
+  wu line: the lead rules). Half: a second Weaver the other way, laps 25 wu inside the first's, its knot on beat 3.
+- **Deep Well** (Track 8): drifts at 30 wu/s (half: 90), bends shots within 400 wu, draws ships within 300 wu (up to 120
+  wu/s). It swallows: a quarter of the damage (**floored**: the page says it takes no harm) while the bar's fill counts the
+  whole; on the One what the bar fed it comes back as a ring (one bullet a 3 damage, at most 48, 220 wu/s; half: two rings,
+  beats 1 and 3); fed more than 5% of its health in a bar it chokes for the next bar (gold, x 2, no ring). The bar line is
+  the host's (`kGeomWellBar`). Death: one Shard for each shot swallowed, to 300.
+- The picks (`World::pickMini`): Track 6 Mirror Mimic; Track 7 Twin Tether or Weaver Prime; Track 8 Deep Well or the other
+  of the two; Tracks 9 and 10 any the run has not met (`DirectorState::minisMet`) with one and two elite traits (Armored: x 2
+  health; Swift: x 1.6 on the Tether's and the Well's speed only; Regenerating: 8% a beat after two quiet beats, the host's);
+  the loop any of the twelve but the last, with a trait a round of the loop, to three. The "family met" condition is not
+  applied to Tracks 9 and 10, and the traits are not drawn on a mini-boss (its look): listed for part 7.
+- Bots: the Mimic's answer is dodged as bullets and the careful bot fires in phrases (two beats on, two off); both step off the
+  Tether's rope and Dash through it as it comes; both leave the Weaver's cage and cross a trail with a Dash.
+- Sound rows (`pending_sounds.cpp`): what the engine lacks is listed there (the Mimic's inverted lead, the Tether's drone, the
+  Weaver's crackle, the Well's reversed cymbal into the One).
+- **Health** (`kMiniHealthTune[8..11]`, the novice from the Tracks' starts, `--handover 6/7/8`): Mirror Mimic x 0.5 (x 1: 8
+  won, 12 warped out; x 0.5: **13 won**, 7 warped out, 18 s); Twin Tether x 1 (Track 7 **6 of 9**, 22 s; Track 8 3 of 5);
+  Weaver Prime x 2.5 (x 1: 11 of 11 in 10 s; x 2.5: Track 7 **9 of 11**, 24 s; Track 8 5 of 6, 21 s); Deep Well x 1.3 (x 1: 7
+  of 9, 15 s; x 1.3: **8 of 9**, 12 s). With the Track 6-8 bosses on the same runs: Feedback 17 of 20 (97 s), Cadence 18 (84
+  s), Arpeggiator 17 (108 s).
+- Pictures: `captures\m5\part6\` `ap_*`, `mg_*`, `rp_*` (a solo each), `mm_*`, `tt_*`, `wv_*`, `dw_*`, strips `ap_strip`,
+  `mg_strip`, `rp_strip`, `wv_strip` (dev). The picture tables' shared index (`Play::m5Pic_`) passed 100 with these and the
+  fights' pictures were read as the families' (out of bounds: the crash of `wv_knot` and the dead runs): widened to u16 with the
+  other tables from 1000, 2000 and 3000 (a static_assert).
+- The halo-burn test (play test 2) sets its set list to three: at a set list of eight it had been testing nothing (no loop
+  Track in its Tracks 4-8); at ten it failed.
 
 ## M5 part 5 "The arena and the elites" — 2026-11-13
 

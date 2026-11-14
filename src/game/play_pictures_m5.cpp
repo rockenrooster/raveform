@@ -33,6 +33,10 @@ enum class Moment : u8 {
     FbEchoes, FbOpen, FbTwo, FbHowl,                            // Feedback
     MqCourt, MqOpen, BmNest, BmExposed, BsDraw, BsFire, BsDazed, SaClock,  // mini-bosses batch 2
     CdFans,                                                     // Cadence (M5 part 6): the fans of beat 3 in the air
+    ApBlocks, ApLoad, ApMove,                                   // Arpeggiator: blocks in the lanes, the shutter open, a side change shown
+    MgDrift, MgRest, MgMirage, MgBlink, MgNext, MgLeap,         // Fata Morgana: fans in the calm, her crossing, the mirage lit and out, the next oasis, a leap
+    RpFans, RpSolo, RpLast,                                     // Kaleidos, Reprise: the two-step's fans, a solo (Pic.phase - 10: its arm), Last Light
+    MmAnswer, MmCopy, TtRope, TtSlack, WvCage, WvKnot, WvBurst, DwFill, DwChoke, DwRing,  // mini-bosses batch 3
 };
 
 struct Pic {
@@ -127,6 +131,50 @@ const Pic kPics[] = {
     {"cd_inversion", "cadence", 2, Moment::CdFans, false},
     {"cd_death", "cadence", 1, Moment::Death, false},
     {"cd_strip", "cadence", 0, Moment::CdFans, true},
+    {"ap_quarters", "arpeggiator", 0, Moment::ApBlocks, false},
+    {"ap_load", "arpeggiator", 0, Moment::ApLoad, false},
+    {"ap_eighths", "arpeggiator", 1, Moment::ApBlocks, false},
+    {"ap_move", "arpeggiator", 1, Moment::ApMove, false},
+    {"ap_two", "arpeggiator", 2, Moment::ApBlocks, false},
+    {"ap_death", "arpeggiator", 1, Moment::Death, false},
+    {"ap_strip", "arpeggiator", 1, Moment::ApBlocks, true},
+    {"mg_drift", "morgana", 0, Moment::MgDrift, false},
+    {"mg_rest", "morgana", 0, Moment::MgRest, false},
+    {"mg_mirage", "morgana", 1, Moment::MgMirage, false},
+    {"mg_blink", "morgana", 1, Moment::MgBlink, false},
+    {"mg_next", "morgana", 2, Moment::MgNext, false},
+    {"mg_leap", "morgana", 2, Moment::MgLeap, false},
+    {"mg_death", "morgana", 1, Moment::Death, false},
+    {"mg_strip", "morgana", 2, Moment::MgLeap, true},
+    {"rp_reprise", "reprise", 0, Moment::RpFans, false},
+    {"rp_kaleidos", "reprise", 10, Moment::RpSolo, false},
+    {"rp_longwave", "reprise", 11, Moment::RpSolo, false},
+    {"rp_choir", "reprise", 12, Moment::RpSolo, false},
+    {"rp_horizon", "reprise", 13, Moment::RpSolo, false},
+    {"rp_poly", "reprise", 14, Moment::RpSolo, false},
+    {"rp_feedback", "reprise", 15, Moment::RpSolo, false},
+    {"rp_last", "reprise", 2, Moment::RpLast, false},
+    {"rp_death", "reprise", 2, Moment::Death, false},
+    {"rp_strip", "reprise", 11, Moment::RpSolo, true},
+    {"mm_answer", "mirror_mimic", 0, Moment::MmAnswer, false},
+    {"mm_copy", "mirror_mimic", 0, Moment::MmCopy, false},
+    {"mm_half", "mirror_mimic", 1, Moment::MmAnswer, false},
+    {"mm_death", "mirror_mimic", 1, Moment::Death, false},
+    {"tt_rope", "twin_tether", 0, Moment::TtRope, false},
+    {"tt_slack", "twin_tether", 0, Moment::TtSlack, false},
+    {"tt_flail", "twin_tether", 1, Moment::TtRope, false},
+    {"tt_death", "twin_tether", 1, Moment::Death, false},
+    {"wv_cage", "weaver_prime", 0, Moment::WvCage, false},
+    {"wv_knot", "weaver_prime", 0, Moment::WvKnot, false},
+    {"wv_burst", "weaver_prime", 0, Moment::WvBurst, false},
+    {"wv_half", "weaver_prime", 1, Moment::WvCage, false},
+    {"wv_death", "weaver_prime", 1, Moment::Death, false},
+    {"dw_fill", "deep_well", 0, Moment::DwFill, false},
+    {"dw_choke", "deep_well", 0, Moment::DwChoke, false},
+    {"dw_ring", "deep_well", 0, Moment::DwRing, false},
+    {"dw_half", "deep_well", 1, Moment::DwRing, false},
+    {"dw_death", "deep_well", 1, Moment::Death, false},
+    {"wv_strip", "weaver_prime", 0, Moment::WvCage, true},
 };
 constexpr u32 kPicCount = sizeof(kPics) / sizeof(kPics[0]);
 
@@ -190,7 +238,18 @@ void Play::applyFightPhase() {
         case BossKind::EventHorizon: w.bossHealthNow(horizonShare(ph)); break;  // Tidal below 66%, Collapse below 33%
         case BossKind::Feedback: w.bossHealthNow(feedbackShare(ph)); break;
         case BossKind::Cadence: w.bossHealthNow(ph == 1 ? 0.6f : (ph == 2 ? 0.3f : 1.0f)); break;  // Modulation below 66%, Inversion below 33%
+        case BossKind::Arpeggiator: w.bossHealthNow(ph == 1 ? 0.6f : (ph == 2 ? 0.3f : 1.0f)); break;  // Eighth notes below 66%, Two hands below 33%
+        case BossKind::Morgana: w.bossHealthNow(ph == 1 ? 0.6f : (ph == 2 ? 0.3f : 1.0f)); break;      // Mirage below 66%, Crossing below 33%
+        case BossKind::Reprise:
+            // Medley (1, or 10 + an arm for its solo's picture): below 70%; Last Light (2): every arm shot off.
+            if (ph == 1 || ph >= 10) w.bossHealthNow(0.6f);
+            if (ph == 2) {
+                w.bossHealthNow(0.6f);
+                w.killBossNextTick(0x3Fu, false);
+            }
+            break;
         case BossKind::SentryArray: w.killBossNextTick(0x0Fu, false); break;  // half: four left
+        case BossKind::TwinTether: w.killBossNextTick(0x1u, false); break;    // half: one node dead (the flail)
         case BossKind::Polyrhythm:
             // Hemiola: both at half; Solo: Four dead.
             if (ph == 1) w.bossHealthNow(0.5f);
@@ -209,7 +268,8 @@ void Play::holdFight() {
     else if (b.kind == BossKind::EventHorizon) share = horizonShare(fightPhase_);
     else if (b.kind == BossKind::Polyrhythm) share = fightPhase_ == 1 ? 0.5f : 1.0f;
     else if (b.kind == BossKind::Feedback) share = feedbackShare(fightPhase_);
-    else if (b.kind == BossKind::Cadence) share = fightPhase_ == 1 ? 0.6f : (fightPhase_ == 2 ? 0.3f : 1.0f);
+    else if (b.kind == BossKind::Reprise) share = fightPhase_ == 2 ? 0.2f : (fightPhase_ ? 0.6f : 1.0f);
+    else if (b.kind == BossKind::Cadence || b.kind == BossKind::Arpeggiator || b.kind == BossKind::Morgana) share = fightPhase_ == 1 ? 0.6f : (fightPhase_ == 2 ? 0.3f : 1.0f);
     else if (isMiniBoss(b.kind) && fightPhase_) share = 0.49f;
     w.bossRefill(share);
 }
@@ -276,7 +336,8 @@ const FamPic kFamPics[] = {
     {"t3_c3", Family::Drifter, 0, 0, 0, false, false, 3, 3},
 };
 constexpr u32 kFamPicCount = sizeof(kFamPics) / sizeof(kFamPics[0]);
-constexpr u8 kFamBase = 100;  // m5Pic_ for a FamPic: kFamBase + its index
+constexpr u16 kFamBase = 1000;  // m5Pic_ for a FamPic: kFamBase + its index (M5 part 6: past the 100 kPics)
+static_assert(kPicCount < kFamBase, "the fights' pictures and the families' share m5Pic_");
 
 // ---- M5 part 3: every new upgrade on screen (GAME_DESIGN 6.6: visible within a bar of the pick). A still ship (the
 // spawner off, hits costing nothing) is given its upgrades after the Track card, a group lands round it, and the picture
@@ -323,15 +384,15 @@ const UpPic kUpPics[] = {
     {"fusion_collapse_murmuration", {kMinelayer, kMinelayer, kMinelayer, kMinelayer, kMinelayer, kGravityRounds, kGravityRounds, kSwarm, kSwarm, kSwarm, kSwarm, kSwarm, kSeeker, kSeeker, kSeeker, N}, {NB, NB}, (1u << kCollapseField) | (1u << kMurmuration), 30, kUpCrowd, 400.0f, false, kUpNone, kFxMineDrop, 0xFF, 300, 60},
 };
 constexpr u32 kUpPicCount = sizeof(kUpPics) / sizeof(kUpPics[0]);
-constexpr u8 kUpBase = 150;  // m5Pic_ for an UpPic: kUpBase + its index
+constexpr u16 kUpBase = 2000;  // m5Pic_ for an UpPic: kUpBase + its index
 
 // ---- M5 part 5: each elite trait on a body ahead of a still ship, each structure, each event (the spawner off, hits
-// costing nothing); the picture at tick t (or fter frames after the death of the elite the stream kills).
+// costing nothing); the picture at tick `at` (or `after` frames after the death of the elite the stream kills).
 enum ArKind : u8 { kArElite, kArStruct, kArEvent };
 struct ArPic {
     const char* name;  // m5_<name>
     u8 kind, id;       // ArKind; a TraitId, StructKind or EventKind
-    u16 at;            // the capture tick (0: on the elite's death, fter frames on)
+    u16 at;            // the capture tick (0: on the elite's death, `after` frames on)
     u8 after;
     bool fire;
 };
@@ -351,30 +412,30 @@ const ArPic kArPics[] = {
     {"ev_convoy", kArEvent, 6, 480, 0, true},                {"ev_storm_cell", kArEvent, 7, 1000, 0, false},
 };
 constexpr u32 kArPicCount = sizeof(kArPics) / sizeof(kArPics[0]);
-constexpr u8 kArBase = 200;  // m5Pic_ for an ArPic: kArBase + its index
+constexpr u16 kArBase = 3000;  // m5Pic_ for an ArPic: kArBase + its index
 }  // namespace
 
 bool Play::scriptSetupM5() {
     const char* p = opt_.picture;
     if (!starts(p, "m5_")) return false;
     for (u32 k = 0; k < kArPicCount; ++k)
-        if (std::strcmp(p + 3, kArPics[k].name) == 0) m5Pic_ = static_cast<u8>(kArBase + k);
-    if (m5Pic_ != 0xFF) {
+        if (std::strcmp(p + 3, kArPics[k].name) == 0) m5Pic_ = static_cast<u16>(kArBase + k);
+    if (m5Pic_ != 0xFFFF) {
         // M5 part 5: a still ship, hits costing nothing, the spawner off (the Track's first bars: no structure placed by itself).
         world_->rules().godMode = true;
         world_->spawner().mode = Spawner::Mode::Off;
         return true;
     }
     for (u32 k = 0; k < kUpPicCount; ++k)
-        if (std::strcmp(p + 3, kUpPics[k].name) == 0) m5Pic_ = static_cast<u8>(kUpBase + k);
-    if (m5Pic_ != 0xFF) {
+        if (std::strcmp(p + 3, kUpPics[k].name) == 0) m5Pic_ = static_cast<u16>(kUpBase + k);
+    if (m5Pic_ != 0xFFFF) {
         world_->rules().godMode = true;
         world_->spawner().mode = Spawner::Mode::Off;
         return true;
     }
     for (u32 k = 0; k < kFamPicCount; ++k)
-        if (std::strcmp(p + 3, kFamPics[k].name) == 0) m5Pic_ = static_cast<u8>(kFamBase + k);
-    if (m5Pic_ != 0xFF) {
+        if (std::strcmp(p + 3, kFamPics[k].name) == 0) m5Pic_ = static_cast<u16>(kFamBase + k);
+    if (m5Pic_ != 0xFFFF) {
         const FamPic& f = kFamPics[m5Pic_ - kFamBase];
         World& w = *world_;
         w.rules().godMode = true;
@@ -392,8 +453,8 @@ bool Play::scriptSetupM5() {
         return true;
     }
     for (u32 k = 0; k < kPicCount; ++k)
-        if (std::strcmp(p + 3, kPics[k].name) == 0) m5Pic_ = static_cast<u8>(k);
-    if (m5Pic_ == 0xFF) {
+        if (std::strcmp(p + 3, kPics[k].name) == 0) m5Pic_ = static_cast<u16>(k);
+    if (m5Pic_ == 0xFFFF) {
         RF_ERR("play: no picture '%s'", p);
         return true;
     }
@@ -402,14 +463,14 @@ bool Play::scriptSetupM5() {
     if (!setupFight(pic.fight, pic.phase)) return true;
     // Part 4: the Track 5 build kills a rotor in seconds; the fight holds its health until the moment (not for its death).
     // (its death too: the hold gives nothing back once it is dying, and the picture kills it itself)
-    if (fightKind_ == BossKind::Polyrhythm || fightKind_ == BossKind::Feedback || fightKind_ == BossKind::Cadence || (fightKind_ >= BossKind::MothQueen && fightKind_ <= BossKind::SentryArray))
+    if (fightKind_ == BossKind::Polyrhythm || fightKind_ == BossKind::Feedback || fightKind_ == BossKind::Cadence || fightKind_ == BossKind::Arpeggiator || fightKind_ == BossKind::Morgana || fightKind_ == BossKind::Reprise || (fightKind_ >= BossKind::MothQueen && fightKind_ <= BossKind::DeepWell))
         opt_.fightHold = true;
     if (pic.strip) stripStride_ = 4;
     return true;
 }
 
 bool Play::scriptInputM5(StickInput& in) {
-    if (m5Pic_ == 0xFF) return false;
+    if (m5Pic_ == 0xFFFF) return false;
     World& w = *world_;
     if (m5Pic_ >= kArBase) {
         // M5 part 5: an elite, a structure or an event round a still ship.
@@ -669,6 +730,31 @@ bool Play::scriptInputM5(StickInput& in) {
     in = bot_.think(w, 0, controller_, clock_.heardNow());
     if (ffRunning_) return true;
     in.nova = false;  // (no Nova's ring over the moment)
+    if (fightKind_ == BossKind::Reprise && w.boss().active) {
+        // (the Reprise's pictures: the ship kept off the arena's walls, 500 wu from the wheel, so the wheel is in the frame)
+        const Vec2 ship = controller_.pose().pos, wheel = w.boss().pos;
+        const Vec2 rel = ship - wheel;
+        const float l = length(rel);
+        const Vec2 want = wheel + normalizeOr(Vec2{} - wheel, Vec2{1.0f, 0.0f}) * 500.0f;
+        if (l > 700.0f || std::fabs(ship.x) > kArenaHalfW - 700.0f || std::fabs(ship.y) > kArenaHalfH - 500.0f)
+            in.move = normalizeOr(want - ship, Vec2{1.0f, 0.0f});
+    }
+    if (fightKind_ == BossKind::DeepWell && w.boss().active && w.boss().kind == BossKind::DeepWell && !w.wellChoked(music1_)) {
+        // (the Deep Well's pictures: a stream's worth fed in the middle of each bar, past its stomach for the choke's picture;
+        // the bot's own stream, aimed at what it can hurt, rarely feeds it this much)
+        const double in = music1_ - std::floor(music1_ / kTicksPerBar) * kTicksPerBar;
+        if (in >= 0.5 * kTicksPerBar && in < 0.5 * kTicksPerBar + 3.3 && w.music() >= w.boss().fightTick)
+            w.wellFeedNow((kPics[m5Pic_].moment == Moment::DwChoke ? 1.3f : 0.75f) * w.wellStomach());
+    }
+    if ((kPics[m5Pic_].moment == Moment::MmCopy || fightKind_ == BossKind::MirrorMimic) && w.boss().active) {
+        // (the Mimic's copy: the ship stays near the mirror point, so the Mimic is in the frame, and dashes for it to copy)
+        const Vec2 toPoint = w.boss().mini.ringAt - controller_.pose().pos;
+        if (length(toPoint) > 260.0f) in.move = normalizeOr(toPoint, Vec2{1.0f, 0.0f}) * 0.8f;
+        if (kPics[m5Pic_].moment == Moment::MmCopy && scriptTick_ % 150u == 0u) {
+            in.dash = true;
+            in.move = Vec2{0.0f, 1.0f};
+        }
+    }
     // No Trio over the moment: an open one takes its first orb, and no level opens another.
     w.closeTrioNow(0);
     w.playerMut(0).levelsBanked = 0;
@@ -742,6 +828,54 @@ bool Play::scriptInputM5(StickInput& in) {
             case Moment::HzJets: go = music >= b.hz.jetFrom + 20.0 && music < b.hz.jetUntil && seen(b.pos); break;
             // Polyrhythm: the One (its rings' gaps on the link), the rings at work, the link's dashes, the burn, the Solo.
             case Moment::CdFans: go = music > fightPhaseAt_ + 2.0 * kTicksPerBar && inBar > (pic.strip ? 1.9 : 2.4) * kTicksPerBeat && inBar < 2.6 * kTicksPerBeat && seen(b.pos); break;
+            // Arpeggiator: the lanes full (beat 3 of a bar), the shutter open on the One, the next side dashed late in its bar.
+            case Moment::ApBlocks: go = music > fightPhaseAt_ + 2.0 * kTicksPerBar && inBar > (pic.strip ? 1.0 : 2.4) * kTicksPerBeat && inBar < 2.6 * kTicksPerBeat && seen(b.pos); break;
+            case Moment::ApLoad: go = music > fightPhaseAt_ + 2.0 * kTicksPerBar && inBar > 0.45 * kTicksPerBeat && inBar < 0.6 * kTicksPerBeat && seen(b.pos); break;
+            case Moment::ApMove: go = b.ap.moveTick >= 0.0 && music > b.ap.moveTick - 0.4 * kTicksPerBar && seen(b.pos); break;
+            // Fata Morgana: her fans after the kick on step 10; her crossing at the middle of the water; the mirage lit and out; the
+            // next oasis dashed half a bar before the leap; a third of a bar after a leap (the corridor).
+            case Moment::MgDrift: go = music > fightPhaseAt_ + 2.0 * kTicksPerBar && !w.morganaResting(music) && inBar > 0.70 * kTicksPerBar && inBar < 0.75 * kTicksPerBar && seen(b.pos); break;
+            case Moment::MgRest: go = w.morganaResting(music) && inBar > 0.40 * kTicksPerBar && inBar < 0.45 * kTicksPerBar; break;
+            case Moment::MgMirage: {
+                Vec2 mp;
+                bool lit = false;
+                go = w.morganaMirage(music, mp, lit) && lit && music > b.mg.mirageTick + 0.6 * kTicksPerBar && inBar > 0.65 * kTicksPerBar;
+                break;
+            }
+            case Moment::MgBlink: {
+                Vec2 mp;
+                bool lit = false;
+                go = w.morganaMirage(music, mp, lit) && !lit && music > b.mg.mirageTick + kTicksPerBar;
+                break;
+            }
+            case Moment::MgNext: go = b.mg.nextShown && b.mg.leapTick >= 0.0 && music > b.mg.nextTick - 0.5 * kTicksPerBar && music < b.mg.nextTick - 0.4 * kTicksPerBar; break;
+            // Kaleidos, Reprise: the fans on the snare of beat two; a solo's second bar (its arm: the picture's phase - 10); Last Light.
+            case Moment::RpFans: go = music > b.fightTick + 2.0 * kTicksPerBar && inBar > 1.4 * kTicksPerBeat && inBar < 1.6 * kTicksPerBeat && seen(b.pos); break;
+            case Moment::RpSolo:
+                go = b.rp.phase == 1 && b.rp.solo == static_cast<u8>(pic.phase - 10) && music > b.rp.soloTick + (pic.strip ? 0.1 : (pic.phase == 11 ? 0.35 : 1.3)) * kTicksPerBar;
+                break;
+            case Moment::RpLast: go = b.rp.phase == 2 && b.rp.lastTick >= 0.0 && music > b.rp.lastTick + 2.6 * kTicksPerBar; break;
+            // Mini-bosses batch 3.
+            case Moment::MmAnswer: go = music > b.fightTick + 2.0 * kTicksPerBar && !w.mimicCopying(music) && w.bullets().count >= 4 && seen(b.body[0]); break;
+            case Moment::MmCopy: go = w.mimicCopying(music) && music > b.mini.dashCopy + 0.25 * kTicksPerBeat && seen(b.body[0]); break;
+            case Moment::TtRope: {
+                Vec2 b0, b1;
+                go = music > b.fightTick + kTicksPerBar && w.tetherBeam(b0, b1) && seen(b.body[0]) && length(b.body[0] - ship) < 420.0f;
+                break;
+            }
+            case Moment::TtSlack: go = w.tetherSlack(music) && seen(b.body[0]); break;
+            case Moment::WvCage: go = b.mini.cageTick >= 0.0 && music > b.mini.cageTick + (pic.strip ? 1.0 : 2.6) * kTicksPerBar && seen(b.mini.cage); break;
+            case Moment::WvKnot: go = b.mini.cageTick >= 0.0 && music > b.mini.cageTick + kTicksPerBar && w.weaverKnot(0, music) && inBar > 0.3 * kTicksPerBeat; break;
+            case Moment::WvBurst: go = b.mini.cageTick > b.fightTick + kTicksPerBar && music > b.mini.cageTick + 2.0 && music < b.mini.cageTick + 20.0; break;
+            case Moment::DwFill: go = !w.wellChoked(music) && w.wellStomach() > 0.0f && b.mini.fill > 0.6f * w.wellStomach() && seen(b.body[0]); break;
+            case Moment::DwChoke: go = w.wellChoked(music) && music > b.mini.chokeTick + 0.4 * kTicksPerBar && seen(b.body[0]); break;
+            case Moment::DwRing: {
+                u32 near = 0;
+                for (u32 i = 0; i < w.bullets().count; ++i) near += lengthSq(Vec2{w.bullets().x[i], w.bullets().y[i]} - b.body[0]) < 420.0f * 420.0f ? 1u : 0u;
+                go = near >= 16 && inBar > 0.15 * kTicksPerBar && inBar < 0.3 * kTicksPerBar && seen(b.body[0]);
+                break;
+            }
+            case Moment::MgLeap: go = b.mg.leapTick >= 0.0 && music > b.mg.leapTick + (pic.strip ? 0.05 : 0.3) * kTicksPerBar && music < b.mg.leapTick + 0.45 * kTicksPerBar; break;
             case Moment::PrOne: go = music > b.fightTick + 2.0 * kTicksPerBar && inBar > (pic.strip ? 0.0 : 0.22 * kTicksPerBar) && inBar < 0.3 * kTicksPerBar; break;
             case Moment::PrRings: go = music > b.fightTick + 3.0 * kTicksPerBar && inBar > 0.7 * kTicksPerBar && inBar < 0.75 * kTicksPerBar; break;
             case Moment::PrBurnShown: go = w.polyLinkBurn(music) == 1 && music > fightPhaseAt_ + 2.0 * kTicksPerBar && inBar > 0.6 * kTicksPerBar; break;
@@ -793,6 +927,6 @@ bool Play::scriptInputM5(StickInput& in) {
     return true;
 }
 
-bool Play::scriptEventsM5() { return m5Pic_ != 0xFF; }
+bool Play::scriptEventsM5() { return m5Pic_ != 0xFFFF; }
 
 }  // namespace rf

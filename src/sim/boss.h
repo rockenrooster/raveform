@@ -21,7 +21,7 @@ enum class BossKind : u8 {
     MothQueen, BroodMother, BlinkStar, SentryArray,      // batch 2 (data only until M5 part 4)
     MirrorMimic, TwinTether, WeaverPrime, DeepWell,      // batch 3 (data only until M5 parts 4 and 6)
     EventHorizon, Polyrhythm, Feedback,                   // M5 part 4: the bosses of Tracks 4 to 6
-    Cadence,                                              // M5 part 6: the bosses of Tracks 7 to 10 (as they are built)
+    Cadence, Arpeggiator, Morgana, Reprise,               // M5 part 6: the bosses of Tracks 7 to 10
     Count
 };
 constexpr u32 kBossKinds = static_cast<u32>(BossKind::Count);
@@ -31,19 +31,19 @@ const char* bossId(BossKind k);    // "kaleidos", "longwave", "choir", "alpha_ho
 bool bossFromId(const char* id, BossKind& out);
 // The bosses built so far (M5 part 1: three), in set-list order: Track t's boss in the first pass, and the loop's
 // boss for Track t is the one its song's Track had. The set list is the Tracks with their fights (Play).
-constexpr u32 kBossesBuilt = 7;  // M5 part 6: Track 7's Cadence
+constexpr u32 kBossesBuilt = 10;  // M5 part 6: the ten Tracks' bosses (Cadence, Arpeggiator, Fata Morgana, Kaleidos Reprise)
 // The set list's bosses, Track by Track (GAME_DESIGN 4.2, 7.6).
 inline BossKind bossOfSong(u32 song) {
-    constexpr BossKind k[7] = {BossKind::Kaleidos, BossKind::Longwave, BossKind::Choir, BossKind::EventHorizon, BossKind::Polyrhythm, BossKind::Feedback,
-                               BossKind::Cadence};
-    return k[song % 7u];
+    constexpr BossKind k[kBossesBuilt] = {BossKind::Kaleidos, BossKind::Longwave, BossKind::Choir, BossKind::EventHorizon, BossKind::Polyrhythm,
+                                          BossKind::Feedback, BossKind::Cadence, BossKind::Arpeggiator, BossKind::Morgana, BossKind::Reprise};
+    return k[song % kBossesBuilt];
 }
 // The fights built so far (--fight takes these; a run's set list ends before the first Track without its fights).
-inline bool fightBuilt(BossKind k) { return k <= BossKind::SentryArray || k >= BossKind::EventHorizon; }
+inline bool fightBuilt(BossKind k) { return k < BossKind::Count; }  // M5 part 6: every one
 // A fight's home Track (1-based): a boss's own; a mini-boss's the Track whose middle Drop draws it (minibosses.json
 // common.pick).
 inline u32 bossHomeTrack(BossKind k) {
-    constexpr u8 kHome[kBossKinds] = {1, 2, 3, 2, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 8, 4, 5, 6, 7};
+    constexpr u8 kHome[kBossKinds] = {1, 2, 3, 2, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 8, 4, 5, 6, 7, 8, 9, 10};
     return kHome[static_cast<u32>(k) < kBossKinds ? static_cast<u32>(k) : 0u];
 }
 
@@ -86,6 +86,22 @@ enum class BossCue : u8 {
     // M5 part 6, Cadence (cadence.md "Sound"): a pillar sounds its chord (b: the pillar), a firing pillar's fan (b: its chord), the
     // square's turn, Inversion's announcement, a pillar's burst at the death (b: in the song's order).
     CdChord, CdFan, CdTurn, CdInversion, CdBurst,
+    // Arpeggiator (arpeggiator.md "Sound"): a block leaves its port (b: its lane), the shutter opens on the One, the machine
+    // changes side, the second machine arrives, the death's run up.
+    ApBlock, ApShutter, ApMove, ApSecond, ApDeath,
+    // Fata Morgana (morgana.md "Sound"): the storm's low-pass on each kick (b = 1: a local ship is outside the calm), its whoosh
+    // on a bar line (the same), a mirage's blink on the snare, the leap's run of chirps (b: the chord tone up), a bell on each
+    // beat while she is over the water.
+    MgStorm, MgWhoosh, MgBlink, MgLeap, MgBell,
+    // Kaleidos, Reprise (reprise.md "Sound"): each solo in its boss's voice (Kaleidos's bells on its fans, Longwave's rubber
+    // string on the wave's beats, a pad voice for the Choir's volley and its answer (b: 0 / 1), the sub drop for Event
+    // Horizon's pull and its ring, toms three against four for Polyrhythm (f: semitones), the player's lead for Feedback's
+    // Echo (b: the player)); the last pattern's bell (f: MIDI); the death's reversed cymbal (ending on its tick).
+    RpBell, RpString, RpPad, RpSub, RpTom, RpEcho, RpArp, RpDeath,
+    // Mini-bosses batch 3 (minibosses.md): the Mimic's answer to a lead note (b: the player), its late Dash, its glass; the
+    // Tether's cut strand and a node passing twelve o'clock; the Weaver's lap (b: the lap), its knot, the cage going off; the
+    // Well's swallow (b: the rings lit), its choke and the bed low-passed for the bar, a ring given back.
+    MmFire, MmDash, MmGlass, TtCut, TtTom, WvLap, WvKnot, WvBurst, DwThup, DwChoke, DwLow, DwRing,
     // M5 part 5, elites (design/traits.md): the arrival's low fifth (b, c: the traits' bits), each trait's mark a beat later
     // (in the traits' order), Armored's outer hull shattering, Splitting, Volatile's fuse and burst, Regenerating's heal,
     // Commander's stun, an Elite Hunt's kill.
@@ -461,6 +477,25 @@ struct MiniState {
     float turretFrom[8] = {}, turretTo[8] = {};
     double stepTick = -1.0;      // ... the step round began
     i64 halfBar0 = 0;            // the Sentry Array's clock runs backwards on every second bar from here
+    // Batch 3 (M5 part 6, world_miniboss3.cpp).
+    u8 traits = 0;               // Tracks 9 and 10 and the loop: its elite traits (traitBit: Armored, Swift, Regenerating)
+    double lastHurt = -1.0;      // (Regenerating: after two quiet beats)
+    u8 mirrorOf = 0;             // Mirror Mimic: the player it mirrors (the nearest to the mirror point)
+    Vec2 dashVec;                // ... the Dash it copies a beat late (the player's own) and when the copy begins
+    double dashCopy = -1.0;
+    i64 fireStep = -1;           // ... the last step it answered (one bullet a step)
+    double slackUntil = -1.0;    // Twin Tether: the beam is off and the nodes take x 2 until here
+    double flailTick = -1.0;     // ... a node dead: the survivor's flail from here, from this angle
+    float flail0 = 0.0f;
+    u8 perfect = 0;              // ... each player's last Dash was Perfect (a bit a player)
+    Vec2 cage, prevCage;         // Weaver Prime: the cage's centre (where the player stood at its first knot), the last one's
+    float cageAng = 0.0f, prevCageAng = 0.0f;  // ... the side its laps begin on
+    double cageTick = -1.0;      // ... its first knot's bar line (a cage: four bars)
+    float fill = 0.0f;           // Deep Well: the damage swallowed this bar
+    double chokeTick = -1.0;     // ... choked for the bar from here
+    u16 ringLeft = 0;            // ... the second ring of the half (beat 3)
+    u32 swallowed = 0;           // ... shots swallowed in the fight (its Shards at its death, to 300)
+    double lastThup = -1.0;
 };
 
 // The Pen (minibosses.md): a square of white light walls round the players' centre while a fight needs it.
@@ -478,7 +513,72 @@ struct CadenceData {
     u32 fanBullets = 5;
     float fanSpreadDeg = 40, bulletSpeed = 180, bulletLife = 4;
     u32 rewardShards = 300;
+    float dmgOpen = 1, dmgOne = 2, dmgClosed = 0.25f;  // numbers.damageScale (f32a441): open, openOnTheOne, closed
     bool load();
+};
+struct ArpData {
+    float health = 6400, coreRadius = 70, laneWidth = 200, laneLength = 900, blockWidth = 90, blockSpeed = 420;
+    u32 rewardShards = 340;
+    bool load();
+};
+struct ArpState {
+    static constexpr u32 kBlocks = 48;
+    struct Block {
+        double tick = -1.0;  // it left its port (song ticks; < 0 free)
+        u8 lane = 0, machine = 0;
+        Vec2 from, dir;      // its port and its way down the lane as it left
+    } blocks[kBlocks];
+    u32 nextBlock = 0;
+    u8 side[2] = {0, 1};     // 0 above, 1 right, 2 below, 3 left of the players' centre
+    float along[2] = {};     // the machines' places along their own axes (they follow the players at 120 wu/s)
+    float across[2] = {};    // ... and their distance line (set as they take their side)
+    double moveTick = -1.0;  // the machine changes side on this bar line (its new lanes dashed for the bar before)
+    u8 phase = 0;            // 0 Quarter notes, 1 Eighth notes, 2 Two hands
+    bool two = false;        // the second machine plays
+    double deathTick = -1.0; // it died (the run of chirps up the scale over two beats)
+    Vec2 centre;             // the players' centre the machines stand from (the view's dashed lanes of the next side)
+};
+// Kaleidos, Reprise (design/bosses/reprise.json numbers; First Light's arpeggios from design/music/track01.json).
+struct RepriseData {
+    float health = 9000, coreRadius = 80, armLength = 300;
+    u32 rewardShards = 500;
+    u8 arpSemis[4][16] = {};  // First Light's arpeggio by the progression's chord: semitones above the bar's lowest note
+    u8 arpMidi[4][16] = {};   // ... and its notes
+    bool load();
+};
+struct RepriseState {
+    u8 phase = 0;              // 0 Reprise, 1 Medley, 2 Last Light
+    u8 solo = 0xFF;            // the Medley's soloist (an arm, 0 Kaleidos ... 5 Feedback; 0xFF none yet)
+    double soloTick = -1.0;    // its solo's first bar line (two bars each)
+    double lastTick = -1.0;    // Last Light began (its figure's first bar line)
+    float figure0 = 0.0f;      // the last pattern's turn at lastTick
+    Vec2 waveFrom, waveDir;    // Longwave's arm let go: where its wave set out and which way
+    float polyGap0 = 0.0f;     // Polyrhythm's arm: both gaps' way on its solo's first One
+    u8 echoPlayer = 0;         // Feedback's arm: whose last bar its Echo plays
+    bool echoOn = false;
+};
+// Fata Morgana (design/bosses/morgana.json numbers; the prose in boss_prose.h).
+struct MorganaData {
+    float health = 7600, oasisRadius = 260, bodyRadius = 76;
+    u32 fanBullets = 5;
+    float bulletSpeed = 200;
+    u32 rewardShards = 380;
+    bool load();
+};
+struct MorganaState {
+    static constexpr u32 kArc = 64;
+    float arc[kArc + 1] = {};   // the figure of eight's arc length at kArc steps of its parameter (arc[kArc]: the whole loop)
+    Vec2 home;                  // the figure's centre (where the players stood as she came)
+    Vec2 offset;                // where the mirages that were the old place moved the real oasis
+    Vec2 mirage;                // the mirage's place from the real oasis, shown from mirageTick for two bars
+    double mirageTick = -1.0;
+    Vec2 at, from, next;        // the Crossing: the oasis, the old one shrinking over the bar after a leap, the next (dashed)
+    double crossTick = -1.0;    // the first leap (the drift stops there)
+    double leapTick = -1.0;     // the last leap
+    double nextTick = -1.0;     // the next leap's bar line (its place shown a bar before)
+    bool nextShown = false;
+    float orbit0 = 0.0f;        // her orbit's angle as the fight began
+    u8 phase = 0;               // 0 Drift, 1 Mirage, 2 Crossing
 };
 struct CadenceState {
     Vec2 centre;               // the square's centre (it follows the players' centre)
@@ -521,9 +621,12 @@ struct BossState {
     PolyState pr;     // M5 part 4
     FeedbackState fb; // M5 part 4
     CadenceState cd;  // M5 part 6
+    ArpState ap;      // M5 part 6
+    MorganaState mg;  // M5 part 6
+    RepriseState rp;  // M5 part 6
     double payoutTick = -1.0;  // dying: its Shards and Cells come at this tick (Event Horizon's flash, Polyrhythm's break)
     float scale = 1.0f;        // health scale it entered with (players, Track, loop)
-    double geomTick[12] = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0};  // each BossGeom decision's moment
+    double geomTick[16] = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0};  // each BossGeom decision's moment
 };
 
 // A count scaled by a lever (play test 1), rounded, never below `least` (an exact count at scale 1).
@@ -543,9 +646,11 @@ enum BossGeom : u8 {
     kGeomPolyHemiola,  // M5 part 4: Polyrhythm's Hemiola begins (a.x: its first bar)
     kGeomMothCourt,    // M5 part 4: the Moth Queen's court (a: its centre)
     kGeomBlinkStar,    // M5 part 4: the Blink Star's star (a: its centre, b.x: its first point's direction)
+    kGeomWeaverCage,   // M5 part 6: Weaver Prime's cage (a: its centre, b.x: where its laps begin)
+    kGeomWellBar,      // M5 part 6: Deep Well's bar line (a.x: the damage it swallowed, a.y: 1 it chokes)
     kGeomCount
 };
-static_assert(kGeomCount <= 12, "BossState::geomTick holds twelve");
+static_assert(kGeomCount <= 16, "BossState::geomTick holds sixteen");
 
 // A part of a boss as the hits see it (Longwave, the Choir and the mini-bosses; Kaleidos keeps its arms).
 struct BossPart {

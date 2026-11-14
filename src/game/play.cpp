@@ -15,6 +15,7 @@
 #include "core/time.h"
 #include "net/bots.h"
 #include "net/lobby.h"
+#include "sim/boss_prose.h"
 #include "sim/tuning.h"
 
 namespace rf {
@@ -365,7 +366,7 @@ void Play::pictureFrame() {
             pictureDone_ = true;
         }
     }
-    if (scriptTick_ > 60u * (m5Pic_ != 0xFF ? 75u : 30u)) pictureDone_ = true;  // a script that never triggers ends after 30 s (M5: 75)
+    if (scriptTick_ > 60u * (m5Pic_ != 0xFFFF ? 75u : 30u)) pictureDone_ = true;  // a script that never triggers ends after 30 s (M5: 75)
 }
 
 void Play::runTick(double music0, double music1, bool firstOfFrame) {
@@ -960,6 +961,27 @@ void Play::updatePalette(double music) {
     };
     const Phrase& ph = world_->phrase();
     const Palette* to = forSong(ph.song);
+    const sim::BossState& boss = world_->boss();
+    if (!ph.trackChange && boss.active && boss.kind == sim::BossKind::Reprise && boss.rp.phase == 2 && boss.coreMax > 0.0f) {
+        // M5 part 6 (reprise.md): over Last Light the palette cross-fades from Last Light to Ultraviolet (by the health left).
+        const Palette* uv = forSong(0);
+        float u = boss.dying ? 1.0f : clampf(1.0f - boss.coreHp / (sim::prose::kRpLastAt * boss.coreMax), 0.0f, 1.0f);
+        u = u * u * (3.0f - 2.0f * u);
+        const auto mixv = [&](Vec3 a, Vec3 b) { return a + (b - a) * u; };
+        mixed_ = *to;
+        mixed_.bg0 = mixv(to->bg0, uv->bg0);
+        mixed_.bg1 = mixv(to->bg1, uv->bg1);
+        mixed_.grid = mixv(to->grid, uv->grid);
+        mixed_.gridHot = mixv(to->gridHot, uv->gridHot);
+        mixed_.accent = mixv(to->accent, uv->accent);
+        for (u32 k = 0; k < 3; ++k) {
+            mixed_.hue[k] = mixv(to->hue[k], uv->hue[k]);
+            mixed_.partner[k] = mixv(to->partner[k], uv->partner[k]);
+        }
+        palette_ = &mixed_;
+        view_.setPalette(mixed_);
+        return;
+    }
     if (!ph.trackChange) {
         palette_ = to;
         view_.setPalette(*to);

@@ -79,8 +79,12 @@ $sets = @{
         strips = @('hz_strip', 'pr_strip', 'fb_strip', 'mq_strip', 'bs_strip', 'sa_strip')
     }
     'part6' = @{
-        singles = @('cd_progression', 'cd_modulation', 'cd_inversion', 'cd_death')
-        strips = @('cd_strip')
+        singles = @('cd_progression', 'cd_modulation', 'cd_inversion', 'cd_death', 'ap_quarters', 'ap_load', 'ap_eighths', 'ap_move', 'ap_two', 'ap_death',
+                    'mg_drift', 'mg_rest', 'mg_mirage', 'mg_blink', 'mg_next', 'mg_leap', 'mg_death',
+                    'rp_reprise', 'rp_kaleidos', 'rp_longwave', 'rp_choir', 'rp_horizon', 'rp_poly', 'rp_feedback', 'rp_last', 'rp_death',
+                    'mm_answer', 'mm_copy', 'mm_half', 'mm_death', 'tt_rope', 'tt_slack', 'tt_flail', 'tt_death', 'wv_cage', 'wv_knot', 'wv_burst',
+                    'wv_half', 'wv_death', 'dw_fill', 'dw_choke', 'dw_ring', 'dw_half', 'dw_death')
+        strips = @('cd_strip', 'ap_strip', 'mg_strip', 'rp_strip', 'wv_strip')
     }
     'part5' = @{
         singles = @('el_armored', 'el_swift', 'el_giant', 'el_splitting', 'el_volatile', 'el_regenerating', 'el_shielded', 'el_twin', 'el_magnetic',

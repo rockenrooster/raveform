@@ -44,11 +44,13 @@ Vec2 World::cadencePillar(u32 k, double t) const {
 float World::cadenceScale(u32 k, double t) const {
     // Progression and Modulation: the bar's pillar is open (x 2 on its One), the others are closed (armour: a quarter, GAME_DESIGN
     // 7.6; the page says they cannot be hurt). Inversion: the sounding pillar is closed, the other three open.
+    // (cadence.json numbers.damageScale since f32a441; Inversion: the quarter is the sounding pillar's, closed there)
     const BossState& s = boss_;
+    const CadenceData& d = species_->cadence;
     const bool sounding = k == cadenceChord(t);
     const bool one = t - std::floor(t / kTicksPerBar) * kTicksPerBar < kTicksPerBeat;
-    if (s.cd.phase < 2) return sounding ? (one ? kCdOne : 1.0f) : kCdArmour;
-    return sounding ? kCdArmour : 1.0f;
+    if (s.cd.phase < 2) return sounding ? (one ? d.dmgOne : d.dmgOpen) : d.dmgClosed;
+    return sounding ? d.dmgClosed : d.dmgOpen;
 }
 
 void World::enterCadence(Vec2 centre) {

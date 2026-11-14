@@ -37,6 +37,18 @@ const char kFeedbackJson[] =
 const char kCadenceJson[] =
 #include "cadence.json.inc"
     ;
+const char kArpJson[] =
+#include "arpeggiator.json.inc"
+    ;
+const char kMorganaJson[] =
+#include "morgana.json.inc"
+    ;
+const char kRepriseJson[] =
+#include "reprise.json.inc"
+    ;
+const char kFirstLightJson[] =  // (design/music/track01.json: the Reprise's last pattern is First Light's arpeggio)
+#include "music_track01.json.inc"
+    ;
 
 double stepTicks(const char* s) {
     if (std::strcmp(s, "1/8") == 0) return 48.0;
@@ -57,7 +69,8 @@ constexpr KindName kKinds[kBossKinds] = {
     {"blink_star", "BLINK STAR"},     {"sentry_array", "SENTRY ARRAY"}, {"mirror_mimic", "MIRROR MIMIC"},
     {"twin_tether", "TWIN TETHER"},   {"weaver_prime", "WEAVER PRIME"}, {"deep_well", "DEEP WELL"},
     {"horizon", "EVENT HORIZON"},     {"polyrhythm", "POLYRHYTHM"},     {"feedback", "FEEDBACK"},
-    {"cadence", "CADENCE"},
+    {"cadence", "CADENCE"},         {"arpeggiator", "ARPEGGIATOR"}, {"morgana", "FATA MORGANA"},
+    {"reprise", "KALEIDOS, REPRISE"},
 };
 
 // Lines [x0, y0, x1, y1, layer] from an array of arrays.
@@ -101,6 +114,10 @@ u64 bossDataDigest() {
     h = fnv(h, kChoirJson);
     h = fnv(h, kMinibossesJson);
     h = fnv(h, kCadenceJson);  // M5 part 6
+    h = fnv(h, kArpJson);
+    h = fnv(h, kMorganaJson);
+    h = fnv(h, kRepriseJson);
+    h = fnv(h, kFirstLightJson);
     h ^= arenaDataDigest() * 31u;  // M5 part 5: the arena and the traits
     return h;
 }
@@ -599,6 +616,108 @@ bool CadenceData::load() {
     num("numbers.bulletSpeed", bulletSpeed);
     num("numbers.bulletLifeSeconds", bulletLife);
     whole("numbers.rewardShards", rewardShards);
+    num("numbers.damageScale.open", dmgOpen);
+    num("numbers.damageScale.openOnTheOne", dmgOne);
+    num("numbers.damageScale.closed", dmgClosed);
+    return ok;
+}
+
+bool ArpData::load() {
+    // design/bosses/arpeggiator.json (M5 part 6).
+    JsonDoc doc;
+    if (!doc.parse(kArpJson, sizeof kArpJson - 1, "design/bosses/arpeggiator.json")) return false;
+    bool ok = true;
+    const auto num = [&](const char* path, float& out) {
+        bool got = true;
+        const double v = doc.number(path, out, &got);
+        if (!got) {
+            RF_ERR("arpeggiator: '%s' is missing", path);
+            ok = false;
+        }
+        out = static_cast<float>(v);
+    };
+    num("numbers.health", health);
+    num("numbers.coreRadius", coreRadius);
+    num("numbers.laneWidth", laneWidth);
+    num("numbers.laneLength", laneLength);
+    num("numbers.blockWidth", blockWidth);
+    num("numbers.blockSpeed", blockSpeed);
+    float r = static_cast<float>(rewardShards);
+    num("numbers.rewardShards", r);
+    rewardShards = static_cast<u32>(r);
+    return ok;
+}
+
+bool MorganaData::load() {
+    // design/bosses/morgana.json (M5 part 6).
+    JsonDoc doc;
+    if (!doc.parse(kMorganaJson, sizeof kMorganaJson - 1, "design/bosses/morgana.json")) return false;
+    bool ok = true;
+    const auto num = [&](const char* path, float& out) {
+        bool got = true;
+        const double v = doc.number(path, out, &got);
+        if (!got) {
+            RF_ERR("morgana: '%s' is missing", path);
+            ok = false;
+        }
+        out = static_cast<float>(v);
+    };
+    const auto whole = [&](const char* path, u32& out) {
+        float v = static_cast<float>(out);
+        num(path, v);
+        out = static_cast<u32>(v);
+    };
+    num("numbers.health", health);
+    num("numbers.oasisRadius", oasisRadius);
+    num("numbers.bodyRadius", bodyRadius);
+    whole("numbers.fanBullets", fanBullets);
+    num("numbers.bulletSpeed", bulletSpeed);
+    whole("numbers.rewardShards", rewardShards);
+    return ok;
+}
+
+bool RepriseData::load() {
+    // design/bosses/reprise.json (M5 part 6), and First Light's arpeggios (design/music/track01.json: the progression's
+    // chords in order, each one's sixteen notes).
+    JsonDoc doc;
+    if (!doc.parse(kRepriseJson, sizeof kRepriseJson - 1, "design/bosses/reprise.json")) return false;
+    bool ok = true;
+    const auto num = [&](const JsonDoc& d, const char* path, float& out) {
+        bool got = true;
+        const double v = d.number(path, out, &got);
+        if (!got) {
+            RF_ERR("reprise: '%s' is missing", path);
+            ok = false;
+        }
+        out = static_cast<float>(v);
+    };
+    num(doc, "numbers.health", health);
+    num(doc, "numbers.coreRadius", coreRadius);
+    num(doc, "numbers.armLength", armLength);
+    float r = static_cast<float>(rewardShards);
+    num(doc, "numbers.rewardShards", r);
+    rewardShards = static_cast<u32>(r);
+    JsonDoc music;
+    if (!music.parse(kFirstLightJson, sizeof kFirstLightJson - 1, "design/music/track01.json")) return false;
+    const JsonValue* prog = music.find("progression");
+    const JsonValue* chords = music.find("chords");
+    for (u32 c = 0; c < 4; ++c) {
+        const JsonValue* name = music.at(prog, c);
+        const JsonValue* chord = name ? music.member(chords, music.string(name)) : nullptr;
+        const JsonValue* arp = chord ? music.member(chord, "arp") : nullptr;
+        u32 k = 0;
+        u8 lo = 255;
+        for (const JsonValue* v = music.firstChild(arp); v && k < 16; v = music.nextSibling(v), ++k) {
+            arpMidi[c][k] = static_cast<u8>(v->number);
+            if (arpMidi[c][k] < lo) lo = arpMidi[c][k];
+        }
+        if (k != 16) {
+            RF_ERR("reprise: First Light's chord %u has %u arpeggio notes (16 wanted)", c, k);
+            ok = false;
+            continue;
+        }
+        for (u32 j = 0; j < 16; ++j) arpSemis[c][j] = static_cast<u8>(arpMidi[c][j] - lo);
+    }
     return ok;
 }
 
