@@ -70,7 +70,9 @@ constexpr u32 kBurnVoices = kMaxPlayers;
 constexpr u32 kSweeperVoice = kRecipeVoices + kOneShotGlides + kBurnVoices;
 constexpr u32 kBeamVoice = kSweeperVoice + 1;
 constexpr u32 kStandVoice = kBeamVoice + kMaxPlayers;
-constexpr u32 kStandVoices = 8;
+// M5 audio (the lead's rulings, the worst case's cost): it was 8, then 6; one since the Moto measured 29.0% with six (the new
+// accent's note takes the held voice, gliding to it).
+constexpr u32 kStandVoices = 1;
 constexpr u32 kContentVoices = kStandVoice + kStandVoices;
 constexpr float kBurnMaxDensity = 60.0f;  // bursts a second at thirty burning enemies (engine choice)
 constexpr u32 kKnot = 32;                 // control rate: every 32 samples of a voice's age, whatever the callbacks
@@ -1153,12 +1155,10 @@ void Engine::upgradeBar() {
     const Chord& ch = *p.chord;
     // The Sweeper's drone, on the chord's bass note an octave down (recipes.drone), opening as the arm comes round.
     holdDrone(kSweeperVoice, p.riffsOn && riff[ix(Riff::Sweeper)], ch.bass - 12, r.sweepCutLo, r.sweepLevel, 1, barF);
-    // Beam: each player's drone on the arpeggio's first note (conductor.json boosts.beam). M5 audio (cost): the players' drones
-    // are one note at one cutoff, started on the same bar line: one voice at the sum of their levels sounds as they do.
-    float beam = 0.0f;
-    for (u32 i = 0; i < kMaxPlayers; ++i)
-        if (i < playerCount_ && playerBoost(i, Boost::Beam) && !(hostOnly_ && i != localPlayer_)) beam += playerLevel(i);
-    holdDrone(kBeamVoice, beam > 0.0f, ch.arp[0], kBeamCutoff, recipeLevel(Recipe::Drone, *sp_) * beam, 0, barF);
+    // Beam: the player's drone on the arpeggio's first note (conductor.json boosts.beam). M5 audio (the lead's ruling, cost): a
+    // teammate's Beam drone is its own device's, as its extra lead notes are; this device holds its own player's.
+    const bool beam = localPlayer_ < playerCount_ && playerBoost(localPlayer_, Boost::Beam);
+    holdDrone(kBeamVoice, beam, ch.arp[0], kBeamCutoff, recipeLevel(Recipe::Drone, *sp_), 0, barF);
     for (u32 i = 1; i < kMaxPlayers; ++i) holdDrone(kBeamVoice + i, false, 0, 0.0f, 0.0f, 0, barF);
 }
 
@@ -1487,25 +1487,27 @@ u32 maxLoadSetup(Command* out, u32 cap) {
                                          {Riff::Lancer, Riff::Minelayer, Riff::StormCoil, Riff::Mirror},
                                          {Riff::Swarm, Riff::Singularity, Riff::Comet, Riff::Mirror},
                                          {Riff::Sweeper, Riff::Flak, Riff::Lancer, Riff::Mirror}};
-    // The Mods that add sound, at their caps (GAME_DESIGN 6.2).
+    // The Mods that add sound, at their caps (GAME_DESIGN 6.2; play test 3, 2026-11-13: Split 2, Double-Time 1, Fork 1, set
+    // here by the audio engineer to the lead's message ahead of the content engineer's change).
     struct Cap {
         Mod m;
         u8 stacks;
     };
-    static constexpr Cap kMods[] = {{Mod::Split, 3},      {Mod::DoubleTime, 2}, {Mod::Pierce, 3},     {Mod::Overcharge, 5}, {Mod::OnBeatCrit, 3},
+    static constexpr Cap kMods[] = {{Mod::Split, 2},      {Mod::DoubleTime, 1}, {Mod::Pierce, 3},     {Mod::Overcharge, 5}, {Mod::OnBeatCrit, 3},
                                     {Mod::Seeker, 3},     {Mod::HeavyStep, 3},  {Mod::Accent, 3},     {Mod::Echo, 2},       {Mod::Wave, 2},
                                     {Mod::RearGuard, 2},  {Mod::Syncopation, 2}, {Mod::BarLine, 3},   {Mod::Crescendo, 2},  {Mod::KickPulse, 3},
-                                    {Mod::Afterparty, 2}, {Mod::Fork, 2},       {Mod::Arc, 3},        {Mod::Burn, 3},       {Mod::Shatter, 3},
+                                    {Mod::Afterparty, 2}, {Mod::Fork, 1},       {Mod::Arc, 3},        {Mod::Burn, 3},       {Mod::Shatter, 3},
                                     {Mod::GravityRounds, 2}};
     // M5 audio (the worst case has grown: two Boosts a player, and Fusions): two Boosts each, the heaviest where they cost on
     // this device. The local player's lead takes the extra notes (Fractal's land later and overlap, Chorus two a step); a
-    // teammate's extra notes are its own device's, so theirs are the shared layers: Beam's drone each, Colossus's doubled bass,
-    // Chain Storm's zaps, Freeze Frame's high-pass on the music. The local player owns all eight Fusions (Quartet's four-part
-    // lead, Standing Wave's held pads, Murmuration's trill, Tesla Bloom's zaps ...; each takes its ingredients' part).
+    // teammate's extra notes and its Beam drone are its own device's, so theirs are the shared layers: Colossus's doubled bass,
+    // Chain Storm's zaps, Carousel's toms, Freeze Frame's high-pass on the music, and Beam's longer notes. The local player
+    // owns all eight Fusions (Quartet's four-part lead, Standing Wave's held pads, Murmuration's trill, Tesla Bloom's zaps ...;
+    // each takes its ingredients' part).
     static constexpr Boost kBoost[4][2] = {{Boost::Fractal, Boost::Chorus},
-                                           {Boost::Beam, Boost::Colossus},
-                                           {Boost::Beam, Boost::ChainStorm},
-                                           {Boost::Beam, Boost::FreezeFrame}};
+                                           {Boost::Colossus, Boost::ChainStorm},
+                                           {Boost::Carousel, Boost::FreezeFrame},
+                                           {Boost::Beam, Boost::Prism}};
     for (u8 p = 0; p < 4; ++p) {
         put(cmd(CmdType::SetFire, p, 1));
         put(cmd(CmdType::SetTimbre, p, p));
@@ -1555,7 +1557,7 @@ u32 maxLoadFrame(u32 frame, Command* out, u32 cap, bool fights) {
     }
     if (!fights) return n;
     // M5 audio: the fights' sounds on top, in turn ten seconds each (a fight's held voices and the arena's never sound
-    // together): the arena's (three Rift drones following the chord, their cutoff swept, the Storm Cell's crackle; a Lens's
+    // together): the arena's (a Rift's drone following the chord, its cutoff swept, the Storm Cell's crackle; a Lens's
     // glass on every 1/32 step, a Storm Cell's three zaps a beat, a Rift's toms a bar, all aggregated), then a fight's
     // (Feedback's Howl: the delay's sixteen taps, the pad's tone, its echoes on the fight's own lead a note every 1/16; Event
     // Horizon's sub; Cadence's stab at 1.2 and a bell arpeggio a bar; a beat's cut of the pads and bass every two seconds).
@@ -1582,9 +1584,7 @@ u32 maxLoadFrame(u32 frame, Command* out, u32 cap, bool fights) {
             fill(CmdType::VoiceStop, 8, 0, 0.3f, 0.0f, 0.0f, 0.0f, -1, 0, 0, 0);
             fill(CmdType::DelayBoost, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, -1, 0, 0, 0);
             fill(CmdType::PadTone, 0, 0, 1.0f, 1.0f, 0.15f, 0.0f, -1, 0, 0, 0);
-            for (u8 s = 0; s < 3; ++s)
-                fill(CmdType::VoiceStart, static_cast<u8>(10 + s), static_cast<u8>(Recipe::Drone), 0.7f, -0.5f + 0.5f * s, 300.0f, 0.0f,
-                     chordNote(s == 0 ? 0 : (s == 1 ? 4 : 8), 2), 0, 1, 0);
+            fill(CmdType::VoiceStart, 10, static_cast<u8>(Recipe::Drone), 0.7f, -0.3f, 300.0f, 0.0f, chordNote(0, 2, NoteFrom::ChordTone), 0, 1, 0);
             fill(CmdType::VoiceStart, 13, static_cast<u8>(Recipe::Crackle), 1.0f, 0.3f, 80.0f, 0.0f, -1, 0, 0, 0);
         } else {
             for (u8 s = 10; s < 14; ++s) fill(CmdType::VoiceStop, s, 0, 0.3f, 0.0f, 0.0f, 0.0f, -1, 0, 0, 0);
@@ -1594,10 +1594,8 @@ u32 maxLoadFrame(u32 frame, Command* out, u32 cap, bool fights) {
         }
     }
     if (arena) {
-        if (frame % 15 == 0)  // the drones' cutoff sweeping (the Build)
-            for (u8 s = 0; s < 3; ++s)
-                fill(CmdType::VoiceSet, static_cast<u8>(10 + s), 0, 300.0f + 2100.0f * static_cast<float>((frame / 15 + s * 3) % 8) / 7.0f, -1.0f, 0.0f, 0.0f, -1,
-                     0, 0, 0);
+        if (frame % 15 == 0)  // the drone's cutoff sweeping (the Build)
+            fill(CmdType::VoiceSet, 10, 0, 300.0f + 2100.0f * static_cast<float>((frame / 15) % 8) / 7.0f, -1.0f, 0.0f, 0.0f, -1, 0, 0, 0);
         fill(CmdType::Recipe, static_cast<u8>(Recipe::Glass), 1, 0.25f, 0.2f, 0.0f, 0.0f, chordNote(7, 0, NoteFrom::Lead), 0, 0, 2, Timing::Next32);
         if (frame % 80 == 10) fill(CmdType::Recipe, static_cast<u8>(Recipe::Tom), 1, 0.5f, -0.2f, 0.0f, 0.0f, -1, 0, 0, 4, Timing::Next32);
         if (frame % 20 == 5)
@@ -1829,10 +1827,26 @@ void Engine::renderContent(u32 n) {
             const i16 note = v.reNote;
             const float gain = v.reGain, pan = v.rePan;
             const u32 length = v.reLength;
-            startContentVoice(v, Recipe::PadVoice, note, gain, pan, 0.0f, 0.0f, 0.0f);  // (restartAt back to -1)
-            v.bus = Bus::Pad;
-            v.length = length;
-            v.delay = cut;
+            if (v.active && v.kind == Recipe::PadVoice && !v.releasing && v.saw[0].dt > 0.0f) {
+                // One voice (the lead's ruling): the held note glides to the new one over 20 ms and holds it a bar from here,
+                // its envelope going on (no click).
+                const double hz = midiHz(note);
+                v.retune[0] = static_cast<float>(hz / sr_);
+                v.retune[1] = v.retune[0] * (v.saw[1].dt / v.saw[0].dt);
+                v.retuneAt = v.restartAt;
+                v.retuneN = framesFor(kDroneGlideS, sr_);
+                v.note = note;
+                v.length = v.age + length;
+                v.restartAt = -1;
+                v.delay = cut;  // (it goes on from the cut: what came before was rendered)
+                panGains(pan, gain * recipeLevel(Recipe::PadVoice, *sp_), v.gl, v.gr);
+                v.base = gain * recipeLevel(Recipe::PadVoice, *sp_);
+            } else {
+                startContentVoice(v, Recipe::PadVoice, note, gain, pan, 0.0f, 0.0f, 0.0f);  // (restartAt back to -1)
+                v.bus = Bus::Pad;
+                v.length = length;
+                v.delay = cut;
+            }
         }
         run(v, n);
     }

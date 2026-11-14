@@ -47,6 +47,10 @@ constexpr float kStormGain = 1.0f, kStormDensityLo = 4.0f, kStormDensityHi = 80.
 constexpr float kMgCrackleGain = 0.8f, kMgCrackleDensity = 45.0f;
 constexpr float kStabOne = 1.2f;                        // cadence.md: the stab at 1.2 (as written)
 constexpr float kChoirSend = 0.5f;                      // choir.md: reverb send 0.5 (as written)
+// The lead's rulings (cost): held pads and drones one voice each since the Moto measured 29.0% (the nearest open Rift's drone;
+// the Brood Mother's threads one pad voice while any broodling lives).
+constexpr u32 kRiftDrones = 1;
+constexpr u8 kBroodVoices = 1;
 
 // In sim::BossCue's order.
 const FightSound kRows[] = {
@@ -292,7 +296,7 @@ const FightSound kRows[] = {
     {BossCue::PyPulse, "arena.md", "Pylon: each pulse a bell on the chord's root an octave up, on the One", nullptr, SoundPlay::Recipe, rc(Recipe::Bell), false,
      0.5f, 0, 0},
     {BossCue::RiOpen, "arena.md", "Rift: a drone on the chord's bass note while it is open, its cutoff rising through the Build (each open Rift's drone "
-                                  "follows the world: FightScene; a Rift Surge's three a fifth apart)",
+                                  "follows the world: FightScene; the nearest two, a Rift Surge's a fifth apart)",
      nullptr, SoundPlay::None, 0, false, 0.0f, 0, 0},
     {BossCue::RiThrough, "arena.md", "Rift: a tom for each body that comes through (the four come through together: aggregated as one, six for a Surge's)",
      nullptr, SoundPlay::Custom, rc(Recipe::Tom), false, 0.5f, 0, 0},
@@ -850,7 +854,8 @@ void readFightScene(const sim::World& w, u32 seat, double offset, FightScene& ou
             default: break;
         }
     }
-    // The arena: the open Rifts (the nearest three), the Build's progress, the Storm Cell, the Convoy's carriers.
+    // The arena: the open Rifts (the nearest two: the lead's ruling, cost), the Build's progress, the Storm Cell, the Convoy's
+    // carriers.
     const ArenaBody* bodies = w.arenaBodies();
     float dist[3] = {1e30f, 1e30f, 1e30f};
     u8 surge = 0;
@@ -860,9 +865,9 @@ void readFightScene(const sim::World& w, u32 seat, double offset, FightScene& ou
         if (a.kind == static_cast<u8>(StructKind::Rift) && a.from > 0.0) {
             const float d = length(a.pos - sc.ship);
             const u8 place = a.surge ? surge++ : 0xFF;
-            u32 at = sc.rifts < 3 ? sc.rifts : 3;
+            u32 at = sc.rifts < kRiftDrones ? sc.rifts : kRiftDrones;
             while (at > 0 && dist[at - 1] > d) {
-                if (at < 3) {
+                if (at < kRiftDrones) {
                     dist[at] = dist[at - 1];
                     sc.riftPan[at] = sc.riftPan[at - 1];
                     sc.riftGain[at] = sc.riftGain[at - 1];
@@ -870,12 +875,12 @@ void readFightScene(const sim::World& w, u32 seat, double offset, FightScene& ou
                 }
                 --at;
             }
-            if (at < 3) {
+            if (at < kRiftDrones) {
                 dist[at] = d;
                 sc.riftPan[at] = panOf(a.pos);
                 sc.riftGain[at] = clampf(1.0f - (d - 600.0f) / 2400.0f, 0.25f, 1.0f);  // heard from afar, louder near
                 sc.riftSurge[at] = place;
-                if (sc.rifts < 3) ++sc.rifts;
+                if (sc.rifts < kRiftDrones) ++sc.rifts;
             }
         }
         if (a.kind == kBodyCarrier && sc.carriers < 4) sc.carrierPan[sc.carriers++] = panOf(a.pos);
@@ -954,10 +959,10 @@ void followScene(audio::CommandSink& s, FightVoices& v, bool all) {
     // Fata Morgana's storm: the crackle while this device's ship is outside the calm.
     if (fight && k == BossKind::Morgana && sc.mgOutside) hold(s, v, 9, 1, Recipe::Crackle, -1, kMgCrackleGain, 1.0f, 0.0f, kMgCrackleDensity);
     else letGo(s, v, 9, 0.3f);
-    // The Brood Mother's threads: a pad voice for each living broodling (the chord's root, third, fifth, seventh; four at most),
-    // following the chord; silent when none lives (she is open).
+    // The Brood Mother's threads: a pad voice for each living broodling (the chord's root, third, fifth, seventh), following the
+    // chord; silent when none lives (she is open). (Cost, the lead's ruling: kBroodVoices of them, the root first.)
     for (u8 j = 0; j < 4; ++j) {
-        if (fight && k == BossKind::BroodMother && sc.broodlings > j)
+        if (fight && k == BossKind::BroodMother && sc.broodlings > j && j < kBroodVoices)
             hold(s, v, j, static_cast<u8>(10 + j), Recipe::PadVoice, chordNote(j, 4, NoteFrom::ChordTone), kBroodGain, 1.0f,
                  (static_cast<float>(j) - 1.5f) * 0.3f, 0.0f, 0.03f, true);
         else if (v.held[j] == 10 + j)
@@ -989,8 +994,8 @@ void followScene(audio::CommandSink& s, FightVoices& v, bool all) {
         recipe(s, Recipe::CrackleShot, -1, 1.0f, 0.0f, sc.weaverBurst, 1.0f, 1.0f);
         v.weaverPosted = sc.weaverBurst;
     }
-    // The Rifts' drones: on the chord's bass note (a Rift Surge's three a fifth apart: the bass, its fifth, the ninth), the
-    // cutoff rising through the Build.
+    // The Rifts' drones (the nearest two): on the chord's bass note (a Rift Surge's a fifth apart: the bass, its fifth, the
+    // ninth), the cutoff rising through the Build.
     const bool arena = sc.valid && !(sc.fight && !all);
     for (u8 j = 0; j < 3; ++j) {
         const u8 slot = static_cast<u8>(10 + j);

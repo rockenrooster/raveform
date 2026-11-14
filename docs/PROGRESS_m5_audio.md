@@ -10,7 +10,7 @@ under the phone lock (`m5audio`), with this branch's APK deployed right before t
 | Colossus's ram toms level with the music | **Done**: +3.4 dB -> **-0.0 dB** | `--render upgrade-levels`, "Colossus: and a tom on the root for each enemy rammed" |
 | Kick Pulse's tom against a full Drop | **Audible, not raised**: in the 85 ms after each kick its 250 Hz octave is **-6.0 to -7.2 dB** under the rest of the mix there (First Light, Afterglow, Last Light) | `--render kick-pulse` |
 | The Choir's pad voice, reverb send 0.5 | **Done** (the Voices, a Voice's death, the held note, the Reprise's Choir solo) | content voice send (`VoiceStart mods[5]`) |
-| The worst case grown to two Boosts a player and Fusions, the fights on top | **Built**; **Moto P95 31.5%: over the 25% limit** (below) | `--band max`; offline `--render max` / `max-upgrades` |
+| The worst case grown to two Boosts a player and Fusions, the fights on top | **Built**; Moto P95 31.5% first; with the lead's cuts and the new caps 29.0%; with held pads and drones at one voice **28.0%, 0 underruns** (the lead's band of 25-28%: accepted, over the 25% goal) | `--band max`; offline `--render max` / `max-upgrades` |
 | Play test 3, 1: the Nova's distortion | **Done**: a look-ahead limiter replaces the soft knee; THD+N of the worst instant **0.03-0.66%** (the old knee 0.02-5.8%) | `--render nova-check` |
 | Play test 3, 2: a chain of kills is one sound | **Done**: one family a 1/32 step, never louder than one large kill, 0.7 a further step of the beat down to 0.3 | test "the kill family" |
 | Play test 3, 3: hit confirmation on bosses | **Not done**: its rows are not on main yet | |
@@ -54,13 +54,14 @@ under the phone lock (`m5audio`), with this branch's APK deployed right before t
 - **Fixes found on the way**: Standing Wave took its slot on the block being planned (cutting what rang there at a block
   boundary: random bursts rendered differently once all its slots were busy); it now takes it on its own frame. A reversed
   cymbal asked for late still ends on its tick (what is left of it plays).
-- **Cost**: the content voices' saw pairs run a knot at a time in locals (the PolyBLEP by a reciprocal); the players' Beam
-  drones (one note, one cutoff, one bar line) are one voice at the sum of their levels; a teammate's Feedback Echoes are its
-  own device's (they would be 18 dB and more under the lead here), as its extra lead notes already were.
+- **Cost**: the content voices' saw pairs run a knot at a time in locals (the PolyBLEP by a reciprocal); a teammate's Beam
+  drone and its Feedback Echoes are its own device's, as its extra lead notes already were; and the lead's rulings' cuts
+  (Numbers, below).
 - **The worst case** (`maxLoadSetup` / `maxLoadFrame`): two Boosts a player (the local player Fractal and Chorus; the
-  teammates the shared layers: Beam and Colossus, Beam and Chain Storm, Beam and Freeze Frame), the local player's eight
-  Fusions, and the fights' sounds on top in turn, ten seconds each: the arena's (three Rift drones following the chord, their
-  cutoff swept; the Storm Cell's crackle; a Lens's glass every 1/32 step, a Storm Cell's zaps a beat, a Rift's toms a bar) and a
+  teammates the shared layers: Colossus and Chain Storm, Carousel and Freeze Frame, Beam and Prism), the Mods at play test 3's
+  caps, the local player's eight Fusions, and the fights' sounds on top in turn, ten seconds each: the arena's (a Rift's drone
+  following the chord, its cutoff swept; the Storm Cell's crackle; a Lens's glass every 1/32 step, a Storm Cell's zaps a beat,
+  a Rift's toms a bar) and a
   fight's (Feedback's Howl: sixteen delay taps, the pad's tone, its echoes a note every 1/16; Event Horizon's sub; Cadence's stab
   at 1.2 and a bell arpeggio a bar; a cut of the pads and bass every two seconds). `--band full` and `stress` are the M2-era
   loads and are unchanged; `max` is their superset.
@@ -80,7 +81,7 @@ glided, re-panned and released there. The rows that were pending now play:
 | Feedback, echo | the player's note of the Echo's delay before, an octave down, at 1.2 kHz, -9 dB, far over; the second Echo -15 dB at 700 Hz |
 | Feedback, open | the root two octaves up held while the Head is open, a semitone higher each tenth of health lost; the pad opened (x 1.6) while open, ducked (-6 dB) and dull (x 0.55) while closed; Howl: the delay's feedback +0.25, sixteen repeats |
 | Moth Queen | the open hat panned round with the court's turn; the clap on the burst; open: the bed down to kick and pad |
-| Brood Mother | the threads: a pad voice for each living broodling (root, third, fifth, seventh: four at most), following the chord; the bell at the break |
+| Brood Mother | the threads: one pad voice on the chord's root while any broodling lives (the page's voice a broodling, cut to one by the lead's ruling), following the chord, silent when she is open; the bell at the break |
 | Blink Star, fire | the run's five notes as one stab with the zap |
 | Cadence | the pillar's root held a bar and its chord (the progression's) on the stab at 1.2; fans on the firing pillars' own roots; Inversion high-passed at 800 Hz for a bar; death: each pillar's chord, then the tonic with the gong |
 | Arpeggiator | each block's bell when it reaches this device's ship's row (its own note: the arpeggio's of its step, the second machine's the chord tone); the second machine's arrival on the stab |
@@ -91,7 +92,7 @@ glided, re-panned and released there. The rows that were pending now play:
 | Weaver Prime | a crackle swelling over the beat into the cage's going off, the stab on it |
 | Deep Well | the thup a scale step higher each ring lit (aggregated); a reversed cymbal into each ring the bar's fill will give back (sent a beat and a half ahead), the stab on the ring |
 | Elites | Armored's short gong, Splitting's crack, Volatile's crackle, Regenerating's two bells, Magnetic's chirps falling, Phasing's gated fifth; the chosen ones (no sound on the page) keep what they played, marked "chosen" |
-| Arena | the Vault's bells up the chord with the glass; the Pylon's three bells; each open Rift's drone on the chord's bass (the nearest three; a Rift Surge's three a fifth apart), its cutoff rising through the Build; a Rift's four bodies one aggregated tom; the Bumper's stab with its zap; the Lens's glass a fifth over its player's lead (aggregated); the Comet's announcing glide (the other events' pages name none); the Comet's Shards one aggregated bell a beat; the Eclipse's low-pass let go at its end; a Convoy tom a beat for each carrier, panned to it; the Storm Cell's zaps on the chord's three notes (aggregated) and its crackle, denser and louder as it nears |
+| Arena | the Vault's bells up the chord with the glass; the Pylon's three bells; the nearest open Rift's drone on the chord's bass (one, by the lead's ruling; a Rift Surge's a fifth up for its second and third), its cutoff rising through the Build; a Rift's four bodies one aggregated tom; the Bumper's stab with its zap; the Lens's glass a fifth over its player's lead (aggregated); the Comet's announcing glide (the other events' pages name none); the Comet's Shards one aggregated bell a beat; the Eclipse's low-pass let go at its end; a Convoy tom a beat for each carrier, panned to it; the Storm Cell's zaps on the chord's three notes (aggregated) and its crackle, denser and louder as it nears |
 
 ### Hooks outside my files
 
@@ -106,17 +107,29 @@ glided, re-panned and released there. The rows that were pending now play:
 | Run | Callbacks | Load P50 / P95 / P99 / max | Callback us P50 / P95 / max | Underruns | Callback allocations | Voices peak |
 |---|---|---|---|---|---|---|
 | Before (the last round's worst case: a Boost each, no Fusions, no fights), 120 s | 26,629 | 0.192 / 0.245 / 0.321 / 0.678 | 940 / 1170 / 1880 | 0 | 0 | 106 |
-| **This round's worst case**, 55 s | 12,207 | 0.246 / **0.315** / 0.393 / 0.780 | 1200 / 1500 / 1830 | **0** | **0** | 140 |
+| This round's worst case, first (`5fc58a8`), 55 s | 12,207 | 0.246 / 0.315 / 0.393 / 0.780 | 1200 / 1500 / 1830 | 0 | 0 | 140 |
+| With the lead's five cuts and play test 3's caps, 55 s | 12,208 | 0.230 / 0.290 / 0.376 / 0.959 | 1130 / 1360 / 1490 | 0 | 0 | 140 |
+| **With held pads and drones at one voice**, 55 s | 12,206 | 0.219 / **0.280** / 0.367 / 0.721 | 1070 / 1310 / 1430 | **0** | **0** | 141 |
 
-The run was valid (the app kept focus); the panel at 60 Hz, 0 frames missed.
+Each run was valid (the app kept focus); the panel at 60 Hz, 0 frames missed. The last is in the lead's accepted band (25% to
+28% with 0 underruns), on its edge, and over the 25% goal.
 
-**Over the limit.** Offline (`--profile`, Track 10, ms of engine time a second of audio, about +-5% between runs): the last
-round's worst case 28.6; the grown loadout alone (`max-upgrades`) 33.6-34.2, of which Standing Wave's eight held pad voices
-about 3, Colossus's doubled bass and the Beam drone about 1.5; with the fights' sounds (`max`) 36-38, the arena's or a fight's
-held voices about 2 of it. The limiter and the kill family cost nothing measurable. So about four points of the Moto's seven
-come from the grown loadout, two from the fights' sounds. What would bring it back, for the lead's ruling (none taken):
-Standing Wave at six voices (its seventh-oldest note is still at -9 dB when cut); a teammate's Beam drone as its own device's;
-the local lead's cap at 10 notes while it owns Quartet; the Rifts' drones two at most and Feedback's echoes two at most.
+Offline (`--profile`, Track 10, ms of engine time a second of audio, about +-5% between runs): the last round's worst case
+28.6; this round's first 36-38 (the grown loadout alone 33.6-34.2: Standing Wave's eight held pads about 3, Colossus's
+doubled bass and the Beam drones about 1.5; the fights' held voices about 2); after the cuts below **31.5**. The limiter and
+the kill family cost nothing measurable.
+
+The cuts (the lead's rulings of 2026-11-13):
+1. **The five approved**: Standing Wave at six voices; a teammate's Beam drone only on its own device (this device holds its
+   own player's); the local lead at 10 notes while its player owns Quartet; at most two Rift drones and two Feedback echoes
+   (the fight's own lead, `kFightLeadVoices` 2); only the local player's Feedback Echoes on each device.
+2. **The caps** (play test 3, GAME_DESIGN 6.2): the worst case's loadout has Split 2, Double-Time 1, Fork 1 (`maxLoadSetup`),
+   set here ahead of the content engineer's change on main. Its Boosts: Fractal and Chorus for the local player; Colossus and
+   Chain Storm, Carousel and Freeze Frame, Beam and Prism for the teammates (their Beam drones are theirs now).
+3. **Over 28% (29.0%), so held pads and drones one voice each, longest-lived first**: Standing Wave's held pads to **one
+   voice** (each new accent glides the held voice to its note over 20 ms and holds it a bar from there, its envelope going on:
+   no click); the Rifts' drones to **the nearest one**; the Brood Mother's threads to **one pad voice** (the chord's root while
+   any broodling lives, silent when she is open). Then measured once: 28.0%.
 
 ### The worst instant (`--render nova-check`)
 
@@ -155,7 +168,7 @@ main; when it arrives here nothing else in the band needs to move.
 - **Hit confirmation** (play test 3, 3): its rows are not on main; they sound when they reach this branch.
 - **Extra Life and the Orbitals' ring**: the band has the four cues; the simulation has no events for them on main, so the game
   does not post them yet (`band.cue(Cue::ExtraLifePickup ...)` from wherever the pickup is decided).
-- **The budget**: 31.5% on the Moto, over 25% (above).
+- **The budget**: 28.0% on the Moto after the rulings' cuts (above): in the accepted band, not under the 25% goal.
 - **By ear**: nothing here has been heard (this PC is silent). The sheet is for the user.
 - `scripts\test.ps1`'s simulation, determinism and network parts fail on main `a008b71` (the arena data); the audio parts pass.
 - The tablet and the OnePlus: not attached.

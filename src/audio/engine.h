@@ -157,7 +157,7 @@ enum class CmdType : u8 {
 // with its envelope reversed (a swell cut off); a note given (c).
 enum class LeadEchoMode : u8 { Recorded, Mirror, Reverse, Note };
 constexpr u8 kFightLeadPlayer = 6;   // the lead voices a fight plays (its own cap: kFightLeadVoices); 7 is Kaleidos's bells
-constexpr u32 kFightLeadVoices = 3;
+constexpr u32 kFightLeadVoices = 2;  // (the lead's ruling: Feedback's echoes two at most)
 
 struct Command {
     CmdType type = CmdType::Reset;

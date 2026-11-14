@@ -20,6 +20,7 @@ constexpr u32 kLeadPerPlayer = 12;  // per player (a 1/32 line and its harmony, 
 // held (the whole note at 1/16 at 174 BPM, a beat of them at 1/32); its harmony (Split, Prism, On-Beat Crit) and every
 // note its other upgrades add are its own device's (leadStep, leadUpgrades).
 constexpr u32 kLeadPerOther = 4;
+constexpr u32 kLeadPerQuartet = 10;  // M5 audio (the lead's ruling): the local player's cap while it owns Quartet
 constexpr u32 kLeadFadeOut = 240;   // frames: a replaced note fades instead of clicking
 constexpr u32 kGateRamp = 96;       // M5: a gated one-shot's edges (2 ms; Phasing's fifth)
 // M5: room for the upgrades (Heavy Step and Colossus double the bass; Lancer, Accent, Bar Line and the Cannon stab; the
@@ -865,8 +866,12 @@ Engine::LeadVoice* Engine::playLead(u8 player, Timbre timbre, float midi, float 
     }
     // M5: a fight's own lead notes (LeadEcho: Feedback's echoes, the Mimic's answers, Event Horizon's count) hold at most
     // kFightLeadVoices among them.
-    const u32 cap = player == kFightLeadPlayer ? kFightLeadVoices
-                                               : ((player < kMaxPlayers && player != localPlayer_) ? kLeadPerOther : kLeadPerPlayer);
+    // M5 audio (the lead's ruling, cost): the local player's lead holds 10 notes while it owns Quartet (its four parts a step).
+    const u32 cap = player == kFightLeadPlayer
+                        ? kFightLeadVoices
+                        : ((player < kMaxPlayers && player != localPlayer_)
+                               ? kLeadPerOther
+                               : (player < kMaxPlayers && playerFusion(player, Fusion::Quartet) ? kLeadPerQuartet : kLeadPerPlayer));
     if (mine >= cap && oldest && at - oldest->start >= static_cast<i64>(oldest->age)) {
         oldest->length = static_cast<u32>(at - oldest->start) + kLeadFadeOut;
         oldest->fade = kLeadFadeOut;

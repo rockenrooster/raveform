@@ -89,7 +89,8 @@ struct FightScene {
     bool mgOutside = false;      // Fata Morgana: this device's ship is outside the calm
     Vec2 apMachine[2], apDir[2];  // Arpeggiator: the machines' cores and their lanes' way
     float apSpeed = 420.0f, apLength = 900.0f;
-    // The arena: the open Rifts (the nearest three: pan, gain by distance, a Rift Surge's place 0-2 or 0xFF), the Build's
+    // The arena: the open Rifts (the nearest one since the lead's ruling: pan, gain by distance, a Rift Surge's place 0-2 or
+    // 0xFF), the Build's
     // progress (0..1), the Storm Cell (on, how near, pan), the Convoy's carriers alive (pans).
     u8 rifts = 0;
     float riftPan[3] = {}, riftGain[3] = {};
@@ -105,7 +106,7 @@ void readFightScene(const sim::World& w, u32 seat, double offset, FightScene& ou
 // The held voices a fight starts (the Choir's pads): released when their time is up. Play owns one.
 // Slots (the band's held recipe voices): 0-7 a fight's pad voices (the Choir's Voices, Cadence's pillars, the Brood Mother's
 // threads, Feedback's held root), 8 a fight's drone (Event Horizon's sub, Twin Tether's beam), 9 Fata Morgana's storm crackle,
-// 10-12 the Rifts' drones, 13 the Storm Cell's crackle, 14 the Reprise's held tonic (it outlives the fight).
+// 10 the nearest open Rift's drone, 13 the Storm Cell's crackle, 14 the Reprise's held tonic (it outlives the fight).
 struct FightVoices {
     double stopAt[16] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};  // band ticks; -1 idle
     float release[16] = {};
