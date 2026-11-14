@@ -8,8 +8,12 @@
 //      full: the load test on --track; medley (M5): about 20 s of every Track's Drop with the real Track
 //      changes between them, Break -> Build -> Drop, driven bar by bar as the game's director does)
 //   raveform_headless --render recipes|cues|riffs|mods|boosts|fusions --out x.wav   (M5 listening sheets, with x.txt)
-//   raveform_headless --render max --track 10 [--profile]   (M5: the upgrades' worst case, as --band max on a device)
+//   raveform_headless --render max --track 10 [--profile]   (M5: the upgrades' worst case, as --band max on a device;
+//                                                            M5 audio: with the fights' sounds; max-upgrades without them)
 //   raveform_headless --render upgrade-levels               (M5: each sheet entry's own level in the mix)
+//   raveform_headless --render fights --out x.wav           (M5 audio: the fights' sounds built for the pending rows, each in
+//                                                            its Track's key over two bars or more of that Track, with x.txt)
+//   raveform_headless --render kick-pulse                   (M5 audio: Kick Pulse's tom against a full Drop, band by band)
 //   raveform_headless --calibrate [--write src/audio/loudness_calibration.json] [--check]
 //
 // Exit codes: 0 ok, 1 failure, 2 bad arguments, 3 calibration out of date (--check).
@@ -21,6 +25,7 @@
 #include <cstring>
 
 #include "audio/bake.h"
+#include "audio/command_sink.h"
 #include "audio/engine.h"
 #include "audio/fft.h"
 #include "audio/reverb.h"
@@ -28,6 +33,9 @@
 #include "audio/wav.h"
 #include "core/alloc_counter.h"
 #include "core/log.h"
+#include "game/pending_sounds.h"
+#include "sim/arena.h"
+#include "sim/world.h"
 
 using namespace rf;
 using namespace rf::audio;
@@ -812,8 +820,9 @@ void fullStep(Render& r, u32 track, u32 frameIndex) {
 }
 
 // M5: the upgrades' worst case (--band max on a device): the full band with every Riff at level 5 among four players, the
-// heaviest Mods and a Boost each, the effects and the upgrades' cues every 1/60 s (engine.h maxLoadSetup / maxLoadFrame).
-void maxStep(Render& r, u32 track, u32 frameIndex) {
+// heaviest Mods, two Boosts each and the Fusions, the effects and the upgrades' cues every 1/60 s (engine.h maxLoadSetup /
+// maxLoadFrame); M5 audio: with the fights' sounds on top (render max), or without them (render max-upgrades).
+void maxStep(Render& r, u32 track, u32 frameIndex, bool fights) {
     Engine& e = *r.engine;
     if (frameIndex == 0) {
         e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(track), 0));
@@ -821,8 +830,8 @@ void maxStep(Render& r, u32 track, u32 frameIndex) {
         const u32 n = maxLoadSetup(setup, 64);
         for (u32 i = 0; i < n; ++i) e.post(setup[i]);
     }
-    Command feed[40];
-    const u32 n = maxLoadFrame(frameIndex, feed, 40);
+    Command feed[64];
+    const u32 n = maxLoadFrame(frameIndex, feed, 64, fights);
     for (u32 i = 0; i < n; ++i) e.post(feed[i]);
 }
 
@@ -949,7 +958,7 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
     const bool staged = eq(opt.render, "staged");
     const bool mock = eq(opt.render, "mock"), sfx = eq(opt.render, "sfx"), leads = eq(opt.render, "leads"),
                full = eq(opt.render, "full"), surge = eq(opt.render, "surge"), medley = eq(opt.render, "medley"),
-               maxLoad = eq(opt.render, "max");
+               maxLoad = eq(opt.render, "max") || eq(opt.render, "max-upgrades"), maxFights = eq(opt.render, "max");
     const bool sheetRecipes = eq(opt.render, "recipes"), sheetCues = eq(opt.render, "cues");  // M5 listening sheets
     static SheetStep sheet[256];
     u32 sheetSteps = 0;
@@ -993,8 +1002,8 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
     }
     if (leads) seconds = static_cast<float>(4 * 4.5 + 0.5);
     if (seconds <= 0.0f) {
-        RF_ERR("unknown render '%s' (staged, mock, sfx, leads, full, surge, medley, max, recipes, cues, riffs, mods, boosts, fusions, "
-               "upgrade-levels)",
+        RF_ERR("unknown render '%s' (staged, mock, sfx, leads, full, surge, medley, max, max-upgrades, recipes, cues, riffs, mods, "
+               "boosts, fusions, upgrade-levels, fights, kick-pulse)",
                opt.render);
         return 2;
     }
@@ -1119,7 +1128,7 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
         while (r.done < r.frames) {
             if (mock) mockStep(r, music, frameIndex, rng);
             if (full) fullStep(r, t, frameIndex);
-            if (maxLoad) maxStep(r, t, frameIndex);
+            if (maxLoad) maxStep(r, t, frameIndex, maxFights);
             if (surge) surgeStep(r, t, frameIndex);
             if (medley) {
                 medleyStep(r, plan, planBars, frameIndex);
@@ -1152,6 +1161,11 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
         }
     }
     drainEvents(r);
+    // M5 audio: the output limiter's look-ahead delays the output; the file starts where the song does (onsets as before).
+    if (const u64 dly = engine.outputDelayFrames(); dly && r.frames > dly) {
+        std::memmove(r.out, r.out + dly * 2, sizeof(float) * (r.frames - dly) * 2);
+        std::memset(r.out + (r.frames - dly) * 2, 0, sizeof(float) * dly * 2);
+    }
     if (medley) {
         // Faded out over the last seconds (Track 10's Break), then where each Track's Drop began.
         const u64 fade = static_cast<u64>(kMedleyFadeS * kRate);
@@ -1288,6 +1302,714 @@ int calibrate(const Options& opt, const MusicData& music, const SampleBank& bank
     if (opt.check && stale) {
         std::printf("calibration is out of date: run scripts\\calibrate-audio.ps1\n");
         return 3;
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------- M5 audio: the fights' sounds (listening sheet)
+
+using sim::BossCue;
+
+// The game's fight sounds (game/pending_sounds.cpp) into an engine offline: the same rows, the same commands.
+struct EngineSink final : CommandSink {
+    Engine* e = nullptr;
+    const MusicData* md = nullptr;
+    u32 t = 0;
+    void send(const Command& c) override { e->post(c); }
+    const MusicData& music() const override { return *md; }
+    u32 track() const override { return t; }
+};
+
+enum class FS : u8 {
+    HzEat, HzStarved, FbEcho, FbHead, MqStep, MqBurst, MqOpen, Brood, BsFire, CdChord, CdFan, CdInversion, CdBurst, ApBlock, ApSecond,
+    MgStorm, MgBlinkLeap, RpEcho, RpArp, RpDeath, MmFire, MmDash, Tether, WvBurst, Well, ElArmored, ElSplitting, ElVolatile,
+    ElRegenerating, ElMagnetic, ElPhasing, VaBreak, PyTuned, Rift, LeSplit, Comet, Eclipse, Convoy, Storm, ChoirSend, Colossus,
+    HitWeak, HitArmour, ExtraLife, Orbitals
+};
+struct FightEntry {
+    FS id;
+    u8 track;        // 1-based
+    bool drop;       // the Drop held (else the Groove)
+    float intensity;
+    u8 fireBars;     // bit k: the player fires in bar k
+    u8 bars;
+    const char* what;
+};
+constexpr FightEntry kFightSheet[] = {
+    {FS::HzEat, 4, false, 0.5f, 0, 3, "Event Horizon (Aurora): six bodies eaten, then twelve: each the next arp note an octave down bending a fifth; the drone sinks a semitone every three, springs back on the bar line"},
+    {FS::HzStarved, 4, true, 0.9f, 0, 3, "Event Horizon: starved on the bar line: the pads and bass out for a beat under a reversed cymbal"},
+    {FS::FbEcho, 6, true, 0.8f, 3, 3, "Feedback (Zenith): the player fires two bars; the Echo replays bar one a bar later (octave down, 1.2 kHz, -9 dB, far side), the second Echo bar one two bars later (-15 dB, darker)"},
+    {FS::FbHead, 6, true, 0.8f, 12, 4, "Feedback: the Head shut (the pad ducked and dull), open (the pad opens, the root held two octaves up), shut, open in Howl (the delay's feedback up, the player firing)"},
+    {FS::MqStep, 4, false, 0.5f, 0, 2, "Moth Queen (Aurora): the court's open hat stepping round the stereo field"},
+    {FS::MqBurst, 4, false, 0.5f, 0, 2, "Moth Queen: the burst, the clap on the downbeat"},
+    {FS::MqOpen, 4, true, 1.0f, 0, 3, "Moth Queen: open for a bar: the bed drops to kick and pad"},
+    {FS::Brood, 4, false, 0.5f, 0, 4, "Brood Mother (Aurora): the threads' pad, four broodlings, three, two, one, none: the bell marks the break"},
+    {FS::BsFire, 5, false, 0.5f, 0, 2, "Blink Star (Furnace): five hops up the run, then all five as a stab with a zap"},
+    {FS::CdChord, 7, false, 0.6f, 0, 4, "Cadence (Afterglow): each bar's pillar, I V vi IV: its root held, its chord's stab on the One at 1.2"},
+    {FS::CdFan, 7, false, 0.6f, 0, 2, "Cadence: the three silent pillars' fans, toms on their own chords' roots on one and three"},
+    {FS::CdInversion, 7, true, 0.9f, 0, 2, "Cadence: Inversion, the music high-passed at 800 Hz for a bar"},
+    {FS::CdBurst, 7, false, 0.6f, 0, 3, "Cadence: death, the four chords in turn, then the tonic with the gong"},
+    {FS::ApBlock, 8, false, 0.5f, 3, 2, "Arpeggiator (Arcadia): blocks sounding their notes as they pass the ship's row (380 wu down the lane), the player firing"},
+    {FS::ApSecond, 8, false, 0.6f, 0, 2, "Arpeggiator: the second machine arrives with the chord's stab"},
+    {FS::MgStorm, 9, false, 0.6f, 0, 3, "Fata Morgana (Mirage): a bar outside the calm: the storm's crackle, the whoosh, the bed low-passed on the kicks"},
+    {FS::MgBlinkLeap, 9, false, 0.6f, 0, 2, "Fata Morgana: a mirage's blinks (ghost snares), then the leap's run of chirps up the arpeggio"},
+    {FS::RpEcho, 10, true, 0.8f, 1, 2, "Kaleidos Reprise (Last Light): Feedback's arm, the player's bar played back reversed"},
+    {FS::RpArp, 10, true, 0.8f, 0, 2, "Kaleidos Reprise: the last pattern, First Light's arpeggio on the bell doubled by the lead"},
+    {FS::RpDeath, 10, true, 0.8f, 0, 3, "Kaleidos Reprise: death, the tonic held, the reversed cymbal into the ENCORE card's bar line"},
+    {FS::MmFire, 6, false, 0.5f, 3, 2, "Mirror Mimic (Zenith): the lead answered upside down a thirty-second later"},
+    {FS::MmDash, 6, false, 0.5f, 0, 2, "Mirror Mimic: its late Dash, the Dash's sweep reversed"},
+    {FS::Tether, 7, false, 0.5f, 0, 4, "Twin Tether (Afterglow): the beam's drone opening as it comes round, a strand cut (a zap, a beat of silence)"},
+    {FS::WvBurst, 7, false, 0.6f, 0, 2, "Weaver Prime: the cage going off, a crackle swelling into the chord's stab"},
+    {FS::Well, 8, false, 0.5f, 0, 3, "Deep Well (Arcadia): swallowed shots, thups rising with the rings lit; the ring given back: a reversed cymbal into the One and a stab"},
+    {FS::ElArmored, 3, false, 0.5f, 0, 2, "Elite, Armored (Reef): the arrival's fifth, the short gong a beat later"},
+    {FS::ElSplitting, 3, false, 0.5f, 0, 2, "Elite, Splitting: the fifth, then a glass crack"},
+    {FS::ElVolatile, 4, false, 0.5f, 0, 2, "Elite, Volatile (Aurora): the fifth, then a crackle"},
+    {FS::ElRegenerating, 4, false, 0.5f, 0, 2, "Elite, Regenerating: the fifth, then two bells rising"},
+    {FS::ElMagnetic, 6, false, 0.5f, 0, 2, "Elite, Magnetic (Zenith): the fifth, then Shard chirps falling"},
+    {FS::ElPhasing, 7, false, 0.5f, 0, 2, "Elite, Phasing (Afterglow): the fifth, then the fifth gated on the eighths"},
+    {FS::VaBreak, 2, false, 0.5f, 0, 2, "Vault (Solar Wind): the break, bells up the chord with a glass burst"},
+    {FS::PyTuned, 2, false, 0.5f, 0, 2, "Pylon: tuned, three bells up the chord"},
+    {FS::Rift, 3, false, 0.6f, 0, 4, "Rift (Reef): its drone on the chord's bass while open, the cutoff rising through the Build; four through a bar (a tom)"},
+    {FS::LeSplit, 6, false, 0.5f, 3, 2, "Lens (Zenith): splits, glass ticks a fifth above the lead's note"},
+    {FS::Comet, 1, false, 0.5f, 0, 2, "Comet (First Light): its announcement, a saw glide over two beats, then a bell for each beat's Shards"},
+    {FS::Eclipse, 6, false, 0.7f, 0, 3, "Eclipse (Zenith): the low-pass at 1.2 kHz, a tick on each flash, let go as it ends"},
+    {FS::Convoy, 5, false, 0.6f, 0, 2, "Convoy (Furnace): three carriers, a tom a beat each panned to it; one broken"},
+    {FS::Storm, 5, false, 0.6f, 0, 3, "Storm Cell (Furnace): its crackle rising as it nears; each beat's strikes a zap on the chord's three notes"},
+    {FS::ChoirSend, 3, false, 0.4f, 0, 2, "Follow-up: the Choir's Voices (Reef) with their reverb send of 0.5"},
+    {FS::Colossus, 1, true, 0.8f, 0, 2, "Follow-up: Colossus's ram toms (a ram every 0.3 s), brought level with the music"},
+    {FS::HitWeak, 2, true, 0.8f, 7, 3, "Play test 3: a boss's weak point hit (Solar Wind, Drop, firing): a bar of music, a bar of hits on the sixteenths (the tick up the chord, 0.7 a step), a bar on the thirty-seconds (down to 0.3)"},
+    {FS::HitArmour, 2, true, 0.8f, 7, 3, "Play test 3: armour hit: a bar of music, a bar of knocks on the sixteenths, a bar of weak point and armour in turn"},
+    {FS::ExtraLife, 4, false, 0.6f, 0, 3, "Play test 3: an Extra Life (Aurora): picked up (the Cell's note and its fifth), then spent on a hit (the hit, the free Nova, the tonic chord's stab on its blast)"},
+    {FS::Orbitals, 3, false, 0.6f, 0, 3, "Play test 3: the Orbitals' guard ring (Reef): broken by a hit (the glass crack, low), its five shards relighting over two bars (shaker ticks up the scale)"},
+};
+
+int fightSheet(const Options& opt, const MusicData& music, const SampleBank& bank) {
+    {
+        u32 rows = 0, pending = 0;
+        const FightSound* t = fightSounds(&rows);
+        for (u32 k = 0; k < rows; ++k)
+            if (t[k].pending) {
+                ++pending;
+                std::printf("pending: row %u (%s): %s\n", k, t[k].page, t[k].pending);
+            }
+        std::printf("fight sounds: %u rows, %u pending\n", rows, pending);
+    }
+    Engine* engine = new Engine;
+    if (!engine->init(music, bank, kRate, opt.seed)) return 1;
+    Stems stems;  // (--stems: each bus before the master, as the other renders write them)
+    if (opt.stems) {
+        for (u32 b = 0; b <= kBusCount; ++b) {
+            char path[512];
+            std::snprintf(path, sizeof path, "%s/%s.f32", opt.stems, b < kBusCount ? busName(static_cast<Bus>(b)) : "reverb");
+            stems.f[b] = std::fopen(path, "wb");
+        }
+        engine->setStemTap(stemTap, &stems);
+    }
+    // Lengths first: each entry its bars at its Track's tempo, a tail of 1.6 s.
+    constexpr double kLeadS = 0.3, kTailS = 1.6;
+    double total = kLeadS;
+    for (const FightEntry& f : kFightSheet) total += f.bars * 240.0 / music.tracks[f.track - 1].bpm + kTailS;
+    const u64 frames = static_cast<u64>((total * 1.05 + 1.0) * kRate);  // (room: a Build's last bar runs at 85%)
+    float* out = static_cast<float*>(std::calloc(frames * 2, sizeof(float)));
+    if (!out) return 1;
+    FILE* list = nullptr;
+    if (opt.out) {
+        char path[512];
+        std::snprintf(path, sizeof path, "%s", opt.out);
+        char* dot = std::strrchr(path, '.');
+        if (dot) std::snprintf(dot, sizeof path - static_cast<size_t>(dot - path), ".txt");
+        list = std::fopen(path, "w");
+    }
+    u64 done = 0;
+    const auto renderUntil = [&](u64 until) {
+        BeatEvent ev;
+        if (until > frames) until = frames;
+        while (done < until) {
+            u32 n = static_cast<u32>(until - done < 192 ? until - done : 192);
+            engine->render(out + done * 2, n, 2);
+            done += n;
+            while (engine->popEvent(ev)) {
+            }
+        }
+    };
+    EngineSink sink;
+    sink.e = engine;
+    sink.md = &music;
+    auto* voices = new FightVoices;
+    renderUntil(static_cast<u64>(kLeadS * kRate));
+    for (const FightEntry& f : kFightSheet) {
+        const u32 t = f.track - 1u;
+        const Track& tr = music.tracks[t];
+        sink.t = t;
+        engine->post(cmd(CmdType::Reset));
+        engine->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
+        engine->post(cmd(CmdType::SetPlayers, 1, 0));
+        engine->post(cmd(CmdType::SetIntensity, 0, 0, 0, f.intensity));
+        if (f.drop) engine->post(cmd(CmdType::SetSection, static_cast<u8>(Section::Drop)));
+        engine->post(cmd(CmdType::HoldSection, 1));
+        renderUntil(done + 1);  // the song starts here
+        const u64 start = done;
+        *voices = FightVoices{};
+        FightScene& sc = voices->scene;
+        sc.valid = true;
+        sc.tps = static_cast<float>(tr.bpm * 96.0 / 60.0);
+        const double at = static_cast<double>(start) / kRate, m = std::floor(at / 60.0);
+        if (list) std::fprintf(list, "%.0f:%05.2f  %s\n", m, at - 60.0 * m, f.what);
+        std::printf("sheet %.0f:%05.2f  %s\n", m, at - 60.0 * m, f.what);
+        const double endTick = f.bars * 384.0;
+        double prev = -1.0;
+        bool fire = false;
+        u32 frame = 0, phrased = 0;
+        while (done < frames) {
+            const double now = engine->tempo().tickAt(static_cast<double>(done));
+            if (now >= endTick) break;
+            const double ahead = now + 48.0;  // cues are posted half a beat before their tick
+            const u32 bar = static_cast<u32>(std::floor((now < 0.0 ? 0.0 : now) / 384.0));
+            const bool fireNow = (f.fireBars >> bar) & 1u;
+            if (fireNow != fire) {
+                engine->post(cmd(CmdType::SetFire, 0, fireNow ? 1 : 0));
+                fire = fireNow;
+            }
+            // The cue `c` on tick T, posted when the window reaches T (or `when`, for one the game hears before its tick).
+            const auto cue = [&](double T, BossCue c, u8 b = 0, float fv = 0.0f, float pan = 0.0f, double when = -1.0) {
+                const double post = when >= 0.0 ? when : T;
+                if (!(post > prev && post <= ahead)) return;
+                sim::Event ev;
+                ev.type = sim::EventType::BossCue;
+                ev.a = static_cast<u8>(c);
+                ev.b = b;
+                ev.f = fv;
+                ev.x = pan * 900.0f / 0.7f;
+                ev.tick = T;
+                playFightCue(sink, *voices, ev, T, pan, static_cast<float>(tr.bpm));
+            };
+            const auto each = [&](double from, double step, u32 count, auto&& fn) {
+                for (u32 k = 0; k < count; ++k) fn(from + step * k, k);
+            };
+            sc.now = now;
+            sc.fight = true;
+            switch (f.id) {
+                case FS::HzEat:
+                    sc.kind = sim::BossKind::EventHorizon;
+                    each(48.0, 48.0, 6, [&](double T, u32 k) { cue(T, BossCue::HzEat, static_cast<u8>(k + 1), 0.0f, -0.4f + 0.15f * k); });
+                    each(384.0 + 24.0, 24.0, 12, [&](double T, u32 k) { cue(T, BossCue::HzEat, static_cast<u8>(k + 1), 0.0f, 0.4f - 0.06f * k); });
+                    sc.hzMeal = static_cast<u16>(now < 384.0 ? std::fmin(6.0, std::floor((now - 48.0) / 48.0) + 1.0) * (now >= 48.0)
+                                                             : (now < 768.0 ? std::fmin(12.0, std::floor((now - 408.0) / 24.0) + 1.0) * (now >= 408.0) : 0.0));
+                    break;
+                case FS::HzStarved:
+                    sc.kind = sim::BossKind::EventHorizon;
+                    cue(384.0, BossCue::HzStarved);
+                    break;
+                case FS::FbEcho:
+                    sc.fight = false;  // (the Echoes alone: the Head's pad tone is the next entry's)
+                    sc.fbDelay[0] = 384.0;
+                    sc.fbDelay[1] = 768.0;
+                    each(384.0, 24.0, 8, [&](double T, u32) { cue(T, BossCue::FbEcho, 0, 0.0f, -0.5f); });
+                    each(768.0, 24.0, 8, [&](double T, u32) { cue(T, BossCue::FbEcho, 0, 1.0f, -0.5f); });
+                    break;
+                case FS::FbHead:
+                    sc.kind = sim::BossKind::Feedback;
+                    sc.fbOpen = bar == 1 || bar == 3;
+                    sc.fbHowl = bar == 3;
+                    cue(384.0, BossCue::FbOpen, 0, 3.0f);
+                    cue(1152.0, BossCue::FbOpen, 0, 8.0f);
+                    break;
+                case FS::MqStep:
+                    sc.kind = sim::BossKind::MothQueen;
+                    each(0.0, 96.0, 8, [&](double T, u32 k) { cue(T, BossCue::MqStep, 0, 0.25f * 6.2831853f * static_cast<float>(k) / 2.0f); });
+                    break;
+                case FS::MqBurst:
+                    sc.kind = sim::BossKind::MothQueen;
+                    cue(384.0, BossCue::MqBurst);
+                    break;
+                case FS::MqOpen:
+                    sc.kind = sim::BossKind::MothQueen;
+                    cue(384.0, BossCue::MqOpen, 1, 4.0f);
+                    break;
+                case FS::Brood:
+                    sc.kind = sim::BossKind::BroodMother;
+                    sc.broodlings = static_cast<u8>(now < 384.0 ? 4 : (now < 576.0 ? 3 : (now < 768.0 ? 2 : (now < 960.0 ? 1 : 0))));
+                    cue(960.0, BossCue::BmBreak);
+                    break;
+                case FS::BsFire:
+                    sc.kind = sim::BossKind::BlinkStar;
+                    each(0.0, 96.0, 5, [&](double T, u32 k) { cue(T, BossCue::BsHop, static_cast<u8>(k)); });
+                    cue(480.0, BossCue::BsFire);
+                    break;
+                case FS::CdChord:
+                    sc.kind = sim::BossKind::Cadence;
+                    each(0.0, 384.0, 4, [&](double T, u32 k) { cue(T, BossCue::CdChord, static_cast<u8>(k), 0.0f, -0.45f + 0.3f * k); });
+                    break;
+                case FS::CdFan:
+                    sc.kind = sim::BossKind::Cadence;
+                    each(0.0, 192.0, 4, [&](double T, u32 k) {
+                        const u32 sounding = k / 2;
+                        for (u32 p = 0; p < 4; ++p)
+                            if (p != sounding) cue(T, BossCue::CdFan, static_cast<u8>(p), 0.0f, -0.45f + 0.3f * p);
+                    });
+                    break;
+                case FS::CdInversion:
+                    sc.kind = sim::BossKind::Cadence;
+                    cue(192.0, BossCue::CdInversion);
+                    break;
+                case FS::CdBurst:
+                    sc.kind = sim::BossKind::Cadence;
+                    each(384.0, 96.0, 4, [&](double T, u32 k) { cue(T, BossCue::CdBurst, static_cast<u8>(k), 0.0f, -0.45f + 0.3f * k); });
+                    break;
+                case FS::ApBlock:
+                    sc.kind = sim::BossKind::Arpeggiator;
+                    sc.ship = Vec2{0.0f, 0.0f};
+                    sc.apMachine[0] = Vec2{0.0f, 380.0f};
+                    sc.apDir[0] = Vec2{0.0f, -1.0f};
+                    sc.apMachine[1] = Vec2{5000.0f, 0.0f};
+                    sc.apDir[1] = Vec2{-1.0f, 0.0f};
+                    each(0.0, 96.0, 8, [&](double T, u32 k) { cue(T, BossCue::ApBlock, static_cast<u8>(k % 4), 0.0f, 0.0f); });
+                    break;
+                case FS::ApSecond:
+                    sc.kind = sim::BossKind::Arpeggiator;
+                    cue(384.0, BossCue::ApSecond);
+                    break;
+                case FS::MgStorm: {
+                    sc.kind = sim::BossKind::Morgana;
+                    sc.mgOutside = bar == 1;
+                    cue(384.0, BossCue::MgWhoosh, 1);
+                    static constexpr double kKicks[3] = {0.0, 144.0, 240.0};
+                    for (u32 b = 0; b < 3; ++b)
+                        for (double k : kKicks) cue(384.0 * b + k, BossCue::MgStorm, b == 1 ? 1 : 0);
+                    break;
+                }
+                case FS::MgBlinkLeap:
+                    sc.kind = sim::BossKind::Morgana;
+                    cue(96.0, BossCue::MgBlink, 0, 0.0f, 0.5f);
+                    cue(288.0, BossCue::MgBlink, 0, 0.0f, 0.5f);
+                    each(384.0, 24.0, 5, [&](double T, u32 k) { cue(T, BossCue::MgLeap, static_cast<u8>(k)); });
+                    break;
+                case FS::RpEcho:
+                    sc.kind = sim::BossKind::Reprise;
+                    each(384.0, 24.0, 8, [&](double T, u32) { cue(T, BossCue::RpEcho, 0, 0.0f, 0.5f); });
+                    break;
+                case FS::RpArp: {
+                    sc.kind = sim::BossKind::Reprise;
+                    const Track& fl = music.tracks[0];
+                    each(0.0, 24.0, 32, [&](double T, u32 k) {
+                        const Chord& ch = fl.chords[fl.progression[(k / 16) % fl.progressionCount]];
+                        cue(T, BossCue::RpArp, 0, static_cast<float>(ch.arp[k % 16]));
+                    });
+                    break;
+                }
+                case FS::RpDeath:
+                    sc.kind = sim::BossKind::Reprise;
+                    cue(768.0, BossCue::RpDeath, 0, 0.0f, 0.0f, 480.0);  // heard as it dies, a bar and a beat before its bar line
+                    if (now >= 480.0) sc.fight = false;  // (it is dying: its fight's voices go)
+                    break;
+                case FS::MmFire:
+                    sc.kind = sim::BossKind::MirrorMimic;
+                    each(12.0, 24.0, 32, [&](double T, u32) { cue(T, BossCue::MmFire, 0, 0.0f, 0.3f); });
+                    break;
+                case FS::MmDash:
+                    sc.kind = sim::BossKind::MirrorMimic;
+                    cue(384.0, BossCue::MmDash, 0, 0.0f, 0.3f, 288.0);
+                    break;
+                case FS::Tether: {
+                    sc.kind = sim::BossKind::TwinTether;
+                    // The rope turns half a turn a bar past the ship: it comes round twice in the four bars; cut on bar 2's beat 2.
+                    const double u = std::fmod(now / 384.0, 1.0);
+                    sc.tetherNear = static_cast<float>(u);
+                    sc.tetherPan = 0.0f;
+                    sc.tetherBeam = !(now >= 864.0 && now < 960.0);
+                    cue(864.0, BossCue::TtCut, 0, 0.0f, 0.2f);
+                    each(0.0, 384.0, 4, [&](double T, u32) { cue(T, BossCue::TtTom, 0, 0.0f, -0.3f); });
+                    break;
+                }
+                case FS::WvBurst:
+                    sc.kind = sim::BossKind::WeaverPrime;
+                    sc.weaverBurst = 384.0;
+                    cue(384.0, BossCue::WvBurst);
+                    break;
+                case FS::Well:
+                    sc.kind = sim::BossKind::DeepWell;
+                    each(0.0, 48.0, 8, [&](double T, u32 k) { cue(T, BossCue::DwThup, static_cast<u8>(k / 2), 0.0f, 0.1f); });
+                    each(384.0, 48.0, 8, [&](double T, u32 k) { cue(T, BossCue::DwThup, static_cast<u8>(k / 2), 0.0f, 0.1f); });
+                    sc.wellRing = now < 384.0 ? 384.0 : 768.0;
+                    cue(384.0, BossCue::DwRing);
+                    cue(768.0, BossCue::DwRing);
+                    break;
+                case FS::ElArmored:
+                case FS::ElSplitting:
+                case FS::ElVolatile:
+                case FS::ElRegenerating:
+                case FS::ElMagnetic:
+                case FS::ElPhasing: {
+                    sc.fight = false;
+                    const BossCue mark = f.id == FS::ElArmored ? BossCue::ElArmored
+                                         : f.id == FS::ElSplitting ? BossCue::ElSplitting
+                                         : f.id == FS::ElVolatile ? BossCue::ElVolatile
+                                         : f.id == FS::ElRegenerating ? BossCue::ElRegenerating
+                                         : f.id == FS::ElMagnetic ? BossCue::ElMagnetic
+                                                                  : BossCue::ElPhasing;
+                    cue(96.0, BossCue::ElArrive, 0, 0.0f, 0.3f);
+                    cue(192.0, mark, 0, 0.0f, 0.3f);
+                    break;
+                }
+                case FS::VaBreak:
+                    sc.fight = false;
+                    cue(384.0, BossCue::VaBreak, 0, 0.0f, 0.2f);
+                    break;
+                case FS::PyTuned:
+                    sc.fight = false;
+                    cue(384.0, BossCue::PyTuned, 0, 0.0f, -0.2f);
+                    break;
+                case FS::Rift:
+                    sc.fight = false;
+                    // The Build from bar 1 (three bars), named a bar ahead as the director does.
+                    if (phrased < 3 && now >= 192.0 + 384.0 * phrased) {
+                        if (!phrased) engine->post(cmd(CmdType::HoldSection, 0));
+                        engine->post(cmd(CmdType::SetPhrase, static_cast<u8>(Section::Build), static_cast<u8>(phrased), 3));
+                        ++phrased;
+                    }
+                    sc.rifts = 1;
+                    sc.riftPan[0] = 0.3f;
+                    sc.riftGain[0] = 1.0f;
+                    sc.riftSurge[0] = 0xFF;
+                    sc.build = now < 384.0 ? 0.0f : static_cast<float>((now - 384.0) / (3.0 * 384.0));
+                    each(96.0, 384.0, 4, [&](double T, u32) { cue(T, BossCue::RiThrough, 0, 0.0f, 0.3f); });
+                    break;
+                case FS::LeSplit:
+                    sc.fight = false;
+                    each(48.0, 72.0, 10, [&](double T, u32) { cue(T, BossCue::LeSplit, 0, 0.0f, 0.4f); });
+                    break;
+                case FS::Comet:
+                    sc.fight = false;
+                    cue(192.0, BossCue::EvAnnounce, static_cast<u8>(sim::EventKind::Comet), 0.0f, -0.6f);
+                    each(384.0, 96.0, 4, [&](double T, u32 k) { cue(T, BossCue::CmShard, 0, 0.0f, -0.6f + 0.4f * k); });
+                    break;
+                case FS::Eclipse:
+                    sc.fight = false;
+                    cue(0.0, BossCue::EcOn, 1);
+                    each(0.0, 96.0, 8, [&](double T, u32) { cue(T, BossCue::EcFlash); });
+                    cue(768.0, BossCue::EcOff);
+                    break;
+                case FS::Convoy:
+                    sc.fight = false;
+                    sc.carriers = static_cast<u8>(now < 384.0 ? 3 : 2);
+                    sc.carrierPan[0] = -0.5f;
+                    sc.carrierPan[1] = now < 384.0 ? 0.0f : 0.5f;
+                    sc.carrierPan[2] = 0.5f;
+                    each(0.0, 96.0, 8, [&](double T, u32) { cue(T, BossCue::CoRoll); });
+                    cue(384.0, BossCue::CoBreak, 0, 0.0f, 0.0f);
+                    break;
+                case FS::Storm:
+                    sc.fight = false;
+                    sc.storm = true;
+                    sc.stormNear = static_cast<float>(std::fmin(1.0, now / 1000.0));
+                    sc.stormPan = 0.4f;
+                    each(96.0, 96.0, 10, [&](double T, u32 k) {
+                        for (u32 j = 0; j < 1 + k % 6; ++j) cue(T, BossCue::StStrike, static_cast<u8>(j), 0.0f, 0.3f);
+                    });
+                    break;
+                case FS::ChoirSend: {
+                    sc.kind = sim::BossKind::Choir;
+                    const Chord& ch = tr.chords[tr.progression[0]];
+                    each(0.0, 96.0, 8, [&](double T, u32 k) { cue(T, BossCue::ChVoice, static_cast<u8>(k % 4), static_cast<float>(ch.pad[k % ch.padCount]), -0.45f + 0.3f * (k % 4)); });
+                    break;
+                }
+                case FS::Colossus:
+                    sc.fight = false;
+                    if (frame % 18 == 0) engine->post(cmd(CmdType::Cue, static_cast<u8>(Cue::ColossusRam), 0, 1, 0.0f));
+                    break;
+                case FS::HitWeak:
+                case FS::HitArmour: {
+                    // As World::bossHitCue sends them: one a step at most, each further step of a beat at 0.7 of the last, down
+                    // to 0.3.
+                    const auto chain = [](u32 k) { return static_cast<float>(std::fmax(std::pow(0.7, static_cast<double>(k)), 0.3)); };
+                    const bool armour = f.id == FS::HitArmour;
+                    each(384.0, 24.0, 16, [&](double T, u32 k) { cue(T, armour ? BossCue::HitArmour : BossCue::HitWeak, 0, chain(k % 4), 0.2f); });
+                    if (!armour) {
+                        each(768.0, 12.0, 32, [&](double T, u32 k) { cue(T, BossCue::HitWeak, 0, chain(k % 8), 0.2f); });
+                    } else {
+                        each(768.0, 24.0, 16, [&](double T, u32 k) {
+                            cue(T, (k / 4) % 2 ? BossCue::HitArmour : BossCue::HitWeak, 0, chain(k % 4), 0.2f);
+                        });
+                    }
+                    break;
+                }
+                case FS::ExtraLife: {
+                    sc.fight = false;
+                    const auto at = [&](double T) { return T > prev && T <= ahead; };
+                    if (at(192.0)) engine->post(cmd(CmdType::Cue, static_cast<u8>(Cue::ExtraLifePickup), 0, 1, 0.0f));
+                    if (at(384.0 + 60.0)) {
+                        // The hit that would end the run: the hit, the free Nova (its blast on the next beat), the stab with it.
+                        engine->post(cmd(CmdType::Sfx, static_cast<u8>(Sfx::Hit), 0, 0, 1.0f));
+                        Command nova = cmd(CmdType::Nova, 0, 0, 0, 1.0f);
+                        nova.when = Timing::AtTick;
+                        nova.tick = 480.0;
+                        engine->post(nova);
+                        Command use = cmd(CmdType::Cue, static_cast<u8>(Cue::ExtraLifeUse), 0, 1, 0.0f);
+                        use.when = Timing::AtTick;
+                        use.tick = 480.0;
+                        engine->post(use);
+                    }
+                    break;
+                }
+                case FS::Orbitals: {
+                    sc.fight = false;
+                    const auto at = [&](double T) { return T > prev && T <= ahead; };
+                    if (at(96.0)) {
+                        engine->post(cmd(CmdType::Sfx, static_cast<u8>(Sfx::Hit), 0, 0, 1.0f));
+                        engine->post(cmd(CmdType::Cue, static_cast<u8>(Cue::OrbitalsBreak), 0, 1, 0.0f));
+                    }
+                    // Level 2: five shards over six bars (here two): one each 2/5 of a bar after the first.
+                    for (u32 k = 0; k < 5; ++k)
+                        if (at(96.0 + 768.0 * (k + 1) / 5.0)) engine->post(cmd(CmdType::Cue, static_cast<u8>(Cue::OrbitalsRelight), 0, 1, static_cast<float>(k)));
+                    break;
+                }
+            }
+            updateFightVoices(sink, *voices, now, false, nullptr);
+            prev = ahead;
+            ++frame;
+            renderUntil(done + kRate / 60);
+        }
+        updateFightVoices(sink, *voices, engine->tempo().tickAt(static_cast<double>(done)), true, nullptr);
+        voices->scene = FightScene{};
+        updateFightVoices(sink, *voices, engine->tempo().tickAt(static_cast<double>(done)), true, nullptr);  // (the scene's voices let go)
+        engine->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Silent), static_cast<u8>(t), 0));  // the tails ring out
+        renderUntil(done + static_cast<u64>(kTailS * kRate));
+    }
+    renderUntil(frames);
+    if (list) std::fclose(list);
+    engine->setStemTap(nullptr, nullptr);
+    for (FILE* f : stems.f)
+        if (f) std::fclose(f);
+    float peak = 0.0f;
+    for (u64 i = 0; i < frames * 2; ++i) peak = std::fmax(peak, std::fabs(out[i]));
+    const double lufs = integratedLoudness(out, frames, 2, kRate);
+    std::printf("render fights: %.1f s, lufs %.2f, peak %.2f dBFS\n", static_cast<double>(frames) / kRate, lufs, 20.0 * std::log10(peak + 1e-12));
+    int code = 0;
+    if (opt.out && !writeWav(opt.out, out, frames, 2, kRate, opt.pcm16)) code = 1;
+    if (opt.out && !code) std::printf("wrote %s\n", opt.out);
+    std::free(out);
+    delete voices;
+    delete engine;
+    return code;
+}
+
+// M5 audio (play test 3: "sometimes the nova SFX sounds heavily distorted"): the worst instant through the output stage. A
+// Track's Drop held at intensity 1 with a player firing, effects at full; a Nova (or Black Hole's, or Last Light's) blasts, and
+// eighty kills follow over the next 0.35 s on top of the kicks. The stage's input and output are tapped: below 1 kHz (where
+// the blast's sub and its harmonics are) the output against the input times a gain fitted to each 5 ms piece (a gain that
+// moves slowly is not distortion), over the 400 ms from the blast, gives the stage's distortion and noise (THD+N); the same
+// input through the old stage (the soft knee alone) for comparison. Exit 1 when any is 3% or more.
+struct StageCapture {
+    float* in = nullptr;  // mono (L + R) / 2
+    float* out = nullptr;
+    u64 cap = 0, n = 0;
+};
+void stageTap(void* user, const float* inL, const float* inR, const float* outL, const float* outR, u32 n) {
+    auto* s = static_cast<StageCapture*>(user);
+    for (u32 i = 0; i < n && s->n < s->cap; ++i, ++s->n) {
+        s->in[s->n] = 0.5f * (inL[i] + inR[i]);
+        s->out[s->n] = 0.5f * (outL[i] + outR[i]);
+    }
+}
+float oldStage(float x) {  // the soft knee the limiter replaced (knee 0.66, ceiling 0.8)
+    const float a = std::fabs(x);
+    if (a <= 0.66f) return x;
+    const float y = 0.66f + (0.8f - 0.66f) * std::tanh((a - 0.66f) / (0.8f - 0.66f));
+    return x < 0.0f ? -y : y;
+}
+int novaCheck(const MusicData& music, const SampleBank& bank) {
+    std::printf("nova-check: THD+N below 1 kHz over the 400 ms from the blast (a gain fitted a 5 ms piece), new stage and the old soft knee "
+                "on the same input; the stage's input and output peaks\n");
+    int failed = 0;
+    for (u32 t : {0u, 9u}) {
+        for (u32 which = 0; which < 3; ++which) {
+            Engine* e = new Engine;
+            if (!e->init(music, bank, kRate, 1)) return 1;
+            StageCapture cap;
+            cap.cap = static_cast<u64>(kRate) * 12;
+            cap.in = static_cast<float*>(std::calloc(cap.cap, sizeof(float)));
+            cap.out = static_cast<float*>(std::calloc(cap.cap, sizeof(float)));
+            e->setStageTap(stageTap, &cap);
+            e->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
+            e->post(cmd(CmdType::SetPlayers, 1, 0));
+            e->post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+            e->post(cmd(CmdType::SetSection, static_cast<u8>(Section::Drop)));
+            e->post(cmd(CmdType::HoldSection, 1));
+            e->post(cmd(CmdType::SetFire, 0, 1));
+            float* buf = static_cast<float*>(std::calloc(static_cast<size_t>(kRate) * 2, sizeof(float)));
+            u64 done = 0;
+            i64 blast = -1;
+            u32 killsLeft = 80, frame = 0;
+            BeatEvent ev;
+            while (done < cap.cap - kRate / 60) {
+                if (frame == 150) {  // 2.5 s in: the trigger
+                    if (which == 0) e->post(cmd(CmdType::Nova, 0, 0, 0, 1.0f));
+                    if (which == 1) e->post(cmd(CmdType::Cue, static_cast<u8>(Cue::BlackHoleNova), 0, 1, 0.0f));
+                    if (which == 2) e->post(cmd(CmdType::Cue, static_cast<u8>(Cue::LastLightNova), 0, 1, 0.0f));
+                }
+                // From the blast on: eighty kills over 0.35 s (three small, a medium every frame, a large every fifth).
+                if (blast >= 0 && killsLeft && static_cast<i64>(done) + kRate / 60 >= blast) {
+                    const u32 sm = killsLeft < 3 ? killsLeft : 3;
+                    e->post(cmd(CmdType::Kill, 0, static_cast<u8>(sm)));
+                    killsLeft -= sm;
+                    if (killsLeft) {
+                        e->post(cmd(CmdType::Kill, 1, 1));
+                        --killsLeft;
+                    }
+                    if (killsLeft && frame % 5 == 0) {
+                        e->post(cmd(CmdType::Kill, 2, 1));
+                        --killsLeft;
+                    }
+                }
+                for (u32 k = 0; k < kRate / 60;) {
+                    const u32 nn = kRate / 60 - k < 192 ? kRate / 60 - k : 192;
+                    e->render(buf, nn, 2);
+                    k += nn;
+                }
+                done += kRate / 60;
+                ++frame;
+                while (e->popEvent(ev))
+                    if (blast < 0 && ev.kind == BeatKind::Sfx && ev.a == static_cast<u8>(Sfx::NovaBlast)) blast = ev.frame;
+            }
+            const u64 dly = e->outputDelayFrames();
+            double thdNew = -1.0, thdOld = -1.0, peak = 0.0, inPeak = 0.0;
+            if (blast > 0) {
+                // A one-pole pair at 1 kHz on input and output (the same filter: what remains is the stage's).
+                const u64 a = static_cast<u64>(blast), b = static_cast<u64>(blast) + kRate * 400 / 1000;
+                for (u64 i = a; i < b; ++i) inPeak = std::fmax(inPeak, std::fabs(static_cast<double>(cap.in[i])));
+                const auto lowband = [&](const float* x, u64 from, u64 to, double* y) {
+                    double s1 = 0.0, s2 = 0.0;
+                    const double k = 1.0 - std::exp(-2.0 * kPiD * 1000.0 / kRate);
+                    for (u64 i = from - 2000; i < to; ++i) {
+                        s1 += (x[i] - s1) * k;
+                        s2 += (s1 - s2) * k;
+                        if (i >= from) y[i - from] = s2;
+                    }
+                };
+                const u64 m = b - a;
+                double* xin = static_cast<double*>(std::calloc(m, sizeof(double)));
+                double* xout = static_cast<double*>(std::calloc(m, sizeof(double)));
+                double* xold = static_cast<double*>(std::calloc(m, sizeof(double)));
+                float* old = static_cast<float*>(std::calloc(cap.n, sizeof(float)));
+                for (u64 i = 0; i < cap.n; ++i) old[i] = oldStage(cap.in[i]);
+                lowband(cap.in, a, b, xin);
+                lowband(cap.out, a + dly, b + dly, xout);
+                lowband(old, a, b, xold);
+                // One gain a 5 ms piece (least squares): what a gain that moves slowly does is taken out, what a waveshaper
+                // adds (harmonics, clipping) stays.
+                const auto thd = [&](const double* y) {
+                    double err = 0.0, sig = 0.0;
+                    const u64 piece = kRate / 200;
+                    for (u64 p0 = 0; p0 < m; p0 += piece) {
+                        double xy = 0.0, xx = 0.0;
+                        for (u64 i = p0; i < p0 + piece && i < m; ++i) {
+                            xy += xin[i] * y[i];
+                            xx += xin[i] * xin[i];
+                        }
+                        const double g = xx > 0.0 ? xy / xx : 0.0;
+                        for (u64 i = p0; i < p0 + piece && i < m; ++i) {
+                            const double d = y[i] - g * xin[i];
+                            err += d * d;
+                            sig += g * xin[i] * g * xin[i];
+                        }
+                    }
+                    return sig > 0.0 ? 100.0 * std::sqrt(err / sig) : -1.0;
+                };
+                thdNew = thd(xout);
+                thdOld = thd(xold);
+                for (u64 i = static_cast<u64>(blast); i < static_cast<u64>(blast) + kRate / 2 + dly && i < cap.n; ++i)
+                    peak = std::fmax(peak, std::fabs(static_cast<double>(cap.out[i])));
+                std::free(xin);
+                std::free(xout);
+                std::free(xold);
+                std::free(old);
+            }
+            static const char* const kWhat[3] = {"Nova", "Black Hole", "Last Light"};
+            const bool pass = thdNew >= 0.0 && thdNew < 3.0;
+            failed += !pass;
+            std::printf("  %-12s %-10s THD+N %5.2f%% (old %5.2f%%), into the stage %.2f dBFS, out %.2f dBFS  %s\n", music.tracks[t].name, kWhat[which],
+                        thdNew, thdOld, 20.0 * std::log10(inPeak + 1e-12), 20.0 * std::log10(peak + 1e-12), pass ? "pass" : "FAIL");
+            std::free(buf);
+            std::free(cap.in);
+            std::free(cap.out);
+            delete e;
+        }
+    }
+    return failed ? 1 : 0;
+}
+
+// M5 audio follow-up: Kick Pulse's tom against a full Drop. The Drop held at intensity 1, one player firing, rendered with and
+// without Kick Pulse (the same engine, the same seed: their difference is the tom, through the master's soft clip); for the
+// 85 ms after each kick, octave band by band, the tom's energy against the rest's (the masker).
+int kickPulseCheck(const MusicData& music, const SampleBank& bank) {
+    constexpr u32 kBars = 8, kWin = 4096;
+    const double edges[9] = {44.0, 88.0, 177.0, 355.0, 710.0, 1420.0, 2840.0, 5680.0, 11360.0};
+    std::printf("kick-pulse: the tom's energy against the rest's, octave bands 63 Hz .. 8 kHz, the 85 ms after each kick (dB)\n");
+    for (u32 t : {0u, 6u, 9u}) {
+        float* x[2] = {};
+        u64 frames = 0;
+        i64 kicks[64];
+        u32 kickCount = 0;
+        for (u32 pass = 0; pass < 2; ++pass) {
+            Engine* e = new Engine;
+            if (!e->init(music, bank, kRate, 1)) return 1;
+            e->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
+            e->post(cmd(CmdType::SetPlayers, 1, 0));
+            e->post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+            e->post(cmd(CmdType::SetSection, static_cast<u8>(Section::Drop)));
+            e->post(cmd(CmdType::HoldSection, 1));
+            e->post(cmd(CmdType::SetFire, 0, 1));
+            if (pass == 1) {
+                Command m = cmd(CmdType::SetModStacks, 0, static_cast<u8>(Mod::KickPulse), 1);
+                m.mods[0] = 1;
+                e->post(m);
+            }
+            frames = static_cast<u64>((kBars + 1) * 240.0 / music.tracks[t].bpm * kRate);
+            x[pass] = static_cast<float*>(std::calloc(frames * 2, sizeof(float)));
+            BeatEvent ev;
+            for (u64 d = 0; d < frames;) {
+                const u32 n = static_cast<u32>(frames - d < 192 ? frames - d : 192);
+                e->render(x[pass] + d * 2, n, 2);
+                d += n;
+                while (e->popEvent(ev))
+                    if (pass == 0 && ev.kind == BeatKind::Kick && ev.tick >= 384.0 && kickCount < 64)
+                        kicks[kickCount++] = ev.frame + static_cast<i64>(e->outputDelayFrames());  // (heard after the limiter's delay)
+            }
+            delete e;
+        }
+        double tom[8] = {}, rest[8] = {}, tomAll = 0.0, restAll = 0.0;
+        Complex* a = static_cast<Complex*>(std::calloc(kWin, sizeof(Complex)));
+        Complex* b = static_cast<Complex*>(std::calloc(kWin, sizeof(Complex)));
+        for (u32 k = 0; k < kickCount; ++k) {
+            const u64 f0 = static_cast<u64>(kicks[k]);
+            if (f0 + kWin >= frames) continue;
+            for (u32 i = 0; i < kWin; ++i) {
+                const double w = 0.5 - 0.5 * std::cos(2.0 * kPiD * i / kWin);
+                const double m0 = 0.5 * (x[0][(f0 + i) * 2] + x[0][(f0 + i) * 2 + 1]), m1 = 0.5 * (x[1][(f0 + i) * 2] + x[1][(f0 + i) * 2 + 1]);
+                a[i] = {(m1 - m0) * w, 0.0};
+                b[i] = {m0 * w, 0.0};
+                tomAll += (m1 - m0) * (m1 - m0);
+                restAll += m0 * m0;
+            }
+            fftPow2(a, kWin, false);
+            fftPow2(b, kWin, false);
+            for (u32 bin = 1; bin < kWin / 2; ++bin) {
+                const double hz = static_cast<double>(bin) * kRate / kWin;
+                for (u32 o = 0; o < 8; ++o)
+                    if (hz >= edges[o] && hz < edges[o + 1]) {
+                        tom[o] += a[bin].re * a[bin].re + a[bin].im * a[bin].im;
+                        rest[o] += b[bin].re * b[bin].re + b[bin].im * b[bin].im;
+                    }
+            }
+        }
+        std::printf("  %-12s kicks %2u, all %.1f:", music.tracks[t].name, kickCount, 10.0 * std::log10(tomAll / (restAll + 1e-30) + 1e-30));
+        static const char* const kBand[8] = {"63", "125", "250", "500", "1k", "2k", "4k", "8k"};
+        for (u32 o = 0; o < 8; ++o) std::printf("  %s %.1f", kBand[o], 10.0 * std::log10(tom[o] / (rest[o] + 1e-30) + 1e-30));
+        std::printf("\n");
+        std::free(a);
+        std::free(b);
+        std::free(x[0]);
+        std::free(x[1]);
     }
     return 0;
 }
@@ -1439,6 +2161,12 @@ int main(int argc, char** argv) {
         code = calibrate(opt, *music, *bank);
     } else if (eq(opt.render, "upgrade-levels")) {
         code = upgradeLevels(*music, *bank);  // M5
+    } else if (eq(opt.render, "fights")) {
+        code = fightSheet(opt, *music, *bank);  // M5 audio
+    } else if (eq(opt.render, "kick-pulse")) {
+        code = kickPulseCheck(*music, *bank);  // M5 audio
+    } else if (eq(opt.render, "nova-check")) {
+        code = novaCheck(*music, *bank);  // M5 audio
     } else {
         const i32 t = music->trackIndex(opt.track);
         const i32 v = opt.sound ? music->variantIndex(opt.sound) : static_cast<i32>(music->defaultVariant);

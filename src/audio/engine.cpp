@@ -20,7 +20,9 @@ constexpr u32 kLeadPerPlayer = 12;  // per player (a 1/32 line and its harmony, 
 // held (the whole note at 1/16 at 174 BPM, a beat of them at 1/32); its harmony (Split, Prism, On-Beat Crit) and every
 // note its other upgrades add are its own device's (leadStep, leadUpgrades).
 constexpr u32 kLeadPerOther = 4;
+constexpr u32 kLeadPerQuartet = 10;  // M5 audio (the lead's ruling): the local player's cap while it owns Quartet
 constexpr u32 kLeadFadeOut = 240;   // frames: a replaced note fades instead of clicking
+constexpr u32 kGateRamp = 96;       // M5: a gated one-shot's edges (2 ms; Phasing's fifth)
 // M5: room for the upgrades (Heavy Step and Colossus double the bass; Lancer, Accent, Bar Line and the Cannon stab; the
 // Riffs' one-shots). A larger pool changes nothing where the smaller one never stole (the full band never did).
 constexpr u32 kBassVoices = 16;
@@ -54,8 +56,7 @@ constexpr float kP4Len = 0.30f, kP4Detune = 12.0f, kP4Oct = 0.3f, kP4Pre = 0.6f,
                 kP4FcSweep = 2400.0f, kP4FcTau = 0.050f, kP4Attack = 0.002f, kP4Decay = 0.12f;
 constexpr float kLeadKeytrack = 0.5f;  // P2 and P4: (f / 440) ^ 0.5 like the P1 patch
 // sfxproto gameplay mock.
-constexpr float kKillSmallBoost = 1.6f;
-constexpr float kSfxReverbSend = 0.18f;
+constexpr float kKillSmallBoost = 1.6f;  // (the effects' reverb send, kSfxReverbSend: engine_parts.h)
 constexpr float kKillPanSmall = 0.6f, kKillPanMedium = 0.5f, kShardPan = 0.3f;
 constexpr double kShardRunGapS = 0.5;  // a pause this long starts a new Shard run (engine choice)
 constexpr float kMetronomeBpm = 120.0f;  // design/screens.md sync calibration
@@ -73,7 +74,8 @@ constexpr float kTeslaZap = 0.35f;
 constexpr float kBeamVel = 0.6f;
 // Output stage: a soft knee that leaves the music bed (peaks near -5 dBFS) untouched and keeps
 // music plus effects below -1 dBFS true peak (the ceiling leaves room for inter-sample overshoot).
-constexpr float kLimitKnee = 0.66f, kLimitCeiling = 0.8f;
+// M5 audio: the look-ahead limiter (engine.h) keeps everything under 0.8 first; the knee is a safety above it.
+constexpr float kLimitKnee = 0.85f, kLimitCeiling = 0.95f;
 
 inline float clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
 
@@ -91,7 +93,7 @@ inline i64 floorDiv(i64 a, i64 b) { return a >= 0 ? a / b : -((-a + b - 1) / b);
 
 const char* EngineProfile::name(u32 s) {
     static const char* const kNames[] = {"lead saw", "lead square", "lead bell", "lead stab", "bass",   "stab",      "pad",
-                                         "samples",  "bus fx",      "delay",     "reverb",    "sfx reverb", "master"};
+                                         "samples",  "bus fx",      "delay",     "reverb",    "sfx reverb", "master", "content"};
     return s < countOf(kNames) ? kNames[s] : "?";
 }
 
@@ -163,7 +165,7 @@ struct Engine::StabVoice {
     u32 oscCount = 0;
     float vel = 0.0f, gl = 0.0f, gr = 0.0f, k = 1.0f, fcStart = 0.0f, fcEnd = 0.0f, fcTauN = 1.0f, attackN = 1.0f,
           decayN = 1.0f, norm = 1.0f;
-    SawOsc saw[8];
+    SawOsc saw[10];  // M5: up to five notes (the Blink Star's stab)
     SvfLowpass svf;
 };
 
@@ -199,6 +201,10 @@ struct Engine::SampleVoice {
     float rate = 1.0f;
     float gl = 0.0f, gr = 0.0f;
     float drive = 0.0f;  // M5 (the driven kick): > 0: tanh(drive x) / tanh(drive), a mono voice at its own rate
+    // M5 (Phasing's fifth, gated on the eighths): > 0: sounding for gateN frames from gateOrigin, silent for as many, and so on
+    // (each edge ramped over kGateRamp frames).
+    u32 gateN = 0;
+    i64 gateOrigin = 0;
 };
 
 struct Engine::Pending {
@@ -303,6 +309,8 @@ bool Engine::init(const MusicData& music, const SampleBank& bank, u32 sampleRate
                 (t < music.trackCount && v < music.variantCount) ? music.sound[t][v].reverb : music.sound[0][0].reverb;
     if (!reverb_.init(sampleRate, sets, FdnReverb::kMaxSets)) return false;
     if (!initContent()) return false;  // M5
+    for (float& g : limReq_) g = 1.0f;  // M5 audio: the output limiter, open
+    limRelease_ = 1.0f - std::exp(-static_cast<float>(kLimSeg) / (kLimReleaseS * static_cast<float>(sampleRate)));
     duckLen_ = framesFor(kDuckS, sampleRate);
     variant_ = music.defaultVariant;
     track_ = 0;
@@ -364,9 +372,16 @@ void Engine::applyDelay() {
         delayFade_ = delayDOld_ ? 256 : 0;
     }
     delayRepeats_ = static_cast<u32>(sp_->delay.repeats + 0.5f);
+    // M5 (DelayBoost: Feedback's Howl turns the delay's own feedback up, the echoes smearing into each other; under 0.8 and
+    // band-limited by the taps' count, so never a squeal).
+    float feedback = sp_->delay.feedback;
+    if (delayBoost_ > 0.0f) {
+        feedback = std::fmin(feedback + delayBoost_, 0.8f);
+        if (delayBoostRepeats_ > delayRepeats_) delayRepeats_ = delayBoostRepeats_;
+    }
     if (delayRepeats_ > countOf(delayTap_)) delayRepeats_ = countOf(delayTap_);
     while (delayRepeats_ && static_cast<u64>(delayRepeats_) * delayD_ > delayMask_) --delayRepeats_;
-    for (u32 k = 1; k <= delayRepeats_; ++k) delayTap_[k - 1] = mix * std::pow(sp_->delay.feedback, static_cast<float>(k - 1));
+    for (u32 k = 1; k <= delayRepeats_; ++k) delayTap_[k - 1] = mix * std::pow(feedback, static_cast<float>(k - 1));
 }
 
 void Engine::startMode(Mode m, u32 track, bool loop) {
@@ -517,6 +532,11 @@ void Engine::applyCommand(const Command& c) {
         case CmdType::VoiceSet:
         case CmdType::VoiceStop:
         case CmdType::LowPassBed:
+        case CmdType::CutBed:
+        case CmdType::HighPassBed:
+        case CmdType::PadTone:
+        case CmdType::DelayBoost:
+        case CmdType::LeadEcho:
             applyContentCommand(c);
             break;
         case CmdType::SetDistance:
@@ -666,6 +686,23 @@ void Engine::applyCommand(const Command& c) {
             mineArmed_ = singArmed_ = false;
             stabAcc_ = 0.0f;
             freezeMix_ = freezeTarget_ = 0.0f;
+            // M5 audio: the limiter open and empty; the fights' bus effects all lifted.
+            std::memset(limBuf_, 0, sizeof limBuf_);
+            for (float& g : limReq_) g = 1.0f;
+            limPeak_ = 0.0f;
+            limPrev_ = limCur_ = 1.0f;
+            cutMask_ = 0;
+            cutHats_ = false;
+            cutTo_ = -1;
+            for (float& g : cutGain_) g = 1.0f;
+            bedHpTo_ = -1;
+            bedHpMix_ = 0.0f;
+            padTone_ = padToneTarget_ = padGain_ = padGainTarget_ = 1.0f;
+            if (delayBoost_ > 0.0f) {
+                delayBoost_ = 0.0f;
+                delayBoostRepeats_ = 0;
+                if (tr_) applyDelay();
+            }
             pendingCount_ = 0;
             std::memset(delayLine_, 0, sizeof(float) * (delayMask_ + 1));
             reverb_.clear();
@@ -694,6 +731,32 @@ void Engine::driveSample(SampleVoice* v, float drive) {
     if (v && drive > 0.0f) v->drive = drive;
 }
 
+void Engine::gateSample(SampleVoice* v, u32 gateN, i64 origin) {
+    if (!v || v->channels != 1 || v->drive > 0.0f) return;  // (the gated path is mono and undriven)
+    v->gateN = gateN;
+    v->gateOrigin = origin;
+}
+
+void Engine::shapeLead(LeadVoice* v, float bend, float cutoff, bool reverse) {
+    if (!v || !v->active) return;
+    if (bend != 0.0f) {  // it plays the note it lands on and glides in from `bend` semitones off
+        v->glideSemis = bend;
+        v->glideN = v->length;
+        v->bend = true;
+    }
+    if (cutoff > 0.0f && v->timbre != Timbre::P3Bell) {  // held at the cutoff, without the patch's sweep or key tracking
+        v->fcStart = v->fcEnd = cutoff;
+        v->kt = 1.0f;
+    }
+    if (reverse) {
+        // The pluck backwards: rising over its length to an edge, no decay, its filter held where it would settle.
+        v->attackN = static_cast<float>(v->length > v->fade ? v->length - v->fade : v->length);
+        v->decayN = 1e9f;
+        v->decMul = 1.0f;
+        if (v->timbre != Timbre::P3Bell) v->fcStart = v->fcEnd;
+    }
+}
+
 Engine::SampleVoice* Engine::playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate, double from) {
     if (id < 0) return nullptr;
     const Sample& s = bank_->sample(id);
@@ -708,6 +771,7 @@ Engine::SampleVoice* Engine::playSample(i32 id, Bus bus, i64 frame, float gain, 
     v->pos = from;  // M5: a start inside the sample (the reversed cymbal ends on its tick)
     v->rate = rate;
     v->drive = 0.0f;
+    v->gateN = 0;
     if (s.channels == 2) {
         v->gl = v->gr = gain;
     } else {
@@ -800,7 +864,14 @@ Engine::LeadVoice* Engine::playLead(u8 player, Timbre timbre, float midi, float 
         ++mine;
         if (!oldest || startsBefore(o, *oldest)) oldest = &o;
     }
-    const u32 cap = (player < kMaxPlayers && player != localPlayer_) ? kLeadPerOther : kLeadPerPlayer;
+    // M5: a fight's own lead notes (LeadEcho: Feedback's echoes, the Mimic's answers, Event Horizon's count) hold at most
+    // kFightLeadVoices among them.
+    // M5 audio (the lead's ruling, cost): the local player's lead holds 10 notes while it owns Quartet (its four parts a step).
+    const u32 cap = player == kFightLeadPlayer
+                        ? kFightLeadVoices
+                        : ((player < kMaxPlayers && player != localPlayer_)
+                               ? kLeadPerOther
+                               : (player < kMaxPlayers && playerFusion(player, Fusion::Quartet) ? kLeadPerQuartet : kLeadPerPlayer));
     if (mine >= cap && oldest && at - oldest->start >= static_cast<i64>(oldest->age)) {
         oldest->length = static_cast<u32>(at - oldest->start) + kLeadFadeOut;
         oldest->fade = kLeadFadeOut;
@@ -931,6 +1002,10 @@ Engine::BassVoice* Engine::playBass(float midi, float vel, float steps, i64 fram
 }
 
 void Engine::playStab(const Chord& chord, float vel, float pan, i64 frame, float lengthScale) {
+    playStabNotes(chord.stab, chord.stabCount < 4 ? chord.stabCount : 4, vel, pan, frame, lengthScale);
+}
+
+void Engine::playStabNotes(const u8* stab, u32 count, float vel, float pan, i64 frame, float lengthScale) {
     StabVoice* v = allocVoice(stab_, kStabVoices, order_[PoolStab]);
     *v = StabVoice{};
     const StabPatch& p = sp_->stab;
@@ -949,9 +1024,9 @@ void Engine::playStab(const Chord& chord, float vel, float pan, i64 frame, float
     v->fcTauN = p.fcTau * sr;
     v->attackN = p.attack * sr;
     v->decayN = lengthScale != 1.0f ? p.decay * lengthScale * sr : p.decay * sr;
-    const u32 notes = chord.stabCount < 4 ? chord.stabCount : 4;
+    const u32 notes = count < 5 ? count : 5;  // M5: five (the Blink Star's stab); a Track's chords have three or four
     for (u32 i = 0; i < notes; ++i) {
-        const double hz = midiHz(chord.stab[i]);
+        const double hz = midiHz(stab[i]);
         v->saw[2 * i].dt = static_cast<float>(hz / sr_);
         v->saw[2 * i + 1].dt = static_cast<float>(hz * det / sr_);
     }
@@ -1107,6 +1182,8 @@ void Engine::onTick(i64 tick) {
     }
     if (tick % 12 == 0) flushKills(tick);
     if (tick % 12 == 0 || tick % 32 == 0) flushCues(tick);  // M5: the cues on 1/32 steps, Storm Coil on triplet eighths
+    if (tick % 12 == 0) flushFamily(tick);                    // M5 audio: the kill family's step (GAME_DESIGN 6.6)
+    if (tick % 12 == 0 && aggCount_) flushAgg(static_cast<double>(tick));  // M5: the fights' aggregated recipes
 }
 
 void Engine::planBar(i64 barTick) {
@@ -1560,6 +1637,7 @@ void Engine::planConductorBar(i64 barTick) {
         p.sparse[i] = section_ == Section::Break;
     }
     upgradeBar();  // M5
+    followChordVoices(frameOf(static_cast<double>(p.tick)));  // M5: the fights' held voices that follow the chord (a Rift's drone)
 }
 
 void Engine::stagedStep(i64 tick, i64 inBar) {
@@ -1694,7 +1772,8 @@ void Engine::conductorStep(i64 tick, i64 inBar) {
                 emit(BeatKind::Clap, f, tk, 0, 0, 0, v);
             }
         }
-        if (on(Pat::HatOff)) {
+        const bool hats = !hatsCut(f);  // M5 (CutBed: the Moth Queen open, the bed down to kick and pad)
+        if (on(Pat::HatOff) && hats) {
             float v = t.pattern[static_cast<u32>(Pat::HatOff)][st];
             if (p.fill && st >= 8 && v <= 0.0f) v = t.pattern[static_cast<u32>(Pat::Hat16)][st];  // hats double
             if (v > 0.0f) {
@@ -1703,12 +1782,12 @@ void Engine::conductorStep(i64 tick, i64 inBar) {
                 emit(BeatKind::Hat, f, tk, 0, 0, 0, v);
             }
         }
-        if (on(Pat::Hat16) && t.pattern[static_cast<u32>(Pat::Hat16)][st] > 0.0f) {
+        if (on(Pat::Hat16) && hats && t.pattern[static_cast<u32>(Pat::Hat16)][st] > 0.0f) {
             const float v = t.pattern[static_cast<u32>(Pat::Hat16)][st];
             playSample(kit.hat, Bus::Drums, f, s.mix.hat * v, st % 2 == 0 ? -kPanHat16 : kPanHat16);
             emit(BeatKind::Hat, f, tk, 0, 0, 0, v);
         }
-        if (on(Pat::Ohat) && t.pattern[static_cast<u32>(Pat::Ohat)][st] > 0.0f) {
+        if (on(Pat::Ohat) && hats && t.pattern[static_cast<u32>(Pat::Ohat)][st] > 0.0f) {
             const float v = t.pattern[static_cast<u32>(Pat::Ohat)][st];
             playSample(kit.ohat, Bus::Drums, f, s.mix.ohat * v, kPanOhat);
             emit(BeatKind::Hat, f, tk, 0, 1, 0, v);
@@ -1720,7 +1799,7 @@ void Engine::conductorStep(i64 tick, i64 inBar) {
     }
     if (riffStep) {
         const auto on = [&](Pat pat) { return p.pat[static_cast<u32>(pat)] > 0.0f; };
-        if (on(Pat::Shaker) && t.pattern[static_cast<u32>(Pat::Shaker)][riffSt] > 0.0f) {
+        if (on(Pat::Shaker) && !hatsCut(f) && t.pattern[static_cast<u32>(Pat::Shaker)][riffSt] > 0.0f) {
             const float v = t.pattern[static_cast<u32>(Pat::Shaker)][riffSt];
             playSample(bank_->shaker(), Bus::Drums, f, s.mix.shaker * v, riffSt % 2 ? kPanShaker : -kPanShaker);
             emit(BeatKind::Shaker, f, tk, 0, 0, 0, v);
@@ -1850,6 +1929,7 @@ void Engine::leadStep(i64 tick, i64 inBar) {
                     mainGain *= 1.0f + r.syncLouder * static_cast<float>(m[static_cast<u32>(Mod::Syncopation)]);
             }
             players_[i].lastNote = note;
+            markLead(i, tk, note);  // M5: what a fight may play again (LeadEcho)
             LeadVoice* main = playLead(static_cast<u8>(i), pl.timbre, note, vel, mainGain, pan, f, scale, drive);
             if (m5) bendLead(main, i, glideFrom, false);
             emit(BeatKind::Lead, f, tk, note, static_cast<u8>(i), static_cast<u8>(grid), accent, k, midiHz(note));
@@ -1897,9 +1977,10 @@ void Engine::leadStep(i64 tick, i64 inBar) {
     }
 }
 
-void Engine::flushKills(i64 tick) {
+void Engine::flushKills(i64 /*tick*/) {
     // Kills are aggregated (README): one sound per size class per 1/32 step, its gain following the
-    // count, pitched to a chord tone (small an octave up, medium at pitch, large an octave down).
+    // count, pitched to a chord tone (small an octave up, medium at pitch, large an octave down). M5 audio: into the kill
+    // family of the step (flushFamily plays them, on the tick).
     const Chord& ch = plan_->chord ? *plan_->chord : tr_->chordAtBar(0);
     for (u32 size = 0; size < 3; ++size) {
         const u32 n = killCount_[size];
@@ -1925,7 +2006,7 @@ void Engine::flushKills(i64 tick) {
             midi = ch.stab[0] - 12;
             gain = sfxLevel(kind) * std::fmin(kKillSmallBoost, agg / (1.0f - std::exp(-1.0f / 2.5f)));
         }
-        playSfx(kind, midi, gain, pan, frameOf(static_cast<double>(tick)), static_cast<double>(tick));
+        familyAdd(false, static_cast<u8>(kind), midi, gain, pan);  // M5 audio: the kill family (flushFamily plays the step)
     }
 }
 
@@ -2225,6 +2306,12 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
     };
     std::memset(bus_, 0, sizeof bus_);
     std::memset(wet_, 0, sizeof wet_);
+    if (sendUsed_) {  // M5: the content voices' own reverb send
+        std::memset(sendL_, 0, sizeof sendL_);
+        std::memset(sendR_, 0, sizeof sendR_);
+        sendUsed_ = false;
+    }
+    if (padTone_ != padToneTarget_ || padGain_ != padGainTarget_) stepPadTone(n);  // M5 (PadTone)
     duckFrames_ = 0;
     u32 active = 0;
 
@@ -2347,8 +2434,9 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         v.delay = 0;
         u32 cnt = n - i0;
         if (v.length - v.age < cnt) cnt = v.length - v.age;
-        float* L = bus_[static_cast<u32>(Bus::Stab)][0] + i0;
-        float* R = bus_[static_cast<u32>(Bus::Stab)][1] + i0;
+        const u32 stabBus = static_cast<u32>(mode_ == Mode::Script ? Bus::Sfx : Bus::Stab);  // M5: a sheet's stab (Recipe::Stab), dry
+        float* L = bus_[stabBus][0] + i0;
+        float* R = bus_[stabBus][1] + i0;
         const float decMul = std::exp(-1.0f / v.decayN);
         const float invAtt = v.attackN > 0.0f ? 1.0f / v.attackN : 0.0f;
         const u32 attEnd = static_cast<u32>(v.attackN), fadeStart = v.length - v.fade;
@@ -2363,7 +2451,7 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
             const float d1 = (c1.a1 - c0.a1) * kInvKnot, d2 = (c1.a2 - c0.a2) * kInvKnot, d3 = (c1.a3 - c0.a3) * kInvKnot;
             float dec = std::exp(-static_cast<float>(k0) / v.decayN);
             for (u32 j = 0; j < phase; ++j) dec *= decMul;
-            SawOsc osc[8];
+            SawOsc osc[10];
             const u32 nosc = v.oscCount;
             for (u32 o = 0; o < nosc; ++o) osc[o] = v.saw[o];
             SvfLowpass f = v.svf;
@@ -2406,12 +2494,13 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         const float invAtt = v.attackN > 0.0f ? 1.0f / v.attackN : 0.0f;
         const u32 attEnd = static_cast<u32>(v.attackN), fadeStart = v.length - v.fade;
         const float invFade = v.fade > 1 ? 1.0f / static_cast<float>(v.fade - 1) : 0.0f;
-        const float gain = v.level * v.gain;
+        const float gain = v.level * v.gain * padGain_;  // M5 (PadTone: Feedback's Head ducks the pad while it is closed)
+        const float open = v.open * padTone_;           // ... and opens or dulls its filter
         for (u32 ch = 0; ch < 2; ++ch) {
             float* out = bus_[static_cast<u32>(Bus::Pad)][ch] + i0;
             const auto coefs = [&](u32 a) {
                 const float lfo = 0.5f + 0.5f * std::sin(v.lfoW * static_cast<float>(a) + 0.9f * static_cast<float>(ch));
-                return svfCoefs(svfG((v.fcBase + v.fcLfo * lfo) * v.bright * v.open, sr), v.k);
+                return svfCoefs(svfG((v.fcBase + v.fcLfo * lfo) * v.bright * open, sr), v.k);
             };
             SawOsc* osc = v.saw[ch];
             // M5 (cost): the channel's saws four at a time (a lane past the last saw stands still at phase 0.5, dt 0,
@@ -2489,7 +2578,34 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         const Bus bus = mode_ == Mode::Script ? Bus::Sfx : v.bus;
         float* L = bus_[static_cast<u32>(bus)][0];
         float* R = bus_[static_cast<u32>(bus)][1];
-        if (v.rate == 1.0f) {
+        if (v.gateN) {
+            // M5 (Phasing's fifth, gated on the eighths): a mono voice at its rate under an on-off gate (a fight's, rare).
+            double pos = v.pos;
+            const u32 last = v.frames ? v.frames - 1 : 0;
+            bool ended = v.frames == 0;
+            const i64 period = 2 * static_cast<i64>(v.gateN);
+            const float ramp = static_cast<float>(kGateRamp);
+            for (u32 i = i0; i < n; ++i) {
+                const u32 k = static_cast<u32>(pos);
+                if (k >= last) {
+                    ended = true;
+                    break;
+                }
+                const i64 g = ((frame_ + static_cast<i64>(i) - v.gateOrigin) % period + period) % period;
+                float env = 0.0f;
+                if (g < static_cast<i64>(v.gateN)) {
+                    const float up = static_cast<float>(g) / ramp, down = static_cast<float>(static_cast<i64>(v.gateN) - g) / ramp;
+                    env = up < down ? (up < 1.0f ? up : 1.0f) : (down < 1.0f ? down : 1.0f);
+                }
+                const float fr = static_cast<float>(pos - k);
+                const float s = (v.data[k] + (v.data[k + 1] - v.data[k]) * fr) * env;
+                L[i] += s * v.gl;
+                R[i] += s * v.gr;
+                pos += v.rate;
+            }
+            v.pos = pos;
+            if (ended) v.active = false;
+        } else if (v.rate == 1.0f) {
             u32 pos = static_cast<u32>(v.pos);
             u32 cnt = n - i0;
             if (v.frames - pos < cnt) cnt = v.frames - pos;
@@ -2557,8 +2673,9 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         }
     }
     compactOrder(order_[PoolSample], smp_);
-    renderContent(n);  // M5: live recipe voices and the upgrades' held voices
     mark(EngineProfile::Samples);
+    renderContent(n);  // M5: live recipe voices and the upgrades' held voices
+    mark(EngineProfile::Content);
     stats_.voices.store(active, std::memory_order_relaxed);
     if (active > stats_.voicesPeak.load(std::memory_order_relaxed)) stats_.voicesPeak.store(active, std::memory_order_relaxed);
 
@@ -2577,6 +2694,8 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         return;
     }
 
+    // M5 (CutBed): the buses a fight silences for a while (Event Horizon starved, the Moth Queen open).
+    if (cutMask_) applyCuts(n);
     // Pad high-pass (musicproto: per chord before placing; linear, so on the bus).
     for (u32 ch = 0; ch < 2; ++ch) {
         float* x = bus_[static_cast<u32>(Bus::Pad)][ch];
@@ -2691,6 +2810,13 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
                 inL[i] += sL[i] * fx;
                 inR[i] += sR[i] * fx;
             }
+            if (sendUsed_) {  // M5: a content voice's send above the effects' (summed already scaled by its extra share)
+                const float own = fx / kSfxReverbSend;
+                for (u32 i = 0; i < n; ++i) {
+                    inL[i] += sendL_[i] * own;
+                    inR[i] += sendR_[i] * own;
+                }
+            }
             reverb_.process(inL, inR, wet_[0], wet_[1], n);
         }
     }
@@ -2711,6 +2837,13 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
     if (frozen && freezeMix_ <= 0.0f) {
         freezeHp_[0].reset();
         freezeHp_[1].reset();
+    }
+    float stageIn[2][kBlock], stageOut[2][kBlock];  // (the stage tap's, offline)
+    // M5 (HighPassBed: Cadence's Inversion): the music high-passed for its window, faded in and out over 50 ms.
+    const bool bedHp = bedHpMix_ > 0.0f || (bedHpTo_ > frame_ && bedHpFrom_ < frame_ + static_cast<i64>(n));
+    if (bedHp && bedHpMix_ <= 0.0f) {
+        bedHp_[0].reset();
+        bedHp_[1].reset();
     }
     for (u32 i = 0; i < n; ++i) {
         float l = wet_[0][i], r = wet_[1][i];
@@ -2774,11 +2907,46 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
             l += (hl - l) * freezeMix_;
             r += (hr - r) * freezeMix_;
         }
+        if (bedHp) {
+            const i64 x = frame_ + static_cast<i64>(i);
+            const float target = x >= bedHpFrom_ && x < bedHpTo_ ? 1.0f : 0.0f;
+            bedHpMix_ = target > bedHpMix_ ? std::fmin(target, bedHpMix_ + freezeStep) : std::fmax(target, bedHpMix_ - freezeStep);
+            const float hl = bedHp_[0].tick(l), hr = bedHp_[1].tick(r);
+            l += (hl - l) * bedHpMix_;
+            r += (hr - r) * bedHpMix_;
+        }
         l += bus_[static_cast<u32>(Bus::Sfx)][0][i] * sfxGain_;
         r += bus_[static_cast<u32>(Bus::Sfx)][1][i] * sfxGain_;
+        if (stageFn_) {
+            stageIn[0][i] = l;
+            stageIn[1][i] = r;
+        }
         if (!rawOutput_) {
-            l = limit(l);
-            r = limit(r);
+            // M5 audio: the look-ahead limiter (engine.h): in at frame t, out the frame kLimDelay before it.
+            const i64 t = frame_ + static_cast<i64>(i);
+            const u32 w = static_cast<u32>(t) & (kLimRing - 1);
+            limBuf_[0][w] = l;
+            limBuf_[1][w] = r;
+            const float a = std::fmax(std::fabs(l), std::fabs(r));
+            limPeak_ = a > limPeak_ ? a : limPeak_;
+            const u32 phase = static_cast<u32>(t) & (kLimSeg - 1);
+            if (phase == 0) {
+                // An output segment begins: its gain, from the segments kLimHold before it to kLimAhead after it (all heard).
+                const i64 seg = (t - static_cast<i64>(kLimDelay)) / static_cast<i64>(kLimSeg);
+                float target = 1.0f;
+                for (i64 s = seg - static_cast<i64>(kLimHold); s <= seg + static_cast<i64>(kLimAhead); ++s)
+                    target = std::fmin(target, limReq_[static_cast<u32>(s) & (kLimReqs - 1)]);
+                limPrev_ = limCur_;
+                limCur_ = target < limCur_ ? target : limCur_ + (target - limCur_) * limRelease_;
+            }
+            const float g = limPrev_ + (limCur_ - limPrev_) * static_cast<float>(phase + 1) * (1.0f / static_cast<float>(kLimSeg));
+            const u32 o = static_cast<u32>(t - static_cast<i64>(kLimDelay)) & (kLimRing - 1);
+            l = limit(limBuf_[0][o] * g);
+            r = limit(limBuf_[1][o] * g);
+            if (phase == kLimSeg - 1) {  // an input segment is complete: the gain it may take
+                limReq_[static_cast<u32>(t / static_cast<i64>(kLimSeg)) & (kLimReqs - 1)] = limPeak_ > kLimCeiling ? kLimCeiling / limPeak_ : 1.0f;
+                limPeak_ = 0.0f;
+            }
         }
         float* o = out + static_cast<size_t>(i) * channels;
         if (channels == 1) {
@@ -2788,8 +2956,13 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
             o[1] = r;
             for (u32 c = 2; c < channels; ++c) o[c] = 0.0f;
         }
+        if (stageFn_) {
+            stageOut[0][i] = l;
+            stageOut[1][i] = r;
+        }
         peak_ = std::fmax(peak_, std::fmax(std::fabs(l), std::fabs(r)));
     }
+    if (stageFn_) stageFn_(stageUser_, stageIn[0], stageIn[1], stageOut[0], stageOut[1], n);
     mark(EngineProfile::Master);
     if (muffle_ != muffleTarget_) {
         const float stepN = muffleStep_ * static_cast<float>(n);

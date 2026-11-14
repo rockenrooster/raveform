@@ -7,6 +7,9 @@
 namespace rf::audio {
 
 constexpr float kRollLo = 0.35f, kRollHi = 1.0f;  // staged snare roll level
+// sfxproto: the effects' reverb send (reverb(sfx x 0.18), mixed after the music). M5: a content voice may send more
+// (choir.md's pad voice: 0.5): the rest goes through Engine::sendL_ / sendR_.
+constexpr float kSfxReverbSend = 0.18f;
 
 struct Engine::Player {
     u8 fire = 0;  // 0 off, 1 every grid step, 2 every other step (M3: the auto-aim assist's half-rate grid)

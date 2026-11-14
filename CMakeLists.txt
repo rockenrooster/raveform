@@ -461,7 +461,9 @@ target_sources(raveform_core PRIVATE src/game/play_net.cpp src/game/play_view_co
 if(NOT ANDROID)
   # The band without a window: offline renders, the loudness calibration, the unit tests.
   set(RF_HEADLESS_CORE src/core/json_doc.cpp src/core/log.cpp src/core/alloc_counter.cpp)
-  add_executable(raveform_headless src/tools/audio_render.cpp src/tools/sim_headless.cpp src/tools/net_headless.cpp ${RF_HEADLESS_CORE})
+  # (M5 audio: the fights' sounds, game/pending_sounds.cpp, for their listening sheet: --render fights)
+  add_executable(raveform_headless src/tools/audio_render.cpp src/tools/sim_headless.cpp src/tools/net_headless.cpp
+                 src/game/pending_sounds.cpp ${RF_HEADLESS_CORE})
   target_link_libraries(raveform_headless PRIVATE raveform_sim raveform_audio raveform_net)  # M3: --sim runs; M4: --net
   target_compile_options(raveform_headless PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Werror)
   target_link_options(raveform_headless PRIVATE -static)

@@ -412,7 +412,9 @@ void Play::afterTick() {
     holdFight();  // M5 --fight ...:hold (benchmarks)
     if (opt_.loadoutMax) maxLoadout();  // M5 --loadout max (benchmarks)
     // M5: the fights' held voices end on time, and all of them when no fight is on.
-    if (bandDrives_) updateFightVoices(*band_, fightVoices_, band_->view().heardTick, !w.boss().active || w.boss().dying);
+    if (bandDrives_)  // (M5 audio: the held voices follow the world: this device's seat, the band's offset)
+        updateFightVoices(*band_, fightVoices_, band_->view().heardTick, !w.boss().active || w.boss().dying, &w, seat_,
+                          coop() ? netBandOffset_ : clock_.offset());
     bossHintTick(w);
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
@@ -568,6 +570,14 @@ void Play::afterTick() {
                 break;
             case EventType::HaloBlock:
                 if (bandDrives_ && e.a == seat_) band_->playSfx(audio::Sfx::Shield);
+                break;
+            case EventType::ExtraLife:
+                // Play test 3 (M5 audio): an Extra Life picked up, or spent (its stab lands with the free Nova's blast).
+                if (bandDrives_ && e.a == seat_) {
+                    Event x = e;
+                    if (e.b) x.tick = w.player(seat_).novaBlastTick;
+                    upgradeCues_.add(x, 0.0f, coop() ? netBandOffset_ : clock_.offset());
+                }
                 break;
             case EventType::Revive:
                 if (e.a == seat_) controller_.reset(w.player(seat_).pos);  // M4: back where the beacon was

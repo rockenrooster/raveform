@@ -13,6 +13,7 @@
 #include "audio/audio_args.h"
 #include "audio/audio_device.h"
 #include "audio/bake.h"
+#include "audio/command_sink.h"
 #include "audio/engine.h"
 #include "audio/music_data.h"
 #include "audio/spsc.h"
@@ -80,12 +81,14 @@ struct BandDefaults {
                                 // the game sets fire, intensity and the effects
 };
 
-class Band {
+class Band final : public audio::CommandSink {
 public:
     Band() = default;
     Band(const Band&) = delete;
     Band& operator=(const Band&) = delete;
     ~Band();
+    // M5 (audio/command_sink.h): the fights' sounds (game/pending_sounds.cpp) post their commands through here.
+    void send(const audio::Command& c) override { post(c); }
 
     // Load time: music data, one-shots, engine. The scenario picks the default mode ("audio_test" plays
     // the phrase cycle, "sync" the metronome, benchmarks the fullest arrangement so the frame-rate
@@ -120,7 +123,7 @@ public:
     void setVariant(u32 v);
     u32 variant() const { return variant_; }
     void nextTrack();
-    u32 track() const { return track_; }
+    u32 track() const override { return track_; }
     void setMode(audio::Mode m);
     audio::Mode mode() const { return mode_; }
     void toggleRiff(audio::Riff r);
@@ -186,7 +189,7 @@ public:
     float meter() const { return meter_.load(std::memory_order_relaxed); }
     bool fullLoad() const { return fullLoad_; }  // --band full / stress: the load test owns the mix
     bool gameMode() const { return game_; }
-    const audio::MusicData& music() const { return *music_; }
+    const audio::MusicData& music() const override { return *music_; }
     const char* variantName() const;
     const char* trackName() const;
 

@@ -483,6 +483,7 @@ void Band::update(i64 displayLeadNs) {
             timestamped_ = false;
         }
         raw -= static_cast<double>(syncOffsetMs_) * r * 1e-3;
+        raw -= static_cast<double>(engine_->outputDelayFrames());  // M5 audio: the output limiter's look-ahead
         rawOk = true;
     }
     if (rawOk) {
@@ -530,7 +531,7 @@ void Band::update(i64 displayLeadNs) {
     releaseHeard();
     computeShots(t0, displayLeadNs);
     if (fullLoad_ && maxLoad_) {
-        Command feed[40];
+        Command feed[64];
         const u32 n = maxLoadFrame(fullFrame_++, feed, countOf(feed));
         for (u32 i = 0; i < n; ++i) post(feed[i]);
     } else if (fullLoad_) {
