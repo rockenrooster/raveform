@@ -484,13 +484,14 @@ die and does not say why, and the user never got past Longwave. So:
   18, with Longwave and the Choir in at least 16, with the bosses of Tracks 4 to 6 in at least 12.
   A fight it wins lasts at most 1.5 times the longer length on the boss's page. **And a fight is
   short** (the owner, 2026-11-14, after Event Horizon: "way too much hp", then "check the HP on the
-  later bosses", then "Anything around 45-60secs is fine"): **every** fight the novice wins lasts
-  at most **60 seconds**, and a fight cut down to it is cut to between 45 and 60; a shorter fight is
-  left as it is. This outranks the pages' lengths, and the pace
+  later bosses", then "Anything around 30-60"): **every fight the novice wins lasts 30 to 60
+  seconds**; one outside is brought to about the middle of the band's near half (a long one to about
+  50, a short one to about 30). This outranks the pages' lengths, and the pace
   rule then holds an aiming player's fight to the same. Measured before it (the novice through
   the half-rate assist, a won fight, af4b101): Event Horizon 75 s (halved by the owner), Polyrhythm
   20, Feedback 63, Cadence 91, Arpeggiator 69, Fata Morgana 41, Reprise 114; Kaleidos 55, Longwave
-  83, the Choir 34. So Longwave, Feedback, Cadence, Arpeggiator and Reprise come down. The careful bot's
+  83, the Choir 34. So Longwave, Feedback, Cadence, Arpeggiator and Reprise come down, and
+  Polyrhythm goes up to about 30 as long as the novice still wins it as often. The careful bot's
   fight lasts at least half the shorter length. Where the two pull apart, the novice's line wins.
 - **What that costs, and until when.** Tuned for the novice (2026-11-13: Kaleidos at 0.55 of its
   page's health, Longwave at 0.77), the careful bot kills Kaleidos in 9 s and Longwave in 18 s: a
