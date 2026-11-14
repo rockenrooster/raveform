@@ -46,6 +46,19 @@ android {
                 }
             }
         }
+        // M7 (release preparation): native Release, not debuggable, no app arguments (RaveformActivity), the native
+        // libraries stripped (scripts/build-android.ps1 -Config release keeps the unstripped ones beside the APK). Signed with
+        // the debug key only: the release key and the store's signing are the owner's.
+        release {
+            debuggable false
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+            externalNativeBuild {
+                cmake {
+                    arguments '-DCMAKE_BUILD_TYPE=Release'
+                }
+            }
+        }
     }
 
     externalNativeBuild {

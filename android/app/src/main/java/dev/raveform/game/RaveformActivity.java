@@ -36,6 +36,11 @@ public class RaveformActivity extends SDLActivity {
     /** adb shell am start -n dev.raveform.game/.RaveformActivity --es args '--scenario bench_idle --seconds 60' */
     @Override
     protected String[] getArguments() {
+        // M7: the release build (not debuggable) takes no arguments: benchmarks, pictures and the other development switches
+        // are for the dev and debug builds only.
+        if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
+            return new String[0];
+        }
         String args = getIntent() != null ? getIntent().getStringExtra("args") : null;
         if (args == null) {
             return new String[0];
