@@ -339,7 +339,8 @@ constexpr u32 kFamPicCount = sizeof(kFamPics) / sizeof(kFamPics[0]);
 constexpr u16 kFamBase = 1000;  // m5Pic_ for a FamPic: kFamBase + its index (M5 part 6: past the 100 kPics)
 static_assert(kPicCount < kFamBase, "the fights' pictures and the families' share m5Pic_");
 
-// ---- M5 part 3: every new upgrade on screen (GAME_DESIGN 6.6: visible within a bar of the pick). A still ship (the
+// ---- M5 part 3: every new upgrade on screen (GAME_DESIGN 6.6: visible within a bar of the pick; eb10554: Split a lane a
+// rank, so the loadouts take twice its stacks for the same fans as before). A still ship (the
 // spawner off, hits costing nothing) is given its upgrades after the Track card, a group lands round it, and the picture
 // is taken at its moment: a tick, or the first upgrade event of a kind after it.
 enum UpLayout : u8 { kUpAhead, kUpRing, kUpCrowd };
@@ -361,23 +362,23 @@ constexpr u8 N = kNoUpgrade;
 constexpr u8 NB = kNoBoost;
 const UpPic kUpPics[] = {
     {"up_weapons", {kFork, kFork, kSeeker, kSeeker, kHeavyStep, kHeavyStep, kHeavyStep, kEcho, kEcho, kOvercharge, N}, {NB, NB}, 0, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 340, 0},
-    {"up_wave", {kSplit, kSplit, kWave, kWave, N}, {NB, NB}, 0, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 330, 0},
-    {"up_helix", {kSplit, kSplit, kWave, kWave, N}, {NB, NB}, 1u << kHelixArray, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 330, 0},
+    {"up_wave", {kSplit, kSplit, kSplit, kSplit, kWave, kWave, N}, {NB, NB}, 0, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 330, 0},
+    {"up_helix", {kSplit, kSplit, kSplit, kSplit, kWave, kWave, N}, {NB, NB}, 1u << kHelixArray, 8, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 330, 0},
     {"up_accent", {kAccent, kAccent, kAccent, kOnBeatCrit, N}, {NB, NB}, 0, 10, kUpAhead, 400.0f, true, kUpNone, kFxLance, kLanceAccent, 300, 2},
     {"up_standing_wave", {kAccent, kAccent, kAccent, kEcho, kEcho, N}, {NB, NB}, 1u << kStandingWave, 10, kUpAhead, 400.0f, true, kUpNone, kFxLance, kLanceAccent, 300, 20},
-    {"up_kills", {kArc, kArc, kArc, kBurn, kBurn, kBurn, kShatter, kShatter, kShatter, kGravityRounds, kGravityRounds, kSplit, kSplit, N}, {NB, NB}, 0, 40, kUpCrowd, 6.0f, true, kUpNone, kFxArc, 0xFF, 300, 1},
+    {"up_kills", {kArc, kArc, kArc, kBurn, kBurn, kBurn, kShatter, kShatter, kShatter, kGravityRounds, kGravityRounds, kSplit, kSplit, kSplit, kSplit, N}, {NB, NB}, 0, 40, kUpCrowd, 6.0f, true, kUpNone, kFxArc, 0xFF, 300, 1},
     {"up_wingmen", {kRearGuard, kRearGuard, kSyncopation, kMirror, kMirror, kMirror, kMirror, kMirror, N}, {NB, NB}, 0, 10, kUpRing, 400.0f, true, kUpNone, 0xFF, 0xFF, 337, 0},
     {"up_quartet", {kRearGuard, kRearGuard, kMirror, kMirror, kMirror, kMirror, kMirror, N}, {NB, NB}, 1u << kQuartet, 10, kUpRing, 400.0f, true, kUpNone, 0xFF, 0xFF, 337, 0},
     {"up_defence", {kAegis, kAegis, kAegis, kAfterimage, kAfterimage, kShockstep, kShockstep, kShockstep, kKickPulse, kKickPulse, kKickPulse, N}, {NB, NB}, 0, 10, kUpRing, 400.0f, false, kUpDash, 0xFF, 0xFF, 312, 0},
     {"up_barline", {kBarLine, kBarLine, kBarLine, kCrescendo, kCrescendo, N}, {NB, NB}, 0, 16, kUpCrowd, 400.0f, false, kUpNone, kFxBarLine, 0xFF, 300, 2},
     {"riff_lancer", {kLancer, kLancer, kLancer, kMinelayer, kMinelayer, kMinelayer, kStormCoil, kStormCoil, kStormCoil, kSwarm, kSwarm, kSwarm, N}, {NB, NB}, 0, 16, kUpCrowd, 400.0f, false, kUpNone, kFxLance, kLanceLancer, 300, 3},
     {"riff_singularity", {kSingularity, kSingularity, kSingularity, kComet, kComet, kComet, kSweeper, kSweeper, kSweeper, kFlak, kFlak, kFlak, N}, {NB, NB}, 0, 24, kUpCrowd, 400.0f, false, kUpNone, kFxWell, 0xFF, 300, 50},
-    {"boost_supernova_chain", {kSplit, N}, {kSupernova, kChainStorm}, 0, 24, kUpCrowd, 400.0f, true, kUpNone, kFxArc, 0xFF, 330, 2},
+    {"boost_supernova_chain", {kSplit, kSplit, N}, {kSupernova, kChainStorm}, 0, 24, kUpCrowd, 400.0f, true, kUpNone, kFxArc, 0xFF, 330, 2},
     {"boost_colossus_carousel", {N}, {kColossus, kCarousel}, 0, 12, kUpRing, 400.0f, false, kUpNone, 0xFF, 0xFF, 340, 0},
     {"boost_freeze_fever", {kRicochet, N}, {kFreezeFrame, kRicochetFever}, 0, 20, kUpCrowd, 400.0f, true, kUpNone, 0xFF, 0xFF, 345, 0},
     {"boost_black_hole", {N}, {kBlackHole, kConfetti}, 0, 30, kUpCrowd, 400.0f, true, kUpNova, kFxHole, 0xFF, 300, 70},
-    {"boost_chorus_beam", {kSplit, kSplit, N}, {kChorus, kBeam}, 0, 12, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 335, 0},
-    {"boost_fractal_stretch", {kSplit, N}, {kFractal, kTimeStretch}, 0, 16, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 335, 0},
+    {"boost_chorus_beam", {kSplit, kSplit, kSplit, kSplit, N}, {kChorus, kBeam}, 0, 12, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 335, 0},
+    {"boost_fractal_stretch", {kSplit, kSplit, N}, {kFractal, kTimeStretch}, 0, 16, kUpAhead, 400.0f, true, kUpNone, 0xFF, 0xFF, 335, 0},
     {"fusion_tesla", {kPulseRing, kPulseRing, kPulseRing, kPulseRing, kPulseRing, kArc, kArc, kArc, N}, {NB, NB}, 1u << kTeslaBloom, 24, kUpCrowd, 400.0f, false, kUpNone, kFxArc, 0xFF, 300, 1},
     {"fusion_shard_halo", {kOrbitals, kOrbitals, kOrbitals, kOrbitals, kOrbitals, kShatter, kShatter, kShatter, N}, {NB, NB}, 1u << kShardHalo, 40, kUpCrowd, 4.0f, true, kUpNone, kFxShatter, 0xFF, 300, 2},
     {"fusion_cannon", {kLancer, kLancer, kLancer, kLancer, kLancer, kOnBeatCrit, kOnBeatCrit, kOnBeatCrit, N}, {NB, NB}, 1u << kDownbeatCannon, 16, kUpAhead, 400.0f, false, kUpNone, kFxLance, kLanceCannon, 300, 2},
@@ -445,7 +446,9 @@ bool Play::scriptSetupM5() {
             w.directorMut().track = f.track;
             w.spawner().mode = Spawner::Mode::Slice;
             const u32* len = kSectionBars[formOfTrack(f.track, w.setList())];
-            const u32 bars = (f.cycle - 1u) * (len[0] + len[1] + len[2] + len[3]) + 4u;
+            // (c2f113a: every Track is two cycles; a picture written for the third cycle shows the second)
+            const u32 cyc = f.cycle < cyclesOfTrack(f.track) ? f.cycle : cyclesOfTrack(f.track);
+            const u32 bars = (cyc - 1u) * (len[0] + len[1] + len[2] + len[3]) + 4u;
             scriptFastForwardS_ = static_cast<float>(bars) * 4.0f * 60.0f / bpmOfTrack(f.track, w.setList());
         } else {
             w.spawner().mode = Spawner::Mode::Off;

@@ -168,12 +168,23 @@ void PlayView::drawLongwave(FrameDraw& d, const ViewInput& in) {
     // The echoes (the wave's after-images, an eighth and a quarter of a wave behind) and the spine: polylines through the
     // body's places, kept on every tier.
     const float end = static_cast<float>(shown) + (shown == live ? 0.9f : 0.0f);
+    // a953828: the spine runs through the places the segments are at: a gap closing behind a dead segment lags them, so the
+    // spine takes each rank's lag too, interpolated between ranks (the lunge's whip and the entrance are in longwavePoint).
+    float lags[kBossBodies];
+    const u32 nLags = w.longwaveRankLags(wt, lags, kBossBodies);
+    const auto lagAt = [&](float k) {
+        if (nLags == 0) return 0.0f;
+        const u32 i0 = static_cast<u32>(k) < nLags ? static_cast<u32>(k) : nLags - 1;
+        const u32 i1 = i0 + 1 < nLags ? i0 + 1 : i0;
+        const float f = k - std::floor(k);
+        return lags[i0] + (lags[i1] - lags[i0]) * f;
+    };
     for (u32 e = 0; e < 3; ++e) {
         const float shift = e < 2 ? L.echoBehind[e] : 0.0f;
         const float level = e < 2 ? L.echoIntensity[e] * 2.0f : 2.2f;
         Vec2 prev = w.longwavePoint(wt, 0.0f, shift);
         for (float k = 0.25f; k <= end + 1e-3f; k += 0.25f) {
-            const Vec2 p = w.longwavePoint(wt, k, shift);
+            const Vec2 p = w.longwavePoint(wt, k + lagAt(k), shift);
             if (visible(p, 60.0f) || visible(prev, 60.0f)) {
                 if (e == 2) d.scene.line(toScene(prev), toScene(p), 0.5f * L.spineWidthPx * refPx_, bodyHue(k) * 1.4f, bodyHue(k) * 1.4f, 0);
                 d.scene.line(toScene(prev), toScene(p), 0.5f * (e == 2 ? L.spineCoreWidthPx : L.spineWidthPx) * refPx_, acc * level, acc * level, 0);
@@ -192,7 +203,7 @@ void PlayView::drawLongwave(FrameDraw& d, const ViewInput& in) {
         if (!visible(p, 120.0f)) continue;
         Vec2 tan;
         float wv = 0.0f;
-        w.longwavePoint(wt, static_cast<float>(rank), 0.0f, &tan, &wv);
+        w.longwavePoint(wt, static_cast<float>(rank) + lagAt(static_cast<float>(rank)), 0.0f, &tan, &wv);
         const float c = tan.x, sn = tan.y;
         const bool crest = !s.dying && w.longwaveCrest(k, t) >= 0;
         const float heat = crest ? 1.0f : (wv > 0.0f ? wv * wv * wv : 0.0f);

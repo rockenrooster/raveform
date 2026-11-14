@@ -4,6 +4,174 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14, the owner's rulings (design c2f113a, a953828, 27077b6, a667116, eb10554, b12310b): two-cycle Tracks, Longwave never jumps, no Break Trio, Split and Double-Time's ranks, the transitions, the assist at half rate
+
+### A. Every Track is two cycles, like Track 1 (c2f113a; GAME_DESIGN 4.2, 4.3, 5)
+
+- `cyclesOfTrack` is 2 for every Track, the loop's too: 48 bars before each boss.
+- **The mini-boss comes on the first cycle's Drop** from Track 2 on (`phraseAt`: the hold on cycle 1; `miniNaturalEnd` the
+  first cycle's Drop's end, it counted `cycles / 2`), the boss on the second.
+- **The Extra Life**: Track 1 as before (a kill in the first cycle's Drop); from Track 2 the mini-boss drops it as it dies, an
+  orb for each player who holds none (`extraLifeDrop(at, fromMini)`, the host's; a mini-boss that warps out drops none).
+- **The arena**: from Track 4 the second event comes in the first cycle's Groove (it was the third's); Track 1's Comet stays in
+  the second. species.json's debuts are the lead's data (from Track 2 the third cycle's rows now say cycle 2).
+- What counted a third or middle cycle, changed: `--drop <track>.<cycle>` takes cycles 1-2 (CLAUDE.md: Kaleidos Reprise's Drop
+  is `--drop 10.2`; `10.1`, the thermal check's and the densest crowd's, is unchanged); the m5 Track pictures written for a
+  third cycle (`t2_c3`, `t3_c3`) show the second (clamped); the tests (the director, the mini-boss Drop, the mini-boss in a run
+  with its Extra Life). Left as they are: species.json's budget and crowd arrays keep a third value nothing reads now; the
+  Rift's "closes in a third cycle" can no longer happen (it closes at the second cycle's Drop as before).
+
+### B. Longwave never jumps and swims slower (a953828, c2f113a; longwave.md rule 6, Phases)
+
+- **The lunge** no longer slides the whole path in a beat: the head dashes 500 wu over two beats (the data's `dashWu`,
+  `dashBeats`) and place k asks for the path's anchor `k x followBeatsPerSegment` (0.25 beat) earlier
+  (`LongwaveState::dashFollow`), so the move runs down the body like a whip and the figure of eight goes on from where the head
+  landed. `longwaveAnchor` before a dash reaches a place gives the old anchor (it gave the new one: the investigator's one-frame
+  flash of the spine).
+- **A dead segment**: the body behind slides up over `segmentCloseSteps` (1) step, place and swing easing (`closeFrom`,
+  `closeTick`, `closeTicks` by segment; `longwaveLag`); the crest counts the new body at once.
+- **The entrance** unwinds in from the wall: place k makes the head's entrance a sixteenth a place later (it slid the whole body
+  as one piece, about 2,700 wu over two bars); the tail lands six beats after the fight starts.
+- **The view's spine and echoes** run through the same places (`longwaveRankLags`, interpolated between ranks), so the spine
+  never runs ahead of the segments.
+- Laps 24 / 20 / 16 bars are the data's. Tests: the close (a step), the dash's numbers and its whip, the laps.
+- Strips (`captures\lw\`, dev, off screen): `strip_m6_lw_entrance_sheet.png` (a frame each half second over the entrance),
+  `strip_m6_lw_lunge_sheet.png` (each quarter second from a Whitecap dash), `strip_m6_lw_close_sheet.png` (every second frame
+  from a segment's death); `scripts\review-m3b.ps1 -Out captures\lw -Config dev -Only m6_lw_entrance,m6_lw_lunge,m6_lw_close`.
+
+### D and E. No Trio in a cycle's Break; the run's first Trio (a667116; GAME_DESIGN 4.1, 4.2, 6.1; screens.md "The Trio")
+
+- **D**: a cycle's Break opens no Trio; the Trios are the Shard levels' and the boss's, which opens in the Track-change Break
+  with the whole Break as its clock (it had half, the other half the Break's own). A level-up Trio still open there finishes
+  first and the boss's follows (`breakWaiting` 1). A level filled within four bars of a cycle's Break no longer waits for it
+  (only a coming Track-change Break holds it back). The Break keeps its music, Shards, refill and spotlight.
+- **E**: the first Trio of a run (each player's, `TrioState::opened == 0`) offers Split and Double-Time, each where it can still
+  be taken; the third orb (and Lucky Break's, a Fusion's) is drawn as ever and is never one of those two again (my reading of
+  "never a third staple twice": no staple twice; Overcharge or On-Beat Crit may be the third). Then the normal deal.
+- The first-run hint `FLY INTO ONE AND STAY` fires on the first Trio that opens, now a level-up one; the pictures that opened a
+  Trio at a fixed moment (`trio`, `trio_answer`, `trio_take`, `trio_locked`, `trio_hold`, `m6_hint_4`) open a level-up Trio
+  there instead of a Break one. Tests: the first Trio's two staples, no Break Trio in Track 1's first 50 s, a level near a
+  Break opening at once, nothing waiting on a level-up Trio in a cycle's Break.
+- The headless crowd table prints the first run's Trios by Track (level-ups + the boss's).
+
+### F and G. Double-Time two ranks again; Split a lane a rank (eb10554; GAME_DESIGN 6.2 rows 1-2, screens.md's words)
+
+- **F**: Double-Time's cap is 2: the fire grid 1/16, 1/16 triplet, 1/32 (`World::leadGrid` and the band's `leadGridIndex`
+  already capped the index at 1/32, so the Surge stays capped there; Hyper halves what is left). Words `FIRE RATE X1.5`, the
+  second rank `FIRE RATE X2`.
+- **G**: Split's cap is 4, a lane a rank: `splitLanes(stacks) = 1 + stacks`, 2, 3, 4, 5 lanes. Neighbouring lanes stay
+  `kSplitFanDeg` (5 degrees) apart and the fan stays centred on the aim, so an even count straddles the aim line (two lanes at
+  +-2.5 degrees, four at +-2.5 and +-7.5; no lane down it). `volley` places lanes by half-lanes from the aim line (`off2`).
+  Words `+1 SHOT LANE`. The band already played one harmony note a Split stack (conductor.json's degrees 3rd, 5th, octave,
+  7th, four of them): no audio change. `kMaxShotsPerStep` (25, Split's 5 lanes x Prism 5) is unchanged.
+- **Even counts, my readings** (the rules were written for odd fans): the thinning's "lanes beyond the middle three" are those
+  more than one lane's spacing off the aim line (four lanes: the outer pair; two or three: none); above the second cap "the
+  middle lane fires alone" is the pair either side of the aim line; Accent's lance and Heavy Step's orb take the place of the
+  lane on the aim line, and an even fan has none, so they fly down the aim line between the middle pair and every lane fires
+  beside them. Helix Array is fused at Split's cap (5 lanes, odd: pairs at 80 and 53 wu and the middle lane straight, as
+  before); its strand levels are counted from the outside in, so an even fan would ride the same way.
+- Pictures: `split2` ... `split5` (`captures\split\`, a still each and `split_sheet.png`, the four fans one above the other;
+  `review-m3b.ps1 -Config dev -Only split2,split3,split4,split5`). The M5 upgrade pictures that held Split (`up_wave`,
+  `up_helix`, `up_kills`, the Boost pairs) take twice the stacks, the same fans as before.
+- Tests: the caps, lanes and words; each fan's angles and whether a lane lies on the aim line; Heavy Step's orb beside four
+  lanes; Split 4 x Prism 25 shots; the grid 24, 16, 12 and Hyper's 6; the shot pool (four players, Split's 5 lanes,
+  Double-Time 2, Prism, Hyper, 174 BPM) and the thinning now with four lanes (an even fan's outer pair at half reach).
+- Left as it is (the coordinator's word): the no-trap table's yardstick (`--sim picks`: "Split 1 and Double-Time 1" as the
+  reference build, the crowd gain measured "against a Split stack's", which is now one lane, not two): for the balance pass.
+- Noticed, not changed: the band's own worst case (`--band max`, `content_sound.cpp`'s table, the sound engineer's) still says
+  Split 2 and Double-Time 1 (now 4 and 2: four harmony notes on a 1/32 lead); `--loadout max` (the upgrades' worst case on the
+  Moto) now takes Split 4 and Double-Time 2 by itself and was not measured again; the careful bot's line (a fight at least half
+  the page's shorter length) and the loop were not measured again.
+
+### The transitions (b12310b; screens.md "Transitions (M6)")
+
+- **The drop-in** (`src/game/play_transitions.cpp`): PLAY is answered at once (the confirm chord, a light haptic tick, its
+  pressed look kept, four dots under its label counting the beats left) and the run starts on the first bar line at least
+  two beats away (`requestRestart`'s rule already: two to six beats). Over the wait the title's pieces leave at their beats
+  (CO-OP, SETTINGS, the best score and the note over the first beat; the tagline and beat dots over the last, the waveform
+  flattening), the attract run dissolves (`ViewInput::runLight` scales the run's enemies, bullets, shots, Shards, sparks and
+  pools; the lattice and the background stay; its ship is gone, still and out of harm, and nothing new spawns), and nothing
+  takes a tap. On the downbeat the logo's letters streak out to both sides, the straight waveform snaps out as a ring of
+  light from the ship to the frame's corners and the lattice takes one impulse of 140 there (`PlayView::dropRing`), PLAY's
+  outline shrinks into the ship as the halo, the title's ship glides to the run's ship, and the run's light comes up to full
+  over the beat; the HUD fades in over beat 2 (`setHudFade`: everything `hudColour` gives, its glows too; the Track name card
+  writes itself as always). Back in the wait cancels: PLAY lets go, everything fades back over a beat, the filter opens.
+- **RETRY** is the same drop-in from game over: the game-over screen leaves on the next beat in one beat (the score and RUN
+  OVER streak out to both sides, the four numbers, ENDED BY, the set list and the band fade and sink 30 px), the dead run fades
+  out over the wait, and on the downbeat the ship draws itself at the centre with its halo. **Co-op**: when the host's START
+  or RETRY schedules the run, every peer plays the drop-in from its own screen (the lobby or the co-op game over fading out)
+  on that bar line.
+- **Home** (HOME, and QUIT RUN from the pause): the tapped control keeps its pressed look, RETRY greys; the screen leaves in
+  the next beat and the run behind fades out; on the first bar line after that the title's run starts (`requestRestartAt`),
+  empty, and the title builds itself over its bar: the waveform outward from the centre in a beat, the logo written letter by
+  letter over two, the tagline and beat dots, then PLAY (taking taps from then), CO-OP and SETTINGS, the best and the note on
+  the last beat; the palette cross-fades from the run's to Ultraviolet over that bar; the run behind fades up to the title's
+  light over the bar after. A tap on PLAY while the title is still building starts the drop-in from where the title is.
+- **The music**: the band's own pieces, nothing added to `src/audio`. The wait's low-pass is the pause's filter (`SetMuffle`
+  sent with 700 Hz and the wait's length as its ramp; home holds the bed at 900 Hz and opens it over the title's bar), the
+  riser the Comet's whoosh (`Recipe::Whoosh`, stretched to end on the bar line, at most a bar long), the drums out for the last
+  beat the fights' `CutBed` (drums, hats, clap, snare), the crash the Drop's impact (`Recipe::Impact`) on the downbeat (and on
+  home's bar line); the run's first Groove from its first kick is `conductBand`'s new-run path as before. One thing the band
+  cannot do: stop a sample, so Back lets the riser finish under the opening filter.
+- **The grace in the director** (`World::directorBar`, `spawnFormation`; `tuning::kGraceQuietBars` 1, `kGraceBars` 2,
+  `kGraceClearWu` 600, quoted): nothing spawns in a run's first bar (the crowd's first formations come on the second bar line,
+  from the frame's edges), and for its first two bars every hostile formation keeps 600 wu from every ship (260 after). Every
+  run has it, the title's too. Test: no spawn in the first bar, no arrival within 600 wu in two.
+- The first-run hint waits for the run's second bar. Reduce flashing leaves out the ring and the lattice impulse; the fades
+  stay. Strips (`captures\transitions\`, dev, off screen, a frame a beat from a quarter beat after the tap's next beat):
+  `strip_m6_drop_title_sheet.png`, `strip_m6_drop_retry_sheet.png`, `strip_m6_home_sheet.png`.
+- Not done: co-op HOME / LEAVE RUN keep their cut back to the title (`leaveCoop`); the pause's RESTART keeps its own way (the
+  page names PLAY, RETRY and HOME).
+
+### C. The assist at half rate (27077b6; GAME_DESIGN 2, 7.6), measured on the final shape (A, B, D, E, F, G and the grace)
+
+- **Built**: the assist (aim idle) fires with `fire 2`, every second step of the fire grid (`PlayerController`): half the
+  build's rate, Double-Time included (the sim's `spawnShots` and the band's lead rule already skipped odd steps for 2). A thumb
+  on the aim stick, and its 400 ms after, keep the full rate; Riffs, Novas and the rest keep theirs. Co-op: each player's own
+  (the pose carries it). The novice and the assist bots fire through the assist, so at half rate; the careful and careless bots
+  aim. Test: the assist's pose is 2, an aimed one 1.
+- **The retune** (`--sim crowd --policy novice --nopace`, 40 seeds throughout: Tracks 1-3 from the run's start over 14
+  minutes, Tracks 4-10 `--handover N` over 60; files `captures\half\r7_*` to `r17_*`). Split's and Double-Time's new ranks cut
+  the novice's damage again (Longwave's eight bars 206 to 183, Event Horizon's 2,005 to 1,108 at the same health), so every
+  fight came down further than half (`tuning.h`, the factor and in brackets the play test 3 factor x the retune's): Kaleidos
+  0.605 (x 0.5), Longwave 0.1925 (x 0.25), the Choir 0.189 (x 0.15), Event Horizon 2.178 (x 0.2475), Polyrhythm 0.4165
+  (x 0.1225), Feedback 0.2925 (x 0.1625), Cadence 2.113 (x 0.2625), Arpeggiator 1.863 (x 0.135), Fata Morgana 1.7325
+  (x 0.1125), the Reprise 0.914 (x 0.1625); the mini-bosses x 0.3 (0.234, 0.1575, 0.105, 0.216, 0.36, 0.39, 0.45, 0.204,
+  0.1275, 0.3, 0.315 for Weaver Prime at x 0.21, 0.39), which keeps the novice's kills before they warp out about where they
+  were (the mini-boss's kill now drops the Extra Life from Track 2). The lines (GAME_DESIGN 7.6, scaled to 40):
+
+  | | line (of 40) | novice |
+  |---|---|---|
+  | Track 2's boss reached | 32 | 38 |
+  | Kaleidos won | 36 | 40, 55 s |
+  | Longwave won | 32 | 32, 83 s (at most 150) |
+  | the Choir won | 32 | **29** (34 met), 34 s: misses by three |
+  | Event Horizon / Polyrhythm / Feedback won | 24 each | 27, 36, 26; 75, 20, 63 s |
+  | Cadence / Arpeggiator / Fata Morgana / the Reprise | a won fight at most 1.5 x the page's longer length | 28 of 39, 28, 26, 35; 91, 69, 41, 114 s (at most 150, 165, 180, 210) |
+
+  The Choir misses because of Longwave, not its own health: only 34 runs of 40 meet it within the 14 minutes (Longwave's
+  eight losses end first runs), and it wins 29 of those 34; measured from Track 3's start (`--handover 3`) it wins 37 of 40.
+  Longwave's own losses stopped following its health (x 0.3 of play test 3: 32 of 40, x 0.25: 32, x 0.2: 31); the straddling
+  even fan costs the novice about 14% of its damage on Longwave (a build with one lane on the aim line: 124 against 109 in eight
+  bars, the same 32 wins), so it is not that either. Twenty or forty seeds are noisy here: from Track 4 on a run's build comes
+  from the careful bot's run before the handover, which changes with anything upstream (Event Horizon went 31 to 24 of 40 and
+  Feedback 27 to 22 between two runs at the same health).
+- **The pace's references** (`kBossPaceNovice`, the novice's eight-bar damage a player from the same runs): Kaleidos 272,
+  Longwave 126, the Choir 204, Event Horizon 985, Polyrhythm 1,030 (at its last health most novices kill it inside eight bars:
+  745 in the 19 fights that lasted them), Feedback 509, Cadence 1,615, Arpeggiator 2,063, Fata Morgana 5,206, the Reprise
+  1,292.
+- **The bar, the assist bot over the whole run** (`--policy assist`, 60 minutes, pace on): **missed**. Seeds 1-20: 15 of 20
+  finished the ten Tracks; seeds 21-40: 19 of 20 (34 of 40, the line's 38). Not the crowd: the six first runs that ended inside the ten
+  Tracks ended in fights (Cadence 3, Polyrhythm, Feedback, Fata Morgana one each: the first meetings' losses), and over the
+  hour's retries the hits that took a last cell were the fights' 27 of 36 and 18 of 34. Two rounds before (higher health there, the earlier pace
+  references) gave 19 and 16 of 20: the bar sits about 17 of 20 and moves two or three either way with anything upstream. One
+  cause is the pace rule: the assist bot out-damages the novice's references by more than the dead band (its paces 1.2-1.75
+  from Track 4, 2.1-2.8 on Longwave and the Choir), so its fights are tougher than the novice's by design. Left for the lead:
+  whether the assist alone should ever raise a boss's pace.
+- **Trios in the first run** (level-ups + the boss's, a667116): the novice T1 1.0+1.0, T2 5.0+0.8, T3 4.9+0.7, T4 4.0, T5 2.5,
+  T6 2.8, T7 2.3, T8 1.8, T9 1.2, T10 1.8 (Tracks 4-10 from the handover, the boss's not reached); the assist bot T1 1.2+1.0,
+  T2 5.4-6.0+1.0, T3 5.0-5.4+1.0, T4 5.4+1.0, T5 3.0-3.2+1.0, T6 3.3+1.0, T7 2.5-2.8+0.9, T8 1.9-2.0+1.0, T9 0.9-1.1+1.0,
+  T10 1.7-1.8+1.0.
 ## The night of 2026-11-14: easier fights (design commit 1bcc897) and M7's release preparation
 
 - **Design cb2edba** (the lead's two follow-ups): the font's `;` and `@` load and draw (62 glyphs, 253 segments; the loader

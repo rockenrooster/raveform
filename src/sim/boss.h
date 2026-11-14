@@ -198,10 +198,12 @@ struct LongwaveData {
         float lapBars = 16;             // the head's lap of the path
         u32 perSide = 1;                // a trough's bullets to each side
         float lungeTelegraphBeats = 0, lungeDashWu = 0, lungeDashBeats = 0;
+        float lungeFollowBeats = 0;     // a953828: segment k makes the head's dash k x this many beats later (a whip)
         u32 headBurst = 0;              // the bare head's rings
     };
     Phase phases[4];                    // Swell, Chop, Whitecap, Bare head
     u32 whipCount = 32;
+    float closeSteps = 1;               // a953828: a dead segment's gap closes over this many crest steps
     float echoBehind[2] = {0.125f, 0.25f}, echoIntensity[2] = {0.22f, 0.10f};
     float accentL = 0.70f, accentHue = 258.0f, accentChroma = 0.96f;
     float bpm = 126;
@@ -371,6 +373,12 @@ struct LongwaveState {
     Vec2 lungeFrom;              // the anchor when the dash began
     double jawUntil = -1.0;      // the jaw stays open after a lunge until then
     Vec2 enterFrom;              // where the head broke in (the nearest wall)
+    // a953828 (rule 6): a dead segment's gap closes over segmentCloseSteps; segment k's place lags closeFrom[k] ranks behind
+    // its rank at closeTick[k], easing to none (only the places ease; the crest counts the new body at once).
+    float closeFrom[kBossParts] = {};
+    double closeTick[kBossParts] = {};
+    float closeTicks[kBossParts] = {};  // (the close's length in ticks, from the step when the segment died)
+    double dashFollow = 0.0;     // a953828: the last dash's delay a rank down the body (ticks): the whip
 };
 
 // The Choir (choir.md): eight Voices on the Round around `centre`.

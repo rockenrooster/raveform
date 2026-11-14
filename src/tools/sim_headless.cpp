@@ -480,6 +480,9 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     double levelAt[kMarks] = {}, takenAt[kMarks] = {}, modsAt[kMarks] = {}, riffsAt[kMarks] = {}, cellsAt[kMarks] = {};
     u32 runsAt[kMarks] = {};
     u64 levelTrios = 0, levelUps = 0, cellsTaken = 0, cellsRegrown = 0;
+    // a667116 (the Trio only at Shard levels and a boss's death): the first run's Trios by Track, level-ups and the boss's (the
+    // boss's in the Track-change Break counts for the Track whose boss it was), and the first runs that played in each Track.
+    double triosLevel[11] = {}, triosBoss[11] = {}, runsInTrack[11] = {};
     // M5 part 3 (GAME_DESIGN 6.1, how a Trio is dealt): the first run's build as Track 3 ends (Mods at their cap) and as
     // Track 5 ends (a Fusion held).
     u32 t3Runs = 0, t3Capped2 = 0, t5Runs = 0, t5Fusion = 0;
@@ -508,6 +511,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         }
         reachedT2[s] = false;
         maxTrack[s] = 1;
+        u32 countedTrack = 0;  // (the Trio count's Tracks this seed has entered)
         u32 lastHits = 0, lastBar = 0xFFFFFFFFu, killsAtBar = 0;
         bool bossOn = false;
         u32 bossFrom = 0, bossTrack = 1, bossHits0 = 0, fightHits = 0, fightBody = 0, fightBeam = 0;
@@ -548,6 +552,10 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     t5Fusion += p.loadout.fusions ? 1u : 0u;
                 }
             }
+            if (ph.track > countedTrack && runner.deaths() == 0 && p.alive && !ph.trackChange && ph.track <= 10 && (!handover || handed)) {
+                runsInTrack[ph.track] += 1.0;  // (once the Track proper has begun)
+                countedTrack = ph.track;
+            }
             if (ph.track > maxTrack[s]) maxTrack[s] = ph.track;
             if (p.alive) paceTicks[(ph.track < 4 ? ph.track : 4u) - 1] += 1.0;
             for (u32 k = 0; k < w.eventCount(); ++k) {
@@ -562,6 +570,10 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     if (cue == BossCue::ElBurst) ++bombs;
                 }
                 if (ev.type == EventType::Kill && ev.a == 2 && ev.c == 0) ++eliteKills;
+                if (ev.type == EventType::TrioOpen && ev.a == 0 && runner.deaths() == 0 && (!handover || handed)) {
+                    const u32 tt = ev.c == kTrioLevel ? ph.track : (ph.trackChange && ph.track > 1 ? ph.track - 1u : ph.track);
+                    if (tt >= 1 && tt <= 10) (ev.c == kTrioLevel ? triosLevel : triosBoss)[tt] += 1.0;
+                }
                 if (w.events()[k].type == EventType::LevelUp) {
                     paceLevels[(ph.track < 4 ? ph.track : 4u) - 1] += 1.0;
                     ++levelUps;
@@ -964,6 +976,11 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 Shots::kCap, static_cast<unsigned long long>(capped));
     {
         // Play test 2: the level pace by Track and what the first run holds at minutes 3, 6 and 10.
+        std::printf("[sim]   Trios in the first run by Track, a run that played there (level-ups + the boss's; a667116):");
+        for (u32 tr = 1; tr <= 10; ++tr)
+            if (runsInTrack[tr] > 0.0)
+                std::printf(" T%u %.1f+%.1f (%.0f)", tr, triosLevel[tr] / runsInTrack[tr], triosBoss[tr] / runsInTrack[tr], runsInTrack[tr]);
+        std::printf("\n");
         std::printf("[sim]   Shard levels (%s): seconds a level by Track:", god ? "god mode" : "as played");
         for (u32 tr = 0; tr < 4; ++tr)
             if (paceTicks[tr] > 0.0)

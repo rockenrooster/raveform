@@ -80,7 +80,10 @@ void groupDigits(char* out, size_t cap, u64 v) {
 
 namespace {
 float g_hudScale = 1.0f;  // M6 (SETTINGS, LOOK): HUD text and touch controls at 90 / 100 / 115 / 130%
+float g_hudFade = 1.0f;   // M6 (screens.md "Transitions"): the level everything on the HUD batch is drawn at
 }  // namespace
+void setHudFade(float level) { g_hudFade = level < 0.0f ? 0.0f : (level > 1.0f ? 1.0f : level); }
+float hudFade() { return g_hudFade; }
 void setHudScale(float scale) { g_hudScale = scale > 0.5f && scale < 2.0f ? scale : 1.0f; }
 float hudScale() { return g_hudScale; }
 
@@ -94,7 +97,7 @@ Vec3 hudColour(const Look& look, const LookVariant& variant, Vec3 c, float inten
     Vec3 rgb = v * (tm / m);
     float t = clampf((m - look.bleedStart) / (look.bleedEnd - look.bleedStart), 0.0f, 1.0f);
     t = t * t * (3.0f - 2.0f * t) * variant.bleed;
-    return mix(rgb, Vec3{tm, tm, tm}, t);
+    return mix(rgb, Vec3{tm, tm, tm}, t) * g_hudFade;
 }
 
 // ---------------------------------------------------------------------------------------------- touch
@@ -226,7 +229,7 @@ void TouchControls::draw(CapsuleBatch& hud, GlowBatch& pools, const VectorFont& 
         if (b.pressed) {
             disc(hud, b.centre, r, col(player, 0.45f));
             ring(hud, b.centre, r, 1.5f * s_, col(player, 2.0f));
-            pools.glow(b.centre, r * 1.6f, player * 0.35f);
+            pools.glow(b.centre, r * 1.6f, player * 0.35f * g_hudFade);
         } else {
             ring(hud, b.centre, r, 1.1f * s_, col(white, ready ? 0.5f : 0.22f));
         }
@@ -274,7 +277,7 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
         const float pulse = 1.0f + 0.6f * st.chainPulse;
         font.drawField(d.hud, {m, top + 96.0f * s}, 22.0f * s, 1.0f * s * (1.0f + 0.15f * st.chainPulse), col(white, 2.0f * pulse),
                        col(gold, 2.0f * pulse), col(amber, 2.0f * pulse), text);
-        d.pools.glow({m + 44.0f * s, top + 107.0f * s}, 60.0f * s, gold * (0.10f * pulse));
+        d.pools.glow({m + 44.0f * s, top + 107.0f * s}, 60.0f * s, gold * (0.10f * pulse) * g_hudFade);
     }
     // Play test 2 (look.md 6): the Shard level under the Chain: LV n at cap 12 and a bar 220 px wide and 5 px tall, a gold
     // fill on a white outline at 0.3. When it fills it flashes white (the number steps, with the band's two-note rise) and
@@ -297,7 +300,7 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
             const float flash = st.levelFull ? 0.55f + 0.45f * st.beat : st.levelFlash;
             const Vec3 fc = col(mix(gold, white, flash), 1.7f + 0.8f * flash);
             d.hud.line({x0 + ow, yc}, {x0 + ow + (x1 - x0 - 2.0f * ow) * fill, yc}, hh - ow, fc, fc, kFlatStart | kFlatEnd);
-            d.pools.glow({x0 + 0.5f * (x1 - x0) * fill, yc}, 40.0f * s, gold * (0.06f + 0.10f * flash));
+            d.pools.glow({x0 + 0.5f * (x1 - x0) * fill, yc}, 40.0f * s, gold * (0.06f + 0.10f * flash) * g_hudFade);
         }
     }
     // M4 stage B: co-op, each player's own score under the team's, in their colour, ranked (yours brighter).
@@ -321,7 +324,7 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
         const bool lit = k < st.novas;
         if (lit) {
             star4(d.hud, c, 16.0f * s, 0.9f * s, col(white, 2.0f), col(player, 2.0f));
-            d.pools.glow(c, 26.0f * s, player * 0.25f);
+            d.pools.glow(c, 26.0f * s, player * 0.25f * g_hudFade);
         } else {
             star4(d.hud, c, 16.0f * s, 0.9f * s, col(white, 0.3f), col(white, 0.3f));
         }
@@ -337,7 +340,7 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
         d.hud.line(wl, tail, 0.9f * s, g, g, 0);
         d.hud.line(tail, wr, 0.9f * s, g, g, 0);
         d.hud.line(wr, nose, 0.9f * s, g, g, 0);
-        d.pools.glow(c, 24.0f * s, gold * 0.22f);
+        d.pools.glow(c, 24.0f * s, gold * 0.22f * g_hudFade);
     }
     // Dash charge (for keyboard and gamepad; on touch the button carries a cooldown ring too): a short
     // bar under the stars, lit when the Dash is ready.
@@ -503,7 +506,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             }
             const u8 u = riffOrder[k];
             if (st.icons) st.icons->drawHud(d.hud, st.upgradeIcons[u], c, r * 0.9f, 1.0f, hudFn, &ctx);
-            d.pools.glow(c, 40.0f * s, player * 0.12f);
+            d.pools.glow(c, 40.0f * s, player * 0.12f * g_hudFade);
             const u32 lv = me.loadout.level(u);
             for (u32 p = 0; p < kRiffMaxLevel; ++p) {
                 const Vec2 q{c.x + (static_cast<float>(p) - 2.0f) * 11.0f * s, c.y + r + 14.0f * s};
@@ -603,6 +606,9 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
     {
         const DirectorState& dir = w.director();
         const float u = dir.trackBar == kNoBar ? -1.0f : static_cast<float>((st.music - w.tickOfBar(dir.trackBar)) / kTicksPerBar);
+        // (M6, screens.md "Transitions": the card writes itself as always while the drop-in brings the rest of the HUD in)
+        const float hudLevel = g_hudFade;
+        g_hudFade = 1.0f;
         if (u >= 0.0f && u < kCardOut + kCardStreak) {
             const float level = kCardLevel;
             const float write = clampf(u / kCardWrite, 0.0f, 1.0f);
@@ -671,6 +677,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
                 d.hud.line(c, c, 5.0f * s, col(white, 2.2f * fl * level), col(white, 2.2f * fl * level), 0);
             }
         }
+        g_hudFade = hudLevel;
     }
     // M6 (screens.md "A finished run"): the set list's last boss has fallen: in the Track name card's place SET COMPLETE (cap
     // 44, gold) with the score so far under it, for two bars (in over a beat, out over the last quarter bar).

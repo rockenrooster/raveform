@@ -75,7 +75,7 @@ const char* upgradeWords(u8 u, u32 level);
 
 // What each stack or level gives (GAME_DESIGN 6.2, 6.3 as raised after play test 1, 2026-11-12: every pick is felt
 // at once). The world, the view and the effect words read these.
-inline u32 splitLanes(u32 stacks) { return 1u + 2u * stacks; }        // 1, 3, 5 lanes (play test 3: Split's cap is 2)
+inline u32 splitLanes(u32 stacks) { return 1u + stacks; }             // 1, 2, 3, 4, 5 lanes (eb10554: a lane a rank, cap 4)
 inline u32 pierceCount(u32 stacks) { return 2u * stacks; }            // enemies a shot passes through
 inline u32 ricochetBounces(u32 stacks) { return 2u * stacks; }        // off walls, and on to the nearest other enemy
 inline float onBeatCritMultiplier(u32 stacks) {                      // x3, x5, x8 on the beat
@@ -130,7 +130,8 @@ struct Loadout {
 // alike. With fewer than four Riffs and no new Riff offered in the last two Trios, one of the others is. Play test 2: when
 // fewer upgrades can still be taken, the orbs left offer different Boosts. A Fusion that is due comes as one more (gold)
 // orb. Returns the orbs (<= kMaxOrbs). `sinceRiff`: Trios in a row that offered no new Riff (updated).
-u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[kMaxOrbs]);
+// a667116: the first Trio of a run (each player's own) offers Split and Double-Time, the other orbs drawn as ever.
+u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[kMaxOrbs], bool firstOfRun = false);
 // The dealing's weight of an upgrade for a loadout (0: it cannot be offered); a weapon or rhythm Mod (firepower).
 float dealWeight(const Loadout& l, u8 u);
 bool firepower(u8 u);

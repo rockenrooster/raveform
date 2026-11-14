@@ -74,10 +74,11 @@ Phrase phraseAt(const DirectorState& d, u32 bar) {
     p.cycles = static_cast<u8>(cycles);
     p.trackBpm = bpmOfTrack(d.track, d.songs);
     p.bpm = p.trackBpm;
-    // M5 part 1 (minibosses.md): from Track 2 on the middle cycle's Drop brings a mini-boss and holds while it lives, at most
-    // kMiniHoldBars past its length (open-ended up to the cap while it lives; then the bars it was held).
-    const bool minis = d.track >= 2 && cycles >= 3;
-    const u32 mid = cycles / 2;
+    // M5 part 1 (minibosses.md): from Track 2 on the first cycle's Drop (c2f113a: every Track is two cycles; it was the middle
+    // one's) brings a mini-boss and holds while it lives, at most kMiniHoldBars past its length (open-ended up to the cap while it
+    // lives; then the bars it was held). The second cycle's Drop is the boss's.
+    const bool minis = d.track >= 2 && cycles >= 2;
+    const u32 mid = 0;
     const u32 maxHold = static_cast<u32>(prose::kMiniHoldBars);
     const u32 hold = !minis ? 0u : (d.midHolding ? maxHold : (d.midHold < maxHold ? d.midHold : maxHold));
     u32 off = bar >= d.trackBar ? bar - d.trackBar : 0;

@@ -365,11 +365,12 @@ void World::updateThinning() {
     });
 }
 
-void World::tagShot(u32 p, u8 extraMods, i32 laneOff, u32 lanes) {
+void World::tagShot(u32 p, u8 extraMods, i32 off2, u32 lanes) {
     // What the owner's Mods and Boosts give a primary shot in flight (lastShot_: the one just spawned). Wave: every lane on
     // the same curve about its own direction; Helix Array: the lanes ride strands in mirrored pairs, the outer pair at the
-    // full amplitude and the pair inside it at 2/3 (80 and 53 wu with Split's five lanes since play test 3; a third pair would ride
-    // at 1/3), the middle lane straight (GAME_DESIGN 6.2, 6.5).
+    // full amplitude and the pair inside it at 2/3 (80 and 53 wu with Split's five lanes at its cap; a third pair would ride
+    // at 1/3), the middle lane straight (GAME_DESIGN 6.2, 6.5). `off2`: the lane's place in half-lanes from the aim line
+    // (volley(); an even count has no middle lane, its pairs counted the same way from the outside in).
     if (lastShot_ < 0) return;
     const u32 i = static_cast<u32>(lastShot_);
     Shots& s = shots_;
@@ -380,13 +381,12 @@ void World::tagShot(u32 p, u8 extraMods, i32 laneOff, u32 lanes) {
     if (l.mods[kWave]) {
         s.radius[i] *= kWaveRadius[l.mods[kWave] < 2 ? l.mods[kWave] : 2];
         if (l.fused(kHelixArray)) {
-            const i32 pairs = static_cast<i32>(lanes / 2u);
-            const i32 k = laneOff < 0 ? -laneOff : laneOff;
-            if (k > 0 && pairs > 0) {
-                const i32 level = pairs - k;  // 0 the outer pair, 1 inside it, 2 the next
+            const i32 r2 = off2 < 0 ? -off2 : off2;
+            if (r2 > 0 && lanes > 1u) {
+                const i32 level = (static_cast<i32>(lanes) - 1 - r2) / 2;  // 0 the outer pair, 1 inside it, 2 the next
                 m |= kShotWave;
                 m |= level == 0 ? kShotHelix : (level == 1 ? static_cast<u8>(kShotHelix | kShotHelixIn) : kShotHelixIn);
-                if (laneOff < 0) m |= kShotWaveNeg;
+                if (off2 < 0) m |= kShotWaveNeg;
             }
         } else {
             m |= kShotWave;
@@ -412,39 +412,49 @@ void World::tagShot(u32 p, u8 extraMods, i32 laneOff, u32 lanes) {
 
 u32 World::volley(u32 p, Vec2 origin, float base, float advanceS, float damage, u8 flags, u8 pierce, u8 bounces, u32 lanes,
                   bool prism, u32 thin, i64 /*step*/, u8 middle, u8 extraMods) {
-    // Split: +2 lanes a stack in a tight fan (3, 5; play test 3); Prism: every lane refracts into five. Thinned (GAME_DESIGN 6.6),
-    // the lanes beyond the middle three fly half as far; above kShotsMiddleOnly the middle lane alone fires (play test 1). M5: `middle` 1 leaves the middle lane out (Accent's
-    // lance took its place), 2 makes it Heavy Step's orb.
+    // Split: a lane a rank in a tight fan (2, 3, 4, 5; the owner, 2026-11-14, eb10554), neighbouring lanes kSplitFanDeg apart
+    // and the fan centred on the aim, so an even count straddles the aim line (no lane straight down it); Prism: every lane
+    // refracts into five. Thinned (GAME_DESIGN 6.6), the lanes beyond the middle three fly half as far: those more than one
+    // lane's spacing off the aim line (the outer pair of four or five lanes). Above kShotsMiddleOnly the middle lane alone
+    // fires (play test 1): with an even count, the pair either side of the aim line. M5: `middle` 1 leaves the middle lane
+    // out (Accent's lance took its place), 2 makes it Heavy Step's orb; an even fan has no lane on the aim line, so the lance
+    // or the orb flies down it between the middle pair and every lane fires beside it.
     const u32 fan = prism ? 5u : 1u;
-    const i32 mid = static_cast<i32>(lanes / 2);
+    const bool even = (lanes & 1u) == 0u;
     u32 made = 0;
+    const bool helix = players_[p].loadout.fused(kHelixArray) && players_[p].loadout.mods[kWave];
+    const auto heavyOrb = [&](float la) {
+        // Heavy Step: a slow orb that explodes (on its hit, or where its life ends).
+        spawnShotRaw(p, origin, dirOf(la), advanceS * kHeavyOrbSpeed, damage, kShotOrb, flags, kHeavyOrbLifeS, 0, 0);
+        if (lastShot_ >= 0) {
+            const u32 i = static_cast<u32>(lastShot_);
+            shots_.speed[i] = kShotSpeed * kHeavyOrbSpeed;
+            shots_.radius[i] *= kHeavyOrbRadius;
+            shots_.mods[i] = kShotBlast;
+        }
+        ++made;
+    };
+    if (even && middle == 2) heavyOrb(base);
     for (u32 lane = 0; lane < lanes; ++lane) {
-        const i32 off = static_cast<i32>(lane) - mid;
-        const i32 ring = off < 0 ? -off : off;  // 0 the middle, 1 its neighbours, 2 the outer pair
-        if (thin == 2 && ring >= 1) continue;
-        if (ring == 0 && middle == 1) continue;
+        // The lane's place in half-lanes from the aim line: 0 the middle, +-2 its neighbours, +-4 the outer pair (odd
+        // counts); +-1 the pair either side of the aim line, +-3 the outer pair (even counts).
+        const i32 off2 = 2 * static_cast<i32>(lane) - static_cast<i32>(lanes - 1u);
+        const i32 r2 = off2 < 0 ? -off2 : off2;
+        if (thin == 2 && r2 > 1) continue;
+        if (r2 == 0 && middle == 1) continue;
         // GAME_DESIGN 6.6: thinned, the lanes beyond the middle three fly half as far (every lane still fires). Helix Array
         // (6.5): the lanes stop fanning and ride their strands along the aim.
-        const float life = thin == 1 && ring >= 2 ? kShotLifeS * kThinReach : kShotLifeS;
-        const bool helix = players_[p].loadout.fused(kHelixArray) && players_[p].loadout.mods[kWave];
-        const float la = base + (helix ? 0.0f : static_cast<float>(off) * kSplitFanDeg * kDeg);
-        if (ring == 0 && middle == 2) {
-            // Heavy Step: a slow orb that explodes (on its hit, or where its life ends).
-            spawnShotRaw(p, origin, dirOf(la), advanceS * kHeavyOrbSpeed, damage, kShotOrb, flags, kHeavyOrbLifeS, 0, 0);
-            if (lastShot_ >= 0) {
-                const u32 i = static_cast<u32>(lastShot_);
-                shots_.speed[i] = kShotSpeed * kHeavyOrbSpeed;
-                shots_.radius[i] *= kHeavyOrbRadius;
-                shots_.mods[i] = kShotBlast;
-            }
-            ++made;
+        const float life = thin == 1 && r2 > 2 ? kShotLifeS * kThinReach : kShotLifeS;
+        const float la = base + (helix ? 0.0f : 0.5f * static_cast<float>(off2) * kSplitFanDeg * kDeg);
+        if (r2 == 0 && middle == 2) {
+            heavyOrb(la);
             continue;
         }
         for (u32 f = 0; f < fan && made < kMaxShotsPerStep; ++f, ++made) {
             const float a = la + (static_cast<float>(f) - 0.5f * static_cast<float>(fan - 1)) * kPrismFanDeg * kDeg;
             const u8 laneFlag = prism ? shotLaneFlags(static_cast<i32>(f) - 2) : 0;
             spawnShotRaw(p, origin, dirOf(a), advanceS, damage, kShotPrimary, static_cast<u8>(flags | laneFlag), life, pierce, bounces);
-            tagShot(p, extraMods, off, lanes);
+            tagShot(p, extraMods, off2, lanes);
         }
     }
     return made;

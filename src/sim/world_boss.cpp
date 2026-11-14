@@ -745,6 +745,7 @@ void World::killBoss(u8 owner) {
     const double rel = (m1_ + 0.5 * kTicksPerBar - d.startTick) / kTicksPerBar;
     const u32 endBar = static_cast<u32>(std::floor(rel)) + 1;
     if (mini) {
+        extraLifeDrop(s.pos, true);  // c2f113a (GAME_DESIGN 5): from Track 2 the mini-boss drops the Track's Extra Life as it dies
         miniDied(owner, endBar);
     } else {
         // Its bullets go with it; then the Shards (kaleidos.md: "then the Shards"): 200 per player (the Choir 220; each

@@ -17,6 +17,8 @@ using namespace sim;
 namespace {
 bool is(const char* a, const char* b) { return std::strcmp(a, b) == 0; }
 bool starts(const char* a, const char* b) { return std::strncmp(a, b, std::strlen(b)) == 0; }
+// split2 ... split5: Split's fan at that many lanes (eb10554: a lane a rank, 2-3-4-5).
+u32 splitPicture(const char* a) { return starts(a, "split") && a[5] >= '2' && a[5] <= '5' && a[6] == 0 ? static_cast<u32>(a[5] - '0') : 0u; }
 }  // namespace
 
 bool Play::scriptSetupB() {
@@ -109,9 +111,10 @@ bool Play::scriptSetupB() {
         }
         return true;
     }
-    if (is(p, "boost_prism") || is(p, "split5")) {
-        // M3 stage C: the fan in open air, toward a few targets far to the right (play test 1: Split's lanes too; five since play test 3).
-        if (is(p, "split5")) for (u32 k = 0; k < 2; ++k) w.grantUpgrade(0, kSplit);  // (play test 3: Split's cap is 2)
+    if (is(p, "boost_prism") || splitPicture(p)) {
+        // M3 stage C: the fan in open air, toward a few targets far to the right (play test 1: Split's lanes too; eb10554: split2 ...
+        // split5, a lane a rank).
+        for (u32 k = 1; k < splitPicture(p); ++k) w.grantUpgrade(0, kSplit);
         for (u32 k = 0; k < 5; ++k) {
             const Vec2 at{900.0f + 60.0f * static_cast<float>(k), -240.0f + 120.0f * static_cast<float>(k)};
             const i32 i = w.spawnEnemy(SpeciesTable::index(Family::Drifter, 2, kVariantA), at, kPi, 0.0);
@@ -197,7 +200,7 @@ bool Play::scriptInputB(StickInput& in) {
         const u8 forced[3] = {kSplit, kMagnet, kOrbitals};
         // Play test 1: the Trio opens after the run's Track card has gone (2.25 bars), so the card does not cover it.
         constexpr u32 kOpen = 300;
-        if (t == kOpen) w.openTrioNow(0, music + 4.0 * kTicksPerBar, forced);
+        if (t == kOpen) w.openTrioNow(0, music + 4.0 * kTicksPerBar, forced, kTrioLevel);  // (a667116: a level's, the Break deals none)
         const TrioState& tr = w.trio(0);
         if (is(p, "trio")) {
             if (t == kOpen + 80 && captureFrom_ < 0) captureFrom_ = now;  // lit (the third beat), the ship off the orbs
@@ -330,21 +333,21 @@ bool Play::scriptInputB(StickInput& in) {
         }
         return true;
     }
-    if (starts(p, "riff_") || starts(p, "boost_") || is(p, "split5")) {
+    if (starts(p, "riff_") || starts(p, "boost_") || splitPicture(p)) {
         const Enemies& e = w.enemies();
         if (t == 30 && is(p, "boost_prism")) w.grantBoost(0, kPrism);
         if (t == 30 && is(p, "boost_hyper")) w.grantBoost(0, kHyper);
         if (t == 30 && is(p, "boost_halo")) w.grantBoost(0, kHalo);
         if (t == 60 && is(p, "boost_magnet_storm")) w.grantBoost(0, kMagnetStorm);
-        const bool fires = is(p, "boost_prism") || is(p, "boost_hyper") || is(p, "split5");
+        const bool fires = is(p, "boost_prism") || is(p, "boost_hyper") || splitPicture(p);
         if (fires && t >= 40 && e.count) {
             in.aim = Vec2{e.x[0], e.y[0]} - ship;
             in.aimActive = true;
         }
-        if (is(p, "boost_prism") || is(p, "split5")) {
+        if (is(p, "boost_prism") || splitPicture(p)) {
             // M3 stage C: while the fan fires, after the run's Track card has gone (2.25 bars): once the shots in
             // the air make a fan, or at the latest at 6 s (play test 1, Split: its lanes in the air).
-            const u32 enough = is(p, "split5") ? 30u : 14u;
+            const u32 enough = splitPicture(p) ? 6u * splitPicture(p) : 14u;
             if (captureFrom_ < 0 && t >= 290 && (w.shots().count >= enough || t >= 360)) captureFrom_ = now;
             return true;
         }
@@ -440,7 +443,7 @@ bool Play::scriptEventsB() {
     const i64 now = static_cast<i64>(frameNo_);
     if (captureFrom_ >= 0) return starts(p, "screen_") || starts(p, "hud_") || starts(p, "bot_") || starts(p, "trio") ||
                                    starts(p, "riff_") || starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") ||
-                                   is(p, "split5") || starts(p, "pt2_") || starts(p, "pt3_") || is(p, "loop_encore") || is(p, "loop_burn");
+                                   splitPicture(p) || starts(p, "pt2_") || starts(p, "pt3_") || is(p, "loop_encore") || is(p, "loop_burn");
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         if (is(p, "trio_take") && e.type == EventType::TrioTake) captureFrom_ = now;
@@ -456,7 +459,7 @@ bool Play::scriptEventsB() {
         }
     }
     return starts(p, "screen_") || starts(p, "hud_") || starts(p, "bot_") || starts(p, "trio") || starts(p, "riff_") ||
-           starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") || is(p, "split5") || starts(p, "pt2_") ||
+           starts(p, "boost_") || starts(p, "boss_") || is(p, "edge") || is(p, "track_change") || splitPicture(p) || starts(p, "pt2_") ||
            starts(p, "pt3_") || is(p, "loop_encore") || is(p, "loop_burn");
 }
 

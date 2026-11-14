@@ -47,6 +47,10 @@ struct ViewInput {
     // M6 (screens.md "First-run hints"): a hint line over the local ship (null: none) and its level (0..1, the fade).
     const char* hint = nullptr;
     float hintLevel = 0.0f;
+    // M6 (screens.md "Transitions"): the run's own light (its enemies, bullets, shots, Shards, sparks and pools; not the lattice
+    // or the background), 0..1: the attract run dissolving in the drop-in's wait, the dead run fading out and the title's run
+    // fading up in home.
+    float runLight = 1.0f;
 };
 
 // M4 stage B (screens.md "Co-op (M4)", "In the run"): the HUD's blocks that edge chevrons keep 20 px clear of (screen
@@ -100,6 +104,8 @@ public:
     float kick() const { return kick_; }
     float beat() const { return beat_; }  // the clock's beat envelope (M5: "on the beat"; the kick is not every beat)
     float snare() const { return snare_; }
+    // M6 (screens.md "Transitions"): the drop-in's downbeat: one lattice impulse of 140 at the ship (reduce flashing: none).
+    void dropRing(Vec2 at, double t);
 
 private:
     HudKeepOut keepOut_;

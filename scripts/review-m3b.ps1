@@ -4,7 +4,7 @@
 # src/game/play_pictures.cpp:
 #   screens: screen_notice, screen_title, screen_settings_sound / _controls / _look, screen_pause (mid
 #   count-in), screen_game_over; the Trio: trio, trio_answer, trio_take (strip), and since play test 1 trio_locked,
-#   trio_hold (half filled) and split5 (Split at five lanes, play test 3); the HUD: hud_groove,
+#   trio_hold (half filled) and split2 ... split5 (Split at two to five lanes, eb10554); the HUD: hud_groove,
 #   hud_build, hud_drop (Surge), hud_break; riff_orbitals, riff_pulse, riff_sentinel; boost_prism,
 #   boost_hyper, boost_halo, boost_magnet_storm; edge; Kaleidos: boss_bloom, boss_refraction, boss_spiral,
 #   boss_naked, boss_beam_tell, boss_beam, boss_iris, boss_pair_death (strip), boss_death (strip);
@@ -53,7 +53,7 @@ $sheet = 'import sys; from PIL import Image; fs=[Image.open(p).convert("RGB") fo
          's=Image.new("RGB",(4*w,2*h)); [s.paste(f.resize((w,h),Image.LANCZOS),((i%4)*w,(i//4)*h)) for i,f in enumerate(fs)]; s.save(sys.argv[1])'
 
 $singles = @('screen_notice', 'screen_title', 'screen_settings_sound', 'screen_settings_controls', 'screen_settings_look', 'screen_pause',
-             'screen_game_over', 'trio', 'trio_answer', 'trio_locked', 'trio_hold', 'split5', 'hud_groove', 'hud_build', 'hud_drop', 'hud_break', 'riff_orbitals', 'riff_pulse',
+             'screen_game_over', 'trio', 'trio_answer', 'trio_locked', 'trio_hold', 'split2', 'split3', 'split4', 'split5', 'hud_groove', 'hud_build', 'hud_drop', 'hud_break', 'riff_orbitals', 'riff_pulse',
              'riff_sentinel', 'boost_prism', 'boost_hyper', 'boost_halo', 'boost_magnet_storm', 'edge', 'boss_bloom', 'boss_refraction',
              'boss_spiral', 'boss_naked', 'boss_beam_tell', 'boss_beam', 'boss_iris', 'track_change', 'bot_3', 'bot_6', 'bot_10', 'bot_15', 'bot_3_nohits', 'bot_6_nohits', 'bot_10_nohits', 'bot_15_nohits',
              'pt2_level_trio', 'pt2_cell_crowd', 'pt2_halo8', 'pt2_hud_level', 'pt2_overcharge_0', 'pt2_overcharge_1', 'pt2_overcharge_2',
@@ -62,7 +62,7 @@ $singles = @('screen_notice', 'screen_title', 'screen_settings_sound', 'screen_s
            @(0..10 | ForEach-Object { "m6_hint_$_" }) +
            @('m6_ended_by', 'm6_set_complete', 'm6_set_complete_over', 'm6_title_star', 'm6_uiscale_90', 'm6_uiscale_130', 'm6_mini_stays',
              'm6_flash_longwave', 'm6_flash_choir', 'm6_flash_alpha', 'm6_credits', 'm6_credits_licences')
-$strips = @('trio_take', 'boss_pair_death', 'boss_death', 'boss_hit')
+$strips = @('trio_take', 'boss_pair_death', 'boss_death', 'boss_hit', 'm6_lw_entrance', 'm6_lw_lunge', 'm6_lw_close', 'm6_drop_title', 'm6_drop_retry', 'm6_home')
 if ($Only.Count) {
     $singles = @($singles | Where-Object { $Only -contains $_ })
     $strips = @($strips | Where-Object { $Only -contains $_ })

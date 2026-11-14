@@ -113,6 +113,10 @@ float hudScale();
 
 // Tone maps a linear colour x intensity with the look's curve (look.md §3), for the HUD batch.
 Vec3 hudColour(const Look& look, const LookVariant& variant, Vec3 c, float intensity);
+// M6 (screens.md "Transitions"): everything hudColour gives (the HUD and the screens) x this level while it is set, so a
+// screen's pieces fade in and out (the HUD batch is additive); 1 is the normal.
+void setHudFade(float level);
+float hudFade();
 
 void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookVariant& variant, const Palettes& palettes,
              const Palette& palette,

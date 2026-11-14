@@ -140,8 +140,9 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
 
     // ---- Fire (GAME_DESIGN 2, R2): the aim stick fires along its direction on every grid step; when the
     // right thumb leaves it (to press Nova or Dash) firing continues along the last aim for 400 ms; with
-    // the stick idle, the auto-aim assist fires at the nearest threat on the full grid (play test 3; it was half rate), and
-    // in a fight at the boss.
+    // the stick idle, the auto-aim assist fires at the nearest threat at half rate (fire 2: every second step of the grid,
+    // Double-Time included; the owner, 2026-11-14, 27077b6: play test 3 had put it on the full grid for a day), and in a fight
+    // at the boss.
     if (in.aimActive && lengthSq(in.aim) > 1e-8f) {
         lastAim_ = normalizeOr(in.aim, lastAim_);
         p.aim = lastAim_;
@@ -187,7 +188,7 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
                 if (!enemyNear && world.assistBossAim(p.pos, musicTick, bossAt)) {
                     targetHandle_ = 0;
                     p.aim = normalizeOr(bossAt - p.pos, lastAim_);
-                    p.fire = 1;
+                    p.fire = 2;  // (the assist's half rate)
                 } else if (use >= 0) {
                     targetHandle_ = e.handle[use];
                     // Lead the target by the shot's flight time.
@@ -195,7 +196,7 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
                     const float t = length(at - p.pos) / kShotSpeed;
                     const Vec2 lead = at + Vec2{e.vx[use], e.vy[use]} * t;
                     p.aim = normalizeOr(lead - p.pos, lastAim_);
-                    p.fire = 1;  // play test 3: the full grid (it was every other step)
+                    p.fire = 2;  // the half rate (GAME_DESIGN 2, 27077b6)
                 } else {
                     targetHandle_ = 0;
                 }

@@ -9,11 +9,11 @@ namespace rf::sim {
 using namespace tuning;
 
 namespace {
-// GAME_DESIGN 6.2 / 6.3 (names, caps; play test 2: Extra Cell 4, Regen 3; play test 3: Split 2, Double-Time 1, Fork 1); icons from
-// design/icons.json. In the tables' order.
+// GAME_DESIGN 6.2 / 6.3 (names, caps; play test 2: Extra Cell 4, Regen 3; play test 3: Fork 1; the owner, 2026-11-14, eb10554:
+// Split 4, a lane a rank, and Double-Time 2 again); icons from design/icons.json. In the tables' order.
 const UpgradeInfo kInfo[kUpgradeCount] = {
-    {"SPLIT", "split", 2, true},
-    {"DOUBLE-TIME", "double_time", 1, true},
+    {"SPLIT", "split", 4, true},
+    {"DOUBLE-TIME", "double_time", 2, true},
     {"PIERCE", "pierce", 3, true},
     {"RICOCHET", "ricochet", 3, true},
     {"FORK", "fork", 1, true},
@@ -125,8 +125,8 @@ const char* upgradeWords(u8 u, u32 level) {
     static char buf[48];
     const u32 lv = level < 1 ? 1u : level;
     switch (u) {
-        case kSplit: return "+2 SHOT LANES";
-        case kDoubleTime: return "FIRE RATE X1.5";  // play test 3: one rank
+        case kSplit: return "+1 SHOT LANE";                                  // eb10554: a lane a rank
+        case kDoubleTime: return lv <= 1 ? "FIRE RATE X1.5" : "FIRE RATE X2";  // eb10554: two ranks again
         case kPierce: return "SHOTS PIERCE +2";
         case kRicochet: return "SHOTS BOUNCE +2";
         case kFork: return "SHOTS FORK ON A HIT";  // play test 3: one rank (forking again is Fractal's)
@@ -224,7 +224,7 @@ float dealWeight(const Loadout& l, u8 u) {
     return w;
 }
 
-u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[kMaxOrbs]) {
+u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[kMaxOrbs], bool firstOfRun) {
     // GAME_DESIGN 6.1 (M5, the lead's ruling of 2026-11-13): the Trio is dealt. The first orb is firepower (the weapon and
     // rhythm Mods held, the Riffs held and the four staples, by the same weights, what is at its cap left out; none: as
     // the others); the other orbs are the whole pool by weight; no two alike; the Riff guarantee; Lucky Break's orbs as the
@@ -253,11 +253,23 @@ u32 drawTrio(const Loadout& l, u8& sinceRiff, Rng& rng, u8 out[kMaxOrbs]) {
     const auto newRiff = [&](u8 u) { return isRiff(u) && l.level(u) == 0; };
     const u32 want = 3u + static_cast<u32>(l.mods[kLuckyBreak]);
     u32 count = 0;
-    i32 first = draw(fire);
-    if (first < 0) first = draw(any);
-    if (first >= 0) {
-        used[first] = true;
-        out[count++] = static_cast<u8>(first);
+    if (firstOfRun) {
+        // a667116 (GAME_DESIGN 6.1, the owner): the first Trio of a run offers Split and Double-Time (each where it can still be
+        // taken); the other orbs are drawn as ever, never one of those two again.
+        const u8 firstPair[2] = {kSplit, kDoubleTime};
+        for (u8 u : firstPair)
+            if (weight[u] > 0.0f && count < want) {
+                used[u] = true;
+                out[count++] = u;
+            }
+    }
+    if (count == 0) {
+        i32 first = draw(fire);
+        if (first < 0) first = draw(any);
+        if (first >= 0) {
+            used[first] = true;
+            out[count++] = static_cast<u8>(first);
+        }
     }
     while (count < want) {
         const i32 u = draw(any);

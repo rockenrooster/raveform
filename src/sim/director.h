@@ -43,7 +43,8 @@ inline u8 songOfTrack(u32 track, u32 songs) {
 // Play test 3 (GAME_DESIGN 4.1): every Track in the Short form, Standard retired (the row stays for the band's own copy).
 inline u32 formOfTrack(u32 /*track*/, u32 /*songs*/) { return 0u; }
 // GAME_DESIGN 4.2 (play test 3): the run's Track 1 plays two cycles (48 bars), every later one three (72), the loop's too.
-inline u32 cyclesOfTrack(u32 track) { return track == 1 ? 2u : 3u; }
+// c2f113a (the owner, 2026-11-14: "tracks should be the same length as track 1"): every Track is two Short cycles, the loop's too.
+inline u32 cyclesOfTrack(u32 /*track*/) { return 2u; }
 inline bool inLoop(u32 track, u32 songs) { return track > songs; }
 float bpmOfTrack(u32 track, u32 songs);  // the set list's tempi, then +4 per Track up to 174 (GAME_DESIGN 4.2)
 const char* songName(u32 song);  // "FIRST LIGHT", "SOLAR WIND", "REEF", ... (GAME_DESIGN 4.2's ten)
@@ -64,7 +65,7 @@ struct Phrase {
     u16 sectionBar = 0, sectionBars = 8;  // a held boss Drop keeps counting past sectionBars
     bool trackChange = false;  // the Break after a boss: into `track`
     bool bossDrop = false;     // the Track's last Drop: the boss enters on its downbeat and holds it
-    bool miniDrop = false;     // M5: the middle cycle's Drop from Track 2 on: a mini-boss enters on its downbeat
+    bool miniDrop = false;     // M5: the first cycle's Drop from Track 2 on (c2f113a; it was the middle one's): a mini-boss enters on its downbeat
     bool held = false;         // M5: a bar of the middle Drop past its length, held for the mini-boss
     float bpm = 120.0f;        // this bar's tempo (the Build's last bar at 85%; the Track change ramps)
     float trackBpm = 120.0f;   // the Track's own tempo

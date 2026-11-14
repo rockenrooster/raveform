@@ -142,11 +142,10 @@ float World::miniScore() const {
 }
 
 u32 World::miniNaturalEnd() const {
-    // The run bar on which the middle cycle's Drop would end without its mini-boss.
+    // The run bar on which the first cycle's Drop (c2f113a; it was the middle one's) would end without its mini-boss.
     const DirectorState& d = director_;
     const u32* len = kSectionBars[formOfTrack(d.track, d.songs)];
-    const u32 cycleBars = len[0] + len[1] + len[2] + len[3];
-    return d.trackBar + cycleBars * (cyclesOfTrack(d.track) / 2u) + len[0] + len[1] + len[2];
+    return d.trackBar + len[0] + len[1] + len[2];
 }
 
 u16 World::miniTierSpecies(Family f) const {

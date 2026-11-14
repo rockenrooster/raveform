@@ -438,6 +438,29 @@ void testDeterminismShort() {
     CHECK(a->player(0).shotsFired > 100);
     delete a;
     delete b;
+    // screens.md "Transitions (M6)", the drop-in's grace: nothing spawns in a run's first bar, and in its first two bars
+    // nothing hostile warps in within 600 wu of the ship.
+    {
+        World* w = quietWorld();
+        w->spawner().mode = Spawner::Mode::Slice;
+        w->rules().godMode = true;
+        double music = 0.0;
+        const double start = w->director().startTick;
+        u32 firstBar = 0, near = 0, seen = 0;
+        while (w->music() < start + 2.0 * kTicksPerBar) {
+            stepWorld(*w, music, Vec2{});  // (a still ship at the start)
+            if (w->music() >= start + 2.0 * kTicksPerBar) break;  // (what the third bar's line orders is outside the grace)
+            if (w->music() < start + kTicksPerBar) firstBar = w->counters().spawned;
+            const Enemies& e = w->enemies();
+            for (u32 i = 0; i < e.count; ++i) {
+                if ((e.flags[i] & kFlagDead) || e.state[i] != kWarping) continue;
+                ++seen;
+                if (length(Vec2{e.x[i], e.y[i]} - w->player(0).pos) < tuning::kGraceClearWu - 1.0f) ++near;
+            }
+        }
+        CHECK_MSG(firstBar == 0 && near == 0 && seen > 0, "%u spawned in the first bar, %u of %u arrivals within 600 wu", firstBar, near, seen);
+        delete w;
+    }
 }
 
 void testNoAllocations() {
@@ -492,19 +515,20 @@ void testDirectorCycle() {
     p = phraseAt(d, 50);
     CHECK(p.trackChange && p.section == Section::Break && p.track == 2 && p.sectionBars == 8 && p.bpm == 120.0f);
     CHECK(std::fabs(phraseAt(d, 57).bpm - 126.0f) < 1e-3f);
-    // Every Track Short since play test 3: 8 / 4 / 8 / 4 bars, 24 bars a cycle, three cycles from Track 2 (72 bars).
+    // Every Track Short since play test 3: 8 / 4 / 8 / 4 bars, 24 bars a cycle; two cycles a Track since c2f113a (48 bars).
     p = phraseAt(d, 58);
     CHECK(!p.trackChange && p.track == 2 && p.song == 1 && p.cycle == 1 && p.section == Section::Groove && p.sectionBars == 8);
     CHECK(phraseAt(d, 58 + 8).section == Section::Build && phraseAt(d, 58 + 8).sectionBars == 4 &&
           phraseAt(d, 58 + 12).section == Section::Drop && phraseAt(d, 58 + 12).sectionBars == 8 &&
           phraseAt(d, 58 + 20).section == Section::Break && phraseAt(d, 58 + 20).sectionBars == 4);
     CHECK(phraseAt(d, 58 + 24).section == Section::Groove && phraseAt(d, 58 + 24).cycle == 2);
-    CHECK(phraseAt(d, 58 + 48 + 12).bossDrop && phraseAt(d, 58 + 48 + 12).cycle == 3);
-    CHECK(phraseAt(d, 58 + 24 + 12).section == Section::Drop && !phraseAt(d, 58 + 24 + 12).bossDrop && phraseAt(d, 58 + 24 + 12).miniDrop);
-    // Track 3 is Reef (three Short cycles at 132 BPM); then the loop over all three, 4 BPM a Track faster.
+    // c2f113a: the mini-boss on the first cycle's Drop, the boss on the second's.
+    CHECK(phraseAt(d, 58 + 24 + 12).bossDrop && phraseAt(d, 58 + 24 + 12).cycle == 2);
+    CHECK(phraseAt(d, 58 + 12).section == Section::Drop && !phraseAt(d, 58 + 12).bossDrop && phraseAt(d, 58 + 12).miniDrop);
+    // Track 3 is Reef (two Short cycles at 132 BPM); then the loop over all three, 4 BPM a Track faster.
     CHECK(bpmOfTrack(3, 3) == 132.0f && bpmOfTrack(4, 3) == 136.0f && bpmOfTrack(5, 3) == 140.0f && bpmOfTrack(40, 3) == 174.0f);
-    CHECK(songOfTrack(3, 3) == 2 && cyclesOfTrack(3) == 3 && formOfTrack(3, 3) == 0 && cyclesOfTrack(1) == 2);
-    CHECK(songOfTrack(4, 3) == 0 && cyclesOfTrack(4) == 3 && formOfTrack(4, 3) == 0 && songOfTrack(5, 3) == 1 && songOfTrack(6, 3) == 2);
+    CHECK(songOfTrack(3, 3) == 2 && cyclesOfTrack(3) == 2 && formOfTrack(3, 3) == 0 && cyclesOfTrack(1) == 2);
+    CHECK(songOfTrack(4, 3) == 0 && cyclesOfTrack(4) == 2 && formOfTrack(4, 3) == 0 && songOfTrack(5, 3) == 1 && songOfTrack(6, 3) == 2);
     // Budgets (species.json firstSlice, threats only), rising past the data; section scales (GAME_DESIGN 8).
     const SpeciesTable& b = *g_species;
     CHECK(baseBudget(b, 1, 1, 3) == 2.0f && baseBudget(b, 1, 2, 3) == 3.5f && baseBudget(b, 1, 3, 3) == 6.0f);
@@ -549,7 +573,8 @@ void testDirectorCycle() {
         if (w->phrase().surge() && w->rules().scoreMultiplier == 2.0f && w->rules().magnetMultiplier == 2.0f) surgeRules = true;
     }
     CHECK(n >= 5 && order[0] == 0 && order[1] == 1 && order[2] == 2 && order[3] == 3 && order[4] == 0);
-    CHECK_MSG(trioTick > 39 * 60 && trioTick < 41 * 60, "first Trio at tick %u", trioTick);
+    // a667116 (the owner: "Remove The Break's Trio"): the first cycle's Break (40 s in) deals none; the boss's Trio comes later.
+    CHECK_MSG(trioTick == 0, "a Break Trio at tick %u", trioTick);
     CHECK(surgeRules);
     delete w;
 }
@@ -632,6 +657,16 @@ void testTrioRules() {
     g_test = "trio";
     Rng rng;
     rng.reseed(11);
+    // a667116 (GAME_DESIGN 6.1, the owner): the first Trio of a run offers Split and Double-Time; the third orb is drawn as the
+    // others are, never one of those two again.
+    for (u32 run = 0; run < 200; ++run) {
+        Loadout l;
+        u8 since = 0;
+        u8 o[kMaxOrbs];
+        const u32 n = drawTrio(l, since, rng, o, true);
+        CHECK_MSG(n == 3 && o[0] == kSplit && o[1] == kDoubleTime && o[2] != kSplit && o[2] != kDoubleTime && o[2] < kUpgradeCount,
+                  "%u orbs: %u %u %u", n, o[0], o[1], o[2]);
+    }
     // A fresh loadout: three different options, at least one weapon, a new Riff within three Trios.
     for (u32 run = 0; run < 400; ++run) {
         Loadout l;
@@ -711,10 +746,11 @@ void testUpgradeStacking() {
     // Play test 1 (GAME_DESIGN 5, 6.2): 4 cells and 3 Novas at the start (capacity 4), the Dash in two beats.
     CHECK(w->player(0).cells == 4 && w->player(0).cellCap == 4 && w->player(0).novas == 3 && w->player(0).novaCap == 4);
     CHECK(kDashRechargeBeats == 2.0);
-    // Caps: Split stacks to 2 (5 lanes; play test 3); Extra Cell raises the capacity and refills every cell, four times (play test 2:
-    // eight cells).
+    // Caps: Split stacks to 4, a lane a rank (2, 3, 4, 5 lanes; eb10554), Double-Time to 2 again; Extra Cell raises the capacity
+    // and refills every cell, four times (play test 2: eight cells).
     for (u32 k = 0; k < 6; ++k) w->grantUpgrade(0, kSplit);
-    CHECK(w->player(0).loadout.mods[kSplit] == 2 && splitLanes(2) == 5 && upgradeInfo(kDoubleTime).cap == 1 && upgradeInfo(kFork).cap == 1);
+    CHECK(w->player(0).loadout.mods[kSplit] == 4 && splitLanes(1) == 2 && splitLanes(3) == 4 && splitLanes(4) == 5 &&
+          upgradeInfo(kDoubleTime).cap == 2 && upgradeInfo(kFork).cap == 1);
     w->playerMut(0).cells = 1;
     w->grantUpgrade(0, kExtraCell);
     CHECK_MSG(w->player(0).cellCap == 5 && w->player(0).cells == 5, "cells %u of %u", w->player(0).cells, w->player(0).cellCap);
@@ -725,26 +761,27 @@ void testUpgradeStacking() {
     CHECK(pierceCount(1) == 2 && ricochetBounces(3) == 6 && onBeatCritMultiplier(1) == 3.0f && onBeatCritMultiplier(3) == 8.0f);
     CHECK(orbitalCount(1) == 3 && orbitalCount(5) == 11 && sentinelBurst(1) == 3 && sentinelBurst(4) == 5);
     CHECK(sentinelDrones(2) == 1 && sentinelDrones(3) == 2 && sentinelDrones(5) == 3);
-    CHECK(std::strcmp(upgradeWords(kSplit, 1), "+2 SHOT LANES") == 0 && std::strcmp(upgradeWords(kMagnet, 2), "SHARD PULL X3") == 0);
+    CHECK(std::strcmp(upgradeWords(kSplit, 1), "+1 SHOT LANE") == 0 && std::strcmp(upgradeWords(kSplit, 4), "+1 SHOT LANE") == 0 &&
+          std::strcmp(upgradeWords(kMagnet, 2), "SHARD PULL X3") == 0);
+    CHECK(std::strcmp(upgradeWords(kDoubleTime, 1), "FIRE RATE X1.5") == 0 && std::strcmp(upgradeWords(kDoubleTime, 2), "FIRE RATE X2") == 0);
     CHECK(std::strcmp(upgradeWords(kOnBeatCrit, 2), "BEAT SHOTS X5") == 0 && std::strcmp(upgradeWords(kOrbitals, 2), "LEVEL 2: FIVE SHARDS") == 0 &&
           std::strcmp(upgradeWords(kOrbitals, 1), "NEW RIFF: A GUARD RING") == 0 && std::strcmp(upgradeWords(kOrbitals, 3), "LEVEL 3: RELIGHTS FASTER") == 0);
     CHECK(std::strcmp(upgradeWords(kSentinel, 5), "LEVEL 5: THIRD DRONE") == 0 && std::strcmp(upgradeWords(kPulseRing, 5), "LEVEL 5: TWICE AS OFTEN") == 0);
     // Riffs level 1..5.
     for (u32 k = 0; k < 7; ++k) w->grantUpgrade(0, kPulseRing);
     CHECK(w->player(0).loadout.riffs[riffIndex(kPulseRing)] == kRiffMaxLevel);
-    // Split 2: five lanes per step.
+    // Split at its cap: five lanes per step.
     u32 made = 0;
     for (u32 t = 0; t < 30 && !made; ++t) {
         stepWorld(*w, music, Vec2{}, 1);
         for (u32 k = 0; k < w->eventCount(); ++k)
             if (w->events()[k].type == EventType::Shot) made = w->events()[k].b;
     }
-    CHECK_MSG(made == 5, "Split 2: %u lanes", made);
+    CHECK_MSG(made == 5, "Split 4: %u lanes", made);
     World* p = quietWorld();
     double mp = 0.0;
     stepWorld(*p, mp, Vec2{});
-    p->grantUpgrade(0, kSplit);
-    p->grantUpgrade(0, kSplit);
+    for (u32 k = 0; k < 4; ++k) p->grantUpgrade(0, kSplit);
     p->grantBoost(0, kPrism);
     u32 volley = 0;
     for (u32 t = 0; t < 30 && !volley; ++t) {
@@ -752,15 +789,17 @@ void testUpgradeStacking() {
         for (u32 k = 0; k < p->eventCount(); ++k)
             if (p->events()[k].type == EventType::Shot) volley = p->events()[k].b;
     }
-    CHECK_MSG(volley == 25, "Split 2 x Prism: %u shots", volley);
-    // The lead grid: Double-Time moves it 1/16 -> triplets (play test 3: one rank); Hyper halves it.
+    CHECK_MSG(volley == 25, "Split 4 x Prism: %u shots", volley);
+    // The lead grid: Double-Time moves it 1/16 -> triplets -> 1/32 (eb10554: two ranks again); Hyper halves it.
     CHECK(p->leadGrid(0) == 24.0);
     p->grantUpgrade(0, kDoubleTime);
     CHECK(p->leadGrid(0) == 16.0);
     p->grantUpgrade(0, kDoubleTime);
-    CHECK(p->leadGrid(0) == 16.0 && p->player(0).loadout.mods[kDoubleTime] == 1);
+    CHECK(p->leadGrid(0) == 12.0);
+    p->grantUpgrade(0, kDoubleTime);
+    CHECK(p->leadGrid(0) == 12.0 && p->player(0).loadout.mods[kDoubleTime] == 2);
     p->grantBoost(0, kHyper);
-    CHECK(p->leadGrid(0) == 8.0);
+    CHECK(p->leadGrid(0) == 6.0);
     // Two Boosts at once: a third replaces the oldest (Prism, taken first).
     p->grantBoost(0, kHalo);
     CHECK(!p->player(0).boost(kPrism) && p->player(0).boost(kHyper) && p->player(0).boost(kHalo));
@@ -1039,14 +1078,14 @@ void testPlayTest1() {
         delete w;
     }
     {
-        // The shot pool's caps (TECH_SPEC 7.1, 1,024 a player): four players, each with Split 5, Double-Time 1, Pierce,
+        // The shot pool's caps (TECH_SPEC 7.1, 1,024 a player): four players, each with Split's five lanes, Double-Time 2, Pierce,
         // Ricochet, Overcharge, Crit, every Riff at level 5, Prism and Hyper, at 174 BPM in a crowd, for 20 seconds.
         auto* w = new (std::nothrow) World;
         w->init(g_species);
         w->spawner().mode = Spawner::Mode::Off;
         w->resetRun(9, 0.0, 4);
         for (u32 p = 0; p < 4; ++p) {
-            for (u32 k = 0; k < 3; ++k) w->grantUpgrade(p, kSplit);
+            for (u32 k = 0; k < 4; ++k) w->grantUpgrade(p, kSplit);
             for (u32 k = 0; k < 2; ++k) w->grantUpgrade(p, kDoubleTime);
             for (u32 k = 0; k < 3; ++k) w->grantUpgrade(p, kPierce);
             for (u32 k = 0; k < 3; ++k) w->grantUpgrade(p, kRicochet);
@@ -1214,21 +1253,26 @@ void testPlayTest2() {
         delete w;
     }
     {
-        // Not into a Break: a level filled within four bars of one waits, banked, until the Break's own Trio has gone.
+        // a667116: a cycle's Break deals no Trio, so a level filled within four bars of one no longer waits for it: it opens on
+        // the next bar line, and no Break Trio comes.
         World* w = quietWorld();
         w->spawner().trios = true;
         double music = 0.0;
         while (music < 17.0 * kTicksPerBar + 1.0) stepWorld(*w, music, Vec2{});
         w->collectShardsNow(0, levelShards(1));
-        while (music < 20.0 * kTicksPerBar - 1.0) stepWorld(*w, music, Vec2{});
-        CHECK(!w->trio(0).open && w->player(0).levelsBanked == 1);
-        while (music < 20.0 * kTicksPerBar + 4.0) stepWorld(*w, music, Vec2{});
-        CHECK(w->trio(0).open && w->trio(0).kind == kTrioBreak && w->player(0).levelsBanked == 1);
+        while (music < 18.0 * kTicksPerBar + 4.0) stepWorld(*w, music, Vec2{});
+        CHECK(w->trio(0).open && w->trio(0).kind == kTrioLevel && w->player(0).levelsBanked == 0);
+        bool breakTrio = false;
+        while (music < 24.0 * kTicksPerBar) {
+            stepWorld(*w, music, Vec2{});
+            for (u32 k = 0; k < w->eventCount(); ++k)
+                if (w->events()[k].type == EventType::TrioOpen && w->events()[k].c == kTrioBreak) breakTrio = true;
+        }
+        CHECK(!breakTrio);
         delete w;
     }
     {
-        // A level-up Trio still open when a Break begins: the Break's Trio waits for it and opens as it closes, with the
-        // rest of the Break as its clock.
+        // A level-up Trio still open when a cycle's Break begins: nothing waits for it (a667116: that Break deals no Trio).
         World* w = quietWorld();
         w->spawner().trios = true;
         double music = 0.0;
@@ -1236,15 +1280,7 @@ void testPlayTest2() {
         w->openTrioNow(0, 22.0 * kTicksPerBar, nullptr, kTrioLevel);
         const TrioState& tr = w->trio(0);
         while (music < 20.0 * kTicksPerBar + 2.0) stepWorld(*w, music, Vec2{});
-        CHECK(tr.open && tr.kind == kTrioLevel && tr.breakWaiting == 1);
-        const Vec2 orb = tr.orbPos[1];
-        bool breakTrio = false;
-        for (u32 t = 0; t < 900 && !breakTrio; ++t) {
-            stepWorld(*w, music, orb);
-            for (u32 k = 0; k < w->eventCount(); ++k)
-                if (w->events()[k].type == EventType::TrioOpen && w->events()[k].c == kTrioBreak) breakTrio = true;
-        }
-        CHECK(breakTrio && tr.open && tr.kind == kTrioBreak && tr.breakWaiting == 0 && std::fabs(tr.closeTick - 24.0 * kTicksPerBar) < 1e-6);
+        CHECK(tr.open && tr.kind == kTrioLevel && tr.breakWaiting == 0);
         delete w;
     }
     {
@@ -1594,28 +1630,29 @@ void testSetList() {
 
 void testMiddleDrop() {
     g_test = "middle drop";
-    // minibosses.md: from Track 2 on the middle cycle's Drop brings a mini-boss and holds while it lives, at most 8 bars past
-    // its 8 (play test 3: every Track Short; the hold keeps its bars); the bars after it move by the hold.
+    // minibosses.md: from Track 2 on the first cycle's Drop (c2f113a: every Track is two cycles; it was the middle one's) brings a
+    // mini-boss and holds while it lives, at most 8 bars past its 8 (play test 3: every Track Short; the hold keeps its bars);
+    // the bars after it move by the hold.
     DirectorState d;
     d.songs = 3;
     d.track = 2;
     d.trackBar = 0;
-    const u32 cycle = 8 + 4 + 8 + 4, dropAt = cycle + 8 + 4, natural = dropAt + 8;
+    const u32 cycle = 8 + 4 + 8 + 4, dropAt = 8 + 4, natural = dropAt + 8;
     Phrase p = phraseAt(d, dropAt);
-    CHECK(p.section == Section::Drop && p.miniDrop && !p.held && p.cycle == 2);
+    CHECK(p.section == Section::Drop && p.miniDrop && !p.held && p.cycle == 1);
     d.midHolding = true;  // it lives: open-ended up to the cap
     p = phraseAt(d, natural + 7);
     CHECK(p.section == Section::Drop && p.held && p.miniDrop);
     p = phraseAt(d, natural + 8);
-    CHECK(p.section == Section::Break && p.cycle == 2);
+    CHECK(p.section == Section::Break && p.cycle == 1);
     d.midHolding = false;
     d.midHold = 3;  // it died in the third held bar
     p = phraseAt(d, natural + 2);
     CHECK(p.section == Section::Drop && p.held);
     p = phraseAt(d, natural + 3);
     CHECK(p.section == Section::Break && p.sectionBar == 0);
-    p = phraseAt(d, 2 * cycle + 3);
-    CHECK(p.cycle == 3 && p.section == Section::Groove && p.sectionBar == 0);
+    p = phraseAt(d, cycle + 3);
+    CHECK(p.cycle == 2 && p.section == Section::Groove && p.sectionBar == 0);
     d.midHold = 0;
     p = phraseAt(d, natural);
     CHECK(p.section == Section::Break);
@@ -1711,12 +1748,15 @@ void testLongwave() {
         CHECK_MSG(w->bullets().count - b0 == 6, "%u bullets on a step", w->bullets().count - b0);
     }
     // Rule 6 and the phases: eight segments down, the Chop begins on the next beat line (the crest on 1/8 triplets), the
-    // whip's ring of 32 on the downbeat after; a dead segment closes up (the next one takes its place on the path).
+    // whip's ring of 32 on the downbeat after; a dead segment closes up (the next one takes its place on the path): a953828,
+    // it slides up over a step (segmentCloseSteps) instead of snapping.
     w->killBossNextTick(0xFFu, false);
     stepWorld(*w, music, ship);
+    const double died = w->music();
     CHECK(w->bossSegmentsAlive() == 16 && s.lw.phase == 0 && s.lw.pendingPhaseTick > w->music() - kTicksPerSimTick);
+    CHECK_MSG(w->longwaveLag(8, died) > 7.0f && w->longwaveLag(8, died + 49.0) == 0.0f, "lag %.2f", w->longwaveLag(8, died));
     const double beat = s.lw.pendingPhaseTick;
-    runTo(*w, music, beat + 1.0, ship);
+    runTo(*w, music, std::fmax(beat + 1.0, died + 49.0), ship);
     CHECK(s.lw.phase == 1 && s.phase == 1 && s.lw.stepTicks == 32.0 && s.lw.whipTick == (std::floor(beat / kTicksPerBar) + 1.0) * kTicksPerBar);
     t = w->music();
     CHECK(length(s.body[1 + 8] - w->longwavePoint(t, 1.0f, 0.0f)) < 1.0f);
@@ -1727,6 +1767,27 @@ void testLongwave() {
             whip += cuesIn(*w, BossCue::LwWhip);
         }
         CHECK(whip == 1);
+    }
+    // a953828 (the owner: it "jumps across the screen"): the Whitecap's lunge moves the head 500 wu over two beats and runs down
+    // the body, place k making the head's move k x followBeatsPerSegment (a sixteenth) later; the path goes on from where the
+    // head landed.
+    {
+        w->killBossNextTick(0xFF00u, false);  // eight more down: 8 left, the Whitecap
+        stepWorld(*w, music, ship);
+        const double until = w->music() + 8.0 * kTicksPerBar;
+        while (s.lw.dashTick < 0.0 && w->music() < until) stepWorld(*w, music, ship);
+        CHECK_MSG(s.lw.dashTick >= 0.0 && s.lw.phase == 2, "dash %.0f phase %u", s.lw.dashTick, s.lw.phase);
+        const LongwaveData::Phase& P = d.phases[2];
+        CHECK(P.lungeDashWu == 500.0f && P.lungeDashBeats == 2.0f && P.lungeFollowBeats == 0.25f && d.phases[0].lapBars == 24.0f &&
+              d.phases[1].lapBars == 20.0f && d.phases[2].lapBars == 16.0f && d.closeSteps == 1.0f);
+        const double t0 = s.lw.dashTick, follow = 0.25 * kTicksPerBeat;
+        CHECK(length(s.lw.anchor - s.lw.lungeFrom) <= 500.0f + 1e-2f && length(s.lw.anchor - s.lw.lungeFrom) > 100.0f);
+        // A beat in: the head is part way; the eighth place, two beats behind, has not started; two beats after the head's dash
+        // ended the eighth place is where the head's anchor went.
+        const Vec2 head = w->longwaveAnchor(t0 + kTicksPerBeat);
+        CHECK(length(head - s.lw.lungeFrom) > 1.0f && length(head - s.lw.anchor) > 1.0f);
+        CHECK(length(w->longwaveAnchor(t0 + kTicksPerBeat - 8.0 * follow) - s.lw.lungeFrom) < 1e-3f);
+        CHECK(length(w->longwaveAnchor(t0 + 4.0 * kTicksPerBeat + 1.0 - 8.0 * follow) - s.lw.anchor) < 1e-3f);
     }
     // The bare head: every segment down, its open jaw takes x 3.
     w->killBossNextTick(0xFFFFFFu, false);
@@ -2807,12 +2868,12 @@ void testShotStream() {
         CHECK_MSG(seen > 100 && offCurve < 0.5f && worst <= 0.6f, "%u shots, %.2f wu off the curve, sideways %.2f of forward", seen, offCurve, worst);
         delete w;
     }
-    // Helix Array: the Split lanes ride strands along the aim (no fan), mirrored pairs at 80 and 53 wu (play test 3: Split 2,
-    // five lanes), the middle lane straight; one wave to two beats.
+    // Helix Array: the Split lanes ride strands along the aim (no fan), mirrored pairs at 80 and 53 wu (Split at its cap, five
+    // lanes), the middle lane straight; one wave to two beats.
     {
         World* w = quietWorld();
         w->rules().godMode = true;
-        for (u32 k = 0; k < 2; ++k) w->grantUpgrade(0, kSplit);
+        for (u32 k = 0; k < 4; ++k) w->grantUpgrade(0, kSplit);
         w->grantUpgrade(0, kWave);
         w->grantUpgrade(0, kWave);
         w->playerMut(0).loadout.fusions = static_cast<u8>(1u << kHelixArray);
@@ -2842,8 +2903,66 @@ void testShotStream() {
                   "fan %d outer %u mid %u inner %u straight %u neg %u sideways %.2f", fan ? 1 : 0, outer, mid, inner, straight, neg, worst);
         delete w;
     }
+    // Split's fan (eb10554): 2, 3, 4, 5 lanes kSplitFanDeg apart about the aim; an even count straddles the aim line (no lane
+    // down it). Heavy Step's orb and Accent's lance take the middle lane's place; an even fan has none, so every lane fires
+    // beside them.
+    for (u32 st = 1; st <= 4; ++st) {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        for (u32 k = 0; k < st; ++k) w->grantUpgrade(0, kSplit);
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        u32 made = 0;
+        for (u32 t = 0; t < 30 && !made; ++t) {
+            stepWorld(*w, music, ship, 1);
+            for (u32 k = 0; k < w->eventCount(); ++k)
+                if (w->events()[k].type == EventType::Shot) made = w->events()[k].b;
+        }
+        const u32 lanes = st + 1u;
+        float angles[8];
+        u32 n = 0;
+        const Shots& s = w->shots();
+        for (u32 i = 0; i < s.count && n < 8; ++i)
+            if (!s.dead[i] && s.kind[i] == kShotPrimary) angles[n++] = std::atan2(s.dy[i], s.dx[i]) * 360.0f / kTau;
+        bool spaced = n == lanes, onAxis = false;
+        for (u32 a = 0; a < n; ++a) {
+            const float want = (static_cast<float>(a) - 0.5f * static_cast<float>(lanes - 1u)) * tuning::kSplitFanDeg;
+            bool found = false;
+            for (u32 b = 0; b < n; ++b) found = found || std::fabs(angles[b] - want) < 0.01f;
+            spaced = spaced && found;
+            onAxis = onAxis || std::fabs(angles[a]) < 0.01f;
+        }
+        CHECK_MSG(made == lanes && spaced && onAxis == ((lanes & 1u) == 1u), "Split %u: %u made, %u shots, on the axis %d", st, made, n, onAxis ? 1 : 0);
+        delete w;
+    }
+    {
+        // Heavy Step with four lanes: the fourth volley is the four lanes and an orb down the aim line.
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        for (u32 k = 0; k < 3; ++k) w->grantUpgrade(0, kSplit);
+        w->grantUpgrade(0, kHeavyStep);
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        u32 volleys = 0, orbMade = 0;
+        for (u32 t = 0; t < 120 && volleys < 4; ++t) {
+            stepWorld(*w, music, ship, 1);
+            for (u32 k = 0; k < w->eventCount(); ++k)
+                if (w->events()[k].type == EventType::Shot && ++volleys == 4) orbMade = w->events()[k].b;
+        }
+        u32 orbs = 0;
+        bool orbOnAxis = false;
+        const Shots& s = w->shots();
+        for (u32 i = 0; i < s.count; ++i)
+            if (!s.dead[i] && s.kind[i] == kShotOrb) {
+                ++orbs;
+                orbOnAxis = std::fabs(s.dy[i]) < 1e-4f;
+            }
+        CHECK_MSG(orbMade == 5 && orbs == 1 && orbOnAxis, "Heavy Step, four lanes: %u made, %u orbs", orbMade, orbs);
+        delete w;
+    }
     // Thinning never flickers: it starts above the soft cap and ends below three quarters of it, only on a beat; while it
-    // lasts every lane fires and the lanes beyond the middle three fly half as far.
+    // lasts every lane fires and the lanes beyond the middle three fly half as far (eb10554: four lanes, an even fan: its
+    // outer pair).
     {
         World* w = quietWorld();
         w->rules().godMode = true;
@@ -2860,7 +2979,7 @@ void testShotStream() {
             }
             const double m0 = music;
             {
-                // (play test 3: Split 2 x Prism at 120 BPM stays under the soft cap; at 174 BPM, the set list's last tempo, it does not)
+                // (Split's four lanes x Prism at 174 BPM, the set list's last tempo, with Double-Time 2: over the soft cap)
                 TickInput in;
                 in.music0 = music;
                 in.music1 = music + 174.0 * 96.0 / 60.0 / 60.0;
@@ -3024,7 +3143,8 @@ void testMinibosses() {
         CHECK(w->enemies().count == e0 + 2 && !(s.alive & 1u));
         delete w;
     }
-    // In a run: the middle Drop of Track 2 brings one, in place of the mega-wave, and its end moves the Break.
+    // In a run: the first Drop of Track 2 (c2f113a; it was the middle one's) brings one, in place of the mega-wave, and its end
+    // moves the Break; it drops the Track's Extra Life as it dies (GAME_DESIGN 5, c2f113a).
     {
         World* w = new (std::nothrow) World;
         w->init(g_species);
@@ -3034,7 +3154,7 @@ void testMinibosses() {
         stepWorld(*w, music, Vec2{});
         w->directorMut().track = 2;
         w->directorMut().trackBar = 0;
-        const u32 cycle = 24, dropAt = cycle + 12;  // (play test 3: every Track Short, 8 / 4 / 8 / 4)
+        const u32 dropAt = 12;  // (play test 3: every Track Short, 8 / 4 / 8 / 4; c2f113a: the first cycle's Drop)
         runTo(*w, music, w->tickOfBar(dropAt) + 2.0 * kTicksPerSimTick, Vec2{});
         const BossState& s = w->boss();
         CHECK_MSG(s.active && isMiniBoss(s.kind) && w->director().midHolding && w->phrase().miniDrop, "kind %u", static_cast<u32>(s.kind));
@@ -3045,8 +3165,14 @@ void testMinibosses() {
         stepWorld(*w, music, Vec2{});
         const u32 end = w->runBar() + 1u + (w->music() - w->tickOfBar(w->runBar()) > 0.5 * kTicksPerBar ? 1u : 0u);
         CHECK_MSG(w->director().midHold == end - (dropAt + 8) && !w->director().midHolding, "hold %u end %u", w->director().midHold, end);
+        {
+            u32 lives = 0;
+            const BoostPickups& bp = w->boostPickups();
+            for (u32 i = 0; i < bp.count; ++i) lives += !bp.dead[i] && bp.type[i] == kPickupExtraLife ? 1u : 0u;
+            CHECK_MSG(lives == 1 && w->director().extraLifeTrack == 2, "Extra Life orbs %u", lives);
+        }
         runTo(*w, music, w->tickOfBar(end) + 5.0, Vec2{});
-        CHECK(w->phrase().section == Section::Break && w->phrase().cycle == 2);
+        CHECK(w->phrase().section == Section::Break && w->phrase().cycle == 1);
         delete w;
     }
 }
@@ -3740,6 +3866,25 @@ void testPlayTest3() {
         CHECK(!w->assistBossAim(Vec2{}, music, at));  // (its entrance: no fight yet)
         runShip(*w, music, w->boss().fightTick + 8.0, Vec2{});
         CHECK_MSG(w->assistBossAim(Vec2{}, music, at) && length(at - w->boss().pos) < tuning::kBossArmOuter + 1.0f, "at %.0f, %.0f", at.x, at.y);
+        delete w;
+    }
+    {
+        // GAME_DESIGN 2 (27077b6, the owner): the assist fires at half rate (fire 2: every second grid step); a thumb on the aim
+        // stick fires on every step (fire 1).
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), Vec2{300.0f, 0.0f}, 0.0f, 0.0);
+        PlayerController c;
+        c.reset(Vec2{});
+        StickInput in;
+        in.assist = true;
+        c.update(in, kDt, music, 120.0f, *w, 0);
+        CHECK_MSG(c.pose().fire == 2, "assist fire %u", c.pose().fire);
+        in.aim = Vec2{1.0f, 0.0f};
+        in.aimActive = true;
+        c.update(in, kDt, music, 120.0f, *w, 0);
+        CHECK_MSG(c.pose().fire == 1, "aimed fire %u", c.pose().fire);
         delete w;
     }
 }

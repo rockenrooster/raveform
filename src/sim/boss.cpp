@@ -325,6 +325,7 @@ bool LongwaveData::load() {
         p.lungeTelegraphBeats = static_cast<float>(doc.number("lunge.telegraphBeats", 0.0, nullptr, ph));
         p.lungeDashWu = static_cast<float>(doc.number("lunge.dashWu", 0.0, nullptr, ph));
         p.lungeDashBeats = static_cast<float>(doc.number("lunge.dashBeats", 0.0, nullptr, ph));
+        p.lungeFollowBeats = static_cast<float>(doc.number("lunge.followBeatsPerSegment", 0.0, nullptr, ph));
         p.headBurst = static_cast<u32>(doc.number("headBurst.count", 0.0, nullptr, ph));
         if (i < 3 && (p.stepTicks <= 0.0 || p.lapBars <= 0.0f)) {
             RF_ERR("longwave: phase %u has no step or lap", i);
@@ -332,6 +333,7 @@ bool LongwaveData::load() {
         }
     }
     count("numbers.whip.count", whipCount);
+    num("numbers.segmentCloseSteps", closeSteps);
     for (u32 i = 0; i < 2; ++i) {
         char path[64];
         std::snprintf(path, sizeof path, "numbers.echoes.%u.phaseBehindCycles", i);

@@ -104,6 +104,8 @@ void World::spawnFormation(u16 speciesIndex, u32 count, Vec2 anchor, double land
     const float spread = packSpread(s.family);
     const u16 school = s.family == Family::Shoal ? static_cast<u16>(spawner_.nextSchool++) : 0;
     const PlayerState& p0 = players_[0];
+    // screens.md "Transitions (M6)", the drop-in's grace: in a run's first two bars nothing hostile comes within 600 wu of a ship.
+    const float clear = m1_ < director_.startTick + static_cast<double>(kGraceBars) * kTicksPerBar ? kGraceClearWu : kSpawnMinPlayerWu;
     for (u32 k = 0; k < count; ++k) {
         Vec2 p = anchor;
         if (spread > 0.0f) {
@@ -119,7 +121,7 @@ void World::spawnFormation(u16 speciesIndex, u32 count, Vec2 anchor, double land
                 const PlayerState& pl = players_[q];
                 if (!pl.alive) continue;
                 const Vec2 d = p - pl.pos;
-                if (lengthSq(d) < kSpawnMinPlayerWu * kSpawnMinPlayerWu) p = pl.pos + normalizeOr(d, Vec2{1.0f, 0.0f}) * kSpawnMinPlayerWu;
+                if (lengthSq(d) < clear * clear) p = pl.pos + normalizeOr(d, Vec2{1.0f, 0.0f}) * clear;
                 const TrioState& tr = trio_[q];
                 if (tr.open) {
                     const Vec2 dt = p - tr.centre;
@@ -136,8 +138,7 @@ void World::spawnFormation(u16 speciesIndex, u32 count, Vec2 anchor, double land
         } else {
             // Never on top of a player, never inside the Trio's ring (screens.md).
             const Vec2 d = p - p0.pos;
-            if (p0.alive && lengthSq(d) < kSpawnMinPlayerWu * kSpawnMinPlayerWu)
-                p = p0.pos + normalizeOr(d, Vec2{1.0f, 0.0f}) * kSpawnMinPlayerWu;
+            if (p0.alive && lengthSq(d) < clear * clear) p = p0.pos + normalizeOr(d, Vec2{1.0f, 0.0f}) * clear;
             const TrioState& tr = trio_[0];
             if (tr.open) {
                 const Vec2 dt = p - tr.centre;
@@ -673,20 +674,21 @@ void World::directorBar(double barTick, u32 bar) {
                     ev.y = pl.pos.y;
                     emit(ev);
                 }
-                if (anyAlive && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios)) {
-                    // The Trio (GAME_DESIGN 6.1); after a boss, its bonus Trio first, each with half the Break.
+                if (anyAlive && ph.trackChange && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios)) {
+                    // The boss's Trio (GAME_DESIGN 6.1), the whole Track-change Break its clock. a667116 (the owner: "Remove The
+                    // Break's Trio"): a cycle's Break deals none; the Trios are the Shard levels' and the bosses'.
                     // Co-op: each device opens its own players' Trios (loot is instanced; the others hear of it).
-                    // Play test 2: a level-up Trio still open finishes first; the Break's then open (takeOrb).
+                    // Play test 2: a level-up Trio still open finishes first; the boss's then opens (takeOrb).
                     const double end = tickOfBar(bar + ph.sectionBars);
                     for (u32 p = 0; p < playerCount_; ++p) {
                         if (!players_[p].alive || !isLocal(p)) continue;
                         TrioState& tr = trio_[p];
                         if (tr.open && tr.kind == kTrioLevel) {
-                            tr.breakWaiting = ph.trackChange ? 2 : 1;
+                            tr.breakWaiting = 1;
                             continue;
                         }
-                        tr.queued = ph.trackChange ? 1 : 0;
-                        openTrio(p, ph.trackChange ? tickOfBar(bar + ph.sectionBars / 2) : end);
+                        tr.queued = 0;
+                        openTrio(p, end);
                     }
                 }
                 // GAME_DESIGN 10: a player down revives at the next Break (this device's own players).
@@ -708,6 +710,9 @@ void World::directorBar(double barTick, u32 bar) {
     // M4: a client follows the host's phrase; the host's director alone spawns.
     if (role_ == NetRole::Client) return;
     if (spawner_.mode != Spawner::Mode::Slice || !anyAlive) return;
+    // screens.md "Transitions (M6)", the drop-in's grace: nothing spawns in a run's first bar (the first formations come in
+    // from the frame's edges on the second; spawnFormation keeps them 600 wu off for two bars).
+    if (bar < kGraceQuietBars) return;
     const double land = barTick + kWarpBeats * kTicksPerBeat;
     strayFodder();
     spendCrowd(land, ph);

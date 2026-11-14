@@ -892,7 +892,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     eclipseK_ = 1.0f;
     if (in.world->eclipse())
         eclipseK_ = reduceFlashing_ ? prose::kArEclipseCalm + prose::kArEclipseCalmFlash * kick_ : prose::kArEclipseScene + (1.0f - prose::kArEclipseScene) * kick_;
-    const float crowd = crowdGain_ * eclipseK_, swarm = swarmGain_ * eclipseK_;
+    const float crowd = crowdGain_ * eclipseK_ * in.runLight, swarm = swarmGain_ * eclipseK_ * in.runLight;  // (M6: the transitions' run light)
 
     // ---- Sparks born since the last frame (stateless; TECH_SPEC 5.3).
     stats_.sparksBorn = stats_.sparksDropped = 0;
@@ -1629,6 +1629,10 @@ void PlayView::buildColours(Vec3 player) {
     overHead_[5] = fullChroma(0.72f, 295.0f * deg);
     buildGold_ = overHead_[2];
     buildReady_ = true;
+}
+
+void PlayView::dropRing(Vec2 at, double t) {
+    if (!reduceFlashing_) push(kImpDropWave, at, 140.0f, 260.0f, static_cast<float>(t));
 }
 
 void PlayView::push(u8 kind, Vec2 at, float amp, float radius, float t) {

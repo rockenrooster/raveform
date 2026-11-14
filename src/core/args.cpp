@@ -163,7 +163,7 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             const int t = std::atoi(next);
             const char* dot = std::strchr(next, '.');
             const int cy = dot ? std::atoi(dot + 1) : 1;
-            ok = t >= 1 && t <= 10 && cy >= 1 && cy <= 3;
+            ok = t >= 1 && t <= 10 && cy >= 1 && cy <= 2;  // (c2f113a: every Track is two cycles)
             a.jumpTrack = static_cast<u8>(t);
             a.jumpCycle = static_cast<u8>(cy);
             usedNext = true;

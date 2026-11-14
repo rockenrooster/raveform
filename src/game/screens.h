@@ -62,6 +62,11 @@ public:
     // (a control's own label and the lines inside a control are not lines of their own); end() reports a pair that
     // breaks the rule once, as a warning naming the screen (the review scripts look for it).
     void setScreenName(const char* name) { screen_ = name; }
+    // M6 (screens.md "Transitions"): a screen on its way in or out (moving, fading) keeps nothing for the layout rule.
+    void setQuiet(bool on) {
+        if (on) ++quiet_;
+        else if (quiet_) --quiet_;
+    }
     static constexpr float kControlGapPx = 24.0f;
     u32 layoutWarnings() const { return layoutWarnings_; }
 

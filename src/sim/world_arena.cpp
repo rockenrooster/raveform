@@ -181,13 +181,14 @@ void World::arenaBar(const Phrase& ph, u32 bar, double barTick) {
             for (ArenaBody& b : arena_)
                 if (b.alive && b.kind < kStructKinds && !b.surge) b.gone = barTick;
         // Events: Track 1's Comet in the Groove of its second cycle (play test 3: Track 1 has two); from Track 2 one in the Groove
-        // of the second cycle, from Track 4 a second in the third; drawn by the seed from the Track's list, never the event of the
-        // Track before; not in a fight. An event never outlasts its Groove (arena.md, play test 3).
+        // of the second cycle, from Track 4 a second in the first's (c2f113a: every Track is two cycles; it was the third's); drawn
+        // by the seed from the Track's list, never the event of the Track before; not in a fight. An event never outlasts its Groove
+        // (arena.md, play test 3).
         if (!ph.trackChange && ph.section == Section::Groove && ph.sectionBar == 0 && !fight && arenaEvent_.stage != 1 &&
             arenaEvent_.kind == kNoEvent) {
             const ArenaData& a = species_->arena;
             const u32 t = songOfTrack(ph.track, director_.songs) + 1u;
-            const bool due = (t == 1 && ph.cycle == 2) || (ph.track >= 2 && ph.cycle == 2) || (ph.track >= 4 && ph.cycle == 3);
+            const bool due = (t == 1 && ph.cycle == 2) || (ph.track >= 2 && ph.cycle == 2) || (ph.track >= 4 && ph.cycle == 1);
             if (due && t <= ArenaData::kTracks) {
                 u8 pool[4];
                 u32 n = 0;

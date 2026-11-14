@@ -68,6 +68,11 @@ constexpr float kSpawnNearWu = 450.0f;       // formations land 450-780 wu out h
 constexpr float kSpawnFarWu = 780.0f;
 constexpr float kSpawnSquash = 0.45f;        // ... and 0.45 of that vertically (on the 20:9 screen)
 constexpr float kSpawnMinPlayerWu = 260.0f;  // GAME_DESIGN 8 (quoted)
+// screens.md "Transitions (M6)", the drop-in's grace (quoted): nothing spawns in a run's first bar, and for its first two bars
+// nothing hostile spawns within 600 wu of a ship.
+constexpr u32 kGraceQuietBars = 1;
+constexpr u32 kGraceBars = 2;
+constexpr float kGraceClearWu = 600.0f;
 constexpr u32 kShoalGroupCapStageA = 40;     // species.json groupSize max (quoted)
 
 // ---- Stress scenario (bench_stress) ----
@@ -139,27 +144,28 @@ constexpr float kDealModNew = 1.0f, kDealModHeld = 3.0f, kDealRiffNew = 3.0f, kD
 constexpr float kDealCellsNew = 3.0f;
 
 // ---- Mods (GAME_DESIGN 6.2 gives each effect per stack; how wide, how far is chosen) ----
-// Play test 1 (2026-11-12) raised them (play test 3 took Split, Double-Time and Fork one rank down): Split +2 lanes, Pierce +2, Ricochet +2 (and on to the nearest other enemy
+// Play test 1 (2026-11-12) raised them (play test 3 took Fork one rank down; the owner, 2026-11-14, eb10554: Split a lane a rank
+// to five, Double-Time two ranks again): Split +1 lane, Pierce +2, Ricochet +2 (and on to the nearest other enemy
 // within 300 wu), Overcharge +50%, Magnet +100% of the base radius, On-Beat Crit x3 / x5 / x8 with a burst over 80
 // wu (all quoted; sim/upgrades.h has the per-stack numbers).
-constexpr float kSplitFanDeg = 5.0f;          // Split: lanes 5 degrees apart, centred on the aim
+constexpr float kSplitFanDeg = 5.0f;          // Split: neighbouring lanes 5 degrees apart, centred on the aim (2 or 4: astride it)
 constexpr float kOverchargePerStack = 0.50f;  // GAME_DESIGN 6.2 (quoted): +50% damage
 constexpr float kOverchargeRadius = 0.15f;    // and +15% shot radius per stack (look only)
 constexpr float kMagnetPerStack = 1.00f;      // GAME_DESIGN 6.2 (quoted): +100% of the base pull radius
 constexpr float kRicochetSeekWu = 300.0f;     // GAME_DESIGN 6.2 (quoted): a hit bounces on to the nearest enemy this near
 constexpr float kCritBurstWu = 80.0f;         // GAME_DESIGN 6.2 (quoted): a beat shot's hit bursts this wide ...
 constexpr float kCritBurstShare = 0.5f;       // ... dealing this share of the shot's damage to the others in it (chosen)
-// The shot pool (TECH_SPEC 7.1: 1,024 a player) with Split 5 x Prism 5 (play test 3: Split 2), Double-Time, Hyper and the endless tempo
+// The shot pool (TECH_SPEC 7.1: 1,024 a player) with Split 5 lanes x Prism 5, Double-Time 2, Hyper and the endless tempo
 // on top: above kShotsSoftCap live shots of a player (from a beat; until below kShotsThinEnd, on a beat: GAME_DESIGN 6.6)
-// every lane still fires but those beyond the middle three fly half as far, and the multipliers' extras and Prism's
-// mini-refractions wait; above kShotsMiddleOnly the middle lane alone fires; a player never has more than kShotsHardCap
-// (a guard the rules above keep from being reached).
+// every lane still fires but those beyond the middle three fly half as far (more than a lane's spacing off the aim line),
+// and the multipliers' extras and Prism's mini-refractions wait; above kShotsMiddleOnly the middle lane alone fires (an
+// even fan: its middle pair); a player never has more than kShotsHardCap (a guard the rules above keep from being reached).
 constexpr u32 kShotsSoftCap = 576;
 constexpr u32 kShotsMiddleOnly = 800;
 constexpr u32 kShotsHardCap = 1000;
 constexpr u32 kShotsThinEnd = 432;            // GAME_DESIGN 6.6 (quoted): thinning ends below three quarters of the soft cap
 constexpr float kThinReach = 0.5f;            // GAME_DESIGN 6.6 (quoted): the lanes beyond the middle three fly half as far
-constexpr u32 kMaxShotsPerStep = 25;          // Split 5 x Prism 5 (play test 3: Split's cap is 2; it was 7 x 5)
+constexpr u32 kMaxShotsPerStep = 25;          // Split's 5 lanes x Prism 5 (eb10554: 5 lanes at Split 4; it was 7 x 5 before play test 3)
 // The Shard pool (2,048): above this many out at once a loose Shard lasts one bar instead of GAME_DESIGN 5's four and a
 // death drops one Shard; within kShardsReserve of the cap a death drops none.
 constexpr u32 kShardsCrowded = 1536;
@@ -369,17 +375,21 @@ constexpr float kStandingDamage = 1.5f;
 // with the bot", minibosses.md "25 to 35 seconds of fire ... tune with the bot"): the careful bot's time to kill each at its
 // home Track (8 seeds) brought into the page's window by these factors on the page's health (docs/PROGRESS.md, M5 part 1).
 // Since 2026-11-13 (GAME_DESIGN 7.6, fights are tuned for a person) they are tuned with the novice over seeds 1-20 (60 minutes;
-// docs/PROGRESS.md, "The boss rule checkpoint"): the part 4 factor x the novice's, in brackets.
-constexpr float kKaleidosHealthTune = 1.21f;  // (0.55 x 2.2, play test 3: the novice through the assist) 19 of 20, 47 s (x 2.7: 17, 64 s)
-constexpr float kLongwaveHealthTune = 0.77f;  // (2.2 x 0.35) play test 3's novice: 19 of 20, 105 s (the page's 150 s)
-constexpr float kChoirHealthTune = 1.26f;     // (4.2 x 0.3) play test 3's novice: 19 of 20, 53 s (x 1.2: 14 of 20, 69 s; x 1.6: 13)
-// Play test 3: x 0.8, 0.7, 0.5, 0.5, 0.4, 0.65, 0.5, 0.85, 0.85, 1, 0.6, 1 on the part 4-6 factors in brackets below (the middle Drop
-// is 8 bars now and the novice fires through the assist: it wins its first meeting with each in about 60-90% of the runs, 10-17 s).
-constexpr float kMiniHealthTune[12] = {0.78f, 0.525f, 0.35f, 0.72f,  // (6.5, 5.0, 2.0, 4.8 x 0.15, 0.15, 0.35, 0.3) Alpha Hound, The Hive,
+// docs/PROGRESS.md, "The boss rule checkpoint"): the part 4 factor x the novice's, in brackets. 2026-11-14 (27077b6: the assist at
+// half rate; measured once on the final shape: every Track two cycles c2f113a, Longwave's whip a953828, no Break Trio a667116,
+// Split a lane a rank and Double-Time two ranks eb10554, the drop-in's grace b12310b): the play test 3 factor x the retune's, in
+// brackets; the novice's first meetings over 40 seeds (Tracks 1-3 from the run's start, then --handover N), and the assist bot's
+// bar (docs/PROGRESS.md, "C").
+constexpr float kKaleidosHealthTune = 0.605f;  // (1.21 x 0.5) 40 of 40, 55 s
+constexpr float kLongwaveHealthTune = 0.1925f; // (0.77 x 0.25) 32 of 40, 83 s (x 0.3 and x 0.2: 32 and 31: its losses no longer follow its health)
+constexpr float kChoirHealthTune = 0.189f;     // (1.26 x 0.15) 29 of 40, 34 met (from Track 3's start, x 0.175: 37 of 40), 34 s
+// The mini-bosses: the play test 3 factors x 0.3 (Weaver Prime x 0.21: its trail ended assist bot runs), so the novice kills about
+// as many before they warp out as before Split and Double-Time's new ranks (from Track 2 a kill drops the Extra Life).
+constexpr float kMiniHealthTune[12] = {0.234f, 0.1575f, 0.105f, 0.216f,  // (6.5, 5.0, 2.0, 4.8 x 0.15, 0.15, 0.35, 0.3) Alpha Hound, The Hive,
                                                                      // Battering Ram, Carom King: the novice's wins 23-30 s
-                                     1.2f, 1.3f, 1.5f, 0.68f,      // (12, 10, 5, 4 x 0.25, 0.2, 0.6, 0.2) Moth Queen, Brood Mother, Blink Star,
+                                     0.36f, 0.39f, 0.45f, 0.204f,  // (12, 10, 5, 4 x 0.25, 0.2, 0.6, 0.2) Moth Queen, Brood Mother, Blink Star,
                                                                      // Sentry Array: 24-29 s
-                                     0.425f, 1.0f, 1.5f, 1.3f};    // M5 part 6, batch 3 (the novice from the fight's start, x 1: Mirror
+                                     0.1275f, 0.3f, 0.315f, 0.39f};  // M5 part 6, batch 3 (the novice from the fight's start, x 1: Mirror
                                                                      // Mimic 8 won, 12 warped out; Twin Tether 8 of 9, 26 s; Weaver Prime
                                                                      // 11 of 11, 10 s; Deep Well 7 of 9, 15 s)
 // M5 (GAME_DESIGN 7.6, quoted starting values): the novice bot, a player's first week. Play test 3: it no longer aims (it
@@ -401,23 +411,23 @@ constexpr float kSaStepBeats = 1.0f;         // turrets step round to stand even
 // M5 part 4, Event Horizon (horizon.md gives no number for these).
 constexpr float kHzJetLengthWu = 1800.0f;  // the jets reach past the frame's edge at the fight's zoom (0.8)
 constexpr float kHzJetHalfWu = 6.0f;       // look.md v2.5: no lethal beam kills wider than 12 wu (part 4: 22)
-constexpr float kHorizonHealthTune = 8.8f;  // (16 x 0.5 x 1.1) play test 3's novice (--handover 4): 20 of 20, 78 s (at most 120)
+constexpr float kHorizonHealthTune = 2.178f;  // (8.8 x 0.2475) --handover 4: 27 of 40, 75 s (at most 120)
 // Polyrhythm (polyrhythm.md gives no number for these).
 constexpr float kPrLinkBurnHalfWu = 6.0f;   // the burning link: look.md v2.5, 12 wu (part 4: 16)
-constexpr float kPolyHealthTune = 3.4f;     // (1.7 x 2.0) play test 3's novice (--handover 5): x 1 20 of 20 in 16 s; x 2 17 of 20, 33 s; x 4 4 of
+constexpr float kPolyHealthTune = 0.4165f;  // (3.4 x 0.1225) --handover 5: POLY_NOVICE; x 0.175 had the assist bot lost there in 3 of 20. Play test 3: x 1 20 of 20 in 16 s; x 2 17, 33 s; x 4 4 of
                                             // 20; x 2.6 the assist bot lost 2 of 20 here (its bar: 19 of 20 runs through the ten Tracks)
 constexpr u8 kBossEntranceCells = 3;       // GAME_DESIGN 5 (1bcc897): "grows back up to three" as a boss arrives (was two, f32a441)
 // GAME_DESIGN 5 (1bcc897): "a boss pays for its phases": one Cell a player at each phase change, at the boss, drifting to
 // the player at this speed (chosen; inside the magnet it homes as any Cell).
 constexpr u32 kBossPhaseCells = 1;
 constexpr float kBossPhaseCellDriftWu = 240.0f;
-constexpr float kCadenceHealthTune = 8.05f;  // (7 x 1.15) play test 3's novice (--handover 7): 19 of 20, 97 s (the page 80-100)
-constexpr float kArpHealthTune = 13.8f;     // (18 x 0.77) play test 3's novice (--handover 8, x 0.85): 17 of 20, 120 s (the page 90-110)
-constexpr float kMorganaHealthTune = 15.4f;  // (14 x 1.1) play test 3's novice (--handover 9): 16 of 20, 90 s (the page 90-120)
+constexpr float kCadenceHealthTune = 2.113f;  // (8.05 x 0.2625) --handover 7: 28 of 39, 91 s (the page 80-100)
+constexpr float kArpHealthTune = 1.863f;    // (13.8 x 0.135) --handover 8: 28 of 40, 69 s (the page 90-110)
+constexpr float kMorganaHealthTune = 1.7325f; // (15.4 x 0.1125) --handover 9: 26 of 40, 41 s (the page 90-120)
 constexpr float kMgFanSpreadDeg = 40.0f;    // morgana.md gives no spread for her fan of five (Cadence's 40 degrees)
 constexpr float kMgBulletLife = 4.0f;       // ... nor its life (Cadence's 4 s)
 constexpr float kMgMarginWu = 700.0f;       // the oases keep this far from the arena's walls
-constexpr float kRepriseHealthTune = 5.625f; // (4.5 x 1.25) play test 3's novice (--handover 10): 20 of 20, 129 s (the page 110-140)
+constexpr float kRepriseHealthTune = 0.914f;  // (5.625 x 0.1625) --handover 10: 35 of 40, 114 s (the page 110-140)
 constexpr float kRpArmCircleR = 34.0f;      // an arm's hit circles (three along it; Kaleidos's hull is drawn, not given)
 constexpr float kRpWaveSpacing = 150.0f;    // Longwave's arm let go: its segments 150 wu apart across its way (not given)
 constexpr float kRpWaveAmp = 80.0f;         // ... swinging 80 wu along it, a swing a beat (not given)
@@ -438,18 +448,19 @@ constexpr float kWvBurstBeats = 0.5f;       // ... the burst lasts half a beat (
 // armour, a player (measured from the fights' starts, docs/PROGRESS.md part 7; 0: not measured, the pace stays 1), and the
 // pace's bounds (quoted).
 constexpr float kBossPaceNovice[24] = {   // (by BossKind; the mini-bosses 0: they leave with their Drop)
-    760.0f, 780.0f, 1550.0f,                 // Kaleidos, Longwave, the Choir (the novice from the run's start; play test 3: it fires
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,      // through the assist, measured --nopace; part 7: 234, 450, 1,334)
-    4721.0f, 6000.0f, 3170.0f,               // Event Horizon, Polyrhythm, Feedback (--handover 4, 5, 6; part 7: 4,188, 2,910, 2,792)
-    8860.0f, 14400.0f, 23250.0f, 6060.0f};   // Cadence, Arpeggiator, Fata Morgana, Kaleidos Reprise (--handover 7-10; part 7: 6,501,
-                                             // 16,772, 21,279, 6,200)
+    272.0f, 126.0f, 204.0f,                  // Kaleidos, Longwave, the Choir (the novice from the run's start, 40 seeds, --nopace; since
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,      // 27077b6 the assist fires at half rate, every Track is two cycles (c2f113a), Split a lane a
+                                             // rank and Double-Time two ranks (eb10554): it was 760, 780, 1,550 on the full grid)
+    985.0f, 1030.0f, 509.0f,                 // Event Horizon, Polyrhythm, Feedback (--handover 4, 5, 6, 40 seeds; it was 4,721, 6,000, 3,170)
+    1615.0f, 2063.0f, 5206.0f, 1292.0f};     // Cadence, Arpeggiator, Fata Morgana, Kaleidos Reprise (--handover 7-10, 40 seeds; it was
+                                             // 8,860, 14,400, 23,250, 6,060)
 constexpr float kBossPaceMin = 1.0f, kBossPaceMax = 4.0f;
 constexpr float kBossPaceDeadBand = 1.5f;  // GAME_DESIGN 7.6 (play test 3): a ratio under it counts as 1 (1.25 at first)
 constexpr u32 kBossPaceBars = 8;
 constexpr float kBulletPoolShooters = 0.70f;  // GAME_DESIGN 6.6 (quoted): no shooting species bought above 70% of the bullet pool
 constexpr float kBulletPoolCrowd = 0.95f;     // ... and the crowd's volleys held above 95% of it (the rest kept for the fights' patterns)
 constexpr float kDwArmour = 0.25f;          // Deep Well while it swallows: the fallback for minibosses.json damageScale.swallowing
-constexpr float kFeedbackHealthTune = 1.8f; // (2.0 x 0.9) play test 3's novice (--handover 6): 15 of 20, 126 s (the page: about two minutes)
+constexpr float kFeedbackHealthTune = 0.2925f; // (1.8 x 0.1625) --handover 6: 26 of 40, 63 s (the page: about two minutes)
 
 // ======================================================================================================
 // M4 STAGE A: co-op (GAME_DESIGN 10, TECH_SPEC 8). Quoted numbers are marked; the rest are chosen where the

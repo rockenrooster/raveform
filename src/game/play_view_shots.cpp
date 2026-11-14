@@ -60,7 +60,7 @@ void PlayView::drawShots(FrameDraw& d, const ViewInput& in, float a) {
         const Vec3 base = palettes_->player[owner], light = palettes_->playerLight[owner];
         // M4 (look.md 6): a teammate's shots at 0.6 of the level and 0.8 of the width. M5: Echo's ghosts at 0.45.
         const float ghost = (sh.mods[i] & kShotGhost) ? 0.45f : 1.0f;
-        const float lvl = (mine ? 1.0f : 0.6f) * pl.intensity * ghost, wid = (mine ? 1.0f : 0.8f) * 0.5f * pl.width * refPx_;
+        const float lvl = (mine ? 1.0f : 0.6f) * pl.intensity * ghost * in.runLight, wid = (mine ? 1.0f : 0.8f) * 0.5f * pl.width * refPx_;
         if (sh.kind[i] == kShotOrb || sh.kind[i] == kShotBomb) {
             // M5: Heavy Step's slow orb (its light colour, a white core, pulsing) and Carousel's bombs (gold).
             const bool orb = sh.kind[i] == kShotOrb;

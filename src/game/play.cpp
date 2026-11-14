@@ -196,6 +196,9 @@ void Play::buildInput(StickInput& in) {
         scriptInput(in);
         return;
     }
+    // M6 (screens.md "Transitions"): the ship of a run being left (the title's in the drop-in's wait, a quit run on home's way)
+    // is gone: it neither moves nor fires.
+    if (flow_ && ((trans_ == Trans::Wait && transFrom_ == Screen::Title) || (trans_ == Trans::Home && screen_ != Screen::Title))) return;
     if (opt_.bot || opt_.autoplay || attract()) {
         // The bot plays (--bot, benchmarks, and the title's attract run).
         in = bot_.think(*world_, seat_, controller_, coop() ? netHeard_ : clock_.heardNow());
@@ -225,6 +228,7 @@ void Play::buildInput(StickInput& in) {
 
 void Play::frame(float realDt) {
     ++frameNo_;
+    transitionFrame();  // M6 (screens.md "Transitions")
     if (coop()) {
         netFrame(realDt);  // M4: the run on the host's song (game/play_net.cpp)
         return;
@@ -453,6 +457,9 @@ void Play::afterTick() {
             case EventType::Restart:
                 controller_.reset(w.player(seat_).pos);
                 touch_.reset();
+                // M6 (screens.md "Transitions"): the drop-in's downbeat; home's title bar line.
+                if (trans_ == Trans::Wait) dropInLands(e.tick);
+                else if (trans_ == Trans::Home) homeArrives(e.tick);
                 if (coopFlowActive_ && coopOver_) {
                     // M4 stage B: the host's RETRY: the next run, everyone's screens back to it.
                     coopOver_ = false;
@@ -849,6 +856,12 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     vi.noShips = flow_ && (screen_ == Screen::CoopLobby || screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission);
     vi.noBeacons = coop() && coopOver_;
     vi.backgroundOnly = flow_ && !coop() && (screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission);
+    // M6 (screens.md "Transitions"): the run's own light as the transitions have it; its ship goes with it, and on the drop-in's
+    // downbeat beat the screen draws the ship (the title's gliding in, or the ship drawing itself) until the run's takes over.
+    if (flow_) {
+        vi.runLight = transRunLight();
+        if (vi.runLight < 0.7f || (trans_ == Trans::Arrive && transBeats(transLine_) < 1.0f)) vi.noShips = true;
+    }
     hintsTick(vi);  // M6: the first-run hints
     {
         // The HUD's blocks this frame: edge chevrons slide 20 px clear of them (screens.md "In the run").
@@ -983,7 +996,11 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         }
     }
     if (runHud) {
+        // M6 (screens.md "Transitions"): the drop-in brings the HUD in over its second beat (the Track name card writes itself as
+        // always).
+        setHudFade(flow_ && trans_ == Trans::Arrive ? clampf(transBeats(transLine_) - 1.0f, 0.0f, 1.0f) : 1.0f);
         drawHud(d, *font_, *look_, variant, *palettes_, *palette_, hs, touch_, W, H, insetMin, insetMax);
+        setHudFade(1.0f);
     }
     if (flow_) renderScreens(d, params, variant, W, H, insetMin, insetMax);
 }
@@ -1006,6 +1023,26 @@ void Play::updatePalette(double music) {
     };
     const Phrase& ph = world_->phrase();
     const Palette* to = forSong(ph.song);
+    if (homeFadeLine_ >= 0.0 && music >= homeFadeLine_ && music < homeFadeLine_ + kTicksPerBar) {
+        // M6 (screens.md "Transitions", home): the palette the run ended in cross-fades to Track 1's over the title's bar.
+        float u = clampf(static_cast<float>((music - homeFadeLine_) / kTicksPerBar), 0.0f, 1.0f);
+        u = u * u * (3.0f - 2.0f * u);
+        const auto mixh = [&](Vec3 a, Vec3 b) { return a + (b - a) * u; };
+        const Palette& from = homeFrom_;
+        mixed_ = *to;
+        mixed_.bg0 = mixh(from.bg0, to->bg0);
+        mixed_.bg1 = mixh(from.bg1, to->bg1);
+        mixed_.grid = mixh(from.grid, to->grid);
+        mixed_.gridHot = mixh(from.gridHot, to->gridHot);
+        mixed_.accent = mixh(from.accent, to->accent);
+        for (u32 k = 0; k < 3; ++k) {
+            mixed_.hue[k] = mixh(from.hue[k], to->hue[k]);
+            mixed_.partner[k] = mixh(from.partner[k], to->partner[k]);
+        }
+        palette_ = &mixed_;
+        view_.setPalette(mixed_);
+        return;
+    }
     const sim::BossState& boss = world_->boss();
     if (!ph.trackChange && boss.active && boss.kind == sim::BossKind::Reprise && boss.rp.phase == 2 && boss.coreMax > 0.0f) {
         // M5 part 6 (reprise.md): over Last Light the palette cross-fades from Last Light to Ultraviolet (by the health left).
@@ -1080,10 +1117,9 @@ void Play::applySettings() {
 }
 
 void Play::startRun() {
-    // PLAY: a run starts on the next bar line (at least half a bar away, so the band starts it with us).
-    world_->requestRestart();
-    screen_ = Screen::Run;
-    if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+    // PLAY: the drop-in (screens.md "Transitions"): a run on the first bar line at least two beats away, the title leaving
+    // over the wait (game/play_transitions.cpp).
+    dropInTap(Screen::Title);
 }
 
 void Play::restartRun() {
@@ -1095,13 +1131,9 @@ void Play::restartRun() {
 }
 
 void Play::toTitle() {
-    // HOME: back to the title; the bot starts a new run behind it on the next bar line.
-    screen_ = Screen::Title;
-    countIn_ = false;
-    askQuit_ = askRestart_ = false;
-    world_->requestRestart();
-    applySettings();
-    if (band_) band_->playSfx(audio::Sfx::UiBack);
+    // HOME (and QUIT RUN): home (screens.md "Transitions"): the screen leaves in a beat, the title builds itself over the next
+    // bar, the bot's new run behind it fades up over the bar after (game/play_transitions.cpp).
+    homeTap();
 }
 
 void Play::openSettings(Screen back) {
@@ -1556,6 +1588,7 @@ void Play::hintsTick(ViewInput& vi) {
     const PlayerState& me = w.player(seat_);
     if (!me.alive || (coop() && settings_.runsEnded > 0)) return;
     const i64 bar = static_cast<i64>(w.phrase().bar);
+    if (bar < 1) return;  // M6 (screens.md "Transitions"): a hint due as the run drops in waits for its second bar
     if (bar < lastHintBar_) lastHintBar_ = -100;  // (a new run)
     if (bar < lastHintBar_ + 4 || w.boss().active || now - takenT_ < 1.5f) return;
     const float hw = tuning::kFrameHalfWWu, hh = tuning::kFrameHalfHWu;

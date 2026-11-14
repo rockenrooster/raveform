@@ -127,7 +127,7 @@ void World::openTrio(u32 p, double closeTick, u8 kind, u16 level) {
     TrioState& tr = trio_[p];
     PlayerState& pl = players_[p];
     u8 opts[kMaxOrbs];
-    const u32 n = drawTrio(pl.loadout, tr.sinceRiff, upgradeRng_, opts);
+    const u32 n = drawTrio(pl.loadout, tr.sinceRiff, upgradeRng_, opts, tr.opened == 0);  // (a667116: the first, Split and Double-Time)
     tr.open = n > 0;
     tr.homing = -1;
     if (!n) return;
@@ -461,12 +461,15 @@ bool World::breakRing(u32 p, Vec2 from) {
     return true;
 }
 
-void World::extraLifeDrop(Vec2 at) {
-    // GAME_DESIGN 5 (play test 3): in each Track of the set list one Extra Life drops from a kill in the first cycle's Drop,
-    // an orb for each player who holds none (co-op: each their own; the host decides). None in the loop.
+void World::extraLifeDrop(Vec2 at, bool fromMini) {
+    // GAME_DESIGN 5 (play test 3; c2f113a): in each Track of the set list one Extra Life drops, an orb for each player who holds
+    // none (co-op: each their own; the host decides): in Track 1 from a kill in the first cycle's Drop, from Track 2 from the
+    // mini-boss as it dies (it shares that Drop since every Track is two cycles; a mini-boss that warps out drops none). None in
+    // the loop.
     if (role_ == NetRole::Client) return;
     const Phrase& ph = phrase_;
-    if (ph.trackChange || ph.cycle != 1 || ph.section != Section::Drop || inLoop(ph.track, director_.songs)) return;
+    if (ph.trackChange || inLoop(ph.track, director_.songs)) return;
+    if (fromMini ? ph.track < 2 : (ph.track != 1 || ph.cycle != 1 || ph.section != Section::Drop)) return;
     if (director_.extraLifeTrack == ph.track) return;
     director_.extraLifeTrack = ph.track;
     for (u32 p = 0; p < playerCount_; ++p) {
@@ -900,8 +903,9 @@ void World::collectShard(u32 p) {
 
 void World::openLevelTrios(u32 bar) {
     // A banked level opens its Trio round the ship on this bar line, for four bars, in the fight (the oldest level
-    // first). Not while a Trio is open (the next waits for the bar line after it closes), and not when a Break begins
-    // within its four bars: the Break's own Trio keeps its place and the level waits for it.
+    // first). Not while a Trio is open (the next waits for the bar line after it closes), and not when a boss's
+    // Track-change Break begins within its four bars: the boss's Trio keeps its place and the level waits for it
+    // (a667116: a cycle's Break deals no Trio, so it no longer holds a level back).
     for (u32 p = 0; p < playerCount_; ++p) {
         PlayerState& pl = players_[p];
         TrioState& tr = trio_[p];
@@ -909,7 +913,7 @@ void World::openLevelTrios(u32 bar) {
         bool breakSoon = false;
         for (u32 k = 1; k <= kLevelTrioClearBars && !breakSoon; ++k) {
             const Phrase ph = phraseAt(director_, bar + k);
-            breakSoon = ph.section == Section::Break && ph.sectionBar == 0;
+            breakSoon = ph.section == Section::Break && ph.sectionBar == 0 && ph.trackChange;
         }
         if (breakSoon) continue;
         const u16 level = static_cast<u16>(pl.level - pl.levelsBanked + 1u);

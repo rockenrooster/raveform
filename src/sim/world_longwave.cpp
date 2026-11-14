@@ -39,9 +39,12 @@ double World::longwaveSteps(double t) const {
 }
 
 Vec2 World::longwaveAnchor(double t) const {
+    // The path's centre as the head sees it at time t. a953828 (the owner: it "jumps across the screen"): the dash moves the
+    // path from lungeFrom to anchor over dashBeats (500 wu over two beats), and a segment asks for the anchor its own whip-delay
+    // earlier (longwavePoint), so the move runs down the body; before the dash reaches it a segment keeps the old anchor.
     const LongwaveState& L = boss_.lw;
-    if (L.dashTick >= 0.0 && t >= L.dashTick) {
-        // The dash: the whole path slides along the lunge's line over its beat (L.anchor is where it ends).
+    if (L.dashTick >= 0.0) {
+        if (t < L.dashTick) return L.lungeFrom;
         const LongwaveData& d = species_->longwave;
         const u32 ph = L.phase < 4 ? L.phase : 3u;
         const double beats = d.phases[ph].lungeDashBeats > 0.0f ? d.phases[ph].lungeDashBeats : 1.0;
@@ -51,6 +54,28 @@ Vec2 World::longwaveAnchor(double t) const {
     return L.anchor;
 }
 
+u32 World::longwaveRankLags(double t, float* lags, u32 cap) const {
+    // The lag of each place along the live body (0 the head, then rank 1, 2, ...): the view draws its spine and echoes through
+    // the same places the segments are at (a953828), interpolating between ranks.
+    const BossState& s = boss_;
+    const LongwaveData& d = species_->longwave;
+    u32 n = 0;
+    if (cap) lags[n++] = 0.0f;
+    for (u32 k = 0; k < d.segments && n < cap; ++k)
+        if (s.alive & (1u << k)) lags[n++] = longwaveLag(k, t);
+    return n;
+}
+
+float World::longwaveLag(u32 segment, double t) const {
+    // a953828 (rule 6): how many ranks segment k still lags behind its place after a death ahead of it closed the gap: it
+    // slides up along the spine, its swing easing with it, over segmentCloseSteps steps.
+    const LongwaveState& L = boss_.lw;
+    if (segment >= kBossParts || L.closeFrom[segment] <= 0.0f) return 0.0f;
+    const double len = L.closeTicks[segment] > 0.0f ? L.closeTicks[segment] : 1.0;
+    const float u = static_cast<float>((t - L.closeTick[segment]) / len);
+    return u >= 1.0f ? 0.0f : L.closeFrom[segment] * (1.0f - smooth(u));
+}
+
 Vec2 World::longwavePoint(double t, float k, float shift, Vec2* tangentOut, float* waveOut) const {
     const BossState& s = boss_;
     const LongwaveState& L = s.lw;
@@ -58,7 +83,8 @@ Vec2 World::longwavePoint(double t, float k, float shift, Vec2* tangentOut, floa
     const double p = L.p0 + L.pRate * (t - L.pTick);
     const double headArc = d.arcOf(p);
     const double pk = d.paramOf(headArc - static_cast<double>(k) * d.spacing);
-    const Vec2 base = longwaveAnchor(t) + d.pathAt(pk);
+    // (a953828: the whip: place k makes the head's dash k x followBeatsPerSegment later)
+    const Vec2 base = longwaveAnchor(t - static_cast<double>(k) * L.dashFollow) + d.pathAt(pk);
     const Vec2 tan = d.tangentAt(pk);
     const double steps = longwaveSteps(t);
     const float lambda = static_cast<float>(d.wavelength);
@@ -66,9 +92,11 @@ Vec2 World::longwavePoint(double t, float k, float shift, Vec2* tangentOut, floa
     const float taper = d.taper ? std::fmin(1.0f, k / static_cast<float>(d.taper)) : 1.0f;
     const float off = d.amplitude * taper * w;
     Vec2 at = base + Vec2{-tan.y, tan.x} * off;
-    if (t < s.fightTick && s.fightTick > s.enterTick) {
-        // The entrance: the head breaks in from the nearest wall and the body follows it onto the path over two bars.
-        const float u = static_cast<float>((t - s.enterTick) / (s.fightTick - s.enterTick));
+    // The entrance: the head breaks in from the nearest wall over two bars and the body follows it onto the path, place k
+    // followBeatsPerSegment x k later (a953828: it unwinds in from the wall instead of sliding in as one piece).
+    const double te = t - static_cast<double>(k) * static_cast<double>(d.phases[2].lungeFollowBeats) * kTicksPerBeat;
+    if (te < s.fightTick && s.fightTick > s.enterTick) {
+        const float u = static_cast<float>((te - s.enterTick) / (s.fightTick - s.enterTick));
         const Vec2 headAt = L.anchor + d.pathAt(L.p0 + L.pRate * (s.enterTick - L.pTick));
         at = at + (L.enterFrom - headAt) * (1.0f - smooth(u));
     }
@@ -154,14 +182,16 @@ void World::placeLongwave(double t) {
     s.body[0] = longwavePoint(t, 0.0f, 0.0f, &tan);
     s.bodyAng[0] = angleOf(tan);
     u32 rank = 0;
+    float lag = 0.0f;
     for (u32 k = 0; k < d.segments; ++k) {
         if (!(s.alive & (1u << k))) continue;
         ++rank;
-        s.body[1 + k] = longwavePoint(t, static_cast<float>(rank), 0.0f, &tan);
+        lag = longwaveLag(k, t);  // (a953828: a closing gap eases its place, the rank counts at once)
+        s.body[1 + k] = longwavePoint(t, static_cast<float>(rank) + lag, 0.0f, &tan);
         s.bodyAng[1 + k] = angleOf(tan);
     }
     // The tail's tip, a little past the last live segment.
-    s.body[kBossBodies - 1] = longwavePoint(t, static_cast<float>(rank) + 0.9f, 0.0f, &tan);
+    s.body[kBossBodies - 1] = longwavePoint(t, static_cast<float>(rank) + 0.9f + lag, 0.0f, &tan);
     s.bodyAng[kBossBodies - 1] = angleOf(tan);
     s.pos = s.body[0];
     s.angle = s.bodyAng[0];
@@ -200,6 +230,15 @@ void World::longwavePartDied(u8 index, Event& ev) {
     ev.x = at.x;
     ev.y = at.y;
     ev.f = s.bodyAng[1 + index];
+    // a953828 (rule 6): the body behind slides up over segmentCloseSteps steps (each segment a rank more to close, on top of
+    // what it still had to close), instead of snapping a segment's spacing in one tick.
+    const float closeTicks = static_cast<float>(species_->longwave.closeSteps * L.stepTicks);
+    for (u32 k = static_cast<u32>(index) + 1; k < species_->longwave.segments && k < kBossParts; ++k) {
+        if (!(s.alive & (1u << k))) continue;
+        L.closeFrom[k] = longwaveLag(k, m1_) + 1.0f;
+        L.closeTick[k] = m1_;
+        L.closeTicks[k] = closeTicks;
+    }
     // Its Shards (each device its own players').
     for (u32 p = 0; p < playerCount_; ++p) {
         if (!players_[p].present || !isLocal(p)) continue;
@@ -229,7 +268,7 @@ void World::longwaveFire(double t, i64 n) {
         ++rank;
         if (imod(static_cast<i64>(rank) - n - 3 * lambda / 4, lambda) != 0) continue;
         Vec2 tan;
-        const Vec2 at = longwavePoint(t, static_cast<float>(rank), 0.0f, &tan);
+        const Vec2 at = longwavePoint(t, static_cast<float>(rank) + longwaveLag(k, t), 0.0f, &tan);
         const float a = angleOf(Vec2{-tan.y, tan.x});
         for (float side : {0.0f, kPi}) {
             for (u32 j = 0; j < per; ++j) {
@@ -275,6 +314,7 @@ void World::updateLongwave(float /*dt*/) {
             L.lungeArmed = false;
             L.lungeFrom = longwaveAnchor(L.lungeTick);
             L.dashTick = L.lungeTick;
+            L.dashFollow = static_cast<double>(P.lungeFollowBeats) * kTicksPerBeat;  // a953828: the whip down the body
             const float mx = std::fmin(kArenaHalfW - prose::kLwWallKeepWu, kArenaHalfW - d.pathHalfW - d.amplitude - d.segRadius - 60.0f);
             const float my = std::fmin(kArenaHalfH - prose::kLwWallKeepWu, kArenaHalfH - d.pathHalfH - d.amplitude - d.segRadius - 60.0f);
             const Vec2 to = L.anchor + L.lungeDir * (P.lungeDashWu > 0.0f ? P.lungeDashWu : 700.0f);

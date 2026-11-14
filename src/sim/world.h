@@ -717,6 +717,10 @@ public:
     // RETRY (GAME_DESIGN 4.3): the run starts again on the first bar line at least half a bar away (so the
     // band, told now, can start its Groove on the same line).
     void requestRestart();
+    // screens.md "Transitions (M6)": home starts the title's run on a given bar line (run ticks; at least the next tick's); Back
+    // during the drop-in's wait takes a pending restart back.
+    void requestRestartAt(double barTick);
+    void cancelRestart() { restartPending_ = false; }
     bool restartPending() const { return restartPending_; }
     double restartTick() const { return restartAt_; }
 
@@ -852,6 +856,9 @@ public:
     // Longwave: the body's place k (0 the head, 1.. the live segments by rank, fractions between) at song time t with the
     // wave `shift` cycles behind (the echoes); its unit tangent and wave value (+1 the crest, -1 a trough).
     Vec2 longwavePoint(double t, float k, float shift, Vec2* tangent = nullptr, float* wave = nullptr) const;
+    Vec2 longwaveAnchor(double t) const;  // the path's centre at t (a953828: a segment asks for it its whip-delay earlier)
+    float longwaveLag(u32 segment, double t) const;  // a953828: the ranks a segment still lags while a gap ahead closes
+    u32 longwaveRankLags(double t, float* lags, u32 cap) const;  // ... by rank (0 the head), for the view's spine; returns the count
     double longwaveSteps(double t) const;                 // the wave's grid steps at song time t
     i32 longwaveCrest(u32 segment, double t) const;       // its place in the wave (0..7) when it is a crest, else -1
     bool longwaveJawOpen(double t) const;
@@ -1178,7 +1185,7 @@ private:
     // Play test 3 (GAME_DESIGN 6.3 row 1, 5): the Orbitals' guard ring (it breaks on a hit instead of a cell) and the Extra
     // Life (the host drops it; it is taken, and spent on the hit that would end the run).
     bool breakRing(u32 p, Vec2 from);
-    void extraLifeDrop(Vec2 at);
+    void extraLifeDrop(Vec2 at, bool fromMini = false);  // (c2f113a: from Track 2 the mini-boss's death drops it)
     void takeExtraLife(u32 p);
     void spendExtraLife(u32 p, Vec2 from);
     // world_upgrades_m5.cpp (M5 part 3): the rest of the Mods, Riffs, Boosts and the Fusions.
@@ -1199,7 +1206,7 @@ private:
     void arcFrom(u32 i, u8 owner, u32 jumps, float dmg, u8 style);
     void pullBodies(Vec2 at, float r, float speed, float dt);
     float shotDamage(u32 p, double stepTick, u8& flags, u8& pierceAdd) const;
-    void tagShot(u32 p, u8 extraMods, i32 laneOff, u32 lanes);
+    void tagShot(u32 p, u8 extraMods, i32 off2, u32 lanes);  // off2: the lane's place in half-lanes from the aim line
     void updateThinning();
     Vec2 waveAt(u32 i, float age) const;
     // The multipliers' extras may fire (GAME_DESIGN 6.6: they wait while the player is over the soft cap, as before).
@@ -1305,7 +1312,6 @@ private:
     void longwavePartDied(u8 index, Event& ev);
     void longwaveFire(double t, i64 step);
     void updateLongwave(float dt);
-    Vec2 longwaveAnchor(double t) const;
     float longwaveScale(u8 part, u8 index, double t) const;
     // world_choir.cpp
     void enterChoir(Vec2 centre);

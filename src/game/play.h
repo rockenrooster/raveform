@@ -328,6 +328,7 @@ private:
     bool scriptInputM6(sim::StickInput& in);
     bool scriptEventsM6();
     u16 m6Pic_ = 0xFFFF;
+    u32 placedAt_ = 0;  // (the Longwave strips: when the ship was last put beside the body)
 
     PlayOptions opt_;
     const Look* look_ = nullptr;
@@ -469,6 +470,55 @@ private:
     // Play test 1: the Trio hold's notes (the orb being held, the notes played for it).
     i8 holdOrbSeen_ = -1;
     u8 holdStage_ = 0;
+
+    // M6 (screens.md "Transitions", game/play_transitions.cpp): the drop-in (PLAY, RETRY, a co-op START or RETRY: the screen
+    // leaves over the wait to the run's first bar line and the run arrives on it) and home (game over to the title).
+    enum class Trans : u8 { None, Wait, Arrive, Home };
+    Trans trans_ = Trans::None;
+    Screen transFrom_ = Screen::Title;  // the screen a drop-in leaves (Title, GameOver, CoopLobby) or home leaves (GameOver, Paused)
+    double transTap_ = 0.0;   // run ticks: the tap
+    double transLine_ = 0.0;  // run ticks: the drop-in's downbeat; home: the title's bar line
+    double transBeat_ = 0.0;  // run ticks: the beat a game-over screen leaves on (home; RETRY's wait)
+    bool transFilter_ = false;  // a transition closed the band's low-pass (it opens it again)
+    Palette homeFrom_;          // home: the palette the run ended in, cross-fading to Track 1's over the title's bar
+    float titleShipFrom_ = 0.0f;  // the title ship's heading as PLAY was tapped (it glides into the run)
+    // The title's pieces as a transition has them (screens.cpp draws them): levels 0..1; how far the waveform has drawn
+    // out from the centre and how flat it lies; how far the logo is written and streaked out; whether PLAY and the side
+    // controls take taps.
+    struct TitleLook {
+        float wave = 1.0f, waveDrawn = 1.0f, waveFlat = 0.0f;
+        float logo = 1.0f, logoWrite = 1.0f, logoOut = 0.0f;
+        float tag = 1.0f, play = 1.0f, side = 1.0f, best = 1.0f;
+        bool playTaps = true, sideTaps = true;
+    };
+    TitleLook titleLook() const;
+    TitleLook waitFrom_, backFrom_;  // the title as a drop-in's wait began; as Back cancelled it
+    double backAt_ = -1.0;           // run ticks: Back cancelled the wait here (everything fades back in over a beat)
+    float waitRun_ = 1.0f, backRun_ = 1.0f;  // the run's light as the wait began; as it was cancelled
+    double homeFadeLine_ = -1.0;     // run ticks: home's palette cross-fade begins on this bar line (-1: none)
+    float homeFromExposure_ = 0.45f; // the light of the run behind the screen home left (game over 0.45, pause 0.2)
+    bool transGodWas_ = false;       // the rules' god mode before a transition held the ship out of harm
+    bool transGodHeld_ = false;
+    void homeArrives(double line);
+    void transGod(bool hold);
+    double transNow() const;    // run ticks now (the view's position; co-op: the heard song)
+    float transBeats(double from) const { return static_cast<float>((transNow() - from) / sim::kTicksPerBeat); }
+    void dropInTap(Screen from);
+    void dropInCancel();
+    void dropInLands(double line);
+    void homeTap();
+    void transitionFrame();
+    void transitionAudio();
+    void bandFilter(float hz, float seconds);  // the music bus's low-pass (0 Hz: open), through the pause's own filter
+    // What the screens and the view draw this frame (the levels as the transition stands).
+    float transRunLight() const;
+    float transExposure(float screenLevel) const;
+    bool transInputLocked() const;
+    void drawArrive(Ui& ui);  // the drop-in's downbeat beat: the logo out, the ring, PLAY into the halo, the ship to the centre
+    void drawTitleLogo(Ui& ui, float level, float write, float out, float tag);  // the logo, its flares, the tagline and beat dots
+    void drawTitleWave(Ui& ui, float level, float flat, float drawn);
+    void drawTitleShip(Ui& ui, Vec2 c, float angle, float scale, float level, bool ring);
+    float gameOverOut() const;  // how far the game-over screen has left (0..1: home, RETRY's wait)
 };
 
 }  // namespace rf

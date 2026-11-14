@@ -220,6 +220,11 @@ void World::setSetList(u32 songs) {
     director_.songs = setList_;
 }
 
+void World::requestRestartAt(double barTick) {
+    requestRestart();
+    if (barTick > m1_) restartAt_ = barTick;
+}
+
 void World::requestRestart() {
     if (restartPending_) return;
     restartPending_ = true;
@@ -346,10 +351,10 @@ void World::fireShot(u32 p, float advanceS, double stepTick) {
     const float damage = shotDamage(p, stepTick, flags, pierceAdd);
     const bool prism = pl.boost(kPrism);
     if (prism) flags |= kShotPrism;
-    // Split: +2 lanes a stack in a tight fan (3, 5, 7); Prism: every lane refracts into five. While the player's shots
-    // are thinned (GAME_DESIGN 6.6) the lanes beyond the middle three fly half as far; above kShotsMiddleOnly the middle
-    // lane alone fires (tuning.h; the pool stays inside its 1,024 a player with Split 7,
-    // Prism, Double-Time and Hyper at 174 BPM, in the Build's slowed last bar too).
+    // Split: a lane a stack in a tight fan (2, 3, 4, 5; eb10554); Prism: every lane refracts into five. While the player's
+    // shots are thinned (GAME_DESIGN 6.6) the lanes beyond the middle three fly half as far; above kShotsMiddleOnly the
+    // middle lane alone fires (an even fan: its middle pair; volley()) (tuning.h; the pool stays inside its 1,024 a player
+    // with Split at its cap, Prism, Double-Time 2 and Hyper at 174 BPM, in the Build's slowed last bar too).
     const u32 lanes = splitLanes(l.mods[kSplit]);
     const u32 live = shotsLive_[p < kMaxPlayers ? p : 0];
     // M5 (GAME_DESIGN 6.6, thinning never flickers): while thinned the lanes beyond the middle three fly half as far.

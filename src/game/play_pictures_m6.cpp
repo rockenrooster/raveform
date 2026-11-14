@@ -16,7 +16,8 @@ namespace rf {
 using namespace sim;
 
 namespace {
-enum class M6 : u8 { Hint, EndedBy, SetCard, SetOver, TitleStar, UiScale, MiniStays, Flash, Credits };
+enum class M6 : u8 { Hint, EndedBy, SetCard, SetOver, TitleStar, UiScale, MiniStays, Flash, Credits, LwEntrance, LwLunge, LwClose, DropTitle,
+                     DropRetry, Home };
 struct M6Pic {
     const char* name;   // m6_<name>
     M6 kind;
@@ -35,6 +36,14 @@ const M6Pic kM6Pics[] = {
     {"flash_longwave", M6::Flash, 0, "longwave"}, {"flash_choir", M6::Flash, 0, "choir"}, {"flash_alpha", M6::Flash, 0, "alpha_hound"},
     // M7 (screens.md "Credits (M7)"): the credits screen at its top, and scrolled into the licences.
     {"credits", M6::Credits, 0, nullptr},       {"credits_licences", M6::Credits, 1, nullptr},
+    // a953828 (Longwave never jumps), strips of eight: the entrance unwinding in from the wall (a frame each half second over
+    // its two bars), a Whitecap lunge whipping down the body (every quarter second from the dash), a dead segment's gap closing
+    // (every second frame from the death).
+    {"lw_entrance", M6::LwEntrance, 0, nullptr}, {"lw_lunge", M6::LwLunge, 2, "longwave"}, {"lw_close", M6::LwClose, 0, "longwave"},
+    // b12310b (screens.md "Transitions"), strips of eight a beat apart (a quarter beat after each): the drop-in from the title
+    // (PLAY on a bar's second beat: three beats of wait, the downbeat, the run's first bar), RETRY's drop-in from game over, and
+    // home (HOME on a bar's second beat: the game over leaving, the title building over the next bar, its run fading up).
+    {"drop_title", M6::DropTitle, 0, nullptr}, {"drop_retry", M6::DropRetry, 0, nullptr}, {"home", M6::Home, 0, nullptr},
 };
 constexpr u32 kM6Count = sizeof(kM6Pics) / sizeof(kM6Pics[0]);
 constexpr u32 kM6At = 300;  // after the run's Track card (2.25 bars)
@@ -73,9 +82,18 @@ bool Play::scriptSetupM6() {
         }
         case M6::EndedBy:
         case M6::SetOver:
+        case M6::DropRetry:
+        case M6::Home:
             flow_ = true;
             screen_ = Screen::Run;
             w.spawner().mode = Spawner::Mode::Slice;
+            if (pic.kind == M6::DropRetry || pic.kind == M6::Home) stripStride_ = static_cast<u32>(std::lround(3600.0 / std::fmax(w.tempoAt(0.0), 30.0f)));
+            break;
+        case M6::DropTitle:
+            flow_ = true;
+            screen_ = Screen::Title;
+            w.spawner().mode = Spawner::Mode::Slice;
+            stripStride_ = static_cast<u32>(std::lround(3600.0 / std::fmax(w.tempoAt(0.0), 30.0f)));
             break;
         case M6::SetCard:
             w.spawner().mode = Spawner::Mode::Slice;
@@ -106,6 +124,16 @@ bool Play::scriptSetupM6() {
             screen_ = Screen::Credits;
             settingsBack_ = Screen::Title;
             w.spawner().mode = Spawner::Mode::Slice;
+            break;
+        case M6::LwEntrance:
+            w.spawner().mode = Spawner::Mode::Off;
+            stripStride_ = 30;
+            break;
+        case M6::LwLunge:
+        case M6::LwClose:
+            if (!setupFight(pic.fight, pic.arg)) return true;
+            opt_.fightHold = true;
+            stripStride_ = pic.kind == M6::LwLunge ? 15u : 2u;
             break;
         case M6::MiniStays:
         case M6::Flash:
@@ -147,7 +175,7 @@ bool Play::scriptInputM6(StickInput& in) {
             }
             if (t == 200 && pic.arg == 4) {
                 const u8 forced[3] = {kSplit, kMagnet, kOrbitals};
-                w.openTrioNow(0, music1_ + 4.0 * kTicksPerBar, forced);
+                w.openTrioNow(0, music1_ + 4.0 * kTicksPerBar, forced, kTrioLevel);  // (a667116: the first level-up Trio)
             }
             if (t == 200 && pic.arg == 8) w.dropBoost(ship + Vec2{260.0f, -80.0f}, kPrism);
             if (t == 200 && pic.arg == 9) w.dropExtraLifeNow(ship + Vec2{260.0f, -80.0f}, 0);
@@ -161,6 +189,38 @@ bool Play::scriptInputM6(StickInput& in) {
             }
             if (t == 202) w.rules().godMode = true;
             if (captureFrom_ < 0 && t == kM6At + (pic.arg == 7 ? 60u : 0u)) captureFrom_ = now;
+            return true;
+        }
+        case M6::DropTitle:
+        case M6::DropRetry:
+        case M6::Home: {
+            // The tap on a bar's second beat (a quarter beat after it the strip's first frame, then a frame a beat).
+            const double inBar = std::fmod(music1_, kTicksPerBar);
+            const bool tapNow = captureFrom_ < 0 && inBar >= kTicksPerBeat && inBar < kTicksPerBeat + 4.0;
+            if (pic.kind == M6::DropTitle) {
+                in = trans_ == Trans::None ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+                if (t >= kM6At && tapNow) {
+                    startRun();
+                    captureFrom_ = now + static_cast<i64>(std::lround(1.25 * stripStride_));
+                }
+                return true;
+            }
+            in = screen_ == Screen::Run && trans_ == Trans::None ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+            if (t == kM6At) {
+                // The last cell taken by a body, so the run ends here.
+                PlayerState& pl = w.playerMut(0);
+                pl.cells = 0;
+                pl.novas = 0;
+                pl.extraLives = 0;
+                pl.invulS = pl.novaInvulS = 0.0f;
+                w.rules().godMode = false;
+                w.spawnEnemy(SpeciesTable::index(Family::Hound, 2, kVariantA), pl.pos, 0.0f, 0.0);
+            }
+            if (screen_ == Screen::GameOver && trans_ == Trans::None && overS_ > 2.0f && tapNow) {
+                if (pic.kind == M6::DropRetry) dropInTap(Screen::GameOver);
+                else toTitle();
+                captureFrom_ = now + static_cast<i64>(std::lround(1.25 * stripStride_));
+            }
             return true;
         }
         case M6::EndedBy:
@@ -207,6 +267,66 @@ bool Play::scriptInputM6(StickInput& in) {
             in = bot_.think(w, 0, controller_, clock_.heardNow());
             if (!ffRunning_ && captureFrom_ < 0 && t == 24) captureFrom_ = now;
             return true;
+        case M6::LwEntrance: {
+            in = StickInput{};
+            in.assist = false;
+            if (t == 200) {
+                // Longwave on the next bar line round the ship; the ship then stands between the wall it breaks in from and
+                // the head's place on the path, so the whole entrance is in the frame.
+                w.spawnBossNow((std::floor(music1_ / kTicksPerBar) + 1.0) * kTicksPerBar, ship, BossKind::Longwave);
+                const BossState& b = w.boss();
+                const Vec2 headAt = b.lw.anchor + w.species().longwave.pathAt(b.lw.p0);
+                controller_.reset((b.lw.enterFrom + headAt) * 0.5f);
+            }
+            const BossState& b = w.boss();
+            if (captureFrom_ < 0 && b.active && b.kind == BossKind::Longwave && music1_ >= b.enterTick) captureFrom_ = now;
+            return true;
+        }
+        case M6::LwLunge:
+        case M6::LwClose: {
+            in = bot_.think(w, 0, controller_, clock_.heardNow());
+            view_.setMute(kMuteEnemy | kMuteBullet | kMuteSparks | kMuteShard | kMuteWarp | kMuteFx | kMutePriority);
+            if (ffRunning_) return true;
+            // (the ship stands still a little off the body, firing nothing: the body moves only as the boss moves it)
+            in = StickInput{};
+            in.assist = false;
+            w.closeTrioNow(0);
+            w.playerMut(0).levelsBanked = 0;
+            const BossState& b = w.boss();
+            if (captureFrom_ >= 0 || !b.active || b.dying || b.kind != BossKind::Longwave) return true;
+            // (the ship is put beside the body: once for the closing gap; for the lunge every second until the line shows, so
+            // the head lunges toward a ship that sees it)
+            const bool place = pic.kind == M6::LwClose ? !(scriptFlags_ & 0x40u) : (!b.lw.lungeArmed && t % 60u == 0u);
+            if (place) {
+                const Vec2 mid = b.alive ? b.body[1 + (pic.kind == M6::LwClose ? 3u : 0u)] : b.body[0];
+                controller_.reset(mid + Vec2{0.0f, 260.0f});
+                scriptFlags_ |= 0x40u;
+                placedAt_ = t;
+            }
+            if (!(scriptFlags_ & 0x40u) || t < placedAt_ + 60u) return true;
+            if (pic.kind == M6::LwLunge) {
+                if (b.lw.dashTick >= 0.0 && music1_ >= b.lw.dashTick && music1_ < b.lw.dashTick + 8.0) captureFrom_ = now;
+            } else if (t == placedAt_ + 60u) {
+                // The segment nearest the ship (not the last) dies; the body behind closes the gap over a step.
+                u32 best = 0xFFu, last = 0;
+                float bd = 1e30f;
+                for (u32 k = 0; k < w.species().longwave.segments; ++k) {
+                    if (!(b.alive & (1u << k))) continue;
+                    last = k;
+                    const float dd = lengthSq(b.body[1 + k] - ship);
+                    if (dd < bd) {
+                        bd = dd;
+                        best = k;
+                    }
+                }
+                if (best == last && best > 0) --best;
+                if (best != 0xFFu) {
+                    w.killBossNextTick(1u << best, false);
+                    captureFrom_ = now + 1;
+                }
+            }
+            return true;
+        }
         case M6::MiniStays:
         case M6::Flash: {
             in = bot_.think(w, 0, controller_, clock_.heardNow());
