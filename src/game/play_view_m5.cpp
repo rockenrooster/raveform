@@ -717,7 +717,8 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
                 }
             if (!s.dying && m.cageTick >= 0.0 && t >= m.cageTick && t < m.cageTick + tuning::kWvBurstBeats * kTicksPerBeat && lengthSq(m.prevCage) > 0.0f) {
                 // The burst is a blast, drawn as an area (the lead's ruling, minibosses.md): two danger edge lines 40 wu apart and
-                // a fill of at most 0.12 between them for its half beat, never a filled bar.
+                // a fill of at most 0.12 between them for its half beat, never a filled bar. Its edges are lethal lines as every one
+                // is drawn (look.md §5; the owner, 2026-11-14, on Weaver Prime: "red lines that were too thick and have no glow").
                 const float lv = 1.0f - clamp01(static_cast<float>((t - m.cageTick) / (tuning::kWvBurstBeats * kTicksPerBeat)));
                 const u32 seg = 40;
                 for (u32 lap = 2; lap < 4; ++lap)
@@ -729,12 +730,7 @@ void PlayView::drawMini(FrameDraw& d, const ViewInput& in) {
                             if (!visible(c + dirv(a0) * r, 60.0f)) continue;
                             for (float edge : {-0.5f, 0.5f}) {
                                 const float re = r + edge * prose::kWvBurstWu;
-                                const Vec2 p0 = c + dirv(a0) * re, p1 = c + dirv(a1) * re;
-                                if (shown(kMuteBullet)) d.scene.line(toScene(p0), toScene(p1), 0.6f * refPx_, danger * (1.6f * lv), danger * (1.6f * lv), 0);
-                                if (shown(kMutePriority)) {
-                                    d.threatRims.line(toScreen(p0), toScreen(p1), 1.2f * refPx_ + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
-                                    d.threatCores.line(toScreen(p0), toScreen(p1), 1.2f * refPx_, danger * lv, danger * lv, 0);
-                                }
+                                lethalBeam(d, c + dirv(a0) * re, c + dirv(a1) * re, 4.0f, lv);
                             }
                             // The fill: a quad between the edges at most 0.12.
                             const Vec2 q0 = c + dirv(a0) * (r - 0.5f * prose::kWvBurstWu), q1 = c + dirv(a1) * (r - 0.5f * prose::kWvBurstWu);

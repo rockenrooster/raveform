@@ -33,7 +33,7 @@ struct RendererDesc {
     float targetHz = 0.0f;
     u32 maxCapsules = 65536;  // per frame, dynamic
     u32 maxSparkles = 8192;
-    u32 maxPools = 1024;
+    u32 maxPools = 4096;  // (1,024 until every enemy bullet got a pooled glow, 2026-11-14)
     u32 maxTriVertices = 6144;
     u32 maxThreat = 16384;    // rims and cores each
     u32 maxHud = 16384;       // (M7: the credits screen's licence text, a screenful at cap 10)

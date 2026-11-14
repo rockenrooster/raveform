@@ -4,6 +4,19 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (evening), a substantial glow on every red projectile; Weaver Prime's lines
+
+- "Do a pass on any red enemy projectiles (lines, dots, anything) and make sure they have a substantial glow": enemy bullets had
+  their glow (a sparkle) only from High up, so on Low and Medium, the phones' tiers, none at all. Now every bullet has a pooled
+  glow on every tier (26 px, 0.32, never under 0.6 of it in a crowd; quarter resolution), the sparkle on top from High up;
+  `RendererDesc::maxPools` 1,024 -> 4,096 for them. A Skitter's mine: a pooled glow at its core (blinking) and over its reach.
+- Weaver Prime ("red lines that were too thick and have no glow"): a lethal line's core is never over 4 px (`kLethalMaxPx`),
+  so its 12 wu laps are thin lasers whose glow shows their width; the cage's burst edges are lethal lines with their glow (1.2 px
+  lines with none before).
+- The Moto (shared; Track 10's first Drop, Low, 30 s, `--drop 10.1 --nohits`): 0 missed frames (panel), GPU 12.19 / 12.95 / 14.24
+  ms (p50/p95/max), the pools pass 0.09 ms; the CPU-side present interval p95 17.7 ms (its contract line fails there, as Swappy
+  paces; the panel's passes). Pictures `captures\pt4\glow_arp_low`, `weaver_prime_low`.
+
 ## 2026-11-14 (evening), Kaleidos Reprise: 1.5x bigger, faster, tougher, and epic
 
 - "The track 10 Boss needs to be more epic visual wise and audio wise also make it 1.5x bigger also 1.5x faster ... and 1.5x more

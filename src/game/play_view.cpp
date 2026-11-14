@@ -37,6 +37,9 @@ constexpr float kBossLeanTau = 0.5f;
 constexpr float kWallIntensity = 1.6f, kWallWidth = 2.6f, kWallSnare = 0.6f, kWallBass = 0.3f;
 constexpr float kHitShakeRefPx = 4.0f, kNovaShakeRefPx = 3.0f, kDeathShakeRefPx = 6.0f;
 constexpr float kMuzzleFlashS = 0.06f, kMuzzleFlashRefPx = 10.0f, kMuzzleFlash = 0.9f;
+// look.md §3 (the owner, 2026-11-14: "a substantial glow" on every red enemy projectile): an enemy bullet's pooled glow on every
+// tier, 26 ref px, 0.32, never under 0.6 of that in a crowd (the swarm gain's floor for it).
+constexpr float kBulletGlowPx = 26.0f, kBulletGlow = 0.32f, kBulletGlowFloor = 0.6f;
 constexpr float kNovaDim = 0.30f;         // exposure down by this much at the end of the inhale
 constexpr float kNovaInhaleRingWu = 600.0f, kNovaFrontWidthRefPx = 6.0f, kNovaFront = 3.0f;
 constexpr u32 kNovaInhaleSparks = 140, kNovaFrontSparks = 400;
@@ -1284,6 +1287,10 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             if (shown(kMuteBullet)) {
                 glyph(d.glyphs, gBullet_, false, p, 0.0f, 0.0f, bulletScale, look_->lines.enemyBullet.intensity * swarm,
                       0.5f * look_->lines.enemyBullet.width, kGlyphFlat, danger, danger);
+                // look.md §3 (the owner, 2026-11-14: "do a pass on any red enemy projectiles ... make sure they have a substantial
+                // glow"): every bullet glows on every tier: a pool (quarter resolution, cheap) never under 0.6 of its light in a
+                // crowd; the sharp sparkle on top from High up, as before. Until then Low and Medium (the phones) had no glow at all.
+                d.pools.glow(toScene(p), kBulletGlowPx * refPx_, danger * (kBulletGlow * std::fmax(swarm, kBulletGlowFloor)));
                 if (tier_.bulletSparkles)
                     d.sparkles.glow(toScene(p), look_->soft.enemyBullet.radius[0] * refPx_, danger * (look_->soft.enemyBullet.intensity[0] * swarm));
             }

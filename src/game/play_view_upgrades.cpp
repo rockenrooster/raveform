@@ -31,6 +31,9 @@ constexpr float kForkArmWu = 70.0f, kForkShowS = 0.25f;
 // compensate"): a thin core, half the kill width and never under 2 px; a strong glow, sigma 0.6 of the kill width and at least
 // 8 wu, 0.55 on the axis.
 constexpr float kLethalMinPx = 2.0f, kLethalCoreShare = 0.5f, kLethalGlowMinWu = 8.0f, kLethalGlowShare = 0.6f;
+// ... and never over 4 px (the owner, on Weaver Prime: "red lines that were too thick and have no glow"): a wide kill shows in its
+// glow, not its core.
+constexpr float kLethalMaxPx = 4.0f;
 constexpr float kLethalGlow = 0.55f, kLethalGlowReduced = 0.4f;
 constexpr float kBeatPeakS = 2.0f / 60.0f, kBeatFallS = 0.110f;  // look.md 5 (a beam on a beat), 7
 // A held beam's core moves between 1.0 and 1.2 on the 1/32 grid (look.md v2.5 says 1.0-1.4; the lead's checkpoint after part 4:
@@ -90,7 +93,7 @@ void PlayView::lethalBeam(FrameDraw& d, Vec2 a, Vec2 b, float killWu, float leve
         }
     }
     if (!shown(kMutePriority)) return;
-    const float hw = std::fmax(0.5f * kLethalCoreShare * killWu * pxPerWu_, 0.5f * kLethalMinPx * refPx_);
+    const float hw = std::fmin(std::fmax(0.5f * kLethalCoreShare * killWu * pxPerWu_, 0.5f * kLethalMinPx * refPx_), 0.5f * kLethalMaxPx * refPx_);
     d.threatRims.line(toScreen(a), toScreen(b), hw + look_->threat.telegraphRim * refPx_, Vec3{}, Vec3{}, 0);
     d.threatCores.line(toScreen(a), toScreen(b), hw, danger * level, danger * level, 0);
     d.threatCores.line(toScreen(a), toScreen(b), std::fmin(refPx_, 0.5f * hw), pink * level, pink * level, 0);
@@ -444,6 +447,9 @@ void PlayView::drawHazards(FrameDraw& d, const ViewInput& in) {
         const float blink = 0.6f + 0.4f * std::sin(t * 9.0f + static_cast<float>(k));
         glyph(d.glyphs, gRing64_, false, m.at, 0.0f, 0.0f, m.r, 0.9f, 0.4f, kGlyphRingW, danger, danger);
         glyph(d.glyphs, gRing32_, false, m.at, 0.0f, 0.0f, 6.0f, 1.8f * blink, 0.7f, kGlyphFlat, danger, W1);
+        // (the owner, 2026-11-14: a substantial glow on every red thing that hurts: the mine's core and its reach)
+        d.pools.glow(toScene(m.at), 24.0f * refPx_, danger * (0.5f * blink));
+        d.pools.glow(toScene(m.at), m.r * 1.1f * pxPerWu_, danger * 0.08f);
     }
     for (u32 k = 0; k < World::kSpots; ++k) {
         const World::Spot& dc = w.decoys()[k];

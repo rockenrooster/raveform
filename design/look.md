@@ -182,6 +182,8 @@ the bloom. Two kinds:
 | Shard | sparkle | 9 px | pickup | 0.5 |
 | Shot head | sparkle | 9 px | white | 0.7 |
 | Enemy bullet | sparkle | 13 px | danger | 0.35 |
+| Enemy bullet's glow (every tier; the owner, 2026-11-14: "make sure they have a substantial glow": Low and Medium had none) | pool | 26 px | danger | 0.32, never under 0.6 of it in a crowd |
+| A Skitter's mine | pool | 24 px at the core, its reach at 0.08 | danger | 0.5, blinking with its core |
 | Orbital, Sentinel drone | sparkle | 14 px | player | 0.7 |
 | Kill flash, small kill | sparkle | 14 px | white | 1.4 fading to nothing in 90 ms |
 | Kill flash, medium and large kill | pool | 33 wu (large: × 1.5) | white | 0.55 fading to nothing in 150 ms, as the square of the time left |
@@ -404,7 +406,9 @@ a Ram's wake, Weaver Prime's laps, Polyrhythm's walls, the edges of a lethal ban
 its Nulls), and Fata Morgana's sand (which marks the storm and hurts nobody itself):
 
 - on the priority layer, never dimmed by the crowd, a **thin core: half its kill width, never under 2
-  px**, with the dark rim and a white-pink line down its axis;
+  px and never over 4 px** (the owner on Weaver Prime: "red lines that were too thick and have no
+  glow": a wide kill shows in its glow, not its core), with the dark rim and a white-pink line down its
+  axis;
 - round it a **strong danger glow** that hurts nobody and shows how far the line kills: sigma 0.6 of its
   kill width but **at least 8 wu**, **0.55** on the axis (reduce flashing 0.4). (The owner, the same
   evening, on the first pass: "can you make them thinner and make the glow more to compensate?". The
