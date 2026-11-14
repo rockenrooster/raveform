@@ -2,7 +2,30 @@
 
 The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, the resend back-off, motion corrections for
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
-M5 part 4; protocol `0x52460505` holds both).
+M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
+
+## M5 — done (2026-11-14): the end of the milestone
+
+- **On the phone** (the Moto, installed 00:21, not launched): commit 2520297 (play test 3 items 1-8 61a7f09; the m4-net and
+  m5-audio merges; b1d4a2f; the balance pass). Protocol 0x5246050A.
+- `scripts\test.ps1`: all passed on 2520297 (audio 2,716 checks, sim 5,875, determinism, net 131,368, both soaks).
+- Pictures of what changed (`captures\playtest3\`, Debug, 0 validation messages): the guard ring broken and relighting (and
+  three times larger), the Extra Life's orb with one held in the HUD and its use, a Vault's name, a hit on Kaleidos's weak
+  point (strip), Split's five lanes, Track 1's phrase bar.
+- **The Moto, three runs of 60 s** (`bench_play --tier low --nohits`, shared phone; the panel ran at 60 Hz in all three, voted
+  60 by the system: someone's setting or the phone's): Track 10's first Drop (`--drop 10.1`, the densest crowd: 187 enemies in
+  view on average, 648 at most) 0 missed of 3,594, main thread p99 4.9 ms, GPU P95 14.3 ms; Track 10's last Drop (`--drop 10.3`,
+  Kaleidos Reprise) 0 missed, main thread p99 4.8 ms, GPU P95 14.5 ms; the upgrades' worst case there (`--drop 10.1 --loadout
+  max`: 20,000 sparks a frame on average) 0 missed, main thread p99 6.7 ms, GPU P95 13.8 ms. Audio 0 underruns, heap 0 in all.
+  The panel's grade PASS in each; the present call's own interval P95 17.7 ms (the CPU-side line, Swappy's pacing at 60 Hz).
+- **What M5 leaves unbuilt**, in the order a player would notice: a boss hit's white flash is an outline of the part's hit
+  circles, not a copy of its hull; the Downbeat Cannon's crowd figure (x 3, its quoted shape); the careful bot's Choir and
+  Polyrhythm shorter than half their pages (they die before the pace grows: the ruling); the careless bot never passes Fata
+  Morgana; Phasing's every other hull segment hidden; Swift's x 1.3 turn; Wyrm heads and Tether pairs as elites; Swift on the
+  mini-bosses but the Tether and the Well; the "family met" condition for Tracks 9 and 10's mini-bosses; Fata Morgana's lattice
+  whipped along the wind and tinted in the oasis; Riffs other than shots and the Nova on a Vault; Feedback's and the Reprise's
+  echoes of Riffs that fire nothing; the mini-bosses warp out of 5-30% of the novice's first meetings (the Drop is 8 bars: a
+  win takes 10-18 s, a loss is a fight it did not engage).
 
 ## Play test 3 (the lead's design commit a008b71; GAME_DESIGN 2, 4, 5, 6.2-6.4, 7.6; arena.md, screens.md) — 2026-11-13
 
@@ -149,7 +172,7 @@ M5 part 4; protocol `0x52460505` holds both).
 - "A white copy of its hull": drawn as a white outline of the part's hit circles (the fights draw their hulls each in its own
   code; a hull copy for every part of 22 fights is more than this batch).
 
-## M5 part 7 "The ten-Track whole" — in progress (2026-11-13)
+## M5 part 7 "The ten-Track whole" — 2026-11-13 (7e: the balance pass, in "Play test 3" above)
 
 ### The armour numbers from the data (7667dd7)
 
