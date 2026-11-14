@@ -2120,6 +2120,70 @@ void testFightSounds() {
     }
 }
 
+// M5 audio (GAME_DESIGN 6.6, play test 3): what kills set off is one family on a 1/32 step. A kill on each step of two beats:
+// each further step of a beat at 0.7 of the one before, down to 0.3, again from 1 on the next beat; every size at once (and
+// Shatter's, Freeze Frame's, Arc's and Supernova's) together no louder than one large kill.
+void testKillFamily() {
+    auto* s = new Session(100000);
+    s->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), 0, 0));  // Track 1, 120 BPM: a 1/32 step is 3000 frames
+    s->run(3000 * 3);
+    for (u32 k = 0; k < 16; ++k) {
+        s->post(cmd(CmdType::Kill, 0, 1));
+        s->run(3000, 200);
+    }
+    double tick[32] = {};
+    float val[32] = {};
+    u32 n = 0;
+    for (u32 i = 0; i < s->count && n < 32; ++i)
+        if (s->log[i].kind == BeatKind::Sfx && s->log[i].a == static_cast<u8>(Sfx::KillSmall)) {
+            tick[n] = s->log[i].tick;
+            val[n++] = s->log[i].value;
+        }
+    u32 wrong = 0;
+    float first = 0.0f, want = 1.0f;
+    i64 beat = -1;
+    for (u32 i = 0; i < n; ++i) {
+        const i64 b = static_cast<i64>(tick[i] / 96.0);
+        if (b != beat) {
+            beat = b;
+            first = val[i];
+            want = 1.0f;
+        } else {
+            want = std::fmax(0.3f, want * 0.7f);
+        }
+        wrong += std::fabs(val[i] - first * want) > 1e-5f * first;
+    }
+    CHECK_MSG(n == 16 && wrong == 0, "a chain: %u kills heard, %u off the 0.7 a step rule", n, wrong);
+    // Everything at once on a fresh beat.
+    s->run(3000 * 8);
+    const u32 from = s->count;
+    s->post(cmd(CmdType::Kill, 0, 8));
+    s->post(cmd(CmdType::Kill, 1, 8));
+    s->post(cmd(CmdType::Kill, 2, 8));
+    for (Cue c : {Cue::ShatterBurst, Cue::FreezeShatter, Cue::ArcChain, Cue::SupernovaImpact}) {
+        Command k = cmd(CmdType::Cue, static_cast<u8>(c), 0, 6, 1.0f);
+        k.when = Timing::Next32;
+        s->post(k);
+    }
+    s->run(3000, 200);
+    double sum = 0.0;
+    u32 sounds = 0;
+    for (u32 i = from; i < s->count; ++i) {
+        const BeatEvent& e = s->log[i];
+        if (e.kind != BeatKind::Sfx) continue;
+        const bool kill = e.a == static_cast<u8>(Sfx::KillSmall) || e.a == static_cast<u8>(Sfx::KillMedium) || e.a == static_cast<u8>(Sfx::KillLarge);
+        const bool recipe = e.a == 64 + static_cast<u8>(Recipe::Glass) || e.a == 64 + static_cast<u8>(Recipe::Zap);
+        if (kill || recipe) {
+            sum += e.value;
+            ++sounds;
+        }
+    }
+    CHECK_MSG(sounds >= 6 && sum <= sfxLevel(Sfx::KillLarge) * 1.0001, "every size at once: %u sounds, %.4f together (one large kill %.4f)", sounds, sum,
+              sfxLevel(Sfx::KillLarge));
+    CHECK(s->allocs == 0);
+    delete s;
+}
+
 // All ten palettes load, one for each Track of the set list (design/palettes.json "track").
 void testPalettes() {
     auto* p = new Palettes;
@@ -2237,6 +2301,7 @@ int main() {
         {"the upgrades' worst case: bursts, allocations, steals (M5)", testUpgradesWorstCase},
         {"notes against the chord, the pad's glide, the eight new recipes (M5)", testChordNotesAndNewRecipes},
         {"the fights' sounds: the cut, the high-pass, the pad's tone, a fight's lead, aggregation, the gate, the stab (M5 audio)", testFightSounds},
+        {"the kill family: one large kill at most a step, a chain at 0.7 a step (M5 audio, play test 3)", testKillFamily},
     };
     for (const Test& t : tests) {
         g_test = t.name;

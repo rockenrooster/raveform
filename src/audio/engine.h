@@ -157,7 +157,7 @@ enum class CmdType : u8 {
 // with its envelope reversed (a swell cut off); a note given (c).
 enum class LeadEchoMode : u8 { Recorded, Mirror, Reverse, Note };
 constexpr u8 kFightLeadPlayer = 6;   // the lead voices a fight plays (its own cap: kFightLeadVoices); 7 is Kaleidos's bells
-constexpr u32 kFightLeadVoices = 4;
+constexpr u32 kFightLeadVoices = 3;
 
 struct Command {
     CmdType type = CmdType::Reset;
@@ -259,6 +259,13 @@ public:
         stemFn_ = fn;
         stemUser_ = user;
     }
+    // M5 audio, offline only (the output stage's check): each block, the stage's input (music and effects summed) and its
+    // output, frame for frame (the output kLimDelay frames behind).
+    using StageTapFn = void (*)(void* user, const float* inL, const float* inR, const float* outL, const float* outR, u32 n);
+    void setStageTap(StageTapFn fn, void* user) {
+        stageFn_ = fn;
+        stageUser_ = user;
+    }
 
     // Diagnostics for tests: the engine's own view (audio thread or a stopped engine only).
     const TempoMap& tempo() const { return tempo_; }
@@ -305,6 +312,25 @@ private:
     float cueValue_[kMaxPlayers][kCueCount] = {}, cuePan_[kMaxPlayers][kCueCount] = {};
     u32 arcStep_ = 0, stormStep_ = 0;
     i64 bedFramesLeft_ = 0;  // recipes.low_pass_bed: frames until the bus opens again
+    // M5 audio (GAME_DESIGN 6.6, play test 3: "too loud (multiple enemy pops at the same time)"): everything a kill sets off is
+    // one family on a 1/32 step (the kill pops of every size, Supernova's thud, Shatter's and Freeze Frame's glass, Arc's zap,
+    // Confetti's chirps, Burn's crackle): together never louder than one large kill, and each further step of a chain in the
+    // same beat at 0.7 of the one before, down to 0.3. The step's members are gathered (familyAdd), then played (flushFamily).
+    struct FamilyShot {
+        bool recipe = false;  // a Recipe (id) at a gain x its level, else an Sfx (id) at an absolute gain
+        u8 id = 0;
+        u8 runs = 1;          // Confetti: a run of this many Shard chirps, a 1/32 apart
+        i32 midi = -1;
+        float level = 0.0f;   // its absolute gain (what the family's sum counts)
+        float pan = 0.0f;
+    };
+    static constexpr u32 kFamilyShots = 16;
+    FamilyShot family_[kFamilyShots];
+    u32 familyCount_ = 0;
+    i64 familyBeat_ = -1000000;
+    float familyMult_ = 1.0f;
+    void familyAdd(bool recipe, u8 id, i32 midi, float level, float pan, u8 runs = 1);
+    void flushFamily(i64 tick);
     // M5, the fights' pending sounds (content_sound.cpp). A Recipe command with b = 1 is aggregated like the cues: one shot of
     // a recipe at a note on each 1/32 step, its gain 1 - e^(-count / 2.5) (sound_m5.json), the latest pan.
     struct AggShot {
@@ -581,9 +607,29 @@ private:
     float peak_ = 0.0f;
 
     bool rawOutput_ = false;
+    // M5 audio (play test 3: "sometimes the nova SFX sounds heavily distorted"): the output stage is a look-ahead limiter. Music
+    // and effects summed are delayed by kLimDelay frames; the gain each 32-frame segment (aligned to the song's frames, so the
+    // callbacks do not matter) may take is ceiling / its peak; a segment's gain is the least of the segments from kLimHold
+    // before it to kLimAhead after it, released over kLimReleaseS, and moves linearly across the segment. A sub-bass sine under
+    // it keeps one gain over a whole period (the hold), so it stays a sine; nothing over the ceiling reaches the output.
+    static constexpr u32 kLimSeg = 32, kLimAhead = 3, kLimHold = 40, kLimDelay = (kLimAhead + 1) * kLimSeg;
+    static constexpr u32 kLimRing = 256, kLimReqs = 64;  // powers of two over the delay and over hold + ahead + 1
+    static constexpr float kLimCeiling = 0.8f, kLimReleaseS = 0.12f;
+    float limBuf_[2][kLimRing] = {};
+    float limReq_[kLimReqs] = {};
+    float limPeak_ = 0.0f, limPrev_ = 1.0f, limCur_ = 1.0f, limRelease_ = 0.0f;
+
+public:
+    // M5 audio: frames from the engine's write head to its output (the limiter's look-ahead; 0 for the raw output).
+    u32 outputDelayFrames() const { return rawOutput_ ? 0u : kLimDelay; }
+    float limiterGain() const { return limCur_; }  // (tests) the gain of the last segment it planned
+
+private:
     EngineProfile* profile_ = nullptr;
     StemTapFn stemFn_ = nullptr;
     void* stemUser_ = nullptr;
+    StageTapFn stageFn_ = nullptr;
+    void* stageUser_ = nullptr;
     void* memory_ = nullptr;
 };
 

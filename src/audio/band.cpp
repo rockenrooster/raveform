@@ -483,6 +483,7 @@ void Band::update(i64 displayLeadNs) {
             timestamped_ = false;
         }
         raw -= static_cast<double>(syncOffsetMs_) * r * 1e-3;
+        raw -= static_cast<double>(engine_->outputDelayFrames());  // M5 audio: the output limiter's look-ahead
         rawOk = true;
     }
     if (rawOk) {

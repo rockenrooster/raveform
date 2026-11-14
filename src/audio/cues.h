@@ -77,6 +77,11 @@ enum class Cue : u8 {
     FreezeShatter,    // Freeze Frame: an enemy shattered (agg): a glass burst
     ConfettiKill,     // Confetti: a kill burst (agg): a run of six Shard chirps up the scale
     BlackHoleNova,    // Black Hole: the Nova pressed: the three-beat rising inhale, then the blast with the sub drop
+    // Appended 2026-11-13 (M5 audio, play test 3: GAME_DESIGN 5 Extra Life, 6.3 Orbitals' guard ring).
+    ExtraLifePickup,  // an Extra Life picked up: the Cell's note (the player's lead an octave over the root) and the fifth above
+    ExtraLifeUse,     // an Extra Life spent: the Nova's blast with the Track's tonic chord on the stab
+    OrbitalsBreak,    // the Orbitals' ring broke on a hit: the glass crack, two octaves down
+    OrbitalsRelight,  // a shard of the ring relit; value = its place (0, 1, ...): a shaker tick a scale step higher each
     Count
 };
 constexpr u32 kCueCount = static_cast<u32>(Cue::Count);

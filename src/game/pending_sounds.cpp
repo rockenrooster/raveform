@@ -36,7 +36,6 @@ constexpr double kTicksPerBarD = 384.0;
 constexpr float kEchoDb9 = 0.355f, kEchoDb15 = 0.178f;  // feedback.md: 9 dB and 15 dB down (as written)
 constexpr float kEchoCut = 1200.0f, kEchoCutDark = 700.0f;  // feedback.md: 1.2 kHz (as written); "darker": 700 Hz
 constexpr float kEchoPan = 0.8f;                        // "panned to the far side"
-constexpr float kOthersLevel = 0.35f;                   // a teammate's lead on this device (conductor.json lead.others)
 constexpr float kFbOpenTone = 1.6f, kFbShutTone = 0.55f, kFbShutGain = 0.5f;  // the pad opened; ducked (-6 dB) and dull
 constexpr float kFbHowlFeedback = 0.25f;                // Howl: the delay's feedback turned up by this (16 repeats)
 constexpr float kFbRootGain = 0.25f;                    // "quietly"
@@ -505,9 +504,12 @@ void playCustom(audio::CommandSink& s, FightVoices& voices, const FightSound& r,
         case BossCue::FbEcho: {
             // The player's own note from a delay ago, an octave down, low-passed, quieter, far over (the second Echo further down
             // and darker). A teammate's at their lead's level on this device.
+            // (cost, as a teammate's lead and its extra notes: a teammate's Echoes are its own device's, 18 dB and more under
+            // the lead here)
+            if (sc.valid && e.b != sc.seat) break;
             const bool second = e.f > 0.5f;
             const double back = sc.fbDelay[second ? 1 : 0];
-            const float gain = (second ? kEchoDb15 : kEchoDb9) * r.gain * (e.b == sc.seat ? 1.0f : kOthersLevel);
+            const float gain = (second ? kEchoDb15 : kEchoDb9) * r.gain;
             const float far = pan >= 0.0f ? kEchoPan : -kEchoPan;
             leadEcho(s, e.b, audio::LeadEchoMode::Recorded, -1, gain, far, second ? kEchoCutDark : kEchoCut, back, tick, 0xFF, -1);
             break;

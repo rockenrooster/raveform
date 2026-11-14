@@ -60,6 +60,8 @@ float recipeLevel(Recipe r, const SoundParams& s) {
 // M5 follow-up (engine choice): Colossus's ram toms were +3.4 dB over the music (render upgrade-levels); -3.4 dB brings them
 // level with it.
 constexpr float kColossusRam = 0.676f;
+// GAME_DESIGN 6.6 (play test 3, as written): a chain's further step in the same beat at 0.7 of the one before, down to 0.3.
+constexpr float kFamilyChain = 0.7f, kFamilyFloor = 0.3f;
 
 // Content voices: the game's held slots, the one-shot SawGlides, a Burn crackle a player, then the upgrades' own: the
 // Sweeper's drone, a Beam drone a player, Standing Wave's held notes.
@@ -163,6 +165,8 @@ void Engine::stopContent() {
     bedFramesLeft_ = 0;
     aggCount_ = 0;
     stabNotesN_ = 0;
+    familyCount_ = 0;
+    familyBeat_ = -1000000;
 }
 
 i32 Engine::chordRootMidi(i32 octave) const {
@@ -632,7 +636,8 @@ void Engine::applyContentCommand(const Command& c) {
             // its Burn stays the player's.
             const bool own = cue == Cue::ForkSplit || cue == Cue::RicochetBounce || cue == Cue::BurnCount || cue == Cue::AfterimageDecoy ||
                              cue == Cue::ShockstepDash || cue == Cue::LastLightNova || cue == Cue::CollectorBoost || cue == Cue::PlayerHit ||
-                             cue == Cue::BlackHoleNova;
+                             cue == Cue::BlackHoleNova || cue == Cue::ExtraLifePickup || cue == Cue::ExtraLifeUse || cue == Cue::OrbitalsBreak ||
+                             cue == Cue::OrbitalsRelight;
             const u8 slot = own ? c.b : 0;
             u8& n = cueCount_[slot][c.a];
             n = static_cast<u8>(n + c.c > 255 ? 255 : n + c.c);
@@ -911,15 +916,16 @@ void Engine::flushCues(i64 tickIn) {
                     playLead(static_cast<u8>(p), playerTimbre(p), static_cast<float>(playerLastNote(p) + 7), 0.8f, s.mix.lead * r.forkLevel * g, pan,
                              frameOf(tick + static_cast<double>(r.forkTicks)), 1.0f, 0.0f, f);
                     break;
-                case Cue::HeavyStepBurst:
-                case Cue::SupernovaImpact:  // the small kill's thud, at 0.5 / 0.3
-                    playSfx(Sfx::KillSmall, ch.stab[0] + 12, sfxLevel(Sfx::KillSmall) * (cue == Cue::HeavyStepBurst ? r.heavyThud : r.supernovaLevel) * g,
-                            pan, f, tick);
+                case Cue::HeavyStepBurst:  // the small kill's thud, at 0.5
+                    playSfx(Sfx::KillSmall, ch.stab[0] + 12, sfxLevel(Sfx::KillSmall) * r.heavyThud * g, pan, f, tick);
+                    break;
+                case Cue::SupernovaImpact:  // the small kill's thud at 0.3 (M5 audio: of the kill family)
+                    familyAdd(false, static_cast<u8>(Sfx::KillSmall), ch.stab[0] + 12, sfxLevel(Sfx::KillSmall) * r.supernovaLevel * g, pan);
                     break;
                 case Cue::ArcChain: {  // a zap one chord tone above the last, up to three (Tesla Bloom takes its part: posting)
                     const u32 step = value >= 1.0f ? static_cast<u32>(value) - 1u : 0u;
                     const u32 nn = ch.stabCount ? ch.stabCount : 1u;
-                    playRecipeAt(Recipe::Zap, ch.stab[step % nn] + 12 * static_cast<i32>(step / nn), g, pan, f, tick, 0.0f, 0.0f);
+                    familyAdd(true, static_cast<u8>(Recipe::Zap), ch.stab[step % nn] + 12 * static_cast<i32>(step / nn), recipeLevel(Recipe::Zap, s) * g, pan);
                     break;
                 }
                 case Cue::BurnCount: {  // the crackle's density follows the burning (M5, cost: one crackle for every player's)
@@ -937,8 +943,9 @@ void Engine::flushCues(i64 tickIn) {
                     break;
                 }
                 case Cue::ShatterBurst:
-                case Cue::FreezeShatter:  // a glass burst (Shatter at 0.25)
-                    playRecipeAt(Recipe::Glass, ch.stab[0], (cue == Cue::ShatterBurst ? r.shatterLevel : 1.0f) * g, pan, f, tick, 0.0f, 0.0f);
+                case Cue::FreezeShatter:  // a glass burst (Shatter at 0.25; M5 audio: both of the kill family)
+                    familyAdd(true, static_cast<u8>(Recipe::Glass), ch.stab[0],
+                              recipeLevel(Recipe::Glass, s) * (cue == Cue::ShatterBurst ? r.shatterLevel : 1.0f) * g, pan);
                     break;
                 case Cue::GravityHit: {  // the soft low thup at 0.15
                     const i32 id = bank_->recipe(Recipe::Tom, -1, 2);
@@ -978,9 +985,8 @@ void Engine::flushCues(i64 tickIn) {
                     playRecipeAt(Recipe::Zap, note, r.stormLevel * g, pan, f, tick, 0.0f, 0.0f);
                     break;
                 }
-                case Cue::ConfettiKill:  // a run of six Shard chirps up the scale, a 1/32 apart
-                    for (u32 j = 0; j < 6; ++j)
-                        playSfx(Sfx::Shard, bank_->shardScale(track_)[j], sfxLevel(Sfx::Shard) * g, pan, frameOf(tick + 12.0 * j), tick + 12.0 * j);
+                case Cue::ConfettiKill:  // a run of six Shard chirps up the scale, a 1/32 apart (M5 audio: of the kill family)
+                    familyAdd(false, static_cast<u8>(Sfx::Shard), -1, sfxLevel(Sfx::Shard) * g, pan, 6);
                     break;
                 case Cue::BlackHoleNova: {  // the inhale over the singularity's three beats, then the blast with the sub drop
                     const i32 inh = bank_->inhale(track_, 8);  // a beat long at 8 thirty-seconds
@@ -991,10 +997,86 @@ void Engine::flushCues(i64 tickIn) {
                     break;
                 }
                 case Cue::PlayerHit: crescendoHit(p); break;  // Crescendo: the lead's rise and the pad's opening fall at once
+                // M5 audio (play test 3).
+                case Cue::ExtraLifePickup: {  // the Cell's note (play.cpp: degree 2 at 0.85) and the fifth above it
+                    const float n0 = leadNoteMidi(2);
+                    playLead(static_cast<u8>(p), playerTimbre(p), n0, 0.9f, s.mix.lead * 0.85f, pan, f);
+                    playLead(static_cast<u8>(p), playerTimbre(p), n0 + 7.0f, 0.9f, s.mix.lead * 0.85f, pan, f);
+                    break;
+                }
+                case Cue::ExtraLifeUse: {  // the Nova's blast with the Track's tonic chord on the stab
+                    playSfx(Sfx::NovaBlast, -1, sfxLevel(Sfx::NovaBlast), 0.0f, f, tick);
+                    const Chord& tonic = tr_->chords[tr_->progression[0]];
+                    playStab(tonic, 1.0f, 0.0f, f);
+                    break;
+                }
+                case Cue::OrbitalsBreak: {  // the glass crack, low (two octaves under the crack's own seventh octave)
+                    const i32 note = 96 + ch.bass % 12;
+                    recipeShot(Recipe::Crack, note, recipeLevel(Recipe::Crack, s), pan, f, Bus::Sfx, 0, 0.25f);
+                    break;
+                }
+                case Cue::OrbitalsRelight: {  // a shaker tick, a scale step higher for each shard back
+                    const u32 k = value > 0.0f ? static_cast<u32>(value) : 0u;
+                    const float semis = scaleStep(static_cast<float>(ch.bass % 12 + 60), static_cast<i32>(k)) - static_cast<float>(ch.bass % 12 + 60);
+                    playSample(bank_->shaker(), Bus::Sfx, f, s.mix.shaker, pan, static_cast<float>(std::exp2(semis / 12.0)));
+                    break;
+                }
                 default: break;
             }
         }
     }
+    if (atOnce && familyCount_) flushFamily(static_cast<i64>(tick));  // (a cue posted for its tick)
+}
+
+// ---------------------------------------------------------------- the kill family (GAME_DESIGN 6.6, play test 3)
+
+void Engine::familyAdd(bool recipe, u8 id, i32 midi, float level, float pan, u8 runs) {
+    if (level <= 0.0f) return;
+    if (familyCount_ >= kFamilyShots) {  // (full: the quietest gives way)
+        u32 q = 0;
+        for (u32 k = 1; k < familyCount_; ++k)
+            if (family_[k].level < family_[q].level) q = k;
+        if (family_[q].level >= level) return;
+        family_[q] = FamilyShot{recipe, id, runs, midi, level, pan};
+        return;
+    }
+    family_[familyCount_++] = FamilyShot{recipe, id, runs, midi, level, pan};
+}
+
+void Engine::flushFamily(i64 tick) {
+    // One 1/32 step of what kills set off: together never louder than one large kill (their gains summed, Burn's crackle
+    // with them), each further step of a chain in the same beat at 0.7 of the one before, down to 0.3.
+    ContentVoice& crackle = content_[kRecipeVoices + kOneShotGlides];
+    const bool burning = crackle.active && crackle.kind == Recipe::Crackle && !crackle.releasing;
+    if (!familyCount_) {
+        if (burning) crackle.gainTarget = 1.0f;
+        return;
+    }
+    const ConductorRules& r = music_->conductor;
+    const i64 beat = tick >= 0 ? tick / kPpq : -1 - (-1 - tick) / kPpq;
+    familyMult_ = beat == familyBeat_ ? std::fmax(kFamilyFloor, familyMult_ * kFamilyChain) : 1.0f;
+    familyBeat_ = beat;
+    float sum = burning ? r.burnLevel : 0.0f;
+    for (u32 k = 0; k < familyCount_; ++k) sum += family_[k].level;
+    const float cap = sfxLevel(Sfx::KillLarge);  // one large kill
+    const float scale = familyMult_ * (sum > cap ? cap / sum : 1.0f);
+    if (burning) crackle.gainTarget = sum > cap ? cap / sum : 1.0f;
+    const double tk = static_cast<double>(tick);
+    const i64 f = frameOf(tk);
+    for (u32 k = 0; k < familyCount_; ++k) {
+        const FamilyShot& x = family_[k];
+        const float g = x.level * scale;
+        if (x.recipe) {
+            const Recipe rr = static_cast<Recipe>(x.id);
+            playRecipeAt(rr, x.midi, g / recipeLevel(rr, *sp_), x.pan, f, tk, 0.0f, 0.0f);
+        } else if (x.runs > 1) {  // Confetti: its chirps up the Shard scale, a 1/32 apart
+            for (u32 j = 0; j < x.runs && j < 10; ++j)
+                playSfx(Sfx::Shard, bank_->shardScale(track_)[j], g, x.pan, frameOf(tk + 12.0 * j), tk + 12.0 * j);
+        } else {
+            playSfx(static_cast<Sfx>(x.id), x.midi, g, x.pan, f, tk);
+        }
+    }
+    familyCount_ = 0;
 }
 
 // ---------------------------------------------------------------- the upgrades' patterned sound
@@ -1071,11 +1153,13 @@ void Engine::upgradeBar() {
     const Chord& ch = *p.chord;
     // The Sweeper's drone, on the chord's bass note an octave down (recipes.drone), opening as the arm comes round.
     holdDrone(kSweeperVoice, p.riffsOn && riff[ix(Riff::Sweeper)], ch.bass - 12, r.sweepCutLo, r.sweepLevel, 1, barF);
-    // Beam: each player's drone on the arpeggio's first note (conductor.json boosts.beam).
-    for (u32 i = 0; i < kMaxPlayers; ++i) {
-        const bool on = i < playerCount_ && playerBoost(i, Boost::Beam) && !(hostOnly_ && i != localPlayer_);
-        holdDrone(kBeamVoice + i, on, ch.arp[0], kBeamCutoff, recipeLevel(Recipe::Drone, *sp_) * (on ? playerLevel(i) : 0.0f), 0, barF);
-    }
+    // Beam: each player's drone on the arpeggio's first note (conductor.json boosts.beam). M5 audio (cost): the players' drones
+    // are one note at one cutoff, started on the same bar line: one voice at the sum of their levels sounds as they do.
+    float beam = 0.0f;
+    for (u32 i = 0; i < kMaxPlayers; ++i)
+        if (i < playerCount_ && playerBoost(i, Boost::Beam) && !(hostOnly_ && i != localPlayer_)) beam += playerLevel(i);
+    holdDrone(kBeamVoice, beam > 0.0f, ch.arp[0], kBeamCutoff, recipeLevel(Recipe::Drone, *sp_) * beam, 0, barF);
+    for (u32 i = 1; i < kMaxPlayers; ++i) holdDrone(kBeamVoice + i, false, 0, 0.0f, 0.0f, 0, barF);
 }
 
 void Engine::upgradeStep(i64 tick, i64 inBar) {
@@ -1470,11 +1554,11 @@ u32 maxLoadFrame(u32 frame, Command* out, u32 cap, bool fights) {
         if (frame % 60 == p) put(CmdType::Cue, static_cast<u8>(Cue::BurnCount), p, 1, 20.0f, Timing::Next32);
     }
     if (!fights) return n;
-    // M5 audio: the fights' sounds on top, more at once than any one moment of the game has (a fight's held voices and the
-    // arena's never sound together): the arena's three Rift drones following the chord and the Storm Cell's crackle, Event
-    // Horizon's sub, Feedback's Howl (the delay's sixteen taps, the pad's tone) and its echoes on the fight's own lead (a note
-    // every 1/16, four held at most), the aggregated hits (a Lens's glass, a Rift's toms, a Storm Cell's three zaps) every
-    // frame, a bar's stab and bell arpeggio, a beat's cut of the pads and bass every two seconds.
+    // M5 audio: the fights' sounds on top, in turn ten seconds each (a fight's held voices and the arena's never sound
+    // together): the arena's (three Rift drones following the chord, their cutoff swept, the Storm Cell's crackle; a Lens's
+    // glass on every 1/32 step, a Storm Cell's three zaps a beat, a Rift's toms a bar, all aggregated), then a fight's
+    // (Feedback's Howl: the delay's sixteen taps, the pad's tone, its echoes on the fight's own lead a note every 1/16; Event
+    // Horizon's sub; Cadence's stab at 1.2 and a bell arpeggio a bar; a beat's cut of the pads and bass every two seconds).
     const auto fill = [&](CmdType t, u8 a, u8 b, float x, float y, float z, float level, i32 midi, u8 m5, u8 m6, u8 m7, Timing when = Timing::Now) {
         if (n >= cap) return;
         Command k;
@@ -1492,25 +1576,37 @@ u32 maxLoadFrame(u32 frame, Command* out, u32 cap, bool fights) {
         k.mods[7] = m7;
         out[n++] = k;
     };
-    if (frame == 0) {
-        for (u8 s = 0; s < 3; ++s)
-            fill(CmdType::VoiceStart, static_cast<u8>(10 + s), static_cast<u8>(Recipe::Drone), 0.7f, -0.5f + 0.5f * s, 300.0f, 0.0f,
-                 chordNote(s == 0 ? 0 : (s == 1 ? 4 : 8), 2), 0, 1, 0);
-        fill(CmdType::VoiceStart, 13, static_cast<u8>(Recipe::Crackle), 1.0f, 0.3f, 80.0f, 0.0f, -1, 0, 0, 0);
-        fill(CmdType::VoiceStart, 8, static_cast<u8>(Recipe::SubSine), 0.6f, 0.0f, 0.0f, 0.0f, chordNote(0, 1, NoteFrom::ChordTone), 0, 0, 0);
-        fill(CmdType::DelayBoost, 16, 0, 0.25f, 0.0f, 0.0f, 0.0f, -1, 0, 0, 0);
-        fill(CmdType::PadTone, 0, 0, 0.55f, 0.5f, 0.15f, 0.0f, -1, 0, 0, 0);
+    const bool arena = (frame / 600) % 2 == 0;
+    if (frame % 600 == 0) {
+        if (arena) {
+            fill(CmdType::VoiceStop, 8, 0, 0.3f, 0.0f, 0.0f, 0.0f, -1, 0, 0, 0);
+            fill(CmdType::DelayBoost, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, -1, 0, 0, 0);
+            fill(CmdType::PadTone, 0, 0, 1.0f, 1.0f, 0.15f, 0.0f, -1, 0, 0, 0);
+            for (u8 s = 0; s < 3; ++s)
+                fill(CmdType::VoiceStart, static_cast<u8>(10 + s), static_cast<u8>(Recipe::Drone), 0.7f, -0.5f + 0.5f * s, 300.0f, 0.0f,
+                     chordNote(s == 0 ? 0 : (s == 1 ? 4 : 8), 2), 0, 1, 0);
+            fill(CmdType::VoiceStart, 13, static_cast<u8>(Recipe::Crackle), 1.0f, 0.3f, 80.0f, 0.0f, -1, 0, 0, 0);
+        } else {
+            for (u8 s = 10; s < 14; ++s) fill(CmdType::VoiceStop, s, 0, 0.3f, 0.0f, 0.0f, 0.0f, -1, 0, 0, 0);
+            fill(CmdType::VoiceStart, 8, static_cast<u8>(Recipe::SubSine), 0.6f, 0.0f, 0.0f, 0.0f, chordNote(0, 1, NoteFrom::ChordTone), 0, 0, 0);
+            fill(CmdType::DelayBoost, 16, 0, 0.25f, 0.0f, 0.0f, 0.0f, -1, 0, 0, 0);
+            fill(CmdType::PadTone, 0, 0, 0.55f, 0.5f, 0.15f, 0.0f, -1, 0, 0, 0);
+        }
     }
-    if (frame % 15 == 0)  // the drones' cutoff sweeping (the Build), the crackle's density
-        for (u8 s = 0; s < 3; ++s)
-            fill(CmdType::VoiceSet, static_cast<u8>(10 + s), 0, 300.0f + 2100.0f * static_cast<float>((frame / 15 + s * 3) % 8) / 7.0f, -1.0f, 0.0f, 0.0f, -1, 0, 0, 0);
-    if (frame % 4 == 0)
-        fill(CmdType::LeadEcho, static_cast<u8>(frame / 4 % 4), static_cast<u8>(LeadEchoMode::Recorded), 0.355f, 0.8f, 1200.0f, 384.0f, -1, 255, 0xFF, 0);
-    fill(CmdType::Recipe, static_cast<u8>(Recipe::Glass), 1, 0.25f, 0.2f, 0.0f, 0.0f, chordNote(7, 0, NoteFrom::Lead), 0, 0, 2, Timing::Next32);
-    fill(CmdType::Recipe, static_cast<u8>(Recipe::Tom), 1, 0.5f, -0.2f, 0.0f, 0.0f, -1, 0, 0, 4, Timing::Next32);
-    for (i32 k = 0; k < 3; ++k)
-        fill(CmdType::Recipe, static_cast<u8>(Recipe::Zap), 1, 0.5f, 0.0f, 0.0f, 0.0f, chordNote(k, 5, NoteFrom::ChordTone), 0, 0, 3, Timing::Next32);
-    if (frame % 30 == 0) {
+    if (arena) {
+        if (frame % 15 == 0)  // the drones' cutoff sweeping (the Build)
+            for (u8 s = 0; s < 3; ++s)
+                fill(CmdType::VoiceSet, static_cast<u8>(10 + s), 0, 300.0f + 2100.0f * static_cast<float>((frame / 15 + s * 3) % 8) / 7.0f, -1.0f, 0.0f, 0.0f, -1,
+                     0, 0, 0);
+        fill(CmdType::Recipe, static_cast<u8>(Recipe::Glass), 1, 0.25f, 0.2f, 0.0f, 0.0f, chordNote(7, 0, NoteFrom::Lead), 0, 0, 2, Timing::Next32);
+        if (frame % 80 == 10) fill(CmdType::Recipe, static_cast<u8>(Recipe::Tom), 1, 0.5f, -0.2f, 0.0f, 0.0f, -1, 0, 0, 4, Timing::Next32);
+        if (frame % 20 == 5)
+            for (i32 k = 0; k < 3; ++k)
+                fill(CmdType::Recipe, static_cast<u8>(Recipe::Zap), 1, 0.5f, 0.0f, 0.0f, 0.0f, chordNote(k, 5, NoteFrom::ChordTone), 0, 0, 3, Timing::Next32);
+        return n;
+    }
+    if (frame % 4 == 0) fill(CmdType::LeadEcho, 0, static_cast<u8>(LeadEchoMode::Recorded), 0.355f, 0.8f, 1200.0f, 384.0f, -1, 255, 0xFF, 0);
+    if (frame % 80 == 0) {
         fill(CmdType::Recipe, static_cast<u8>(Recipe::Stab), 0, 1.2f, 0.0f, 0.0f, 0.0f, -1, 0, 0, 0, Timing::Next32);
         for (i32 k = 0; k < 4; ++k)
             fill(CmdType::Recipe, static_cast<u8>(Recipe::Bell), 0, 0.8f, 0.0f, 0.0f, 0.0f, chordNote(k, 5, NoteFrom::ChordTone), 0, 0, 0, Timing::Next32);
@@ -1585,6 +1681,70 @@ void Engine::renderContent(u32 n) {
                     const float lfo = 0.5f + 0.5f * std::sin(v.lfoW * static_cast<float>(v.age));
                     v.c = svfCoefs(svfG(v.fcBase + v.fcLfo * lfo, sr), v.k);
                 }
+            }
+            if (v.kind != Recipe::SubSine && v.kind != Recipe::Crackle && !v.glideLeft) {
+                // M5 audio (cost): a saw pair's run to the next knot (or the next event, the block's end, the end of its
+                // hold), in locals: the PolyBLEP by a reciprocal, nothing decided a sample that the run cannot change.
+                u32 len = kKnot - v.age % kKnot;
+                if (len > end - i) len = end - i;
+                if (v.retuneAt >= 0 && v.retuneAt - at < static_cast<i64>(len)) len = static_cast<u32>(v.retuneAt - at);
+                if (v.releaseAt >= 0 && v.releaseAt - at < static_cast<i64>(len)) len = static_cast<u32>(v.releaseAt - at);
+                const bool letGo = v.releasing || (v.length && v.age >= v.length);
+                if (!letGo && v.length && v.length - v.age < len) len = v.length - v.age;
+                float p0 = v.saw[0].phase, p1 = v.saw[1].phase;
+                const float d0 = v.saw[0].dt, d1 = v.saw[1].dt;
+                const float n0 = d0 > 0.0f ? 1.0f / d0 : 0.0f, n1 = d1 > 0.0f ? 1.0f / d1 : 0.0f;
+                const float a1 = v.c.a1, a2 = v.c.a2, a3 = v.c.a3, gain = v.gain, gl = v.gl, gr = v.gr, send = script ? 0.0f : v.send;
+                const float attack = v.attackStep, rel = v.releaseMul;
+                float env = v.env;
+                SvfLowpass f = v.f;
+                const auto blep = [](float t, float dt, float inv) {
+                    if (t < dt) {
+                        const float x = t * inv;
+                        return x + x - x * x - 1.0f;
+                    }
+                    if (t > 1.0f - dt) {
+                        const float x = (t - 1.0f) * inv;
+                        return x * x + x + x + 1.0f;
+                    }
+                    return 0.0f;
+                };
+                bool ended = false;
+                u32 j = 0;
+                for (; j < len; ++j) {
+                    const float s0 = 2.0f * p0 - 1.0f - blep(p0, d0, n0), s1 = 2.0f * p1 - 1.0f - blep(p1, d1, n1);
+                    p0 += d0;
+                    if (p0 >= 1.0f) p0 -= 1.0f;
+                    p1 += d1;
+                    if (p1 >= 1.0f) p1 -= 1.0f;
+                    const float xo = f.tick(0.5f * (s0 + s1), a1, a2, a3);
+                    if (letGo) env *= rel;
+                    else if (env < 1.0f) env = env + attack < 1.0f ? env + attack : 1.0f;
+                    const float y = xo * env * gain;
+                    L[i + j] += y * gl;
+                    R[i + j] += y * gr;
+                    if (send > 0.0f) {
+                        sendL_[i + j] += y * gl * send;
+                        sendR_[i + j] += y * gr * send;
+                        sendUsed_ = true;
+                    }
+                    if (letGo && env < 1e-4f) {
+                        ended = true;
+                        ++j;
+                        break;
+                    }
+                }
+                v.saw[0].phase = p0;
+                v.saw[1].phase = p1;
+                v.f = f;
+                v.env = env;
+                v.age += j;
+                if (ended) {
+                    v.active = false;
+                    break;
+                }
+                i += j - 1;  // (the loop's ++i)
+                continue;
             }
             float x = 0.0f;
             if (v.kind == Recipe::SubSine) {

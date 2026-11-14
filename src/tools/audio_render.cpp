@@ -1161,6 +1161,11 @@ int renderOne(const Options& opt, const MusicData& music, const SampleBank& bank
         }
     }
     drainEvents(r);
+    // M5 audio: the output limiter's look-ahead delays the output; the file starts where the song does (onsets as before).
+    if (const u64 dly = engine.outputDelayFrames(); dly && r.frames > dly) {
+        std::memmove(r.out, r.out + dly * 2, sizeof(float) * (r.frames - dly) * 2);
+        std::memset(r.out + (r.frames - dly) * 2, 0, sizeof(float) * dly * 2);
+    }
     if (medley) {
         // Faded out over the last seconds (Track 10's Break), then where each Track's Drop began.
         const u64 fade = static_cast<u64>(kMedleyFadeS * kRate);
@@ -1374,13 +1379,23 @@ constexpr FightEntry kFightSheet[] = {
 };
 
 int fightSheet(const Options& opt, const MusicData& music, const SampleBank& bank) {
+    {
+        u32 rows = 0, pending = 0;
+        const FightSound* t = fightSounds(&rows);
+        for (u32 k = 0; k < rows; ++k)
+            if (t[k].pending) {
+                ++pending;
+                std::printf("pending: row %u (%s): %s\n", k, t[k].page, t[k].pending);
+            }
+        std::printf("fight sounds: %u rows, %u pending\n", rows, pending);
+    }
     Engine* engine = new Engine;
     if (!engine->init(music, bank, kRate, opt.seed)) return 1;
     // Lengths first: each entry its bars at its Track's tempo, a tail of 1.6 s.
     constexpr double kLeadS = 0.3, kTailS = 1.6;
     double total = kLeadS;
     for (const FightEntry& f : kFightSheet) total += f.bars * 240.0 / music.tracks[f.track - 1].bpm + kTailS;
-    const u64 frames = static_cast<u64>((total + 0.5) * kRate);
+    const u64 frames = static_cast<u64>((total * 1.05 + 1.0) * kRate);  // (room: a Build's last bar runs at 85%)
     float* out = static_cast<float*>(std::calloc(frames * 2, sizeof(float)));
     if (!out) return 1;
     FILE* list = nullptr;
@@ -1394,7 +1409,8 @@ int fightSheet(const Options& opt, const MusicData& music, const SampleBank& ban
     u64 done = 0;
     const auto renderUntil = [&](u64 until) {
         BeatEvent ev;
-        while (done < until && done < frames) {
+        if (until > frames) until = frames;
+        while (done < until) {
             u32 n = static_cast<u32>(until - done < 192 ? until - done : 192);
             engine->render(out + done * 2, n, 2);
             done += n;
@@ -1430,7 +1446,7 @@ int fightSheet(const Options& opt, const MusicData& music, const SampleBank& ban
         double prev = -1.0;
         bool fire = false;
         u32 frame = 0, phrased = 0;
-        while (true) {
+        while (done < frames) {
             const double now = engine->tempo().tickAt(static_cast<double>(done));
             if (now >= endTick) break;
             const double ahead = now + 48.0;  // cues are posted half a beat before their tick
@@ -1714,6 +1730,151 @@ int fightSheet(const Options& opt, const MusicData& music, const SampleBank& ban
     return code;
 }
 
+// M5 audio (play test 3: "sometimes the nova SFX sounds heavily distorted"): the worst instant through the output stage. A
+// Track's Drop held at intensity 1 with a player firing, effects at full; a Nova (or Black Hole's, or Last Light's) blasts, and
+// eighty kills follow over the next 0.35 s on top of the kicks. The stage's input and output are tapped: below 1 kHz (where
+// the blast's sub and its harmonics are) the output against the input times a gain fitted to each 5 ms piece (a gain that
+// moves slowly is not distortion), over the 400 ms from the blast, gives the stage's distortion and noise (THD+N); the same
+// input through the old stage (the soft knee alone) for comparison. Exit 1 when any is 3% or more.
+struct StageCapture {
+    float* in = nullptr;  // mono (L + R) / 2
+    float* out = nullptr;
+    u64 cap = 0, n = 0;
+};
+void stageTap(void* user, const float* inL, const float* inR, const float* outL, const float* outR, u32 n) {
+    auto* s = static_cast<StageCapture*>(user);
+    for (u32 i = 0; i < n && s->n < s->cap; ++i, ++s->n) {
+        s->in[s->n] = 0.5f * (inL[i] + inR[i]);
+        s->out[s->n] = 0.5f * (outL[i] + outR[i]);
+    }
+}
+float oldStage(float x) {  // the soft knee the limiter replaced (knee 0.66, ceiling 0.8)
+    const float a = std::fabs(x);
+    if (a <= 0.66f) return x;
+    const float y = 0.66f + (0.8f - 0.66f) * std::tanh((a - 0.66f) / (0.8f - 0.66f));
+    return x < 0.0f ? -y : y;
+}
+int novaCheck(const MusicData& music, const SampleBank& bank) {
+    std::printf("nova-check: THD+N below 1 kHz over the 400 ms from the blast (a gain fitted a 5 ms piece), new stage and the old soft knee "
+                "on the same input; the stage's input and output peaks\n");
+    int failed = 0;
+    for (u32 t : {0u, 9u}) {
+        for (u32 which = 0; which < 3; ++which) {
+            Engine* e = new Engine;
+            if (!e->init(music, bank, kRate, 1)) return 1;
+            StageCapture cap;
+            cap.cap = static_cast<u64>(kRate) * 12;
+            cap.in = static_cast<float*>(std::calloc(cap.cap, sizeof(float)));
+            cap.out = static_cast<float*>(std::calloc(cap.cap, sizeof(float)));
+            e->setStageTap(stageTap, &cap);
+            e->post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(t), 0));
+            e->post(cmd(CmdType::SetPlayers, 1, 0));
+            e->post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+            e->post(cmd(CmdType::SetSection, static_cast<u8>(Section::Drop)));
+            e->post(cmd(CmdType::HoldSection, 1));
+            e->post(cmd(CmdType::SetFire, 0, 1));
+            float* buf = static_cast<float*>(std::calloc(static_cast<size_t>(kRate) * 2, sizeof(float)));
+            u64 done = 0;
+            i64 blast = -1;
+            u32 killsLeft = 80, frame = 0;
+            BeatEvent ev;
+            while (done < cap.cap - kRate / 60) {
+                if (frame == 150) {  // 2.5 s in: the trigger
+                    if (which == 0) e->post(cmd(CmdType::Nova, 0, 0, 0, 1.0f));
+                    if (which == 1) e->post(cmd(CmdType::Cue, static_cast<u8>(Cue::BlackHoleNova), 0, 1, 0.0f));
+                    if (which == 2) e->post(cmd(CmdType::Cue, static_cast<u8>(Cue::LastLightNova), 0, 1, 0.0f));
+                }
+                // From the blast on: eighty kills over 0.35 s (three small, a medium every frame, a large every fifth).
+                if (blast >= 0 && killsLeft && static_cast<i64>(done) + kRate / 60 >= blast) {
+                    const u32 sm = killsLeft < 3 ? killsLeft : 3;
+                    e->post(cmd(CmdType::Kill, 0, static_cast<u8>(sm)));
+                    killsLeft -= sm;
+                    if (killsLeft) {
+                        e->post(cmd(CmdType::Kill, 1, 1));
+                        --killsLeft;
+                    }
+                    if (killsLeft && frame % 5 == 0) {
+                        e->post(cmd(CmdType::Kill, 2, 1));
+                        --killsLeft;
+                    }
+                }
+                for (u32 k = 0; k < kRate / 60;) {
+                    const u32 nn = kRate / 60 - k < 192 ? kRate / 60 - k : 192;
+                    e->render(buf, nn, 2);
+                    k += nn;
+                }
+                done += kRate / 60;
+                ++frame;
+                while (e->popEvent(ev))
+                    if (blast < 0 && ev.kind == BeatKind::Sfx && ev.a == static_cast<u8>(Sfx::NovaBlast)) blast = ev.frame;
+            }
+            const u64 dly = e->outputDelayFrames();
+            double thdNew = -1.0, thdOld = -1.0, peak = 0.0, inPeak = 0.0;
+            if (blast > 0) {
+                // A one-pole pair at 1 kHz on input and output (the same filter: what remains is the stage's).
+                const u64 a = static_cast<u64>(blast), b = static_cast<u64>(blast) + kRate * 400 / 1000;
+                for (u64 i = a; i < b; ++i) inPeak = std::fmax(inPeak, std::fabs(static_cast<double>(cap.in[i])));
+                const auto lowband = [&](const float* x, u64 from, u64 to, double* y) {
+                    double s1 = 0.0, s2 = 0.0;
+                    const double k = 1.0 - std::exp(-2.0 * kPiD * 1000.0 / kRate);
+                    for (u64 i = from - 2000; i < to; ++i) {
+                        s1 += (x[i] - s1) * k;
+                        s2 += (s1 - s2) * k;
+                        if (i >= from) y[i - from] = s2;
+                    }
+                };
+                const u64 m = b - a;
+                double* xin = static_cast<double*>(std::calloc(m, sizeof(double)));
+                double* xout = static_cast<double*>(std::calloc(m, sizeof(double)));
+                double* xold = static_cast<double*>(std::calloc(m, sizeof(double)));
+                float* old = static_cast<float*>(std::calloc(cap.n, sizeof(float)));
+                for (u64 i = 0; i < cap.n; ++i) old[i] = oldStage(cap.in[i]);
+                lowband(cap.in, a, b, xin);
+                lowband(cap.out, a + dly, b + dly, xout);
+                lowband(old, a, b, xold);
+                // One gain a 5 ms piece (least squares): what a gain that moves slowly does is taken out, what a waveshaper
+                // adds (harmonics, clipping) stays.
+                const auto thd = [&](const double* y) {
+                    double err = 0.0, sig = 0.0;
+                    const u64 piece = kRate / 200;
+                    for (u64 p0 = 0; p0 < m; p0 += piece) {
+                        double xy = 0.0, xx = 0.0;
+                        for (u64 i = p0; i < p0 + piece && i < m; ++i) {
+                            xy += xin[i] * y[i];
+                            xx += xin[i] * xin[i];
+                        }
+                        const double g = xx > 0.0 ? xy / xx : 0.0;
+                        for (u64 i = p0; i < p0 + piece && i < m; ++i) {
+                            const double d = y[i] - g * xin[i];
+                            err += d * d;
+                            sig += g * xin[i] * g * xin[i];
+                        }
+                    }
+                    return sig > 0.0 ? 100.0 * std::sqrt(err / sig) : -1.0;
+                };
+                thdNew = thd(xout);
+                thdOld = thd(xold);
+                for (u64 i = static_cast<u64>(blast); i < static_cast<u64>(blast) + kRate / 2 + dly && i < cap.n; ++i)
+                    peak = std::fmax(peak, std::fabs(static_cast<double>(cap.out[i])));
+                std::free(xin);
+                std::free(xout);
+                std::free(xold);
+                std::free(old);
+            }
+            static const char* const kWhat[3] = {"Nova", "Black Hole", "Last Light"};
+            const bool pass = thdNew >= 0.0 && thdNew < 3.0;
+            failed += !pass;
+            std::printf("  %-12s %-10s THD+N %5.2f%% (old %5.2f%%), into the stage %.2f dBFS, out %.2f dBFS  %s\n", music.tracks[t].name, kWhat[which],
+                        thdNew, thdOld, 20.0 * std::log10(inPeak + 1e-12), 20.0 * std::log10(peak + 1e-12), pass ? "pass" : "FAIL");
+            std::free(buf);
+            std::free(cap.in);
+            std::free(cap.out);
+            delete e;
+        }
+    }
+    return failed ? 1 : 0;
+}
+
 // M5 audio follow-up: Kick Pulse's tom against a full Drop. The Drop held at intensity 1, one player firing, rendered with and
 // without Kick Pulse (the same engine, the same seed: their difference is the tom, through the master's soft clip); for the
 // 85 ms after each kick, octave band by band, the tom's energy against the rest's (the masker).
@@ -1748,7 +1909,8 @@ int kickPulseCheck(const MusicData& music, const SampleBank& bank) {
                 e->render(x[pass] + d * 2, n, 2);
                 d += n;
                 while (e->popEvent(ev))
-                    if (pass == 0 && ev.kind == BeatKind::Kick && ev.tick >= 384.0 && kickCount < 64) kicks[kickCount++] = ev.frame;
+                    if (pass == 0 && ev.kind == BeatKind::Kick && ev.tick >= 384.0 && kickCount < 64)
+                        kicks[kickCount++] = ev.frame + static_cast<i64>(e->outputDelayFrames());  // (heard after the limiter's delay)
             }
             delete e;
         }
@@ -1940,6 +2102,8 @@ int main(int argc, char** argv) {
         code = fightSheet(opt, *music, *bank);  // M5 audio
     } else if (eq(opt.render, "kick-pulse")) {
         code = kickPulseCheck(*music, *bank);  // M5 audio
+    } else if (eq(opt.render, "nova-check")) {
+        code = novaCheck(*music, *bank);  // M5 audio
     } else {
         const i32 t = music->trackIndex(opt.track);
         const i32 v = opt.sound ? music->variantIndex(opt.sound) : static_cast<i32>(music->defaultVariant);

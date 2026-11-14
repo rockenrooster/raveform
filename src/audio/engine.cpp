@@ -73,7 +73,8 @@ constexpr float kTeslaZap = 0.35f;
 constexpr float kBeamVel = 0.6f;
 // Output stage: a soft knee that leaves the music bed (peaks near -5 dBFS) untouched and keeps
 // music plus effects below -1 dBFS true peak (the ceiling leaves room for inter-sample overshoot).
-constexpr float kLimitKnee = 0.66f, kLimitCeiling = 0.8f;
+// M5 audio: the look-ahead limiter (engine.h) keeps everything under 0.8 first; the knee is a safety above it.
+constexpr float kLimitKnee = 0.85f, kLimitCeiling = 0.95f;
 
 inline float clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
 
@@ -307,6 +308,8 @@ bool Engine::init(const MusicData& music, const SampleBank& bank, u32 sampleRate
                 (t < music.trackCount && v < music.variantCount) ? music.sound[t][v].reverb : music.sound[0][0].reverb;
     if (!reverb_.init(sampleRate, sets, FdnReverb::kMaxSets)) return false;
     if (!initContent()) return false;  // M5
+    for (float& g : limReq_) g = 1.0f;  // M5 audio: the output limiter, open
+    limRelease_ = 1.0f - std::exp(-static_cast<float>(kLimSeg) / (kLimReleaseS * static_cast<float>(sampleRate)));
     duckLen_ = framesFor(kDuckS, sampleRate);
     variant_ = music.defaultVariant;
     track_ = 0;
@@ -682,7 +685,11 @@ void Engine::applyCommand(const Command& c) {
             mineArmed_ = singArmed_ = false;
             stabAcc_ = 0.0f;
             freezeMix_ = freezeTarget_ = 0.0f;
-            // M5 (the fights' bus effects): all lifted.
+            // M5 audio: the limiter open and empty; the fights' bus effects all lifted.
+            std::memset(limBuf_, 0, sizeof limBuf_);
+            for (float& g : limReq_) g = 1.0f;
+            limPeak_ = 0.0f;
+            limPrev_ = limCur_ = 1.0f;
             cutMask_ = 0;
             cutHats_ = false;
             cutTo_ = -1;
@@ -1170,6 +1177,7 @@ void Engine::onTick(i64 tick) {
     }
     if (tick % 12 == 0) flushKills(tick);
     if (tick % 12 == 0 || tick % 32 == 0) flushCues(tick);  // M5: the cues on 1/32 steps, Storm Coil on triplet eighths
+    if (tick % 12 == 0) flushFamily(tick);                    // M5 audio: the kill family's step (GAME_DESIGN 6.6)
     if (tick % 12 == 0 && aggCount_) flushAgg(static_cast<double>(tick));  // M5: the fights' aggregated recipes
 }
 
@@ -1964,9 +1972,10 @@ void Engine::leadStep(i64 tick, i64 inBar) {
     }
 }
 
-void Engine::flushKills(i64 tick) {
+void Engine::flushKills(i64 /*tick*/) {
     // Kills are aggregated (README): one sound per size class per 1/32 step, its gain following the
-    // count, pitched to a chord tone (small an octave up, medium at pitch, large an octave down).
+    // count, pitched to a chord tone (small an octave up, medium at pitch, large an octave down). M5 audio: into the kill
+    // family of the step (flushFamily plays them, on the tick).
     const Chord& ch = plan_->chord ? *plan_->chord : tr_->chordAtBar(0);
     for (u32 size = 0; size < 3; ++size) {
         const u32 n = killCount_[size];
@@ -1992,7 +2001,7 @@ void Engine::flushKills(i64 tick) {
             midi = ch.stab[0] - 12;
             gain = sfxLevel(kind) * std::fmin(kKillSmallBoost, agg / (1.0f - std::exp(-1.0f / 2.5f)));
         }
-        playSfx(kind, midi, gain, pan, frameOf(static_cast<double>(tick)), static_cast<double>(tick));
+        familyAdd(false, static_cast<u8>(kind), midi, gain, pan);  // M5 audio: the kill family (flushFamily plays the step)
     }
 }
 
@@ -2824,6 +2833,7 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         freezeHp_[0].reset();
         freezeHp_[1].reset();
     }
+    float stageIn[2][kBlock], stageOut[2][kBlock];  // (the stage tap's, offline)
     // M5 (HighPassBed: Cadence's Inversion): the music high-passed for its window, faded in and out over 50 ms.
     const bool bedHp = bedHpMix_ > 0.0f || (bedHpTo_ > frame_ && bedHpFrom_ < frame_ + static_cast<i64>(n));
     if (bedHp && bedHpMix_ <= 0.0f) {
@@ -2902,9 +2912,36 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
         }
         l += bus_[static_cast<u32>(Bus::Sfx)][0][i] * sfxGain_;
         r += bus_[static_cast<u32>(Bus::Sfx)][1][i] * sfxGain_;
+        if (stageFn_) {
+            stageIn[0][i] = l;
+            stageIn[1][i] = r;
+        }
         if (!rawOutput_) {
-            l = limit(l);
-            r = limit(r);
+            // M5 audio: the look-ahead limiter (engine.h): in at frame t, out the frame kLimDelay before it.
+            const i64 t = frame_ + static_cast<i64>(i);
+            const u32 w = static_cast<u32>(t) & (kLimRing - 1);
+            limBuf_[0][w] = l;
+            limBuf_[1][w] = r;
+            const float a = std::fmax(std::fabs(l), std::fabs(r));
+            limPeak_ = a > limPeak_ ? a : limPeak_;
+            const u32 phase = static_cast<u32>(t) & (kLimSeg - 1);
+            if (phase == 0) {
+                // An output segment begins: its gain, from the segments kLimHold before it to kLimAhead after it (all heard).
+                const i64 seg = (t - static_cast<i64>(kLimDelay)) / static_cast<i64>(kLimSeg);
+                float target = 1.0f;
+                for (i64 s = seg - static_cast<i64>(kLimHold); s <= seg + static_cast<i64>(kLimAhead); ++s)
+                    target = std::fmin(target, limReq_[static_cast<u32>(s) & (kLimReqs - 1)]);
+                limPrev_ = limCur_;
+                limCur_ = target < limCur_ ? target : limCur_ + (target - limCur_) * limRelease_;
+            }
+            const float g = limPrev_ + (limCur_ - limPrev_) * static_cast<float>(phase + 1) * (1.0f / static_cast<float>(kLimSeg));
+            const u32 o = static_cast<u32>(t - static_cast<i64>(kLimDelay)) & (kLimRing - 1);
+            l = limit(limBuf_[0][o] * g);
+            r = limit(limBuf_[1][o] * g);
+            if (phase == kLimSeg - 1) {  // an input segment is complete: the gain it may take
+                limReq_[static_cast<u32>(t / static_cast<i64>(kLimSeg)) & (kLimReqs - 1)] = limPeak_ > kLimCeiling ? kLimCeiling / limPeak_ : 1.0f;
+                limPeak_ = 0.0f;
+            }
         }
         float* o = out + static_cast<size_t>(i) * channels;
         if (channels == 1) {
@@ -2914,8 +2951,13 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
             o[1] = r;
             for (u32 c = 2; c < channels; ++c) o[c] = 0.0f;
         }
+        if (stageFn_) {
+            stageOut[0][i] = l;
+            stageOut[1][i] = r;
+        }
         peak_ = std::fmax(peak_, std::fmax(std::fabs(l), std::fabs(r)));
     }
+    if (stageFn_) stageFn_(stageUser_, stageIn[0], stageIn[1], stageOut[0], stageOut[1], n);
     mark(EngineProfile::Master);
     if (muffle_ != muffleTarget_) {
         const float stepN = muffleStep_ * static_cast<float>(n);
