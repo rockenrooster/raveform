@@ -780,6 +780,11 @@ void World::netBossState(const float* partHp, u32 parts, float coreHp, Vec2 pos)
         case BossKind::EventHorizon:
         case BossKind::Polyrhythm: b.pos = pos; break;  // (the pivot; the Solo survivor)
         case BossKind::Cadence: b.cd.centre = b.pos = pos; break;  // M5 part 6: the square's centre
+        case BossKind::Arpeggiator: break;  // (its machines follow the players' centre on every device)
+        case BossKind::Morgana: break;      // (the oasis, her orbit and the storm follow the song's clock and the seed)
+        case BossKind::Reprise: b.pos = pos; break;  // the wheel
+        case BossKind::TwinTether:                    // M5 part 6: the nodes' middle, the Well (they follow the nearest player)
+        case BossKind::DeepWell: b.body[0] = pos; break;
         case BossKind::AlphaHound:
         case BossKind::BatteringRam: b.body[0] = pos; break;
         default: break;  // the Hive's Queen and the Carom King follow their song-time paths
@@ -794,6 +799,7 @@ u32 World::bossPartCount() const {
         case BossKind::CaromKing: return 3;
         case BossKind::EventHorizon: return 1;  // M5 part 4: the meal (not a health)
         case BossKind::Polyrhythm: return 2;    // Three, Four
+        case BossKind::Reprise: return 6;       // M5 part 6: the arms' sixths in the Medley
         default: return 0;
     }
 }
@@ -805,6 +811,7 @@ Vec2 World::bossSyncPoint() const {
         case BossKind::Kaleidos:
         case BossKind::EventHorizon:
         case BossKind::Polyrhythm:
+        case BossKind::Reprise:
         case BossKind::Cadence: return boss_.pos;
         default: return boss_.body[0];
     }

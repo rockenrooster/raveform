@@ -122,7 +122,7 @@ float Ui::text(Vec2 at, float cap, Vec3 c, float i, const char* t, float align, 
     const float w = measure(cap, t);
     const Vec3 k = col(c, i);
     keep({at.x - align * w, at.y - cap}, {at.x + (1.0f - align) * w, at.y}, false, t);
-    // The font's origin is the top of the caps; t is the baseline.
+    // The font's origin is the top of the caps; `at` is the baseline.
     font_->drawField(d_->hud, {at.x - align * w, at.y - cap}, cap, halfWidth > 0.0f ? halfWidth : std::fmax(0.045f * cap, 0.55f * s_), k, k, k, t);
     return w;
 }

@@ -167,20 +167,33 @@ BossKind World::pickMini(u32 track) const {
     // Track before. Batch 1: Track 2 from Alpha Hound and The Hive, Track 3 from Battering Ram and Carom King; the loop's
     // Tracks draw from their song's pair (First Light's from all four).
     if (forcedMini_ != 0xFF) return static_cast<BossKind>(forcedMini_);
-    BossKind cand[4];
+    BossKind cand[12];
     u32 n = 0;
-    switch (songOfTrack(track, director_.songs)) {
+    const u32 song = inLoop(track, director_.songs) ? 0xFFu : songOfTrack(track, director_.songs);  // (the loop: any)
+    if (song == 0xFFu)
+        for (u32 k = static_cast<u32>(BossKind::AlphaHound); k <= static_cast<u32>(BossKind::DeepWell); ++k) cand[n++] = static_cast<BossKind>(k);
+    switch (song) {
+        case 0xFFu: break;
         case 1: cand[n++] = BossKind::AlphaHound; cand[n++] = BossKind::Hive; break;
         case 2: cand[n++] = BossKind::BatteringRam; cand[n++] = BossKind::CaromKing; break;
-        // M5 part 4, batch 2: Track 4 from Moth Queen and Brood Mother, Track 5 from Blink Star and Sentry Array. Track 6 is
-        // Mirror Mimic's (batch 3, part 6); until it is built Track 6 draws from batch 2 (decision taken alone).
+        // M5 part 4, batch 2: Track 4 from Moth Queen and Brood Mother, Track 5 from Blink Star and Sentry Array.
         case 3: cand[n++] = BossKind::MothQueen; cand[n++] = BossKind::BroodMother; break;
         case 4: cand[n++] = BossKind::BlinkStar; cand[n++] = BossKind::SentryArray; break;
-        case 5:
-            cand[n++] = BossKind::MothQueen;
-            cand[n++] = BossKind::BroodMother;
-            cand[n++] = BossKind::BlinkStar;
-            cand[n++] = BossKind::SentryArray;
+        // M5 part 6, batch 3: Track 6 is always Mirror Mimic; Track 7 from Twin Tether and Weaver Prime; Track 8 from Deep Well
+        // and whichever of those two Track 7 did not draw; Tracks 9 and 10 any the run has not met (with their traits).
+        case 5: return BossKind::MirrorMimic;
+        case 6: cand[n++] = BossKind::TwinTether; cand[n++] = BossKind::WeaverPrime; break;
+        case 7:
+            cand[n++] = BossKind::DeepWell;
+            cand[n++] = (director_.minisMet & (1u << (static_cast<u32>(BossKind::TwinTether) - static_cast<u32>(BossKind::AlphaHound)))) ? BossKind::WeaverPrime
+                                                                                                                                        : BossKind::TwinTether;
+            break;
+        case 8:
+        case 9:
+            for (u32 k = static_cast<u32>(BossKind::AlphaHound); k <= static_cast<u32>(BossKind::DeepWell) && n < 12; ++k)
+                if (!(director_.minisMet & (1u << (k - static_cast<u32>(BossKind::AlphaHound))))) cand[n++] = static_cast<BossKind>(k);
+            if (n == 0)
+                for (u32 k = static_cast<u32>(BossKind::AlphaHound); k <= static_cast<u32>(BossKind::DeepWell); ++k) cand[n++] = static_cast<BossKind>(k);
             break;
         default:
             cand[n++] = BossKind::AlphaHound;
@@ -189,7 +202,7 @@ BossKind World::pickMini(u32 track) const {
             cand[n++] = BossKind::CaromKing;
             break;
     }
-    BossKind keep[4];
+    BossKind keep[12];
     u32 m = 0;
     for (u32 k = 0; k < n; ++k)
         if (static_cast<u8>(cand[k]) != director_.lastMini) keep[m++] = cand[k];
@@ -236,7 +249,33 @@ void World::enterMini(Vec2 pos, Vec2 penAt) {
             m.legEnd[0] = -1.0;  // its first leg starts on the fight's downbeat
             break;
         }
-        default: enterMini2(penAt); break;  // M5 part 4: batch 2
+        default:
+            if (s.kind >= BossKind::MirrorMimic && s.kind <= BossKind::DeepWell) enterMini3(penAt);  // M5 part 6: batch 3
+            else enterMini2(penAt);  // M5 part 4: batch 2
+            break;
+    }
+    // M5 part 6 (minibosses.json common.pick): from Track 9 it carries elite traits (Armored, Swift or Regenerating): one in
+    // Track 9, two in Track 10, in the loop as many as the loop has gone round, to three; drawn from the run's seed.
+    {
+        const u32 tr = director_.track;
+        const u32 song = songOfTrack(tr, director_.songs);
+        u32 count = song == 8 ? 1u : (song == 9 ? 2u : 0u);
+        if (inLoop(tr, director_.songs)) {
+            const u32 rounds = director_.songs ? (tr - 1u) / director_.songs : 0u;
+            count = rounds < 3u ? rounds : 3u;
+        }
+        static const u8 kMiniTraits[3] = {kArmored, kSwift, kRegenerating};
+        u32 h = hash32(hash32(static_cast<u32>(seed_), static_cast<u32>(seed_ >> 32) ^ 0x7A17u), tr * 0x9E37u + 0x51u);
+        u32 first = h % 3u;
+        for (u32 k = 0; k < count; ++k) m.traits = static_cast<u8>(m.traits | traitBit(kMiniTraits[(first + k) % 3u]));
+        if (m.traits & traitBit(kArmored)) {
+            s.coreMax *= species_->traits.armoredHealth;
+            s.coreHp = s.coreMax;
+            s.partMax *= species_->traits.armoredHealth;
+            for (u32 k = 0; k < kBossParts; ++k)
+                if (s.alive & (1u << k)) s.partHp[k] = s.partMax;
+        }
+        director_.minisMet = static_cast<u16>(director_.minisMet | (1u << (static_cast<u32>(s.kind) - static_cast<u32>(BossKind::AlphaHound))));
     }
     emitCue(BossCue::MiniEnter, s.enterTick, static_cast<u8>(s.kind), 0.0f, pos);
 }
@@ -303,6 +342,10 @@ void World::miniPartDied(u8 index, u8 owner, Event& ev) {
     (void)owner;
     if (s.kind == BossKind::SentryArray) {
         mini2PartDied(index);
+        return;
+    }
+    if (s.kind == BossKind::TwinTether) {  // M5 part 6
+        mini3PartDied(index);
         return;
     }
     if (role_ == NetRole::Client || s.kind != BossKind::CaromKing) return;
@@ -384,6 +427,8 @@ void World::miniRelease(bool killed) {
         }
     } else if (s.kind >= BossKind::MothQueen && s.kind <= BossKind::SentryArray) {
         mini2Release(killed);  // M5 part 4: batch 2
+    } else if (s.kind >= BossKind::MirrorMimic && s.kind <= BossKind::DeepWell) {
+        mini3Release(killed);  // M5 part 6: batch 3
     } else if (s.kind == BossKind::CaromKing && killed && role_ != NetRole::Client) {
         const u16 sp = miniTierSpecies(Family::Carom);
         for (u32 k = 0; k < 3; ++k) {
@@ -431,6 +476,10 @@ u32 World::miniParts(BossPart* out, u32 cap) const {
                 if ((s.alive & (1u << k)) && n < cap) out[n++] = BossPart{s.body[1 + k], kPrinceRadius, 2, static_cast<u8>(k)};
             break;
         case BossKind::SentryArray: return mini2Parts(out, cap);  // M5 part 4
+        case BossKind::MirrorMimic:
+        case BossKind::TwinTether:
+        case BossKind::WeaverPrime:
+        case BossKind::DeepWell: return mini3Parts(out, cap);  // M5 part 6
         default:
             if (n < cap) out[n++] = BossPart{s.body[0], r, 3, 0};
             break;
@@ -438,7 +487,7 @@ u32 World::miniParts(BossPart* out, u32 cap) const {
     return n;
 }
 
-float World::miniScale(u8 part, u8 /*index*/, double t, Vec2 dir) const {
+float World::miniScale(u8 part, u8 index, double t, Vec2 dir) const {
     // Every one has a moment when it takes x 2 (minibosses.md).
     const BossState& s = boss_;
     const MiniState& m = s.mini;
@@ -457,6 +506,10 @@ float World::miniScale(u8 part, u8 /*index*/, double t, Vec2 dir) const {
         case BossKind::BroodMother:
         case BossKind::BlinkStar:
         case BossKind::SentryArray: return mini2Scale(part, t);  // M5 part 4
+        case BossKind::MirrorMimic:
+        case BossKind::TwinTether:
+        case BossKind::WeaverPrime:
+        case BossKind::DeepWell: return mini3Scale(part, index, t);  // M5 part 6
         default: return 1.0f;
     }
 }
@@ -480,8 +533,13 @@ void World::updateMini(float dt) {
         case BossKind::BroodMother: updateBrood(dt); break;
         case BossKind::BlinkStar: updateBlink(dt); break;
         case BossKind::SentryArray: updateSentry(dt); break;
+        case BossKind::MirrorMimic: updateMimic(dt); break;  // M5 part 6: batch 3
+        case BossKind::TwinTether: updateTether(dt); break;
+        case BossKind::WeaverPrime: updateWeaver(dt); break;
+        case BossKind::DeepWell: updateWell(dt); break;
         default: break;
     }
+    miniTraitsTick();
     s.pos = s.body[0];
     s.angle = s.bodyAng[0];
 }

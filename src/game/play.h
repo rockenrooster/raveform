@@ -318,7 +318,7 @@ private:
     sim::BossKind fightKind_ = sim::BossKind::Kaleidos;
     u8 fightPhase_ = 0;
     double fightPhaseAt_ = -1.0;
-    u8 m5Pic_ = 0xFF;          // the m5_ picture being taken (play_pictures_m5.cpp kPics)
+    u16 m5Pic_ = 0xFFFF;       // the m5_ picture being taken (play_pictures_m5.cpp kPics; the other tables from their bases)
     u32 stripStride_ = 1;      // a strip's frames this many frames apart (M5: 8 frames across a beat)
 
     PlayOptions opt_;

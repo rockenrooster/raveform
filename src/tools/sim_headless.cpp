@@ -564,6 +564,16 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     std::printf("[hit]  %6.1f s %s ph %u, beat %.2f of the bar: nearest part %.0f wu, taken body %u beam %u, ship (%.0f, %.0f) moving %.0f wu/s\n",
                                 t / 60.0f, bossId(b.kind), b.phase, std::fmod(w.music(), kTicksPerBar) / kTicksPerBeat, pn ? nearPart : -1.0f, b.hitsBody,
                                 b.hitsBeam, p.pos.x, p.pos.y, length(p.vel));
+                    if (b.kind == BossKind::Morgana) {
+                        // (M5 part 6: where the calm was)
+                        const Vec2 o = w.morganaOasis(w.music());
+                        Vec2 mp;
+                        bool lit = false;
+                        const bool mirage = w.morganaMirage(w.music(), mp, lit);
+                        std::printf("       oasis (%.0f, %.0f) %.0f wu from the ship%s%s, resting %d, leap %.2f bars ago\n", o.x, o.y, length(o - p.pos),
+                                    mirage ? ", a mirage " : "", mirage ? (length(mp - p.pos) < 260.0f ? "round the ship" : "elsewhere") : "",
+                                    w.morganaResting(w.music()) ? 1 : 0, b.mg.leapTick >= 0.0 ? (w.music() - b.mg.leapTick) / kTicksPerBar : -1.0);
+                    }
                 }
             }
             if (trace && t % 3600u == 3599u) {

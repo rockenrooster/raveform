@@ -155,6 +155,69 @@ const FightSound kRows[] = {
      SoundPlay::Recipe, rc(Recipe::Sweep), false, 0.6f, 1, 4},
     {BossCue::CdBurst, "cadence.md", "death: the four chords in turn, then the tonic with the gong", "the chords (a gong a burst plays)", SoundPlay::Recipe,
      rc(Recipe::Gong), false, 0.6f, 0, 0},
+    // ---- Arpeggiator (design/bosses/arpeggiator.md "Sound"; M5 part 6)
+    {BossCue::ApBlock, "arpeggiator.md", "each block sounds its own note, on the P3 bell at 0.3, as it passes the row the nearest player is in",
+     "as it leaves its port (its chord tone; the row of the nearest player is not followed)", SoundPlay::Recipe, rc(Recipe::Bell), false, 0.3f, 0, 0,
+     NoteRule::ChordUp, 0, 0, 0, 0, 5},
+    {BossCue::ApShutter, "arpeggiator.md", "the shutter is a woodblock on the One with a sweep opening over the beat", nullptr, SoundPlay::Pair,
+     rc(Recipe::Woodblock), false, 0.5f, 1, 1, NoteRule::None, rc(Recipe::Sweep)},
+    {BossCue::ApMove, "arpeggiator.md", "a change of side is a whoosh over the bar before", nullptr, SoundPlay::Recipe, rc(Recipe::Whoosh), false, 0.5f, 4,
+     0},
+    {BossCue::ApSecond, "arpeggiator.md", "the second machine arrives with the chord's stab", "the chord's stab (the zap plays)", SoundPlay::Recipe,
+     rc(Recipe::Zap), false, 0.8f, 0, 0},
+    {BossCue::ApDeath, "arpeggiator.md", "death: Shard chirps running up the scale over two beats", nullptr, SoundPlay::Recipe, rc(Recipe::Chirp), false,
+     0.5f, 0, 0, NoteRule::ScaleUp, 0, 0, 0, 0, 6},
+    // ---- Fata Morgana (design/bosses/morgana.md "Sound"; M5 part 6)
+    {BossCue::MgStorm, "morgana.md", "the storm is a crackle and a whoosh that are heard outside the oasis; outside it the music bus is also low-passed at 2 kHz",
+     "the bed low-passed at 2 kHz while a ship of this device is outside (the crackle, a held voice, is not played)", SoundPlay::LowPass, 0, false, 1.0f,
+     2000, 1.5f},
+    {BossCue::MgWhoosh, "morgana.md", "the storm is a crackle and a whoosh that are heard outside the oasis", "a whoosh a bar while a ship is outside",
+     SoundPlay::Recipe, rc(Recipe::Whoosh), false, 0.3f, 4, 0},
+    {BossCue::MgBlink, "morgana.md", "a mirage's blink is a soft tick on the snare", "a soft tick (the glass tick, quiet)", SoundPlay::Recipe,
+     rc(Recipe::Glass), false, 0.25f, 0, 0},
+    {BossCue::MgLeap, "morgana.md", "the leap is the lead's arpeggio as a run of chirps, up", "the chord's tones up (the lead's own arpeggio is not read)",
+     SoundPlay::Recipe, rc(Recipe::Chirp), false, 0.5f, 0, 0, NoteRule::ChordUp, 0, 0, 0, 0, 5},
+    {BossCue::MgBell, "morgana.md", "while she is over the water, a bell on every beat", nullptr, SoundPlay::Recipe, rc(Recipe::Bell), false, 0.5f, 0, 0},
+    // ---- Kaleidos, Reprise (design/bosses/reprise.md "Sound"; M5 part 6)
+    {BossCue::RpBell, "reprise.md", "each solo is in its boss's own voice: Kaleidos's bells", nullptr, SoundPlay::Recipe, rc(Recipe::Bell), false, 0.3f, 0, 0},
+    {BossCue::RpString, "reprise.md", "each solo is in its boss's own voice: Longwave's rubber string", nullptr, SoundPlay::Recipe, rc(Recipe::RubberString),
+     false, 0.5f, 2, 0},
+    {BossCue::RpPad, "reprise.md", "each solo is in its boss's own voice: a pad voice for The Choir", nullptr, SoundPlay::PadVoice, rc(Recipe::PadVoice),
+     false, 0.5f, 2, 0.5f, NoteRule::ChordUp, 0, 0, 0, 0, 4},
+    {BossCue::RpSub, "reprise.md", "each solo is in its boss's own voice: the sub drop for Event Horizon", nullptr, SoundPlay::Recipe, rc(Recipe::SubDrop),
+     false, 0.8f, 0, 0},
+    {BossCue::RpTom, "reprise.md", "each solo is in its boss's own voice: toms three against four for Polyrhythm", nullptr, SoundPlay::Recipe,
+     rc(Recipe::Tom), false, 0.5f, 0, 0, NoteRule::KeyRoot, 0, 0, 0, 0, 3},
+    {BossCue::RpEcho, "reprise.md", "each solo is in its boss's own voice: the player's lead reversed for Feedback",
+     "the player's lead forward, 9 dB down (a reversed lead is not built)", SoundPlay::Lead, 0xFF, false, 0.35f, 0, 0},
+    {BossCue::RpArp, "reprise.md", "the last pattern is First Light's arpeggio on the P3 bell, doubled by the band's lead",
+     "the bell (the band's lead doubles it only while a player fires)", SoundPlay::Recipe, rc(Recipe::Bell), true, 0.3f, 0, 0},
+    {BossCue::RpDeath, "reprise.md", "death: the tonic held, the ripple a reversed cymbal ending on the encore's first downbeat",
+     "the reversed cymbal ends on the bar line the Track ends on (the encore comes after the Track-change Break); the tonic is not held",
+     SoundPlay::Recipe, rc(Recipe::RevCymbal), false, 0.7f, 4, 0},
+    // ---- Mini-bosses batch 3 (minibosses.md; M5 part 6)
+    {BossCue::MmFire, "minibosses.md", "its fire is the player's lead upside down: each lead note answered a thirty-second later by the note as far below "
+                                         "the chord's root as the lead's is above, at 0.4",
+     "the player's own lead note a thirty-second later at 0.4 (its inversion below the root is not built)", SoundPlay::Lead, 0xFF, false, 0.4f, 0, 0},
+    {BossCue::MmDash, "minibosses.md", "its Dash is the Dash's sweep reversed", "the sweep closing (a reversed sweep is not built)", SoundPlay::Recipe,
+     rc(Recipe::Sweep), false, 0.6f, -1, 0},
+    {BossCue::MmGlass, "minibosses.md", "death is glass", nullptr, SoundPlay::Recipe, rc(Recipe::Glass), false, 0.8f, 0, 0},
+    {BossCue::TtCut, "minibosses.md", "a cut strand is a zap and the drone falls silent for its beat (silence is safe)",
+     "the zap (the beam's drone, a voice whose filter follows the beam round, is not built)", SoundPlay::Recipe, rc(Recipe::Zap), false, 0.7f, 0, 0},
+    {BossCue::TtTom, "minibosses.md", "each node is a tom as it passes twelve o'clock", nullptr, SoundPlay::Recipe, rc(Recipe::Tom), false, 0.5f, 0, 0},
+    {BossCue::WvLap, "minibosses.md", "each lap is a saw glide rising over its three beats, a step higher each lap", nullptr, SoundPlay::Recipe,
+     rc(Recipe::SawGlide), false, 0.45f, 2, 3, NoteRule::ScaleUp, 0, 0, 0, 0, 4},
+    {BossCue::WvKnot, "minibosses.md", "the knot is a woodblock and a bell on the One", nullptr, SoundPlay::Pair, rc(Recipe::Woodblock), false, 0.5f, 0, 0,
+     NoteRule::None, rc(Recipe::Bell)},
+    {BossCue::WvBurst, "minibosses.md", "the cage going off is a crackle swelling into the chord's stab", "a zap (the crackle swelling into the stab is not built)",
+     SoundPlay::Recipe, rc(Recipe::Zap), false, 0.6f, 0, 0},
+    {BossCue::DwThup, "minibosses.md", "each swallowed shot is a soft low thup, a step higher for each ring lit, so the fill can be heard",
+     "a quiet low tom (one a sixteenth at most)", SoundPlay::Recipe, rc(Recipe::Tom), false, 0.25f, 0, 0, NoteRule::ScaleUp, 0, 0, 0, 0, 2},
+    {BossCue::DwChoke, "minibosses.md", "choking is the gong with the bed low-passed for the bar", nullptr, SoundPlay::Recipe, rc(Recipe::Gong), false, 0.6f, 0, 0},
+    {BossCue::DwLow, "minibosses.md", "choking is the gong with the bed low-passed for the bar", nullptr, SoundPlay::LowPass, 0, false, 1.0f, 600, 4},
+    {BossCue::DwRing, "minibosses.md", "a ring given back is a reversed cymbal into the One and a stab",
+     "the impact on the One (the ring is decided on the One: no reversed cymbal leads into it; no stab)", SoundPlay::Recipe, rc(Recipe::Impact), false, 0.5f,
+     0, 0},
     // ---- Elites (design/traits.md: "Heard as it arrives"; M5 part 5)
     {BossCue::ElArrive, "traits.md", "the elite's low fifth (root and fifth of the Track's key) as it warps in", nullptr, SoundPlay::Sfx, sx(Sfx::Elite), false,
      0.9f, 0, 0},
@@ -287,10 +350,10 @@ void playFightCue(Band& band, FightVoices& voices, const sim::Event& e, double t
         }
         case SoundPlay::Lead: {
             const u8 timbre = r.id == 0xFF ? static_cast<u8>(e.b % 4u) : r.id;
-            if (r.cue == BossCue::FbEcho) {
+            if (r.cue == BossCue::FbEcho || r.cue == BossCue::RpEcho || r.cue == BossCue::MmFire) {
                 // Feedback: the player's own lead (its voice), the step's degree; the second Echo 6 dB further down.
                 const u8 degree = static_cast<u8>(static_cast<u64>(std::floor(e.tick / 24.0)) % 3u);
-                band.leadNote(static_cast<u8>(e.b % 4u), degree, e.f > 0.5f ? 0.5f * r.gain : r.gain, pan, tick, 0xFF);
+                band.leadNote(static_cast<u8>(e.b % 4u), degree, e.f > 0.5f ? 0.5f * r.gain : r.gain, pan, tick, 0xFF);  // (the Reprise's Echo, the Mimic too)
                 break;
             }
             band.leadNote(0, static_cast<u8>(e.b % 3u), r.gain, pan, tick, timbre);

@@ -202,7 +202,7 @@ void World::tick(const TickInput& in) {
         scriptHits_ = 0;
     }
     bossContact();
-    if (boss_.active && !boss_.dying && boss_.kind == BossKind::Feedback) feedbackRecord(fbShot0_);  // M5 part 4: the tape
+    if (boss_.active && !boss_.dying && (boss_.kind == BossKind::Feedback || boss_.kind == BossKind::Reprise)) feedbackRecord(fbShot0_);  // (M5 part 6: the Reprise's Echo)  // M5 part 4: the tape
     if (role_ == NetRole::Client) updatePredictions();
     if (role_ == NetRole::Host) finishNetLog();
     compact();
@@ -395,8 +395,9 @@ void World::updateNovas() {
             // GAME_DESIGN 5: heavy damage to bosses (in view). Co-op: the Nova's owner deals it (a client claims it).
             // M5 part 4 (polyrhythm.md): a Nova erases every wall its front touches (on every device: it follows the Nova).
             if (boss_.active && !boss_.dying && boss_.kind == BossKind::Polyrhythm) polyErase(pl.pos, kNovaFrontWu);
+            if (boss_.active && !boss_.dying && boss_.kind == BossKind::Arpeggiator) arpNovaClear();  // M5 part 6: a Nova clears the lanes
             bossNova(p);
-        arenaNova(p);  // M5 part 5: a Vault in view
+            arenaNova(p);  // M5 part 5: a Vault in view
         } else if (!pl.novaPending && pl.novaInvulS > 0.0f) {
             pl.novaInvulS -= kDt;
         }

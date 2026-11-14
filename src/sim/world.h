@@ -769,6 +769,29 @@ public:
     u32 cadenceChord(double t) const;
     Vec2 cadencePillar(u32 k, double t) const;
     float cadenceScale(u32 k, double t) const;
+    // Arpeggiator: machine m's core (0, 1 the second hand's), lane 1-4's port and way, a part's multiplier.
+    Vec2 arpMachine(u32 m) const;
+    bool arpLane(u32 m, u32 lane, Vec2& from, Vec2& dir) const;
+    float arpScale(u8 part, u8 index, double t) const;
+    bool arpBlockHit(Vec2 at, Vec2& from) const;  // a block falls on `at` now (from: where it is)
+    // Fata Morgana: the oasis's drift, the real oasis's centre, whether a place is in the calm, her body, her multiplier, the
+    // mirage (lit: not blinked out), whether the oasis rests (she crosses it).
+    Vec2 morganaDrift(double t) const;
+    Vec2 morganaOasis(double t) const;
+    bool morganaCalm(Vec2 at, double t) const;
+    Vec2 morganaBody(double t) const;
+    float morganaScale(double t) const;
+    bool morganaMirage(double t, Vec2& at, bool& lit) const;
+    bool morganaResting(double t) const;
+    // Kaleidos, Reprise: arm k's angle, an arm's tip now, whether Longwave's arm is out as its wave, a wave segment's place and
+    // whether it is a crest, a part's multiplier, whether Event Horizon's arm pulls now.
+    float repriseArmAngle(u32 k, double t) const;
+    Vec2 repriseArmTip(u32 k) const;
+    bool repriseWaveOut(double t) const;
+    Vec2 repriseWaveSeg(u32 j, double t) const;
+    bool repriseCrest(u32 j, double t) const;
+    float repriseScale(u8 part, u8 index, double t) const;
+    bool repriseHorizonOn() const;
     i32 enemyIndex(u32 handle) const { return indexOf(handle); }  // (the view: a Twin's partner, the hunted elite)
     ArenaBody& arenaBodyMut(u32 slot) { return arena_[slot < kArenaBodies ? slot : 0]; }  // (pictures, tests)
     void spawnShardNow(Vec2 pos, Vec2 vel, u8 owner) { spawnShard(pos, vel, owner); }     // (pictures, tests)
@@ -844,6 +867,19 @@ public:
     bool blinkBeamHit(Vec2 at, Vec2& from) const;
     i32 sentryHand() const;                 // the turret under the hand (-1: none)
     float sentryHandAngle() const { return boss_.mini.ringAng; }
+    // Mini-bosses batch 3 (world_miniboss3.cpp): the Mimic's images (1: from half health) and whether it is copying a Dash; the
+    // Tether's beam (false: slack, or none), whether it is slack; a Weaver's place and knot, a lap's circle and the span of it
+    // drawn and still alive (u0..u1 of the turn); the Well's stomach and whether it is choked.
+    Vec2 mimicImage(u32 k) const;
+    bool mimicCopying(double t) const;
+    bool tetherBeam(Vec2& a, Vec2& b) const;
+    bool tetherSlack(double t) const;
+    Vec2 weaverPos(u32 w, double t) const;
+    bool weaverKnot(u32 w, double t) const;
+    bool weaverLap(u32 w, u32 lap, double t, Vec2& centre, float& radius, float& ang0, float& dir, float& u0, float& u1) const;
+    float wellStomach() const;
+    bool wellChoked(double t) const;
+    void wellFeedNow(float dmg);  // (pictures: what a stream would feed it, at once)
     bool fenceUp() const;
     float fenceRadius() const;              // the fence's inner radius (the ring's apothem)
     bool mothOpen(double t) const;
@@ -1245,6 +1281,19 @@ private:
     void updateAlpha(float dt);
     // world_miniboss2.cpp (M5 part 4): batch 2.
     void enterMini2(Vec2 penAt);
+    void enterMini3(Vec2 penAt);
+    float mini3Scale(u8 part, u8 index, double t) const;
+    u32 mini3Parts(BossPart* out, u32 cap) const;
+    void mini3PartDied(u8 index);
+    void mini3Release(bool killed);
+    bool mini3Hits(Vec2 at, Vec2& from) const;
+    void mini3Feed(float dmg);
+    void updateMimic(float dt);
+    void updateTether(float dt);
+    void updateWeaver(float dt);
+    void updateWell(float dt);
+    void miniTraitsTick();
+    double weaverStart(u32 w) const;
     void updateMoth(float dt);
     void mothCourt(double t);
     void updateBrood(float dt);
@@ -1281,9 +1330,23 @@ private:
     void hatchBroodlings(u32 i, u32 n, double land);
     void familyDeath(u32 i, const Species& s);
     void minionLand(u32 i);
-    // world_cadence.cpp (M5 part 6)
+    // world_cadence.cpp, world_arpeggiator.cpp (M5 part 6)
     void enterCadence(Vec2 centre);
     void updateCadence(float dt);
+    void enterArpeggiator(Vec2 centre);
+    void enterMorgana(Vec2 centre);
+    void enterReprise(Vec2 centre);
+    void updateReprise(float dt);
+    void repriseDamage(u8 part, u8 index, float dmg, u8 owner);
+    void reprisePartDied(u8 index, Event& ev);
+    bool repriseHits(Vec2 at, Vec2& from) const;
+    u32 repriseParts(BossPart* out, u32 cap) const;
+    void updateMorgana(float dt);
+    double mgSong(double t) const;  // the song's ticks (its bars, for the rests and the draws)
+    double mgEnd(double t) const;
+    Vec2 mgLeapTo(Vec2 from, i64 songBar) const;
+    void updateArpeggiator(float dt);
+    void arpNovaClear();
     // world_elites.cpp (M5 part 5, design/traits.md)
     void eliteBar(const Phrase& ph, double land);     // the director buys an elite with the threat budget
     i32 spawnElite(u16 species, Vec2 pos, double land, u16 traits);

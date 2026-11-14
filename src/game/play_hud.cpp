@@ -346,6 +346,9 @@ const char* bossHint(sim::BossKind k) {
         case sim::BossKind::Polyrhythm: return "SHOOT THROUGH THE GAPS";
         case sim::BossKind::Feedback: return "STOP FIRING TO OPEN IT";
         case sim::BossKind::Cadence: return "SHOOT THE SILENT ONE";
+        case sim::BossKind::Arpeggiator: return "SHOOT IT AS IT LOADS";
+        case sim::BossKind::Morgana: return "SHOOT HER OVER THE WATER";
+        case sim::BossKind::Reprise: return "SHOOT THE ARMS OFF";  // (the page's weak point, not "SHOOT WHERE THE WALL THINS")
         default: return nullptr;
     }
 }

@@ -15,6 +15,7 @@
 
 #include <cmath>
 
+#include "sim/boss_prose.h"
 #include "sim/tuning.h"
 #include "sim/world.h"
 
@@ -505,6 +506,18 @@ Vec2 World::wellPull(Vec2 pos) const {
         const Vec2 to = boss_.pos - pos;
         const float l = length(to);
         if (l > 1.0f) v = v + to * (horizonPullAt(pos, species_->horizon.pullShip) / l);
+    }
+    if (boss_.active && !boss_.dying && boss_.kind == BossKind::DeepWell && m1_ >= boss_.fightTick) {
+        // M5 part 6: Deep Well draws ships within 300 wu in at up to 120 wu/s (most at its edge; a Dash ignores it).
+        const Vec2 to = boss_.body[0] - pos;
+        const float l = length(to);
+        if (l > 1.0f && l < prose::kDwPull) v = v + to * (prose::kDwPullMax * (1.0f - l / prose::kDwPull) / l);
+    }
+    if (repriseHorizonOn()) {
+        // M5 part 6: the Reprise's Event Horizon arm draws ships toward the wheel at 200 wu/s for its two bars.
+        const Vec2 to = boss_.pos - pos;
+        const float l = length(to);
+        if (l > 1.0f) v = v + to * (prose::kRpPullWu / l);
     }
     for (u32 i = 0; i < e.count; ++i) {
         if ((e.flags[i] & kFlagDead) || e.state[i] == kWarping || species_->get(e.species[i]).family != Family::Well) continue;
