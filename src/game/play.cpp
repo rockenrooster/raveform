@@ -617,7 +617,15 @@ void Play::afterTick() {
                 if (isMiniBoss(kind)) break;  // the Track goes on
                 pulse(2);  // M6: a boss's death (a heavy pulse)
                 if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 1, 0};
-                hitStopUntil_ = clock_.simTime() + static_cast<double>(look_->boom.bossHitStopMs) * 0.001;
+                // look.md §5 "A boss falls" (the owner, 2026-11-14: "a little bit for epic deaths, but not as epic as the track 10
+                // boss", then "make sure the reprise one is even more epic"): every boss's fall rings the gong over its own sound;
+                // the Reprise's adds the impact and holds the action three times as long.
+                const bool finale = kind == sim::BossKind::Reprise;
+                if (bandDrives_) {
+                    band_->playRecipe(audio::Recipe::Gong, -1, finale ? 0.9f : 0.55f);
+                    if (finale) band_->playRecipe(audio::Recipe::Impact, -1, 0.8f);
+                }
+                hitStopUntil_ = clock_.simTime() + static_cast<double>(look_->boom.bossHitStopMs) * 0.001 * (finale ? 3.0 : 1.0);
                 // M6 (screens.md "A finished run"): the set list's last boss has fallen: the run is won (SET COMPLETE for two bars,
                 // then the loop's own card).
                 if (w.phrase().track == w.setList() && !runSetComplete_) {

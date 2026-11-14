@@ -28,23 +28,17 @@ constexpr float kBandEdgeWu = 4.0f;
 // ---------------------------------------------------------------------------------------------- Event Horizon
 
 void PlayView::fightBreak(Vec2 at, float t) {
-    // A boss break played late (horizon.md, polyrhythm.md Look): the clamped white flash on the downbeat, three rings, 400
-    // sparks in the Track's hues, the 30 px distortion ring.
-    addPool(at, 60.0f, 420.0f, whiteV(), reduceFlashing_ ? 0.45f : 0.9f, 0.0f, 0.12f, false, 1, false, false, t);
-    addShockRings(at, 3, 1100.0f, palette_->hue[0], palette_->hue[1], t, 0.6f);
-    for (u32 k = 0; k < 2; ++k) {
-        SparkReq r{};
-        r.at = at;
-        r.count = 200;
-        r.kind = 1;
-        r.a = palette_->hue[k];
-        r.b = palette_->hue[k + 1];
-        r.t0 = t;
-        sparkRequest(r);
-    }
-    addDistortion(at, 900.0f, 0.6f, 30.0f, 28.0f, t);
-    shakeAmp_ = std::fmax(shakeAmp_, 6.0f);
-    push(kImpBoss, at, 600.0f, 500.0f, t);
+    // A boss break played late (horizon.md, polyrhythm.md Look): the boss's fall (look.md §5 "A boss falls", the owner's "a
+    // little bit for epic deaths", 2026-11-14) on the downbeat, in the Track's hues, and 200 more sparks in its first two.
+    bossFall(at, palette_->hue[0], palette_->hue[1], t);
+    SparkReq r{};
+    r.at = at;
+    r.count = 200;
+    r.kind = 1;
+    r.a = palette_->hue[1];
+    r.b = palette_->hue[2];
+    r.t0 = t;
+    sparkRequest(r);
 }
 
 void PlayView::drawHorizon(FrameDraw& d, const ViewInput& in) {

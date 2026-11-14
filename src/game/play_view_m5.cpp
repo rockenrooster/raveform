@@ -918,29 +918,42 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
                 // reprise.md (the owner, 2026-11-14: "more epic"; no burst until then): the run's biggest burst, a white flash across
                 // the frame, a ring in each of the six arms' colours, four hundred sparks and the distortion ring; then the core dims to
                 // a point (drawReprise) and one white ripple crosses the whole lattice.
-                addPool(at, 80.0f, 1400.0f, whiteV(), reduceFlashing_ ? 0.5f : 1.2f, 0.0f, 0.3f, false, 1, false, false, t);
+                // The owner, the same evening: "make sure the reprise one is even more epic": a 2,000 wu flash held 0.4 s and a gold
+                // one after it, six rings in the arms' colours, 400 gold sparks and 100 in each arm's colour, two distortion waves,
+                // a shake of 10; then (drawReprise, from its death) the whole set list comes home: a ring in each of the ten Tracks'
+                // colours, one after another, and a white ripple across the whole lattice. The gong and the impact (play.cpp).
+                const Vec3 gold = palettes_->player[3];
+                addPool(at, 80.0f, 2000.0f, whiteV(), reduceFlashing_ ? 0.5f : 1.4f, 0.0f, 0.4f, false, 1, false, false, t);
+                addPool(at, 200.0f, 2600.0f, gold, reduceFlashing_ ? 0.25f : 0.6f, 0.0f, 0.9f, false, 1, false, false, t + 0.2f);
+                SparkReq r{};
+                r.at = at;
+                r.kind = 1;
+                r.b = whiteV();
+                r.t0 = t;
                 for (u32 k = 0; k < 6; ++k) {
                     Vec3 c = palette_->accent;
                     for (u32 i = 0; i < palettes_->count; ++i)
                         if (palettes_->list[i].track == k + 1) c = palettes_->list[i].accent;
                     addShockRings(at, 1, 900.0f + 260.0f * static_cast<float>(k), c, whiteV(), t + 0.05f * static_cast<float>(k), 0.9f);
+                    r.count = 100;
+                    r.a = c;
+                    sparkRequest(r);
                 }
-                SparkReq r{};
-                r.at = at;
                 r.count = 400;
-                r.kind = 1;
-                r.a = palettes_->player[3];
-                r.b = whiteV();
-                r.t0 = t;
+                r.a = gold;
                 sparkRequest(r);
                 addDistortion(at, 1600.0f, 0.8f, 30.0f, 40.0f, t);
-                shakeAmp_ = std::fmax(shakeAmp_, 9.0f);
-                push(kImpBoss, at, 700.0f, 4200.0f, t);
-                addShockRings(at, 1, 4200.0f, whiteV(), whiteV(), t, 1.6f);
+                addDistortion(at, 2800.0f, 1.2f, 24.0f, 60.0f, t + 0.3f);
+                shakeAmp_ = std::fmax(shakeAmp_, 10.0f);
+                push(kImpBoss, at, 800.0f, 4200.0f, t);
                 break;
             }
             const bool mini = isMiniBoss(static_cast<BossKind>(e.a));
             const Vec3 c = static_cast<BossKind>(e.a) == BossKind::Choir ? choirHue_[0] : palette_->hue[mini ? 2 : 1];
+            if (!mini) {
+                bossFall(at, c, palette_->hue[2], t);  // (look.md §5 "A boss falls")
+                break;
+            }
             addPool(at, 60.0f, mini ? 260.0f : 420.0f, whiteV(), reduceFlashing_ ? 0.45f : 0.9f, 0.0f, 0.12f, false, 1, false, false, t);
             addShockRings(at, mini ? 2 : 3, mini ? 700.0f : 1100.0f, c, whiteV(), t, 0.6f);
             SparkReq r{};
@@ -965,6 +978,34 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
             break;
         default: break;
     }
+}
+
+void PlayView::bossFall(Vec2 at, Vec3 c0, Vec3 c1, float t) {
+    // look.md §5 "A boss falls" (the owner, 2026-11-14: "give the bosses a little bit for epic deaths, but not as epic as the track
+    // 10 boss"): the white flash out to 800 wu held 0.2 s (420, 0.12 s before), three rings in its colour to 1,100 and two more
+    // after them to 1,600 and 2,000 in its second colour and gold, 300 sparks of its colour and 120 gold, the distortion ring to
+    // 1,200 (900), a shake of 7 (6) and a white ripple to 2,600 wu across the lattice. The Reprise's: a 1,400 wu flash, six rings
+    // to 2,200, 400 sparks, a shake of 9 and a ripple to 4,200.
+    const Vec3 gold = palettes_->player[3];
+    addPool(at, 60.0f, 800.0f, whiteV(), reduceFlashing_ ? 0.45f : 1.0f, 0.0f, 0.2f, false, 1, false, false, t);
+    addShockRings(at, 3, 1100.0f, c0, whiteV(), t, 0.6f);
+    addShockRings(at, 1, 1600.0f, c1, whiteV(), t + 0.08f, 0.75f);
+    addShockRings(at, 1, 2000.0f, gold, whiteV(), t + 0.16f, 0.85f);
+    SparkReq r{};
+    r.at = at;
+    r.count = 300;
+    r.kind = 1;
+    r.a = c0;
+    r.b = whiteV();
+    r.t0 = t;
+    sparkRequest(r);
+    r.count = 120;
+    r.a = gold;
+    sparkRequest(r);
+    addDistortion(at, 1200.0f, 0.65f, 30.0f, 34.0f, t);
+    shakeAmp_ = std::fmax(shakeAmp_, 7.0f);
+    push(kImpBoss, at, 650.0f, 1800.0f, t);
+    addShockRings(at, 1, 2600.0f, whiteV(), whiteV(), t, 1.1f);
 }
 
 void PlayView::bossHit(const World& w, const Event& e, float t, Vec3 hue) {

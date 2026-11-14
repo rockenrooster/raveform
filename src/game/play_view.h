@@ -190,6 +190,9 @@ private:
     const Palette* fbHueFor_ = nullptr;
     Vec3 fbHue_;                   // the Head's electric blue
     void fightBreak(Vec2 at, float t);  // a boss break played late (Event Horizon's flash, Polyrhythm's break on the One)
+    // look.md §5 "A boss falls" (the owner, 2026-11-14: "give the bosses a little bit for epic deaths, but not as epic as the
+    // track 10 boss"): every boss's burst, c0 and c1 its colours (Kaleidos Reprise has its own, bigger).
+    void bossFall(Vec2 at, Vec3 c0, Vec3 c1, float t);
     void polyWalls(FrameDraw& d, const ViewInput& in);
     const Palette* polyHueFor_ = nullptr;
     Vec3 polyHue_[2];              // Three (the palette's cyan, or its nearest), Four (its amber)

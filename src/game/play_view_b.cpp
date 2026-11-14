@@ -25,8 +25,6 @@ constexpr float kDropZoomOut = 0.08f;      // the Drop snaps the zoom out by thi
 constexpr float kBreakDrain = 0.22f;       // the Break: cool, desaturated
 constexpr float kTrioAnswerWu = 110.0f;    // screens.md (quoted): an orb answers within 110 wu
 constexpr float kBoostOrbWu = 20.0f;       // a Boost lying in the arena: its icon frame radius
-// M3 stage C, kaleidos.md death: the clamped white flash (0.9, as the M1 boss break's) peaks for 0.12 s.
-constexpr float kBossFlash = 0.9f, kBossFlashS = 0.12f;
 
 Vec2 dirv(float a) { return {std::cos(a), std::sin(a)}; }
 Vec2 lerpv(Vec2 a, Vec2 b, float t) { return a + (b - a) * t; }
@@ -219,21 +217,11 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
             // Iris wide open, the clamped white flash, facets tumbling outward in six-fold symmetry, three
             // rings, 300 sparks, the 30 px distortion ring; Play holds the action 50 ms. M3 stage C: the white
             // flash is clamped (0.9, like the M1 boss break) and peaks for 0.12 s; the accent glow stays after it.
+            // (the owner, 2026-11-14: "a little bit for epic deaths": the boss's fall, look.md §5, under the facets)
             const BossData& b = w.bossData();
             const Vec3 acc = oklch(b.accentL, b.accentHue, b.accentChroma * 0.16f);
-            addPool(at, 60.0f, 420.0f, whiteV(), reduceFlashing_ ? 0.45f : kBossFlash, 0.0f, kBossFlashS, false, 1, false, false, t);
+            bossFall(at, acc, palette_->hue[2], t);
             addPool(at, 120.0f, 520.0f, acc, reduceFlashing_ ? 0.3f : 0.6f, 0.0f, 0.45f, false, 1, false, false, t);
-            addShockRings(at, 3, 1100.0f, acc, whiteV(), t, 0.6f);
-            SparkReq r{};
-            r.at = at;
-            r.count = 300;
-            r.kind = 1;
-            r.a = acc;
-            r.b = whiteV();
-            r.t0 = t;
-            sparkRequest(r);
-            addDistortion(at, 900.0f, 0.6f, 30.0f, 28.0f, t);
-            shakeAmp_ = std::fmax(shakeAmp_, 6.0f);
             const float wheel = w.boss().angle;
             for (u32 k = 0; k < 6; ++k) {
                 for (u32 f = 0; f < 4; ++f) {

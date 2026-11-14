@@ -493,6 +493,28 @@ void PlayView::drawReprise(FrameDraw& d, const ViewInput& in) {
         d.scene.line(toScene(p), toScene(p + dv * (2.2f * er)), hw, col, col, 0);
     }
     d.pools.glow(toScene(pos), R.armLength * 1.4f * pxPerWu_, acc * (0.06f * life));
+    // reprise.md "Death" (the owner, 2026-11-14: "make sure the reprise one is even more epic"): the whole set list comes home. From
+    // the death a ring in each of the ten Tracks' colours leaves the core 0.12 s after the one before at 2,400 wu/s, fading over
+    // 1.6 s; then a white ripple to 6,000 wu over 2.4 s (drawn here, past the six shock rings the view keeps at once).
+    if (s.dying && s.deathTick >= 0.0) {
+        const float since = static_cast<float>((t - s.deathTick) / std::fmax(w.ticksPerSecond(), 1.0f));
+        const auto ring = [&](float rad, Vec3 c, float lv) {
+            if (rad <= 0.0f || lv <= 0.0f) return;
+            const u32 n = 96;
+            for (u32 q = 0; q < n; ++q) {
+                const Vec2 p0 = pos + dirv(kTau * static_cast<float>(q) / n) * rad, p1 = pos + dirv(kTau * static_cast<float>(q + 1) / n) * rad;
+                if (!visible(p0, 40.0f) && !visible(p1, 40.0f)) continue;
+                d.scene.line(toScene(p0), toScene(p1), 1.6f * refPx_, c * lv, c * lv, 0);
+            }
+        };
+        const float rf = reduceFlashing_ ? 0.6f : 1.0f;
+        for (u32 k = 0; k < 10; ++k) {
+            const float age = since - 0.12f * static_cast<float>(k);
+            if (age < 0.0f || age > 1.6f) continue;
+            ring(age * 2400.0f, accentOf(k + 1) * 2.2f, (1.0f - age / 1.6f) * rf);
+        }
+        if (since >= 0.4f && since < 2.8f) ring((since - 0.4f) / 2.4f * 6000.0f, W1 * 1.6f, (1.0f - (since - 0.4f) / 2.4f) * rf);
+    }
 }
 
 }  // namespace rf

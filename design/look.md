@@ -440,6 +440,24 @@ a danger ring; the **Storm Cell** (Tracks 5, 9, 10: until now an accent ring, no
 fill); **Event Horizon's** black disc (Track 4: now with a danger edge); Feedback's Howl and Nulls
 (Track 6); Weaver Prime's bursts; and outside Fata Morgana's oasis on the kick (Track 9: the sand).
 
+### A boss falls (the owner, 2026-11-14)
+
+"Give the bosses a little bit for epic deaths, but not as epic as the track 10 boss", then "make sure the
+reprise one is even more epic". Every boss's death (its own shards, facets or implosion still play first):
+
+- a white flash out to 800 wu held 0.2 s (420 wu, 0.12 s before);
+- three rings in its colour to 1,100 wu, then two more, 0.08 s apart, to 1,600 in its second colour and to
+  2,000 in gold;
+- 300 sparks of its colour and 120 gold, the distortion ring to 1,200 wu, a shake of 7 and a white ripple
+  to 2,600 wu across the lattice;
+- the gong over its own death sound, and the action held as before.
+
+**Kaleidos Reprise, the finale, is the biggest by far:** a 2,000 wu flash held 0.4 s with a gold one after
+it, six rings in its arms' colours, 400 gold sparks and 100 in each arm's colour, two distortion waves, a
+shake of 10, the gong with the impact and the action held three times as long; then **the whole set list
+comes home**: from its death a ring in each of the ten Tracks' colours leaves the core one after another,
+and a white ripple crosses the whole lattice to 6,000 wu.
+
 ### Splits (the owner's play, 2026-11-14)
 
 A Fork or Fractal split is drawn, not only heard: at the hit a **Y of light**, two straight arms 70 wu long

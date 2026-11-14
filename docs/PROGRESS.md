@@ -4,6 +4,18 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (evening), a boss falls; the Reprise falls hardest (look.md 5)
+
+- "Give the bosses a little bit for epic deaths, but not as epic as the track 10 boss": `PlayView::bossFall` for every boss
+  (Kaleidos under its tumbling facets; the generic death; the late breaks of Event Horizon, Polyrhythm and Feedback): a white
+  flash to 800 wu held 0.2 s (420, 0.12), three rings to 1,100 and two more to 1,600 and 2,000 (the second colour, gold), 300
+  sparks and 120 gold, distortion to 1,200, shake 7, a white ripple to 2,600 wu; the gong at 0.55 over its own sound (play.cpp).
+- "Make sure the reprise one is even more epic": a 2,000 wu flash held 0.4 s and a gold one after it, six arm-coloured rings,
+  400 gold sparks and 100 in each arm's colour, two distortion waves, shake 10, the gong at 0.9 with the impact (reprise.md had
+  promised them; they had not been wired), the action held three times as long; then drawn from its death (the view keeps six
+  shock rings at once): a ring in each of the ten Tracks' colours one after another, and a white ripple to 6,000 wu.
+- sim 6,114 checks, 0 failures. Pictures `captures\pt4\strip_boss_death_sheet` (Kaleidos), `captures\m5\part6\rp_death`.
+
 ## 2026-11-14 (evening), the bug check pass; the version on the title
 
 - "Include a version # with build date at the bottom right at the main menu": `cmake/build_stamp.cmake` writes

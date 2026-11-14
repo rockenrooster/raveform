@@ -50,7 +50,7 @@ What it teaches:
 
 ## Death
 
-The run's biggest burst (it had none until 2026-11-14): a white flash across the frame, a ring in each of the six arms' colours, four hundred sparks and the distortion ring; then the core dims to a point, one white ripple crosses the whole lattice, and the ENCORE card comes up over First Light. The largest reward of the run.
+The run's biggest burst by far (it had none until 2026-11-14; look.md section 5, "A boss falls"): a 2,000 wu white flash and a gold one after it, a ring in each of the six arms' colours, four hundred gold sparks and a hundred in each arm's colour, two distortion waves, the hardest shake of the run; then **the whole set list comes home**: a ring in each of the ten Tracks' colours leaves the core one after another, and the core dims to a point, one white ripple crosses the whole lattice, and the ENCORE card comes up over First Light. The largest reward of the run.
 
 ## Sound
 
