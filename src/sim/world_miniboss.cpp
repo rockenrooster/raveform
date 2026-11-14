@@ -516,6 +516,11 @@ float World::miniScale(u8 part, u8 index, double t, Vec2 dir) const {
 
 // ---------------------------------------------------------------------------------------------- the fights
 
+// M6 (the lead's rule): a mini-boss stays until it is dead or 16 bars have passed from its arrival (BossState::enterTick, the
+// middle Drop's downbeat), whichever comes first, the Drop held for it as a boss's is: the Drop's own bars and kMiniHoldBars.
+static_assert(kSectionBars[0][2] + static_cast<u32>(kMiniHoldBars) == 16u && kSectionBars[1][2] == kSectionBars[0][2],
+              "a mini-boss's 16 bars are its Drop's length and the hold past it");
+
 void World::updateMini(float dt) {
     BossState& s = boss_;
     DirectorState& d = director_;

@@ -173,6 +173,7 @@ void World::updateEnemies(float dt) {
         if (e.stunUntil[i] > m1_) continue;    // M5 part 5: a Commander's death stuns those near it for a beat
         const Species& s = species_->get(e.species[i]);
         const FamilyData& fd = species_->family(s.family);
+        bulletSrc_ = e.species[i];  // M6: what it fires names it
         const float x = e.x[i], y = e.y[i];
         const i32 tp = targetOf(i);  // solo: the nearest player (M4 co-op: by distance, with some stickiness)
         const Vec2 target = tp >= 0 ? chaseTarget(static_cast<u32>(tp)) : Vec2{x, y};  // M5: Afterimage's decoy

@@ -47,7 +47,10 @@ void PlayView::drawElite(FrameDraw& d, const ViewInput& in, u32 i, Vec2 pos, flo
     const float t = static_cast<float>(in.time);
     if (shown(kMuteAura)) d.pools.glow(toScene(pos), le.auraRadiusOfExtent * gd.extent * scale * pxPerWu_, hue * (le.eliteAura * level));
     if (!shown(kMuteElite)) return;
-    glyph(d.glyphs, g, true, pos, rot0, rot1, scale, look_->lines.eliteWhiteCopy.intensity * level, 0.5f * look_->lines.eliteWhiteCopy.width, kGlyphWhite, W1, W1);
+    if (w.elitePhased(i))  // M6 (look.md 4): Phasing off its solid half, every other hull segment hidden, the white copy too
+        hullEveryOther(d, g, pos, rot0, scale, look_->lines.eliteWhiteCopy.intensity * level, 0.5f * look_->lines.eliteWhiteCopy.width, W1, W1, true);
+    else
+        glyph(d.glyphs, g, true, pos, rot0, rot1, scale, look_->lines.eliteWhiteCopy.intensity * level, 0.5f * look_->lines.eliteWhiteCopy.width, kGlyphWhite, W1, W1);
     if (tier_.glass && gd.glassCount) {
         const Vec2* tri = glyphs_->glass() + gd.glassFirst * 3;
         const float c = std::cos(rot0) * scale, s = std::sin(rot0) * scale;
@@ -340,7 +343,8 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
         for (u32 j = 1; j <= 6; ++j) {
             const float u = static_cast<float>(j) / 6.0f;
             const Vec2 p = j == 6 ? s.b : s.a + dv * u + nv * ((j % 2u ? 1.0f : -1.0f) * 18.0f);
-            d.scene.line(toScene(prev), toScene(p), 0.9f * refPx_, W1 * (2.0f * k), accent * (1.6f * k), 0);
+            // (M6: reduce flashing takes the lightning on every beat down to 0.9 and 0.8)
+            d.scene.line(toScene(prev), toScene(p), 0.9f * refPx_, W1 * ((reduceFlashing_ ? 0.9f : 2.0f) * k), accent * ((reduceFlashing_ ? 0.8f : 1.6f) * k), 0);
             prev = p;
         }
     }

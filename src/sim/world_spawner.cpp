@@ -258,6 +258,9 @@ i32 World::pickSpecies(int kind) {
             if (r.species < SpeciesTable::kFamilySpecies) cand[n] = SpeciesTable::index(sp.family, tier, sp.variant);
         }
         weight[n] = (!loop && static_cast<u32>(r.track) * 16 + r.cycle == newest) ? 2.0f : 1.0f;
+        // M6 (A4 round 2): from Track 4 on the shooters are bought less often (the novice's hits outside the fights were
+        // mostly the crowd's bullets).
+        if (t >= kShooterEaseTrack && species_->get(cand[n]).shoots()) weight[n] *= kShooterEaseWeight;
         ++n;
     }
     if (!n) return -1;

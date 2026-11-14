@@ -21,9 +21,13 @@ struct Settings {
     u8 effectsTier = 0;          // 0 Auto, 1 Low, 2 Medium, 3 High, 4 Ultra
     u8 frameRate = 0;            // 0 Auto, 1 60, 2 90, 3 120
     bool reduceFlashing = false;
+    u8 uiScale = 1;              // M6: HUD text and touch controls 0 90%, 1 100%, 2 115%, 3 130%
     // First launch.
     bool noticeSeen = false;     // the photosensitivity notice was acknowledged
     u32 probedTier = 0;          // the tier probe's pick (0: not probed yet), 1 Low .. 4 Ultra
+    // M6 (screens.md "First-run hints"): the hints shown on this device (a bit each), and runs played to their end.
+    u32 hintsSeen = 0;
+    u32 runsEnded = 0;
 };
 
 bool loadSettings(Settings& s);
@@ -35,6 +39,7 @@ struct HighScore {
     u32 bestChain = 1;
     u32 seconds = 0;
     u32 kills = 0;
+    bool setComplete = false;  // M6: the run finished the set list (a gold star in the table)
 };
 
 // Top 10 solo scores (co-op tables come with co-op).

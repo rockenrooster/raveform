@@ -427,7 +427,7 @@ void World::updateTrails() {
                         const PlayerState& pl = players_[p];
                         if (!pl.alive || !isLocal(p) || pl.invulnerable() || rules_.godMode || sheltered(p)) continue;
                         if (lengthSq(pl.pos - at) > (r + kPlayerHitRadius) * (r + kPlayerHitRadius)) continue;
-                        if (!haloBlocks(p, at)) hitPlayer(p, at);
+                        if (!haloBlocks(p, at)) hitPlayer(p, at, SpeciesTable::index(Family::Weaver, 1, kVariantC));
                     }
                 }
                 t.blastTick = tick;
@@ -436,7 +436,7 @@ void World::updateTrails() {
     }
 }
 
-bool World::hazardHits(u32 p, Vec2& from) {
+bool World::hazardHits(u32 p, Vec2& from, u16& cause) {
     // A player's body against the lethal lines: Tether beams, Weaver trails, Ram B's wake, a Weaver C trail as it blows.
     const Vec2 c = players_[p].pos;
     const auto seg = [&](Vec2 a, Vec2 b, float half) {
@@ -451,20 +451,27 @@ bool World::hazardHits(u32 p, Vec2& from) {
     Vec2 ba[64], bb[64];
     const u32 nb = tetherBeams(ba, bb, 64);
     for (u32 k = 0; k < nb; ++k)
-        if (seg(ba[k], bb[k], 0.5f * species_->family(Family::Tether).beamWidth)) return true;
+        if (seg(ba[k], bb[k], 0.5f * species_->family(Family::Tether).beamWidth)) {
+            cause = SpeciesTable::index(Family::Tether, 1, kVariantA);  // (M6: named by its family)
+            return true;
+        }
     // Skitter B's mines: set off by a ship within their radius (spent).
     for (Spot& m : emines_) {
         if (m.until < m1_) continue;
         if (lengthSq(c - m.at) > (m.r + kPlayerHitRadius) * (m.r + kPlayerHitRadius)) continue;
         m.until = -1.0;
         from = m.at;
+        cause = SpeciesTable::index(Family::Skitter, 1, kVariantB);
         return true;
     }
     for (const Trail& t : trails_) {
         if (t.n < 2) continue;
         for (u32 k = 1; k < t.n; ++k) {
             const u32 j0 = (t.head + Trail::kCap - k) % Trail::kCap, j1 = (t.head + Trail::kCap - k - 1) % Trail::kCap;
-            if (seg(Vec2{t.x[j0], t.y[j0]}, Vec2{t.x[j1], t.y[j1]}, 0.5f * t.width)) return true;
+            if (seg(Vec2{t.x[j0], t.y[j0]}, Vec2{t.x[j1], t.y[j1]}, 0.5f * t.width)) {
+                cause = SpeciesTable::index(t.kind == 1 ? Family::Ram : Family::Weaver, 1, t.kind == 1 ? kVariantB : kVariantA);
+                return true;
+            }
         }
     }
     return false;

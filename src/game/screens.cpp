@@ -450,6 +450,15 @@ void Play::screenTitle(Ui& ui) {
         }
         const float m = std::fmax(132.0f * s, ui.insetMin().x);
         ui.text({m, H - 54.0f * s}, 14.0f * s, palettes_->player[3], 1.4f, line, 0.0f);
+        if (scores_.count && scores_.entry[0].setComplete) {
+            // M6 (screens.md "A finished run"): a run that finished the set has a gold star in the table.
+            const Vec2 c{m + ui.measure(14.0f * s, line) + 24.0f * s, H - 54.0f * s - 7.0f * s};
+            const Vec3 g = ui.col(palettes_->player[3], 2.0f);
+            for (u32 a = 0; a < 4; ++a) {
+                const Vec2 dv = polarV(kTwoPi * static_cast<float>(a) / 8.0f, 11.0f * s);
+                ui.draw().hud.line(c - dv, c + dv, 0.9f * s, g, g, 0);
+            }
+        }
         ui.text({W - std::fmax(132.0f * s, ui.insetMax().x), H - 54.0f * s}, 14.0f * s, white, 0.5f, "HEADPHONES RECOMMENDED", 1.0f);
     }
     // M4 stage B: why a co-op session ended (the host left, the connection was lost), for a few seconds.
@@ -520,11 +529,32 @@ void Play::screenPause(Ui& ui) {
     keyPrimary_ = keyBack_ = false;
 }
 
+void Play::causeName(u16 cause, char* out, size_t n) const {
+    // M6 (screens.md "What ended it"): as the game names it: an enemy (its body, its bullet, its line) by its family, a fight
+    // by its name, an arena event by its name, a Volatile elite's burst as A VOLATILE BLAST.
+    out[0] = 0;
+    if (cause == kCauseNone || n < 2) return;
+    if (cause < kCauseBossBase) {
+        if (cause >= SpeciesTable::kCount) return;
+        std::snprintf(out, n, "%s", familyName(world_->species().get(cause).family));
+    } else if (cause < kCauseEventBase) {
+        std::snprintf(out, n, "%s", bossName(static_cast<BossKind>(cause - kCauseBossBase)));
+    } else if (cause < kCauseVolatile) {
+        std::snprintf(out, n, "%s", eventName(static_cast<EventKind>(cause - kCauseEventBase)));
+    } else {
+        std::snprintf(out, n, "A VOLATILE BLAST");
+    }
+    for (char* c = out; *c; ++c)
+        if (*c >= 'a' && *c <= 'z') *c = static_cast<char>(*c - 32);
+}
+
 void Play::screenGameOver(Ui& ui) {
     const float s = ui.s(), W = ui.W(), H = ui.H(), cx = 0.5f * W;
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const Vec3 gold = palettes_->player[3], amber = palettes_->playerDeep[3];
-    ui.text({cx, 150.0f * s}, 44.0f * s, palette_->accent, 1.6f, "RUN OVER");
+    // M6 (screens.md "A finished run"): a run that finished the set reads SET COMPLETE in gold where RUN OVER stands.
+    if (runSetComplete_) ui.text({cx, 150.0f * s}, 44.0f * s, gold, 1.8f, "SET COMPLETE");
+    else ui.text({cx, 150.0f * s}, 44.0f * s, palette_->accent, 1.6f, "RUN OVER");
     // The score counts up over one bar.
     {
         const float bars = static_cast<float>(overS_ * (clock_.bpm() / 60.0f) / 4.0f);
@@ -565,6 +595,14 @@ void Play::screenGameOver(Ui& ui) {
             ui.text({x, 500.0f * s}, 14.0f * s, palette_->accent, 1.3f, kLabels[k]);
             ui.text({x, 556.0f * s}, 40.0f * s, white, 1.5f, v[k]);
         }
+    }
+    // M6 (screens.md "What ended it"): ENDED BY in the accent and what took the last cell in white, as the game names it.
+    if (const char* by = runEndedBy_[0] ? runEndedBy_ : nullptr) {
+        const float cap = 14.0f * s;
+        const float wa = ui.measure(cap, "ENDED BY"), gap = 14.0f * s, wb = ui.measure(cap, by);
+        const float x0 = cx - 0.5f * (wa + gap + wb);
+        ui.text({x0, 606.0f * s}, cap, palette_->accent, 1.3f, "ENDED BY", 0.0f);
+        ui.text({x0 + wa + gap, 606.0f * s}, cap, white, 1.5f, by, 0.0f);
     }
     drawSetList(ui, 660.0f * s);
     drawBand(ui, 740.0f * s);
@@ -766,7 +804,7 @@ void Play::screenSettings(Ui& ui) {
         static const char* const kOnOff[2] = {"OFF", "ON"};
         ui.text({cx, 320.0f * s}, 18.0f * s, white, 1.1f, "SWAP SIDES: AIM WITH THE LEFT THUMB");
         const u32 sw = ui.segmented(5, {cx, 390.0f * s}, 420.0f * s, 80.0f * s, kOnOff, 2, settings_.swapSides ? 1u : 0u, 26.0f * s);
-        ui.text({cx, 500.0f * s}, 18.0f * s, white, 1.1f, "AUTO-AIM ASSIST: FIRES AT THE NEAREST THREAT, HALF RATE");
+        ui.text({cx, 500.0f * s}, 18.0f * s, white, 1.1f, "AUTO-AIM ASSIST: FIRES BY ITSELF, AT A BOSS'S WEAK POINT TOO");
         const u32 aa = ui.segmented(6, {cx, 570.0f * s}, 420.0f * s, 80.0f * s, kOnOff, 2, settings_.autoAim ? 1u : 0u, 26.0f * s);
         // Play test 1, second pass (screens.md CONTROLS): Auto Nova, on by default.
         ui.text({cx, 680.0f * s}, 18.0f * s, white, 1.1f, "AUTO NOVA  FIRES ONE BEFORE YOUR LAST CELL GOES");
@@ -777,6 +815,12 @@ void Play::screenSettings(Ui& ui) {
             settings_.autoNova = an != 0;
             changed = true;
         }
+        // M6 (screens.md "First-run hints"): RESET HINTS brings every hint back.
+        if (ui.pill(14, {cx, 880.0f * s}, {420.0f * s, 90.0f * s}, "RESET HINTS", 26.0f * s, false)) {
+            settings_.hintsSeen = 0;
+            changed = true;
+        }
+        if (!settings_.hintsSeen) ui.text({cx, 950.0f * s}, 13.0f * s, white, 0.7f, "EVERY HINT WILL SHOW AGAIN");
     } else {
         static const char* const kFx[5] = {"AUTO", "LOW", "MEDIUM", "HIGH", "ULTRA"};
         static const char* const kHz[4] = {"AUTO", "60", "90", "120"};
@@ -790,6 +834,14 @@ void Play::screenSettings(Ui& ui) {
         if (fx != settings_.effectsTier) {
             settings_.effectsTier = static_cast<u8>(fx);
             tierRequest_ = static_cast<i32>(fx);
+            changed = true;
+        }
+        // M6: the UI scale of HUD text and touch controls.
+        static const char* const kScale[4] = {"90%", "100%", "115%", "130%"};
+        ui.text({cx, 830.0f * s}, 18.0f * s, white, 1.1f, "UI SCALE: HUD TEXT AND TOUCH CONTROLS");
+        const u32 sc = ui.segmented(15, {cx, 900.0f * s}, 880.0f * s, 76.0f * s, kScale, 4, settings_.uiScale < 4 ? settings_.uiScale : 1u, 24.0f * s);
+        if (sc != settings_.uiScale) {
+            settings_.uiScale = static_cast<u8>(sc);
             changed = true;
         }
         if (hz != settings_.frameRate || (rfl != 0) != settings_.reduceFlashing) {

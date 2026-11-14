@@ -23,6 +23,9 @@
 # Play test 3's set: -Out captures\playtest3 -Only pt3_ring_broken,pt3_ring_relight,pt3_life_orb,pt3_life_use,pt3_vault,boss_hit,split5,
 #   hud_groove (the Orbitals' guard ring broken and relighting, the Extra Life's orb and its use, a Vault's name, a hit on
 #   Kaleidos's weak point as a strip, Split at five lanes, Track 1's phrase bar).
+# M6's set (src/game/play_pictures_m6.cpp): -Out captures\m6 -Only m6_hint_0,...,m6_hint_10,m6_ended_by,m6_set_complete,
+#   m6_set_complete_over,m6_title_star,m6_uiscale_90,m6_uiscale_130 and -Config dev -Only m6_mini_stays,m6_flash_longwave,
+#   m6_flash_choir,m6_flash_alpha (also m6_hints_sheet.png and m6_flash_*_zoom.png).
 # Debug (the default) runs with validation; the script stops on the first run that is not clean.
 param(
     [string]$Out = 'captures\m3b',
@@ -55,7 +58,10 @@ $singles = @('screen_notice', 'screen_title', 'screen_settings_sound', 'screen_s
              'boss_spiral', 'boss_naked', 'boss_beam_tell', 'boss_beam', 'boss_iris', 'track_change', 'bot_3', 'bot_6', 'bot_10', 'bot_15', 'bot_3_nohits', 'bot_6_nohits', 'bot_10_nohits', 'bot_15_nohits',
              'pt2_level_trio', 'pt2_cell_crowd', 'pt2_halo8', 'pt2_hud_level', 'pt2_overcharge_0', 'pt2_overcharge_1', 'pt2_overcharge_2',
              'pt2_overcharge_3', 'pt2_overcharge_4', 'pt2_overcharge_5', 'loop_encore', 'loop_burn',
-             'pt3_ring_broken', 'pt3_ring_relight', 'pt3_life_orb', 'pt3_life_use', 'pt3_vault')
+             'pt3_ring_broken', 'pt3_ring_relight', 'pt3_life_orb', 'pt3_life_use', 'pt3_vault') +
+           @(0..10 | ForEach-Object { "m6_hint_$_" }) +
+           @('m6_ended_by', 'm6_set_complete', 'm6_set_complete_over', 'm6_title_star', 'm6_uiscale_90', 'm6_uiscale_130', 'm6_mini_stays',
+             'm6_flash_longwave', 'm6_flash_choir', 'm6_flash_alpha')
 $strips = @('trio_take', 'boss_pair_death', 'boss_death', 'boss_hit')
 if ($Only.Count) {
     $singles = @($singles | Where-Object { $Only -contains $_ })
@@ -97,6 +103,22 @@ foreach ($r in 'pt3_ring_broken', 'pt3_ring_relight') {
     if (Test-Path $png) {
         python -I -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).convert("RGB").crop((1050,390,1350,690)).resize((900,900),Image.LANCZOS).save(sys.argv[2])' $png (Join-Path $Out "${r}_zoom.png")
         Write-Host "[review] ${r}_zoom"
+    }
+}
+# M6: the eleven hint lines in one sheet (the ship and the line over it, full size); each hit flash twice as large.
+$hints = 0..10 | ForEach-Object { Join-Path $Out "m6_hint_$_.png" }
+if (($hints | Where-Object { Test-Path $_ }).Count -eq 11) {
+    $hintSheet = 'import sys; from PIL import Image; cs=[Image.open(p).convert("RGB").crop((750,280,1650,640)) for p in sys.argv[2:]]; ' +
+                 'w,h=cs[0].size; s=Image.new("RGB",(3*w,4*h)); [s.paste(c,((i%3)*w,(i//3)*h)) for i,c in enumerate(cs)]; s.save(sys.argv[1])'
+    python -I -c $hintSheet (Join-Path $Out 'm6_hints_sheet.png') @hints
+    python "$PSScriptRoot\shrink_png.py" (Join-Path $Out 'm6_hints_sheet.png') | Out-Null
+    Write-Host "[review] m6_hints_sheet"
+}
+foreach ($f in 'm6_flash_longwave', 'm6_flash_choir', 'm6_flash_alpha') {
+    $png = Join-Path $Out "$f.png"
+    if (Test-Path $png) {
+        python -I -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).convert("RGB").crop((600,240,1800,840)).resize((2400,1200),Image.LANCZOS).save(sys.argv[2])' $png (Join-Path $Out "${f}_zoom.png")
+        Write-Host "[review] ${f}_zoom"
     }
 }
 foreach ($s in $strips) {

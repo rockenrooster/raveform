@@ -1373,10 +1373,12 @@ void testPlayTest2() {
         CHECK_MSG(w->player(0).cellDue == 0.0f, "Track 5 Cell clock %.3f after 41 s", w->player(0).cellDue);
         w->grantUpgrade(0, kRegen);
         CHECK(w->regenPeriod(0) == 0);
-        // The lead's decision (`2fba23c`): enemies and their bullets are faster (capped).
+        // The lead's decision (`2fba23c`): enemies and their bullets are faster (capped). M6 (A4): the crowd's at
+        // kCrowdBulletSpeedScale of that.
         w->spawnBullet(Vec2{900.0f, 500.0f}, Vec2{100.0f, 0.0f}, 0.0f);
         const Bullets& bl = w->bullets();
-        CHECK(bl.count > 0 && std::fabs(bl.vx[bl.count - 1] - 100.0f * std::fmin(kLoopBulletSpeedRamp * kLoopBulletSpeedRamp, kLoopBulletSpeedMax)) < 1e-3f);
+        CHECK(bl.count > 0 &&
+              std::fabs(bl.vx[bl.count - 1] - 100.0f * kCrowdBulletSpeedScale * std::fmin(kLoopBulletSpeedRamp * kLoopBulletSpeedRamp, kLoopBulletSpeedMax)) < 1e-3f);
         delete w;
     }
     {

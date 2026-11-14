@@ -254,6 +254,7 @@ void World::areaHit(u8 owner, Vec2 at, float r, float dmg, i32 skip, bool boss) 
         float t = 0.0f;
         if (bossHitTest(at, at, r, part, pair, t)) damageBoss(part, pair, dmg, owner, at, normalizeOr(boss_.pos - at, Vec2{1.0f, 0.0f}));
     }
+    arenaArea(owner, at, r, dmg);  // M6 (A2)
 }
 
 u32 World::lineHit(u8 owner, Vec2 from, Vec2 dir, float len, float half, float dmg) {
@@ -276,6 +277,7 @@ u32 World::lineHit(u8 owner, Vec2 from, Vec2 dir, float len, float half, float d
         float t = 0.0f;
         if (bossHitTest(from, to, half, part, pair, t)) damageBoss(part, pair, dmg, owner, from + (to - from) * t, dir);
     }
+    arenaLine(owner, from, dir, len, half, dmg);  // M6 (A2)
     return n;
 }
 
@@ -979,6 +981,7 @@ void World::updateUpgradesM5(float dt) {
                     }
                     if (st >= 2 && local) hitEnemy(i, kKickDamage * scale, owner, Vec2{e.x[i], e.y[i]}, d * (1.0f / len));
                 });
+                if (st >= 2 && local) arenaArea(owner, pl.pos, r, kKickDamage * scale);  // M6 (A2)
                 pl.kickTick = t;
                 pl.kickR = r;
                 emitFx(p, kFxKick, pl.pos, pl.pos, st, r, t);
@@ -1233,6 +1236,7 @@ void World::updateRiffsM5(float dt) {
                         }
                     }
                 });
+                arenaSweep(owner, pl.pos, len, a1, swept, L >= 3 ? 2u : 1u, kSweeperDamage);  // M6 (A2)
             }
         }
 

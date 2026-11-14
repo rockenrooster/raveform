@@ -1094,7 +1094,7 @@ void World::bossHitPlayer(u32 p, Vec2 from, bool beam) {
     if (haloBlocks(p, from)) return;
     ++boss_.hitsTaken;
     ++(beam ? boss_.hitsBeam : boss_.hitsBody);
-    hitPlayer(p, from);
+    hitPlayer(p, from, static_cast<u16>(kCauseBossBase + static_cast<u32>(boss_.kind)));
 }
 
 void World::bossContact() {

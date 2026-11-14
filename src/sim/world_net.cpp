@@ -367,7 +367,7 @@ void World::applyPlayerOp(const NetOp& op) {
             // GAME_DESIGN 8, assist: any player's lost cell eases the budget (the host's director; a broken ring takes no cell).
             if (role_ == NetRole::Host && !director_.hitThisCycle && how != 1) {
                 director_.hitThisCycle = true;
-                director_.assist = std::fmax(director_.assist - kAssistStep, kAssistMin);
+                director_.assist = std::fmax(director_.assist - kAssistEaseStep, kAssistEaseMin);  // (M6: wider)
             }
             Event ev;
             ev.type = EventType::Hit;

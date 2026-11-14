@@ -4,9 +4,11 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <initializer_list>
 
 #include "core/args.h"
+#include "core/half.h"
 #include "game/play_view.h"
 #include "sim/boss_prose.h"
 #include "sim/tuning.h"
@@ -104,6 +106,19 @@ void PlayView::drawFight(FrameDraw& d, const ViewInput& in) {
         deathShown_ = 0;
         return;
     }
+    // M6 (A1): a weak point's flash copies the part's own lines and glyphs in white, so the boss is drawn with a tap on.
+    bossTapped_ = false;
+    if (s.kind != BossKind::Kaleidos && !s.dying) {
+        const float now = static_cast<float>(in.time);
+        for (const HitFlash& f : hitFlash_) bossTapped_ = bossTapped_ || (now - f.t >= 0.0f && now - f.t <= kBossHitFlashS);
+    }
+    if (bossTapped_) {
+        bossTap_.lines = bossTapLines_;
+        bossTap_.capacity = kBossTapLines;
+        bossTap_.count = 0;
+        d.scene.setTap(&bossTap_);
+        bossGlyph0_ = d.glyphs.count();
+    }
     switch (s.kind) {
         case BossKind::Kaleidos: drawBoss(d, in); break;
         case BossKind::Longwave: drawLongwave(d, in); break;
@@ -117,6 +132,7 @@ void PlayView::drawFight(FrameDraw& d, const ViewInput& in) {
         case BossKind::Reprise: drawReprise(d, in); break;
         default: drawMini(d, in); break;
     }
+    d.scene.setTap(nullptr);
     drawBossHitFlash(d, in);  // play test 3 (GAME_DESIGN 7.6)
 }
 
@@ -941,18 +957,23 @@ void PlayView::bossHit(const World& w, const Event& e, float t, Vec3 hue) {
 }
 
 void PlayView::drawBossHitFlash(FrameDraw& d, const ViewInput& in) {
-    // The part hit on its weak point, white for 60 ms: a white copy of its outline at 2.0 (Kaleidos: the pair's arms or its
-    // core; the others: the part's circles, as the hits find them).
+    // The part hit on its weak point, white for 60 ms: a white copy of its own shape at 2.0 (Kaleidos: the pair's arms or its
+    // core rings; the others: the boss's lines and glyphs inside the part's circle, M6).
     const World& w = *in.world;
     const BossState& s = w.boss();
     if (!s.active || s.dying) return;
     const float now = static_cast<float>(in.time);
-    const Vec3 W1 = whiteV();
+    const Vec3 W1 = whiteV() * (reduceFlashing_ ? 0.45f : 1.0f);  // (M6: reduce flashing: the flash at 0.9, not 2.0)
     BossPart parts[kBossBodies + 4];
     u32 n = 0;
     bool partsRead = false;
-    for (const HitFlash& f : hitFlash_) {
-        if (now - f.t < 0.0f || now - f.t > kBossHitFlashS) continue;
+    const auto live = [&](const HitFlash& f) { return now - f.t >= 0.0f && now - f.t <= kBossHitFlashS; };
+    for (u32 fi = 0; fi < kHitFlashes; ++fi) {
+        const HitFlash& f = hitFlash_[fi];
+        if (!live(f)) continue;
+        bool seen = false;  // two hits on one part in 60 ms flash it once
+        for (u32 j = 0; j < fi; ++j) seen = seen || (live(hitFlash_[j]) && hitFlash_[j].part == f.part && hitFlash_[j].index == f.index);
+        if (seen) continue;
         if (s.kind == BossKind::Kaleidos) {
             if (f.part == 3) {
                 glyph(d.glyphs, gRing32_, false, s.pos, 0.0f, 0.0f, w.bossData().coreRingRadius[0], 2.0f, 1.0f, kGlyphFlat, W1, W1);
@@ -973,7 +994,37 @@ void PlayView::drawBossHitFlash(FrameDraw& d, const ViewInput& in) {
         for (u32 k = 0; k < n; ++k) {
             if (parts[k].part != f.part || parts[k].index != f.index) continue;
             if (!visible(parts[k].pos, parts[k].radius + 20.0f)) continue;
-            glyph(d.glyphs, gRing32_, false, parts[k].pos, 0.0f, 0.0f, parts[k].radius, 2.0f, 1.0f, kGlyphFlat, W1, W1);
+            // M6 (A1): the part's own shape in white: every line of the boss with both ends inside the part's circle (a
+            // little wider) and every glyph centred in it, as hull-only white copies; the outline only if nothing is found.
+            u32 copied = 0;
+            if (bossTapped_) {
+                const Vec2 c = toScene(parts[k].pos);
+                const float rpx = parts[k].radius * 1.35f * pxPerWu_, r2 = rpx * rpx;
+                for (u32 i = 0; i < bossTap_.count; ++i) {
+                    const CapsuleTap::Line& l = bossTap_.lines[i];
+                    const Vec2 da = l.a - c, db = l.b - c;
+                    if (dot(da, da) > r2 || dot(db, db) > r2) continue;
+                    d.scene.line(l.a, l.b, std::fmax(l.halfWidth * 0.7f, 0.5f * refPx_), W1 * 2.0f, W1 * 2.0f, 0);
+                    ++copied;
+                }
+                const float rwu = parts[k].radius * 1.35f, rw2 = rwu * rwu;
+                const u32 gEnd = d.glyphs.count();
+                const u16 whiteMode = floatToHalf(static_cast<float>(kGlyphWhite)), bodyMode = floatToHalf(static_cast<float>(kGlyphEnemy));
+                for (u32 i = bossGlyph0_; i < gEnd; ++i) {
+                    const GlyphInstanceGpu& src = d.glyphs.data()[i];
+                    if (src.shape[3] != bodyMode) continue;  // bodies only: not rings, flat marks or white copies
+                    const Vec2 dv = Vec2{src.x, src.y} - parts[k].pos;
+                    if (dot(dv, dv) > rw2) continue;
+                    GlyphInstanceGpu v = src;
+                    v.shape[1] = floatToHalf(2.0f);
+                    v.shape[3] = whiteMode;
+                    v.a = v.b = packLinear(W1);
+                    GlyphInstanceGpu* gi = d.glyphs.push(d.glyphs.keys()[i] / 2u, true);
+                    if (gi) std::memcpy(gi, &v, sizeof v);
+                    ++copied;
+                }
+            }
+            if (!copied) glyph(d.glyphs, gRing32_, false, parts[k].pos, 0.0f, 0.0f, parts[k].radius, 2.0f, 1.0f, kGlyphFlat, W1, W1);
             d.pools.glow(toScene(parts[k].pos), parts[k].radius * 1.6f * pxPerWu_, W1 * 0.25f);
         }
     }

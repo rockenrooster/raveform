@@ -139,16 +139,33 @@ private:
     u32 dropped_ = 0;
 };
 
+// A CPU copy of the lines' geometry a batch takes while a tap is set (M6: the boss hit flash draws a white copy of the
+// part's own lines; the batch itself lives in mapped GPU memory, which is not read back).
+struct CapsuleTap {
+    struct Line {
+        Vec2 a, b;
+        float halfWidth;
+    };
+    Line* lines = nullptr;
+    u32 capacity = 0;
+    u32 count = 0;
+};
+
 class CapsuleBatch : public Span<CapsuleGpu> {
 public:
     void line(Vec2 a, Vec2 b, float halfWidth, Vec3 c0, Vec3 c1, u32 flags = 0) {
         if (CapsuleGpu* g = push()) writeCapsule(*g, a, b, halfWidth, c0, c1, flags);
+        if (tap_ && tap_->count < tap_->capacity) tap_->lines[tap_->count++] = CapsuleTap::Line{a, b, halfWidth};
     }
+    void setTap(CapsuleTap* t) { tap_ = t; }
     void line(Vec2 a, Vec2 b, const Stroke& s);
     void dot(Vec2 p, const Stroke& s) { line(p, p, s); }
     // Closed polygon / circle approximation centred on `c`. Turns below the flat-joint angle get flat
     // joints, so rings do not turn into strings of beads (look.md §4).
     void polygon(Vec2 c, float radius, u32 sides, float rotation, const Stroke& s);
+
+private:
+    CapsuleTap* tap_ = nullptr;
 };
 
 class GlowBatch : public Span<GlowGpu> {

@@ -28,6 +28,7 @@ public:
     void reset();
     void apply(sim::StickInput& in) const;  // adds what the controls hold now
     bool used() const { return used_; }      // a finger has touched the screen this session
+    void markUsed() { used_ = true; }        // (M6 pictures: the controls shown on the desktop)
     void setSwap(bool on) { swap_ = on; }    // left-handed: aim on the left (takes effect at the next layout)
     void draw(CapsuleBatch& hud, GlowBatch& pools, const VectorFont& font, const Look& look, const LookVariant& variant,
               Vec3 player, float dashCharge, bool novaReady) const;
@@ -65,6 +66,9 @@ struct HudState {
     u32 novas = 0, novaCap = 3;
     bool extraLife = false;     // play test 3 (screens.md "Extra Life (HUD)"): one held: a small gold ship right of the Novas
     float bossFlash = 0.0f;     // play test 3 (GAME_DESIGN 7.6): a weak point's hit: its segment of the boss's bar flashes
+    bool reduceFlashing = false;    // M6: the HUD's own flashes (a boss hit's bar segment) at half
+    float setCompleteBars = -1.0f;  // M6: bars since the set's last boss fell (SET COMPLETE for two; < 0: none)
+    u64 setCompleteScore = 0;
     u8 bossFlashPart = 0xFF;    // ... the part (Kaleidos's pair, a Longwave segment, a Voice; 0xFF the whole bar)
     float dashCharge = 1.0f;
     bool alive = true;
@@ -103,6 +107,9 @@ const char* bossHint(sim::BossKind k);
 
 // The pause ring's centre and radius (top right corner, look.md 6), for its touch target.
 Vec2 pauseButtonCentre(float W, float H, Vec2 insetMin, Vec2 insetMax, float& radius);
+// M6 (SETTINGS, LOOK): the UI scale of HUD text and touch controls (0.9, 1, 1.15, 1.3); re-lay the touch controls after it.
+void setHudScale(float scale);
+float hudScale();
 
 // Tone maps a linear colour x intensity with the look's curve (look.md §3), for the HUD batch.
 Vec3 hudColour(const Look& look, const LookVariant& variant, Vec3 c, float intensity);

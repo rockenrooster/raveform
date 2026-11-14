@@ -1,4 +1,5 @@
 #include "game/play_view.h"
+#include "gfx/vector_font.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -700,6 +701,32 @@ void PlayView::glyph(GlyphBatch& b, int g, bool hullOnly, Vec2 pos, float rot0, 
     std::memcpy(gi, &v, sizeof v);
 }
 
+void PlayView::hullEveryOther(FrameDraw& d, int g, Vec2 pos, float rot, float scale, float intensity, float halfWidthRef, Vec3 hue, Vec3 partner,
+                              bool white) {
+    // The hull's even segments as capsules, in the enemy hull's field (shaders/glyph.vert mode 0, layer 0) or white: a Phasing
+    // elite off its solid half (M6, look.md 4).
+    if (g < 0) return;
+    const GlyphDef& gd = glyphs_->def(static_cast<u32>(g));
+    const GlyphSegment* seg = glyphs_->segments() + gd.firstSegment;
+    const float c = std::cos(rot), s = std::sin(rot), ext = std::fmax(gd.extent, 1e-3f);
+    const Vec3 W{1.0f, 1.0f, 1.0f};
+    const auto field = [&](Vec2 p) {
+        if (white) return W * intensity;
+        const auto stops3 = [](float t, Vec3 a, Vec3 b, Vec3 e) {
+            t = clampf(t, 0.0f, 1.0f) * 2.0f;
+            return t < 1.0f ? mix(a, b, t) : mix(b, e, t - 1.0f);
+        };
+        return (gd.facesHeading ? stops3((ext - p.x) / (2.0f * ext), mix(hue, W, 0.4f), hue, partner)
+                                : stops3(length(p) / ext, partner, hue, mix(hue, W, 0.25f))) *
+               intensity;
+    };
+    for (u32 k = 0; k < gd.hullCount; k += 2) {
+        const Vec2 a = seg[k].a, b = seg[k].b;
+        const Vec2 wa = pos + Vec2{a.x * c - a.y * s, a.x * s + a.y * c} * scale, wb = pos + Vec2{b.x * c - b.y * s, b.x * s + b.y * c} * scale;
+        d.scene.line(toScene(wa), toScene(wb), halfWidthRef * refPx_, field(a), field(b), 0);
+    }
+}
+
 void PlayView::flare(CapsuleBatch& out, Vec2 at, float angle, float lengthWu, u32 arms, Vec3 colour, float halfWidthRef) {
     // Star streaks through a centre that taper to nothing (look.md §4 flares, fade exponent 1.6).
     const float halfW = halfWidthRef * refPx_;
@@ -1139,7 +1166,6 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             const u16 tr = e.traits[i];
             eliteLevel = eclipseK_;
             if (hasTrait(tr, kCloaked)) eliteLevel *= w.species().traits.cloaked + (1.0f - w.species().traits.cloaked) * kick_;
-            if (w.elitePhased(i)) eliteLevel *= 0.35f;
             intensity = (look_->lines.enemyHullTier1.intensity + le.hullIntensityPerTier * (static_cast<float>(s.tier) - 1.0f) + le.eliteIntensityAdd) *
                         enemyLight_ * eliteLevel;
             halfWidth = 0.5f * le.eliteWidth;
@@ -1155,7 +1181,9 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         const bool lod = scale * pxPerWu_ < tier_.lodRadiusPx;
         if (elite) drawElite(d, in, i, pos, rot0, rot1, scale, hue, g, eliteLevel);  // M5 part 5
         if (shown(elite ? kMuteElite : kMuteEnemy)) {
-            glyph(d.glyphs, g, lod && !elite, pos, rot0, rot1, scale, intensity, halfWidth, kGlyphEnemy, hue, partner);
+            // M6 (look.md 4): a Phasing elite off its solid half has every other hull segment hidden (was: the whole hull at 35%).
+            if (elite && w.elitePhased(i)) hullEveryOther(d, g, pos, rot0, scale, intensity, halfWidth, hue, partner, false);
+            else glyph(d.glyphs, g, lod && !elite, pos, rot0, rot1, scale, intensity, halfWidth, kGlyphEnemy, hue, partner);
             if (s.variant != kVariantA) {
                 const int mark = s.variant == kVariantC ? gMarkC_ : (gd.facesHeading ? gMarkBHeading_ : gMarkBSpin_);
                 glyph(d.glyphs, mark, false, pos, rot0, rot0, scale, look_->lines.variantMark.intensity * crowd,
@@ -1523,6 +1551,19 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
 
     // ---- M3 stage B: Riffs, Boosts, the boss, the Trio (play_view_b.cpp).
     drawStageB(d, in, W, H);
+
+    // ---- M6 (screens.md "First-run hints"): one line of world text 70 wu above the ship, cap 22, white at 0.85 with the
+    // priority layer's dark rim.
+    if (in.hint && in.hintLevel > 0.01f && !in.noShips) {
+        const float cap = 22.0f * pxPerWu_;
+        const float wText = font_->measure(TextStyle{cap}, in.hint);
+        const Vec2 sc = toScreen(in.shipPos);  // (the priority layer: the threat view, which does not shake)
+        const Vec2 at{sc.x - 0.5f * wText, sc.y - 70.0f * pxPerWu_ - cap};
+        const Vec3 rim{};
+        font_->drawField(d.threatRims, at, cap, 2.2f * refPx_, rim, rim, rim, in.hint);
+        const Vec3 c = white() * (0.85f * in.hintLevel);
+        font_->drawField(d.threatCores, at, cap, 0.9f * refPx_, c, c, c, in.hint);
+    }
 
     // ---- Composite controls (look.md §7).
     const float pump = shown(kMutePump) ? kick_ * beatAmt : 0.0f;

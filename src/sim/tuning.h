@@ -106,6 +106,14 @@ constexpr float kCrowdFloodShare = 0.5f, kCrowdRingShare = 0.25f;
 constexpr float kCrowdFloodSpacingWu = 220.0f;
 constexpr float kCrowdEdgeBase = 0.25f;      // C2: a flood's edge: this, plus the ship's heading toward it (0-1)
 constexpr float kAssistStep = 0.1f, kAssistMin = 0.8f, kAssistMax = 1.3f;  // GAME_DESIGN 8 (quoted)
+// M6 (the lead's A4: the novice finished the ten Tracks in 5 of 20; what hit it after Track 3 outside the fights was Drifter
+// B's bullets first, then the bodies): a lost cell eases the budget wider than GAME_DESIGN 8's step, down to a lower floor,
+// and the crowd's bullets (not the fights') fly slower.
+constexpr float kAssistEaseStep = 0.2f, kAssistEaseMin = 0.6f;
+constexpr float kCrowdBulletSpeedScale = 0.8f;
+// M6 (A4 round 2): from Track 4 on a shooting species is picked at this weight against the others' (the director's picks).
+constexpr u32 kShooterEaseTrack = 4;
+constexpr float kShooterEaseWeight = 0.5f;
 constexpr float kBoostEveryLoS = 20.0f, kBoostEveryHiS = 30.0f;            // GAME_DESIGN 6.1 (quoted)
 constexpr float kSpotlightWu = 560.0f;       // a debut's group lands this far from the ship
 constexpr float kEndlessBpmStep = 4.0f, kEndlessBpmCap = 174.0f;           // GAME_DESIGN 4.2 (quoted)

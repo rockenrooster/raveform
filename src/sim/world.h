@@ -343,7 +343,12 @@ struct Bullets {
     u8 dead[kCap];
     u8 echo[kCap];     // M5 part 4: a Feedback echo shot (1 + its player; drawn as the player's shot, turned)
     u8 boss[kCap];     // M5 part 7: a fight's own (a boss's or a mini-boss's pattern: never the bullet refused)
+    u16 src[kCap];     // M6: what fired it (a HitCause: the species, or a fight's kind; screens.md "ENDED BY")
 };
+
+// M6 (screens.md, "What ended it"): what took a player's cell. A species index (an enemy's body, its bullet or its hazard), a
+// fight's kind, an arena event's kind, or a Volatile elite's blast.
+constexpr u16 kCauseNone = 0xFFFF, kCauseBossBase = 0x1000, kCauseEventBase = 0x2000, kCauseVolatile = 0x3000;
 
 // M5 part 4, Feedback (design/bosses/feedback.md): each player's last bars as the tape holds them (positions relative to
 // the Head, aim, alive; the shots they fired with where and which way; their Novas) and the Nulls bursting.
@@ -640,6 +645,8 @@ struct PlayerState {
     // Play test 3 (GAME_DESIGN 5): an Extra Life held (at most one), spent on the hit that would end the run.
     u8 extraLives = 0;
     u32 extraLivesTaken = 0, extraLivesSpent = 0, ringBreaks = 0;
+    u16 lastHitCause = kCauseNone;  // M6: what the last hit was (the game over's ENDED BY)
+    bool lastHitBullet = false;     // ... and whether it was a bullet (the balance tables)
     bool invulnerable() const { return invulS > 0.0f || novaInvulS > 0.0f || dashing || boost(kColossus); }
     bool boost(u8 b) const {
         for (const ActiveBoost& a : boosts)
@@ -1108,7 +1115,7 @@ private:
     void updateNovas();
     void moveProjectiles(float dt);
     void collide();
-    void hitPlayer(u32 p, Vec2 from);
+    void hitPlayer(u32 p, Vec2 from, u16 cause = kCauseNone, bool bullet = false);
     void compact();
     void emit(const Event& e);
     void removeEnemyAt(u32 i);
@@ -1182,6 +1189,12 @@ private:
     u32 nearestEnemies(Vec2 at, float r, u32* out, u32 cap) const;
     void novaKill(u32 i, u32 p);
     void areaHit(u8 owner, Vec2 at, float r, float dmg, i32 skip, bool boss);
+    // M6 (A2): the arena's bodies with health under an area, a line, a ring's front, a sweeping arm (world_arena.cpp).
+    bool arenaHurtable(u32 k) const;
+    void arenaArea(u8 owner, Vec2 at, float r, float dmg);
+    void arenaLine(u8 owner, Vec2 from, Vec2 dir, float len, float half, float dmg);
+    void arenaRing(u8 owner, Vec2 c, float r0, float r, float dmg);
+    void arenaSweep(u8 owner, Vec2 c, float len, float a1, float swept, u32 arms, float dmg);
     u32 lineHit(u8 owner, Vec2 from, Vec2 dir, float len, float half, float dmg);
     void arcFrom(u32 i, u8 owner, u32 jumps, float dmg, u8 style);
     void pullBodies(Vec2 at, float r, float speed, float dt);
@@ -1228,7 +1241,7 @@ private:
     void landFamily4(u32 i, const Species& s, const FamilyData& fd, Vec2 to);
     void moveFamily4(u32 i, const Species& s, const FamilyData& fd, float dt, i32 tp, Vec2 to, bool engaged);
     void updateTrails();
-    bool hazardHits(u32 p, Vec2& from);
+    bool hazardHits(u32 p, Vec2& from, u16& cause);
     void layMine(Vec2 at, float r, float bars);
     void addDecoy(Vec2 at, float r, double until);
     void familyDeath4(u32 i, const Species& s);
@@ -1463,6 +1476,7 @@ private:
 
     const SpeciesTable* species_ = nullptr;
     u8 setList_ = static_cast<u8>(kBossesBuilt);  // M5: every Track with its fights (Play: those the music also has)
+    u16 bulletSrc_ = kCauseNone;  // M6: the species whose update is firing (Bullets::src)
     bool inBossUpdate_ = false;  // M5 part 7: the fights are firing (their bullets come first: spawnBullet)
     u32 lastBullet_ = 0;         // the slot spawnBullet filled last
     u8 forcedMini_ = 0xFF;  // --fight (pictures, benchmarks): the mini-boss every middle Drop brings

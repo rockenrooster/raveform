@@ -382,7 +382,7 @@ void World::updateBombs() {
         for (u32 p = 0; p < playerCount_; ++p) {
             PlayerState& pl = players_[p];
             if (!pl.present || !pl.alive || !isLocal(p) || pl.invulnerable() || rules_.godMode) continue;
-            if (lengthSq(pl.pos - at) <= td.volatileRing * td.volatileRing && !haloBlocks(p, at)) hitPlayer(p, at);
+            if (lengthSq(pl.pos - at) <= td.volatileRing * td.volatileRing && !haloBlocks(p, at)) hitPlayer(p, at, kCauseVolatile);
         }
         if (role_ != NetRole::Client) ringDamage(at, td.volatileRing, td.volatileDamage * static_cast<float>(phrase_.track), b.killer);
     }

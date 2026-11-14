@@ -78,6 +78,12 @@ void groupDigits(char* out, size_t cap, u64 v) {
 }
 }  // namespace
 
+namespace {
+float g_hudScale = 1.0f;  // M6 (SETTINGS, LOOK): HUD text and touch controls at 90 / 100 / 115 / 130%
+}  // namespace
+void setHudScale(float scale) { g_hudScale = scale > 0.5f && scale < 2.0f ? scale : 1.0f; }
+float hudScale() { return g_hudScale; }
+
 Vec3 hudColour(const Look& look, const LookVariant& variant, Vec3 c, float intensity) {
     // look.md §3: hue-preserving extended Reinhard with a bleed toward white for very hot values.
     const Vec3 v = c * intensity;
@@ -96,7 +102,8 @@ Vec3 hudColour(const Look& look, const LookVariant& variant, Vec3 c, float inten
 void TouchControls::layout(float w, float h, Vec2 insetMin, Vec2 insetMax, float pxPerMm) {
     w_ = w;
     h_ = h;
-    s_ = h / 1080.0f;
+    s_ = h / 1080.0f * g_hudScale;  // (M6: the UI scale, the touch controls too)
+    pxPerMm *= g_hudScale;
     stickR_ = kStickRadius * s_;
     float novaR = kNovaRadius * s_, dashR = kDashRadius * s_;
     if (pxPerMm > 0.0f) {
@@ -242,7 +249,7 @@ void TouchControls::draw(CapsuleBatch& hud, GlowBatch& pools, const VectorFont& 
 void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookVariant& variant, const Palettes& palettes,
              const Palette& palette, const HudState& st, const TouchControls& touch, float W, float H, Vec2 insetMin,
              Vec2 insetMax) {
-    const float s = H / 1080.0f;
+    const float s = H / 1080.0f * g_hudScale;  // (M6: the UI scale)
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const Vec3 player = palettes.player[0];
     const Vec3 gold = palettes.player[3];       // P4 gold (the Chain's field: white -> gold -> amber)
@@ -374,7 +381,7 @@ const char* bossHint(sim::BossKind k) {
 }
 
 Vec2 pauseButtonCentre(float W, float H, Vec2 insetMin, Vec2 insetMax, float& radius) {
-    const float s = H / 1080.0f;
+    const float s = H / 1080.0f * g_hudScale;  // (M6: the UI scale)
     radius = 28.0f * s;
     return Vec2{W - std::fmax(kMargin * s, insetMax.x) + 40.0f * s, insetMin.y + 52.0f * s};
 }
@@ -404,7 +411,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
                 const Palette& palette, const HudState& st, float W, float H, Vec2 insetMin, Vec2 insetMax) {
     using namespace sim;
     const World& w = *st.world;
-    const float s = H / 1080.0f;
+    const float s = H / 1080.0f * g_hudScale;  // (M6: the UI scale)
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const Vec3 player = palettes.player[0];
     const Vec3 gold = palettes.player[3];
@@ -665,6 +672,21 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             }
         }
     }
+    // M6 (screens.md "A finished run"): the set list's last boss has fallen: in the Track name card's place SET COMPLETE (cap
+    // 44, gold) with the score so far under it, for two bars (in over a beat, out over the last quarter bar).
+    if (st.setCompleteBars >= 0.0f && st.setCompleteBars < 2.0f) {
+        const float u = st.setCompleteBars;
+        const float k = clampf(u * 4.0f, 0.0f, 1.0f) * clampf((2.0f - u) * 4.0f, 0.0f, 1.0f);
+        const float cap = 44.0f * s, top = 0.62f * H;
+        const char* words = "SET COMPLETE";
+        font.drawField(d.hud, {cx - 0.5f * textW(font, cap, words), top}, cap, 1.6f * s, col(gold, 2.0f * k), col(gold, 2.0f * k), col(palettes.playerDeep[3], 2.0f * k),
+                       words);
+        char num[32];
+        groupDigits(num, sizeof num, st.setCompleteScore);
+        const float c2 = 28.0f * s;
+        font.drawField(d.hud, {cx - 0.5f * textW(font, c2, num), top + cap + 26.0f * s}, c2, 1.0f * s, col(white, 1.4f * k), col(white, 1.4f * k),
+                       col(white, 1.4f * k), num);
+    }
     // The boss: its name card for two bars at the entrance, then a bar under the phrase bar.
     const BossState& boss = w.boss();
     if (boss.active && !boss.dying) {
@@ -721,7 +743,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         const bool pips = boss.kind == BossKind::Kaleidos || boss.kind == BossKind::Choir || boss.kind == BossKind::Longwave;
         if (st.bossFlash > 0.0f && f > 0.0f && (!pips || st.bossFlashPart == 0xFF)) {
             const float xe = x0 + bw * f, xs = std::fmax(x0, xe - 40.0f * s);
-            d.hud.line({xs, y}, {xe, y}, (thick + 1.0f) * s, col(white, 2.4f * st.bossFlash), col(white, 2.4f * st.bossFlash), 0);
+            d.hud.line({xs, y}, {xe, y}, (thick + 1.0f) * s, col(white, (st.reduceFlashing ? 1.2f : 2.4f) * st.bossFlash), col(white, (st.reduceFlashing ? 1.2f : 2.4f) * st.bossFlash), 0);
         }
         const auto pipFlash = [&](u32 k) { return st.bossFlash > 0.0f && st.bossFlashPart == k ? st.bossFlash : 0.0f; };
         if (boss.kind == BossKind::Kaleidos) {

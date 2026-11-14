@@ -1,0 +1,239 @@
+// M6: the m6_ review pictures (scripts/review-m3b.ps1 -Only m6_...; captures\m6\): every first-run hint line over a scene that
+// fits it, ENDED BY and SET COMPLETE on the game over, SET COMPLETE's card in the run, the title's gold star, the UI scale at 90%
+// and 130% with the touch controls shown, the mini-boss that stays (13 bars after its arrival, the Drop held), and the boss
+// hit flash (a white copy of the part's own shape) on three fights. Fixed 1/60 s steps and no band, like the other pictures.
+
+#include <cmath>
+#include <cstring>
+
+#include "core/args.h"
+#include "core/log.h"
+#include "game/play.h"
+#include "sim/tuning.h"
+
+namespace rf {
+
+using namespace sim;
+
+namespace {
+enum class M6 : u8 { Hint, EndedBy, SetCard, SetOver, TitleStar, UiScale, MiniStays, Flash };
+struct M6Pic {
+    const char* name;   // m6_<name>
+    M6 kind;
+    u8 arg;             // the hint's index; the UI scale's setting (0 90%, 3 130%)
+    const char* fight;  // sim/boss.h bossId (MiniStays, Flash)
+};
+const M6Pic kM6Pics[] = {
+    {"hint_0", M6::Hint, 0, nullptr},          {"hint_1", M6::Hint, 1, nullptr},  {"hint_2", M6::Hint, 2, nullptr},
+    {"hint_3", M6::Hint, 3, nullptr},          {"hint_4", M6::Hint, 4, nullptr},  {"hint_5", M6::Hint, 5, nullptr},
+    {"hint_6", M6::Hint, 6, nullptr},          {"hint_7", M6::Hint, 7, nullptr},  {"hint_8", M6::Hint, 8, nullptr},
+    {"hint_9", M6::Hint, 9, nullptr},          {"hint_10", M6::Hint, 10, nullptr},
+    {"ended_by", M6::EndedBy, 0, nullptr},     {"set_complete", M6::SetCard, 0, nullptr},
+    {"set_complete_over", M6::SetOver, 0, nullptr}, {"title_star", M6::TitleStar, 0, nullptr},
+    {"uiscale_90", M6::UiScale, 0, nullptr},   {"uiscale_130", M6::UiScale, 3, nullptr},
+    {"mini_stays", M6::MiniStays, 0, "alpha_hound"},
+    {"flash_longwave", M6::Flash, 0, "longwave"}, {"flash_choir", M6::Flash, 0, "choir"}, {"flash_alpha", M6::Flash, 0, "alpha_hound"},
+};
+constexpr u32 kM6Count = sizeof(kM6Pics) / sizeof(kM6Pics[0]);
+constexpr u32 kM6At = 300;  // after the run's Track card (2.25 bars)
+}  // namespace
+
+bool Play::scriptSetupM6() {
+    const char* p = opt_.picture;
+    if (std::strncmp(p, "m6_", 3) != 0) return false;
+    for (u32 k = 0; k < kM6Count; ++k)
+        if (std::strcmp(p + 3, kM6Pics[k].name) == 0) m6Pic_ = static_cast<u16>(k);
+    if (m6Pic_ == 0xFFFF) {
+        RF_ERR("play: no picture '%s'", p);
+        return true;
+    }
+    World& w = *world_;
+    const M6Pic& pic = kM6Pics[m6Pic_];
+    w.rules().godMode = true;
+    switch (pic.kind) {
+        case M6::Hint: {
+            // The hint over a still ship; a ring of bodies for the lines about enemies, bullets and the Nova.
+            forcedHint_ = pic.arg;
+            w.spawner().mode = Spawner::Mode::Off;
+            w.playerMut(0).novas = pic.arg == 6 ? 1 : 0;
+            if (pic.arg == 2 || pic.arg == 3 || pic.arg == 6 || pic.arg == 7) {
+                const u32 n = pic.arg == 6 ? 14u : 8u;
+                for (u32 k = 0; k < n; ++k) {
+                    const float a = kTau * static_cast<float>(k) / static_cast<float>(n);
+                    const Vec2 at{std::cos(a) * (pic.arg == 6 ? 260.0f : 520.0f), std::sin(a) * (pic.arg == 6 ? 200.0f : 300.0f)};
+                    const Family f = pic.arg == 7 && k % 2 == 0 ? Family::Sentry : Family::Drifter;
+                    const i32 i = w.spawnEnemy(SpeciesTable::index(f, 1, f == Family::Sentry ? kVariantB : kVariantA), at, angleOf(Vec2{} - at), 0.0);
+                    if (i >= 0) w.setEnemyHp(static_cast<u32>(i), 4000.0f);
+                }
+            }
+            if (pic.arg == 0 || pic.arg == 3) touch_.markUsed();  // (the touch lines: the controls shown)
+            break;
+        }
+        case M6::EndedBy:
+        case M6::SetOver:
+            flow_ = true;
+            screen_ = Screen::Run;
+            w.spawner().mode = Spawner::Mode::Slice;
+            break;
+        case M6::SetCard:
+            w.spawner().mode = Spawner::Mode::Slice;
+            break;
+        case M6::TitleStar: {
+            flow_ = true;
+            screen_ = Screen::Title;
+            w.spawner().mode = Spawner::Mode::Slice;
+            HighScore h;
+            h.score = 4862310;
+            h.track = 11;
+            h.bestChain = 412;
+            h.seconds = 3127;
+            h.kills = 21904;
+            h.setComplete = true;
+            scores_.add(h);  // (in memory only: pictures save nothing)
+            break;
+        }
+        case M6::UiScale:
+            w.spawner().mode = Spawner::Mode::Slice;
+            scriptFastForwardS_ = 8.0f;
+            settings_.uiScale = pic.arg;
+            applySettings();
+            touch_.markUsed();
+            break;
+        case M6::MiniStays:
+        case M6::Flash:
+            if (!setupFight(pic.fight, 0)) return true;
+            opt_.fightHold = true;  // (it keeps its health: the mini-boss stays to its sixteenth bar; the flash picture waits for a hit)
+            break;
+    }
+    return true;
+}
+
+bool Play::scriptInputM6(StickInput& in) {
+    if (m6Pic_ == 0xFFFF) return false;
+    World& w = *world_;
+    const M6Pic& pic = kM6Pics[m6Pic_];
+    const u32 t = scriptTick_;
+    const i64 now = static_cast<i64>(frameNo_);
+    const Vec2 ship = controller_.pose().pos;
+    switch (pic.kind) {
+        case M6::Hint: {
+            in = StickInput{};
+            in.assist = true;  // (the assist's fire, as in a first run)
+            if (pic.arg == 2 && t > 120) {
+                // (the stream at the nearest body, as the assist would aim it: the line is about the ship firing by itself)
+                const Enemies& e = w.enemies();
+                i32 best = -1;
+                float bd = 1e30f;
+                for (u32 i = 0; i < e.count; ++i) {
+                    if ((e.flags[i] & kFlagDead) || e.state[i] == kWarping) continue;
+                    const float dd = lengthSq(Vec2{e.x[i], e.y[i]} - ship);
+                    if (dd < bd && dd > 200.0f * 200.0f) {  // (one off the ship, so the stream is seen)
+                        bd = dd;
+                        best = static_cast<i32>(i);
+                    }
+                }
+                if (best >= 0) {
+                    in.aim = Vec2{e.x[best], e.y[best]} - ship;
+                    in.aimActive = true;
+                }
+            }
+            if (t == 200 && pic.arg == 4) {
+                const u8 forced[3] = {kSplit, kMagnet, kOrbitals};
+                w.openTrioNow(0, music1_ + 4.0 * kTicksPerBar, forced);
+            }
+            if (t == 200 && pic.arg == 8) w.dropBoost(ship + Vec2{260.0f, -80.0f}, kPrism);
+            if (t == 200 && pic.arg == 9) w.dropExtraLifeNow(ship + Vec2{260.0f, -80.0f}, 0);
+            if (t == 200 && pic.arg == 10) w.placeStructureNow(StructKind::Vault, ship + Vec2{460.0f, 0.0f}, 0.0f);
+            if (t == 200 && pic.arg == 5) {
+                // (a real hit: the ring's moment)
+                PlayerState& pl = w.playerMut(0);
+                pl.invulS = pl.novaInvulS = 0.0f;
+                w.rules().godMode = false;
+                w.spawnBullet(pl.pos, Vec2{}, 0.0f);
+            }
+            if (t == 202) w.rules().godMode = true;
+            if (captureFrom_ < 0 && t == kM6At + (pic.arg == 7 ? 60u : 0u)) captureFrom_ = now;
+            return true;
+        }
+        case M6::EndedBy:
+        case M6::SetOver:
+            in = bot_.think(w, 0, controller_, clock_.heardNow());
+            if (t == kM6At) {
+                if (pic.kind == M6::SetOver) {
+                    runSetComplete_ = true;
+                    setCompleteT_ = static_cast<float>(tickEnd_);
+                setCompleteScore_ = w.player(0).score;
+                }
+                // The last cell taken by a body (a Hound on the ship), so the line names what took it.
+                PlayerState& pl = w.playerMut(0);
+                pl.cells = 0;
+                pl.novas = 0;
+                pl.extraLives = 0;
+                pl.invulS = pl.novaInvulS = 0.0f;
+                w.rules().godMode = false;
+                w.spawnEnemy(SpeciesTable::index(Family::Hound, 2, kVariantA), pl.pos, 0.0f, 0.0);
+            }
+            if (t >= kM6At) in = StickInput{};
+            if (screen_ == Screen::GameOver && captureFrom_ < 0 && overS_ > 2.6f) captureFrom_ = now;
+            return true;
+        case M6::SetCard: {
+            in = bot_.think(w, 0, controller_, clock_.heardNow());
+            if (t == kM6At) {
+                runSetComplete_ = true;
+                setCompleteT_ = static_cast<float>(tickEnd_);
+                setCompleteScore_ = w.player(0).score;
+            }
+            if (captureFrom_ < 0 && t == kM6At + 60) captureFrom_ = now;  // (half a bar in: the card written)
+            return true;
+        }
+        case M6::TitleStar:
+            in = bot_.think(w, 0, controller_, clock_.heardNow());
+            if (captureFrom_ < 0 && t == kM6At) captureFrom_ = now;
+            return true;
+        case M6::UiScale:
+            in = bot_.think(w, 0, controller_, clock_.heardNow());
+            if (!ffRunning_ && captureFrom_ < 0 && t == 24) captureFrom_ = now;
+            return true;
+        case M6::MiniStays:
+        case M6::Flash: {
+            in = bot_.think(w, 0, controller_, clock_.heardNow());
+            // (the flash pictures: the horde, the bullets, sparks, Shards and effects not drawn, so the boss's white part reads)
+            if (pic.kind == M6::Flash) view_.setMute(kMuteEnemy | kMuteBullet | kMuteSparks | kMuteShard | kMuteWarp | kMuteFx | kMutePriority);
+            if (ffRunning_) return true;
+            in.nova = false;
+            w.closeTrioNow(0);
+            w.playerMut(0).levelsBanked = 0;
+            const BossState& b = w.boss();
+            // The mini-boss 13 bars after its arrival (its Drop's own 8 have ended; the Drop is held for it to 16).
+            if (pic.kind == M6::MiniStays && captureFrom_ < 0 && b.active && !b.dying && isMiniBoss(b.kind) &&
+                music1_ >= b.enterTick + 13.0 * kTicksPerBar)
+                captureFrom_ = now;
+            return true;
+        }
+    }
+    return true;
+}
+
+bool Play::scriptEventsM6() {
+    if (m6Pic_ == 0xFFFF) return false;
+    const M6Pic& pic = kM6Pics[m6Pic_];
+    if (pic.kind != M6::Flash || captureFrom_ >= 0 || ffRunning_) return true;
+    const World& w = *world_;
+    const BossState& b = w.boss();
+    if (!b.active || b.dying || b.kind != fightKind_) return true;
+    // A shot on a weak point (its full share or more, not a plate) a bar into the fight, near the ship (the zoomed crop): the
+    // part white in the next frame.
+    const Vec2 ship = controller_.pose().pos;
+    for (u32 k = 0; k < w.eventCount(); ++k) {
+        const Event& e = w.events()[k];
+        if (e.type == EventType::Impact && e.species == kBossSpecies && e.c != 1 && e.f >= 1.0f && w.music() > b.fightTick + kTicksPerBar &&
+            scriptTick_ > 150 && std::fabs(e.x - ship.x) < 520.0f && std::fabs(e.y - ship.y) < 240.0f) {
+            captureFrom_ = static_cast<i64>(frameNo_) + 1;
+            RF_LOG("play: picture '%s' captures from frame %lld (part %u.%u)", opt_.picture, static_cast<long long>(captureFrom_), e.c, e.a);
+            break;
+        }
+    }
+    return true;
+}
+
+}  // namespace rf

@@ -75,6 +75,9 @@ bool loadSettings(Settings& s) {
         if (is("reduce_flashing")) s.reduceFlashing = n != 0;
         if (is("notice_seen")) s.noticeSeen = n != 0;
         if (is("probed_tier")) s.probedTier = static_cast<u32>(n >= 0 && n < 5 ? n : 0);
+        if (is("ui_scale")) s.uiScale = static_cast<u8>(n >= 0 && n < 4 ? n : 1);
+        if (is("hints_seen")) s.hintsSeen = static_cast<u32>(std::strtoul(v, nullptr, 10));
+        if (is("runs_ended")) s.runsEnded = static_cast<u32>(std::strtoul(v, nullptr, 10));
     });
     if (found) RF_LOG("settings: loaded (sound %u, effects %u, reduce flashing %s)", s.variant, s.effectsTier, s.reduceFlashing ? "on" : "off");
     return found;
@@ -85,10 +88,10 @@ bool saveSettings(const Settings& s) {
     const int n = std::snprintf(text, sizeof text,
                                 "variant=%u\nmaster=%.3f\nmusic=%.3f\neffects=%.3f\nhaptics=%u\nswap_sides=%d\nauto_aim=%d\n"
                                 "effects_tier=%u\nframe_rate=%u\nreduce_flashing=%d\nnotice_seen=%d\nprobed_tier=%u\nmusic_host_only=%d\n"
-                                "auto_nova=%d\n",
+                                "auto_nova=%d\nui_scale=%u\nhints_seen=%u\nruns_ended=%u\n",
                                 s.variant, s.master, s.music, s.effects, s.haptics, s.swapSides ? 1 : 0, s.autoAim ? 1 : 0, s.effectsTier,
                                 s.frameRate, s.reduceFlashing ? 1 : 0, s.noticeSeen ? 1 : 0, s.probedTier, s.musicHostOnly ? 1 : 0,
-                                s.autoNova ? 1 : 0);
+                                s.autoNova ? 1 : 0, s.uiScale, s.hintsSeen, s.runsEnded);
     const bool ok = n > 0 && writeAppFile("settings.txt", text, static_cast<size_t>(n));
     if (!ok) RF_WARN("settings: could not be saved");
     return ok;
@@ -111,8 +114,9 @@ bool loadHighScores(HighScores& h) {
         if (std::strcmp(k, "run") != 0 || h.count >= HighScores::kMax) return;
         HighScore e;
         unsigned long long score = 0;
-        unsigned track = 1, chain = 1, secs = 0, kills = 0;
-        if (std::sscanf(v, "%llu %u %u %u %u", &score, &track, &chain, &secs, &kills) == 5) {
+        unsigned track = 1, chain = 1, secs = 0, kills = 0, set = 0;
+        if (std::sscanf(v, "%llu %u %u %u %u %u", &score, &track, &chain, &secs, &kills, &set) >= 5) {  // (M6: the set's flag, sixth)
+            e.setComplete = set != 0;
             e.score = score;
             e.track = track;
             e.bestChain = chain;
@@ -128,8 +132,8 @@ bool saveHighScores(const HighScores& h) {
     int n = 0;
     for (u32 k = 0; k < h.count && n >= 0 && n < static_cast<int>(sizeof text) - 80; ++k) {
         const HighScore& e = h.entry[k];
-        n += std::snprintf(text + n, sizeof text - static_cast<size_t>(n), "run=%llu %u %u %u %u\n",
-                           static_cast<unsigned long long>(e.score), e.track, e.bestChain, e.seconds, e.kills);
+        n += std::snprintf(text + n, sizeof text - static_cast<size_t>(n), "run=%llu %u %u %u %u %u\n",
+                           static_cast<unsigned long long>(e.score), e.track, e.bestChain, e.seconds, e.kills, e.setComplete ? 1u : 0u);
     }
     return n >= 0 && writeAppFile("highscores.txt", text, static_cast<size_t>(n));
 }

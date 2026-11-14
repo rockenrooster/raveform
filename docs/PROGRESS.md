@@ -4,6 +4,102 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## M6, the first chunk (the lead's design commit cfd31c0: what M5 left that a player notices, then M6's parts that need no decision) — 2026-11-14
+
+### A. What M5 left
+
+- **A1, the boss hit flash is a white copy of the part's own shape** (GAME_DESIGN 7.6). While a weak point's 60 ms flash
+  runs, the boss is drawn with a tap on the scene batch (`CapsuleTap`, `src/gfx/capsule.h`: a CPU copy of each line's ends and
+  width; the batch itself is mapped GPU memory and is never read back) and its glyphs are counted from where it began;
+  `PlayView::drawBossHitFlash` then copies, for each part hit, every line of the boss with both ends inside the part's circle
+  (x 1.35) in white at 2.0 and 0.7 of its width (at least 0.5 ref px), and every glyph centred in it as a hull-only white copy
+  at 2.0. The circle's outline is drawn only when nothing is found. Kaleidos keeps what it had (the pair's arms, its core ring:
+  already its own shape). Two hits on one part inside 60 ms flash it once. Reduce flashing: 0.9 (it was so before).
+- **A2, everything a player fires hurts an arena body with health** (a Vault, the Rift, the gold Vault, the Comet, a carrier):
+  every area and line the upgrades deal through (`areaHit`, `lineHit`: Accent's lances, Beam, Shockstep, Bar Line, Standing
+  Wave, Black Hole, Minelayer, Singularity, Comet, Supernova Rounds, Lancer, the Downbeat Cannon, Sentinel's and the others'
+  through them) now also calls `arenaArea` / `arenaLine`; Kick Pulse (`arenaArea`), the Sweeper (`arenaSweep`, its swept
+  arms), the Orbitals' lit shards (`arenaArea` each) and Pulse Ring (`arenaRing`) hit them directly; a client's hits are boss
+  claims as before (`World::damageBody`). Not covered: Colossus's body, Chain Storm's and Storm Coil's bolts, Last Light.
+- **A3, a mini-boss stays until it is dead or 16 bars from its arrival, the Drop held for it**: this was already the rule as
+  built (it arrives on the middle Drop's downbeat, the Drop's 8 bars plus `kMiniHoldBars` 8, warping out on that bar line); a
+  `static_assert` in `world_miniboss.cpp` now ties the two (the Drop's length + the hold = 16) and the picture
+  `m6_mini_stays` shows Alpha Hound 13 bars after its arrival in the held Drop.
+- **A4, the novice's ten Tracks** (seeds 1-20, 60 minutes; files in `captures\m6bal\`). The table of what took the novice
+  outside the fights from Track 4 on put the crowd's bullets first (Drifter B's 139, then the events and blasts 103, Carom
+  bodies 46, Shoal 35, Weaver 30); the hits that **ended** a run were the fights' (38 of 48). Two rounds, the crowd only:
+
+  | | novice finished | its hits from Track 4 on: drifter bullets / events / carom bodies | runs ended in fights | careful finished | careful kills a minute |
+  |---|---|---|---|---|---|
+  | before | 5 of 20 | 139 / 103 / 46 | 38 of 48 | 20 of 20 | 10,320 |
+  | round 1: the crowd's bullets x 0.8 (`kCrowdBulletSpeedScale`; the fights' as their pages say), a lost cell eases the budget by 0.2 to a floor of 0.6 (`kAssistEaseStep`, `kAssistEaseMin`; GAME_DESIGN 8's 0.1 and 0.8 stay for the rise) | 6 | 191 / 113 / 41 | 46 of 54 | 20 | 10,455 |
+  | round 2: from Track 4 on a shooting species is picked at half weight (`kShooterEaseTrack` 4, `kShooterEaseWeight` 0.5) | **7** | 97 / 113 / 42 | 32 of 41 | 18 | 9,693 |
+
+  **Where it landed: 7 of 20** (stopped after two rounds, as asked). The crowd is no longer what ends the novice's runs: the
+  first deaths fall in the fights of Tracks 2, 5 and 6 (Longwave, Polyrhythm's beams: 9 beam hits a fight, Feedback) and
+  Fata Morgana, which the instructions keep out of this pass. The careful bot's run is not empty (the same crowd in view, 7%
+  fewer kills a minute; two of its twenty first runs ended in Tracks 5 and 9, both in fights).
+- **A5, as time allowed**: Phasing's every other hull segment hidden off the beat (look.md 4): the hull's even segments drawn
+  as lines in the hull's field (`PlayView::hullEveryOther`), the white copy likewise, the ornament and core hidden with them
+  (was: the whole hull at 35%). Left: Swift's x 1.3 turn, Wyrm heads and Tether pairs as elites, Fata Morgana's wind on the
+  lattice, the "family met" rule (every family has debuted by Track 6: it would choose nothing), the echoes of Riffs that fire
+  nothing.
+
+### B. M6
+
+- **B1, first-run hints** (screens.md "First-run hints (M6)"): the eleven lines in world text 70 wu over the ship (cap 22,
+  white on the priority layer with a dark rim), two bars up, fading over the last beat, each once ever on a device
+  (`settings.txt` `hints`), one at a time, at least four bars apart, never in a fight or within 1.5 s of a Trio's take, never in
+  co-op for a player who has ended a run (`runs`); a hint whose moment passes waits for the next (`Play::hintsTick`). The
+  touch lines on a touch device, the keyboard's on the desktop. `RESET HINTS` under SETTINGS, CONTROLS.
+- **B2, ENDED BY** on the game over: what took the last cell as the game names it (`Play::causeName`; the sim keeps the cause
+  of each hit: a species, a boss, an event, a Volatile blast; a bullet names its shooter: `Bullets::src`); nothing for a run
+  quit or finished.
+- **B3, SET COMPLETE**: when the tenth Track's boss falls, SET COMPLETE (cap 44, gold) with the score in the Track card's place
+  for two bars, before ENCORE; the same words where RUN OVER stands on that run's game over; a gold star after the title's BEST
+  line (`highscores.txt`: a sixth field).
+- **B4, the app icon** (`scripts\make_icon.py`, reading `design/glyphs.json`, `look.json` and `palettes.json`, writing nothing
+  under design/): the adaptive icon's background (the Ultraviolet ground and the lattice at rest, bulging under the ship),
+  foreground (ship and halo with their bloom at half strength) and monochrome layers at every density
+  (`android/app/src/main/res/mipmap-*/ic_launcher_*.png`, `mipmap-anydpi-v26/ic_launcher.xml`; the placeholder drawable is
+  gone); `captures\m6\icon_512.png` (+ `_round`, `_monochrome` for review). The name stays `RAVEFORM`.
+- **B5, UI scale** (SETTINGS, LOOK: 90 / 100 / 115 / 130%, `settings.txt` `ui_scale`): HUD text and the touch controls (laid
+  out again at once). **Reduce flashing**, checked against M5's additions: it already covered the beams and lethal beams, the
+  Nova (the Extra Life's too), the boss deaths, Event Horizon's and Polyrhythm's flashes, Meteor Rain, the Volatile blasts,
+  the Eclipse; it did not cover, and now does: the boss hit flash (0.9), Storm Cell's strikes (0.9 / 0.8), Arc's, Chain Storm's
+  and Storm Coil's bolts (0.8), Freeze Frame's shatter (one ring), the HUD's boss bar flash.
+- **B6, haptics** (HAPTICS setting's strength; `Play::pulse`): the ring breaking medium, an Extra Life spent heavy, a boss's
+  death heavy, a mini-boss's arrival medium; a weak point's hit none.
+
+### Decisions taken alone
+
+- The flash's circle x 1.35 and width 0.7 (A1); the crowd's levers and their numbers (A4); the Phasing elite's ornament and
+  core hidden with the hull's odd segments (A5).
+- The icon (B4): "the ship's extent 44% of the icon" read as its span (nose to tail; the halo then spans 54%, inside the 66 dp
+  every mask keeps); the lattice at the reference tier's 20 wu, the ship's pool of light left out (not in the page's list); the
+  bulge a radial push of at most about 4 wu over 26 wu; the ground centred; the foreground's alpha its brightest channel after
+  the tone map (the light it adds over the dark ground); the monochrome layer the same, with the faint wide bloom (under 4%)
+  cut.
+- Pictures and fixed-step runs no longer write `settings.txt` or `highscores.txt` (`Play::endRun`): `screen_game_over` and the
+  M6 game-over pictures were replacing the PC's files.
+
+### Checks
+
+- `scripts\test.ps1`: all passed (audio 2,716 checks, sim 5,875, determinism, net 131,368, both loopback soaks: 0 census
+  mismatches). One test followed the crowd's slower bullets (`testPlayTest2`'s loop bullet speed x
+  `kCrowdBulletSpeedScale`).
+- Pictures (`captures\m6\`, 2400x1080 with `.small.png` copies; Debug with 0 validation messages, the fights in dev): every hint
+  line `m6_hint_0` ... `m6_hint_10` and `m6_hints_sheet.png` (the eleven side by side); `m6_ended_by` (ENDED BY HOUND);
+  `m6_set_complete` (the card in the run), `m6_set_complete_over` (the game over's title); `m6_title_star` (the BEST line's
+  star); `m6_uiscale_90`, `m6_uiscale_130` (the HUD and the touch controls); `m6_mini_stays` (Alpha Hound 13 bars after its
+  arrival, the HUD's Drop held); the hit flash on three fights, each also twice as large (`m6_flash_longwave`,
+  `m6_flash_choir`: a singer white, `m6_flash_alpha`: the hound's hull white; the horde, bullets, sparks and Shards not drawn
+  in these three so the part reads); `icon_512.png`, `icon_512_round.png`, `icon_512_monochrome.png`.
+- **The Moto, one run of 60 s** (A1 draws more in every boss fight; the densest is Track 10's last Drop, Kaleidos Reprise:
+  `bench_play --drop 10.3 --nohits --tier low`, shared phone, the panel at 60 Hz): 0 missed of 3,594; main thread p99 5.3 ms
+  (M5's run 4.8 ms); GPU P95 14.2 ms (14.5); 180 enemies in view on average, 292 at most; audio 0 underruns, heap 0. The
+  panel's grade PASS; the present call's own interval P95 17.7 ms as before (Swappy's pacing).
+
 ## M5 — done (2026-11-14): the end of the milestone
 
 - **On the phone** (the Moto, installed 00:21, not launched): commit 2520297 (play test 3 items 1-8 61a7f09; the m4-net and

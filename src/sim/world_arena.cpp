@@ -293,7 +293,7 @@ void World::arenaBeat(double beatTick) {
             if (!pl.present || !pl.alive || !isLocal(p)) continue;
             const bool inside = lengthSq(pl.pos - ev.pos) <= kArStormWu * kArStormWu;
             const u8 bit = static_cast<u8>(1u << p);
-            if (inside && (ev.hits & bit) && !pl.invulnerable() && !rules_.godMode && !haloBlocks(p, ev.pos)) hitPlayer(p, ev.pos);
+            if (inside && (ev.hits & bit) && !pl.invulnerable() && !rules_.godMode && !haloBlocks(p, ev.pos)) hitPlayer(p, ev.pos, static_cast<u16>(kCauseEventBase + static_cast<u32>(EventKind::StormCell)));
             ev.hits = static_cast<u8>(inside ? (ev.hits | bit) : (ev.hits & ~bit));
             if (inside) emitCue(BossCue::StWarn, beatTick, static_cast<u8>(p), 0.0f, pl.pos);
         }
@@ -433,7 +433,7 @@ void World::updateArena(float dt) {
         for (u32 p = 0; p < playerCount_; ++p) {
             PlayerState& pl = players_[p];
             if (!pl.present || !pl.alive || !isLocal(p) || pl.invulnerable() || rules_.godMode) continue;
-            if (lengthSq(pl.pos - at) <= kArMeteorWu * kArMeteorWu && !haloBlocks(p, at)) hitPlayer(p, at);
+            if (lengthSq(pl.pos - at) <= kArMeteorWu * kArMeteorWu && !haloBlocks(p, at)) hitPlayer(p, at, static_cast<u16>(kCauseEventBase + static_cast<u32>(EventKind::MeteorRain)));
         }
         if (host) ringDamage(at, kArMeteorWu, kArMeteorDamage * tr, 0xFF);
     }
@@ -584,6 +584,58 @@ bool World::arenaShotHit(u32 shot, Vec2 a, Vec2 b, float r, float& t, i32& body)
     return hit;
 }
 
+// M6 (the lead's A2): the arena's bodies with health take what hurts enemies, not only shots and Novas: areas (blasts,
+// mines, wells, a Black Hole, Kick Pulse, the Comet's disc, an Orbitals shard), lines (lances, beams, Bar Line), a Pulse
+// Ring's front, the Sweeper's arm. The owner's device decides (a client claims, as for shots).
+bool World::arenaHurtable(u32 k) const {
+    const ArenaBody& o = arena_[k];
+    if (!o.alive || !hasHealth(o.kind) || o.hp <= 0.0f) return false;
+    return !(o.kind == static_cast<u8>(StructKind::Rift) && o.from <= 0.0);  // (a closed Rift is not there yet)
+}
+
+void World::arenaArea(u8 owner, Vec2 at, float r, float dmg) {
+    for (u32 k = 0; k < kArenaBodies; ++k) {
+        if (!arenaHurtable(k)) continue;
+        const float rr = bodyRadius(species_->arena, arena_[k].kind) + r;
+        if (lengthSq(arena_[k].pos - at) <= rr * rr) damageBody(k, dmg, owner, arena_[k].pos, false);
+    }
+}
+
+void World::arenaLine(u8 owner, Vec2 from, Vec2 dir, float len, float half, float dmg) {
+    for (u32 k = 0; k < kArenaBodies; ++k) {
+        if (!arenaHurtable(k)) continue;
+        const Vec2 c = arena_[k].pos - from;
+        const float t = clampf(dot(c, dir), 0.0f, len);
+        const float rr = bodyRadius(species_->arena, arena_[k].kind) + half;
+        if (lengthSq(c - dir * t) <= rr * rr) damageBody(k, dmg, owner, from + dir * t, false);
+    }
+}
+
+void World::arenaRing(u8 owner, Vec2 c, float r0, float r, float dmg) {
+    for (u32 k = 0; k < kArenaBodies; ++k) {
+        if (!arenaHurtable(k)) continue;
+        const float d = length(arena_[k].pos - c), R = bodyRadius(species_->arena, arena_[k].kind);
+        if (d + R <= r0 || d - R > r) continue;  // the front did not pass it this tick
+        damageBody(k, dmg, owner, arena_[k].pos, false);
+    }
+}
+
+void World::arenaSweep(u8 owner, Vec2 c, float len, float a1, float swept, u32 arms, float dmg) {
+    for (u32 k = 0; k < kArenaBodies; ++k) {
+        if (!arenaHurtable(k)) continue;
+        const Vec2 v = arena_[k].pos - c;
+        const float dist = length(v), R = bodyRadius(species_->arena, arena_[k].kind);
+        if (dist > len + R) continue;
+        const float slack = dist > 1.0f ? std::fmin(R / dist, 0.5f) : 0.5f;
+        for (u32 arm = 0; arm < arms; ++arm) {
+            const float back = wrapAngle(a1 + static_cast<float>(arm) * kPi - angleOf(v));
+            if (back >= -slack && back <= swept + slack) {
+                damageBody(k, dmg, owner, arena_[k].pos, false);
+                break;
+            }
+        }
+    }
+}
 void World::damageBody(u32 slot, float dmg, u8 owner, Vec2 at, bool fromNet) {
     ArenaBody& b = arena_[slot];
     if (slot >= kArenaBodies || !b.alive || !hasHealth(b.kind) || b.hp <= 0.0f) return;

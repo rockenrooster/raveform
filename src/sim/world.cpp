@@ -176,6 +176,7 @@ void World::tick(const TickInput& in) {
 
     updateElites(dt * stretch_);  // M5 part 5: shields, Regenerating, Twins, the Commanders' reach (before the motion)
     updateEnemies(dt * stretch_);
+    bulletSrc_ = kCauseNone;  // (M6: what fires outside an enemy's own update names nothing)
     updateTrails();  // M5 part 4: Weaver trails, Ram B's wake
     inBossUpdate_ = true;
     updateBoss(dt);
@@ -704,14 +705,15 @@ void World::collide() {
             if (dx * dx + dy * dy <= r * r) contact = static_cast<i32>(i);
         });
         if (contact >= 0) {
-            if (!haloBlocks(p, Vec2{e.x[contact], e.y[contact]})) hitPlayer(p, Vec2{e.x[contact], e.y[contact]});
+            if (!haloBlocks(p, Vec2{e.x[contact], e.y[contact]})) hitPlayer(p, Vec2{e.x[contact], e.y[contact]}, e.species[contact]);
             continue;
         }
         {
             // M5 part 4: the lethal lines (Tether beams, Weaver trails, Ram B's wake).
             Vec2 from{};
-            if (hazardHits(p, from)) {
-                if (!haloBlocks(p, from)) hitPlayer(p, from);
+            u16 cause = kCauseNone;
+            if (hazardHits(p, from, cause)) {
+                if (!haloBlocks(p, from)) hitPlayer(p, from, cause);
                 continue;
             }
         }
@@ -721,7 +723,7 @@ void World::collide() {
             const float dx = bullets_.x[b] - c.x, dy = bullets_.y[b] - c.y;
             if (dx * dx + dy * dy > rb * rb) continue;
             bullets_.dead[b] = 1;
-            if (!haloBlocks(p, Vec2{bullets_.x[b], bullets_.y[b]})) hitPlayer(p, Vec2{bullets_.x[b], bullets_.y[b]});
+            if (!haloBlocks(p, Vec2{bullets_.x[b], bullets_.y[b]})) hitPlayer(p, Vec2{bullets_.x[b], bullets_.y[b]}, bullets_.src[b], true);
             break;
         }
     }
@@ -748,8 +750,10 @@ void World::collide() {
     }
 }
 
-void World::hitPlayer(u32 p, Vec2 from) {
+void World::hitPlayer(u32 p, Vec2 from, u16 cause, bool bullet) {
     PlayerState& pl = players_[p];
+    pl.lastHitCause = cause;  // M6: what took the cell (the game over's ENDED BY)
+    pl.lastHitBullet = bullet;
     // Auto Nova (GAME_DESIGN 5, play test 1 second pass; on unless switched off): a hit that would take the last Shield
     // cell (or end the run, with none left) fires a Nova from the stock instead and costs nothing; the Nova keeps R6
     // (invulnerable at once, the blast on the next beat). With no Nova in stock the hit lands as before.
@@ -791,7 +795,7 @@ void World::hitPlayer(u32 p, Vec2 from) {
     // GAME_DESIGN 8, assist: a lost Shield cell eases the budget 10% (once a cycle).
     if (!director_.hitThisCycle) {
         director_.hitThisCycle = true;
-        director_.assist = std::fmax(director_.assist - kAssistStep, kAssistMin);
+        director_.assist = std::fmax(director_.assist - kAssistEaseStep, kAssistEaseMin);  // (M6: wider)
     }
     const Vec2 c = pl.pos;
     const float r2 = kPanicRadiusWu * kPanicRadiusWu;
@@ -984,6 +988,7 @@ i32 World::spawnEnemyAs(u16 speciesIndex, Vec2 pos, float heading, double landTi
 
 bool World::spawnBullet(Vec2 pos, Vec2 vel, float advanceS, float lifeS) {
     Bullets& b = bullets_;
+    if (!inBossUpdate_) vel = vel * kCrowdBulletSpeedScale;  // M6 (A4): the crowd's bullets slower; the fights' as their pages say
     u32 i = b.count;
     if (!inBossUpdate_ && static_cast<float>(b.count) >= kBulletPoolCrowd * static_cast<float>(Bullets::kCap)) {
         // M5 part 7: the crowd's shooters hold a volley the pool's last 5% would take (kept for the fights' own patterns).
@@ -1022,6 +1027,7 @@ bool World::spawnBullet(Vec2 pos, Vec2 vel, float advanceS, float lifeS) {
     b.dead[i] = 0;
     b.echo[i] = 0;
     b.boss[i] = inBossUpdate_ ? 1 : 0;
+    b.src[i] = inBossUpdate_ ? static_cast<u16>(kCauseBossBase + static_cast<u32>(boss_.kind)) : bulletSrc_;  // M6
     lastBullet_ = i;
     return true;
 }
@@ -1123,6 +1129,7 @@ void World::compact() {
         b.dead[i] = b.dead[l];
         b.echo[i] = b.echo[l];
         b.boss[i] = b.boss[l];
+        b.src[i] = b.src[l];
     }
     Shots& s = shots_;
     for (u32 i = 0; i < s.count;) {

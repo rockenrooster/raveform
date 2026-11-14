@@ -44,6 +44,9 @@ struct ViewInput {
     // M4 stage B (screens.md "Co-op (M4)"): the co-op setup screens: the lattice and the background only (what the run
     // left behind, its sparks and rings, is not drawn either; the world behind them stands still).
     bool backgroundOnly = false;
+    // M6 (screens.md "First-run hints"): a hint line over the local ship (null: none) and its level (0..1, the fade).
+    const char* hint = nullptr;
+    float hintLevel = 0.0f;
 };
 
 // M4 stage B (screens.md "Co-op (M4)", "In the run"): the HUD's blocks that edge chevrons keep 20 px clear of (screen
@@ -131,6 +134,8 @@ private:
     void glyph(GlyphBatch& b, int g, bool hullOnly, Vec2 pos, float rot0, float rot1, float scaleWu, float intensity,
                float halfWidthRef, GlyphMode mode, Vec3 a, Vec3 c);
     void flare(CapsuleBatch& out, Vec2 at, float angle, float lengthWu, u32 arms, Vec3 colour, float halfWidthRef);
+    void hullEveryOther(FrameDraw& d, int g, Vec2 pos, float rot, float scale, float intensity, float halfWidthRef, Vec3 hue, Vec3 partner,
+                        bool white);  // M6: a Phasing elite's hull off its solid half
     // (widthWu > 0: the dashes that warn of a beam, as wide as it kills: look.md v2.5)
     void telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight, float widthWu = 0.0f);
     // look.md v2.5, a lethal beam is a laser too: the priority capsule exactly as wide as it kills, a 2 px white-pink line on
@@ -196,6 +201,13 @@ private:
     static constexpr u32 kHitFlashes = 8;
     HitFlash hitFlash_[kHitFlashes];
     u32 hitFlashNext_ = 0;
+    // M6 (A1): the flash is a white copy of the part's own shape: while a flash runs, the boss's lines are tapped and its
+    // glyphs counted from bossGlyph0_, and drawBossHitFlash copies those inside the hit part's circle in white.
+    static constexpr u32 kBossTapLines = 4096;
+    CapsuleTap::Line bossTapLines_[kBossTapLines];
+    CapsuleTap bossTap_;
+    u32 bossGlyph0_ = 0;
+    bool bossTapped_ = false;
     // Play test 3 (GAME_DESIGN 5, screens.md): EXTRA LIFE as world text at the ship for a bar (view time it began).
     float extraLifeT_[sim::kMaxPlayers] = {-1e9f, -1e9f, -1e9f, -1e9f};
     // Play test 3 (GAME_DESIGN 6.3 row 1): the Orbitals' ring breaking (its shards fly) and relighting.

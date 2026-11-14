@@ -320,6 +320,12 @@ private:
     double fightPhaseAt_ = -1.0;
     u16 m5Pic_ = 0xFFFF;       // the m5_ picture being taken (play_pictures_m5.cpp kPics; the other tables from their bases)
     u32 stripStride_ = 1;      // a strip's frames this many frames apart (M5: 8 frames across a beat)
+    // play_pictures_m6.cpp (M6): the m6_ review pictures (every hint line, ENDED BY, SET COMPLETE, the title's star, UI scale,
+    // the mini-boss that stays, the hit flash on three fights).
+    bool scriptSetupM6();
+    bool scriptInputM6(sim::StickInput& in);
+    bool scriptEventsM6();
+    u16 m6Pic_ = 0xFFFF;
 
     PlayOptions opt_;
     const Look* look_ = nullptr;
@@ -428,6 +434,21 @@ private:
     float spotlightT_ = -100.0f;
     float takenT_ = -100.0f;
     float levelUpT_ = -100.0f;  // play test 2: the local player's last Shard level (the HUD's flash)
+    // M6 (screens.md): a finished run (SET COMPLETE: when, the score then), what ended the run (ENDED BY), the hints.
+    bool runSetComplete_ = false;
+    float setCompleteT_ = -100.0f;
+    u64 setCompleteScore_ = 0;
+    char runEndedBy_[32] = {};
+    void causeName(u16 cause, char* out, size_t n) const;
+    // M6 (screens.md "First-run hints"): the hint up (-1: none), when it began (view seconds), the run bar it began on, the bar
+    // the "it fires by itself" hint showed on (the right thumb's waits four bars), the last hit's moment.
+    i32 hintIdx_ = -1;
+    float hintT_ = -100.0f;
+    i64 lastHintBar_ = -100, hint2Bar_ = -1;
+    float hitMomentT_ = -100.0f;
+    i32 forcedHint_ = -1;  // pictures: m6_hint_<k> shows hint k
+    void hintsTick(ViewInput& vi);
+    void pulse(int kind);  // M6: a haptic pulse (0 light, 1 medium, 2 heavy) at the HAPTICS setting
     float bossHitT_ = -100.0f;  // play test 3 (GAME_DESIGN 7.6): the last hit on a boss's weak point (its bar's segment flashes)
     u8 bossHitPart_ = 0xFF;     // ... the part it hit (Kaleidos's pair, a Longwave segment, a Voice; 0xFF the whole)
     // M5 (GAME_DESIGN 7.6, screens.md "Boss hint"): this device's player's shots on the boss, bar by bar of the fight.

@@ -128,7 +128,7 @@ void PlayView::eventUpgrade(const World& w, const Event& e, float t) {
             sparkRequest(r);
             break;
         }
-        case kFxFreeze: addShockRings(at, 2, 900.0f, kIce, whiteU(), t, 0.5f); break;
+        case kFxFreeze: addShockRings(at, reduceFlashing_ ? 1 : 2, 900.0f, kIce, whiteU(), t, 0.5f); break;  // (M6: reduce flashing, one ring)
         case kFxCollector: addShockRings(at, 1, 160.0f, palettes_->player[3], whiteU(), t, 0.3f); break;
         case kFxFork:
         case kFxConfetti: {
@@ -330,7 +330,7 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
     for (const Bolt& b : bolts_) {
         const float age = t - b.born;
         if (age < 0.0f || age > kBoltS) continue;
-        const float lvl = (b.owner == w.viewPlayer() ? 1.0f : 0.6f) * 1.4f;
+        const float lvl = (b.owner == w.viewPlayer() ? 1.0f : 0.6f) * (reduceFlashing_ ? 0.8f : 1.4f);  // (M6: reduce flashing)
         const Vec3 outer = (b.style == 2 ? palettes_->player[3] : palettes_->player[b.owner < kMaxPlayers ? b.owner : 0]) * lvl;
         const Vec2 dv = b.b - b.a;
         const float len = length(dv);

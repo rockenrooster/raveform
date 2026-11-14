@@ -11,6 +11,7 @@
 #include <new>
 
 #include "audio/music_data.h"
+#include "audio/platform_audio.h"
 #include "core/log.h"
 #include "core/time.h"
 #include "net/bots.h"
@@ -460,6 +461,8 @@ void Play::afterTick() {
                 // A new run: its record starts (the set list's first Track).
                 runSeconds_ = 0.0f;
                 runTrackMax_ = 1;
+                runSetComplete_ = false;  // M6
+                runEndedBy_[0] = 0;
                 markCount_ = 0;
                 marks_[markCount_++] = Mark{0.0f, 0, 1};
                 loadoutSig_ = ~0u;
@@ -512,6 +515,8 @@ void Play::afterTick() {
                 // M4 stage B: the set list keeps whose hit it was (screens.md: each player's crosses in their colour);
                 // this device sounds its own player's.
                 if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 3, e.a};
+                if (e.a == seat_) hitMomentT_ = static_cast<float>(tickEnd_ - e.age);  // (M6: the hint's moment)
+                if (e.a == seat_ && e.c == 1) pulse(1);  // M6: the guard ring breaking (a medium pulse)
                 if (bandDrives_ && e.a == seat_) {
                     band_->playSfx(audio::Sfx::Hit);
                     upgradeCues_.add(e, 0.0f, 0.0);  // M5: Crescendo falls back
@@ -578,6 +583,7 @@ void Play::afterTick() {
                     if (e.b) x.tick = w.player(seat_).novaBlastTick;
                     upgradeCues_.add(x, 0.0f, coop() ? netBandOffset_ : clock_.offset());
                 }
+                if (e.a == seat_ && e.b) pulse(2);  // M6: an Extra Life spent (a heavy pulse)
                 break;
             case EventType::Revive:
                 if (e.a == seat_) controller_.reset(w.player(seat_).pos);  // M4: back where the beacon was
@@ -588,6 +594,7 @@ void Play::afterTick() {
             case EventType::BossEnter:
                 RF_LOG("play: %s enters (Track %u, bar %u)", bossName(static_cast<BossKind>(e.a)), w.phrase().track, w.phrase().bar);
                 if (bandDrives_) band_->playSfx(audio::Sfx::Elite);
+                if (isMiniBoss(static_cast<BossKind>(e.a))) pulse(1);  // M6: a mini-boss's arrival (a medium pulse)
                 break;
             case EventType::BossPair:
                 // kaleidos.md: that voice leaves the chord; a low growl (the elite-arrives patch) enters, an octave
@@ -599,8 +606,17 @@ void Play::afterTick() {
                 RF_LOG("play: %s falls (Track %u, run %.1f s)", bossName(kind), w.phrase().track, runSeconds_);
                 if (bandDrives_) band_->kill(2, isMiniBoss(kind) ? 3 : 6);
                 if (isMiniBoss(kind)) break;  // the Track goes on
+                pulse(2);  // M6: a boss's death (a heavy pulse)
                 if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 1, 0};
                 hitStopUntil_ = clock_.simTime() + static_cast<double>(look_->boom.bossHitStopMs) * 0.001;
+                // M6 (screens.md "A finished run"): the set list's last boss has fallen: the run is won (SET COMPLETE for two bars,
+                // then the loop's own card).
+                if (w.phrase().track == w.setList() && !runSetComplete_) {
+                    runSetComplete_ = true;
+                    setCompleteT_ = static_cast<float>(tickEnd_ - e.age);
+                    setCompleteScore_ = w.player(seat_).score;
+                    RF_LOG("play: SET COMPLETE (run %.1f s)", runSeconds_);
+                }
                 break;
             }
             case EventType::BossGone:
@@ -832,9 +848,10 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     vi.noShips = flow_ && (screen_ == Screen::CoopLobby || screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission);
     vi.noBeacons = coop() && coopOver_;
     vi.backgroundOnly = flow_ && !coop() && (screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission);
+    hintsTick(vi);  // M6: the first-run hints
     {
         // The HUD's blocks this frame: edge chevrons slide 20 px clear of them (screens.md "In the run").
-        const float s = H / 1080.0f;
+        const float s = H / 1080.0f * hudScale();  // (M6: the UI scale)
         const float m = std::fmax(132.0f * s, insetMin.x), mr = std::fmax(132.0f * s, insetMax.x), top = insetMin.y;
         HudKeepOut k;
         const bool runHud = !flow_ || screen_ == Screen::Run || screen_ == Screen::Paused;
@@ -910,6 +927,11 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     hs.novas = p.novas;
     hs.novaCap = p.novaCap;
     hs.extraLife = p.extraLives > 0;  // play test 3
+    hs.reduceFlashing = settings_.reduceFlashing || forcedReduceFlashing_;  // M6
+    if (runSetComplete_) {  // M6: SET COMPLETE's card
+        hs.setCompleteBars = static_cast<float>((vi.time - setCompleteT_) * static_cast<double>(vi.bpm) / 240.0);
+        hs.setCompleteScore = setCompleteScore_;
+    }
     hs.dashCharge = controller_.dashCharge(coop() ? netHeard_ : clock_.heardNow());
     hs.alive = p.alive;
     hs.retryPending = w.restartPending();
@@ -1034,6 +1056,15 @@ void Play::applySettings() {
     // Settings apply at once (screens.md: every change is heard as it is made).
     view_.setReduceFlashing(settings_.reduceFlashing || forcedReduceFlashing_);
     touch_.setSwap(settings_.swapSides);
+    {
+        // M6 (SETTINGS, LOOK): the UI scale of HUD text and touch controls; the controls are laid out again at it.
+        static const float kScales[4] = {0.9f, 1.0f, 1.15f, 1.3f};
+        const float scale = kScales[settings_.uiScale < 4 ? settings_.uiScale : 1];
+        if (scale != hudScale()) {
+            setHudScale(scale);
+            if (layoutW_ > 0.0f) touch_.layout(layoutW_, layoutH_, insetMin_, insetMax_, opt_.pxPerMm);
+        }
+    }
     world_->rules().autoNova = settings_.autoNova;  // play test 1, second pass: this device's ship
     if (band_ && band_->active()) {
         if (band_->variant() != settings_.variant) band_->setVariant(settings_.variant);
@@ -1131,11 +1162,18 @@ void Play::endRun(bool died) {
     h.bestChain = p.bestChain;
     h.seconds = static_cast<u32>(runSeconds_);
     h.kills = p.kills;
+    h.setComplete = runSetComplete_;  // M6: a gold star in the table
     const u64 before = scores_.best();
     finalScore_ = p.score;
     newBest_ = p.score > 0 && p.score > before;
-    if (p.score > 0 && scores_.add(h) >= 0) saveHighScores(scores_);
-    (void)died;
+    // (M6: pictures and fixed-step runs write nothing to the device's files: they would replace a player's scores and settings)
+    const bool keep = !opt_.picture[0] && !opt_.fixedStep;
+    if (p.score > 0 && scores_.add(h) >= 0 && keep) saveHighScores(scores_);
+    // M6 (screens.md "What ended it"): what took the last cell, as the game names it; nothing for a run quit or finished.
+    runEndedBy_[0] = 0;
+    if (died) causeName(p.lastHitCause, runEndedBy_, sizeof runEndedBy_);
+    if (settings_.runsEnded < 0xFFFFFFFFu) ++settings_.runsEnded;  // (the hints' co-op rule)
+    if (keep) saveSettings(settings_);
 }
 
 void Play::returnFromSync() {
@@ -1340,6 +1378,7 @@ enum ScriptFlag : u32 { kPressed = 1, kSpawned = 2 };
 }
 
 void Play::scriptSetup() {
+    if (scriptSetupM6()) return;
     if (scriptSetupM5()) return;
     if (scriptSetupB()) return;
     World& w = *world_;
@@ -1388,6 +1427,7 @@ void Play::scriptInput(StickInput& in) {
     const double music = music1_;
     const float tpt = clock_.ticksPerSecond() * kDt;  // musical ticks per sim tick
     in.assist = false;
+    if (scriptInputM6(in)) return;
     if (scriptInputM5(in)) return;
     if (scriptInputB(in)) return;
     if (is(p, "fire")) {
@@ -1446,6 +1486,7 @@ void Play::scriptInput(StickInput& in) {
 }
 
 void Play::scriptEvents() {
+    if (scriptEventsM6()) return;
     if (scriptEventsM5()) return;
     if (scriptEventsB()) return;
     if (captureFrom_ >= 0) return;
@@ -1478,4 +1519,115 @@ void Play::scriptEvents() {
     }
 }
 
+// ---------------------------------------------------------------------------------------------- M6: first-run hints
+
+void Play::hintsTick(ViewInput& vi) {
+    // screens.md "First-run hints (M6)": eleven lines, each once ever on a device, one at a time, at least four bars apart,
+    // never in a fight, never over a Trio's words or a boss's hint line, never in co-op for a player who has played a run to
+    // its end; a hint whose moment passes waits for the next such moment.
+    static const char* const kHints[11] = {"LEFT THUMB MOVES",         "WASD OR LEFT STICK MOVES",    "IT AIMS AND FIRES BY ITSELF",
+                                           "RIGHT THUMB AIMS IF YOU LIKE", "FLY INTO ONE AND STAY",   "YOUR RING IS YOUR HEALTH",
+                                           "NOVA CLEARS THE SCREEN",   "DASH GOES THROUGH BULLETS",   "GOLD ORBS ARE SHORT POWERS",
+                                           "EXTRA LIFE: ONE MORE TRY", "BREAK IT FOR A PRIZE"};
+    const World& w = *world_;
+    const float now = static_cast<float>(vi.time);
+    const float barS = 240.0f / std::fmax(vi.bpm, 30.0f);
+    if (forcedHint_ >= 0 && forcedHint_ < 11) {  // (pictures: m6_hint_<k>)
+        vi.hint = kHints[forcedHint_];
+        vi.hintLevel = 1.0f;
+        return;
+    }
+    if (opt_.picture[0] || opt_.fixedStep) return;  // (pictures show only the hint they ask for, and save nothing)
+    const bool running = flow_ && screen_ == Screen::Run;
+    if (hintIdx_ >= 0) {
+        const float u = (now - hintT_) / barS;  // two bars up, fading over the last beat
+        if (u >= 2.0f || u < 0.0f) {
+            hintIdx_ = -1;
+        } else {
+            if (running) {
+                vi.hint = kHints[hintIdx_];
+                vi.hintLevel = clampf((2.0f - u) * 4.0f, 0.0f, 1.0f);
+            }
+            return;
+        }
+    }
+    if (!running) return;
+    const PlayerState& me = w.player(seat_);
+    if (!me.alive || (coop() && settings_.runsEnded > 0)) return;
+    const i64 bar = static_cast<i64>(w.phrase().bar);
+    if (bar < lastHintBar_) lastHintBar_ = -100;  // (a new run)
+    if (bar < lastHintBar_ + 4 || w.boss().active || now - takenT_ < 1.5f) return;
+    const float hw = tuning::kFrameHalfWWu, hh = tuning::kFrameHalfHWu;
+    const auto inView = [&](Vec2 p) { return std::fabs(p.x - me.pos.x) <= hw && std::fabs(p.y - me.pos.y) <= hh; };
+#if defined(__ANDROID__)
+    const bool touch = true;
+#else
+    const bool touch = touch_.used();
+#endif
+    const Enemies& e = w.enemies();
+    const auto due = [&](u32 k) -> bool {
+        switch (k) {
+            case 0: return touch && bar <= 1;
+            case 1: return !touch && bar <= 1;
+            case 2:
+                for (u32 i = 0; i < e.count; ++i)
+                    if (!(e.flags[i] & kFlagDead) && e.state[i] != kWarping && inView(Vec2{e.x[i], e.y[i]})) return true;
+                return false;
+            case 3: return touch && (settings_.hintsSeen & (1u << 2)) && (hint2Bar_ < 0 || bar >= hint2Bar_ + 4);
+            case 4: return w.trio(seat_).open;
+            case 5: return now - hitMomentT_ < barS;
+            case 6: {
+                if (me.novas == 0) return false;
+                u32 n = 0;
+                for (u32 i = 0; i < e.count && n < 12; ++i)
+                    if (!(e.flags[i] & kFlagDead) && e.state[i] != kWarping && lengthSq(Vec2{e.x[i], e.y[i]} - me.pos) < 300.0f * 300.0f) ++n;
+                return n >= 12;
+            }
+            case 7: {
+                const Bullets& b = w.bullets();
+                for (u32 i = 0; i < b.count; ++i)
+                    if (!b.dead[i] && inView(Vec2{b.x[i], b.y[i]})) return true;
+                return false;
+            }
+            case 8:
+            case 9: {
+                const BoostPickups& bp = w.boostPickups();
+                for (u32 i = 0; i < bp.count; ++i) {
+                    if (bp.dead[i] || (coop() && bp.owner[i] != seat_)) continue;
+                    if ((bp.type[i] == kPickupExtraLife) != (k == 9)) continue;
+                    if (inView(Vec2{bp.x[i], bp.y[i]})) return true;
+                }
+                return false;
+            }
+            default: {
+                const ArenaBody* bodies = w.arenaBodies();
+                for (u32 i = 0; i < World::kArenaBodies; ++i)
+                    if (bodies[i].alive && (bodies[i].kind == static_cast<u8>(StructKind::Vault) || bodies[i].kind == kBodyGoldVault) &&
+                        inView(bodies[i].pos))
+                        return true;
+                return false;
+            }
+        }
+    };
+    for (u32 k = 0; k < 11; ++k) {
+        if (settings_.hintsSeen & (1u << k)) continue;
+        if (!due(k)) continue;
+        hintIdx_ = static_cast<i32>(k);
+        hintT_ = now;
+        lastHintBar_ = bar;
+        if (k == 2) hint2Bar_ = bar;
+        settings_.hintsSeen |= 1u << k;
+        saveSettings(settings_);
+        RF_LOG("play: hint %u \"%s\"", k, kHints[k]);
+        vi.hint = kHints[k];
+        vi.hintLevel = 1.0f;
+        return;
+    }
+}
+void Play::pulse(int kind) {
+    // M6: a haptic pulse for what M5 added (the ring breaking, an Extra Life spent, a boss's death, a mini-boss's arrival),
+    // at the HAPTICS setting's strength; never for a weak point's hit (it would buzz all fight).
+    if (!bandDrives_ || !band_ || !band_->haptics() || settings_.haptics == 0) return;
+    platformHaptic(kind >= 2 ? HapticKind::Heavy : (kind == 1 ? HapticKind::Medium : HapticKind::Light), settings_.haptics == 2);
+}
 }  // namespace rf

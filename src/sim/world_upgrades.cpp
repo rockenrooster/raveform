@@ -565,6 +565,7 @@ void World::updateRiffs(float dt) {
                         float tt = 0.0f;
                         if (bossHitTest(o, o, kOrbitalHitWu, part, pair, tt)) damageBoss(part, pair, kOrbitalDamage, owner, o, dirOf(a));
                     }
+                    arenaArea(owner, o, kOrbitalHitWu, kOrbitalDamage);  // M6 (A2)
                 }
             });
         }
@@ -631,6 +632,7 @@ void World::updateRiffs(float dt) {
                     if (bossHitTest(q, q, 8.0f, part, pair, tt)) damageBoss(part, pair, w.damage, owner, q, normalizeOr(to, Vec2{1.0f, 0.0f}));
                 }
             }
+            if (local) arenaRing(owner, c, r0, r, w.damage);  // M6 (A2)
             w.lastR = r;
             if (w.age >= kPulseGrowS) w.active = false;
         }

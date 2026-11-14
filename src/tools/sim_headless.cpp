@@ -447,6 +447,9 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     // What hit the ship (C2 tuning): a body of each family within reach, else a bullet or a beam.
     u64 hitsBy[kFamilyCount + 1] = {}, hitsInBossFight = 0, hitsBySection[4] = {};
     u64 livesTaken = 0, livesSpent = 0, ringBreaks = 0;  // play test 3
+    // M6 (the lead's A4): the hits outside the fights from Track 4 on, by what took them (World's hit cause; [f] a family's bodies,
+    // [f + 16] its bullets; 32 a fight, 33 an event or a Volatile blast, 34 unknown), and the hits that ended a run by the same.
+    u64 lateBy[35] = {}, endBy[35] = {};
     // (the lead, 2026-11-13: what takes the cells in Track 2 before Longwave, in the first run: bodies by family, bullets or
     // beams, the mini-boss's fight; and the cells regained there)
     u64 t2Hits[kFamilyCount + 2] = {}, t2Runs = 0, t2Regained = 0;
@@ -681,6 +684,13 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 }
                 const u32 cause = (best >= 0 && bestD < 90.0f) ? static_cast<u32>(species.get(e.species[best]).family) : kFamilyCount;
                 ++hitsBy[cause];
+                {
+                    const u16 hc = p.lastHitCause;
+                    const u32 slot = hc < kCauseBossBase ? (static_cast<u32>(species.get(hc).family) + (p.lastHitBullet ? 16u : 0u))
+                                                         : (hc < kCauseEventBase ? 32u : (hc != kCauseNone ? 33u : 34u));
+                    if (w.phrase().track >= 4 && !w.boss().active) ++lateBy[slot < 35 ? slot : 34];
+                    if (!p.alive) ++endBy[slot < 35 ? slot : 34];
+                }
                 if (w.phrase().track == 2 && runner.deaths() == 0 && !(w.boss().active && w.boss().kind == BossKind::Longwave))
                     ++t2Hits[w.boss().active && isMiniBoss(w.boss().kind) ? kFamilyCount + 1 : cause];
                 if (trace && w.boss().active && !w.boss().dying) {
@@ -856,6 +866,19 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         u32 finished = 0;
         for (u32 k = 0; k < n; ++k)
             finished += (firstDeath[k] <= minutes ? firstDeathTrack[k] > kBossesBuilt : maxTrack[k] > kBossesBuilt) ? 1u : 0u;
+        {
+            const auto table = [&](const char* title, const u64* by) {
+                std::printf("[sim]   %s:", title);
+                for (u32 k = 0; k < 35; ++k) {
+                    if (!by[k]) continue;
+                    if (k < 32) std::printf(" %s%s %llu,", familyName(static_cast<Family>(k % 16u)), k >= 16 ? " bullets" : "", static_cast<unsigned long long>(by[k]));
+                    else std::printf(" %s %llu,", k == 32 ? "fights" : (k == 33 ? "events and blasts" : "unknown"), static_cast<unsigned long long>(by[k]));
+                }
+                std::printf("\n");
+            };
+            table("hits outside the fights from Track 4 on, by what took them", lateBy);
+            table("the hits that ended a run (the ship lost), by what took them", endBy);
+        }
         std::printf("[sim]   finished the %u Tracks (the first run reached Track %u): %u of %u runs; Extra Lives taken %llu, spent %llu; guard rings broken %llu\n",
                     kBossesBuilt, kBossesBuilt + 1, finished, n, static_cast<unsigned long long>(livesTaken), static_cast<unsigned long long>(livesSpent),
                     static_cast<unsigned long long>(ringBreaks));
