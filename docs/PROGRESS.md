@@ -16,7 +16,9 @@ M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in
   and the HUD row, the tempo and health factors, the Reprise's cues and placement, the lethal-line helper's batches and their
   capacities: every batch drops past its capacity, never overruns). Ran: audio 2,718 / sim 6,114 / net 131,368 / save 60 checks,
   0 failures; calibration check, determinism, the clean loopback soak, nova-check, a 12-minute bot soak (Shards peaked at 1,729,
-  past the crowded line: the homing rule ran) PASS; Vulkan validation on the Reprise, Event Horizon and Track 5 at Low: 0 messages.
+  past the crowded line: the homing rule ran) PASS; Vulkan validation on the Reprise, Event Horizon and Track 5 at Low: 0 messages;
+  `scripts\sanitize.ps1` (ASan + UBSan: the four test suites, determinism, a 3-minute bot run, fights in Tracks 4, 7 and 10, the
+  3-minute net soak): all clean, 0 reports. No bug found.
 
 ## 2026-11-14 (evening), a substantial glow on every red projectile; Weaver Prime's lines
 
