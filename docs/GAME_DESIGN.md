@@ -324,9 +324,13 @@ Rhythm
   did not have; no stack is a small percentage. The numbers of the first slice (Mods 1-4, 11, 17,
   25, 31; Riffs 1-3) were raised to this rule on that day; M5 writes the rest to the same scale.
 - **No pick is a trap** (M5). Measured by the simulation on one reference build, a stack of any
-  weapon or rhythm Mod and a level of any Riff is worth between 0.6 and 1.5 of a stack of Overcharge:
-  in kills a minute against a Groove's crowd, or in seconds to kill the Track's boss, whichever the
-  upgrade is made for. One outside the band has its numbers changed, not its odds of being offered.
+  weapon or rhythm Mod and a level of any Riff is worth between 0.6 and 1.5 of a staple, counted as
+  gain over the reference build: against the Track's boss (seconds to kill) its gain over a stack of
+  Overcharge's, against a Groove's crowd (kills a minute) its gain over a stack of Split's. A pick
+  is judged on the better of its two figures, the one it is made for. (Overcharge was the one
+  yardstick at first; fodder dies to one shot, so against a crowd Overcharge gains almost nothing
+  and every crowd pick looked many times too strong.) One outside the band has its numbers
+  changed, not its odds of being offered.
 - No upgrade may break the entity caps (TECH_SPEC §7): effects that multiply projectiles carry their own caps.
 - **The crowd may not break them either** (M5, 2026-11-13: with four players Track 7 refused 2,650 to
   4,030 enemy bullets in three minutes, the pool full). The director buys no shooting species while
@@ -458,10 +462,14 @@ die and does not say why, and the user never got past Longwave. So:
   That stays until the balance pass, which makes a boss tougher for players who are hurting it
   faster (measured in the fight itself, on its weak point) and never easier than the novice's tune.
 - **A boss keeps pace** (the balance pass's rule, written 2026-11-13). A boss's health is the
-  novice's tune. At the end of the fight's eighth bar the game sets the fight's **pace**: the
-  damage the players have done to the boss in those eight bars (after armour, per player in
-  co-op), divided by what the novice does in them (one number a boss, measured, in `tuning.h`),
-  held between 1 and 4. From then on the boss takes its damage divided by the pace. Nothing
+  novice's tune. On every bar line of the fight's first eight bars the game sets the fight's
+  **pace**: the damage the players have done to the boss so far (after armour, per player in
+  co-op), divided by what the novice has done by that bar (its eight-bar number, measured, in
+  `tuning.h`, taken in proportion to the bars gone), held between 1 and 4; a ratio under 1.25
+  counts as 1, so a novice having a good bar is not punished for it. After the eighth bar it
+  stands. (First written as one reading at the eighth bar: the careful bot kills Kaleidos, the
+  Choir and Polyrhythm before that bar comes.) From each bar line on the boss takes its damage
+  divided by the pace. Nothing
   jumps on the health bar; a player who knows the rule and has the build simply meets a boss
   that lasts about as long as the novice's does, which is the length on its page. A novice's pace
   is 1 by construction. Bosses only: a mini-boss leaves with its Drop. In co-op the host sets the
