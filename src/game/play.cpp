@@ -134,6 +134,7 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
         world_->spawner().mode = Spawner::Mode::Slice;
         dropJump_ = true;
         scriptFastForwardS_ = std::fmax(scriptFastForwardS_, 600.0f);
+        if (opt.holdDrop) world_->directorMut().holdDropCycle = opt.jumpCycle;  // M7: the thermal check's Drop never ends
     }
     if (bandDrives_) band->setIntensity(tuning::kIntensityFloor);
 

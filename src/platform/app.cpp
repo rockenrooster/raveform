@@ -311,6 +311,7 @@ bool App::init() {
         po.fightHold = args_.fightHold;
         po.jumpTrack = args_.jumpTrack;
         po.jumpCycle = args_.jumpCycle;
+        po.holdDrop = args_.holdDrop;
         std::snprintf(po.picture, sizeof po.picture, "%s", args_.picture);
         // M4 stage A: co-op from the command line.
         po.net = args_.net;

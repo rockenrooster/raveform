@@ -82,6 +82,7 @@ struct AppArgs {
     u8 fightPhase = 0;         // ... with its parts taken down to that phase (0 its first; a mini-boss: 1 half health)
     bool fightHold = false;    // --fight <id>:<phase>:hold (benchmarks): its health comes back, so it stays in that phase
     u8 jumpTrack = 0, jumpCycle = 0;  // --drop <track>.<cycle> (M5): the run starts in that Track, fast-forwarded to that cycle's Drop
+    bool holdDrop = false;             // --drop-hold (M7, the thermal check): that Drop is held for the whole run
     bool paletteSet = false;   // --palette given (else the game uses its Track's palette)
     // M3 end
     // M4 begin: co-op from the command line (stage A: no lobby screens)

@@ -475,6 +475,13 @@ void testDirectorCycle() {
     CHECK(!phraseAt(d, 12).bossDrop);
     CHECK(phraseAt(d, 20).section == Section::Break && phraseAt(d, 23).section == Section::Break);
     CHECK(phraseAt(d, 24).section == Section::Groove && phraseAt(d, 24).cycle == 2);
+    {
+        // M7 (--drop T.C --drop-hold, the thermal check): the held cycle's Drop never ends.
+        DirectorState h;
+        h.holdDropCycle = 1;
+        CHECK(phraseAt(h, 12).section == Section::Drop && phraseAt(h, 300).section == Section::Drop && phraseAt(h, 300).cycle == 1 &&
+              !phraseAt(h, 300).bossDrop && phraseAt(h, 8).section == Section::Build);
+    }
     // Track 1 has no mini-boss; its second (last) Drop is the boss's: held past its eight bars while the boss lives.
     p = phraseAt(d, 36);
     CHECK(p.cycle == 2 && p.section == Section::Drop && p.bossDrop && !p.miniDrop);

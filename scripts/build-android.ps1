@@ -14,7 +14,8 @@
 param(
     [ValidateSet('dev', 'debug', 'release')][string]$Config = 'dev',
     [switch]$Offline,
-    [switch]$Clean
+    [switch]$Clean,
+    [switch]$Bundle  # (with -Config release: also the Android App Bundle Play takes, app-release.aab)
 )
 . "$PSScriptRoot\env.ps1"
 
@@ -22,6 +23,7 @@ $task = ':app:assemble' + $Config.Substring(0, 1).ToUpper() + $Config.Substring(
 $tasks = @()
 if ($Clean) { $tasks += ':app:clean' }
 $tasks += $task
+if ($Bundle -and $Config -eq 'release') { $tasks += ':app:bundleRelease' }
 $errorFile = Join-Path $RF_ROOT 'android\.gradle\hs_err_daemon.log'  # gitignored; marks this project's daemon
 $gradleArgs = @('--console=plain', "--max-workers=$RF_JOBS",
                 "-Dorg.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8 -XX:ActiveProcessorCount=$RF_JOBS -XX:ErrorFile=$errorFile")

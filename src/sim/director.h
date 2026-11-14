@@ -109,6 +109,7 @@ struct DirectorState {
     // once its end is known (the run bars after it move by that much).
     bool midHolding = false;
     u8 midHold = 0;
+    u8 holdDropCycle = 0;  // M7 (benchmarks: --drop T.C --drop-hold, the thermal check): this cycle's Drop never ends (0: none)
     bool miniSpawned = false;  // this Track's mini-boss has entered
     u8 lastMini = 0xFF;        // the mini-boss met in the Track before (BossKind; 0xFF none)
     u16 minisMet = 0;          // M5 part 6: the mini-bosses met this run (a bit each from Alpha Hound; Tracks 8 to 10 draw by it)

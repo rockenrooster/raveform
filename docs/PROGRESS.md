@@ -4,6 +4,71 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## The night of 2026-11-14: easier fights (design commit 1bcc897) and M7's release preparation
+
+### A. Easier fights (GAME_DESIGN 5; horizon.json, polyrhythm.json)
+
+- **A boss's arrival tops a player up to three cells** (`kBossEntranceCells` 3, was 2), the arcs drawn as Regen's.
+- **A boss pays for its phases**: at each phase change one Cell for each player at the boss (`kBossPhaseCells` 1), drifting to
+  its player at 240 wu/s while that player is hurt (`kBossPhaseCellDriftWu`, chosen; `CellPickups::homing` 2), homing as any
+  Cell inside the magnet (`World::bossPhasePay`, after `updateBoss`: `BossState::phasePaid` against `phase`, so a phase the
+  host decides is paid when its verdict lands). Each device drops its own players' Cells, as the boss's payout does (no
+  protocol change). Mini-bosses have no phases to pay for. Kaleidos, Longwave and the Choir pay three, the others two.
+- **Polyrhythm's burning link burns on beat 4 alone** (`polyLinkBurn`: the bar's last `burnBeats`, from the data's 1) and
+  **Event Horizon's jets one beat** (the data's `burnBeats`, read as before).
+- Tests: the entrance rule at three (two arcs), the phase Cells (Kaleidos: a pair down, a Cell drifting to the ship; a second
+  pair, a second Cell), the link's beat 4.
+- **The whole-run sets** (seeds 1-20, 60 minutes; `captures\m6bal\fights_*.txt`): **the novice finishes the ten Tracks in 6 of
+  20** (7 before; the same seeds play differently), 35 of its 42 run-ending hits in fights; what ends the rest: Polyrhythm
+  (14 of 38 fights lost, 11 beam hits a fight), the Choir (6 lost of 57), Fata Morgana (4 of 15), Longwave (3 of 65), Event
+  Horizon (3 of 46), Feedback (3 of 23), one each Kaleidos and Arpeggiator; the first runs' deaths in Tracks 5 (4), 4 (3),
+  2 (2), 9 (2), 3, 6 and 8 (one each), the fourteen that did not finish.
+  **The careful bot finishes 18 of 20** (its two first deaths in Tracks 5 and 9), 9,830 kills a minute. No further tuning
+  (the lead: the owner's play decides the next step).
+
+### B. Release preparation (PLAN M7, without the long soak)
+
+- **B1, sanitizers** (`scripts\sanitize.ps1`, `build\desktop-asan`: llvm-mingw clang's AddressSanitizer and UBSan, nothing
+  downloaded; logs in `captures\asan\`): all clean after one fix: a negative float converted to unsigned (the Brood Mother's hatching cue, `world_miniboss2.cpp`); ENet's own offsetof through a null pointer and `1 << 31` left as fetched (UBSan off for ENet in that build). Run: the audio, sim, net and save tests, the calibration check, determinism, a 3-minute bot run, a fight start in Tracks 4, 7 and 10 (Event Horizon, Cadence, the Reprise: fought and won), the 3-minute net soak. The sanitizer build leaves out the counted `operator new` (`RF_SANITIZE`: the runtime replaces it) and links the tools dynamically (the ASan runtime is a DLL). Not run: LeakSanitizer (not on Windows), the game's binary.
+- **B2, crash-safe saves**: `core/save_file` writes every kept file to `<file>.tmp`, flushes it to the disk (`fsync` /
+  `_commit`) and renames it over the old one in one step (POSIX `rename`; Windows `MoveFileEx` with replace and
+  write-through: before, the old file was deleted first). Settings and hints, high scores, the tier cache (was written in
+  place), the baked audio and the sync calibration use it. Loading: settings and high scores by path in `game/save_data.cpp`
+  (no SDL; every value held to its range, the hints to eleven bits, a high score's Track to 1-999, broken lines skipped); the
+  tier cache already refused a damaged file; the baked audio now also checks every index its tables hold against the samples
+  it brought (`SampleBank::cacheTablesValid`) and resets its tables after a failed load (`resetTables`); the sync calibration
+  ignores an offset outside ±500 ms. `raveform_save_tests` (60 checks, in `scripts\test.ps1`): for each file a round trip, a
+  missing one, one cut short, damaged values and random bytes; the atomic write over an existing file, over a stale
+  temporary, a failed write keeping the old file. Touches src/audio (bake.cpp, bake.h, band.cpp: the lead's list named the
+  baked audio).
+- **B3, the release variant** (`build-android.ps1 -Config release [-Bundle]`): native Release with `-g` (the unstripped
+  libraries kept as `app-release-symbols.zip`, 13 MB; the APK's stripped), not debuggable, `minifyEnabled false` (SDL's
+  Java glue is called by name from native code), the `args` extra ignored when the app is not debuggable
+  (RaveformActivity), signed with the debug key (no keystore created). **Size: 7.01 MB** — libmain.so 2.90 MB (41.6%),
+  libSDL3.so 2.04 (29.2%), libc++_shared.so 1.31 (18.8%), liboboe.so 0.32 (4.6%), resources 0.31 (4.5%, the icon's layers
+  most of it), dex 0.10 (1.4%). The App Bundle: 6.18 MB. Nothing taken out (the development-only code is about 0.14 MB:
+  RELEASE_CHECKLIST, open item 11).
+- **B4, Play readiness**: `docs/RELEASE_CHECKLIST.md` (the open items first). Changed: Wi-Fi is no longer implied required
+  (the manifest says not required). Checked: targetSdk 36 / minSdk 29; every native library 16 KB aligned (no flag change);
+  six permissions, each with its reason; nothing leaves the local network; the photosensitivity notice.
+- **B5, the credits** (screens.md "Credits (M7)"): `CREDITS` the last row of SETTINGS (LOOK, bottom left); the screen
+  (`game/screens_credits.cpp`) scrolls by drag, sticks, arrow keys or W / S, BACK top left; RAVEFORM, BUILT ON, LICENCES (each
+  in full at cap 10, wrapped), PLAY SAFE (the notice's lines, now shared: `kNoticeLines`). `cmake/Credits.cmake` reads the
+  licences from the fetched sources at configure time into `credits.inc`; the configure walks the game binary's link graph and
+  fails on a linked library with no entry (or no licence text). Linked: SDL, Oboe, Android Frame Pacing, ENet, volk, the
+  Vulkan headers and libc++ (not in screens.md's list; RELEASE_CHECKLIST item 9). The HUD's capsule budget is 16,384 (was
+  8,192) for a screenful of licence text. Pictures: `captures\m7\m6_credits.png`, `m6_credits_licences.png`.
+- **B6, the thermal check**: the Moto (shared), `--drop 10.1 --drop-hold --nohits --tier low` for 300 s: 0 missed of 17,968 frames over the run and 0 of 3,593 in its last minute alone (worst interval 23.5 ms), main thread p99 5.3 ms, GPU P95 14.3 ms, 324 enemies in view on average (775 at most); battery 21.3 to 22.0 °C (`dumpsys battery`), thermal status 0 throughout.
+
+### Decisions taken alone
+
+- The phase Cell's drift speed (240 wu/s) and its keeping its drift when its player is at full health and hurt again.
+- Where the licence text of Oboe, Frame Pacing and the Vulkan headers comes from (the toolchain's Apache 2.0 text, the
+  headers' own notice) until their own files are fetched; libc++ credited; CREDITS on the LOOK tab's last row.
+- ENet's own undefined idioms are left as fetched (UBSan off for ENet in the sanitizer build; ASan stays on it).
+- The release build keeps the development-only code (2% of the APK); `minifyEnabled false`.
+- `--drop-hold` (benchmarks): with `--drop T.C`, that Drop never ends (`DirectorState::holdDropCycle`), for the thermal check.
+
 ## M6, the first chunk (the lead's design commit cfd31c0: what M5 left that a player notices, then M6's parts that need no decision) — 2026-11-14
 
 ### A. What M5 left

@@ -167,6 +167,8 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             a.jumpTrack = static_cast<u8>(t);
             a.jumpCycle = static_cast<u8>(cy);
             usedNext = true;
+        } else if (is("--drop-hold")) {
+            a.holdDrop = true;  // M7 (the thermal check): with --drop, that Drop never ends
         } else if (is("--picture") && next) {
             ok = copyString(a.picture, sizeof a.picture, next);
             usedNext = true;

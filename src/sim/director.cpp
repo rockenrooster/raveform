@@ -84,7 +84,7 @@ Phrase phraseAt(const DirectorState& d, u32 bar) {
     u32 c = 0;
     for (;;) {
         const u32 cl = cycleBars + (c == mid ? hold : 0u);
-        if (c + 1 >= cycles || off < cl) break;  // past the last cycle: the boss's held Drop
+        if (c + 1 >= cycles || off < cl || c + 1 == d.holdDropCycle) break;  // past the last cycle: the boss's held Drop
         off -= cl;
         ++c;
     }
@@ -95,7 +95,7 @@ Phrase phraseAt(const DirectorState& d, u32 bar) {
         p.section = Section::Groove;
     } else if ((off -= len[0]) < len[1]) {
         p.section = Section::Build;
-    } else if ((off -= len[1]) < dropLen || last) {
+    } else if ((off -= len[1]) < dropLen || last || c + 1 == d.holdDropCycle) {  // (M7: a benchmark's held Drop too)
         // The last cycle's Drop is the boss's: it is held while the boss lives (the band holds it too),
         // so it keeps counting past its length. The middle one's is the mini-boss's (M5), held the same way.
         p.section = Section::Drop;
