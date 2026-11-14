@@ -77,6 +77,8 @@ struct TrueDiag {
     NetDiagBin perp;
     NetDiagBin hzLane, hzOther, hzPhaseDiffers, hzPosDiffers;  // Event Horizon: lane walkers, the rest; the Well's phase or place differs
     NetDiagBin fbTarget, fbState, fbCalled, fbKnocked, fbFamily[16];  // Feedback's fight: the kinds and the families
+    NetDiagBin elite, byTrait[kTraitCount], byEvent[kEventKinds];      // M5 part 5: elites, by trait; while an arena event runs
+    NetDiagBin nearStruct[9];  // within a structure's radius + 150 wu (by StructKind 0-5; 6-8 the events' bodies)
     double hzPosSum2 = 0.0;
     u64 hzPosN = 0;
     double tauSum = 0.0, tau2Sum = 0.0;
@@ -129,6 +131,14 @@ struct TrueDiag {
             std::snprintf(name, sizeof name, "%u", k);
             b(name, byState[k]);
         }
+        std::printf("\n[net]     elites:");
+        b("all", elite);
+        for (u32 t = 0; t < kTraitCount; ++t) b(traitId(t), byTrait[t]);
+        std::printf("\n[net]     near a structure:");
+        static const char* const kBodyNames[9] = {"vault", "pylon", "rift", "bumper", "current", "lens", "gold_vault", "comet", "carrier"};
+        for (u32 k = 0; k < 9; ++k) b(kBodyNames[k], nearStruct[k]);
+        std::printf("\n[net]     arena event running:");
+        for (u32 k = 0; k < kEventKinds; ++k) b(eventId(static_cast<EventKind>(k)), byEvent[k]);
         std::printf("\n[net]     Event Horizon:");
         b("lane", hzLane);
         b("rest", hzOther);
@@ -606,6 +616,24 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                         if (wellOff > 10.0f) g.hzPosDiffers.add(err);
                         g.hzPosSum2 += static_cast<double>(wellOff) * wellOff;
                         ++g.hzPosN;
+                    }
+                    if (he.traits[j] & kEliteBit) {
+                        g.elite.add(err);
+                        for (u32 t = 0; t < kTraitCount; ++t)
+                            if (hasTrait(he.traits[j], t)) g.byTrait[t].add(err);
+                    }
+                    if (hw.arenaEvent().kind < kEventKinds && hw.arenaEvent().stage == 1) g.byEvent[hw.arenaEvent().kind].add(err);
+                    {
+                        const ArenaBody* ab = hw.arenaBodies();
+                        const Vec2 hp{he.x[j], he.y[j]};
+                        for (u32 q = 0; q < World::kArenaBodies; ++q) {
+                            if (ab[q].kind > 8 || !ab[q].alive) continue;
+                            const float r = ab[q].kind < kStructKinds ? hw.species().arena.radius[ab[q].kind] : 120.0f;
+                            if (length(hp - ab[q].pos) <= r + 150.0f) {
+                                g.nearStruct[ab[q].kind].add(err);
+                                break;
+                            }
+                        }
                     }
                     if (hw.boss().active && hw.boss().kind == BossKind::Feedback) {
                         if (ce.target[i] != he.target[j]) g.fbTarget.add(err);

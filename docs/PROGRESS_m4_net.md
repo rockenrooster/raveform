@@ -510,6 +510,22 @@ The phone as host with the larger budget (its frame contract, the main thread's 
 in the three impaired runs below. The session runs on the main thread: its time is inside the bench's `cpu_ms`
 (before, `190701`: P95 6.14 ms, `work_ms` P99 6.89).
 
+### The user's decisions (2026-11-13, through the lead)
+
+- "Skip all the bad network runs, what we have should be adequate." The impaired phone runs, the impaired device
+  criterion (three runs, medians under 12), impaired seed sweeps, 40-minute impaired soaks and tuning toward impaired
+  figures are dropped. The phone-hosted criterion is the clean run alone (passed: 8.45 / 6.39 / 9.25, `174451`). The
+  impaired soak inside `scripts\test.ps1` stays as a regression guard (limit 12). Dropped with it: the relayed seats'
+  view-only smoothing and Moth Queen's impaired figure.
+- "Only short targeted runs so we can get this project complete." What is left: merge main as part 6 lands; for each
+  new fight one clean soak of at most 3 simulated minutes started at that fight (over 12 wu gets fixed); one clean
+  5-minute Moto-hosted run with the new budgets (frame contract, main thread P95, every client). No seed sweeps, no
+  40-minute soaks, no 15-minute phone runs, no breakdown of the arena by structure, event and trait (Track 6 is 8.2
+  clean).
+- The three impaired runs on `5db7488` were stopped: the first finished (`194333`: 6.04 / 6.44 / 6.86, 0 stalls; the
+  Moto 53,903 frames, 1 missed, P95 17.76 ms, heap 0, main thread CPU P95 6.07 ms against 6.14 before the budget), the
+  second was cut (not a result), the third never ran.
+
 ### (b) note: the earlier device figures in pulls and on spirals
 
 The device runs before `d531af0` measured a copy at correction against the host's sample carried by its velocity
