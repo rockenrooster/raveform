@@ -16,7 +16,7 @@ namespace rf {
 using namespace sim;
 
 namespace {
-enum class M6 : u8 { Hint, EndedBy, SetCard, SetOver, TitleStar, UiScale, MiniStays, Flash };
+enum class M6 : u8 { Hint, EndedBy, SetCard, SetOver, TitleStar, UiScale, MiniStays, Flash, Credits };
 struct M6Pic {
     const char* name;   // m6_<name>
     M6 kind;
@@ -33,6 +33,8 @@ const M6Pic kM6Pics[] = {
     {"uiscale_90", M6::UiScale, 0, nullptr},   {"uiscale_130", M6::UiScale, 3, nullptr},
     {"mini_stays", M6::MiniStays, 0, "alpha_hound"},
     {"flash_longwave", M6::Flash, 0, "longwave"}, {"flash_choir", M6::Flash, 0, "choir"}, {"flash_alpha", M6::Flash, 0, "alpha_hound"},
+    // M7 (screens.md "Credits (M7)"): the credits screen at its top, and scrolled into the licences.
+    {"credits", M6::Credits, 0, nullptr},       {"credits_licences", M6::Credits, 1, nullptr},
 };
 constexpr u32 kM6Count = sizeof(kM6Pics) / sizeof(kM6Pics[0]);
 constexpr u32 kM6At = 300;  // after the run's Track card (2.25 bars)
@@ -98,6 +100,12 @@ bool Play::scriptSetupM6() {
             settings_.uiScale = pic.arg;
             applySettings();
             touch_.markUsed();
+            break;
+        case M6::Credits:
+            flow_ = true;
+            screen_ = Screen::Credits;
+            settingsBack_ = Screen::Title;
+            w.spawner().mode = Spawner::Mode::Slice;
             break;
         case M6::MiniStays:
         case M6::Flash:
@@ -186,6 +194,11 @@ bool Play::scriptInputM6(StickInput& in) {
             if (captureFrom_ < 0 && t == kM6At + 60) captureFrom_ = now;  // (half a bar in: the card written)
             return true;
         }
+        case M6::Credits:
+            in = bot_.think(w, 0, controller_, clock_.heardNow());
+            if (pic.arg == 1) creditsScroll_ = 1400.0f * (layoutH_ > 0.0f ? layoutH_ / 1080.0f : 1.0f);  // (into the licences)
+            if (captureFrom_ < 0 && t == kM6At) captureFrom_ = now;
+            return true;
         case M6::TitleStar:
             in = bot_.think(w, 0, controller_, clock_.heardNow());
             if (captureFrom_ < 0 && t == kM6At) captureFrom_ = now;

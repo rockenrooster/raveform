@@ -11,6 +11,9 @@
 
 namespace rf {
 
+// GAME_DESIGN 11.4: the photosensitivity notice's three lines (the first launch; M7: the credits' PLAY SAFE).
+extern const char* const kNoticeLines[3];
+
 struct UiPointer {
     Vec2 pos;
     bool down = false;      // held now

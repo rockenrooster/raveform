@@ -262,8 +262,8 @@ float Ui::fader(u32 id, Vec2 left, float width, float value, float meter, const 
 void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& variant, float W, float H, Vec2 insetMin, Vec2 insetMax) {
     // (M4: the primary controls carry this device's player colour, P1's in solo.)
     ui_.begin(d, *font_, *look_, variant, W, H, insetMin, insetMax, uiPtr_, palettes_->player[seat_ < kMaxPlayers ? seat_ : 0], palette_->accent);
-    static const char* const kNames[] = {"notice", "title", "run", "pause", "game over", "settings", "co-op join", "co-op lobby", "local network"};
-    ui_.setScreenName(static_cast<u32>(screen_) < 9 ? kNames[static_cast<u32>(screen_)] : "screen");
+    static const char* const kNames[] = {"notice", "title", "run", "pause", "game over", "settings", "co-op join", "co-op lobby", "local network", "credits"};
+    ui_.setScreenName(static_cast<u32>(screen_) < 10 ? kNames[static_cast<u32>(screen_)] : "screen");
     if (screen_ == Screen::Settings) ui_.setScreenName(settingsTab_ == 0 ? "settings: sound" : (settingsTab_ == 1 ? "settings: controls" : "settings: look"));
     switch (screen_) {
         case Screen::Notice:
@@ -302,21 +302,27 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
             params.exposurePump *= 0.33f;
             screenNetPermission(ui_);
             break;
+        case Screen::Credits:  // M7
+            params.exposurePump *= 0.33f;
+            screenCredits(ui_);
+            break;
         default: break;
     }
     ui_.end();
     uiPtr_.pressed = uiPtr_.released = false;
 }
 
+// GAME_DESIGN 11.4: the photosensitivity notice (the first launch, and the credits' PLAY SAFE).
+const char* const kNoticeLines[3] = {"THIS GAME HAS FLASHING LIGHTS, FAST MOVEMENT AND PULSING COLOUR,",
+                                     "TIMED TO THE MUSIC. IF YOU OR ANYONE WATCHING IS SENSITIVE TO LIGHT,",
+                                     "TURN ON REDUCE FLASHING. YOU CAN CHANGE IT LATER IN SETTINGS, LOOK."};
+
 void Play::screenNotice(Ui& ui) {
     // GAME_DESIGN 11.4: a first-launch notice, then the setting. Two choices.
     const float s = ui.s(), cx = 0.5f * ui.W();
     const Vec3 white{1.0f, 1.0f, 1.0f};
     ui.tube({cx, 300.0f * s}, 64.0f * s, palette_->accent, white, palette_->hue[2], 1.6f, "BEFORE YOU PLAY");
-    static const char* const kLines[] = {"THIS GAME HAS FLASHING LIGHTS, FAST MOVEMENT AND PULSING COLOUR,",
-                                         "TIMED TO THE MUSIC. IF YOU OR ANYONE WATCHING IS SENSITIVE TO LIGHT,",
-                                         "TURN ON REDUCE FLASHING. YOU CAN CHANGE IT LATER IN SETTINGS, LOOK."};
-    for (u32 k = 0; k < 3; ++k) ui.text({cx, (420.0f + 48.0f * static_cast<float>(k)) * s}, 20.0f * s, white, 1.15f, kLines[k]);
+    for (u32 k = 0; k < 3; ++k) ui.text({cx, (420.0f + 48.0f * static_cast<float>(k)) * s}, 20.0f * s, white, 1.15f, kNoticeLines[k]);
     const char* rf = settings_.reduceFlashing ? "REDUCE FLASHING: ON" : "REDUCE FLASHING: OFF";
     if (ui.pill(1, {cx - 330.0f * s, 760.0f * s}, {520.0f * s, 120.0f * s}, rf, 30.0f * s, false, true, settings_.reduceFlashing)) {
         settings_.reduceFlashing = !settings_.reduceFlashing;
@@ -843,6 +849,14 @@ void Play::screenSettings(Ui& ui) {
         if (sc != settings_.uiScale) {
             settings_.uiScale = static_cast<u8>(sc);
             changed = true;
+        }
+        // M7 (screens.md "Credits (M7)"): CREDITS, the last row of SETTINGS.
+        const float m = std::fmax(132.0f * s, ui.insetMin().x);
+        if (ui.pill(16, {m + 180.0f * s, H - 140.0f * s}, {360.0f * s, 100.0f * s}, "CREDITS", 30.0f * s, false)) {
+            creditsScroll_ = 0.0f;
+            creditsDragY_ = -1.0f;
+            screen_ = Screen::Credits;
+            if (band_) band_->playSfx(audio::Sfx::UiConfirm);
         }
         if (hz != settings_.frameRate || (rfl != 0) != settings_.reduceFlashing) {
             settings_.frameRate = static_cast<u8>(hz);

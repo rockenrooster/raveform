@@ -36,7 +36,7 @@ struct RendererDesc {
     u32 maxPools = 1024;
     u32 maxTriVertices = 6144;
     u32 maxThreat = 16384;    // rims and cores each
-    u32 maxHud = 8192;
+    u32 maxHud = 16384;       // (M7: the credits screen's licence text, a screenful at cap 10)
     u32 maxGlyphs = 12288;    // scene glyph instances per frame
     u32 maxThreatGlyphs = 4096;  // threat-layer glyph instances per frame, rims and cores each
     u32 particleRing = 131072;   // stateless sparks (TECH_SPEC 5.4: the Ultra ring)

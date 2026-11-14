@@ -61,7 +61,7 @@ $singles = @('screen_notice', 'screen_title', 'screen_settings_sound', 'screen_s
              'pt3_ring_broken', 'pt3_ring_relight', 'pt3_life_orb', 'pt3_life_use', 'pt3_vault') +
            @(0..10 | ForEach-Object { "m6_hint_$_" }) +
            @('m6_ended_by', 'm6_set_complete', 'm6_set_complete_over', 'm6_title_star', 'm6_uiscale_90', 'm6_uiscale_130', 'm6_mini_stays',
-             'm6_flash_longwave', 'm6_flash_choir', 'm6_flash_alpha')
+             'm6_flash_longwave', 'm6_flash_choir', 'm6_flash_alpha', 'm6_credits', 'm6_credits_licences')
 $strips = @('trio_take', 'boss_pair_death', 'boss_death', 'boss_hit')
 if ($Only.Count) {
     $singles = @($singles | Where-Object { $Only -contains $_ })
@@ -114,7 +114,7 @@ if (($hints | Where-Object { Test-Path $_ }).Count -eq 11) {
     python "$PSScriptRoot\shrink_png.py" (Join-Path $Out 'm6_hints_sheet.png') | Out-Null
     Write-Host "[review] m6_hints_sheet"
 }
-foreach ($f in 'm6_flash_longwave', 'm6_flash_choir', 'm6_flash_alpha') {
+foreach ($f in 'm6_flash_longwave', 'm6_flash_choir', 'm6_flash_alpha', 'm6_credits', 'm6_credits_licences') {
     $png = Join-Path $Out "$f.png"
     if (Test-Path $png) {
         python -I -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).convert("RGB").crop((600,240,1800,840)).resize((2400,1200),Image.LANCZOS).save(sys.argv[2])' $png (Join-Path $Out "${f}_zoom.png")

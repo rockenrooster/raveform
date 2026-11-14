@@ -49,6 +49,7 @@ struct PlayOptions {
     u8 fightPhase = 0;          // ... its parts taken down to that phase once it fights
     bool fightHold = false;     // ... and held there (its health comes back: a benchmark of the phase)
     u8 jumpTrack = 0, jumpCycle = 0;  // M5 --drop <track>.<cycle>: fast-forwarded to that Track's cycle's Drop
+    bool holdDrop = false;             // M7 --drop-hold: that Drop never ends (the thermal check)
     char picture[32] = {};      // --picture <name>: a scripted scene for the review strips
     float pxPerMm = 0.0f;       // touch control sizes (0: scale with the screen height)
     bool autoplay = false;      // --autoplay: the screens as in play, the bot playing each run (taps start and retry)
@@ -159,7 +160,7 @@ public:
 
     // M3 stage B: the game's screens (design/screens.md) around the run. Interactive play only; benchmarks,
     // pictures and --bot runs are the run alone.
-    enum class Screen : u8 { Notice, Title, Run, Paused, GameOver, Settings, CoopJoin, CoopLobby, NetPermission };
+    enum class Screen : u8 { Notice, Title, Run, Paused, GameOver, Settings, CoopJoin, CoopLobby, NetPermission, Credits };
     Screen screen() const { return screen_; }
     bool flows() const { return flow_; }
     bool runStarted() const { return !flow_ || (!attract() && screen_ != Screen::CoopLobby); }
@@ -188,6 +189,7 @@ private:
     void screenPause(Ui& ui);
     void screenGameOver(Ui& ui);
     void screenSettings(Ui& ui);
+    void screenCredits(Ui& ui);  // M7 (screens.md "Credits (M7)"): game/screens_credits.cpp
     void drawSetList(Ui& ui, float y);  // the game over's set list (solo and co-op)
     void drawBand(Ui& ui, float y);     // the game over's "YOUR BAND"
     // play.cpp: the flow.
@@ -390,6 +392,8 @@ private:
     bool flow_ = false;
     Screen screen_ = Screen::Run, settingsBack_ = Screen::Title;
     u8 settingsTab_ = 0;
+    float creditsScroll_ = 0.0f;  // M7: the credits screen's scroll (px), and the pointer's last height while it drags
+    float creditsDragY_ = -1.0f;
     Settings settings_;
     HighScores scores_;
     Ui ui_;
