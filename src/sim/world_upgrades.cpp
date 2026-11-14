@@ -1052,14 +1052,19 @@ void World::updateCells(float dt) {
             }
             const float magnet = kShardMagnetWu * rules_.magnetMultiplier * (1.0f + kMagnetPerStack * static_cast<float>(pl.loadout.mods[kMagnet]));
             if (dist < magnet) c.homing[i] = 1;
-        } else {
-            c.homing[i] = 0;
+        } else if (c.homing[i] == 1) {
+            c.homing[i] = 0;  // (a boss's phase Cell, homing 2, keeps drifting to its player once it is hurt again)
         }
-        if (c.homing[i] && dist > 1e-3f) {
+        if (c.homing[i] == 1 && dist > 1e-3f) {
             const float speed = std::fmin(length(Vec2{c.vx[i], c.vy[i]}) + kShardHomeAccel * dt, kShardHomeMax);
             const Vec2 d = to * (1.0f / dist);
             c.vx[i] = d.x * speed;
             c.vy[i] = d.y * speed;
+        } else if (c.homing[i] == 2 && hurt && dist > 1e-3f) {
+            // M6 (GAME_DESIGN 5): a boss's phase Cell drifts to its player
+            const Vec2 d = to * (1.0f / dist);
+            c.vx[i] = d.x * kBossPhaseCellDriftWu;
+            c.vy[i] = d.y * kBossPhaseCellDriftWu;
         } else {
             c.vx[i] *= drag;
             c.vy[i] *= drag;

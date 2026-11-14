@@ -609,6 +609,7 @@ struct BossState {
     BossKind kind = BossKind::Kaleidos;
     u32 alive = 0;             // parts alive (bit k: part k): Kaleidos's pairs A, B, C, Longwave's segments, the Voices, Princes
     u8 phase = 0;
+    u8 phasePaid = 0;          // M6 (GAME_DESIGN 5): the phases this device has paid a Cell a player for
     double enterTick = 0;      // the Drop's downbeat: the entrance begins
     double fightTick = 0;      // when it fires and can be hurt
     double phaseTick = 0;      // when the current phase's turning began (a pair death stops it a beat)

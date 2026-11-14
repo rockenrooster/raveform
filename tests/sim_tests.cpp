@@ -1977,13 +1977,14 @@ void testPolyrhythm() {
         w->rules().godMode = true;
     }
     // Hemiola from the bar line after their joint health falls to 60%: the turn reverses every second bar, Four's walls fly
-    // at 300, the link shows its dashes for a bar and burns on beats 3 and 4 of the next.
+    // at 300, the link shows its dashes for a bar and burns on beat 4 of the next (M6, 1bcc897: one beat; it was 3 and 4).
     w->bossHealthNow(0.55f);
     stepWorld(*w, music, ship);
     const double h0 = (std::floor(w->music() / kTicksPerBar) + 1.0) * kTicksPerBar;
     CHECK(s.pr.phase == 1 && s.pr.hemiolaBar0 == static_cast<i64>(h0 / kTicksPerBar));
-    CHECK(w->polyLinkBurn(h0 + 10.0) == 1 && w->polyLinkBurn(h0 + kTicksPerBar + 10.0) == 1 && w->polyLinkBurn(h0 + kTicksPerBar + 2.0 * kTicksPerBeat + 10.0) == 2 &&
-          w->polyLinkBurn(h0 + 2.0 * kTicksPerBar - 10.0) == 2 && w->polyLinkBurn(h0 + 2.0 * kTicksPerBar + 10.0) == 1);
+    CHECK(w->polyLinkBurn(h0 + 10.0) == 1 && w->polyLinkBurn(h0 + kTicksPerBar + 10.0) == 1 && w->polyLinkBurn(h0 + kTicksPerBar + 2.0 * kTicksPerBeat + 10.0) == 1 &&
+          w->polyLinkBurn(h0 + kTicksPerBar + 3.0 * kTicksPerBeat + 10.0) == 2 && w->polyLinkBurn(h0 + 2.0 * kTicksPerBar - 10.0) == 2 &&
+          w->polyLinkBurn(h0 + 2.0 * kTicksPerBar + 10.0) == 1);
     {
         const double mid = h0 + kTicksPerBar + kTicksPerBar / 3.0;  // the second bar: turning back
         CHECK(std::fabs(wrapAngle(w->polyFace(0, mid) - w->polyLinkAngle(mid) + 40.0f * kTau / 360.0f)) < 1e-3f);
@@ -2300,14 +2301,43 @@ void testArpeggiator() {
         CHECK(w->player(0).cells == 1);
         delete w;
     }
+    // M6 (GAME_DESIGN 5, 1bcc897): a boss pays for its phases: a Cell a player at each phase change, at the boss, drifting to
+    // the player while it is hurt.
+    {
+        World* w = quietWorld();
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, ship);
+        w->spawnBossNow(kTicksPerBar, Vec2{600.0f, 0.0f}, BossKind::Kaleidos);
+        while (music < 3.0 * kTicksPerBar) stepWorld(*w, music, ship);
+        w->playerMut(0).cells = 2;
+        const u32 before = w->cellPickups().count;
+        CHECK(w->boss().phase == 0 && w->boss().phasePaid == 0);
+        w->killBossNextTick(1u, false);
+        stepWorld(*w, music, ship);
+        stepWorld(*w, music, ship);
+        const CellPickups& c = w->cellPickups();
+        CHECK_MSG(w->boss().phase == 1 && w->boss().phasePaid == 1 && c.count == before + 1, "phase %u paid %u cells %u", w->boss().phase,
+                  w->boss().phasePaid, c.count);
+        if (c.count == before + 1) {
+            const u32 i = c.count - 1;
+            CHECK(c.owner[i] == 0 && c.homing[i] == 2 && c.vx[i] < -0.9f * tuning::kBossPhaseCellDriftWu);  // toward the ship at (0, 0)
+        }
+        // A second pair: the second phase's Cell.
+        w->killBossNextTick(2u, false);
+        stepWorld(*w, music, ship);
+        stepWorld(*w, music, ship);
+        CHECK(w->boss().phase == 2 && w->boss().phasePaid == 2);
+        delete w;
+    }
     World* w = quietWorld();
     w->rules().godMode = true;
     double music = 0.0;
     stepWorld(*w, music, ship);
-    // The entrance rule: one cell grows back to two as the boss arrives (an arc, as Regen's).
+    // The entrance rule: one cell grows back to three as the boss arrives (an arc each, as Regen's; M6, 1bcc897: was two).
     w->playerMut(0).cells = 1;
     w->spawnBossNow(kTicksPerBar, Vec2{}, BossKind::Arpeggiator);
-    CHECK_MSG(w->player(0).cells == 2 && countEvents(*w, EventType::CellTake) == 1, "cells %u", w->player(0).cells);
+    CHECK_MSG(w->player(0).cells == 3 && countEvents(*w, EventType::CellTake) == 2, "cells %u", w->player(0).cells);
     const BossState& s = w->boss();
     CHECK(s.kind == BossKind::Arpeggiator && s.fightTick == 2.0 * kTicksPerBar);
     // The machine stands above the players, 380 wu out; its four lanes 200 wu apart run down toward them.

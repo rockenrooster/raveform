@@ -1252,6 +1252,7 @@ private:
     void wellShots(float dt);
     bool wellSwallow(u32 i, u32 k);
     void bossPayout();  // a boss's Shards and Cells (world_boss.cpp)
+    void bossPhasePay();  // M6: a Cell a player at each phase change (world_boss.cpp)
     // world_feedback.cpp (M5 part 4)
     void enterFeedback(Vec2 centre);
     void updateFeedback(float dt);

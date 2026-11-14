@@ -114,8 +114,8 @@ bool World::polyWallHit(Vec2 at, Vec2& from) const {
 }
 
 u8 World::polyLinkBurn(double t) const {
-    // Hemiola: every second bar the link burns on beats 3 and 4, after a bar of danger dashes (shown until it burns: the
-    // aisle is still open on the One).
+    // Hemiola: every second bar the link burns for the bar's last burnBeats (M6, 1bcc897: one, beat 4; it was beats 3 and 4),
+    // after a bar of danger dashes (shown until it burns: the aisle is still open on the One).
     const BossState& s = boss_;
     if (!s.active || s.dying || s.pr.phase != 1 || s.alive != 3u) return 0;
     const i64 bar = static_cast<i64>(std::floor(t / kTicksPerBar));
@@ -123,9 +123,9 @@ u8 World::polyLinkBurn(double t) const {
     if (rel < 0) return 0;
     const double inBar = t - static_cast<double>(bar) * kTicksPerBar;
     if ((rel & 1) == 0) return 1;
-    if (inBar < 2.0 * kTicksPerBeat) return 1;
-    if (inBar < (2.0 + species_->poly.burnBeats) * kTicksPerBeat) return 2;
-    return 0;
+    const double burns = static_cast<double>(species_->poly.burnBeats < 4u ? species_->poly.burnBeats : 4u);
+    if (inBar < (4.0 - burns) * kTicksPerBeat) return 1;
+    return 2;
 }
 
 void World::enterPoly(Vec2 centre) {

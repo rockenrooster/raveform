@@ -181,6 +181,7 @@ void World::tick(const TickInput& in) {
     inBossUpdate_ = true;
     updateBoss(dt);
     inBossUpdate_ = false;
+    bossPhasePay();  // M6 (GAME_DESIGN 5): after the fight's own update and the host's verdicts
     updateRiffs(dt);
     updateRiffsM5(dt);     // M5 part 3: Riffs 4-12
     updateUpgradesM5(dt);  // M5 part 3: the bar's and the beat's Mods, the Boosts that act every tick

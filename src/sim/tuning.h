@@ -406,7 +406,11 @@ constexpr float kHorizonHealthTune = 8.8f;  // (16 x 0.5 x 1.1) play test 3's no
 constexpr float kPrLinkBurnHalfWu = 6.0f;   // the burning link: look.md v2.5, 12 wu (part 4: 16)
 constexpr float kPolyHealthTune = 3.4f;     // (1.7 x 2.0) play test 3's novice (--handover 5): x 1 20 of 20 in 16 s; x 2 17 of 20, 33 s; x 4 4 of
                                             // 20; x 2.6 the assist bot lost 2 of 20 here (its bar: 19 of 20 runs through the ten Tracks)
-constexpr u8 kBossEntranceCells = 2;       // GAME_DESIGN 5 (f32a441): "grows back up to two" as a boss arrives
+constexpr u8 kBossEntranceCells = 3;       // GAME_DESIGN 5 (1bcc897): "grows back up to three" as a boss arrives (was two, f32a441)
+// GAME_DESIGN 5 (1bcc897): "a boss pays for its phases": one Cell a player at each phase change, at the boss, drifting to
+// the player at this speed (chosen; inside the magnet it homes as any Cell).
+constexpr u32 kBossPhaseCells = 1;
+constexpr float kBossPhaseCellDriftWu = 240.0f;
 constexpr float kCadenceHealthTune = 8.05f;  // (7 x 1.15) play test 3's novice (--handover 7): 19 of 20, 97 s (the page 80-100)
 constexpr float kArpHealthTune = 13.8f;     // (18 x 0.77) play test 3's novice (--handover 8, x 0.85): 17 of 20, 120 s (the page 90-110)
 constexpr float kMorganaHealthTune = 15.4f;  // (14 x 1.1) play test 3's novice (--handover 9): 16 of 20, 90 s (the page 90-120)

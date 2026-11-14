@@ -826,6 +826,26 @@ void World::bossPayout() {
     }
 }
 
+void World::bossPhasePay() {
+    // M6 (GAME_DESIGN 5, 1bcc897): "a boss pays for its phases": at each phase change one Cell for each player, at the boss,
+    // drifting to them (kBossPhaseCellDriftWu; inside the magnet it homes as any Cell). The phase is the host's verdict where the
+    // host decides it; each device drops its own players' Cells, as bossPayout does. Mini-bosses have no phases to pay for.
+    BossState& s = boss_;
+    if (!s.active || s.dying || isMiniBoss(s.kind)) return;
+    while (s.phasePaid < s.phase) {
+        ++s.phasePaid;
+        for (u32 p = 0; p < playerCount_; ++p) {
+            const PlayerState& pl = players_[p];
+            if (!pl.present || !pl.alive || !isLocal(p)) continue;
+            for (u32 k = 0; k < kBossPhaseCells; ++k) {
+                const u32 before = cellPickups_.count;
+                spawnCell(s.pos, normalizeOr(pl.pos - s.pos, Vec2{1.0f, 0.0f}) * kBossPhaseCellDriftWu, static_cast<u8>(p));
+                if (cellPickups_.count > before) cellPickups_.homing[cellPickups_.count - 1] = 2;  // (drifting to its player: updateCells)
+            }
+        }
+    }
+}
+
 void World::bossStep(u8 step, u8 owner) {
     // A change the host's health decides (a mini-boss's half health, the Carom King's splits): applied once, and sent.
     BossState& s = boss_;
