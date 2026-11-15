@@ -225,8 +225,8 @@ const FightSound kRows[] = {
     {BossCue::RpArp, "reprise.md", "the last pattern is First Light's arpeggio on the P3 bell, doubled by the band's lead (the local player's timbre, "
                                    "at 0.5 of the lead)",
      nullptr, SoundPlay::Custom, rc(Recipe::Bell), true, 0.3f, 0.5f, 0},
-    {BossCue::RpDeath, "reprise.md", "death: the tonic held, the ripple a reversed cymbal ending on the encore's first downbeat (the ENCORE card's bar "
-                                     "line, as the fight places it; the tonic a pad voice from the death to a bar past it)",
+    {BossCue::RpDeath, "reprise.md", "death: the tonic held, the implosion a reversed cymbal ending on its burst (the beat the fight places it on, "
+                                     "2026-11-14; its length in the cue's f); the tonic a pad voice from the death to a bar past it",
      nullptr, SoundPlay::Custom, rc(Recipe::RevCymbal), false, 0.7f, 4, 0},
     {BossCue::RpBoom, "reprise.md", "every bar's One booms under the band: the impact (sub, boom and crash) (the owner, 2026-11-14: \"more epic ... audio "
                                     "wise\")",
@@ -621,9 +621,9 @@ void playCustom(audio::CommandSink& s, FightVoices& voices, const FightSound& r,
             leadEcho(s, 0, audio::LeadEchoMode::Note, static_cast<i32>(std::lround(e.f)), r.p1, 0.0f, 0.0f, 0.0, tick);
             break;
         case BossCue::RpDeath: {
-            // The reversed cymbal into the ENCORE card's bar line; the tonic held from the death to a bar past it (it outlives the
-            // fight: slot 14 keeps its own time).
-            recipe(s, Recipe::RevCymbal, -1, r.gain, pan, tick, r.p1);
+            // The reversed cymbal over the implosion, ending on its burst (2026-11-14: as long as the implosion, e.f beats); the tonic
+            // held from the death to a bar past it (it outlives the fight: slot 14 keeps its own time).
+            recipe(s, Recipe::RevCymbal, -1, r.gain, pan, tick, e.f > 0.05f ? e.f : r.p1);
             startVoice(s, 14, Recipe::PadVoice, 60 + tonicPc(T), 0.5f, 0.0f, 0.0f);
             voices.stopAt[14] = tick + kTicksPerBarD;
             voices.release[14] = 4.0f * beatS;

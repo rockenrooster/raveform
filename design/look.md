@@ -511,11 +511,16 @@ teammate's at 0.6; reduce flashing halves the flashes).
   ring's break, an Extra Life, a revive): its hull blinks on the sixteenths (down to 0.35; reduce flashing: steady at 0.7) and a
   bubble round it, outside the halo, holds a bright arc that drains clockwise as the time runs out, flickering in its last half
   second; as it ends the bubble snaps shut on the ship.
-- **Kaleidos Reprise implodes before it explodes.** From the kill to the bar line its Shards come on (one to two bars; the
-  reversed cymbal ends there) everything falls into the core: its rays draw back, brighter; the ten Tracks' colours come home
+- **Kaleidos Reprise implodes before it explodes.** (Then: "implosion needs to be quick and big camera shake on explosion", "the
+  explosion should also have a borderline flashbang visual".) From the kill to the first beat line at least three quarters of a
+  beat on (`repriseBurstTick`: 0.75 to 1.75 beats; its Shards and the reversed cymbal's end come there too) everything falls into
+  the core: its rays draw back, brighter; the ten Tracks' colours come home
   first, ten thin rings closing from beyond the frame into the core (its shockwave run backwards); light streaks spiral in faster
   and faster; the lattice falls in and goes dark over the last third; the screen trembles harder; the core shrinks to a blinding
-  point. On the bar line the burst (the flashes, the sparks, the shake) with its impact, and the shockwave of the ten colours.
+  point. On that beat the burst with its impact: a flashbang (the whole frame white for two frames on the HUD's additive layer,
+  falling away over about half a second, a gold afterglow for a second; reduce flashing: a soft glow at 0.18), a big camera shake
+  (26 ref px past the 6 px cap of every other shake, falling away over about half a second; reduce flashing: 9), the flashes and
+  sparks, and the shockwave of the ten colours.
 - **Event Horizon's death.** Over the death bar light is torn in toward the point (streaks in the Track's hues on spirals,
   faster and brighter as the bar ends), the lattice falls in after it and the screen trembles; the lattice goes dark for the
   beat of black, one white point holding; then the boss's fall with two jets of white light along its axis, a ring of each hue

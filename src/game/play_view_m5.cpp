@@ -933,14 +933,14 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
                 break;
             if (static_cast<BossKind>(e.a) == BossKind::Reprise) {
                 // reprise.md (the owner, 2026-11-14: "more epic", "even more epic", then "Reprise needs an implosion before the
-                // explosion for more dramatic effect"): the kill begins the implosion, which runs to the bar line the Shards and the
-                // ENCORE card come on (the reversed cymbal ends there: e.tick); drawReprise draws it; the explosion (repriseBurst)
-                // and the shockwave of the ten Tracks' colours come on that bar line (drawFight). Here, the kill: the core flares and
-                // a ring falls into it.
-                rpDeathTick_ = w.boss().deathTick >= 0.0 ? w.boss().deathTick : e.tick - kTicksPerBar;
-                rpBurstTick_ = e.tick;
+                // explosion for more dramatic effect", then "implosion needs to be quick and big camera shake on explosion"): the kill
+                // begins the implosion, which runs to the beat its Shards come on (the sim's payout, 0.75 to 1.75 beats on; the
+                // reversed cymbal ends there); drawReprise draws it; the explosion (repriseBurst, with a big shake) and the shockwave
+                // of the ten Tracks' colours come on that beat (drawFight). Here, the kill: the core flares and a ring falls into it.
+                rpDeathTick_ = w.boss().deathTick >= 0.0 ? w.boss().deathTick : w.music();
+                rpBurstTick_ = w.boss().payoutTick >= 0.0 ? w.boss().payoutTick : repriseBurstTick(rpDeathTick_);  // (quick: 0.75-1.75 beats)
                 rpBurstAt_ = at;
-                implodeRing(at, 900.0f, 0.5f, whiteV(), t);
+                implodeRing(at, 900.0f, 0.35f, whiteV(), t);
                 addPool(at, 20.0f, 160.0f, whiteV(), reduceFlashing_ ? 0.4f : 1.0f, 0.0f, 0.15f, false, 1, false, false, t);
                 break;
             }

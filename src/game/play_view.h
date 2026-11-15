@@ -323,6 +323,9 @@ private:
     double rpDeathTick_ = -1.0;  // ... and its death began
     Vec2 rpBurstAt_;
     float rpWaveT_ = -100.0f;    // view time: the burst (its shockwave from here)
+    // A big camera shake (the Reprise's burst: "big camera shake on explosion"), past the look's 6 px cap on every other shake, in
+    // ref px, falling away over about half a second.
+    float bigShake_ = 0.0f;
     float hzBurstT_ = -100.0f;  // Event Horizon's burst (view time) and where, for the jets drawn after it
     Vec2 hzBurstAt_;
     double hzBurstDeath_ = -1.0;  // the death (its deathTick) whose burst has been played

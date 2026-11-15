@@ -667,7 +667,10 @@ void Play::afterTick() {
                 if (bandDrives_) {
                     band_->playRecipe(audio::Recipe::Gong, -1, finale ? 0.9f : 0.55f);
                     // (2026-11-14: the Reprise implodes to the bar line its Shards come on; its impact lands there, with the burst)
-                    if (finale) band_->playRecipe(audio::Recipe::Impact, -1, 0.8f, 0.0f, e.tick + (coop() ? netBandOffset_ : clock_.offset()));
+                    if (finale) {
+                        const double burst = w.boss().payoutTick >= 0.0 ? w.boss().payoutTick : sim::repriseBurstTick(w.boss().deathTick);
+                        band_->playRecipe(audio::Recipe::Impact, -1, 0.8f, 0.0f, burst + (coop() ? netBandOffset_ : clock_.offset()));
+                    }
                 }
                 hitStopUntil_ = clock_.simTime() + static_cast<double>(look_->boom.bossHitStopMs) * 0.001 * (finale ? 3.0 : 1.0);
                 // M6 (screens.md "A finished run"): the set list's last boss has fallen: the run is won (SET COMPLETE for two bars,

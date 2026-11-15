@@ -62,6 +62,7 @@ constexpr float kHzPullWu = 30.0f, kHzPeakWu = 160.0f, kHzReachWu = 800.0f;  // 
 constexpr float kRpPullWu = 34.0f, kRpReachWu = 1200.0f;                     // Kaleidos Reprise's implosion (likewise)
 constexpr float kDebrisDrag = 3.0f;                                   // 1/s
 constexpr float kHzJetS = 0.8f, kHzJetWu = 1800.0f, kHzJetAxis = 1.05f;
+constexpr float kFlashbangS = 1.2f, kFlashbangHoldS = 0.035f, kFlashbangTauS = 0.18f;  // the Reprise's flashbang
 }  // namespace
 
 void PlayView::addFlash(u8 kind, Vec2 at, float size, float life, Vec3 c, float t, float rot) {
@@ -198,6 +199,7 @@ void PlayView::repriseBurst(Vec2 at, float t) {
     addDistortion(at, 1600.0f, 0.8f, 30.0f, 40.0f, t);
     addDistortion(at, 2800.0f, 1.2f, 24.0f, 60.0f, t + 0.3f);
     shakeAmp_ = std::fmax(shakeAmp_, 10.0f);
+    bigShake_ = std::fmax(bigShake_, reduceFlashing_ ? 9.0f : 26.0f);  // ("big camera shake on explosion")
     push(kImpBoss, at, 800.0f, 4200.0f, t);
     rpWaveT_ = t;
     rpBurstAt_ = at;
@@ -652,6 +654,20 @@ void PlayView::drawFeedbackFx(FrameDraw& d, const ViewInput& in) {
                 const float y = sh * static_cast<float>(k) / 3.0f;
                 d.pools.glow(Vec2{0.0f, y}, r, c);
                 d.pools.glow(Vec2{sw, y}, r, c);
+            }
+        }
+        // Kaleidos Reprise's burst is a flashbang (the owner, 2026-11-14: "the explosion should also have a borderline flashbang
+        // visual"): the whole frame white for two frames (the HUD's additive layer, after the tone map: past every light), falling
+        // away over about half a second, a gold afterglow under it for a second. Reduce flashing: a soft glow at 0.18 instead.
+        {
+            const float a = t - rpWaveT_;
+            if (a >= 0.0f && a < kFlashbangS) {
+                float white = a < kFlashbangHoldS ? 1.0f : std::exp(-(a - kFlashbangHoldS) / kFlashbangTauS);
+                if (reduceFlashing_) white *= 0.18f;
+                const float warm = (reduceFlashing_ ? 0.05f : 0.16f) * (1.0f - a / kFlashbangS);
+                const Vec3 c = W1 * white + palettes_->player[3] * warm;
+                const float sw = 2.0f * centre_.x, sh = 2.0f * centre_.y;
+                d.hud.line(Vec2{-10.0f, 0.5f * sh}, Vec2{sw + 10.0f, 0.5f * sh}, 0.5f * sh + 10.0f, c, c, 0);
             }
         }
         // Event Horizon's jets.

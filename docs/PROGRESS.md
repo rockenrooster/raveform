@@ -4,6 +4,16 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (late night), the Reprise's implosion quick, a big shake and a flashbang
+
+"Implosion needs to be quick and big camera shake on explosion", then "the explosion should also have a borderline flashbang
+visual": the Reprise's payout (its Shards) now comes on the first beat line at least three quarters of a beat after its death
+(`sim::repriseBurstTick`, 0.75 to 1.75 beats; until now the bar line at least half a bar on, up to a bar and a half), the
+implosion running to it; the reversed cymbal is as long as the implosion (`BossCue::RpDeath` carries its length in f) and the
+impact lands on that beat. The burst: a flashbang (the HUD's additive layer, white for two frames, falling away over ~0.5 s) and a
+big shake channel (`PlayView::bigShake_`, 26 ref px past the look's 6 px cap, ~0.45 s). Video `captures\video\reprise_death.mp4`
+(the `m6_fx_rp_death` picture with a long strip: every frame from before the kill, the kill on a bar's third beat).
+
 ## 2026-11-14 (late night), the Vault's layers, a hit and its safe time, the Reprise's implosion
 
 "Missing visual effects for breaking vault layers and vault death; visual effects when you are damaged are not visible enough or

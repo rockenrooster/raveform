@@ -13,6 +13,9 @@ namespace rf::sim {
 // ---- Time (TECH_SPEC 4): a fixed 60 Hz tick; musical time in PPQ ticks (96 per quarter note).
 constexpr float kDt = 1.0f / 60.0f;
 constexpr double kTicksPerBeat = 96.0;
+// Kaleidos Reprise's burst (the owner, 2026-11-14: "implosion needs to be quick"): the first beat line at least three quarters of a
+// beat after its death, so it implodes for 0.75 to 1.75 beats and bursts on a beat (its Shards, its impact, the reversed cymbal's end).
+inline double repriseBurstTick(double deathTick) { return std::ceil((deathTick + 0.75 * kTicksPerBeat) / kTicksPerBeat - 1e-9) * kTicksPerBeat; }
 constexpr double kTicksPerStep = 24.0;  // a sixteenth
 constexpr double kTicksPerBar = 384.0;  // 4/4
 

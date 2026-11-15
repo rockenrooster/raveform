@@ -37,6 +37,7 @@ constexpr float kBossLeanTau = 0.5f;
 constexpr float kWallIntensity = 1.6f, kWallWidth = 2.6f, kWallSnare = 0.6f, kWallBass = 0.3f;
 constexpr float kHitShakeRefPx = 4.0f, kNovaShakeRefPx = 3.0f, kDeathShakeRefPx = 6.0f;
 constexpr float kCellHitShakeRefPx = 6.5f;  // (2026-11-14) a cell lost jolts harder than a guard ring's break
+constexpr float kBigShakeTauS = 0.45f, kBigShakeMaxRefPx = 30.0f;  // (2026-11-14) the big shake's fall and its cap
 constexpr float kMuzzleFlashS = 0.06f, kMuzzleFlashRefPx = 10.0f, kMuzzleFlash = 0.9f;
 // look.md §3 (the owner, 2026-11-14: "a substantial glow" on every red enemy projectile): an enemy bullet's pooled glow on every
 // tier, 26 ref px, 0.32, never under 0.6 of that in a crowd (the swarm gain's floor for it).
@@ -233,6 +234,7 @@ void PlayView::resetEffects() {
         vaultPlaced_[k] = -1.0;
     }
     cellHitT_ = rpWaveT_ = -100.0f;
+    bigShake_ = 0.0f;
     rpBurstTick_ = rpDeathTick_ = -1.0;
     for (u32 p = 0; p < kMaxPlayers; ++p) invulPrev_[p] = invulMax_[p] = 0.0f;
     sparkReqCount_ = 0;
@@ -936,7 +938,8 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     if (mx > 0.0f) cam_.x = clampf(cam_.x, -mx, mx);
     if (my > 0.0f) cam_.y = clampf(cam_.y, -my, my);
     shakeAmp_ *= std::exp(-in.dt / 0.15f);
-    const float shakePx = clampf(shakeAmp_, 0.0f, look_->shakeMaxRefPx) * refPx_;
+    bigShake_ *= std::exp(-in.dt / kBigShakeTauS);
+    const float shakePx = (clampf(shakeAmp_, 0.0f, look_->shakeMaxRefPx) + clampf(bigShake_, 0.0f, kBigShakeMaxRefPx)) * refPx_;
     shake_ = shakePx > 0.05f ? dir(rng_.range(0.0f, kTau)) * shakePx : Vec2{};
     lattice_.recentre(cam_);
     lattice_.step(in.dt * w.timeScale());

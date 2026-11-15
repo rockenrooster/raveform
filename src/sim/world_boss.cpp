@@ -765,11 +765,12 @@ void World::killBoss(u8 owner) {
             s.payoutTick = tickOfBar(endBar);
             s.deathBars = (s.payoutTick - m1_) / kTicksPerBar + 0.25;
         } else if (s.kind == BossKind::Reprise) {
-            // No burst: the core dims to a point and one white ripple crosses the lattice; the Shards and the ENCORE card on the
-            // bar line (the reversed cymbal ends there).
-            s.payoutTick = tickOfBar(endBar);
+            // It implodes, quickly (the owner, 2026-11-14: "implosion needs to be quick and big camera shake on explosion"), to the
+            // first beat line at least three quarters of a beat on (repriseBurstTick) and bursts there with its Shards; the reversed
+            // cymbal (RpDeath, its length in beats in f) ends on that beat. The Track still ends on its bar line (changeBar).
+            s.payoutTick = repriseBurstTick(m1_);
             s.deathBars = (s.payoutTick - m1_) / kTicksPerBar + 0.25;
-            emitCue(BossCue::RpDeath, s.payoutTick, 0, 0.0f, s.pos);
+            emitCue(BossCue::RpDeath, s.payoutTick, 0, static_cast<float>((s.payoutTick - m1_) / kTicksPerBeat), s.pos);
         } else if (s.kind == BossKind::Arpeggiator) {
             // The chart reads GG; every block climbs back up its lane as Shards; the Shards on the One that ends the Track.
             s.payoutTick = tickOfBar(endBar);
