@@ -64,7 +64,7 @@ struct HudState {
     bool levelFull = false;   // a level waits for its Trio (the bar stays full, flashing white)
     float levelFlash = 0.0f;  // 1 as a level fills, decaying
     u32 novas = 0, novaCap = 3;
-    bool extraLife = false;     // play test 3 (screens.md "Extra Life (HUD)"): one held: a small gold ship right of the Novas
+    u32 extraLives = 0;         // play test 3 (screens.md "Extra Life (HUD)"): each held (up to two since 2026-11-14) a small gold ship right of the Novas
     float bossFlash = 0.0f;     // play test 3 (GAME_DESIGN 7.6): a weak point's hit: its segment of the boss's bar flashes
     bool reduceFlashing = false;    // M6: the HUD's own flashes (a boss hit's bar segment) at half
     float setCompleteBars = -1.0f;  // M6: bars since the set's last boss fell (SET COMPLETE for two; < 0: none)

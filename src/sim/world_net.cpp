@@ -336,7 +336,7 @@ void World::applyPlayerOp(const NetOp& op) {
                 pl.ringBroke = std::isfinite(op.tick) && op.tick > 0.0 ? op.tick : m1_;
                 ++pl.ringBreaks;
             } else if (how == 2) {
-                pl.extraLives = 0;
+                pl.extraLives = static_cast<u8>(pl.extraLives ? pl.extraLives - 1 : 0);
                 ++pl.extraLivesSpent;
                 const float tps = ticksPerSecond();
                 pl.invulS = tps > 0.0f ? static_cast<float>(kTicksPerBar) / tps : 2.0f;

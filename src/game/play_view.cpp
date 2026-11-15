@@ -223,6 +223,9 @@ void PlayView::resetEffects() {
     for (u32 i = 0; i < ringCap_; ++i) rings_[i].born = -100.0f;
     for (ShockRing& s : shock_) s.start = -100.0f;
     for (Bolt& b : bolts_) b.born = -100.0f;  // M5
+    for (Flash& f : flashes_) f.t = -100.0f;    // 2026-11-14
+    for (Debris& b : debris_) b.born = -100.0f;
+    hzBurstT_ = -100.0f;
     sparkReqCount_ = 0;
     trailCount_ = 0;
     for (u32 p = 0; p < kMaxPlayers; ++p) {
@@ -231,6 +234,8 @@ void PlayView::resetEffects() {
         mateTrailCount_[p] = 0;
         reviveT_[p] = -100.0f;
         leaveT_[p] = -100.0f;
+        crescPrev_[p] = 0;
+        crescStepT_[p] = crescBreakT_[p] = aegisHitT_[p] = -100.0f;
     }
     allDownT_ = -100.0f;
     allDownRest_ = 0.0f;
@@ -1107,6 +1112,21 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         ls.hotIntensity *= 1.0f - 0.8f * trioRest_;
         ls.heatGain *= 1.0f - trioRest_;
     }
+    {
+        // Event Horizon's beat of black (2026-11-14): the lattice dims over the last quarter of its death bar and stays dark through
+        // the beat of black (the burst lights it again).
+        const BossState& b = w.boss();
+        if (b.kind == BossKind::EventHorizon && b.dying) {
+            const double since = in.music - b.deathTick;
+            if (since >= 0.75 * kTicksPerBar && since < kTicksPerBar + kTicksPerBeat) {
+                const float dim = 1.0f - 0.85f * clampf(static_cast<float>((since - 0.75 * kTicksPerBar) / (0.25 * kTicksPerBar)), 0.0f, 1.0f);
+                ls.restIntensity *= dim;
+                ls.warmIntensity *= dim;
+                ls.hotIntensity *= dim;
+                ls.hotPeakIntensity *= dim;
+            }
+        }
+    }
     if (eclipseK_ < 1.0f) {  // (an Eclipse: the lattice at 0.05)
         ls.restIntensity = prose::kArEclipseLattice;
         ls.warmIntensity *= eclipseK_;
@@ -1130,7 +1150,11 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             lv.calmTintMix = prose::kMgOasisTint * (b.dying ? clampf(1.0f - static_cast<float>((in.music - b.deathTick) / kTicksPerBar), 0.0f, 1.0f) : entrance);
         }
     }
-    lattice_.setWells(nullptr, 0, 0.0f);
+    {
+        // (2026-11-14) Singularity's well, Black Hole's singularity and Event Horizon's death bar pull the lattice (from the next step).
+        LatticeWell wells[4];
+        lattice_.setWells(wells, feedbackWells(in, wells, 4));
+    }
     if (shown(kMuteGrid)) lattice_.draw(d.scene, lv, ls);
 
     // ---- Arena walls (GAME_DESIGN 9): glowing lines in the accent; the snare flashes them, the bass

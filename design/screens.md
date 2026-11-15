@@ -70,30 +70,55 @@ Rules:
 
 ---
 
-## Title (M3)
+## Title (M3; Title v2, 2026-11-14)
 
-The game is already playing when it opens: the bot's run goes on behind everything at a third of its
-light, in the palette of Track 1, with the music at full level.
+Title v2, "First Light", is built from `design/title.md` (pictures `design/previews/title_v2*.png`) with the owner's answers of
+2026-11-14: the ship under PLAY is gone; the intro plays on every cold start but much faster than the plan (a bar and a beat); leaving
+the app keeps its cut; the word keeps the font's own letter spacing (6 units a letter, not 5.25); the run behind stays at a third of
+its light; the captions under CO-OP and SETTINGS stay; and there is **no reflection** (the word's under the rule and the fan's).
+The code is `src/game/title_v2.cpp` (the frame) and `src/game/play_transitions.cpp` (the intro, home, the drop); its numbers are
+the named block at the top of `title_v2.cpp`. "Sound becomes light": the word stands over a line of light whose ends are the music
+and whose middle is a laser rule carrying the tagline.
 
-| Element | Place | Behaviour |
+The game is already playing when it opens: the bot's run goes on behind everything at a third of its light, in the palette of
+Track 1, with the music at full level. Reference pixels at 2400 x 1080, scaling with the screen's height. "The field" is one colour
+run used by the word, the rule, the fan and the motes: P1 cyan -> white -> the palette's first enemy hue -> its third.
+
+| Element | Place | Look |
 |---|---|---|
-| **Waveform** | Across the whole width at 48% of the height, 2 px, running cyan → white → first enemy hue → magenta | The actual music, drawn as a line: about a bar of the master bus, scrolling. A faint mirrored echo of it underneath. The logo stands on its own sound |
-| **Logo** `RAVEFORM` | Centred, cap height 190, top at 216 | The game's font, each stroke drawn as chrome neon (the owner, 2026-11-14: "make the title of the game at the main menu look way more polished"; of a version in letters of its own, "i like the previous font"): a soft pooled halo in the waveform's colour field, a glowing extrusion six layers deep down and right in the deep hue, the tube 11 px (above each letter's horizon, 56% down, the field's colour with a little white at the top; below it the accent's chrome deepening to the foot), a white-hot core 3.3 px; strokes that run straight on meet flat (no beads). Every second bar on the downbeat a sheen of light crosses the letters in a beat and a half. Four-point glints at the R's top corner (the kick) and the M's foot (the backbeat). A laser underline 30 px under it, 1.08 times its width, in the field's colours, fading at both ends, wider on the kick. Swells 2% on the kick |
-| Tagline, beat dots | 74 and 108 px under the logo's baseline | As before, under the underline |
-| Tagline `SOUND BECOMES LIGHT` | Under the logo, cap height 22, accent | — |
-| Beat dots | Four, under the tagline | The current beat is lit; beat 1 in the accent |
-| **PLAY** | Centre, 600 × 140, label 52, player colour | One tap starts a run ("Transitions": the drop-in). This is the control a thumb finds first |
-| CO-OP, SETTINGS | Left and right of it, 330 × 104, label 30, white | — |
-| The ship | Under PLAY | Idles, turning toward the last touch |
+| **The fan** | From (1200, 432), behind the word | Seven laser beams at 0, +-23, +-46, +-69 degrees from straight up, each from 40 px out, 1,040 px long, a 2 px line at 0.40 fading to nothing along its length with an 18 px copy at 0.028, coloured by its place across the field. One pair lights on each beat (1.0, the rest 0.62): the centre on beat 1, +-23 on 2, +-46 on 3, +-69 on 4. It sways +-3 degrees over four bars |
+| **The word** `RAVEFORM` | Cap height 240, baseline 378, at the font's own advance (about 1,840 px wide; narrower screens fit it between the 132 px margins) | Chrome neon: the tube 14 px (above each letter's horizon, 56% down, the field with white mixed in toward the top; below it the field and the third hue, deepening to the foot with the second), a white-hot core 4 px; strokes that run straight on meet flat. Its depth: copies of the tubes shrinking about (1200, 432) to 6.6% smaller (twelve half steps; six on the low tier) in the second and third hues, so the word recedes toward the rule's centre from both sides. Its halo: pools along every stroke and one pool of the first hue, radius 850 at 0.035. Swells 1.5% on the kick about its baseline's centre. Every second bar a sheen crosses it in a beat and a half |
+| Glints | The R's top corner; the M's right foot | Four-point stars, arms 96 and 70 px, flaring on the kick and on the backbeat (reduce flashing: 0.35) |
+| **The rule** | y 432, edge to edge | A 2.4 px line in the field at 2.1 with a 10 px copy at 0.16. Under the word it is straight with a 1.2 px white core at 1.6 and two 5 px white flare arms from the tagline's gap fading to nothing 1,150 px out; beyond the word its ends are the music (the master bus, rising from nothing to +-66 px over 300 px) with a mirrored echo in the second hue. On the kick its straight part brightens and a bump runs along its ends in half a beat. Its pieces meet flat (no beads) |
+| **Tagline** | Set into the rule's gap, centred on y 432 | `S O U N D   B E C O M E S   L I G H T`, cap 22, 55% accent + 45% white at 2.1; the rule opens a gap for it (its width and 44 px each side) |
+| **Motes** | Rising off the rule | Up to 110 dots (40 on the low tier) in the field's colour at their place, each rising 300 px over four beats with a +-30 px sway, fading as it rises; louder music sheds more |
+| **PLAY** | (1200, 800), 640 x 150 | Glass in P1 at 0.08, an outline of 80% P1 and 20% white (3 px at 1.8), a P1 pool of radius 350; its label a tube (cap 60) 11 px above its centre; **the four beat dots inside it**, 47 px under its centre (the beat's lit at 1.9, beat 1 in the accent, the rest 0.32). Every beat a copy of its outline leaves it, growing 40 px over the beat (1.0 on beat 1, 0.7 on the others; half with reduce flashing). Hover (a mouse): fill 0.18, outline at 2.3, the label's core at 2.2; pressed: fill 0.45, outline 4 px at 2.6, label 1.5 / 2.4, pool 0.10 |
+| CO-OP, SETTINGS | (640, 800) and (1760, 800), 340 x 104, label 30 | As every pill (since Title v2 every pill has a hover state with a mouse: a white fill at 0.10, the outline 3 px at 1.6, the label at 1.5). A caption 28 px under each, cap 12, white at 0.5: `2-4 PLAYERS   ONE WI-FI` and `SOUND   CONTROLS   LOOK` |
+| Notes | y 940, cap 18, danger | `THE HOST LEFT` and the co-op messages |
 | Best | Bottom left, cap 14, gold | `BEST 1,204,880  TRACK 05  X412` |
 | Note | Bottom right, cap 14, white at 0.5 | `HEADPHONES RECOMMENDED`; on first launch the photosensitivity notice takes this screen first |
 | Version | Bottom right under the note, cap 11, white at 0.4 | The version, the build's commit and its date and minute: `V0.9.0  F0CD14F  2026-11-14 16:40` (the owner, 2026-11-14: "include a version # with build date at the bottom right at the main menu"); the version is `CMakeLists.txt`'s project version |
 
+**The intro** (every cold start of the app, after the notice on a first launch; not when the app comes back from the background,
+not on home, not in pictures, benchmarks, fixed-step or `--autoplay` runs; picture `m6_t2_intro`, a strip an eighth apart). The
+screen is black until the band runs (a second at most). On the next beat line **a point of light** at the rule's centre (flashing on
+the kick), under a one-beat riser with the band's low-pass closed; on the next beat **the rule is thrown out of it** to both edges in
+half a beat with a crash and a clamped flash (a white pool of radius 1,000 at 0.3 for 120 ms), its ends waking over the beat, the
+background and its stars coming up from black and the filter opening. A beat later the fan snaps open (6% past and back) and **the
+word is played**, a letter a sixteenth (R first, M last): each letter is struck white-hot for 60 ms (tube x 1.2 at 3.5) while the
+rule leaps under it (a notch 92 px wide, 34 up and 12 down, gone in an eighth), dark for 40 ms, then lit with its depth and halo;
+each with one note of the lead, A3 C4 E4 A4 C5 E5 G5 A5. Two beats later the tagline opens the rule from the centre and PLAY rises
+14 px into place over the beat (it takes a tap from then); CO-OP and SETTINGS with their captions a quarter beat later, the best,
+the note and the version a quarter after that. The run behind comes up over the next bar. A bar and a beat in all. **Any input
+skips it** (and is eaten): everything not yet on screen arrives inside a beat, and the word's notes not yet placed are not played.
+Reduce flashing: no flash, letters fade on over an eighth instead of being struck, the glints at 0.35.
+
 **The quiet title** (the owner, 2026-11-14: "after waiting at the main menu for a while the menu fades away so you can see
 the demo until you tap the screen and the menu fades back in"). The title at rest (no transition, no co-op session) that hears
 no input for **8 bars** (17.5 s at Track 1's 110 BPM) leaves on the next bar line, as home builds it but backwards, each piece
-over a beat: the best, the note and the version with CO-OP and SETTINGS on the bar's first beat, PLAY and its ship on the
-second, the tagline and the beat dots half a beat later, the logo on the third, the waveform on the fourth; over the same bar
+over a beat: the best, the note and the version with CO-OP and SETTINGS on the bar's first beat, PLAY on the second, the
+tagline, the rule's gap and the motes half a beat later, the fan folding flat and the word fading on the third, the rule drawing
+back into its centre on the fourth (Title v2: the word fades, it does not fall: the fall belongs to the drop); over the same bar
 the demo comes up from a third of its light to its full light. Any input brings it all back over a beat from where it stood:
 a tap anywhere, the pointer moving (a mouse, more than 4 px), a key, a gamepad button, a stick or trigger past half. That input
 does nothing else (a tap where PLAY was does not start a run), and nothing takes a tap until the title is back; the count of
@@ -485,10 +510,12 @@ three seconds at 120 BPM): **the wait**.
 
 | When | What is seen | What is heard |
 |---|---|---|
-| The tap | PLAY takes its pressed state and keeps it, and four dots under its label count the beats to the bar line (the settings cards' `NEXT BAR` dots). | The confirm chord |
-| The wait's first beat | CO-OP, SETTINGS, the best score and the note fade out. The bot's run behind dissolves: its enemies and shots fade out over the wait and its ship is gone; nothing new spawns. | The band's high end filters down (a low-pass closing over the wait) and a one-bar riser starts under it, timed to end on the bar line |
-| The wait's last beat | The tagline and beat dots fade. The logo holds; the waveform line flattens toward a straight line. | The drums drop out for the last beat, as in a Build's last bar |
-| **The downbeat** | The logo's letters streak out to both sides (as the Track name card's do). The waveform line, now straight, snaps outward as a ring from the ship and becomes the lattice: the lattice lights from the ship to the edges over one beat, one impulse of 140. PLAY shrinks into the ship over one beat and its outline becomes the halo's four cell arcs, drawing themselves. The ship is the title's ship: it glides from under PLAY to the centre of the frame over that beat. | A crash, and the run's first Groove from its first kick (Track 1's bar 1, never mid-phrase) |
+| The tap | PLAY takes its pressed state and keeps it; a ring leaves it at once (64 px in half a beat): the tap is answered. Its four beat dots become the count (as many lit as beats are left). | The confirm chord |
+| The wait's first beat | CO-OP, SETTINGS, their captions, the best score and the note fade and sink 30 px; the motes fall back into the rule. The bot's run behind dissolves: its enemies and shots fade out over the wait and its ship is gone; nothing new spawns. | The band's high end filters down (a low-pass closing over the wait) and a one-bar riser starts under it, timed to end on the bar line |
+| The beats between | Title v2: the fan folds down flat onto the rule by the last beat (in a two-beat wait over the first), and **the tubes run hot**: core 4 -> 7 px, tube 14 -> 17.5 px, level + 40%; the rule's ends stand at 1.5 x. | The riser |
+| The last beat, first half (from here Back does nothing) | The tagline goes and the rule closes its gap in an eighth. **The word falls into its line**: every point moves toward the rule, its height 1 -> 0, easing in, its depth with it; the rule takes its light (1 -> 2.2, white) and its ends flatten. | The drums drop out for the last beat, as in a Build's last bar |
+| The last beat, second half | The rule draws in from both edges to its centre (easing in) while it slides from y 432 to the frame's centre; PLAY, still lit, shrinks to nothing and rises into the same point. On the bar line one point of light stands at the frame's centre. | The riser's tail |
+| **The downbeat** | **The point bursts:** a clamped flash pool (radius 1,000 at 0.3 for 120 ms), eight rays, one a letter in that letter's colour in the field, leaving it from 60 to 1,360 px over half a beat; the lattice lights from the ship to the edges over one beat, one impulse of 140; the ship draws itself at the point with its halo over the beat. Reduce flashing: no flash, no rays, no lattice ring. | A crash, and the run's first Groove from its first kick (Track 1's bar 1, never mid-phrase) |
 | Beat 2 | The HUD fades in over one beat. The Track name card (`TRACK 1  FIRST LIGHT`) writes itself as it always does. The first-run hint, if it is due, waits for bar 2. | — |
 | The first two bars | **A grace**: nothing spawns in the first bar, and for two bars nothing hostile spawns within 600 wu of the ship. The first formations come in from the edges. | — |
 
@@ -496,8 +523,8 @@ The ship can be moved from the downbeat. Back during the wait cancels it: PLAY l
 fades back in over a beat, the riser stops and the filter opens.
 
 **RETRY** from game over is the same drop-in. In its wait the game-over screen leaves as in "Home"
-below (step 1), the dead run is already dimmed; on the downbeat there is no logo to streak out, and
-the ship draws itself at the centre with its halo. **Co-op:** when the host's START or RETRY lands,
+below (step 1), the dead run is already dimmed; in the last half beat the lit control (RETRY, the pause's RESTART, the lobby's
+START) shrinks into the point at the frame's centre, and the downbeat is the same burst (Title v2). **Co-op:** when the host's START or RETRY lands,
 every peer plays the drop-in from its own screen on the same bar line.
 
 ### Home (game over → title)
@@ -509,8 +536,8 @@ bar line after.
 |---|---|---|
 | The tap | HOME takes its pressed state and keeps it; RETRY fades to its disabled look. | The back chord |
 | The next beat | **The game-over screen leaves in one beat:** the score and `RUN OVER` streak out to both sides; the four numbers, `ENDED BY`, the set list and the band fade and sink 30 px. The dead run behind fades from its fifth to nothing, leaving the background gradient. | The set list's medley ends on this beat. The bed carries on filtered |
-| The bar line | The palette cross-fades to Track 1's (Ultraviolet) over one bar, as a Track change does. The waveform line draws itself outward from the centre over one beat, the logo writes itself over the next two (its tubes stroking on, as the Track name card's letters do), then the tagline and the beat dots. | Track 1's title bed enters with a crash, its filter opening over the bar |
-| The bar's last beat | PLAY, CO-OP and SETTINGS fade in, PLAY first. PLAY takes a tap from the moment it starts to fade in. The best score and the note fade in. | — |
+| The bar line | The palette cross-fades to Track 1's (Ultraviolet) over one bar, as a Track change does. Title v2: the rule is thrown from its centre to the edges in half a beat and its ends wake; on the bar's second beat the fan opens and the word is played, a letter a sixteenth (two beats), each struck as in the intro, with the same eight notes. | Track 1's title bed enters with a crash, its filter opening over the bar |
+| The bar's last beat | The tagline opens the rule; PLAY rises into place (taking a tap from then), then CO-OP and SETTINGS with their captions, the best score and the note. | — |
 | The next bar line | The bot's new run starts empty behind the title and fades up to the title's third of its light over a bar. | — |
 
 A tap on PLAY while the title is still building starts the drop-in from where the title is; its wait

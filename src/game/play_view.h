@@ -265,6 +265,47 @@ private:
     static constexpr u32 kBolts = 96;
     Bolt bolts_[kBolts];
     u32 boltHead_ = 0;
+    // The owner, 2026-11-14 ("things that need more visual feedback", play_view_feedback.cpp): On-Beat Crit's bursts, Crescendo's
+    // meter, Syncopation's accented shots (drawShots), Burn's flames, Singularity's well and Black Hole's singularity, Storm Coil's
+    // reach and zaps, Aegis's blocks, the meteor's impact and Event Horizon's collapse.
+    void critBurst(const sim::World& w, const sim::Event& e, float t);
+    void feedbackFx(const sim::World& w, const sim::Event& e, float t);   // upgrade events with no other picture (Aegis, Burn, wells)
+    void wellBlow(const sim::Event& e, float t);                          // Singularity's and Black Hole's blast, added
+    void zapHit(Vec2 at, u32 owner, bool gold, float t);                  // a Storm Coil or Chain Storm zap's end
+    void meteorImpact(Vec2 at, float ringWu, float t);                    // a meteor's rock smashing (eventArena's MeLand)
+    void horizonCollapse(FrameDraw& d, const ViewInput& in, Vec2 c, float u, float black);  // the death bar and its beat of black
+    void horizonBurst(Vec2 at, float t);                                  // ... and the burst after it
+    void drawFeedbackFx(FrameDraw& d, const ViewInput& in);
+    void drawWell(FrameDraw& d, const ViewInput& in, Vec2 at, float r, double from, double to, Vec3 c, bool hole, float lvl);
+    void burnFlames(FrameDraw& d, const ViewInput& in, u32 i, Vec2 p);
+    u32 feedbackWells(const ViewInput& in, LatticeWell* out, u32 cap) const;  // the lattice's wells this frame
+    float crescendoLevel(const sim::World& w, u32 q) const;                    // 0..1 of Crescendo's cap
+    struct Flash {
+        Vec2 at;
+        float t = -100.0f, size = 0.0f, rot = 0.0f, life = 0.2f;
+        Vec3 c;
+        u8 kind = 0;
+    };
+    static constexpr u32 kFlashes = 64;
+    Flash flashes_[kFlashes];
+    u32 flashHead_ = 0;
+    void addFlash(u8 kind, Vec2 at, float size, float life, Vec3 c, float t, float rot = 0.0f);
+    struct Debris {
+        Vec2 p, v;
+        float ang = 0.0f, spin = 0.0f, len = 0.0f, born = -100.0f, life = 0.6f;
+        Vec3 c;
+    };
+    static constexpr u32 kDebris = 128;
+    Debris debris_[kDebris];
+    u32 debrisHead_ = 0;
+    void addDebris(Vec2 at, u32 count, float speedLo, float speedHi, float lenLo, float lenHi, float life, Vec3 c0, Vec3 c1, float t);
+    u16 crescPrev_[sim::kMaxPlayers] = {};
+    float crescStepT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};
+    float crescBreakT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};
+    float aegisHitT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};
+    float hzBurstT_ = -100.0f;  // Event Horizon's burst (view time) and where, for the jets drawn after it
+    Vec2 hzBurstAt_;
+    double hzBurstDeath_ = -1.0;  // the death (its deathTick) whose burst has been played
     void buildColours(Vec3 player);
     float beatAmount() const;
 

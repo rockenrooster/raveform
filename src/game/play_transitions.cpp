@@ -9,6 +9,11 @@
 // Track 1's first Groove; the HUD comes in on beat 2. Home: the game-over screen leaves in a beat, the title builds itself
 // over the next bar on Track 1's palette and bed, and its run fades up over the bar after.
 //
+// Title v2 (design/title.md, 2026-11-14): the title builds itself on a cold start (the intro: a point of light, the rule thrown
+// out of it, the word played a letter a sixteenth) and on home (the same from the rule's throw); the drop gathers all the title's
+// light into one point on the bar line (the word falls into its rule, the rule draws in to the frame's centre, PLAY shrinks into
+// it) and the downbeat bursts it (a clamped flash, eight rays in the letters' colours, the ship drawn there).
+//
 // The band's pieces: its low-pass is the pause's (SetMuffle with this file's cutoff and ramp), the riser the Comet's whoosh
 // (Recipe::Whoosh, stretched to end on the bar line), the drop-out the fights' CutBed on the drum buses, the crash the Drop's
 // impact (Recipe::Impact). Nothing in src/audio changed.
@@ -39,8 +44,19 @@ Vec2 polarV(float a, float r) { return Vec2{std::cos(a) * r, std::sin(a) * r}; }
 // (chosen) The drop-in's wait closes the band's low-pass to this; home's leaving screen holds the bed behind this one.
 constexpr float kWaitLowpassHz = 700.0f;
 constexpr float kHomeLowpassHz = 900.0f;
-// (chosen) The halo's radius on screen at 1080 lines, about: PLAY's outline shrinks to it.
+// (chosen) The halo's radius on screen at 1080 lines, about.
 constexpr float kHaloRefPx = 46.0f;
+float easeOutBack(float p) {  // (6% past and back: the fan snapping open)
+    p = clamp01(p);
+    const float q = p - 1.0f, k = 1.3f;
+    return 1.0f + (k + 1.0f) * q * q * q + k * q * q;
+}
+// design/title.md §4, made "much faster" (the owner, 2026-11-14): the point a beat before the rule's throw; the word from b 1 to
+// 2.75, a sixteenth a letter; PLAY takes a tap from b 3; the run behind comes up over b 4 to 8. The flash lasts 120 ms.
+constexpr float kIntroPointBeats = 1.0f, kWordFrom = 1.0f, kWordStep = 0.25f, kControlsFrom = 3.0f, kBuildDone = 4.0f;
+constexpr float kFlashS = 0.12f;
+constexpr float kIntroWaitMaxS = 1.0f;  // (a cold start waits this long for the band at most)
+constexpr float kRayFrom = 60.0f, kRayTo = 1360.0f;  // the downbeat's rays, px at 1080 lines, over half a beat
 // (chosen; screens.md "Title") The title at rest leaves after this many bars without an input (17.5 s at Track 1's 110 BPM),
 // on the next bar line.
 constexpr double kTitleQuietBars = 8.0;
@@ -119,7 +135,28 @@ void Play::dropInTap(Screen from) {
     transTap_ = transNow();
     transLine_ = world_->restartTick();
     transBeat_ = (std::floor(transTap_ / kTicksPerBeat) + 1.0) * kTicksPerBeat;  // a game-over screen leaves on the next beat
-    titleShipFrom_ = titleShipAngle_;
+    {
+        // The control that was tapped (it shrinks into the point in the wait's last half beat; design/title.md §6).
+        const float s = ui_.s(), W = ui_.W(), H = ui_.H(), right = W - std::fmax(132.0f * s, ui_.insetMax().x);
+        switch (from) {
+            case Screen::GameOver:
+                dropCtlC_ = Vec2{right - 300.0f * s, H - (coop() ? 270.0f : 240.0f) * s};
+                dropCtlHalf_ = Vec2{300.0f * s, 70.0f * s};
+                break;
+            case Screen::Paused:
+                dropCtlC_ = Vec2{0.5f * W - 200.0f * s, 700.0f * s};
+                dropCtlHalf_ = Vec2{160.0f * s, 50.0f * s};
+                break;
+            case Screen::CoopLobby:
+                dropCtlC_ = Vec2{0.5f * W, 970.0f * s};
+                dropCtlHalf_ = Vec2{300.0f * s, 65.0f * s};
+                break;
+            default:
+                dropCtlC_ = Vec2{0.5f * W, 800.0f * s};
+                dropCtlHalf_ = Vec2{320.0f * s, 75.0f * s};
+                break;
+        }
+    }
     if ((from == Screen::Title || from == Screen::Paused) && !coop()) transGod(true);
     if (band_) band_->playSfx(audio::Sfx::UiConfirm);
     pulse(0);
@@ -198,6 +235,7 @@ void Play::homeTap() {
     applySettings();
     if (band_) band_->playSfx(audio::Sfx::UiBack);
     pulse(0);
+    wordNotes(transLine_ + kWordFrom * kTicksPerBeat, kWordStep * kTicksPerBeat);  // (design/title.md §5: the word played as it builds)
     if (bandDrives_ && band_ && band_->active() && band_->view().running) {
         const double bpm = band_->view().bpm > 1.0 ? static_cast<double>(band_->view().bpm) : 120.0;
         bandFilter(kHomeLowpassHz, static_cast<float>(60.0 / bpm));  // the bed carries on, filtered
@@ -245,6 +283,7 @@ void Play::homeLeaveCoop(const char* note) {
     screen_ = Screen::GameOver;  // (nothing drawn: renderScreens finds its screen gone)
     transGod(true);
     titleNote_[0] = 0;
+    wordNotes(transLine_ + kWordFrom * kTicksPerBeat, kWordStep * kTicksPerBeat);
     if (note && *note) {
         std::snprintf(titleNote_, sizeof titleNote_, "%s", note);
         titleNoteAt_ = transLine_ + 3.0 * kTicksPerBeat;  // (it stands under PLAY from when PLAY comes in, for two bars)
@@ -274,7 +313,23 @@ void Play::homeArrives(double line) {
 void Play::transitionFrame() {
     if (!flow_) return;
     const double now = transNow();
+    wordNotesFrame();
+    if (introPending_ && trans_ == Trans::None && screen_ == Screen::Title) {
+        // A cold start: the intro begins as soon as the band runs (its music is the clock), or after a second without it.
+        introWaitS_ += frameDt_;
+        const bool bandOn = !bandDrives_ || (band_ && band_->active() && band_->view().running);
+        if (bandOn || introWaitS_ >= kIntroWaitMaxS) startIntro();
+    }
     switch (trans_) {
+        case Trans::Intro: {
+            const float b = introBeats();
+            if (transFilter_ && b >= 0.0f) {
+                const double bpm = band_ && band_->view().bpm > 1.0 ? static_cast<double>(band_->view().bpm) : 120.0;
+                bandFilter(0.0f, static_cast<float>(60.0 / bpm));  // (the filter opens over the beat from the rule's throw)
+            }
+            if (b >= 2.0f * kBuildDone) trans_ = Trans::None;  // (the run behind has come up)
+            break;
+        }
         case Trans::None:
             // Co-op (screens.md "Transitions"): when the host's START or RETRY lands, every peer plays the drop-in from its own
             // screen on the same bar line.
@@ -305,65 +360,188 @@ void Play::transitionFrame() {
     }
 }
 
+Play::TitleLook Play::buildLook(float b, bool intro) const {
+    // design/title.md §4 and §5, the build home and the intro share, b beats from the rule's throw: the rule thrown from its centre
+    // to the edges in half a beat (its ends waking over the next three quarters); the fan snapping open on b 1 (6% past and back);
+    // the word played from b 1, a letter a sixteenth; on b 3 the tagline opening the rule from the centre, PLAY rising 14 px into
+    // its place (taking a tap from then), then CO-OP and SETTINGS with their captions, then the best, the note and the version.
+    // The intro adds the point of light (the beat before the throw) and a clamped flash on the throw.
+    TitleLook t = TitleLook::none();
+    if (intro && b >= -kIntroPointBeats && b < 0.0f) t.point = 1.0f;
+    if (b < 0.0f) return t;
+    const double bpm = band_ && band_->view().bpm > 1.0 ? static_cast<double>(band_->view().bpm) : 120.0;
+    const float beatS = static_cast<float>(60.0 / bpm);
+    const float throwU = clamp01(b / 0.5f);
+    t.rule = 1.0f;
+    t.ruleLen = 1.0f - (1.0f - throwU) * (1.0f - throwU);  // (thrown: fast, then easing)
+    t.point = intro ? 1.0f - throwU : 0.0f;
+    t.ends = smooth01((b - 0.25f) / 0.75f);
+    t.flash = intro ? clamp01(1.0f - b * beatS / kFlashS) : 0.0f;
+    t.fan = b < kWordFrom ? 0.0f : easeOutBack((b - kWordFrom) / 0.5f);
+    t.fanLevel = smooth01((b - kWordFrom) / 0.5f);
+    t.word = 1.0f;
+    t.struck = b - kWordFrom;
+    t.strikeStep = kWordStep;
+    t.gap = t.tag = smooth01((b - kControlsFrom) / 0.5f);
+    t.play = smooth01(b - kControlsFrom);
+    t.playLift = 1.0f - t.play;
+    t.playTaps = b >= kControlsFrom;
+    t.side = smooth01((b - kControlsFrom - 0.25f) * 2.0f);
+    t.sideTaps = t.side >= 1.0f;
+    t.best = smooth01((b - kControlsFrom - 0.5f) * 2.0f);
+    t.motes = smooth01(b - kControlsFrom);
+    return t;
+}
+
+float Play::introBeats() const {
+    if (introAt_ < 0.0) return -10.0f;
+    float b = transBeats(introAt_);
+    if (introSkipAt_ >= 0.0) {
+        // Skipped: from where it stood, everything arrives inside a beat.
+        const float u = smooth01(transBeats(introSkipAt_));
+        b = std::fmax(b, introSkipB_ + (kBuildDone - introSkipB_) * u);
+    }
+    return b;
+}
+
+void Play::startIntro() {
+    // design/title.md §4: on the next beat line the point; a beat later the rule's throw with a crash, the filter opening over its
+    // beat; a riser over the point's beat; the word's eight notes on their sixteenths.
+    introPending_ = false;
+    const double now = transNow();
+    introAt_ = (std::floor(now / kTicksPerBeat) + 1.0 + kIntroPointBeats) * kTicksPerBeat;
+    introSkipAt_ = -1.0;
+    trans_ = Trans::Intro;
+    titleQuietFrom_ = titleHideLine_ = titleWakeAt_ = -1.0;
+    wordNotes(introAt_ + kWordFrom * kTicksPerBeat, kWordStep * kTicksPerBeat);
+    if (bandDrives_ && band_ && band_->active() && band_->view().running) {
+        const double offset = clock_.offset();
+        bandFilter(kWaitLowpassHz, 0.05f);
+        band_->playRecipe(audio::Recipe::Whoosh, -1, 0.8f, 0.0f, introAt_ - kIntroPointBeats * kTicksPerBeat + offset, kIntroPointBeats);
+        band_->playRecipe(audio::Recipe::Impact, -1, 1.0f, 0.0f, introAt_ + offset);
+    }
+    RF_LOG("play: the intro: the rule's throw on %.0f (now %.0f)", introAt_, now);
+}
+
+void Play::wordNotes(double firstTick, double stepTicks) {
+    notesBase_ = firstTick;
+    notesStep_ = stepTicks;
+    notesPlaced_ = 0;
+}
+
+void Play::wordNotesFrame() {
+    // design/title.md §7: the word's eight notes, A3 C4 E4 A4 C5 E5 G5 A5, one a letter as it is struck, rising in velocity, panned
+    // across the word; each placed on its tick a beat ahead (a skipped intro plays no more of them). The lead's voice is the
+    // SawGlide recipe held still (a detuned saw pair through the lead's low-pass), half a beat long.
+    if (notesBase_ < 0.0) return;
+    static constexpr i32 kWordMidi[8] = {57, 60, 64, 69, 72, 76, 79, 81};
+    const double now = transNow();
+    const bool bandOn = bandDrives_ && band_ && band_->active() && band_->view().running;
+    for (u32 j = 0; j < 8; ++j) {
+        if (notesPlaced_ & (1u << j)) continue;
+        const double tick = notesBase_ + notesStep_ * static_cast<double>(j);
+        if (tick - now > kTicksPerBeat) break;
+        notesPlaced_ = static_cast<u8>(notesPlaced_ | (1u << j));
+        if (!bandOn || tick < now - 2.0) continue;  // (one already past is not played late)
+        const float gain = 0.55f + 0.03f * static_cast<float>(j), pan = (static_cast<float>(j) - 3.5f) / 3.5f * 0.6f;
+        band_->playRecipe(audio::Recipe::SawGlide, kWordMidi[j], gain, pan, tick + (coop() ? netBandOffset_ : clock_.offset()), 0.0f, 0.5f);
+    }
+    if (notesPlaced_ == 0xFF) notesBase_ = -1.0;
+}
+
 Play::TitleLook Play::titleLook() const {
+    if (introPending_) return TitleLook::none();  // (a cold start before its intro: black)
     TitleLook t;
     const double now = transNow();
     switch (trans_) {
+        case Trans::Intro:
+            if (introAt_ < 0.0) return TitleLook::none();
+            return buildLook(introBeats(), true);
         case Trans::Home: {
-            // Built over the bar: the waveform outward from the centre in a beat, the logo over the next two, then the tagline
-            // and the beat dots; on its last beat PLAY (which takes a tap from then), CO-OP and SETTINGS, the best and the note.
             const float b = transBeats(transLine_);
-            if (screen_ != Screen::Title || b < 0.0f) return TitleLook{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, false};
-            t.waveDrawn = clamp01(b);
-            t.logoWrite = clamp01((b - 1.0f) * 0.5f);
-            t.tag = smooth01((b - 3.0f) * 2.0f);
-            t.play = smooth01((b - 3.0f) * 2.0f);
-            t.side = smooth01((b - 3.25f) * 2.0f);
-            t.best = smooth01((b - 3.5f) * 2.0f);
-            t.playTaps = b >= 3.0f;
-            t.sideTaps = t.side >= 1.0f;
-            return t;
+            if (screen_ != Screen::Title || b < 0.0f) return TitleLook::none();
+            return buildLook(b, false);
         }
         case Trans::Wait: {
             if (transFrom_ != Screen::Title) return t;
+            // design/title.md §6, the drop's wait: the side controls, their captions and the best fade and sink over its first
+            // beat and the motes fall back into the rule; the fan folds flat and the tubes run hot by its last beat (in a two-beat
+            // wait over the first); in the last beat's first half the tagline goes and the rule closes its gap in an eighth while
+            // the word falls into its line (the rule taking its light); in the second half the rule draws in from both edges to its
+            // centre while it slides to the frame's centre and PLAY, still lit, shrinks into the same point.
             t = waitFrom_;
-            const float first = smooth01(transBeats(transTap_));  // the wait's first beat
-            const float last = smooth01(1.0f - static_cast<float>((transLine_ - now) / kTicksPerBeat));  // its last
+            const float first = smooth01(transBeats(transTap_));
             t.side = waitFrom_.side * (1.0f - first);
             t.best = waitFrom_.best * (1.0f - first);
-            t.tag = waitFrom_.tag * (1.0f - last);
-            t.waveFlat = last;
+            t.sideSink = first;
+            t.motes = waitFrom_.motes * (1.0f - first);
+            t.moteFall = first;
+            const double lastBeat = transLine_ - kTicksPerBeat;
+            const double span = std::fmax(lastBeat - transTap_, kTicksPerBeat);
+            const float fold = smooth01(static_cast<float>((now - transTap_) / span));
+            t.fan = waitFrom_.fan * (1.0f - fold);
+            t.heat = fold;
+            const float h1 = clamp01(static_cast<float>((now - lastBeat) / (0.5 * kTicksPerBeat)));
+            const float h2 = clamp01(static_cast<float>((now - (transLine_ - 0.5 * kTicksPerBeat)) / (0.5 * kTicksPerBeat)));
+            const float shut = clamp01(h1 * 4.0f);
+            t.tag = waitFrom_.tag * (1.0f - shut);
+            t.gap = waitFrom_.gap * (1.0f - shut);
+            t.fall = h1 * h1;  // (easing in)
+            t.ruleHeat = h1;
+            t.ends = waitFrom_.ends * (1.0f + 0.5f * fold) * (1.0f - h1);
+            t.ruleLen = waitFrom_.ruleLen * (1.0f - h2 * h2);
+            t.ruleY = h2 * h2;
+            t.playGather = h2 * h2;
+            t.point = h2;
+            t.pressed = true;
             t.playTaps = t.sideTaps = false;
             return t;
         }
-        case Trans::Arrive:
-            t.logoOut = clamp01(transBeats(transLine_));
-            t.playTaps = t.sideTaps = false;
-            return t;
+        case Trans::Arrive: return TitleLook::none();
         case Trans::None:
             if (backAt_ >= 0.0) {
+                // Back in the wait: everything returns over a beat from where it stood (the fan reopens, the tubes cool).
                 const float u = smooth01(transBeats(backAt_));
                 const auto up = [&](float from) { return from + (1.0f - from) * u; };
-                t.wave = up(backFrom_.wave);
-                t.waveDrawn = up(backFrom_.waveDrawn);
-                t.waveFlat = backFrom_.waveFlat * (1.0f - u);
-                t.logo = up(backFrom_.logo);
-                t.logoWrite = up(backFrom_.logoWrite);
+                const auto down = [&](float from) { return from * (1.0f - u); };
+                t.rule = up(backFrom_.rule);
+                t.ruleLen = up(backFrom_.ruleLen);
+                t.ends = up(backFrom_.ends);
+                t.gap = up(backFrom_.gap);
+                t.fan = up(backFrom_.fan);
+                t.fanLevel = up(backFrom_.fanLevel);
+                t.word = up(backFrom_.word);
+                t.motes = up(backFrom_.motes);
                 t.tag = up(backFrom_.tag);
                 t.play = up(backFrom_.play);
                 t.side = up(backFrom_.side);
                 t.best = up(backFrom_.best);
+                t.heat = down(backFrom_.heat);
+                t.fall = down(backFrom_.fall);
+                t.ruleHeat = down(backFrom_.ruleHeat);
+                t.ruleY = down(backFrom_.ruleY);
+                t.sideSink = down(backFrom_.sideSink);
+                t.moteFall = down(backFrom_.moteFall);
+                t.playGather = down(backFrom_.playGather);
             }
             if (titleHideLine_ >= 0.0 && (titleWakeAt_ >= 0.0 || transBeats(titleHideLine_) > 0.0f)) {
-                // screens.md "Title": the quiet title leaves as home builds it, backwards, a beat apart: the best and the note
-                // with the side controls, PLAY and its ship, the tagline and the beat dots, the logo, the waveform. Nothing takes
-                // a tap until it is all back (the input that wakes it presses nothing).
-                t.best *= 1.0f - titleGone(0.0f);
-                t.side *= 1.0f - titleGone(0.25f);
-                t.play *= 1.0f - titleGone(1.0f);
-                t.tag *= 1.0f - titleGone(1.5f);
-                t.logo *= 1.0f - titleGone(2.0f);
-                t.wave *= 1.0f - titleGone(3.0f);
+                // design/title.md §5, the quiet title leaving over its bar: beat 1 the best, the note, CO-OP and SETTINGS; beat 2
+                // PLAY; half a beat later the tagline, the rule's gap and the motes; beat 3 the fan folding flat and the word fading;
+                // beat 4 the rule drawing back into its centre. Nothing takes a tap until it is all back (the input that wakes it
+                // presses nothing).
+                const float g0 = titleGone(0.0f), g1 = titleGone(1.0f), g15 = titleGone(1.5f), g2 = titleGone(2.0f), g3 = titleGone(3.0f);
+                t.best *= 1.0f - g0;
+                t.side *= 1.0f - g0;
+                t.play *= 1.0f - g1;
+                t.tag *= 1.0f - g15;
+                t.gap *= 1.0f - g15;
+                t.motes *= 1.0f - g15;
+                t.fan *= 1.0f - g2;
+                t.fanLevel *= 1.0f - g2;
+                t.word *= 1.0f - g2;
+                t.ruleLen *= 1.0f - g3;
+                t.rule *= 1.0f - g3;
+                t.ends *= 1.0f - g3;
                 t.playTaps = t.sideTaps = false;
             }
             return t;
@@ -384,6 +562,21 @@ void Play::titleIdleFrame(UiPointer& ptr) {
     const bool input = uiActivity_;
     uiActivity_ = false;
     const double now = transNow();
+    if (trans_ == Trans::Intro || introPending_) {
+        // design/title.md §4: any input skips the intro (it is eaten): everything not yet on screen arrives inside a beat, and the
+        // word's notes not yet placed are not played.
+        const float b = introBeats();
+        if (input && b < kControlsFrom && introSkipAt_ < 0.0) {
+            if (introPending_) startIntro();
+            introSkipB_ = std::fmax(introBeats(), -kIntroPointBeats);
+            introSkipAt_ = now;
+            notesBase_ = -1.0;
+            ptr.pressed = ptr.released = ptr.down = false;
+            keyPrimary_ = keyBack_ = false;
+        }
+        titleQuietFrom_ = titleHideLine_ = titleWakeAt_ = -1.0;
+        return;
+    }
     if (!(flow_ && screen_ == Screen::Title && trans_ == Trans::None && !session_)) {
         titleQuietFrom_ = titleHideLine_ = titleWakeAt_ = -1.0;  // (not at rest: the count starts when it is)
         return;
@@ -415,8 +608,10 @@ void Play::titleIdleFrame(UiPointer& ptr) {
 
 float Play::transRunLight() const {
     if (!flow_) return 1.0f;
+    if (introPending_) return 0.0f;
     const double now = transNow();
     switch (trans_) {
+        case Trans::Intro: return clamp01((introBeats() - kBuildDone) * 0.25f);  // (the run behind comes up over the bar after)
         case Trans::Wait: {
             const double span = transLine_ - transTap_;
             const float p = span > 1.0 ? clamp01(static_cast<float>((now - transTap_) / span)) : 1.0f;
@@ -434,7 +629,10 @@ float Play::transRunLight() const {
 
 float Play::transExposure(float screenLevel) const {
     // The light of the run behind a screen: the drop-in's downbeat brings it to the run's full light over its beat; home
-    // moves it from the game over's (or the pause's) to the title's over the title's bar.
+    // moves it from the game over's (or the pause's) to the title's over the title's bar. The intro: black until the rule's throw,
+    // the background and its stars coming up over its beat.
+    if (introPending_) return 0.0f;
+    if (trans_ == Trans::Intro) return screenLevel * smooth01(introBeats());
     if (trans_ == Trans::Wait && transFrom_ == Screen::Paused) {
         const double span = transLine_ - transTap_;
         const float p = span > 1.0 ? clamp01(static_cast<float>((transNow() - transTap_) / span)) : 1.0f;
@@ -452,7 +650,9 @@ float Play::transExposure(float screenLevel) const {
 }
 
 bool Play::transInputLocked() const {
+    if (introPending_) return true;
     switch (trans_) {
+        case Trans::Intro: return introBeats() < kControlsFrom;
         case Trans::Wait:
         case Trans::Arrive: return true;
         case Trans::Home: return !(screen_ == Screen::Title && transBeats(transLine_) >= 3.0f);
@@ -481,54 +681,63 @@ void Play::drawTitleShip(Ui& ui, Vec2 c, float angle, float scale, float level, 
 }
 
 void Play::drawArrive(Ui& ui) {
-    // The drop-in's downbeat beat (screens.md "Transitions"): what the title (or the screen before) leaves on the way into the
-    // run's first bar.
+    // design/title.md §6, the downbeat (every drop-in: PLAY, RETRY, the pause's RESTART, a co-op START or RETRY): the point the
+    // light gathered into bursts: a clamped flash pool, eight rays (one a letter of the word, in its colour) leaving it from 60 to
+    // 1,360 px over half a beat, the lattice lit from it (PlayView::dropRing), and the ship drawing itself there with its halo over
+    // the beat. Reduce flashing: no flash, no rays.
     const float a = transBeats(transLine_);
     if (a >= 1.0f || a < 0.0f) return;
-    const float s = ui.s(), W = ui.W(), H = ui.H(), cx = 0.5f * W;
+    const float s = ui.s();
     const PlayerPose& pose = controller_.pose();
     const Vec2 ship = view_.toScreen(pose.pos);
     const float u = smooth01(a);
-    const Vec3 tone = palettes_->player[seat_ < kMaxPlayers ? seat_ : 0];
+    const Vec3 tone = palettes_->player[seat_ < kMaxPlayers ? seat_ : 0], white{1.0f, 1.0f, 1.0f};
     const bool calm = settings_.reduceFlashing || forcedReduceFlashing_;
-    // The waveform, straight now, snaps outward as a ring from the ship (it lights the lattice: PlayView::dropRing).
+    const double bpm = band_ && band_->view().bpm > 1.0 ? static_cast<double>(band_->view().bpm) : 120.0;
+    const float beatS = static_cast<float>(60.0 / bpm);
     if (!calm) {
-        const float reach = 0.5f * std::sqrt(W * W + H * H);  // (to the frame's corners from its centre at the beat's end)
-        const float r = (1.0f - (1.0f - a) * (1.0f - a)) * reach;
-        const Vec3 cyan = palette_->hue[1], mag = palette_->accent, hue0 = palette_->hue[0], white{1.0f, 1.0f, 1.0f};
-        const u32 segs = 96;
-        for (u32 j = 0; j < segs; ++j) {
-            const float v = static_cast<float>(j) / segs;
-            const Vec3 c = v < 0.33f ? cyan + (white - cyan) * (v / 0.33f)
-                                     : (v < 0.66f ? white + (hue0 - white) * ((v - 0.33f) / 0.33f) : hue0 + (mag - hue0) * ((v - 0.66f) / 0.34f));
-            const Vec3 k = ui.col(c, 1.6f * (1.0f - a));
-            const float a0 = kTwoPi * v, a1 = kTwoPi * (static_cast<float>(j) + 1.0f) / segs;
-            ui.draw().hud.line(ship + polarV(a0, r), ship + polarV(a1, r), 1.2f * s, k, k, 0);
+        const float flash = clamp01(1.0f - a * beatS / kFlashS);
+        if (flash > 0.0f) ui.draw().pools.glow(ship, 1000.0f * s, white * (0.3f * flash * hudFade()));
+        const float r = a / 0.5f;
+        if (r < 1.0f) {
+            const Vec3 c1 = palettes_->player[0], c3 = palette_->hue[0], c4 = palette_->hue[2];
+            for (u32 j = 0; j < 8; ++j) {
+                // (the letter's colour in the word's field: P1 cyan, white, the first enemy hue, the third)
+                const float f = (static_cast<float>(j) + 0.5f) / 8.0f;
+                const Vec3 c = f < 1.0f / 3.0f ? c1 + (white - c1) * (f * 3.0f) : (f < 2.0f / 3.0f ? white + (c3 - white) * (f * 3.0f - 1.0f) : c3 + (c4 - c3) * (f * 3.0f - 2.0f));
+                const float ang = -0.25f * kTwoPi + kTwoPi * (static_cast<float>(j) + 0.5f) / 8.0f;
+                const float head = kRayFrom + (kRayTo - kRayFrom) * (1.0f - (1.0f - r) * (1.0f - r));
+                const float tail = kRayFrom + (kRayTo - kRayFrom) * smooth01(r - 0.25f);
+                const Vec3 k = ui.col(c, 2.0f * (1.0f - r));
+                ui.draw().hud.line(ship + polarV(ang, tail * s), ship + polarV(ang, head * s), 1.6f * s, k * 0.2f, k, 0);
+                ui.draw().hud.line(ship + polarV(ang, tail * s), ship + polarV(ang, head * s), 6.0f * s, k * 0.02f, k * 0.12f, 0);
+            }
         }
     }
-    if (transFrom_ == Screen::Title) {
-        // The logo's letters streak out to both sides (as the Track name card's do).
-        drawTitleLogo(ui, 1.0f, 1.0f, a, 0.0f);
-        // PLAY shrinks into the ship; its outline becomes the halo, which the run draws once the beat is over.
-        const Vec2 c0{cx, 759.0f * s}, size0{600.0f * s, 140.0f * s};
-        const float r1 = kHaloRefPx * s;
-        const Vec2 c = c0 + (ship - c0) * u;
-        const Vec2 size = size0 + (Vec2{2.0f * r1, 2.0f * r1} - size0) * u;
-        ui.roundRect(c - size * 0.5f, c + size * 0.5f, 0.5f * size.y, 1.4f * s, tone, 1.6f * (1.0f - smooth01((a - 0.7f) / 0.3f)));
-        // The title's ship glides from under PLAY to the centre of the frame (where the run's ship is).
-        const Vec2 from{cx, 930.0f * s};
-        const float turn = wrapAngle(pose.heading - titleShipFrom_);
-        drawTitleShip(ui, from + (ship - from) * u, titleShipFrom_ + turn * u, 1.0f, 1.0f, false);
-    } else {
-        // RETRY (or a co-op START): no logo; the ship draws itself at the centre with its halo.
-        drawTitleShip(ui, ship, pose.heading, 0.4f + 0.6f * u, u, false);
-        const u32 segs = static_cast<u32>(48.0f * u);
-        const Vec3 k = ui.col(tone, 1.4f);
-        for (u32 j = 0; j < segs; ++j) {
-            const float a0 = -0.25f * kTwoPi + kTwoPi * static_cast<float>(j) / 48.0f, a1 = a0 + kTwoPi / 48.0f;
-            ui.draw().hud.line(ship + polarV(a0, kHaloRefPx * s), ship + polarV(a1, kHaloRefPx * s), 1.0f * s, k, k, 0);
-        }
+    // The ship draws itself at the point with its halo over the beat (as RETRY's always has).
+    drawTitleShip(ui, ship, pose.heading, 0.4f + 0.6f * u, u, false);
+    const u32 segs = static_cast<u32>(48.0f * u);
+    const Vec3 k = ui.col(tone, 1.4f);
+    for (u32 j = 0; j < segs; ++j) {
+        const float a0 = -0.25f * kTwoPi + kTwoPi * static_cast<float>(j) / 48.0f, a1 = a0 + kTwoPi / 48.0f;
+        ui.draw().hud.line(ship + polarV(a0, kHaloRefPx * s), ship + polarV(a1, kHaloRefPx * s), 1.0f * s, k, k, 0);
     }
+}
+
+void Play::drawDropGather(Ui& ui) {
+    // design/title.md §6: RETRY, the pause's RESTART and the co-op lobby's START: in the wait's last half beat their lit control
+    // shrinks into the point at the frame's centre (PLAY's own is drawn by the title).
+    if (trans_ != Trans::Wait || transFrom_ == Screen::Title) return;
+    const float h2 = clamp01(static_cast<float>((transNow() - (transLine_ - 0.5 * kTicksPerBeat)) / (0.5 * kTicksPerBeat)));
+    if (h2 <= 0.0f) return;
+    const float s = ui.s(), g = h2 * h2;
+    const Vec2 to{0.5f * ui.W(), 0.5f * ui.H()};
+    const Vec2 c = dropCtlC_ + (to - dropCtlC_) * g;
+    const Vec2 half = dropCtlHalf_ * (1.0f - g);
+    const Vec3 tone = palettes_->player[seat_ < kMaxPlayers ? seat_ : 0], white{1.0f, 1.0f, 1.0f};
+    if (half.y > 0.5f * s) ui.roundRect(c - half, c + half, half.y, 1.5f * s, tone, 2.2f);
+    ui.dot(c, (2.0f + 3.0f * h2) * s, white, 0.6f + 1.4f * h2);
+    ui.draw().pools.glow(c, (40.0f + 80.0f * h2) * s, tone * (0.15f * h2 * hudFade()));
 }
 
 }  // namespace rf

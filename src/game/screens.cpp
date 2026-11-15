@@ -12,6 +12,7 @@
 #include "content/icons.h"
 #include "core/build_info.h"
 #include "core/log.h"
+#include "core/platform.h"
 #include "game/play.h"
 #include "game/play_hud.h"
 
@@ -24,11 +25,6 @@ constexpr float kTwoPi = 6.28318530718f;
 Vec2 polarV(float a, float r) { return Vec2{std::cos(a) * r, std::sin(a) * r}; }
 float clamp01(float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
 
-// screens.md "Title", the wordmark (the owner, 2026-11-14: "make the title of the game at the main menu look way more polished",
-// then of a version in letters of its own: "i like the previous font"): the game's font's own strokes, drawn as chrome neon.
-constexpr float kLogoHorizon = 0.56f;  // the chrome's horizon in each letter (down from the caps' top, in cap heights)
-constexpr float kLogoTubeRefPx = 5.5f, kLogoHaloShare = 3.0f, kLogoCoreShare = 0.3f;  // half widths at 1080 lines
-constexpr u32 kLogoDepth = 6;          // the extrusion's layers, each a little down and right
 struct UiColour {
     const Ui* ui;
 };
@@ -180,6 +176,23 @@ bool Ui::area(u32 id, Vec2 a, Vec2 b, bool& pressed) {
     return hit(id, a, b, pressed);
 }
 
+bool Ui::button(u32 id, Vec2 a, Vec2 b, const char* label, bool& pressed, bool& over) {
+    keep(a, b, true, label);
+    const bool tapped = hit(id, a, b, pressed);
+    over = !pressed && hover(a, b);
+    return tapped;
+}
+
+bool Ui::hover(Vec2 a, Vec2 b) const {
+#if RF_MOBILE
+    (void)a;
+    (void)b;
+    return false;  // (a touch screen has no hover: the pointer stays where the finger lifted)
+#else
+    return !p_.down && inside(a, b);
+#endif
+}
+
 bool Ui::hit(u32 id, Vec2 a, Vec2 b, bool& pressed) {
     const bool in = inside(a, b);
     if (p_.pressed && in) active_ = id;
@@ -192,20 +205,26 @@ bool Ui::pill(u32 id, Vec2 c, Vec2 size, const char* label, float cap, bool prim
     bool pressed = false;
     keep(a, b, true, label);
     const bool tapped = enabled && hit(id, a, b, pressed);
+    // design/title.md (2026-11-14, the folder's rule: clear, high-contrast hover and pressed states): with a mouse over it, a white
+    // fill at 0.10, the outline 3 px at 1.6 and the label at 1.5.
+    const bool over = enabled && !pressed && hover(a, b);
     const Vec3 tone = primary ? player_ : (colour.x + colour.y + colour.z > 0.0f ? colour : Vec3{1.0f, 1.0f, 1.0f});
     const float r = 0.5f * size.y;
     // screens.md: a control that cannot be used yet is drawn disabled (outline at 0.3, label at 0.4), unfilled.
     if (enabled && (pressed || selected || primary)) {
         // Glass: a capsule as tall as the pill (primary controls are always filled in their colour).
-        const float level = pressed ? 0.45f : (primary ? 0.30f : 0.20f);
+        const float level = pressed ? 0.45f : (primary ? (over ? 0.40f : 0.30f) : 0.20f);
         const Vec3 g = col(tone, level);
         d_->hud.line({a.x + r, c.y}, {b.x - r, c.y}, r, g, g, 0);
         d_->pools.glow(c, size.x * 0.55f, tone * ((pressed ? 0.25f : 0.10f) * hudFade()));  // (M6: the transitions' fade)
+    } else if (over) {
+        const Vec3 g = col(Vec3{1.0f, 1.0f, 1.0f}, 0.10f);
+        d_->hud.line({a.x + r, c.y}, {b.x - r, c.y}, r, g, g, 0);
     }
-    const float outline = !enabled ? 0.3f : (pressed ? 2.0f : (selected ? 1.6f : 0.9f));
-    roundRect(a, b, r, (pressed ? 1.5f : 1.0f) * s_, tone, outline);
+    const float outline = !enabled ? 0.3f : (pressed ? 2.0f : (over ? 1.6f : (selected ? 1.6f : 0.9f)));
+    roundRect(a, b, r, (pressed || over ? 1.5f : 1.0f) * s_, tone, outline);
     ++quiet_;
-    text({c.x, c.y + 0.5f * cap}, cap, Vec3{1.0f, 1.0f, 1.0f}, !enabled ? 0.4f : (pressed ? 1.8f : 1.1f), label);
+    text({c.x, c.y + 0.5f * cap}, cap, Vec3{1.0f, 1.0f, 1.0f}, !enabled ? 0.4f : (pressed ? 1.8f : (over ? 1.5f : 1.1f)), label);
     --quiet_;
     return tapped;
 }
@@ -358,6 +377,7 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
             break;
         default: break;
     }
+    drawDropGather(ui_);  // (design/title.md §6: RETRY, RESTART and START shrink into the point in the wait's last half beat)
     ui_.end();
     uiPtr_.pressed = uiPtr_.released = false;
 }
@@ -386,283 +406,37 @@ void Play::screenNotice(Ui& ui) {
         settings_.noticeSeen = true;
         saveSettings(settings_);
         screen_ = Screen::Title;
+        if (!opt_.autoplay) introPending_ = true;  // (design/title.md §4: the intro follows the notice)
         if (band_) band_->playSfx(audio::Sfx::UiConfirm);
     }
     keyPrimary_ = keyBack_ = false;
 }
 
-void Play::drawTitleWave(Ui& ui, float level, float flat, float drawn) {
-    // The waveform: the actual music, about a bar of the master bus, across the width at 48% height, cyan -> white -> the first
-    // enemy hue -> magenta, with a faint mirrored echo. M6 (screens.md "Transitions"): it flattens toward a straight line in the
-    // drop-in's last beat, and draws itself outward from the centre as home builds the title.
-    if (level <= 0.0f || drawn <= 0.0f) return;
-    const float s = ui.s(), W = ui.W(), H = ui.H();
-    const Vec3 white{1.0f, 1.0f, 1.0f};
-    const Vec3 cyan = palette_->hue[1], mag = palette_->accent, hue0 = palette_->hue[0];
-    const u32 n = band_ && band_->active() ? band_->scope(scope_, kScopeN) : 0;
-    const float y0 = 0.48f * H;
-    const float amp = 70.0f * s * (1.0f - flat);
-    const auto colourAt = [&](float u) {
-        if (u < 0.33f) return cyan + (white - cyan) * (u / 0.33f);
-        if (u < 0.66f) return white + (hue0 - white) * ((u - 0.33f) / 0.33f);
-        return hue0 + (mag - hue0) * ((u - 0.66f) / 0.34f);
-    };
-    const u32 pts = 240;
-    Vec2 prev{}, prevEcho{};
-    for (u32 k = 0; k <= pts; ++k) {
-        const float u = static_cast<float>(k) / pts;
-        float v = 0.0f;
-        if (n) {
-            // A bar of the master bus, smoothed over five scope points (each a 128-frame peak).
-            const i32 c = static_cast<i32>(u * static_cast<float>(n - 1));
-            float sum = 0.0f;
-            for (i32 j = -2; j <= 2; ++j) {
-                const i32 q = c + j < 0 ? 0 : (c + j >= static_cast<i32>(n) ? static_cast<i32>(n) - 1 : c + j);
-                sum += scope_[q];
-            }
-            v = sum * 0.2f;
-        } else {
-            v = 0.25f * std::sin(u * 40.0f + static_cast<float>(music1_ / 24.0));
-        }
-        v = std::fmax(-1.0f, std::fmin(1.0f, v * 2.2f));
-        const Vec2 p{W * u, y0 - v * amp};
-        const Vec2 pe{W * u, y0 + v * amp * 0.6f};
-        if (k && std::fabs(u - 0.5f) <= 0.5f * drawn + 1e-4f) {
-            const Vec3 c = ui.col(colourAt(u), 1.6f * level);
-            ui.draw().hud.line(prev, p, 1.0f * s, c, c, 0);
-            const Vec3 ce = ui.col(Vec3{0.3f, 0.35f, 1.0f}, 0.45f * level * (1.0f - flat));
-            ui.draw().hud.line(prevEcho, pe, 0.6f * s, ce, ce, 0);
-        }
-        prev = p;
-        prevEcho = pe;
-    }
-}
-
-void Play::drawTitleLogo(Ui& ui, float level, float write, float out, float tag) {
-    // screens.md "Title", the wordmark (the owner, 2026-11-14: "make the title of the game at the main menu look way more
-    // polished"; of letters of its own, "i like the previous font"): RAVEFORM in the game's font, each stroke drawn as chrome
-    // neon: a soft pooled halo, a glowing extrusion down and right, the tube (above each letter's horizon the colour field the
-    // waveform has, a little white at the top; below it the accent's chrome deepening to the foot) and a white-hot core. Every
-    // second bar a sheen crosses the letters on the downbeat; glints at the R's top and the M's foot (the kick, the backbeat); a
-    // laser underline in the field's colours over the tagline. The whole swells 2% on the kick. M6 (screens.md "Transitions"): home writes it letter by letter (its strokes drawn on along their paths); the
-    // drop-in's downbeat streaks its letters out to both sides.
-    const float s = ui.s(), W = ui.W(), cx = 0.5f * W;
-    const Vec3 white{1.0f, 1.0f, 1.0f};
-    const Vec3 cyan = palette_->hue[1], mag = palette_->accent, hue0 = palette_->hue[0], deep = palette_->hue[2];
-    const float k = view_.kick();
-    const float cap = 190.0f * s * (1.0f + 0.02f * k);
-    const char* logo = "RAVEFORM";
-    const float w = ui.measure(cap, logo);  // (the font's advance: a cap height a letter)
-    const float top = 216.0f * s, base = top + cap, x0 = cx - 0.5f * w;
-    const auto field = [&](float u) {
-        return u < 0.33f ? cyan + (white - cyan) * (u / 0.33f)
-                         : (u < 0.66f ? white + (hue0 - white) * ((u - 0.33f) / 0.33f) : hue0 + (mag - hue0) * ((u - 0.66f) / 0.34f));
-    };
-    // The chrome by height in a letter (y 0 top .. 1 foot), its field colour by the place across the word (u 0 .. 1).
-    const auto chrome = [&](float u, float y, float& lvOut) {
-        if (y < kLogoHorizon) {
-            lvOut = 1.5f;
-            return mix(white, field(u), 0.65f + 0.35f * (y / kLogoHorizon));  // (the field's colour, a little white at the top)
-        }
-        const float f = (y - kLogoHorizon) / (1.0f - kLogoHorizon);
-        lvOut = 1.7f - 0.6f * f;
-        return mix(mix(field(u), mag, 0.55f), deep, 0.35f * f);  // (the accent's chrome, deepening to the foot)
-    };
-    // The sheen: on the downbeat of every second bar, across the word in a beat and a half.
-    const double heard = transNow();  // (the run's music: the band's heard clock in the game, the simulated one in pictures)
-    const float sheenBeats = static_cast<float>(std::fmod(std::fmax(heard, 0.0), 2.0 * kTicksPerBar) / kTicksPerBeat);
-    const float sheenAt = -0.15f + 1.3f * (sheenBeats / 1.5f);
-    const auto sheen = [&](float u) {
-        if (sheenBeats > 1.5f) return 0.0f;
-        const float d = (u - sheenAt) / 0.09f;
-        return std::exp(-d * d);
-    };
-    const float beatPos = static_cast<float>(std::fmod(std::fmax(heard, 0.0), kTicksPerBar) / kTicksPerBeat);
-    const float backbeat = (static_cast<u32>(beatPos) % 2u == 1u) ? std::exp(-6.0f * (beatPos - std::floor(beatPos))) : 0.0f;
-
-    struct Seg {
-        Vec2 a, b;
-        float ya, yb;
-        u32 flags;  // flat ends where the stroke runs straight on into the next (look.md 4 joints: no beads)
-    };
-    Seg segs[96];
-    float xLetter = x0;
-    if (level > 0.0f && write > 0.0f) {
-        for (u32 j = 0; j < 8; ++j) {
-            const float on = std::fmax(0.0f, std::fmin(1.0f, (write * 10.0f - static_cast<float>(j)) * 0.5f));
-            const float lx = xLetter;
-            xLetter += cap;
-            if (on <= 0.0f) continue;
-            // The letter's segments in its box (the O's ring and speaker as polygons), split at the horizon so the chrome turns
-            // there, in drawing order.
-            u32 n = 0;
-            const auto add = [&](float ax, float ay, float bx, float by) {
-                const auto place = [&](float x, float y) { return Vec2{lx + x * cap, top + y * cap}; };
-                if ((ay - kLogoHorizon) * (by - kLogoHorizon) < 0.0f && n + 2 <= countOf(segs)) {
-                    const float t = (kLogoHorizon - ay) / (by - ay);
-                    const float mx = ax + (bx - ax) * t;
-                    segs[n++] = Seg{place(ax, ay), place(mx, kLogoHorizon), ay, kLogoHorizon, 0u};
-                    segs[n++] = Seg{place(mx, kLogoHorizon), place(bx, by), kLogoHorizon, by, 0u};
-                } else if (n < countOf(segs)) {
-                    segs[n++] = Seg{place(ax, ay), place(bx, by), ay, by, 0u};
-                }
-            };
-            {
-                // The font's strokes (font units: x 0..6 across a cap height's advance, y 6 at the caps' top, 0 at the baseline).
-                Vec2 fa[48], fb[48];
-                const u32 m = ui.font().glyphSegments(logo[j], fa, fb, 48);
-                const float unit = 1.0f / VectorFont::kCapUnits;
-                for (u32 q = 0; q < m; ++q) add(fa[q].x * unit, 1.0f - fa[q].y * unit, fb[q].x * unit, 1.0f - fb[q].y * unit);
-            }
-            // Where two segments meet running straight on (within 20 degrees), both ends are flat: one tube, no bead.
-            for (u32 q = 0; q < n; ++q)
-                for (u32 r = 0; r < n; ++r) {
-                    if (q == r) continue;
-                    const Vec2 dq = normalizeOr(segs[q].b - segs[q].a, Vec2{1.0f, 0.0f}), dr = normalizeOr(segs[r].b - segs[r].a, Vec2{1.0f, 0.0f});
-                    const float near = 0.5f * s;
-                    if (lengthSq(segs[q].b - segs[r].a) <= near * near && dot(dq, dr) >= 0.94f) {
-                        segs[q].flags |= kFlatEnd;
-                        segs[r].flags |= kFlatStart;
-                    }
-                    if (lengthSq(segs[q].b - segs[r].b) <= near * near && dot(dq, dr) <= -0.94f) {
-                        segs[q].flags |= kFlatEnd;
-                        segs[r].flags |= kFlatEnd;
-                    }
-                    if (lengthSq(segs[q].a - segs[r].a) <= near * near && dot(dq, dr) <= -0.94f) {
-                        segs[q].flags |= kFlatStart;
-                        segs[r].flags |= kFlatStart;
-                    }
-                }
-            // Written on along its path: the first `on` of its length.
-            float total = 0.0f;
-            for (u32 q = 0; q < n; ++q) total += length(segs[q].b - segs[q].a);
-            float budget = on * total;
-            u32 shown = 0;
-            for (; shown < n && budget > 0.0f; ++shown) {
-                const float len = length(segs[shown].b - segs[shown].a);
-                if (len > budget && len > 1e-4f) {
-                    const float t = budget / len;
-                    segs[shown].b = segs[shown].a + (segs[shown].b - segs[shown].a) * t;
-                    segs[shown].yb = segs[shown].ya + (segs[shown].yb - segs[shown].ya) * t;
-                    segs[shown].flags &= ~static_cast<u32>(kFlatEnd);  // (the end being drawn is round)
-                }
-                budget -= len;
-            }
-            const float side = j < 4 ? -1.0f : 1.0f;
-            const float tube = kLogoTubeRefPx * s * (0.4f + 0.6f * on);
-            for (u32 g = 0; g < (out > 0.0f ? 3u : 1u); ++g) {
-                const float lag = 1.0f - 0.3f * static_cast<float>(g);
-                const Vec2 dx{side * 0.75f * W * out * out * lag, 0.0f};
-                const float lv = level * (1.0f - out) * (g == 0 ? 1.0f : 0.45f / static_cast<float>(g));
-                if (lv <= 0.01f) continue;
-                CapsuleBatch& hud = ui.draw().hud;
-                // The halo: soft pooled light along every stroke (the HUD is drawn after the bloom, so its glow is drawn here).
-                const float haloR = tube * kLogoHaloShare * 2.2f;
-                for (u32 q = 0; q < shown; ++q) {
-                    const Vec2 a = segs[q].a + dx, b = segs[q].b + dx;
-                    const float len = length(b - a);
-                    const u32 discs = 1u + static_cast<u32>(len / (0.6f * haloR));
-                    for (u32 t = 0; t <= discs; ++t) {
-                        const Vec2 p = a + (b - a) * (static_cast<float>(t) / static_cast<float>(discs));
-                        const float u = clamp01((p.x - dx.x - x0) / w), sh = sheen(u);  // (the sheen: a burst of light along the tubes)
-                        ui.draw().pools.glow(p, haloR * (1.0f + 0.6f * sh), mix(field(u), white, 0.5f * sh) * ((0.022f + 0.11f * sh) * lv * hudFade()));
-                    }
-                }
-                // The extrusion: layers down and right in the deep hue, dimmer as they go back.
-                for (u32 d = kLogoDepth; d >= 1; --d) {
-                    const Vec2 off = Vec2{0.9f, 1.3f} * (static_cast<float>(d) * 1.4f * s) + dx;
-                    const Vec3 c = ui.col(mix(deep, mag, 0.4f), 0.26f * lv * (1.0f - static_cast<float>(d) / (kLogoDepth + 1.0f)));
-                    for (u32 q = 0; q < shown; ++q) hud.line(segs[q].a + off, segs[q].b + off, tube, c, c, segs[q].flags);
-                }
-                for (u32 q = 0; q < shown; ++q) {
-                    const Seg& g0 = segs[q];
-                    const float ua = clamp01((g0.a.x - x0) / w), ub = clamp01((g0.b.x - x0) / w);
-                    float la = 0.0f, lb = 0.0f;
-                    const Vec3 ca = chrome(ua, g0.ya, la), cb = chrome(ub, g0.yb, lb);
-                    const Vec2 a = g0.a + dx, b = g0.b + dx;
-                    const float sa = sheen(ua), sb = sheen(ub);
-                    hud.line(a, b, tube, ui.col(mix(ca, white, 0.6f * sa), (la + 1.2f * sa) * lv), ui.col(mix(cb, white, 0.6f * sb), (lb + 1.2f * sb) * lv),
-                             g0.flags);
-                    const float ka = 1.3f - 0.8f * g0.ya + 2.0f * sa, kb = 1.3f - 0.8f * g0.yb + 2.0f * sb;
-                    hud.line(a, b, tube * kLogoCoreShare, ui.col(white, ka * lv), ui.col(white, kb * lv), g0.flags);  // the white-hot core
-                }
-            }
-        }
-        const float lv = level * write * (1.0f - out);
-        ui.draw().pools.glow({cx, top + 0.5f * cap}, 0.55f * w, hue0 * (0.08f * lv * hudFade()));
-        // The glints: four-point stars at the R's top corner (on the kick) and the M's right foot (on the backbeat).
-        const auto glint = [&](Vec2 at, float amount) {
-            if (amount <= 0.02f) return;
-            for (u32 a = 0; a < 4; ++a) {
-                const float len = (a % 2u ? 16.0f : 34.0f) * s * (0.6f + 0.6f * amount);
-                const Vec2 dv = polarV(kTwoPi * 0.125f * static_cast<float>(a), len);  // (0, 45, 90, 135 degrees, both ways)
-                const Vec3 c = ui.col(white, (0.6f + 1.2f * amount) * lv);
-                ui.draw().hud.line(at - dv, at, 0.8f * s, Vec3{}, c, 0);
-                ui.draw().hud.line(at, at + dv, 0.8f * s, c, Vec3{}, 0);
-            }
-        };
-        glint(Vec2{x0 + 0.02f * cap, top}, 0.35f + 0.65f * k);
-        glint(Vec2{x0 + w - 0.17f * cap, base}, 0.35f + 0.65f * backbeat);
-        // The laser underline: the field's colours, fading out at both ends, wider on the kick.
-        const float y = base + 30.0f * s, uw = 1.08f * w, ux = cx - 0.5f * uw;
-        const u32 parts = 12;
-        for (u32 q = 0; q < parts; ++q) {
-            const float u0 = static_cast<float>(q) / parts, u1 = static_cast<float>(q + 1) / parts;
-            const auto fade = [](float u) { return clamp01(std::fmin(u, 1.0f - u) / 0.18f); };
-            const Vec3 c0 = ui.col(field(u0), 1.4f * lv * fade(u0)), c1 = ui.col(field(u1), 1.4f * lv * fade(u1));
-            ui.draw().hud.line(Vec2{ux + uw * u0, y}, Vec2{ux + uw * u1, y}, (1.0f + 0.4f * k) * s, c0, c1, 0);
-            ui.draw().hud.line(Vec2{ux + uw * u0, y}, Vec2{ux + uw * u1, y}, 3.5f * s, c0 * 0.18f, c1 * 0.18f, 0);
-        }
-    }
-    if (tag <= 0.0f) return;
-    ui.text({cx, base + 74.0f * s}, 22.0f * s, mag, 1.3f * tag, "SOUND  BECOMES  LIGHT");
-    // Beat dots: the current beat lit, beat 1 in the accent.
-    const u32 beat = static_cast<u32>(std::fmod(clock_.heardNow(), kTicksPerBar) / kTicksPerBeat) % 4u;
-    for (u32 b = 0; b < 4; ++b) {
-        const Vec2 c{cx + (static_cast<float>(b) - 1.5f) * 36.0f * s, base + 108.0f * s};
-        ui.dot(c, 4.0f * s, b == 0 ? mag : white, (b == beat ? 1.8f : 0.35f) * tag);
-    }
-}
-
 void Play::screenTitle(Ui& ui) {
+    // Title v2 (design/title.md; game/title_v2.cpp): the fan, the word, the rule with its tagline and the motes, PLAY with its beat
+    // dots, CO-OP and SETTINGS with their captions, the best, the note and the version. M6 (screens.md "Transitions"): each piece
+    // at the level the drop-in's wait, home's building, the intro or the quiet title gives it.
     const float s = ui.s(), W = ui.W(), H = ui.H(), cx = 0.5f * W;
     const Vec3 white{1.0f, 1.0f, 1.0f};
-    // M6 (screens.md "Transitions"): each piece at the level the drop-in's wait or home's building gives it.
     const TitleLook tl = titleLook();
-    drawTitleWave(ui, tl.wave, tl.waveFlat, tl.waveDrawn);
-    drawTitleLogo(ui, tl.logo, tl.logoWrite, tl.logoOut, tl.tag);
-    // PLAY (one tap: the drop-in), CO-OP (M4 stage B: the join screen), SETTINGS.
-    const float y = 759.0f * s;
+    drawTitle(ui, tl);
     const bool waiting = trans_ == Trans::Wait && transFrom_ == Screen::Title;
     if (tl.play > 0.0f) {
         setHudFade(tl.play);
-        // (in the wait PLAY keeps its pressed look, and four dots under its label count the beats to the bar line)
-        if ((ui.pill(10, {cx, y}, {600.0f * s, 140.0f * s}, "PLAY", 52.0f * s, true, true, waiting) || keyPrimary_) && tl.playTaps) dropInTap(Screen::Title);
-        if (waiting) {
-            const float left = static_cast<float>((transLine_ - transNow()) / kTicksPerBeat);
-            for (u32 b = 0; b < 4; ++b) {
-                const Vec2 c{cx + (static_cast<float>(b) - 1.5f) * 30.0f * s, y + 48.0f * s};
-                ui.dot(c, 4.0f * s, white, static_cast<float>(b) < left ? 1.8f : 0.3f);
-            }
-        }
+        if ((titlePlay(ui, tl) || keyPrimary_) && tl.playTaps) dropInTap(Screen::Title);
     }
+    const float sink = 30.0f * s * tl.sideSink;
     if (tl.side > 0.0f) {
+        // CO-OP (M4 stage B: the join screen) and SETTINGS, each with its caption 28 px under it.
         setHudFade(tl.side);
-        if (ui.pill(11, {cx - 505.0f * s, y}, {330.0f * s, 104.0f * s}, "CO-OP", 30.0f * s, false) && tl.sideTaps) {
+        const float y = 800.0f * s + sink, capY = y + (52.0f + 28.0f + 12.0f) * s;
+        if (ui.pill(11, {cx - 560.0f * s, y}, {340.0f * s, 104.0f * s}, "CO-OP", 30.0f * s, false) && tl.sideTaps) {
             if (band_) band_->playSfx(audio::Sfx::UiConfirm);
             openCoop();
         }
-        if (ui.pill(12, {cx + 505.0f * s, y}, {330.0f * s, 104.0f * s}, "SETTINGS", 30.0f * s, false) && tl.sideTaps) openSettings(Screen::Title);
-    }
-    // The ship under PLAY, idling, turning toward the last touch (in the wait it holds its heading for the glide).
-    if (tl.play > 0.0f) {
-        setHudFade(tl.play);
-        const Vec2 c{cx, 930.0f * s};
-        if (!waiting) {
-            const float target = std::atan2(uiPtr_.pos.y - c.y, uiPtr_.pos.x - c.x);
-            titleShipAngle_ += wrapAngle(target - titleShipAngle_) * 0.08f;
-        }
-        drawTitleShip(ui, c, titleShipAngle_, 1.0f, 1.0f, true);
+        if (ui.pill(12, {cx + 560.0f * s, y}, {340.0f * s, 104.0f * s}, "SETTINGS", 30.0f * s, false) && tl.sideTaps) openSettings(Screen::Title);
+        ui.text({cx - 560.0f * s, capY}, 12.0f * s, white, 0.5f, "2-4 PLAYERS   ONE WI-FI");
+        ui.text({cx + 560.0f * s, capY}, 12.0f * s, white, 0.5f, "SOUND   CONTROLS   LOOK");
     }
     // Best, bottom left in gold; the note, bottom right.
     if (tl.best > 0.0f) {
@@ -677,25 +451,25 @@ void Play::screenTitle(Ui& ui) {
             std::snprintf(line, sizeof line, "BEST -");
         }
         const float m = std::fmax(132.0f * s, ui.insetMin().x);
-        ui.text({m, H - 54.0f * s}, 14.0f * s, palettes_->player[3], 1.4f, line, 0.0f);
+        ui.text({m, H - 54.0f * s + sink}, 14.0f * s, palettes_->player[3], 1.4f, line, 0.0f);
         if (scores_.count && scores_.entry[0].setComplete) {
             // M6 (screens.md "A finished run"): a run that finished the set has a gold star in the table.
-            const Vec2 c{m + ui.measure(14.0f * s, line) + 24.0f * s, H - 54.0f * s - 7.0f * s};
+            const Vec2 c{m + ui.measure(14.0f * s, line) + 24.0f * s, H - 54.0f * s - 7.0f * s + sink};
             const Vec3 g = ui.col(palettes_->player[3], 2.0f);
             for (u32 a = 0; a < 4; ++a) {
                 const Vec2 dv = polarV(kTwoPi * static_cast<float>(a) / 8.0f, 11.0f * s);
                 ui.draw().hud.line(c - dv, c + dv, 0.9f * s, g, g, 0);
             }
         }
-        ui.text({W - std::fmax(132.0f * s, ui.insetMax().x), H - 54.0f * s}, 14.0f * s, white, 0.5f, "HEADPHONES RECOMMENDED", 1.0f);
+        ui.text({W - std::fmax(132.0f * s, ui.insetMax().x), H - 54.0f * s + sink}, 14.0f * s, white, 0.5f, "HEADPHONES RECOMMENDED", 1.0f);
         // screens.md "Title" (the owner, 2026-11-14: "include a version # with build date at the bottom right at the main menu"):
         // under the note, the version, the build's commit and its date and minute (src/core/build_info).
-        ui.text({W - std::fmax(132.0f * s, ui.insetMax().x), H - 30.0f * s}, 11.0f * s, white, 0.4f, buildStampLine(), 1.0f);
+        ui.text({W - std::fmax(132.0f * s, ui.insetMax().x), H - 30.0f * s + sink}, 11.0f * s, white, 0.4f, buildStampLine(), 1.0f);
     }
     setHudFade(1.0f);
-    // M4 stage B: why a co-op session ended (the host left, the connection was lost), for a few seconds.
+    // M4 stage B: why a co-op session ended (the host left, the connection was lost), for a few seconds (design/title.md: y 940).
     coopMessageT_ += frameDt_;
-    if (coopMessage_[0] && coopMessageT_ < 10.0f && trans_ == Trans::None) ui.text({cx, 870.0f * s}, 18.0f * s, palettes_->danger, 1.5f, coopMessage_);
+    if (coopMessage_[0] && coopMessageT_ < 10.0f && trans_ == Trans::None) ui.text({cx, 940.0f * s}, 18.0f * s, palettes_->danger, 1.5f, coopMessage_);
     // c9218dc (screens.md "Every other way in or out of a run"): a peer whose host has left came home; the line stands under
     // PLAY for two bars.
     if (titleNote_[0] && titleNoteAt_ >= 0.0) {
@@ -704,11 +478,11 @@ void Play::screenTitle(Ui& ui) {
             titleNote_[0] = 0;
         } else if (b >= 0.0f) {
             const float level = clamp01(b * 2.0f) * clamp01((8.0f - b) * 2.0f);
-            ui.text({cx, 870.0f * s}, 18.0f * s, palettes_->danger, 1.5f * level, titleNote_);
+            ui.text({cx, 940.0f * s}, 18.0f * s, palettes_->danger, 1.5f * level, titleNote_);
         }
     }
-    // Back in the drop-in's wait cancels it.
-    if (waiting && keyBack_) dropInCancel();
+    // Back in the drop-in's wait cancels it, until its last beat (design/title.md §6: from there the drop is committed).
+    if (waiting && keyBack_ && transNow() < transLine_ - kTicksPerBeat) dropInCancel();
     keyPrimary_ = keyBack_ = false;
 }
 void Play::screenPause(Ui& ui) {

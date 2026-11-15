@@ -123,7 +123,11 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
         loadHighScores(scores_);
         screen_ = settings_.noticeSeen ? Screen::Title : Screen::Notice;
         applySettings();
+        // design/title.md §4 (the owner, 2026-11-14: "every cold start but make it much faster"): the title builds itself (after the
+        // notice on a first launch); not in --autoplay runs.
+        introPending_ = !opt.autoplay && screen_ == Screen::Title;
     }
+    lowTier_ = tier.tier == Tier::Low;
     markCount_ = 0;
     marks_[markCount_++] = Mark{0.0f, 0, 1};
     if (picture) scriptSetup();
@@ -966,7 +970,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     }
     hs.novas = p.novas;
     hs.novaCap = p.novaCap;
-    hs.extraLife = p.extraLives > 0;  // play test 3
+    hs.extraLives = p.extraLives;  // play test 3 (up to two since 2026-11-14)
     hs.reduceFlashing = settings_.reduceFlashing || forcedReduceFlashing_;  // M6
     if (runSetComplete_) {  // M6: SET COMPLETE's card
         hs.setCompleteBars = static_cast<float>((vi.time - setCompleteT_) * static_cast<double>(vi.bpm) / 240.0);

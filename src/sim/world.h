@@ -410,6 +410,8 @@ struct Shots {
     u8 forks[kCap];                  // M5: forks left on a hit (Fork, Fractal)
     u16 arena[kCap];                 // M5 part 5: the arena bodies it has met (a bit a slot: a Lens splits it once, a Current
                                      // speeds it once, a Bumper's reflection)
+    u8 accent[kCap];                 // the owner, 2026-11-14 ("more visual feedback"): 1 = Syncopation's off-beat shot (the view
+                                     // draws it accented; nothing in the simulation reads it)
 };
 // M5 part 3: what a shot does in flight and on a hit (sim/world_upgrades_m5.cpp).
 // kShotHelix / kShotHelixIn (GAME_DESIGN 6.5, look.md v2.5): a Helix Array strand, its pair's level: Helix alone the outer pair,
@@ -1215,7 +1217,7 @@ private:
     // Play test 3 (GAME_DESIGN 6.3 row 1, 5): the Orbitals' guard ring (it breaks on a hit instead of a cell) and the Extra
     // Life (the host drops it; it is taken, and spent on the hit that would end the run).
     bool breakRing(u32 p, Vec2 from);
-    void extraLifeDrop(Vec2 at, bool fromMini = false);  // (c2f113a: from Track 2 the mini-boss's death drops it)
+    void extraLifeDrop(Vec2 at, bool fromMini = false);  // (2026-11-14: odd Tracks; from Track 3 the mini-boss's death or warp-out)
     void takeExtraLife(u32 p);
     void spendExtraLife(u32 p, Vec2 from);
     // world_upgrades_m5.cpp (M5 part 3): the rest of the Mods, Riffs, Boosts and the Fusions.
@@ -1539,6 +1541,7 @@ private:
     // M5 part 3: the shot spawnShotRaw() last made (-1: none), Time Stretch's speed this tick, kill extras' depth (an Arc's
     // kill may Shatter, not Arc on forever), Shard Halo's fling this tick (a bit a player), the upgrade events this tick.
     i32 lastShot_ = -1;
+    u8 shotAccent_ = 0;  // fireShot: this volley is Syncopation's off-beat one (Shots::accent; the view's alone)
     float stretch_ = 1.0f;
     u8 extrasDepth_ = 0;
     u8 arcing_ = 0;  // play test 3: inside an arc's hits (an arc's own kill arcs no further)

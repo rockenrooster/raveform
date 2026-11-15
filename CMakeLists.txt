@@ -502,6 +502,8 @@ target_sources(raveform_core PRIVATE
   src/game/upgrade_sounds.cpp
   src/game/play_view_upgrades.cpp
   src/game/play_view_shots.cpp
+  src/game/play_view_feedback.cpp
+  src/game/title_v2.cpp
   src/game/screens.cpp
   src/game/screens_credits.cpp
   src/game/settings.cpp

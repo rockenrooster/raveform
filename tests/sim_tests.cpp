@@ -3245,7 +3245,7 @@ void testMinibosses() {
         delete w;
     }
     // In a run: the first Drop of Track 2 (c2f113a; it was the middle one's) brings one, in place of the mega-wave, and its end
-    // moves the Break; it drops the Track's Extra Life as it dies (GAME_DESIGN 5, c2f113a).
+    // moves the Break; Track 2 has no Extra Life (GAME_DESIGN 5, 2026-11-14: Tracks 1, 3, 5, 7 and 9 only).
     {
         World* w = new (std::nothrow) World;
         w->init(g_species);
@@ -3270,10 +3270,34 @@ void testMinibosses() {
             u32 lives = 0;
             const BoostPickups& bp = w->boostPickups();
             for (u32 i = 0; i < bp.count; ++i) lives += !bp.dead[i] && bp.type[i] == kPickupExtraLife ? 1u : 0u;
-            CHECK_MSG(lives == 1 && w->director().extraLifeTrack == 2, "Extra Life orbs %u", lives);
+            CHECK_MSG(lives == 0 && w->director().extraLifeTrack != 2, "Extra Life orbs %u", lives);
         }
         runTo(*w, music, w->tickOfBar(end) + 5.0, Vec2{});
         CHECK(w->phrase().section == Section::Break && w->phrase().cycle == 1);
+        delete w;
+    }
+    // Track 3's mini-boss drops the Track's Extra Life whether it dies or warps out (GAME_DESIGN 5, 2026-11-14): here it is left
+    // alone until the Drop's hold runs out.
+    {
+        World* w = new (std::nothrow) World;
+        w->init(g_species);
+        w->resetRun(3, 0.0, 1);
+        w->rules().godMode = true;
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        w->directorMut().track = 3;
+        w->directorMut().trackBar = 0;
+        const u32 dropAt = 12;
+        runTo(*w, music, w->tickOfBar(dropAt) + 2.0 * kTicksPerSimTick, Vec2{});
+        const BossState& s = w->boss();
+        CHECK_MSG(s.active && isMiniBoss(s.kind) && w->director().midHolding, "kind %u", static_cast<u32>(s.kind));
+        runTo(*w, music, w->tickOfBar(dropAt + 8 + static_cast<u32>(prose::kMiniHoldBars)) + 10.0, Vec2{});
+        u32 lives = 0;
+        const BoostPickups& bp = w->boostPickups();
+        for (u32 i = 0; i < bp.count; ++i) lives += !bp.dead[i] && bp.type[i] == kPickupExtraLife ? 1u : 0u;
+        // (on the floor, or already taken: the ship stands where the mini-boss chased it)
+        CHECK_MSG(!s.active && lives + w->player(0).extraLives == 1 && w->director().extraLifeTrack == 3, "active %d, Extra Life orbs %u, held %u, Track %u",
+                  s.active ? 1 : 0, lives, w->player(0).extraLives, w->director().extraLifeTrack);
         delete w;
     }
 }
@@ -3931,6 +3955,27 @@ void testPlayTest3() {
         w->playerMut(0).novas = 0;
         hitOnce(*w, music);
         CHECK(!w->player(0).alive);
+        delete w;
+    }
+    {
+        // GAME_DESIGN 5 (2026-11-14): two Extra Lives may be held, never a third (a third orb stays on the floor), and a hit
+        // spends one of the two.
+        World* w = quietWorld();
+        double music = 0.0;
+        stepWorld(*w, music, Vec2{});
+        for (u32 k = 0; k < 3; ++k) {
+            w->dropExtraLifeNow(Vec2{}, 0);
+            stepWorld(*w, music, Vec2{});
+        }
+        u32 left = 0;
+        for (u32 i = 0; i < w->boostPickups().count; ++i) left += !w->boostPickups().dead[i] && w->boostPickups().type[i] == kPickupExtraLife ? 1u : 0u;
+        CHECK_MSG(w->player(0).extraLives == tuning::kMaxExtraLives && left == 1, "held %u, left %u", w->player(0).extraLives, left);
+        w->playerMut(0).cells = 0;
+        w->playerMut(0).novas = 0;
+        hitOnce(*w, music);
+        // (the orb left on the floor may be taken again at once)
+        CHECK_MSG(w->player(0).alive && w->player(0).extraLivesSpent == 1 && w->player(0).extraLives >= 1, "alive %d, held %u, spent %u",
+                  w->player(0).alive ? 1 : 0, w->player(0).extraLives, w->player(0).extraLivesSpent);
         delete w;
     }
     {

@@ -19,7 +19,8 @@ using namespace sim;
 
 namespace {
 enum class M6 : u8 { Hint, EndedBy, SetCard, SetOver, TitleStar, UiScale, MiniStays, Flash, Credits, LwEntrance, LwLunge, LwClose, DropTitle,
-                     DropRetry, Home, PauseRestart, PauseQuit, HzWave, HzTouch, TitleIdle, FbRiffs };
+                     DropRetry, Home, PauseRestart, PauseQuit, HzWave, HzTouch, TitleIdle, FbRiffs, FxCrit, FxCresc, FxSync, FxBurn, FxWell,
+                     FxHole, FxCoil, FxAegis, FxMeteor, FxHzDeath, T2Intro, T2Drop };
 struct M6Pic {
     const char* name;   // m6_<name>
     M6 kind;
@@ -60,6 +61,19 @@ const M6Pic kM6Pics[] = {
     // feedback.md rule 4 (2026-11-14): the Echo carries its player's Orbitals, Pulse Rings and Sweeper. The ship, given the three
     // at level 3, held 300 wu from the Head (its first Echo 300 wu the other side), the fight held; from its fourth bar.
     {"fb_riffs", M6::FbRiffs, 0, "feedback"},
+    // The owner, 2026-11-14 ("things that need more visual feedback"; play_view_feedback.cpp), strips (--strip N) from each moment:
+    // On-Beat Crit's burst (every second frame from a crit's hit), Crescendo's meter (arg: the clean bars; 0: 14 broken by a hit),
+    // Syncopation's accented shots (from an off-beat volley), Burn's flames on a crowd, Singularity's well (half a beat a frame from
+    // its placing), Black Hole's singularity (a third of a beat a frame from the Nova), Storm Coil with Aegis among bodies, an
+    // Aegis block (bullets fired into the arc), a meteor's last beat and its impact (every fourth frame), Event Horizon's death (half
+    // a beat a frame from the kill).
+    {"fx_crit", M6::FxCrit, 0, nullptr},   {"fx_cresc", M6::FxCresc, 10, nullptr}, {"fx_cresc_full", M6::FxCresc, 20, nullptr},
+    {"fx_cresc_break", M6::FxCresc, 0, nullptr}, {"fx_sync", M6::FxSync, 0, nullptr}, {"fx_burn", M6::FxBurn, 0, nullptr},
+    {"fx_well", M6::FxWell, 0, nullptr},   {"fx_hole", M6::FxHole, 0, nullptr},    {"fx_coil", M6::FxCoil, 0, nullptr},
+    {"fx_aegis", M6::FxAegis, 0, nullptr}, {"fx_meteor", M6::FxMeteor, 0, nullptr}, {"fx_hz_death", M6::FxHzDeath, 1, "horizon"},
+    // Title v2 (design/title.md): the intro as a cold start plays it, a strip an eighth apart from the beat before its point; the
+    // drop from PLAY on a bar's second beat, an eighth apart from two beats before its bar line.
+    {"t2_intro", M6::T2Intro, 0, nullptr}, {"t2_drop", M6::T2Drop, 0, nullptr},
 };
 constexpr u32 kM6Count = sizeof(kM6Pics) / sizeof(kM6Pics[0]);
 constexpr u32 kM6At = 300;  // after the run's Track card (2.25 bars)
@@ -114,9 +128,13 @@ bool Play::scriptSetupM6() {
             stripStride_ = static_cast<u32>(std::lround(3600.0 / std::fmax(w.tempoAt(0.0), 30.0f)));
             break;
         case M6::TitleIdle:
+        case M6::T2Intro:
+        case M6::T2Drop:
             flow_ = true;
             screen_ = Screen::Title;
             w.spawner().mode = Spawner::Mode::Slice;
+            if (pic.kind != M6::TitleIdle) stripStride_ = static_cast<u32>(std::lround(1800.0 / std::fmax(w.tempoAt(0.0), 30.0f)));
+            if (pic.kind == M6::T2Intro) introPending_ = false;  // (started by the script)
             break;
         case M6::SetCard:
             w.spawner().mode = Spawner::Mode::Slice;
@@ -176,6 +194,50 @@ bool Play::scriptSetupM6() {
         case M6::Flash:
             if (!setupFight(pic.fight, 0)) return true;
             opt_.fightHold = true;  // (it keeps its health: the mini-boss stays to its sixteenth bar; the flash picture waits for a hit)
+            break;
+        case M6::FxCrit:
+        case M6::FxCresc:
+        case M6::FxSync:
+        case M6::FxBurn:
+        case M6::FxWell:
+        case M6::FxHole:
+        case M6::FxCoil:
+        case M6::FxAegis:
+        case M6::FxMeteor: {
+            w.spawner().mode = Spawner::Mode::Off;
+            Loadout& l = w.playerMut(0).loadout;
+            const float beatFrames = 3600.0f / std::fmax(w.tempoAt(0.0), 30.0f);
+            bool crowd = true, ring = false;
+            switch (pic.kind) {
+                case M6::FxCrit: l.mods[kOnBeatCrit] = 3; l.mods[kSplit] = 2; stripStride_ = 2; break;
+                case M6::FxCresc: l.mods[kCrescendo] = 2; l.mods[kSplit] = 2; stripStride_ = pic.arg ? 1u : 3u; break;
+                case M6::FxSync: l.mods[kSyncopation] = 2; l.mods[kSplit] = 2; stripStride_ = 2; break;
+                case M6::FxBurn: l.mods[kBurn] = 3; l.mods[kSplit] = 3; stripStride_ = 4; break;
+                case M6::FxWell: l.riffs[riffIndex(kSingularity)] = 3; stripStride_ = static_cast<u32>(std::lround(0.5f * beatFrames)); break;
+                case M6::FxHole: stripStride_ = static_cast<u32>(std::lround(beatFrames / 3.0f)); break;  // (taken at kM6At: it goes off at once)
+                case M6::FxCoil: l.riffs[riffIndex(kStormCoil)] = 5; l.mods[kAegis] = 3; stripStride_ = 3; ring = true; break;
+                case M6::FxAegis: l.mods[kAegis] = 3; stripStride_ = 2; crowd = false; break;
+                case M6::FxMeteor: stripStride_ = 4; crowd = false; break;
+                default: break;
+            }
+            // Bodies that live through it: a crowd ahead of the ship (it fires to the right), or a ring round it (Storm Coil).
+            const u32 n = ring ? 10u : (crowd ? 18u : 0u);
+            for (u32 k = 0; k < n; ++k) {
+                Vec2 at;
+                if (ring) {
+                    const float a = kTau * static_cast<float>(k) / static_cast<float>(n);
+                    at = Vec2{std::cos(a) * 230.0f, std::sin(a) * 180.0f};
+                } else {
+                    at = Vec2{380.0f + 90.0f * static_cast<float>(k % 3), -260.0f + 520.0f * static_cast<float>(k / 3) / 5.0f};
+                }
+                const i32 i = w.spawnEnemy(SpeciesTable::index(Family::Drifter, 1, kVariantA), at, angleOf(Vec2{} - at), 0.0);
+                if (i >= 0) w.setEnemyHp(static_cast<u32>(i), 4000.0f);
+            }
+            break;
+        }
+        case M6::FxHzDeath:
+            if (!setupFight(pic.fight, pic.arg)) return true;
+            opt_.fightHold = true;
             break;
     }
     return true;
@@ -318,6 +380,28 @@ bool Play::scriptInputM6(StickInput& in) {
             attractInput(in);
             if (captureFrom_ < 0 && t == kM6At) captureFrom_ = now;
             return true;
+        case M6::T2Intro: {
+            in = bot_.think(w, 0, controller_, clock_.heardNow());
+            attractInput(in);
+            if (t == kM6At) {
+                startIntro();
+                // (from the beat before its point)
+                const double toPoint = (introAt_ - 2.0 * kTicksPerBeat - music1_) / static_cast<double>(w.ticksPerSecond()) * 60.0;
+                captureFrom_ = now + std::max<i64>(0, static_cast<i64>(std::lround(toPoint)));
+            }
+            return true;
+        }
+        case M6::T2Drop: {
+            const double inBar = std::fmod(music1_, kTicksPerBar);
+            in = trans_ == Trans::None ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+            if (trans_ == Trans::None) attractInput(in);
+            if (t >= kM6At && captureFrom_ < 0 && trans_ == Trans::None && inBar >= kTicksPerBeat && inBar < kTicksPerBeat + 4.0) {
+                startRun();
+                const double toCapture = (transLine_ - 2.0 * kTicksPerBeat - music1_) / static_cast<double>(w.ticksPerSecond()) * 60.0;
+                captureFrom_ = now + std::max<i64>(0, static_cast<i64>(std::lround(toCapture)));
+            }
+            return true;
+        }
         case M6::TitleIdle: {
             in = bot_.think(w, 0, controller_, clock_.heardNow());
             attractInput(in);  // (the title's demo, as in the game)
@@ -344,6 +428,87 @@ bool Play::scriptInputM6(StickInput& in) {
             in = bot_.think(w, 0, controller_, clock_.heardNow());
             if (!ffRunning_ && captureFrom_ < 0 && t == 24) captureFrom_ = now;
             return true;
+        case M6::FxCrit:
+        case M6::FxCresc:
+        case M6::FxSync:
+        case M6::FxBurn:
+        case M6::FxWell:
+        case M6::FxHole:
+        case M6::FxCoil:
+        case M6::FxAegis:
+        case M6::FxMeteor: {
+            in = StickInput{};
+            in.assist = false;
+            w.closeTrioNow(0);
+            w.playerMut(0).levelsBanked = 0;
+            const bool fires = pic.kind == M6::FxCrit || pic.kind == M6::FxCresc || pic.kind == M6::FxSync || pic.kind == M6::FxBurn;
+            if (fires && t > 60) {
+                in.aim = Vec2{1.0f, 0.0f};
+                in.aimActive = true;
+            }
+            const auto upgradeFx = [&](u8 fx) {
+                for (u32 k = 0; k < w.eventCount(); ++k)
+                    if (w.events()[k].type == EventType::Upgrade && w.events()[k].b == fx && w.events()[k].a == 0) return true;
+                return false;
+            };
+            if (pic.kind == M6::FxCresc) {
+                if (t == kM6At - 1) w.playerMut(0).cleanBars = static_cast<u16>(pic.arg ? pic.arg : 14u);
+                if (t == kM6At + 20 && !pic.arg) w.playerMut(0).cleanBars = 0;  // (a hit)
+                if (captureFrom_ < 0 && t == kM6At + (pic.arg ? 2u : 18u)) captureFrom_ = now;
+                return true;
+            }
+            if (pic.kind == M6::FxHole && t == kM6At) w.grantBoost(0, kBlackHole);
+            if (pic.kind == M6::FxMeteor && t == 200) w.startEventNow(EventKind::MeteorRain);
+            if (pic.kind == M6::FxAegis && t >= 200 && t % 20u == 0u) {
+                // (into the arc: fast, so it has not turned away by the time they reach it)
+                const Vec2 dv{std::cos(w.aegisAngle(0)), std::sin(w.aegisAngle(0))};
+                w.spawnBullet(ship + dv * 200.0f, dv * -1000.0f, 0.0f);
+            }
+            if (captureFrom_ >= 0 || t < kM6At) return true;
+            bool go = false;
+            switch (pic.kind) {
+                case M6::FxCrit:
+                    for (u32 k = 0; k < w.eventCount() && !go; ++k) go = w.events()[k].type == EventType::CritBurst;
+                    break;
+                case M6::FxSync: {
+                    const double inBeat = std::fmod(music1_, kTicksPerBeat);
+                    go = inBeat >= 0.5 * kTicksPerBeat && inBeat < 0.5 * kTicksPerBeat + 4.0;
+                    break;
+                }
+                case M6::FxBurn: go = t >= kM6At + 60; break;
+                case M6::FxCoil: go = true; break;
+                case M6::FxWell: go = upgradeFx(kFxWell); break;
+                case M6::FxHole: go = upgradeFx(kFxHole); break;
+                case M6::FxAegis: go = upgradeFx(kFxAegis); break;
+                case M6::FxMeteor:
+                    for (u32 k = 0; k < World::kArenaMeteors && !go; ++k) {
+                        const ArenaMeteor& m = w.meteors()[k];
+                        go = m.land > music1_ && m.land - music1_ <= 0.8 * kTicksPerBeat && lengthSq(m.at - ship) < 80.0f * 80.0f;
+                    }
+                    break;
+                default: break;
+            }
+            if (go) {
+                captureFrom_ = now + (pic.kind == M6::FxSync ? 3 : 0);
+                RF_LOG("play: picture '%s' captures from frame %lld (music %.1f)", opt_.picture, static_cast<long long>(captureFrom_), music1_);
+            }
+            return true;
+        }
+        case M6::FxHzDeath: {
+            in = StickInput{};
+            in.assist = false;
+            if (ffRunning_) return true;
+            w.closeTrioNow(0);
+            w.playerMut(0).levelsBanked = 0;
+            const BossState& b = w.boss();
+            const double inBeat = std::fmod(music1_, kTicksPerBeat);
+            if (t >= 200 && b.active && !b.dying && inBeat < 5.0) w.killBossNextTick(0, true);
+            if (captureFrom_ < 0 && b.dying) {
+                stripStride_ = static_cast<u32>(std::lround(1800.0 / std::fmax(w.tempoAt(music1_), 30.0f)));
+                captureFrom_ = now;
+            }
+            return true;
+        }
         case M6::LwEntrance: {
             in = StickInput{};
             in.assist = false;

@@ -4,6 +4,45 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (late night), Title v2; more feedback on nine things; the Extra Life every other Track
+
+"Things that need more visual feedback: on beat crit, crescendo, blackhole (powerup and upgrade), syncopation, stormguard, the
+meteor crash, it just eases and disappears, it doesn't need to ease, its a meteor impact, the fire burn upgrade, extra life
+powerup every other track (i'm not seeing one after the first one), event horizon deatth; also implement this (minus the title
+reflection): design/title.md", with the answers to title.md §10: the ship under PLAY removed, the intro on every cold start but
+much faster, the cut kept when leaving the app, the font's own letter spacing, the demo behind as now, the captions kept.
+
+- **Feedback** (`src/game/play_view_feedback.cpp`; look.md §5 "Feedback"): **On-Beat Crit**: the shot's star 16 / 22 / 28 wu
+  with a gold glow; its hit a gold star with a white core, a ring to the burst's 80 wu, a gold pool, sparks and a small lattice
+  push. **Crescendo**: ten ticks round the ship lit gold to white as it climbs (the newest flaring), a ring and a warm glow at
+  its cap pulsing on the beat, a hit shattering it; its owner's shots brighten and warm toward gold. **Syncopation**: an
+  off-beat shot carries a ">" ahead of its head, a doubled tail and a brighter head (`Shots::accent`, set by `fireShot`; the
+  simulation never reads it). **Burn**: a flame on each burning body drawn as line-art fire (a teardrop outline to a swaying tip,
+  an inner flame, side flames from two stacks), embers and a warm glow; a burning death's spread bursts in fire. **Black Hole
+  and Singularity**: the lattice falls into them (per-well reach, `LatticeWell`), an accretion disc of streaks on spirals, rings
+  falling in, a white photon ring round a dark core, all quickening to the blast; placed, a ring folds in; blown, a white
+  flash, debris of light, a ring, the lattice thrown out, a shake. **"Stormguard"** (no upgrade has that name: Storm Coil and
+  Aegis both got it): Storm Coil's reach a dashed ring with three crackles, its zaps (and Chain Storm's) thicker, each ending in
+  a star; Aegis's arc glows, and a block (`kFxAegis`, never drawn before) flashes white where it struck and flares the arc.
+  **The meteor** falls faster and faster (its speed tripling over the fall) and smashes: its rock in pieces, a white star, a
+  crater rim glowing for a bar and more, a harder shake. **Event Horizon's death**: its burst never played (the boss went on the
+  very tick it was due, before the frame that would have shown it: `PlayView::drawFight` plays it now); over the death bar light
+  is torn in toward the point and the lattice falls in after it, the lattice goes dark through the beat of black with one white
+  point, then two jets of light along its axis, rings in its hues, debris. Pictures `m6_fx_*` (`captures\fx\*.sheet.png`).
+- **Extra Life** (GAME_DESIGN 5): every other Track (1, 3, 5, 7, 9), for a player holding fewer than two; from Track 3 the
+  mini-boss drops it whether it dies or warps out (`World::miniGone`); two may be held (`tuning::kMaxExtraLives`), both shown
+  on the HUD. The cause of "not seeing one after the first": an unspent one stopped every later drop.
+- **Title v2** (screens.md "Title", "Transitions"; `src/game/title_v2.cpp`, `play_transitions.cpp`): the fan, the word at cap
+  240 (the font's own advance) with depth toward the rule's centre and a pooled halo, the rule whose ends are the music and
+  which carries the tagline, the motes, PLAY with its beat dots and rings (hover and pressed states; every pill has a hover
+  state with a mouse now), the captions. The **intro** on every cold start (a bar and a beat: the point, the rule's throw, the
+  word played a letter a sixteenth with eight lead notes, the controls; any input skips it); **home** builds the same way; the
+  **drop** gathers the title into one point (the fan folds, the tubes run hot, the word falls into the rule, the rule draws in
+  to the frame's centre with PLAY) and the downbeat bursts it (flash, eight rays, the ship). The quiet title leaves in the new
+  order. Not built: the reflections (the owner), lights out (the cut kept), the optional falling-noise cue. The word's notes are
+  `Recipe::SawGlide` held still (a saw pair through the lead's low-pass), not the player's own lead voice. Pictures
+  `screen_title`, `m6_t2_intro`, `m6_t2_drop`, `m6_home`, `m6_title_idle` (`captures\t2\`).
+
 ## 2026-11-14 (night), the iOS port: written, not built
 
 "And then your last task will be porting to IOS." Apple's compilers, SDK and signing run only on macOS, so the port was

@@ -3,9 +3,12 @@
 // front 65% of the streak) shows the build: Overcharge changes its colour, width and length with every stack, On-Beat
 // Crit puts a four-point star on a beat shot's head, Pierce a small chevron behind the head for each stack, and what a
 // Riff throws takes its owner's base colour at levels 1-2, the light colour at 3-4 and a white core with the player's rim
-// at 5. Prism's lanes are saturated end to end. Cosmetic only.
+// at 5. Prism's lanes are saturated end to end. The owner, 2026-11-14 ("more visual feedback"): the crit star is bigger with a
+// gold glow; Crescendo brightens its owner's shots and warms their tails toward gold as it climbs; Syncopation's off-beat shots
+// are accented (a ">" ahead of the head, a doubled tail, a brighter head). Cosmetic only.
 
 #include <cmath>
+#include <initializer_list>
 
 #include "core/args.h"
 #include "game/play_view.h"
@@ -24,7 +27,7 @@ constexpr float kHeadShare = 0.65f;  // look.md 5 (quoted; the lead's review of 
 constexpr float kOverWidth[6] = {1.0f, 1.15f, 1.3f, 1.45f, 1.6f, 1.8f};      // look.md 5 (quoted): width by stack
 constexpr float kOverLength = 0.08f;                                         // look.md 5 (quoted): +8% length a stack
 constexpr float kPrismWhite = 0.15f, kPrismLevel = 0.6f, kPrismWidth = 1.3f;  // look.md 5 (quoted)
-constexpr float kCritStarWu[4] = {0.0f, 10.0f, 14.0f, 18.0f};               // look.md 5 (quoted): the star by stack
+constexpr float kCritStarWu[4] = {0.0f, 16.0f, 22.0f, 28.0f};               // look.md 5: the star by stack (10, 14, 18 until 2026-11-14)
 // Chosen (the look bible gives the idea, not the numbers): Overcharge 3's gold rim is this much wider than its white head;
 // 5's white core this much narrower than its violet one, its afterglow this many streak lengths behind at this level; a
 // Pierce chevron's half width and spacing (wu).
@@ -33,6 +36,10 @@ constexpr float kRimWidth = 1.5f, kCoreWidth = 0.45f, kAfterglowLengths = 1.6f, 
 // ice blue and violet to white, as it did the first build's Prism fan.
 constexpr float kHeadLevel = 0.6f;
 constexpr float kChevronHalfWu = 4.0f, kChevronStepWu = 7.0f;
+// Chosen (2026-11-14): Crescendo at its cap brightens its owner's shots by half and turns their tails 30% toward gold; Syncopation's
+// accent, a ">" this far ahead of the head and this wide, its doubled tail this far either side.
+constexpr float kCrescLight = 0.5f, kCrescGold = 0.3f;
+constexpr float kAccentAheadWu = 9.0f, kAccentBackWu = 6.0f, kAccentHalfWu = 5.0f, kAccentTailWu = 2.6f;
 }  // namespace
 
 void PlayView::drawShots(FrameDraw& d, const ViewInput& in, float a) {
@@ -44,6 +51,8 @@ void PlayView::drawShots(FrameDraw& d, const ViewInput& in, float a) {
     const LookLine& pl = look_->lines.playerShot;
     const float headR = look_->soft.shotHead.radius[0] * refPx_, headI = look_->soft.shotHead.intensity[0];
     const u32 me = w.viewPlayer();
+    float cresc[kMaxPlayers];
+    for (u32 q = 0; q < kMaxPlayers; ++q) cresc[q] = w.player(q).present ? crescendoLevel(w, q) : 0.0f;
     for (u32 i = 0; i < sh.count; ++i) {
         if (sh.dead[i]) continue;
         const u32 owner = sh.owner[i] < kMaxPlayers ? sh.owner[i] : 0u;
@@ -57,10 +66,11 @@ void PlayView::drawShots(FrameDraw& d, const ViewInput& in, float a) {
         const Vec2 dirv{sh.dx[i], sh.dy[i]};
         const Vec2 tail = head - dirv * len;
         const bool mine = owner == me;
-        const Vec3 base = palettes_->player[owner], light = palettes_->playerLight[owner];
+        const float ck = primary ? cresc[owner] : 0.0f;  // Crescendo (2026-11-14)
+        const Vec3 base = ck > 0.0f ? mix(palettes_->player[owner], buildGold_, kCrescGold * ck) : palettes_->player[owner], light = palettes_->playerLight[owner];
         // M4 (look.md 6): a teammate's shots at 0.6 of the level and 0.8 of the width. M5: Echo's ghosts at 0.45.
         const float ghost = (sh.mods[i] & kShotGhost) ? 0.45f : 1.0f;
-        const float lvl = (mine ? 1.0f : 0.6f) * pl.intensity * ghost * in.runLight, wid = (mine ? 1.0f : 0.8f) * 0.5f * pl.width * refPx_;
+        const float lvl = (mine ? 1.0f : 0.6f) * pl.intensity * ghost * in.runLight * (1.0f + kCrescLight * ck), wid = (mine ? 1.0f : 0.8f) * 0.5f * pl.width * refPx_;
         if (sh.kind[i] == kShotOrb || sh.kind[i] == kShotBomb) {
             // M5: Heavy Step's slow orb (its light colour, a white core, pulsing) and Carousel's bombs (gold).
             const bool orb = sh.kind[i] == kShotOrb;
@@ -134,6 +144,22 @@ void PlayView::drawShots(FrameDraw& d, const ViewInput& in, float a) {
             const u32 cs = lo.mods[kOnBeatCrit] > 3 ? 3u : lo.mods[kOnBeatCrit];
             const Vec3 sc = mix(W1, buildGold_, 0.5f * static_cast<float>(cs - 1)) * (1.8f * (mine ? 1.0f : 0.6f));
             flare(d.scene, head, angleOf(dirv) + 0.25f * kPi, kCritStarWu[cs], 2, sc, 0.55f * (mine ? 1.0f : 0.8f));
+            d.sparkles.glow(toScene(head), (8.0f + 3.0f * static_cast<float>(cs)) * refPx_, buildGold_ * (mine ? 1.2f : 0.7f));
+        }
+        // Syncopation (2026-11-14): an off-beat shot is accented: a ">" ahead of its head, a doubled tail, a brighter head.
+        if (sh.accent[i]) {
+            const float al = mine ? 1.0f : 0.6f;
+            const Vec3 ac = mix(light, W1, 0.35f) * (1.7f * al);
+            const Vec2 side = perpP(dirv);
+            const Vec2 tipA = head + dirv * kAccentAheadWu, backA = tipA - dirv * kAccentBackWu;
+            d.scene.line(toScene(backA + side * kAccentHalfWu), toScene(tipA), 0.7f * refPx_, ac, ac, 0);
+            d.scene.line(toScene(backA - side * kAccentHalfWu), toScene(tipA), 0.7f * refPx_, ac, ac, 0);
+            const Vec2 cut2 = head - dirv * (len * kHeadShare);
+            for (float sg : {-1.0f, 1.0f}) {
+                const Vec2 off = side * (kAccentTailWu * sg);
+                d.scene.line(toScene(tail + off), toScene(cut2 + off), 0.5f * refPx_, light * (0.2f * lvl), light * (0.8f * lvl), 0);
+            }
+            d.sparkles.glow(toScene(head), headR * 1.5f, light * (headI * 0.9f * al));
         }
         // Pierce: one small chevron behind the head for each stack, pointing along the shot.
         if (const u32 ps = lo.mods[kPierce]) {

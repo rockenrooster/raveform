@@ -151,13 +151,7 @@ void PlayView::eventB(const World& w, const Event& e, float t) {
                 addShockRings(at, 1, 160.0f, palettes_->player[e.a] * 0.7f, whiteV() * 0.5f, t, 0.5f);
             }
             break;
-        case EventType::CritBurst: {
-            // On-Beat Crit (play test 2, look.md 5): the beat shot's hit bursts in a gold ring of 80 wu.
-            const u32 q = e.a < kMaxPlayers ? e.a : w.viewPlayer();
-            const float lvl = q == w.viewPlayer() ? 1.0f : 0.6f;
-            addShockRings(at, 1, e.f, buildGold_ * (1.4f * lvl), whiteV() * lvl, t, 0.16f);
-            break;
-        }
+        case EventType::CritBurst: critBurst(w, e, t); break;  // On-Beat Crit (play test 2; 2026-11-14 play_view_feedback.cpp)
         case EventType::CellTake:
             // Play test 2 (look.md 6): a Cell taken: the halo's missing arc draws itself in over a quarter beat (drawn with
             // the ship) and eight gold sparks. Regen's arc becomes a cell quietly.
@@ -464,6 +458,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
 
     drawUpgrades(d, in);  // M5 part 3: the rest of the Mods, Riffs, Boosts and the Fusions
     drawHazards(d, in);   // M5 part 4: the lethal lines and the Wells
+    drawFeedbackFx(d, in);  // 2026-11-14: crits, Crescendo, Storm Coil, Aegis, the flashes and debris
 
     // ---- Kaleidos.
     drawFight(d, in);  // M5: the fight of the moment (Kaleidos is drawBoss), and the Pen

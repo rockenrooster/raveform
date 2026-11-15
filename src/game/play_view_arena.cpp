@@ -308,11 +308,13 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
         // The owner, the same evening: "Meteor projectiles need to be bigger so that it makes sense with the hit area size and
         // impact force": a burning rock about 40% of its ring across (kMeteorBodyWu), growing as it comes down out of the sky,
         // white-hot on its leading side and gold behind, turning; a cone of fire behind it (five streaks from its rim), embers,
-        // and a warm pooled glow, all brighter as it nears the ground.
+        // and a warm pooled glow, all brighter as it nears the ground. And later: "it just eases and disappears, it doesn't need to
+        // ease, its a meteor impact": it falls faster and faster (from half its mean speed to one and a half times it) and hits
+        // the ground at full speed; the impact smashes it (eventArena, meteorImpact).
         if (shown(kMuteFx) && u > 0.0f && t < m.land) {
             const Vec2 fall = normalizeOr(Vec2{0.45f, -1.0f}, Vec2{0.0f, -1.0f});  // (from the ring up toward where it came from)
             const Vec2 side{-fall.y, fall.x};
-            const float k1 = (1.0f - u) * (1.0f - u);
+            const float k1 = (1.0f - u) * (1.0f + 0.5f * u);  // (the distance left: its speed grows 3x over the fall)
             const Vec2 head = m.at + fall * (kMeteorFallWu * k1);
             const float R = kMeteorBodyWu * (0.55f + 0.45f * u);
             const float lv = 0.6f + 1.2f * u;
@@ -440,6 +442,7 @@ void PlayView::eventArena(const World& w, const Event& e, float t) {
             addDistortion(at, e.f * 1.6f, 0.35f, 16.0f, 22.0f, t);
             push(kImpBoss, at, 200.0f, e.f * 1.6f, t);
             shakeAmp_ = std::fmax(shakeAmp_, 5.0f);
+            if (static_cast<BossCue>(e.a) == BossCue::MeLand) meteorImpact(at, e.f, t);  // (2026-11-14: the rock smashes)
             break;
         }
         case BossCue::ElStun: addShockRings(at, 1, e.f, palette_->hue[2], W1, t, 0.3f); break;

@@ -193,6 +193,7 @@ constexpr float kOrbitalDamage = 3.0f;        // play test 3 (quoted): it cuts w
 constexpr u32 kRingRelightBars[6] = {0, 8, 8, 6, 6, 4};
 constexpr float kRingInvulS = 1.0f;
 constexpr u8 kExtraLifeCells = 2;             // GAME_DESIGN 5 (play test 3, quoted): an Extra Life brings the ship back with two cells
+constexpr u8 kMaxExtraLives = 2;              // GAME_DESIGN 5 (the owner, 2026-11-14): one drops every other Track; a player holds up to two
 constexpr float kPulseRadiusWu = 230.0f;      // Pulse Ring: expands to this ...
 constexpr float kPulseRadiusWide = 290.0f;    // ... (level 3 and up)
 constexpr float kPulseGrowS = 0.25f;          // ... in this long

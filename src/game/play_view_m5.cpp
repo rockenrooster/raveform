@@ -103,6 +103,14 @@ void PlayView::drawFight(FrameDraw& d, const ViewInput& in) {
     }
     const BossState& s = w.boss();
     if (!s.active) {
+        // Event Horizon goes on the very tick its burst is due (a bar and a beat after its death), so the drawn frame at that moment
+        // usually finds it gone: the burst is played here then (until 2026-11-14 it never was: the owner's "event horizon death").
+        if (s.kind == BossKind::EventHorizon && s.dying && hzBurstDeath_ != s.deathTick && in.music >= s.deathTick + kTicksPerBar + kTicksPerBeat - 2.0 &&
+            in.music < s.deathTick + 3.0 * kTicksPerBar) {
+            hzBurstDeath_ = s.deathTick;
+            fightBreak(s.pos, static_cast<float>(in.time));
+            horizonBurst(s.pos, static_cast<float>(in.time));
+        }
         deathShown_ = 0;
         return;
     }

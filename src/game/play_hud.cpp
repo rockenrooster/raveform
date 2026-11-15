@@ -329,9 +329,10 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
             star4(d.hud, c, 16.0f * s, 0.9f * s, col(white, 0.3f), col(white, 0.3f));
         }
     }
-    // Play test 3 (screens.md "Extra Life (HUD)"): a held Extra Life is a small gold ship outline to the right of the Nova stock.
-    if (st.extraLife) {
-        const Vec2 c{W - mr - 150.0f * s + 46.0f * s, top + 62.0f * s};
+    // Play test 3 (screens.md "Extra Life (HUD)"): a held Extra Life is a small gold ship outline to the right of the Nova stock
+    // (2026-11-14: a player holds up to two, the second 34 px further right).
+    for (u32 k = 0; k < st.extraLives && k < 2; ++k) {
+        const Vec2 c{W - mr - 150.0f * s + (46.0f + 34.0f * static_cast<float>(k)) * s, top + 62.0f * s};
         const float r = 13.0f * s;
         // (the ship's arrowhead: a nose up, two wings and the notch at its tail)
         const Vec2 nose{c.x, c.y - r}, wl{c.x - 0.8f * r, c.y + 0.85f * r}, wr{c.x + 0.8f * r, c.y + 0.85f * r}, tail{c.x, c.y + 0.4f * r};

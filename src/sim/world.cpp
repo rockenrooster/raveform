@@ -372,7 +372,10 @@ void World::fireShot(u32 p, float advanceS, double stepTick) {
         // M5: Accent's lance takes the middle lane's place on its beats; Heavy Step makes every fourth volley's an orb.
         const bool lance = accentLance(p, stepTick, muzzle, d, damage);
         const bool heavy = !lance && l.mods[kHeavyStep] && (pl.volleys % 4u) == 0u;
+        // (Syncopation alone adds pierce in shotDamage: an off-beat volley; the view draws its shots accented)
+        shotAccent_ = pierceAdd ? 1 : 0;
         made = volley(p, muzzle, base, advanceS, damage, flags, pierce, bounces, lanes, prism, thin, step, lance ? 1 : (heavy ? 2 : 0), 0);
+        shotAccent_ = 0;
         volleyExtras(p, advanceS, stepTick, base, damage, flags, pierce, bounces, lanes, thin, step);
     }
     ++pl.shotsFired;
@@ -1171,6 +1174,7 @@ void World::compact() {
         s.mods[i] = s.mods[l];
         s.forks[i] = s.forks[l];
         s.arena[i] = s.arena[l];
+        s.accent[i] = s.accent[l];
     }
     // Play test 1: each player's live shots, for the pool's per-player caps in the next tick.
     for (u32& n : shotsLive_) n = 0;

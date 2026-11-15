@@ -89,7 +89,10 @@ public:
 
     bool init(const PlayOptions& opt, const Look& look, const Palettes& palettes, const Palette& palette, const GlyphSet& glyphs,
               const VectorFont& font, const TierSettings& tier, Band* band);
-    void setTier(const TierSettings& tier) { view_.setTier(tier); }
+    void setTier(const TierSettings& tier) {
+        view_.setTier(tier);
+        lowTier_ = tier.tier == Tier::Low;
+    }
     void setDensity(float d) { view_.setDensity(d); }
     void setReduceFlashing(bool on) {
         forcedReduceFlashing_ = on;
@@ -419,7 +422,6 @@ private:
     bool wideColourOffered_ = false;
     static constexpr u32 kScopeN = 750;  // about a bar of the master bus at 120 BPM
     float scope_[kScopeN] = {};
-    float titleShipAngle_ = -1.5708f;
     Vec2 attractMove_{};                          // the title's demo bot's eased stick (buildInput)
     static constexpr float kAttractMoveTau = 0.35f;  // (chosen, 2026-11-14) its time constant, seconds
     bool pausePressed_ = false;
@@ -481,7 +483,8 @@ private:
 
     // M6 (screens.md "Transitions", game/play_transitions.cpp): the drop-in (PLAY, RETRY, a co-op START or RETRY: the screen
     // leaves over the wait to the run's first bar line and the run arrives on it) and home (game over to the title).
-    enum class Trans : u8 { None, Wait, Arrive, Home };
+    // Title v2 (design/title.md, 2026-11-14): Intro, the title building itself on a cold start.
+    enum class Trans : u8 { None, Wait, Arrive, Home, Intro };
     Trans trans_ = Trans::None;
     Screen transFrom_ = Screen::Title;  // the screen a drop-in leaves (Title, GameOver, CoopLobby) or home leaves (GameOver, Paused)
     double transTap_ = 0.0;   // run ticks: the tap
@@ -489,17 +492,54 @@ private:
     double transBeat_ = 0.0;  // run ticks: the beat a game-over screen leaves on (home; RETRY's wait)
     bool transFilter_ = false;  // a transition closed the band's low-pass (it opens it again)
     Palette homeFrom_;          // home: the palette the run ended in, cross-fading to Track 1's over the title's bar
-    float titleShipFrom_ = 0.0f;  // the title ship's heading as PLAY was tapped (it glides into the run)
-    // The title's pieces as a transition has them (screens.cpp draws them): levels 0..1; how far the waveform has drawn
-    // out from the centre and how flat it lies; how far the logo is written and streaked out; whether PLAY and the side
-    // controls take taps.
+    // The title's pieces as a transition has them (game/title_v2.cpp draws them; design/title.md): the controls' levels 0..1 and
+    // whether PLAY and the side controls take taps; the rule (its light, how far it reaches from its centre, its slide to the
+    // frame's centre, the word's light it takes in the drop, the music at its ends, the tagline's gap), the point of light, the fan,
+    // the word (its light, its letters struck a strikeStep apart from `struck` beats ago, its fall into the rule, its heat), the
+    // motes, PLAY's place (the intro's lift, the drop's gathering), the side controls' sink and the intro's flash. The default is
+    // the title at rest.
     struct TitleLook {
-        float wave = 1.0f, waveDrawn = 1.0f, waveFlat = 0.0f;
-        float logo = 1.0f, logoWrite = 1.0f, logoOut = 0.0f;
         float tag = 1.0f, play = 1.0f, side = 1.0f, best = 1.0f;
         bool playTaps = true, sideTaps = true;
+        float rule = 1.0f, ruleLen = 1.0f, ruleY = 0.0f, ruleHeat = 0.0f, ends = 1.0f, gap = 1.0f;
+        float point = 0.0f, flash = 0.0f;
+        float fan = 1.0f, fanLevel = 1.0f;
+        float word = 1.0f, struck = 1.0e3f, strikeStep = 0.25f, fall = 0.0f, heat = 0.0f;
+        float motes = 1.0f, moteFall = 0.0f;
+        float playLift = 0.0f, playGather = 0.0f, sideSink = 0.0f;
+        bool pressed = false;  // PLAY held pressed (the drop's wait)
+        static TitleLook none() {
+            TitleLook t;
+            t.tag = t.play = t.side = t.best = 0.0f;
+            t.playTaps = t.sideTaps = false;
+            t.rule = t.ruleLen = t.ends = t.gap = t.fan = t.fanLevel = t.word = t.motes = 0.0f;
+            t.struck = -1.0e3f;
+            return t;
+        }
     };
     TitleLook titleLook() const;
+    TitleLook buildLook(float b, bool intro) const;  // the intro's and home's build, b beats from the rule's throw
+    // The intro (design/title.md §4, the owner: "every cold start but make it much faster"): a point of light on a beat, the rule
+    // thrown out on the next, the word played a letter a sixteenth, then the tagline and the controls: a bar and a beat. Any input
+    // skips it (everything arrives inside a beat).
+    bool introPending_ = false;  // a cold start: the intro begins once the band runs (or after a second)
+    float introWaitS_ = 0.0f;
+    double introAt_ = -1.0;      // run ticks: the rule's throw (b = 0)
+    double introSkipAt_ = -1.0;  // run ticks: an input skipped it here (-1: none)
+    float introSkipB_ = 0.0f;    // where it stood then
+    float introBeats() const;    // b now (the skip's quickening included)
+    void startIntro();
+    // The word's eight notes (design/title.md §7): placed on their sixteenths a beat ahead (so a skip silences the rest).
+    double notesBase_ = -1.0, notesStep_ = 0.0;
+    u8 notesPlaced_ = 0;
+    void wordNotes(double firstTick, double stepTicks);
+    void wordNotesFrame();
+    // The drop's lit control (PLAY, RETRY, RESTART's YES, the lobby's START) as it was tapped: it shrinks into the point.
+    Vec2 dropCtlC_, dropCtlHalf_;
+    void drawDropGather(Ui& ui);
+    bool lowTier_ = false;  // design/title.md §8: three depth layers, 40 motes
+    void drawTitle(Ui& ui, const TitleLook& tl);      // the fan, the word, the rule and its tagline, the motes, the point
+    bool titlePlay(Ui& ui, const TitleLook& tl);      // PLAY with its beat dots and rings; true when tapped
     // screens.md "Title" (the owner, 2026-11-14: "after waiting at the main menu for a while the menu fades away so you can see the
     // demo until you tap the screen and the menu fades back in"): the title at rest with no input for kTitleQuietBars leaves on the
     // next bar line, piece by piece over that bar, while the demo behind it comes up to its full light; any input brings it back
@@ -541,9 +581,7 @@ private:
     float transRunLight() const;
     float transExposure(float screenLevel) const;
     bool transInputLocked() const;
-    void drawArrive(Ui& ui);  // the drop-in's downbeat beat: the logo out, the ring, PLAY into the halo, the ship to the centre
-    void drawTitleLogo(Ui& ui, float level, float write, float out, float tag);  // the logo, its flares, the tagline and beat dots
-    void drawTitleWave(Ui& ui, float level, float flat, float drawn);
+    void drawArrive(Ui& ui);  // the drop-in's downbeat beat: the point bursts (flash, eight rays), the ship draws itself there
     void drawTitleShip(Ui& ui, Vec2 c, float angle, float scale, float level, bool ring);
     float gameOverOut() const;  // how far the game-over screen has left (0..1: home, RETRY's wait)
 };

@@ -21,6 +21,13 @@ struct LatticeStyle {
     float heatGain = 1.0f;  // light budget (look.md v2.1 §3): intensity = rest + heatGain x (graded - rest)
 };
 
+// A well pulling the lattice (the M1 stages' wells; 2026-11-14, Singularity's well and Black Hole's singularity): at most pullWu
+// of displacement at peakWu from its centre, none from goneWu.
+struct LatticeWell {
+    Vec2 at;
+    float pullWu = 24.0f, peakWu = 60.0f, goneWu = 200.0f;
+};
+
 struct LatticeView {
     Vec2 camera;          // world position at the screen centre
     float pxPerWu = 1.0f;
@@ -62,8 +69,11 @@ public:
     void impulse(Vec2 at, float strength, float radiusWu);
     void setWells(const Vec2* wells, u32 count, float pullWu) {
         wellCount_ = count < 4 ? count : 4;
+        for (u32 i = 0; i < wellCount_; ++i) wells_[i] = LatticeWell{wells[i], pullWu, 60.0f, 200.0f};
+    }
+    void setWells(const LatticeWell* wells, u32 count) {
+        wellCount_ = count < 4 ? count : 4;
         for (u32 i = 0; i < wellCount_; ++i) wells_[i] = wells[i];
-        wellPull_ = pullWu;
     }
     void step(float dt);
     // Writes the visible segments; returns how many.
@@ -95,9 +105,8 @@ private:
     Vec3* col_ = nullptr;   // scratch: colour x intensity
     float* hw_ = nullptr;   // scratch: half width (ref px)
     u8* flat_ = nullptr;    // scratch: bit 0 straight through horizontally, bit 1 vertically
-    Vec2 wells_[4];
+    LatticeWell wells_[4];
     u32 wellCount_ = 0;
-    float wellPull_ = 0.0f;
     float stepRemainder_ = 0.0f;
 };
 

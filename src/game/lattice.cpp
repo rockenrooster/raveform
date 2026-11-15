@@ -11,8 +11,6 @@ constexpr float kAnchor = 30.0f;    // pull back to rest, 1/s^2
 constexpr float kCouple = 140.0f;   // neighbour coupling, 1/s^2
 constexpr float kDamping = 5.0f;    // 1/s
 constexpr float kSubstep = 1.0f / 120.0f;
-constexpr float kWellPeakWu = 60.0f;
-constexpr float kWellGoneWu = 200.0f;
 
 float smooth(float a, float b, float x) {
     const float t = clampf((x - a) / (b - a), 0.0f, 1.0f);
@@ -122,12 +120,13 @@ void Lattice::step(float dt) {
                 if (j + 1 < j0_ + rows_) nb = nb + d_[slot(i, j + 1)];
                 Vec2 a = d * (-kAnchor - 4.0f * kCouple) + nb * kCouple - v_[s] * kDamping;
                 for (u32 w = 0; w < wellCount_; ++w) {
-                    const Vec2 e = Vec2{static_cast<float>(i) * spacing_, static_cast<float>(j) * spacing_} + d - wells_[w];
+                    const LatticeWell& wl = wells_[w];
+                    const Vec2 e = Vec2{static_cast<float>(i) * spacing_, static_cast<float>(j) * spacing_} + d - wl.at;
                     const float r = length(e);
-                    if (r < 1e-3f || r >= kWellGoneWu) continue;
-                    float f = r <= kWellPeakWu ? r / kWellPeakWu : (kWellGoneWu - r) / (kWellGoneWu - kWellPeakWu);
+                    if (r < 1e-3f || r >= wl.goneWu) continue;
+                    float f = r <= wl.peakWu ? r / wl.peakWu : (wl.goneWu - r) / (wl.goneWu - wl.peakWu);
                     f = f * f * (3.0f - 2.0f * f);
-                    a = a - e * (kAnchor * wellPull_ * f / r);
+                    a = a - e * (kAnchor * wl.pullWu * f / r);
                 }
                 acc_[s] = a;
             }

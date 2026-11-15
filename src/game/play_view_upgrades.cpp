@@ -21,8 +21,7 @@ Vec2 dirU(float a) { return {std::cos(a), std::sin(a)}; }
 Vec2 perpU(Vec2 v) { return {-v.y, v.x}; }
 float clampU(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
 float wrapPi(float a) { return std::remainder(a, 6.28318530718f); }  // (-pi, pi]
-const Vec3 kIce{0.55f, 0.85f, 1.0f};
-const Vec3 kFire{1.0f, 0.42f, 0.08f};
+const Vec3 kIce{0.55f, 0.85f, 1.0f};  // (Burn's fire: play_view_feedback.cpp burnFlames)
 constexpr float kBoltS = 0.09f;       // look.md 5: a zap's 90 ms
 // The owner's play of f0624e5 (Fractal "isn't visually clear"): a Fork's split drawn as a Y of light (look.md 5): two straight
 // arms along the halves' paths in their colour (60 degrees round the hue wheel while they can split again, 120 for the last).
@@ -115,8 +114,13 @@ void PlayView::eventUpgrade(const World& w, const Event& e, float t) {
             b.born = t;
             b.owner = static_cast<u8>(q);
             b.style = static_cast<u8>(e.f + 0.5f);
+            if (b.style == 2 || b.style == 3) zapHit(b.b, q, b.style == 2, t);  // (2026-11-14: Chain Storm's and Storm Coil's zaps end in a star)
             break;
         }
+        case kFxAegis:
+        case kFxBurnSpread:
+        case kFxWell:
+        case kFxHole: feedbackFx(w, e, t); break;  // 2026-11-14 (play_view_feedback.cpp)
         case kFxBlast:
             // (look.md 5: what a Boost draws is gold: Supernova's and the Carousel's blasts)
             addShockRings(at, 1, e.f, e.c == 1 ? light : ((e.c == 2 || e.c == 3) ? palettes_->player[3] * lvl : player), W1, t, e.c == 1 ? 0.3f : 0.18f);
@@ -134,6 +138,7 @@ void PlayView::eventUpgrade(const World& w, const Event& e, float t) {
                 addDistortion(at, e.f * 1.6f, 0.5f, 22.0f, 24.0f, t);
                 shakeAmp_ = std::fmax(shakeAmp_, 4.0f);
             }
+            if (e.b == kFxWellBlow || e.b == kFxHoleBlow) wellBlow(e, t);  // 2026-11-14
             break;
         }
         case kFxShatterFrozen: {
@@ -280,7 +285,7 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
             const u32 segs = 10;
             for (u32 s = 0; s < segs; ++s) {
                 const float u0 = c0 - half + 2.0f * half * static_cast<float>(s) / segs, u1 = c0 - half + 2.0f * half * static_cast<float>(s + 1) / segs;
-                d.scene.line(toScene(ship + dirU(u0) * r), toScene(ship + dirU(u1) * r), 1.1f * refPx_, light * 1.6f, Wq * 1.2f, 0);
+                d.scene.line(toScene(ship + dirU(u0) * r), toScene(ship + dirU(u1) * r), 1.4f * refPx_, light * 1.6f, Wq * 1.2f, 0);  // (its glow: drawFeedbackFx)
             }
         }
 
@@ -324,20 +329,11 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
             }
         }
 
-        // Singularity's well and Black Hole's singularity: rings drawn inward, a dark core.
-        const auto well = [&](Vec2 at, float r, float from, float to, Vec3 c) {
-            // An area is drawn by its edge (look.md 5); the pull shows in the lattice and two faint rings falling inward.
-            const float span = to - from;
-            const float u = span > 1.0f ? clampU((static_cast<float>(in.music) - from) / span) : 0.0f;
-            glyph(d.glyphs, gRing128_, false, at, 0.0f, 0.0f, r, 1.2f, 0.6f, kGlyphRingW, c, Wq);
-            for (u32 k = 0; k < 2; ++k) {
-                const float ph = std::fmod(t * 1.5f + static_cast<float>(k) * 0.5f, 1.0f);
-                glyph(d.glyphs, gRing128_, false, at, 0.0f, 0.0f, r * (1.0f - ph), 0.35f * ph * (0.5f + u), 0.4f, kGlyphRingW, c, c);
-            }
-        };
+        // Singularity's well and Black Hole's singularity (2026-11-14: an accretion disc, a photon ring, the lattice falling in;
+        // play_view_feedback.cpp drawWell).
         if (const u8 L = l.riffs[riffIndex(kSingularity)]; L && pq.wellFrom >= 0.0 && in.music >= pq.wellFrom)
-            well(pq.wellAt, tuning::kWellPullWu[L < 5 ? L : 5], static_cast<float>(pq.wellFrom), static_cast<float>(pq.wellBlow), player);
-        if (pq.holeFrom >= 0.0) well(pq.holeAt, tuning::kHolePullWu, static_cast<float>(pq.holeFrom), static_cast<float>(pq.holeBlow), gold);
+            drawWell(d, in, pq.wellAt, tuning::kWellPullWu[L < 5 ? L : 5], pq.wellFrom, pq.wellBlow, player, false, lvl);
+        if (pq.holeFrom >= 0.0) drawWell(d, in, pq.holeAt, tuning::kHolePullWu, pq.holeFrom, pq.holeBlow, gold, true, lvl);
 
         // Carousel's six bombs.
         if (pq.boost(kCarousel)) {
@@ -390,6 +386,7 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
         const float len = length(dv);
         if (len < 1.0f) continue;
         const Vec2 dir = dv * (1.0f / len), side = perpU(dir);
+        const bool heavy = b.style == 2 || b.style == 3;  // Chain Storm's and Storm Coil's zaps, thicker (2026-11-14)
         for (u32 strand = 0; strand < 3; ++strand) {
             const Vec3 c = strand == 1 ? W1 * lvl : outer;
             Vec2 prev = b.a;
@@ -398,12 +395,12 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
                 along = std::fmin(len, along + rng_.range(18.0f, 30.0f));
                 const float push = along >= len ? 0.0f : rng_.range(-10.0f, 10.0f);
                 const Vec2 p = b.a + dir * along + side * push;
-                d.scene.line(toScene(prev), toScene(p), 0.6f * refPx_, c, c, 0);
+                d.scene.line(toScene(prev), toScene(p), (heavy ? 0.9f : 0.6f) * refPx_, c, c, 0);
                 prev = p;
             }
         }
-        d.sparkles.glow(toScene(b.a), 5.0f * refPx_, outer * 0.6f);
-        d.sparkles.glow(toScene(b.b), 5.0f * refPx_, outer * 0.6f);
+        d.sparkles.glow(toScene(b.a), (heavy ? 7.0f : 5.0f) * refPx_, outer * (heavy ? 0.8f : 0.6f));
+        d.sparkles.glow(toScene(b.b), (heavy ? 9.0f : 5.0f) * refPx_, outer * (heavy ? 1.0f : 0.6f));
     }
 
     // Frozen bodies wear a ring of ice; burning ones glow like embers.
@@ -415,7 +412,7 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
         const Vec2 p{e.x[i], e.y[i]};
         if (!visible(p, 40.0f)) continue;
         if (ice) glyph(d.glyphs, gRing32_, false, p, 0.0f, 0.0f, e.radius[i] * 1.5f, 1.4f, 0.5f, kGlyphFlat, kIce, W1);
-        if (fire) d.sparkles.glow(toScene(p), e.radius[i] * 1.8f * pxPerWu_, kFire * (0.6f + 0.4f * std::sin(t * 25.0f + static_cast<float>(i))));
+        if (fire) burnFlames(d, in, i, p);  // (2026-11-14: flames, embers and a warm glow; play_view_feedback.cpp)
     }
 }
 

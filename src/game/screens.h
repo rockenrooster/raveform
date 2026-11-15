@@ -56,6 +56,10 @@ public:
     float fader(u32 id, Vec2 left, float width, float value, float meter, const char* label);
     // A tappable rectangle (cards); `pressed` says whether it is held now.
     bool area(u32 id, Vec2 a, Vec2 b, bool& pressed);
+    // A control drawn by its screen (Title v2's PLAY): kept for the layout rule, hit-tested; `pressed` held now, `over` the pointer
+    // over it with nothing held (a mouse's hover: never on a touch screen, where the pointer stays where the finger lifted).
+    bool button(u32 id, Vec2 a, Vec2 b, const char* label, bool& pressed, bool& over);
+    bool hover(Vec2 a, Vec2 b) const;
 
     // M4 stage B (screens.md, "Rules for every screen"): controls never touch: at least 24 px between any two, and
     // between a control and a line of text. Every control and every line drawn between begin() and end() is kept

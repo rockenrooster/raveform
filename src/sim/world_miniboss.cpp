@@ -440,9 +440,11 @@ void World::miniRelease(bool killed) {
 }
 
 void World::miniGone() {
-    // The Drop's hold ran out: it warps out and leaves nothing (minibosses.json common.drop).
+    // The Drop's hold ran out: it warps out and leaves nothing (minibosses.json common.drop) but the Track's Extra Life, where one
+    // is due (GAME_DESIGN 5, the owner 2026-11-14: one every other Track, whether it is beaten or not).
     BossState& s = boss_;
     DirectorState& d = director_;
+    extraLifeDrop(s.body[0], true);
     miniRelease(false);
     penFall(m1_);
     emitCue(BossCue::MiniGone, m1_, static_cast<u8>(s.kind), 0.0f, s.body[0]);

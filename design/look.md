@@ -474,6 +474,36 @@ quarter of a second, with six sparks. **The halves are drawn as Prism's lanes ar
 end, white in the front 15%): turned 60 degrees round the hue wheel while they can split again, 120 for
 the last. A teammate's split: its light colour at 0.5.
 
+### Feedback (the owner, 2026-11-14)
+
+"Things that need more visual feedback": each of these says what it did where it did it (`src/game/play_view_feedback.cpp`; a
+teammate's at 0.6; reduce flashing halves the flashes).
+
+- **On-Beat Crit.** A beat shot's star 16 / 22 / 28 wu by stack with a gold glow. Its hit: a four-point gold star with a
+  white core shrinking from 46 wu over 0.22 s and a smaller one across it, a ring out to the burst's 80 wu, a gold pool of
+  70 wu, ten sparks, a small push of the lattice.
+- **Crescendo.** Ten ticks round the ship just outside the halo, lit gold to white as the damage climbs, the newest flaring for
+  0.3 s; at the cap a ring joins them and pulses on the beat with a warm glow. A hit shatters it: its sparks fly and a gold
+  ring leaves the ship. The owner's shots brighten by up to half and their tails warm 30% toward gold.
+- **Syncopation.** An off-beat shot is accented: a ">" 9 wu ahead of its head in its light colour, a doubled tail, a brighter
+  head.
+- **Burn.** A burning body wears a flame drawn as line-art fire: a teardrop outline from under it to a swaying tip (orange to
+  red) with a yellow-white one inside; from two stacks a smaller flame either side, at three all taller; flickering, flaring on
+  each beat it burns; embers rising, a warm glow. A burning death's spread bursts in fire.
+- **Black Hole and Singularity.** The lattice falls into them (hot near the core only); inside the edge an accretion disc of
+  streaks on spirals, faster near the core, rings falling inward, a white photon ring round a dark core, all quickening and
+  brightening toward the blast. Placed: a ring folds in, light is drawn to it. Blown: a white flash, debris of light, a ring,
+  the lattice thrown out, a shake (Black Hole's harder).
+- **Storm Coil.** Its reach is a dashed ring turning slowly with three crackles crawling round it; its zaps (and Chain
+  Storm's) are thicker and each ends in a small star. **Aegis.** The arc glows along its length and at its ends; a block
+  flashes white where it struck (a star and a ring, sparks thrown off) and the whole arc flares for 0.18 s.
+- **A meteor** accelerates into the ground and smashes: its rock flies apart in pieces, a white star, a crater rim glowing
+  gold-white to danger for 1.6 s with embers, a gold pool, the lattice punched, a hard shake.
+- **Event Horizon's death.** Over the death bar light is torn in toward the point (streaks in the Track's hues on spirals,
+  faster and brighter as the bar ends), the lattice falls in after it and the screen trembles; the lattice goes dark for the
+  beat of black, one white point holding; then the boss's fall with two jets of white light along its axis, a ring of each hue
+  racing out and debris of light.
+
 ### Beams, lightning and areas (M5, 2026-11-13)
 
 The first pictures of the upgrades drew every beam as a filled bar with a white band down the

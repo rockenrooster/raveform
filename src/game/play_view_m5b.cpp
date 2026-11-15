@@ -62,9 +62,15 @@ void PlayView::drawHorizon(FrameDraw& d, const ViewInput& in) {
         const float u = clamp01(static_cast<float>((t - s.deathTick) / kTicksPerBar));
         scale = 1.0f - u * u;
         spinExtra = 3.0f * u * u;
-        if (deathShown_ == 0 && t >= s.deathTick + kTicksPerBar + kTicksPerBeat) {
+        // (2026-11-14, the owner: "event horizon death": light torn in over the bar, the beat of black's one white point, then the
+        // burst's jets; play_view_feedback.cpp)
+        const float black = t >= s.deathTick + kTicksPerBar ? std::fmax(clamp01(static_cast<float>((t - s.deathTick - kTicksPerBar) / kTicksPerBeat)), 1e-3f) : 0.0f;
+        if (hzBurstDeath_ != s.deathTick && shown(kMuteFx)) horizonCollapse(d, in, c, u, black);
+        if (hzBurstDeath_ != s.deathTick && t >= s.deathTick + kTicksPerBar + kTicksPerBeat) {
+            hzBurstDeath_ = s.deathTick;
             deathShown_ = 1;
             fightBreak(c, now);
+            horizonBurst(c, now);
         }
         if (scale <= 0.0f) return;
     }

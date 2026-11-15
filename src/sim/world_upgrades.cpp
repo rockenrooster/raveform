@@ -78,6 +78,7 @@ void World::spawnShotRaw(u32 p, Vec2 pos, Vec2 dir, float advanceS, float damage
     s.mods[i] = 0;
     s.forks[i] = 0;
     s.arena[i] = 0;  // M5 part 5
+    s.accent[i] = shotAccent_;
     lastShot_ = static_cast<i32>(i);  // M5: what the caller may still set on it
 }
 
@@ -462,26 +463,28 @@ bool World::breakRing(u32 p, Vec2 from) {
 }
 
 void World::extraLifeDrop(Vec2 at, bool fromMini) {
-    // GAME_DESIGN 5 (play test 3; c2f113a): in each Track of the set list one Extra Life drops, an orb for each player who holds
-    // none (co-op: each their own; the host decides): in Track 1 from a kill in the first cycle's Drop, from Track 2 from the
-    // mini-boss as it dies (it shares that Drop since every Track is two cycles; a mini-boss that warps out drops none). None in
-    // the loop.
+    // GAME_DESIGN 5 (play test 3; c2f113a; the owner, 2026-11-14: "extra life powerup every other track (i'm not seeing one after
+    // the first one)"): in every other Track of the set list (1, 3, 5, 7, 9) an Extra Life drops, an orb for each player who
+    // holds fewer than kMaxExtraLives (co-op: each their own; the host decides): in Track 1 from a kill in the first cycle's
+    // Drop, from Track 3 on from the mini-boss as it dies or warps out. None in the loop. (Until then one dropped in every Track
+    // but only for a player who held none, and a mini-boss that warped out dropped none: one kept unspent stopped every later
+    // drop.)
     if (role_ == NetRole::Client) return;
     const Phrase& ph = phrase_;
-    if (ph.trackChange || inLoop(ph.track, director_.songs)) return;
-    if (fromMini ? ph.track < 2 : (ph.track != 1 || ph.cycle != 1 || ph.section != Section::Drop)) return;
+    if (ph.trackChange || inLoop(ph.track, director_.songs) || ph.track % 2u == 0u) return;
+    if (fromMini ? ph.track < 3 : (ph.track != 1 || ph.cycle != 1 || ph.section != Section::Drop)) return;
     if (director_.extraLifeTrack == ph.track) return;
     director_.extraLifeTrack = ph.track;
     for (u32 p = 0; p < playerCount_; ++p) {
         const PlayerState& pl = players_[p];
-        if (!pl.present || pl.extraLives) continue;
+        if (!pl.present || pl.extraLives >= kMaxExtraLives) continue;
         dropBoost(at, static_cast<u8>(kPickupExtraLife + p));
     }
 }
 
 void World::takeExtraLife(u32 p) {
     PlayerState& pl = players_[p];
-    pl.extraLives = 1;
+    pl.extraLives = static_cast<u8>(pl.extraLives < kMaxExtraLives ? pl.extraLives + 1 : kMaxExtraLives);
     ++pl.extraLivesTaken;
     Event ev;
     ev.type = EventType::ExtraLife;
@@ -497,7 +500,7 @@ void World::spendExtraLife(u32 p, Vec2 from) {
     // two cells, a free Nova blast, one bar of invulnerability and half its Chain, under the words EXTRA LIFE. Co-op: spent
     // instead of going down.
     PlayerState& pl = players_[p];
-    pl.extraLives = 0;
+    pl.extraLives = static_cast<u8>(pl.extraLives ? pl.extraLives - 1 : 0);  // (one of the two it may hold)
     ++pl.extraLivesSpent;
     ++pl.hitsTaken;
     pl.cells = static_cast<u8>(pl.cellCap < kExtraLifeCells ? pl.cellCap : kExtraLifeCells);
@@ -859,7 +862,7 @@ void World::updateBoosts() {
             if (lengthSq(pl.pos - Vec2{b.x[i], b.y[i]}) > r * r) continue;
             if (b.type[i] == kPickupExtraLife) {
                 // Play test 3 (GAME_DESIGN 5): an Extra Life; a player holds at most one (a second waits where it lies).
-                if (pl.extraLives) continue;
+                if (pl.extraLives >= kMaxExtraLives) continue;
                 b.dead[i] = 1;
                 takeExtraLife(p);
                 break;
