@@ -135,7 +135,12 @@ constexpr float tempoHealth(u32 track) { return kTrackBpm[track - 1] / kTunedBpm
 constexpr float kTrioRingWu = 170.0f;
 constexpr float kTrioOrbWu = 38.0f;
 constexpr float kTrioRiffScale = 1.14f;
-constexpr float kTrioTouchWu = 6.0f;          // (M3: taken on touch; play test 1 holds instead, below)
+// A Fusion on offer (screens.md "The Trio", quoted; built 2026-11-15, the owner: "A Fusion's orb looks like every other orb"):
+// its gold orb stands above the ring at 240 wu (screens.md's 230 put its thin ring over the Trio's), its icon x1.45 (its
+// thin ring with it).
+constexpr float kTrioFusionScale = 1.45f;
+constexpr float kTrioFusionWu = 240.0f;
+constexpr float kTrioTouchWu = 6.0f;         // (M3: taken on touch; play test 1 holds instead, below)
 constexpr float kTrioHomeSpeed = 900.0f;      // wu/s: the orb that flies to the ship when the clock ends
 // Play test 1 (GAME_DESIGN 6.1, screens.md "The Trio", 2026-11-12: a choice is never an accident): nothing can be
 // taken for the Break's first two beats; then an orb is taken by staying inside its thin ring (1.42 x the icon,

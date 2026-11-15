@@ -490,8 +490,12 @@ struct TrioState {
     Vec2 lastTakenAt;
 };
 
-// Where orb k of a Trio of n sits round its centre (world_upgrades.cpp).
-Vec2 trioOrbPlace(Vec2 centre, u32 k, u32 n);
+// Where orb k of a Trio of n sits round its centre (world_upgrades.cpp). `fusionLast`: the last orb is a Fusion's gold orb, which
+// stands above the ring while the others turn point down (screens.md, 2026-11-15).
+Vec2 trioOrbPlace(Vec2 centre, u32 k, u32 n, bool fusionLast = false);
+void placeTrioOrbs(TrioState& tr);  // every orb's place from its upgrades (orbs, upgrade[], centre)
+// An orb's size against a Mod's: a Riff's x1.14, a Fusion's x1.45 (its icon and the thin ring held to take it).
+float trioOrbScale(u8 orb);
 
 struct Shards {
     static constexpr u32 kCap = kMaxShards;
@@ -971,7 +975,7 @@ public:
     // Pictures and tests: give a player an upgrade or a Boost, open a Trio, bring the boss in now.
     void grantUpgrade(u32 p, u8 upgrade) { applyUpgrade(p, upgrade); }
     void grantBoost(u32 p, u8 boost) { activateBoost(p, boost); }
-    void openTrioNow(u32 p, double closeTick, const u8* forced = nullptr, u8 kind = kTrioBreak);
+    void openTrioNow(u32 p, double closeTick, const u8* forced = nullptr, u8 kind = kTrioBreak, u32 forcedCount = 3);
     // Benchmarks (M5, --fight <id>:<phase>:hold): every live part back to full health and the core to at least coreShare,
     // so the fight stays in its phase while it is measured.
     void bossRefill(float coreShare) {

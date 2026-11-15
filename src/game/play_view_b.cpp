@@ -529,14 +529,34 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
         if (tr.holdOrb >= 0) answer = tr.holdOrb;
         if (tr.homing >= 0) answer = tr.homing;
         const float holdFill = clamp01(static_cast<float>(tr.holdTicks / (tuning::kTrioHoldBeats * kTicksPerBeat)));
+        const bool trioFusion = tr.orbs >= 2 && isFusionOrb(tr.upgrade[tr.orbs - 1]);  // (its gold orb is the last, above the ring)
         for (u32 k = 0; k < tr.orbs; ++k) {
             const u8 u = tr.upgrade[k];
             const bool riff = isRiff(u);
             const bool ans = static_cast<i32>(k) == answer;
             const Vec2 p = tr.orbPos[k];
             if (fadeIn <= 0.0f) continue;
-            const float orbWu = tuning::kTrioOrbWu * (riff ? tuning::kTrioRiffScale : 1.0f) * (ans ? 1.12f : 1.0f) * swell;
+            const bool fusionOrb = isFusionOrb(u);  // a Fusion's gold orb (screens.md "The Trio", built 2026-11-15)
+            const float orbWu = tuning::kTrioOrbWu * trioOrbScale(u) * (ans ? 1.12f : 1.0f) * swell;
             const Vec2 sp = toScene(p);
+            const float textFade = locked ? fadeIn : 1.0f;
+            if (fusionOrb) {
+                // The owner, 2026-11-15 ("A Fusion's orb looks like every other orb"): above the ring, its icon x1.45; behind it a
+                // four-arm gold flare and a two-arm white one, swelling on the beat, a gold pool, and two thin gold lines up to it
+                // from the ring.
+                const float lvl = (locked ? 0.5f * fadeIn : 1.0f) * (1.0f + (reduceFlashing_ ? 0.0f : 0.35f * beat_));
+                flare(d.scene, p, 0.25f * kPi, orbWu * 2.4f, 2, gold * (1.5f * lvl), 0.8f);
+                flare(d.scene, p, 0.0f, orbWu * 3.2f, 1, W1 * (1.1f * lvl), 0.6f);
+                d.pools.glow(sp, orbWu * 3.4f * pxPerWu_, gold * (0.30f * textFade));
+                const float ringFusion = tuning::kTrioHoldRing * orbWu;
+                for (int sgn = -1; sgn <= 1; sgn += 2) {
+                    const float sg = static_cast<float>(sgn);
+                    const Vec2 from = c + dirv(-0.5f * kPi + sg * 0.13f * kPi) * R;
+                    const Vec2 to = p + dirv(0.5f * kPi - sg * 0.3f * kPi) * ringFusion;
+                    const Vec3 gl = gold * (1.4f * textFade);
+                    d.scene.line(toScene(from), toScene(to), 0.7f * refPx_, gl, gl, 0);
+                }
+            }
             // Locked: outlines at 0.5, fading in; lit: the icon at its level (the third beat flashes it). Play test 2: a Boost
             // orb (every Mod and Riff at its cap) shows its Boost.
             const bool boostOrb = isBoostOrb(u);
@@ -550,7 +570,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             const u32 n = 64;
             for (u32 s = 0; s < n; ++s) {
                 const float a0 = kTau * static_cast<float>(s) / n, a1 = kTau * static_cast<float>(s + 1) / n;
-                const Vec3 col = locked ? W1 * (0.35f * fadeIn) : (ans ? player * 2.0f : W1 * 0.7f);
+                const Vec3 col = locked ? (fusionOrb ? gold : W1) * (0.35f * fadeIn) : (ans ? player * 2.0f : (fusionOrb ? gold * 1.6f : W1 * 0.7f));
                 d.scene.line(toScene(p + dirv(a0) * ringWu), toScene(p + dirv(a1) * ringWu), (ans ? 1.2f : 0.6f) * refPx_, col, col, 0);
                 if (levelTrio) {
                     const float r3 = ringWu + 5.0f;
@@ -580,38 +600,72 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
                 d.scene.line(toScene(ship), toScene(p - normalizeOr(p - ship, Vec2{1.0f, 0.0f}) * ringWu), 1.0f * refPx_, player * 0.4f,
                              light * 1.6f, 0);
             }
-            // Words, always outside the ring: above the top orb, left of the left one, right of the right one.
+            // Words, always outside the ring, by where the orb stands (2026-11-15: any layout): above an orb at the top, left or
+            // right of the others, an orb at the bottom too (under it are the Trio's hint and the phone's bottom row); a Fusion's
+            // to the right of its orb (above it there is no room on a phone). A block of lines: a Fusion's `FUSION: A + B`, the
+            // name, the effect words, the stack pips, and an ingredient's recipe in gold.
             const UpgradeInfo& info = upgradeInfo(u);
-            const bool fusionOrb = isFusionOrb(u);  // M5: a Fusion's gold orb
             const char* name = boostOrb ? boostInfo(boostOfOrb(u)).name : (fusionOrb ? fusionInfo(fusionOfOrb(u)).name : info.name);
             const char* words = boostOrb ? boostInfo(boostOfOrb(u)).words : (fusionOrb ? fusionInfo(fusionOfOrb(u)).words : upgradeWords(u, tr.level[k]));
-            const float capName = 20.0f * pxPerWu_, capWords = 11.0f * pxPerWu_;
-            const float wName = font_->measure(TextStyle{capName}, name), wWords = font_->measure(TextStyle{capWords}, words);
-            const float gap = (ringWu + 14.0f) * pxPerWu_;
-            Vec2 org;  // the name's baseline, left end
-            const float lift = (ans ? 1.9f : 1.3f) * (locked ? fadeIn : 1.0f);
-            float align = 0.0f;  // 0 left-aligned at org.x, 1 right-aligned, 0.5 centred
-            if (k == 0) {
-                org = Vec2{sp.x, sp.y - gap - capWords - 18.0f * refPx_};
-                align = 0.5f;
-            } else if (k == 1) {
-                org = Vec2{sp.x - gap, sp.y - 4.0f * refPx_};
-                align = 1.0f;
-            } else {
-                org = Vec2{sp.x + gap, sp.y - 4.0f * refPx_};
-                align = 0.0f;
+            char tag[48] = {}, recipe[64] = {};
+            if (fusionOrb) {
+                const FusionInfo& fi = fusionInfo(fusionOfOrb(u));
+                std::snprintf(tag, sizeof tag, "FUSION: %s + %s", upgradeInfo(fi.a).name, upgradeInfo(fi.b).name);
+            } else if (u < kUpgradeCount) {
+                // The owner, 2026-11-15 ("The game never shows which upgrades combine"): an ingredient of a Fusion not yet taken
+                // names its partner, the partner's rank of its max, and the Fusion: `+ WAVE 1/2 = HELIX ARRAY`.
+                for (u8 f = 0; f < kFusionCount; ++f) {
+                    const FusionInfo& fi = fusionInfo(f);
+                    if (me.loadout.fused(f) || (fi.a != u && fi.b != u)) continue;
+                    const u8 other = fi.a == u ? fi.b : fi.a;
+                    std::snprintf(recipe, sizeof recipe, "+ %s %u/%u = %s", upgradeInfo(other).name, me.loadout.level(other),
+                                  static_cast<u32>(upgradeInfo(other).cap), fi.name);
+                    break;
+                }
             }
-            const Vec3 nameCol = W1 * lift, wordCol = accent * ((ans ? 1.9f : 1.3f) * (locked ? fadeIn : 1.0f));
-            // (The font's origin is the top of its caps; org and wy are baselines.)
-            font_->drawField(d.scene, Vec2{org.x - align * wName, org.y - capName}, capName, 0.9f * refPx_, nameCol, nameCol, nameCol, name);
-            const float wy = org.y + capWords + 12.0f * refPx_;
-            font_->drawField(d.scene, Vec2{org.x - align * wWords, wy - capWords}, capWords, 0.7f * refPx_, wordCol, wordCol, wordCol, words);
-            // Pips: one per stack or level the upgrade can have; owned white, this pick gold with a ring (a Boost has none).
-            const u32 cap = (boostOrb || isFusionOrb(u)) ? 0u : info.cap;
+            const u32 cap = (boostOrb || fusionOrb) ? 0u : info.cap;  // pips (a Boost and a Fusion have none)
+            const float capName = (fusionOrb ? 24.0f : 20.0f) * pxPerWu_, capWords = 11.0f * pxPerWu_, capSmall = 10.0f * pxPerWu_;
+            // The block's lines from its top, in scene px (the font's origin is the top of its caps).
+            float yy = 0.0f;
+            const float tagTop = yy;
+            if (tag[0]) yy += capSmall + 8.0f * refPx_;
+            const float nameTop = yy;
+            yy += capName + 12.0f * refPx_;
+            const float wordsTop = yy;
+            yy += capWords;
+            const float pipY = yy + 16.0f * refPx_;
+            if (cap) yy = pipY + 9.0f * refPx_;
+            const float recipeTop = yy + 9.0f * refPx_;
+            if (recipe[0]) yy = recipeTop + capSmall;
+            const float blockH = yy;
+            const Vec2 outDir = normalizeOr(p - c, Vec2{0.0f, -1.0f});
+            const float gap = (ringWu + 14.0f) * pxPerWu_;
+            float tx = sp.x, blockTop = 0.0f, align = 0.5f;  // align: 0 left-aligned at tx, 1 right-aligned, 0.5 centred
+            if (!trioFusion && outDir.y < -0.7f) {
+                blockTop = sp.y - gap - blockH;  // above (with a Fusion on offer the top is its: every other orb's words beside)
+            } else {
+                const bool leftSide = !fusionOrb && outDir.x < -0.05f;  // (the bottom orb's to its right)
+                blockTop = sp.y - 4.0f * refPx_ - capName - nameTop;  // beside: the name's baseline 4 px above the orb's centre
+                align = leftSide ? 1.0f : 0.0f;
+                tx = leftSide ? sp.x - gap : sp.x + gap;
+            }
+            const float lift = (ans ? 1.9f : 1.3f) * textFade;
+            const Vec3 nameCol = fusionOrb ? gold * (1.4f * lift) : W1 * lift;
+            const Vec3 wordCol = (fusionOrb ? gold : accent) * ((ans ? 1.9f : 1.3f) * textFade);
+            const Vec3 goldCol = gold * ((ans ? 1.9f : 1.4f) * textFade);
+            const auto field = [&](const char* text, float capPx, float yTop, float stroke, Vec3 col) {
+                const float wText = font_->measure(TextStyle{capPx}, text);
+                font_->drawField(d.scene, Vec2{tx - align * wText, blockTop + yTop}, capPx, stroke, col, col, col, text);
+            };
+            if (tag[0]) field(tag, capSmall, tagTop, 0.65f * refPx_, goldCol);
+            field(name, capName, nameTop, 0.9f * refPx_, nameCol);
+            field(words, capWords, wordsTop, 0.7f * refPx_, wordCol);
+            if (recipe[0]) field(recipe, capSmall, recipeTop, 0.65f * refPx_, goldCol);
+            // Pips: one per stack or level the upgrade can have; owned white, this pick gold with a ring.
             if (!cap) continue;
             const float pip = 5.0f * refPx_, step = 15.0f * refPx_;
             const float rowW = static_cast<float>(cap - 1) * step;
-            const float px0 = org.x - align * rowW, py = wy + 16.0f * refPx_;
+            const float px0 = tx - align * rowW, py = blockTop + pipY;
             const u32 owned = tr.level[k] > 0 ? tr.level[k] - 1u : 0u;
             for (u32 j = 0; j < cap; ++j) {
                 const Vec2 q{px0 + static_cast<float>(j) * step, py};
@@ -657,7 +711,7 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
                 const u8 u = ot.upgrade[k];
                 if (!validOrb(u)) continue;
                 const bool riff = isRiff(u);
-                const float orbWu = tuning::kTrioOrbWu * (riff ? tuning::kTrioRiffScale : 1.0f) * swell;
+                const float orbWu = tuning::kTrioOrbWu * trioOrbScale(u) * swell;  // (a Fusion's x1.45, 2026-11-15)
                 const Vec2 p = ot.orbPos[k];
                 const i32 icon = orbIcon(u);
                 icons_->draw(d, icon, toScene(p), orbWu * pxPerWu_ / icons_->size(icon) * (riff ? tuning::kTrioRiffScale : 1.0f), third);

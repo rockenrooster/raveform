@@ -502,12 +502,14 @@ void Play::screenPause(Ui& ui) {
         ui.text({cx, 380.0f * s}, 20.0f * s, gold, 1.4f, line);
     }
     if (countIn_) {
-        // The count-in: four numbered rings fill on four beats; the run goes on at the end of the fourth.
+        // The count-in: 3-2-1, three numbered rings fill on three beats; the run goes on at the end of the third (the owner,
+        // 2026-11-15; it was four).
+        constexpr u32 kRings = static_cast<u32>(kCountInBeats);
         const double now = countInNow();
-        const float u = static_cast<float>(1.0 - (countInEnd_ - now) / (4.0 * kTicksPerBeat));
-        for (u32 k = 0; k < 4; ++k) {
-            const Vec2 c{cx + (static_cast<float>(k) - 1.5f) * 150.0f * s, 600.0f * s};
-            const float fill = clamp01(u * 4.0f - static_cast<float>(k));
+        const float u = static_cast<float>(1.0 - (countInEnd_ - now) / (kCountInBeats * kTicksPerBeat));
+        for (u32 k = 0; k < kRings; ++k) {
+            const Vec2 c{cx + (static_cast<float>(k) - 0.5f * static_cast<float>(kRings - 1)) * 150.0f * s, 600.0f * s};
+            const float fill = clamp01(u * static_cast<float>(kRings) - static_cast<float>(k));
             ui.ring(c, 52.0f * s, (fill >= 1.0f ? 1.6f : 0.9f) * s, palettes_->player[0], fill >= 1.0f ? 2.0f : 0.6f, 48);
             const u32 segs = static_cast<u32>(48.0f * fill);
             for (u32 j = 0; j < segs; ++j) {
@@ -516,7 +518,7 @@ void Play::screenPause(Ui& ui) {
                 ui.draw().hud.line(c + polarV(a0, 52.0f * s), c + polarV(a1, 52.0f * s), 3.0f * s, c2, c2, 0);
             }
             char n[4];
-            std::snprintf(n, sizeof n, "%u", 4u - k);
+            std::snprintf(n, sizeof n, "%u", kRings - k);
             ui.text({c.x, c.y + 18.0f * s}, 36.0f * s, white, fill > 0.0f ? 1.8f : 0.6f, n);
         }
         keyPrimary_ = keyBack_ = false;

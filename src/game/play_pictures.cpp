@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <initializer_list>
 
 #include "core/log.h"
 #include "game/play.h"
@@ -200,9 +201,28 @@ bool Play::scriptInputB(StickInput& in) {
         const u8 forced[3] = {kSplit, kMagnet, kOrbitals};
         // Play test 1: the Trio opens after the run's Track card has gone (2.25 bars), so the card does not cover it.
         constexpr u32 kOpen = 300;
-        if (t == kOpen) w.openTrioNow(0, music + 4.0 * kTicksPerBar, forced, kTrioLevel);  // (a667116: a level's, the Break deals none)
+        // 2026-11-15 (the owner: "The game never shows which upgrades combine", "A Fusion's orb looks like every other orb"):
+        // trio_fusion holds Split 4 and Wave 2 (Helix Array due) and Echo 1; its Trio offers Accent (+ ECHO 1/2 = STANDING
+        // WAVE), Orbitals (+ SHATTER 0/3 = SHARD HALO), Magnet (no Fusion) and Helix Array's gold orb above the ring.
+        // trio_fusion6: the most orbs a Trio deals (Lucky Break's two and the Fusion): five round the ring, the Fusion above.
+        const bool six = is(p, "trio_fusion6");
+        const bool fusionPic = is(p, "trio_fusion") || six;
+        if (fusionPic && t == 120) {
+            for (u8 u : {kSplit, kSplit, kSplit, kSplit, kWave, kWave, kEcho}) w.grantUpgrade(0, u);
+        }
+        if (t == kOpen) {
+            if (six) {
+                const u8 withFusion[6] = {kAccent, kOrbitals, kMagnet, kSeeker, kRegen, static_cast<u8>(kFusionOrb + kHelixArray)};
+                w.openTrioNow(0, music + 4.0 * kTicksPerBar, withFusion, kTrioLevel, 6);
+            } else if (fusionPic) {
+                const u8 withFusion[4] = {kAccent, kOrbitals, kMagnet, static_cast<u8>(kFusionOrb + kHelixArray)};
+                w.openTrioNow(0, music + 4.0 * kTicksPerBar, withFusion, kTrioLevel, 4);
+            } else {
+                w.openTrioNow(0, music + 4.0 * kTicksPerBar, forced, kTrioLevel);  // (a667116: a level's, the Break deals none)
+            }
+        }
         const TrioState& tr = w.trio(0);
-        if (is(p, "trio")) {
+        if (is(p, "trio") || fusionPic) {
             if (t == kOpen + 80 && captureFrom_ < 0) captureFrom_ = now;  // lit (the third beat), the ship off the orbs
         } else if (is(p, "trio_locked")) {
             if (t == kOpen + 52 && captureFrom_ < 0) captureFrom_ = now;  // play test 1: under two beats in, the orbs still outlines

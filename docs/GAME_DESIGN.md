@@ -154,7 +154,7 @@ and a single RETRY button.
 | Shield cells | Start 4, up to 8 with Extra Cell; one cell comes back at every Break, more with Regen, and **Cells** dropped by enemies restore one each (section 6.1). A hit removes one, fires a panic pulse (clears bullets within 220 wu, shoves enemies), grants 2.5 s invulnerability and halves the Chain. Health is shown on the ship itself: its halo has one arc per cell. **Nobody meets a boss on their last cell** (M5, 2026-11-13): as a boss arrives, a player with fewer than three cells grows back up to three (two at first; M6, 2026-11-14: with the crowd eased the novice's runs ended in the fights, 32 of 41 run-ending hits), the arcs drawing themselves over its entrance bar as Regen's do. And **a boss pays for its phases**: at each phase change it drops one Cell for each player, at the boss, drifting to them. The novice bot went into the Longwave fights it lost with 1.2 cells on average and into those it won with 3.1 |
 | Extra Life | (Play test 3: "a revive powerup to grant a 1x revive to continue without starting over".) A gold ship-shaped orb, a pickup of its own kind and not a Boost: it takes no Boost slot and is never offered in a Trio. Since 2026-11-14 (the owner: "extra life powerup every other track (i'm not seeing one after the first one)") one drops in every other Track, 1, 3, 5, 7 and 9, for each player holding fewer than two: in Track 1 from a kill during the first cycle's
 Drop, from Track 3 from the mini-boss as it dies or warps out (it shares that Drop since every Track is two cycles); it lies for 8 bars with a gold edge chevron while off screen. A player holds at most two, each a small gold ship beside the Nova stock. (Until then one dropped in every Track but only for a player holding none, and a mini-boss that warped out dropped none, so one kept unspent stopped every later drop.) It is spent on the hit that would end the run (after Auto Nova): the ship comes back at once with two cells, a free Nova blast, one bar of invulnerability and half its Chain, under the words `EXTRA LIFE`. Co-op: each player their own; it is spent instead of going down. None drop in the loop; one held is carried in |
-| Nova | Start with 3, capacity 4 (up to 6 with Mods); one comes back at every Break. Rule R6. Clears bullets and non-boss enemies in view; heavy damage to bosses. **Auto Nova** (on by default, a switch under CONTROLS): a hit that would take the last Shield cell fires a Nova from the stock instead and costs no cell |
+| Nova | Start with 3, capacity 4 (up to 7 with Nova Stock's three ranks); one comes back at every Break and with every Shard level (the owner, 2026-11-15: "leveling up via shards should also give a nova"), up to the capacity. Rule R6. Clears bullets and non-boss enemies in view; heavy damage to bosses. **Auto Nova** (on by default, a switch under CONTROLS): a hit that would take the last Shield cell fires a Nova from the stock instead and costs no cell |
 | Dash | One charge, recharges in 2 beats. 220 wu in 0.12 s, invulnerable throughout. Perfect Dash refunds half the recharge and emits a small shock ring |
 
 **Scoring.** Score = enemy value × Chain. The Chain is a multiplier: it starts at ×1 and never goes
@@ -210,11 +210,16 @@ except settings, local high scores and lifetime stats.
     and a Fusion is reachable (it held one at the end of Track 5 in every run that got there). With
     Extra Cell and Regen at 1 the careless bot grew back 5 cells in twenty runs, against 107 in play
     test 2, and died in the first three Tracks in 9 runs of 20; at 3, in 1 of 20.
-- **Fusion.** When both ingredients of a Fusion are maxed, it appears as a gold fourth orb.
+- **Fusion.** When both ingredients of a Fusion are maxed, it appears as a gold fourth orb, above the ring (screens.md
+  "The Trio"; built 2026-11-15). Every orb that is half of a Fusion not yet taken names the other half, its rank and the
+  Fusion (`+ WAVE 1/2 = HELIX ARRAY`), so a player can build toward one (the owner, 2026-11-15: "The game never shows
+  which upgrades combine"). The pace stays as it is (the owner: "They come too late. Its fine, no change needed").
 - **Shard levels** (play test 2, 2026-11-12: "upgrades need to happen more often, maybe scale by
   collected Shards"). Collected Shards fill a level meter under the Chain. Each time it fills the
   player gains a level, and a Trio opens round the ship on the next bar line, wherever the fight
-  is: the same three orbs, held to be taken. The first level needs **100** Shards (the owner,
+  is: the same three orbs, held to be taken. **Each level also gives a Nova** at once, up to the
+  capacity (the owner, 2026-11-15; none in the loop, where the Breaks give none either: section 8;
+  the HUD's newest Nova star swells and flashes gold). The first level needs **100** Shards (the owner,
   2026-11-14: "shards needed for the 1st level powerup should be less"; it needed 170), level n after
   it 170 × 1.17^(n−1) (199, 233, 272 …): the curve the bot runs settled on, giving a level about every 28 seconds in
   Track 1, 16 in Track 2 and 31 in Track 3 (the Shard income rises sevenfold from Track 1 to 2,
@@ -636,7 +641,8 @@ with a safe place that moves, and recognising six fights inside a seventh.
   factors alone never reached the ship (the bots lived 40 minutes at 1.5 each: the build kills
   everything first and Regen, Cells, the Breaks' refills and Auto Nova outrun the hits), so the
   loop also takes away what keeps the ship alive and speeds up what hunts it. From the first
-  Track of the loop: **the Breaks no longer give back a cell or a Nova**; Regen's periods stretch
+  Track of the loop: **the Breaks no longer give back a cell or a Nova** (nor a Shard level a Nova,
+  2026-11-15); Regen's periods stretch
   by 1.5 for each Track of the loop; enemy speed rises 6% a Track (at most × 1.6) and enemy
   bullet speed 6% a Track (at most × 1.5, so a pattern can still be read); every shooter's bullet
   count rises 15% a Track (at most × 3, inside the pools). The loop's first Track card says so:

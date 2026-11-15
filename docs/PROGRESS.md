@@ -4,6 +4,33 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, Fusions shown; a Nova a Shard level; the count-in 3-2-1
+
+The owner, on the Fusion findings below: "They come too late. Its fine, no change needed" (the pace stays); "The game never
+shows which upgrades combine. fix please"; "A Fusion's orb looks like every other orb. fix please"; "the resume countdown
+should be 3-2-1 instead of 4-3-2-1"; "leveling up via shards should also give a nova".
+
+- **The Fusion's gold orb** (screens.md "The Trio", designed in M3, never built: it was dealt as one more orb evenly round the
+  ring): it stands above the ring at 240 wu (`kTrioFusionWu`; screens.md's 230 put its thin ring over the Trio's), its icon
+  and its thin ring x1.45 (`kTrioFusionScale`; `trioOrbScale` gives the sim's hold and shelter rings and the view the same
+  size), a four-arm gold flare and a two-arm white one swelling on the beat, a gold pool, its ring in gold, two gold lines
+  up to it from the ring, `FUSION: SPLIT + WAVE` over its name and words in gold to its right. The other orbs turn point down
+  (`trioOrbPlace(..., fusionLast)`: lower centre, upper right, upper left; Lucky Break's spread over the ring's lower 240
+  degrees, at most 120 apart). The sim and every co-op peer place them alike (`placeTrioOrbs`, also on a Trio heard from
+  another device); with a Fusion the Trio's centre keeps the gold orb inside the arena.
+- **Recipes:** an orb that is half of a Fusion not yet taken shows `+ WAVE 1/2 = HELIX ARRAY` in gold under its pips (the
+  other half, its rank of its max, the Fusion). Words now sit by where an orb stands (above a top orb, beside the others, a
+  bottom orb's to its right, every orb's beside with a Fusion on offer), so any layout reads. Pictures: `--picture
+  trio_fusion` (Split 4 + Wave 2 held, Echo 1: Accent, Orbitals, Magnet and Helix Array's orb) and `trio_fusion6` (six orbs).
+- **A Nova a Shard level** (`World::collectShard`): one at once, up to the capacity; none in the loop, as the Breaks
+  (`kLoopBreakRefills`). The LevelUp event says so (`c`); the HUD's newest Nova star swells and flashes gold for 0.9 s (half
+  in reduce flashing) and the log line adds `+1 Nova`.
+- **The count-in 3-2-1** (`kCountInBeats` 3, solo and the shared co-op one: `Play::beginCountIn`, `Session::hostPause`, both
+  pause screens' rings).
+- **Found on the way:** the co-op Stats message refused more than 6 Novas, but Nova Stock's three ranks hold 7: a player
+  holding seven had every Stats packet dropped (teammates' cells, Novas, Chain and score froze on the others' screens). The
+  check is `kNovaCapacityMax` (7) now. GAME_DESIGN 5 said "up to 6 with Mods": 7.
+
 ## 2026-11-15, Kick Pulse two ranks; why no Fusion reached the owner's play
 
 - "Limit kick pulse to 2": **cap 2** (`kMods`; it was 3). The first rank shoves, the second hurts (`THE SHOVE HURTS`); the third

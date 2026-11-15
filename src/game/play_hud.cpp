@@ -318,13 +318,16 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
             font.drawField(d.hud, {m, y0 + static_cast<float>(k) * 26.0f * s}, cap, 0.65f * s, pc, pc, pc, line);
         }
     }
-    // Nova stock: top right, one four-point star per Nova, lit in the player colour.
+    // Nova stock: top right, one four-point star per Nova, lit in the player colour. 2026-11-15: the Nova a Shard level gives
+    // (the newest star) swells and flashes gold as it lights, fading over 0.9 s (half in reduce-flashing).
     for (u32 k = 0; k < st.novaCap; ++k) {
         const Vec2 c{W - mr - 150.0f * s - static_cast<float>(k) * 50.0f * s, top + 62.0f * s};
         const bool lit = k < st.novas;
+        const float gain = (lit && k + 1 == st.novas) ? st.novaFlash * (st.reduceFlashing ? 0.5f : 1.0f) : 0.0f;
         if (lit) {
-            star4(d.hud, c, 16.0f * s, 0.9f * s, col(white, 2.0f), col(player, 2.0f));
-            d.pools.glow(c, 26.0f * s, player * 0.25f * g_hudFade);
+            star4(d.hud, c, (16.0f + 12.0f * gain) * s, (0.9f + 0.6f * gain) * s, col(mix(white, gold, gain), 2.0f + 1.5f * gain),
+                  col(mix(player, gold, gain), 2.0f + gain));
+            d.pools.glow(c, (26.0f + 30.0f * gain) * s, mix(player * 0.25f, gold * 0.45f, gain) * g_hudFade);
         } else {
             star4(d.hud, c, 16.0f * s, 0.9f * s, col(white, 0.3f), col(white, 0.3f));
         }

@@ -1177,7 +1177,7 @@ void Session::requestPause(bool on) {
 
 void Session::hostPause(bool on, bool away) {
     // GAME_DESIGN 10: any player may pause; it takes hold for everyone on the next beat (at least 120 ms away,
-    // so every client hears of it first). RESUME counts four beats in, as solo play does (screens.md).
+    // so every client hears of it first). RESUME counts three beats in (3-2-1, 2026-11-15), as solo play does (screens.md).
     if (!song_.valid() || state_ != SessionState::Running) return;
     const double song = song_.songAt(hostNow_);
     const double tps = song_.tpsAt(hostNow_);
@@ -1200,7 +1200,7 @@ void Session::hostPause(bool on, bool away) {
     } else if (!on && paused() && !resuming() && !awayMask_) {  // (nobody may lift the pause while a player is away)
         const double barStart = std::floor(pauseAt_ / kBar) * kBar;
         const double frac = pauseAt_ - barStart;
-        const double line = std::ceil((song + 4.0 * kBeat - frac + 8.0) / kBar) * kBar;
+        const double line = std::ceil((song + kCountInBeats * kBeat - frac + 8.0) / kBar) * kBar;
         resumeAt_ = line + frac;
         nextOffset_ = line - barStart;
         MsgPause m;

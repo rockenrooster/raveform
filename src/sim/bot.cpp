@@ -741,7 +741,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
         if (novice) pick = novPick_ < tr.orbs ? novPick_ : 0u;
         const Vec2 d = tr.orbPos[pick] - pos;
         const float dist = length(d);
-        const float ring = tuning::kTrioHoldRing * tuning::kTrioOrbWu * (isRiff(tr.upgrade[pick]) ? tuning::kTrioRiffScale : 1.0f);
+        const float ring = tuning::kTrioHoldRing * tuning::kTrioOrbWu * trioOrbScale(tr.upgrade[pick]);
         if (demo_ && dist < 260.0f) precise_ = true;
         if (dist > 0.5f * ring) {
             if (dist > 1e-3f) force = force + d * (2.2f / dist);

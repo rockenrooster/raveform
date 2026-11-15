@@ -194,10 +194,21 @@ centre for the first bar; each orb's thin ring is drawn double, because a ship i
 hurt and bodies that touch it are shoved off. Everything else — the two locked beats, the
 two-beat hold, the nearest orb at the end — is the same.
 
-With a **Fusion** on offer the triangle turns point down (orbs at lower centre, upper left, upper
-right) and the Fusion sits above the ring at 230 wu: its icon at ×1.45 in the eight-point frame, a
-four-arm gold flare and a two-arm white one, its words in gold, and two thin gold lines running up to
-it from the ring. It is the only gold thing on the screen.
+With a **Fusion** on offer the triangle turns point down (orbs at lower centre, upper right, upper
+left; with Lucky Break's orbs, spread over the ring's lower 240 degrees, at most 120 degrees apart)
+and the Fusion sits above the ring at 240 wu: its icon at ×1.45 in the eight-point frame (its thin
+ring, held to take it, with it), a four-arm gold flare and a two-arm white one swelling on the beat,
+a gold pool, its thin ring in gold, two thin gold lines running up to it from the ring, and its words
+in gold to its right: `FUSION: SPLIT + WAVE` (cap 10), the name (cap 24), its effect words. It is
+the largest thing in the Trio and the only one with flares. (Built 2026-11-15, the owner: "A
+Fusion's orb looks like every other orb": it had been dealt as one more orb round the ring.)
+
+**Recipes** (2026-11-15, the owner: "The game never shows which upgrades combine"). An orb whose
+upgrade is half of a Fusion not yet taken shows one more line under its pips, in gold, cap 10: the
+other half, that one's rank of its max, and the Fusion — `+ WAVE 1/2 = HELIX ARRAY`. Words sit by
+where an orb stands: above an orb at the top, beside the others (an orb at the bottom too, its words
+to its right: under it are the hint and the phone's bottom row); with a Fusion on offer every other
+orb's words are beside it. Pictures: `--picture trio_fusion` (four orbs), `trio_fusion6` (six).
 
 Rules:
 
@@ -375,7 +386,7 @@ The run freezes and dims to a fifth; the music carries on under a low-pass.
 | Element | Place | Behaviour |
 |---|---|---|
 | `PAUSED` | Top centre, cap 96 | Accent → white → accent |
-| **RESUME** | Centre, 600 × 130, label 48, player colour | **Counts the player back in:** four numbered rings fill on four beats, and the run goes on from the place in its bar where it was paused, so the run's bars stay on the band's (as built in M3: a pause on a bar line resumes on a bar line). Nobody is dropped into a fight without the count |
+| **RESUME** | Centre, 600 × 130, label 48, player colour | **Counts the player back in:** three numbered rings, 3-2-1, fill on three beats (the owner, 2026-11-15; it was four), and the run goes on from the place in its bar where it was paused, so the run's bars stay on the band's (as built in M3: a pause on a bar line resumes on a bar line). Nobody is dropped into a fight without the count |
 | RESTART, SETTINGS | Left and right, 320 × 100 | Restart asks once |
 | Run line | Under the count, cap 14, gold | Track, tempo, score, Chain |
 | QUIT RUN | Bottom centre, 320 × 90, outline at 0.3 | Asks once |

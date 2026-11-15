@@ -621,7 +621,9 @@ void Play::afterTick() {
                 // player's lead (the fifth, then the octave, on the next two sixteenths).
                 if (e.a != seat_) break;
                 levelUpT_ = static_cast<float>(tickEnd_);
-                RF_LOG("play: Shard level %.0f at %.1f s (bar %u)", static_cast<double>(e.f), static_cast<double>(runSeconds_), w.phrase().bar);
+                if (e.c) novaGainT_ = levelUpT_;  // 2026-11-15: a level gives a Nova; its star in the HUD flashes
+                RF_LOG("play: Shard level %.0f at %.1f s (bar %u)%s", static_cast<double>(e.f), static_cast<double>(runSeconds_), w.phrase().bar,
+                       e.c ? ", +1 Nova" : "");
                 if (bandDrives_) {
                     const double step = (std::floor(band_->view().heardTick / kTicksPerStep) + 1.0) * kTicksPerStep;
                     band_->leadNote(0, 1, 0.9f, 0.0f, step);
@@ -1005,6 +1007,10 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     }
     hs.novas = p.novas;
     hs.novaCap = p.novaCap;
+    {
+        const float since = static_cast<float>(vi.time) - novaGainT_;
+        hs.novaFlash = since >= 0.0f && since < 0.9f ? 1.0f - since / 0.9f : 0.0f;
+    }
     hs.extraLives = p.extraLives;  // play test 3 (up to two since 2026-11-14)
     hs.reduceFlashing = settings_.reduceFlashing || forcedReduceFlashing_;  // M6
     if (runSetComplete_) {  // M6: SET COMPLETE's card
@@ -1236,19 +1242,19 @@ double Play::countInNow() const {
 }
 
 void Play::beginCountIn() {
-    // RESUME: four beats counted in; the run goes on where it paused within its bar, so its bar lines stay on
-    // the band's (the resume offset is a whole number of bars).
+    // RESUME: three beats counted in (3-2-1, the owner 2026-11-15; it was four); the run goes on where it paused within its
+    // bar, so its bar lines stay on the band's (the resume offset is a whole number of bars).
     countIn_ = true;
     const double barStart = std::floor(pauseMusic_ / kTicksPerBar) * kTicksPerBar;
     const double frac = pauseMusic_ - barStart;
     if (bandDrives_ && band_->view().running) {
         const double heard = band_->view().heardTick;
-        const double line = std::ceil((heard + 4.0 * kTicksPerBeat - frac + 8.0) / kTicksPerBar) * kTicksPerBar;
+        const double line = std::ceil((heard + kCountInBeats * kTicksPerBeat - frac + 8.0) / kTicksPerBar) * kTicksPerBar;
         countInEnd_ = line + frac;
         resumeOffset_ = line - barStart;
     } else {
         countInClockS_ = 0.0;
-        countInEnd_ = 4.0 * kTicksPerBeat;  // the simulated clock: four beats of its own
+        countInEnd_ = kCountInBeats * kTicksPerBeat;  // the simulated clock: three beats of its own
         resumeOffset_ = clock_.offset();
     }
     if (band_) band_->playSfx(audio::Sfx::UiConfirm);

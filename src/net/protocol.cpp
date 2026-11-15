@@ -563,7 +563,8 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 m.chain = r.u32v();
                 m.kills = r.u32v();
                 m.score = r.u64v();
-                if (r.bad() || m.player >= kMaxPlayers || m.cells > kMaxCells || m.novas > 6 || m.chain == 0) return false;
+                // (2026-11-15: the Nova check allowed 6, but Nova Stock's three ranks hold 7; a player with seven dropped every Stats)
+                if (r.bad() || m.player >= kMaxPlayers || m.cells > kMaxCells || m.novas > sim::kNovaCapacityMax || m.chain == 0) return false;
             }
             if (sink)
                 for (u32 k = 0; k < n; ++k) sink->onStats(st[k]);

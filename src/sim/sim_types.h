@@ -18,6 +18,8 @@ constexpr double kTicksPerBeat = 96.0;
 inline double repriseBurstTick(double deathTick) { return std::ceil((deathTick + 0.75 * kTicksPerBeat) / kTicksPerBeat - 1e-9) * kTicksPerBeat; }
 constexpr double kTicksPerStep = 24.0;  // a sixteenth
 constexpr double kTicksPerBar = 384.0;  // 4/4
+// RESUME's count-in (screens.md "Pause"), solo and co-op's shared one: 3-2-1, three beats (the owner, 2026-11-15; it was four).
+constexpr double kCountInBeats = 3.0;
 
 // ---- Arena (GAME_DESIGN 9): 9,600 x 5,400 wu bounded by walls, centred on the origin, y down.
 constexpr float kArenaHalfW = 4800.0f;
@@ -44,6 +46,7 @@ constexpr float kShotSpeed = 1400.0f;
 // back at every Break, the Dash in two beats. Play test 2: Extra Cell takes the cells up to 8 (the halo's eight arcs).
 constexpr u8 kStartCells = 4, kMaxCells = 8;
 constexpr u8 kStartNovas = 3, kNovaCapacity = 4;
+constexpr u8 kNovaCapacityMax = kNovaCapacity + 3;  // + Nova Stock's three ranks (GAME_DESIGN 6.2): the most a ship can hold
 constexpr float kInvulnerableS = 2.5f;  // play test 1, second pass (GAME_DESIGN 5): 1.5 -> 2.5 s
 constexpr float kPanicRadiusWu = 220.0f;
 constexpr float kDashWu = 220.0f, kDashS = 0.12f;

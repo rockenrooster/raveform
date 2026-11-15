@@ -406,8 +406,8 @@ void World::applyPlayerOp(const NetOp& op) {
             for (u32 k = 0; k < tr.orbs; ++k) {
                 tr.upgrade[k] = validOrb(op.opts[k]) ? op.opts[k] : kSplit;
                 tr.level[k] = isBoostOrb(tr.upgrade[k]) ? 0 : static_cast<u8>(pl.loadout.level(tr.upgrade[k]) + 1);
-                tr.orbPos[k] = trioOrbPlace(tr.centre, k, tr.orbs);
             }
+            placeTrioOrbs(tr);  // (2026-11-15: a Fusion's gold orb above the ring, as on the owner's device)
             ++tr.opened;
             Event ev;
             ev.type = EventType::TrioOpen;

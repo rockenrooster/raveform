@@ -436,12 +436,14 @@ void Play::screenPauseCoop(Ui& ui) {
     }
     net::Session* se = session_;
     if (se && se->resuming()) {
-        // The shared count-in: four numbered rings fill on the last four beats before the run goes on.
+        // The shared count-in: 3-2-1, three numbered rings fill on the last three beats before the run goes on (2026-11-15).
+        constexpr u32 kRings = static_cast<u32>(kCountInBeats);
+        const float rings = static_cast<float>(kRings);
         const double left = se->resumeSong() - se->songAt(se->hostNow());
-        const float u = static_cast<float>(1.0 - left / (4.0 * kTicksPerBeat));
-        for (u32 k = 0; k < 4; ++k) {
-            const Vec2 c{cx + (static_cast<float>(k) - 1.5f) * 150.0f * s, 600.0f * s};
-            const float fill = u * 4.0f - static_cast<float>(k) < 0.0f ? 0.0f : (u * 4.0f - static_cast<float>(k) > 1.0f ? 1.0f : u * 4.0f - static_cast<float>(k));
+        const float u = static_cast<float>(1.0 - left / (kCountInBeats * kTicksPerBeat));
+        for (u32 k = 0; k < kRings; ++k) {
+            const Vec2 c{cx + (static_cast<float>(k) - 0.5f * (rings - 1.0f)) * 150.0f * s, 600.0f * s};
+            const float fill = u * rings - static_cast<float>(k) < 0.0f ? 0.0f : (u * rings - static_cast<float>(k) > 1.0f ? 1.0f : u * rings - static_cast<float>(k));
             ui.ring(c, 52.0f * s, (fill >= 1.0f ? 1.6f : 0.9f) * s, palettes_->player[seat_], fill >= 1.0f ? 2.0f : 0.6f, 48);
             const u32 segs = static_cast<u32>(48.0f * fill);
             for (u32 j = 0; j < segs; ++j) {
@@ -450,7 +452,7 @@ void Play::screenPauseCoop(Ui& ui) {
                 ui.draw().hud.line(c + polarC(a0, 52.0f * s), c + polarC(a1, 52.0f * s), 3.0f * s, c2, c2, 0);
             }
             char n[4];
-            std::snprintf(n, sizeof n, "%u", 4u - k);
+            std::snprintf(n, sizeof n, "%u", kRings - k);
             ui.text({c.x, c.y + 18.0f * s}, 36.0f * s, white, fill > 0.0f ? 1.8f : 0.6f, n);
         }
         keyPrimary_ = keyBack_ = false;

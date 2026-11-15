@@ -18,13 +18,33 @@ constexpr float kDeg = kTau / 360.0f;
 constexpr float kQuerySlackWu = 72.0f;
 }  // namespace
 
-Vec2 trioOrbPlace(Vec2 centre, u32 k, u32 n) {
-    // Three on their places (top, lower left, lower right; world y grows down the screen); more (M5: Lucky Break, a
-    // Fusion) evenly round the ring from the top.
+Vec2 trioOrbPlace(Vec2 centre, u32 k, u32 n, bool fusionLast) {
+    // Three on their places (top, lower left, lower right; world y grows down the screen); more (M5: Lucky Break) evenly
+    // round the ring from the top. With a Fusion on offer (screens.md "The Trio", built 2026-11-15) it is the last orb and
+    // stands above the ring at kTrioFusionWu; the others turn point down (lower centre, upper right, upper left): spread
+    // over the ring's lower 240 degrees round the bottom, at most 120 degrees apart, so none comes near the Fusion.
+    if (fusionLast && n >= 2) {
+        if (k + 1 == n) return centre + Vec2{0.0f, -kTrioFusionWu};
+        const u32 m = n - 1;
+        const float s = m >= 2 ? std::fmin(kTau * (2.0f / 3.0f) / static_cast<float>(m - 1), kTau / 3.0f) : 0.0f;
+        // Orb k's place from the bottom: an odd count 0, -s, +s, -2s, +2s; an even one -s/2, +s/2, -3s/2, +3s/2.
+        const bool odd = (m % 2u) != 0u;
+        const float i = odd ? static_cast<float>((k + 1u) / 2u) : static_cast<float>(k / 2u) + 0.5f;
+        const float sign = odd ? ((k % 2u) ? -1.0f : 1.0f) : ((k % 2u) ? 1.0f : -1.0f);
+        return centre + dirOf(0.25f * kTau + sign * i * s) * kTrioRingWu;
+    }
     static const Vec2 kOrbAt[3] = {{0.0f, -1.0f}, {-0.8660254f, 0.5f}, {0.8660254f, 0.5f}};
     const Vec2 d = (n == 3 && k < 3) ? kOrbAt[k] : dirOf(-0.25f * kTau + kTau * static_cast<float>(k) / static_cast<float>(n ? n : 1u));
     return centre + d * kTrioRingWu;
 }
+
+void placeTrioOrbs(TrioState& tr) {
+    const u32 n = tr.orbs < kMaxOrbs ? tr.orbs : kMaxOrbs;
+    const bool fusion = n >= 2 && isFusionOrb(tr.upgrade[n - 1]);
+    for (u32 k = 0; k < n; ++k) tr.orbPos[k] = trioOrbPlace(tr.centre, k, n, fusion);
+}
+
+float trioOrbScale(u8 orb) { return isRiff(orb) ? kTrioRiffScale : (isFusionOrb(orb) ? kTrioFusionScale : 1.0f); }
 
 double World::leadGrid(u32 p) const {
     const PlayerState& pl = players_[p];
@@ -136,10 +156,12 @@ void World::openTrio(u32 p, double closeTick, u8 kind, u16 level) {
     tr.levelShown = kind == kTrioLevel ? level : 0;
     tr.orbs = static_cast<u8>(n);
     tr.centre = pl.pos;
-    // Keep the whole ring inside the arena.
+    // Keep the whole ring inside the arena, and a Fusion's orb above it (2026-11-15).
+    const bool fusion = n >= 2 && isFusionOrb(opts[n - 1]);
     const float m = kTrioRingWu + 60.0f;
+    const float mTop = fusion ? kTrioFusionWu + kTrioHoldRing * kTrioOrbWu * kTrioFusionScale + 30.0f : m;
     tr.centre.x = clampf(tr.centre.x, -kArenaHalfW + m, kArenaHalfW - m);
-    tr.centre.y = clampf(tr.centre.y, -kArenaHalfH + m, kArenaHalfH - m);
+    tr.centre.y = clampf(tr.centre.y, -kArenaHalfH + mTop, kArenaHalfH - m);
     tr.openTick = m1_;
     tr.closeTick = closeTick;
     tr.holdOrb = -1;
@@ -148,9 +170,8 @@ void World::openTrio(u32 p, double closeTick, u8 kind, u16 level) {
     for (u32 k = 0; k < n; ++k) {
         tr.upgrade[k] = opts[k];
         tr.level[k] = isBoostOrb(opts[k]) ? 0 : static_cast<u8>(pl.loadout.level(opts[k]) + 1);
-        // Three on their places (top, lower left, lower right); more (Lucky Break, a Fusion) evenly round the ring.
-        tr.orbPos[k] = trioOrbPlace(tr.centre, k, n);
     }
+    placeTrioOrbs(tr);  // three on their places; more evenly round the ring; a Fusion above it
     ++tr.opened;
     Event ev;
     ev.type = EventType::TrioOpen;
@@ -165,16 +186,18 @@ void World::openTrio(u32 p, double closeTick, u8 kind, u16 level) {
     emit(ev);
 }
 
-void World::openTrioNow(u32 p, double closeTick, const u8* forced, u8 kind) {
+void World::openTrioNow(u32 p, double closeTick, const u8* forced, u8 kind, u32 forcedCount) {
     openTrio(p, closeTick, kind, players_[p].level);
     TrioState& tr = trio_[p];
     if (!forced || !tr.open) return;
-    for (u32 k = 0; k < 3; ++k) {
+    const u32 n = forcedCount < kMaxOrbs ? forcedCount : kMaxOrbs;
+    for (u32 k = 0; k < n; ++k) {
         if (!validOrb(forced[k])) continue;
         tr.upgrade[k] = forced[k];
         tr.level[k] = isBoostOrb(forced[k]) ? 0 : static_cast<u8>(players_[p].loadout.level(forced[k]) + 1);
     }
-    tr.orbs = 3;
+    tr.orbs = static_cast<u8>(n);
+    placeTrioOrbs(tr);  // (2026-11-15: a forced Fusion stands above the ring)
 }
 
 void World::takeOrb(u32 p, u32 k) {
@@ -299,7 +322,7 @@ void World::updateTrios() {
         i32 inside = -1;
         if (m1_ >= unlock) {
             for (u32 k = 0; k < tr.orbs; ++k) {
-                const float r = kTrioHoldRing * kTrioOrbWu * (isRiff(tr.upgrade[k]) ? kTrioRiffScale : 1.0f);
+                const float r = kTrioHoldRing * kTrioOrbWu * trioOrbScale(tr.upgrade[k]);
                 if (lengthSq(tr.orbPos[k] - pl.pos) <= r * r) {
                     inside = static_cast<i32>(k);
                     break;
@@ -923,9 +946,14 @@ void World::collectShard(u32 p) {
     pl.levelShards -= need;
     if (pl.level < 0xFFFF) ++pl.level;
     if (pl.levelsBanked < 255) ++pl.levelsBanked;
+    // The owner, 2026-11-15: "leveling up via shards should also give a nova": one, up to the cap; none in the loop, where
+    // the Breaks give none back either (GAME_DESIGN 8, kLoopBreakRefills).
+    const bool nova = pl.novas < pl.novaCap && (kLoopBreakRefills || !inLoop(phrase_.track, director_.songs));
+    if (nova) ++pl.novas;
     Event ev;
     ev.type = EventType::LevelUp;
     ev.a = static_cast<u8>(p);
+    ev.c = nova ? 1 : 0;  // a Nova came with it (the HUD's Nova star flashes)
     ev.f = static_cast<float>(pl.level);
     ev.x = pl.pos.x;
     ev.y = pl.pos.y;
@@ -961,7 +989,7 @@ bool World::sheltered(u32 p) const {
     if (!tr.open || tr.kind != kTrioLevel || tr.homing >= 0) return false;
     const Vec2 s = players_[p].pos;
     for (u32 k = 0; k < tr.orbs; ++k) {
-        const float r = kTrioHoldRing * kTrioOrbWu * (isRiff(tr.upgrade[k]) ? kTrioRiffScale : 1.0f);
+        const float r = kTrioHoldRing * kTrioOrbWu * trioOrbScale(tr.upgrade[k]);
         if (lengthSq(tr.orbPos[k] - s) <= r * r) return true;
     }
     return false;
@@ -976,7 +1004,7 @@ void World::shelterTrios() {
         if (!tr.open || tr.kind != kTrioLevel || tr.homing >= 0) continue;
         for (u32 k = 0; k < tr.orbs; ++k) {
             const Vec2 o = tr.orbPos[k];
-            const float ring = kTrioHoldRing * kTrioOrbWu * (isRiff(tr.upgrade[k]) ? kTrioRiffScale : 1.0f);
+            const float ring = kTrioHoldRing * kTrioOrbWu * trioOrbScale(tr.upgrade[k]);
             const float reach = ring + kQuerySlackWu;
             grid_.query(o.x - reach, o.y - reach, o.x + reach, o.y + reach, [&](u32 i) {
                 if (e.flags[i] & kFlagDead) return;

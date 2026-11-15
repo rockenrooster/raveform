@@ -476,6 +476,7 @@ private:
     float spotlightT_ = -100.0f;
     float takenT_ = -100.0f;
     float levelUpT_ = -100.0f;  // play test 2: the local player's last Shard level (the HUD's flash)
+    float novaGainT_ = -100.0f; // 2026-11-15: the last Nova a level gave (its star in the HUD flashes)
     // M6 (screens.md): a finished run (SET COMPLETE: when, the score then), what ended the run (ENDED BY), the hints.
     bool runSetComplete_ = false;
     float setCompleteT_ = -100.0f;
