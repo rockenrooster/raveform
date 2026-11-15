@@ -501,6 +501,21 @@ teammate's at 0.6; reduce flashing halves the flashes).
   flashes white where it struck (a star and a ring, sparks thrown off) and the whole arc flares for 0.18 s.
 - **A meteor** accelerates into the ground and smashes: its rock flies apart in pieces, a white star, a crater rim glowing
   gold-white to danger for 1.6 s with embers, a gold pool, the lattice punched, a hard shake.
+- **A Vault's layers and its break** (the owner's second list: "missing visual effects for breaking vault layers and vault
+  death"). Each quarter of its health lost, the layer that goes flies apart stroke by stroke (the first quarter its white mark, the
+  second its gold ornament; the third cracks its hull white), with a gold ring, sparks, a flash and a jolt. Broken, whatever stood
+  flies apart, its hull fastest, under a white flash, a gold pool, rings, ninety gold sparks, a ripple and a shake.
+- **A hit** ("not clear when you are damaged and when you can be damaged again"). A cell lost: the lost arc shatters, a ring in
+  the player's colours and a wider one in the danger colour, 26 danger sparks, the hull white for 0.1 s, the frame's edges
+  flashing in the danger colour over 0.45 s, a harder jolt (6.5 ref px). **While the ship cannot be hurt** (after a hit, a guard
+  ring's break, an Extra Life, a revive): its hull blinks on the sixteenths (down to 0.35; reduce flashing: steady at 0.7) and a
+  bubble round it, outside the halo, holds a bright arc that drains clockwise as the time runs out, flickering in its last half
+  second; as it ends the bubble snaps shut on the ship.
+- **Kaleidos Reprise implodes before it explodes.** From the kill to the bar line its Shards come on (one to two bars; the
+  reversed cymbal ends there) everything falls into the core: its rays draw back, brighter; the ten Tracks' colours come home
+  first, ten thin rings closing from beyond the frame into the core (its shockwave run backwards); light streaks spiral in faster
+  and faster; the lattice falls in and goes dark over the last third; the screen trembles harder; the core shrinks to a blinding
+  point. On the bar line the burst (the flashes, the sparks, the shake) with its impact, and the shockwave of the ten colours.
 - **Event Horizon's death.** Over the death bar light is torn in toward the point (streaks in the Track's hues on spirals,
   faster and brighter as the bar ends), the lattice falls in after it and the screen trembles; the lattice goes dark for the
   beat of black, one white point holding; then the boss's fall with two jets of white light along its axis, a ring of each hue

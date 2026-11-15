@@ -369,7 +369,15 @@ void PlayView::drawReprise(FrameDraw& d, const ViewInput& in) {
     const Vec2 pos = s.prevPos + (s.pos - s.prevPos) * in.alpha;
     const float wheel = s.prevAngle + wrapAngle(s.angle - s.prevAngle) * in.alpha;
     const float enter = static_cast<float>((t - s.enterTick) / kTicksPerBar);
-    const float life = s.dying ? clamp01(1.0f - static_cast<float>((t - s.deathTick) / kTicksPerBar)) : 1.0f;
+    // (the owner, 2026-11-14: "Reprise needs an implosion before the explosion for more dramatic effect"): from the kill to the bar
+    // line its burst comes on (eventFight records both) everything falls into the core, implodeU 0..1; after the burst nothing of
+    // it is left to draw.
+    float implodeU = -1.0f;
+    if (s.dying && rpBurstTick_ >= 0.0 && rpDeathTick_ >= 0.0)
+        implodeU = clamp01(static_cast<float>((t - rpDeathTick_) / std::fmax(rpBurstTick_ - rpDeathTick_, 1.0)));
+    const float life = s.dying ? (implodeU >= 0.0f ? 1.0f : 0.0f) : 1.0f;
+    if (life <= 0.0f) return;
+    const float imp = implodeU >= 0.0f ? implodeU : 0.0f;
     const float hw = 0.6f * refPx_;
     const float k = R.armLength / std::fmax(b.tip.armRadius, 1.0f);
     const float kc = prose::kRpScale;  // (the core: Kaleidos's, a quarter larger)
@@ -379,10 +387,11 @@ void PlayView::drawReprise(FrameDraw& d, const ViewInput& in) {
     // reprise.md "The light" (the owner, 2026-11-14: "more epic visual wise"): twelve rays behind the wheel, two in each living
     // arm's colour through the gaps between the arms, 1,100 wu long, turning with it and flaring on every kick; in Last Light,
     // the bare core's, white and gold. A wide glow of the soloist's colour under the whole wheel in the Medley.
-    if (!s.dying && enter > 0.0f) {
+    if ((!s.dying || implodeU >= 0.0f) && enter > 0.0f) {
         constexpr float kRayWu = 1100.0f;
-        const float flare = (1.0f + 1.2f * kick_) * (reduceFlashing_ ? 0.6f : 1.0f);
-        const float grow = clamp01(enter);
+        // (imploding, the rays draw back into the core, brighter as they go)
+        const float flare = (1.0f + 1.2f * kick_) * (reduceFlashing_ ? 0.6f : 1.0f) * (1.0f + 2.0f * imp);
+        const float grow = clamp01(enter) * (1.0f - imp * imp);
         for (u32 j = 0; j < 6; ++j) {
             if (r.phase == 1 && !(s.alive & (1u << j))) continue;
             const Vec3 hue = r.phase == 2 ? (j % 2 ? palettes_->player[3] : W1) : accentOf(j + 1);
@@ -437,22 +446,65 @@ void PlayView::drawReprise(FrameDraw& d, const ViewInput& in) {
     // The core: Kaleidos's three counter-turning rings and its iris (open on the One in the Reprise and Last Light; shut in the
     // Medley), the health arc; dying, it dims to a point.
     const float spin = static_cast<float>(t / kTicksPerBar) * kTau * 0.25f;
-    const float cs = kc * (0.15f + 0.85f * life);
+    const float cs = kc * (0.15f + 0.85f * (1.0f - imp));
+    const float coreLv = life * (1.0f + 1.5f * imp);
     for (u32 q = 0; q < 3; ++q) {
         const float rad = b.coreRingRadius[q] * cs;
         const u32 sides = b.coreRingSides[q] ? b.coreRingSides[q] : 6;
         const float ph = b.coreRingPhaseDeg[q] * kTau / 360.0f + (q % 2 ? -spin : spin);
         for (u32 j = 0; j < sides; ++j) {
             const float a0 = ph + kTau * static_cast<float>(j) / sides, a1 = ph + kTau * static_cast<float>(j + 1) / sides;
-            d.scene.line(toScene(pos + dirv(a0) * rad), toScene(pos + dirv(a1) * rad), hw * 1.3f, acc * (2.2f * life), acc * (2.2f * life), 0);
+            d.scene.line(toScene(pos + dirv(a0) * rad), toScene(pos + dirv(a1) * rad), hw * 1.3f, acc * (2.2f * coreLv), acc * (2.2f * coreLv), 0);
         }
     }
     const float irisR = (b.irisClosed + (b.irisOpen - b.irisClosed) * (downbeat ? 1.0f : 0.0f)) * cs;
     for (u32 j = 0; j < b.irisShutters; ++j) {
         const float a0 = spin + kTau * static_cast<float>(j) / b.irisShutters;
-        d.scene.line(toScene(pos + dirv(a0) * irisR), toScene(pos + dirv(a0 + kTau / b.irisShutters) * irisR), hw, acc * (2.0f * life), acc * (2.0f * life), 0);
+        d.scene.line(toScene(pos + dirv(a0) * irisR), toScene(pos + dirv(a0 + kTau / b.irisShutters) * irisR), hw, acc * (2.0f * coreLv), acc * (2.0f * coreLv), 0);
     }
-    d.sparkles.glow(toScene(pos), (6.0f + (downbeat ? 12.0f : 0.0f)) * pxPerWu_, W1 * ((0.8f + (downbeat ? 1.6f : 0.0f)) * life));
+    d.sparkles.glow(toScene(pos), (6.0f + (downbeat ? 12.0f : 0.0f) + 30.0f * imp * imp) * pxPerWu_, W1 * ((0.8f + (downbeat ? 1.6f : 0.0f) + 3.0f * imp * imp) * life));
+    if (implodeU >= 0.0f && shown(kMuteFx)) {
+        // The implosion: the ten Tracks' colours come home first, ten thin rings closing from beyond the frame into the core (the
+        // explosion's shockwave run backwards), light streaks spiralling in faster and brighter, the lattice falling in
+        // (feedbackWells) and going dark over the last third (play_view.cpp), the screen trembling harder, the core a blinding
+        // point at the end. Reduce flashing: the rings and the point at 0.6.
+        const float u = implodeU;
+        const float now = static_cast<float>(in.time);
+        const float rf = reduceFlashing_ ? 0.6f : 1.0f;
+        const auto hashU = [](u32 n) {
+            n = (n ^ 61u) ^ (n >> 16);
+            n *= 9u;
+            n ^= n >> 4;
+            n *= 0x27d4eb2du;
+            n ^= n >> 15;
+            return static_cast<float>(n & 0xFFFFu) / 65535.0f;
+        };
+        for (u32 k = 0; k < 10; ++k) {
+            const float rr = (1500.0f + 40.0f * static_cast<float>(k)) * std::pow(1.0f - u, 1.6f) + 0.3f * R.coreRadius;
+            const Vec3 c = accentOf(k + 1) * (1.4f * clamp01(u * 6.0f) * rf);
+            const u32 n = 72;
+            for (u32 q = 0; q < n; ++q) {
+                const Vec2 p0 = pos + dirv(kTau * static_cast<float>(q) / n) * rr, p1 = pos + dirv(kTau * static_cast<float>(q + 1) / n) * rr;
+                if (!visible((p0 + p1) * 0.5f, 0.5f * length(p1 - p0) + 6.0f)) continue;
+                d.scene.line(toScene(p0), toScene(p1), 0.9f * refPx_, c, c, kFlatStart | kFlatEnd);
+                d.scene.line(toScene(p0), toScene(p1), 4.0f * refPx_, c * 0.1f, c * 0.1f, kFlatStart | kFlatEnd);
+            }
+        }
+        for (u32 k = 0; k < 90; ++k) {
+            const float h = hashU(k * 7u + 11u);
+            const float ph = std::fmod(now * (0.4f + 1.6f * u * u) + h, 1.0f);
+            const float rr = R.coreRadius + 1300.0f * (1.0f - 0.4f * u) * (1.0f - ph) * (1.0f - ph);
+            const float a = h * kTau + (1.0f - rr / 1400.0f) * 3.5f + now * 0.8f;
+            const Vec2 p0 = pos + dirv(a) * rr, p1 = pos + dirv(a + 0.15f + 0.3f * u) * (rr * 0.8f);
+            if (!visible(p0, 40.0f) && !visible(p1, 40.0f)) continue;
+            const Vec3 c = accentOf(k % 10u + 1u);
+            const float lv = (0.3f + 1.6f * u) * clamp01(ph * 4.0f);
+            d.scene.line(toScene(p0), toScene(p1), (0.5f + 0.5f * u) * refPx_, c * (0.3f * lv), mix(c, W1, 0.5f) * lv, 0);
+        }
+        d.pools.glow(toScene(pos), (300.0f - 220.0f * u) * pxPerWu_, W1 * ((0.08f + 0.35f * u * u) * rf));
+        d.sparkles.glow(toScene(pos), (10.0f + 40.0f * u * u) * refPx_, W1 * ((1.0f + 4.0f * u * u) * rf));
+        shakeAmp_ = std::fmax(shakeAmp_, (reduceFlashing_ ? 0.5f : 1.0f) * (1.0f + 5.0f * u * u));
+    }
     if (!s.dying && s.coreMax > 0.0f) {
         const float frac = clamp01(s.coreHp / s.coreMax);
         const u32 n = 48;
@@ -493,75 +545,8 @@ void PlayView::drawReprise(FrameDraw& d, const ViewInput& in) {
         d.scene.line(toScene(p), toScene(p + dv * (2.2f * er)), hw, col, col, 0);
     }
     d.pools.glow(toScene(pos), R.armLength * 1.4f * pxPerWu_, acc * (0.06f * life));
-    // reprise.md "Death" (the owner, 2026-11-14: "make sure the reprise one is even more epic", then "I like the rings in every
-    // Track's colour but it just races across the screen instead of the normal explosion with resistance like the first one"):
-    // the whole set list comes home as explosion rings: from the death a ring in each of the ten Tracks' colours leaves the core
-    // 0.12 s after the one before and spreads as every shock ring does, fast and then slowing (radius x 0.25 + 0.75 x the square
-    // root of its age's share), to 1,100 wu for the first and 120 more for each after it, fading over 1.2 s; then a white one
-    // to 3,200 wu over 1.8 s. Drawn here, past the six shock rings the view keeps at once; they raced at 2,400 wu/s until then.
-    // The owner on that: "they should all come out 'at once' like a real exp, just a thick transparent layer of each color
-    // sandwhiched together". So it is one shockwave: from the death, ten thick see-through bands side by side, one in each Track's
-    // colour (First Light's at the front, Last Light's at the back), leave the core together and spread as an explosion does, fast
-    // and then slowing (its front at 80 + 1,420 x (1 - (1 - u)^2.5) wu: 330 wu at 0.14 s, 800 at 0.45 s, 1,250 at 0.9 s, 1,500 at
-    // the end), the whole growing from 160 to 360 wu thick, fading over 1.8 s.
-    // The owner on those bands: "each color line should be very thin but have a very thick glow". So each Track's colour is a
-    // thin line (1.5 ref px, the full colour), the ten a gap apart (16 wu growing to 36 as the wave spreads), and each line glows
-    // far past its width: the glow falls off linearly over 1.6 gaps on either side, so it fills the gaps (a gap's middle holds
-    // two thirds of each neighbour) and spills 3 gaps past the front and the back. The glow is drawn as glass strips between
-    // the lines, each edge carrying the summed glow there; the white front line of the bands is gone (it hid First Light's).
-    if (s.dying && s.deathTick >= 0.0) {
-        const float since = static_cast<float>((t - s.deathTick) / std::fmax(w.ticksPerSecond(), 1.0f));
-        constexpr float kWaveLife = 1.8f, kWaveWu = 1500.0f, kWaveStartWu = 80.0f, kGap0 = 16.0f, kGap1 = 36.0f;
-        constexpr float kLineHalfPx = 0.75f, kLineLevel = 1.6f, kGlowLevel = 0.35f, kGlowReach = 1.6f, kGlowTail = 3.0f;
-        constexpr float kSegmentWu = 100.0f;
-        if (since >= 0.0f && since < kWaveLife) {
-            const float rf = reduceFlashing_ ? 0.6f : 1.0f;
-            const float u = since / kWaveLife;
-            const float outer = kWaveStartWu + (kWaveWu - kWaveStartWu) * (1.0f - std::pow(1.0f - u, 2.5f));
-            const float gap = kGap0 + (kGap1 - kGap0) * u;
-            const float fade = (1.0f - u) * rf;
-            // Knots from the front: the front tail's end (dark), the ten lines, the back tail's end (dark).
-            constexpr float kNear = 1.0f - 1.0f / kGlowReach;  // a neighbour's share of the glow on a line
-            Vec3 line[10], knot[12];
-            float rad[12];
-            for (u32 k = 0; k < 10; ++k) line[k] = accentOf(k + 1);
-            rad[0] = outer + kGlowTail * gap;
-            knot[0] = Vec3{};
-            for (u32 k = 0; k < 10; ++k) {
-                rad[k + 1] = outer - gap * static_cast<float>(k);
-                Vec3 g = line[k];
-                if (k > 0) g = g + line[k - 1] * kNear;
-                if (k < 9) g = g + line[k + 1] * kNear;
-                knot[k + 1] = g * (kGlowLevel * fade);
-            }
-            rad[11] = rad[10] - kGlowTail * gap;
-            knot[11] = Vec3{};
-            const u32 n = static_cast<u32>(clampf(std::ceil(kTau * rad[0] / kSegmentWu), 32.0f, 96.0f));
-            for (u32 j = 0; j + 1 < 12; ++j) {
-                const float ro = rad[j], ri = std::fmax(rad[j + 1], 0.0f);
-                if (ro <= 0.0f) break;
-                const Vec3 co = knot[j], ci = knot[j + 1];
-                for (u32 q = 0; q < n; ++q) {
-                    const float a0 = kTau * static_cast<float>(q) / n, a1 = kTau * static_cast<float>(q + 1) / n;
-                    const Vec2 o0 = pos + dirv(a0) * ro, o1 = pos + dirv(a1) * ro;
-                    if (!visible((o0 + o1) * 0.5f, 0.5f * length(o1 - o0) + (ro - ri))) continue;
-                    const Vec2 i0 = pos + dirv(a0) * ri, i1 = pos + dirv(a1) * ri;
-                    d.glass.tri(toScene(i0), ci, toScene(o0), co, toScene(o1), co);
-                    d.glass.tri(toScene(i0), ci, toScene(o1), co, toScene(i1), ci);
-                }
-            }
-            for (u32 k = 0; k < 10; ++k) {
-                const float r = rad[k + 1];
-                if (r <= 0.0f) break;
-                const Vec3 c = line[k] * (kLineLevel * fade);
-                for (u32 q = 0; q < n; ++q) {
-                    const Vec2 p0 = pos + dirv(kTau * static_cast<float>(q) / n) * r, p1 = pos + dirv(kTau * static_cast<float>(q + 1) / n) * r;
-                    if (!visible((p0 + p1) * 0.5f, 0.5f * length(p1 - p0) + 4.0f)) continue;
-                    d.scene.line(toScene(p0), toScene(p1), kLineHalfPx * refPx_, c, c, 0);
-                }
-            }
-        }
-    }
+    // reprise.md "Death": the shockwave of the ten Tracks' colours comes with the burst after the implosion (drawRepriseWave,
+    // play_view_feedback.cpp; it outlives the boss's drawing).
 }
 
 }  // namespace rf

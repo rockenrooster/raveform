@@ -102,6 +102,15 @@ void PlayView::drawFight(FrameDraw& d, const ViewInput& in) {
         telegraphLine(d, l.from, l.from + l.dir * l.length, l.until);
     }
     const BossState& s = w.boss();
+    {
+        // Kaleidos Reprise (2026-11-14): its explosion on the bar line its implosion runs to, and the shockwave after it.
+        if (rpBurstTick_ >= 0.0 && in.music >= rpBurstTick_) {
+            rpBurstTick_ = -1.0;
+            rpDeathTick_ = -1.0;
+            repriseBurst(rpBurstAt_, static_cast<float>(in.time));
+        }
+        drawRepriseWave(d, in);
+    }
     if (!s.active) {
         // Event Horizon goes on the very tick its burst is due (a bar and a beat after its death), so the drawn frame at that moment
         // usually finds it gone: the burst is played here then (until 2026-11-14 it never was: the owner's "event horizon death").
@@ -923,39 +932,16 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
                 static_cast<BossKind>(e.a) == BossKind::Feedback)
                 break;
             if (static_cast<BossKind>(e.a) == BossKind::Reprise) {
-                // reprise.md (the owner, 2026-11-14: "more epic"; no burst until then): the run's biggest burst, a white flash across
-                // the frame, a ring in each of the six arms' colours, four hundred sparks and the distortion ring; then the core dims to
-                // a point (drawReprise) and one white ripple crosses the whole lattice.
-                // The owner, the same evening: "make sure the reprise one is even more epic": a 2,000 wu flash held 0.4 s and a gold
-                // one after it, six rings in the arms' colours, 400 gold sparks and 100 in each arm's colour, two distortion waves,
-                // a shake of 10; then (drawReprise, from its death) the whole set list comes home: one shockwave of ten thin lines,
-                // one in each Track's colour, each with a thick glow, and a white ripple across the whole lattice. The gong and the
-                // impact (play.cpp).
-                const Vec3 gold = palettes_->player[3];
-                // (the flashes a little softer than at first, 1.4 and 0.6: the ten-colour wave must read through them)
-                addPool(at, 80.0f, 1400.0f, whiteV(), reduceFlashing_ ? 0.45f : 1.0f, 0.0f, 0.3f, false, 1, false, false, t);
-                addPool(at, 200.0f, 2000.0f, gold, reduceFlashing_ ? 0.2f : 0.35f, 0.0f, 0.8f, false, 1, false, false, t + 0.2f);
-                SparkReq r{};
-                r.at = at;
-                r.kind = 1;
-                r.b = whiteV();
-                r.t0 = t;
-                for (u32 k = 0; k < 6; ++k) {
-                    // (no staggered rings: the owner wants one explosion, drawn as ten thin glowing lines in drawReprise)
-                    Vec3 c = palette_->accent;
-                    for (u32 i = 0; i < palettes_->count; ++i)
-                        if (palettes_->list[i].track == k + 1) c = palettes_->list[i].accent;
-                    r.count = 100;
-                    r.a = c;
-                    sparkRequest(r);
-                }
-                r.count = 400;
-                r.a = gold;
-                sparkRequest(r);
-                addDistortion(at, 1600.0f, 0.8f, 30.0f, 40.0f, t);
-                addDistortion(at, 2800.0f, 1.2f, 24.0f, 60.0f, t + 0.3f);
-                shakeAmp_ = std::fmax(shakeAmp_, 10.0f);
-                push(kImpBoss, at, 800.0f, 4200.0f, t);
+                // reprise.md (the owner, 2026-11-14: "more epic", "even more epic", then "Reprise needs an implosion before the
+                // explosion for more dramatic effect"): the kill begins the implosion, which runs to the bar line the Shards and the
+                // ENCORE card come on (the reversed cymbal ends there: e.tick); drawReprise draws it; the explosion (repriseBurst)
+                // and the shockwave of the ten Tracks' colours come on that bar line (drawFight). Here, the kill: the core flares and
+                // a ring falls into it.
+                rpDeathTick_ = w.boss().deathTick >= 0.0 ? w.boss().deathTick : e.tick - kTicksPerBar;
+                rpBurstTick_ = e.tick;
+                rpBurstAt_ = at;
+                implodeRing(at, 900.0f, 0.5f, whiteV(), t);
+                addPool(at, 20.0f, 160.0f, whiteV(), reduceFlashing_ ? 0.4f : 1.0f, 0.0f, 0.15f, false, 1, false, false, t);
                 break;
             }
             const bool mini = isMiniBoss(static_cast<BossKind>(e.a));

@@ -20,7 +20,7 @@ using namespace sim;
 namespace {
 enum class M6 : u8 { Hint, EndedBy, SetCard, SetOver, TitleStar, UiScale, MiniStays, Flash, Credits, LwEntrance, LwLunge, LwClose, DropTitle,
                      DropRetry, Home, PauseRestart, PauseQuit, HzWave, HzTouch, TitleIdle, FbRiffs, FxCrit, FxCresc, FxSync, FxBurn, FxWell,
-                     FxHole, FxCoil, FxAegis, FxMeteor, FxHzDeath, T2Intro, T2Drop };
+                     FxHole, FxCoil, FxAegis, FxMeteor, FxHzDeath, T2Intro, T2Drop, FxVaultLayer, FxVaultBreak, FxHit };
 struct M6Pic {
     const char* name;   // m6_<name>
     M6 kind;
@@ -74,6 +74,11 @@ const M6Pic kM6Pics[] = {
     // Title v2 (screens.md "Title"): the intro as a cold start plays it, a strip an eighth apart from the beat before its point; the
     // drop from PLAY on a bar's second beat, an eighth apart from two beats before its bar line.
     {"t2_intro", M6::T2Intro, 0, nullptr}, {"t2_drop", M6::T2Drop, 0, nullptr},
+    // The owner's second list (2026-11-14): a Vault losing its first layer and a Vault breaking (every third frame from the moment),
+    // a hit on a still ship and the time it cannot be hurt (every eighth frame from the hit), Kaleidos Reprise's implosion and burst
+    // (half a beat a frame from the kill, in Last Light).
+    {"fx_vault_layer", M6::FxVaultLayer, 0, nullptr}, {"fx_vault_break", M6::FxVaultBreak, 0, nullptr}, {"fx_hit", M6::FxHit, 0, nullptr},
+    {"fx_rp_death", M6::FxHzDeath, 2, "reprise"},
 };
 constexpr u32 kM6Count = sizeof(kM6Pics) / sizeof(kM6Pics[0]);
 constexpr u32 kM6At = 300;  // after the run's Track card (2.25 bars)
@@ -239,6 +244,18 @@ bool Play::scriptSetupM6() {
             if (!setupFight(pic.fight, pic.arg)) return true;
             opt_.fightHold = true;
             break;
+        case M6::FxVaultLayer:
+        case M6::FxVaultBreak:
+        case M6::FxHit: {
+            w.spawner().mode = Spawner::Mode::Off;
+            Loadout& l = w.playerMut(0).loadout;
+            if (pic.kind != M6::FxHit) {
+                l.mods[kSplit] = 4;
+                l.mods[kOvercharge] = 3;
+            }
+            stripStride_ = pic.kind == M6::FxHit ? 8u : 3u;
+            break;
+        }
     }
     return true;
 }
@@ -491,6 +508,48 @@ bool Play::scriptInputM6(StickInput& in) {
             if (go) {
                 captureFrom_ = now + (pic.kind == M6::FxSync ? 3 : 0);
                 RF_LOG("play: picture '%s' captures from frame %lld (music %.1f)", opt_.picture, static_cast<long long>(captureFrom_), music1_);
+            }
+            return true;
+        }
+        case M6::FxVaultLayer:
+        case M6::FxVaultBreak:
+        case M6::FxHit: {
+            in = StickInput{};
+            in.assist = false;
+            w.closeTrioNow(0);
+            w.playerMut(0).levelsBanked = 0;
+            if (pic.kind == M6::FxHit) {
+                if (t == kM6At) {
+                    // (one real hit: a bullet thrown at the still ship; then nothing more can hurt it, but its time runs as in a run)
+                    PlayerState& pl = w.playerMut(0);
+                    pl.invulS = pl.novaInvulS = 0.0f;
+                    w.rules().godMode = false;
+                    w.spawnBullet(ship + Vec2{160.0f, 0.0f}, Vec2{-900.0f, 0.0f}, 0.0f);
+                }
+                if (captureFrom_ < 0)
+                    for (u32 k = 0; k < w.eventCount(); ++k)
+                        if (w.events()[k].type == EventType::Hit && w.events()[k].a == 0) {
+                            w.rules().godMode = true;
+                            captureFrom_ = now;
+                        }
+                return true;
+            }
+            if (t == kM6At) w.placeStructureNow(StructKind::Vault, ship + Vec2{380.0f, 0.0f}, 0.0f);  // (after the Track card)
+            if (t > kM6At + 30) {
+                in.aim = Vec2{1.0f, 0.0f};
+                in.aimActive = true;
+            }
+            if (captureFrom_ >= 0) return true;
+            if (pic.kind == M6::FxVaultLayer) {
+                for (u32 k = 0; k < World::kArenaBodies; ++k) {
+                    const ArenaBody& b = w.arenaBodies()[k];
+                    if (b.alive && b.kind == static_cast<u8>(StructKind::Vault) && b.quarters >= 1) captureFrom_ = now;
+                }
+            } else {
+                for (u32 k = 0; k < w.eventCount(); ++k) {
+                    const Event& ev = w.events()[k];
+                    if (ev.type == EventType::BossCue && static_cast<BossCue>(ev.a) == BossCue::VaBreak) captureFrom_ = now;
+                }
             }
             return true;
         }

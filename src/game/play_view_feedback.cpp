@@ -24,6 +24,7 @@
 
 #include "core/args.h"
 #include "game/play_view.h"
+#include "sim/boss_prose.h"
 #include "sim/tuning.h"
 
 namespace rf {
@@ -58,6 +59,7 @@ constexpr float kAegisFlareS = 0.18f;
 constexpr float kWellLatticePull = 12.0f, kWellLatticePeakWu = 60.0f, kWellLatticeGoneWu = 220.0f;
 constexpr float kHoleLatticePull = 16.0f, kHoleLatticePeakWu = 90.0f, kHoleLatticeGoneWu = 320.0f;
 constexpr float kHzPullWu = 30.0f, kHzPeakWu = 160.0f, kHzReachWu = 800.0f;  // Event Horizon's death bar (its pull grows as u^2)
+constexpr float kRpPullWu = 34.0f, kRpReachWu = 1200.0f;                     // Kaleidos Reprise's implosion (likewise)
 constexpr float kDebrisDrag = 3.0f;                                   // 1/s
 constexpr float kHzJetS = 0.8f, kHzJetWu = 1800.0f, kHzJetAxis = 1.05f;
 }  // namespace
@@ -86,6 +88,179 @@ void PlayView::addDebris(Vec2 at, u32 count, float speedLo, float speedHi, float
         b.born = t;
         b.life = life * rng_.range(0.7f, 1.0f);
         b.c = mix(c0, c1, rng_.range(0.0f, 1.0f));
+    }
+}
+
+void PlayView::addShard(Vec2 p, Vec2 v, float ang, float len, float life, Vec3 c, float t) {
+    Debris& b = debris_[debrisHead_];
+    debrisHead_ = (debrisHead_ + 1u) % kDebris;
+    b.p = p;
+    b.v = v;
+    b.ang = ang;
+    b.spin = rng_.range(-9.0f, 9.0f);
+    b.len = len;
+    b.born = t;
+    b.life = life;
+    b.c = c;
+}
+
+void PlayView::shatterShape(const ArenaGlyph& g, u8 layer, Vec2 pos, float rot, float scale, Vec3 c, float speedLo, float speedHi, float t) {
+    // One layer of an arena shape flies apart: each of its strokes a piece thrown outward from the shape's centre, turning.
+    const float cr = std::cos(rot) * scale, sr = std::sin(rot) * scale;
+    for (u32 k = 0; k < g.count; ++k) {
+        if (g.layer[k] != layer) continue;
+        const Vec2 a = pos + Vec2{g.seg[k][0] * cr - g.seg[k][1] * sr, g.seg[k][0] * sr + g.seg[k][1] * cr};
+        const Vec2 b = pos + Vec2{g.seg[k][2] * cr - g.seg[k][3] * sr, g.seg[k][2] * sr + g.seg[k][3] * cr};
+        const Vec2 m = (a + b) * 0.5f;
+        const Vec2 out = normalizeOr(m - pos, dirF(rng_.range(0.0f, kTau)));
+        const Vec2 v = out * rng_.range(speedLo, speedHi) + Vec2{-out.y, out.x} * rng_.range(-90.0f, 90.0f);
+        addShard(m, v, angleOf(b - a), length(b - a), rng_.range(0.6f, 0.9f), c, t);
+    }
+}
+
+void PlayView::implodeRing(Vec2 at, float size, float life, Vec3 c, float t) { addFlash(kFlImplode, at, size, life, c, t); }
+
+void PlayView::vaultLayer(const ArenaGlyph& g, Vec2 pos, float rot, float scale, u8 quarter, float t) {
+    // A Vault lost a quarter of its health (the owner, 2026-11-14: "missing visual effects for breaking vault layers"): the layer
+    // that goes flies apart (the first quarter its white mark, the second its gold ornament), a gold ring leaves it, sparks, a flash
+    // and a jolt; the third quarter cracks its last hull white.
+    const Vec3 W1 = whiteF(), gold = palettes_->player[3];
+    if (quarter == 1) shatterShape(g, 2, pos, rot, scale, W1 * 1.2f, 220.0f, 560.0f, t);
+    else if (quarter == 2) shatterShape(g, 1, pos, rot, scale, gold * 1.2f, 220.0f, 560.0f, t);
+    else addFlash(kFlStar, pos, scale * 1.3f, 0.18f, W1, t, rng_.range(0.0f, kPi));
+    addFlash(kFlRing, pos, scale * 1.7f, 0.3f, mix(gold, W1, 0.3f) * 1.3f, t);
+    addPool(pos, 0.4f * scale, 1.6f * scale, gold, reduceFlashing_ ? 0.35f : 0.8f, 0.0f, 0.22f, false, 1, false, false, t);
+    SparkReq r{};
+    r.at = pos;
+    r.count = 18;
+    r.kind = 5;
+    r.a = gold;
+    r.b = W1;
+    r.t0 = t;
+    sparkRequest(r);
+    push(kImpBoss, pos, 160.0f, 2.2f * scale, t);
+    shakeAmp_ = std::fmax(shakeAmp_, 2.5f);
+}
+
+void PlayView::vaultShatter(const ArenaGlyph& g, Vec2 pos, float rot, float scale, u8 quarters, float t) {
+    // The Vault broken ("vault death"): whatever of it still stood flies apart, its hull last and fastest (its light: vaultBurst).
+    const Vec3 W1 = whiteF(), gold = palettes_->player[3];
+    shatterShape(g, 0, pos, rot, scale, mix(W1, gold, 0.3f) * 1.4f, 380.0f, 980.0f, t);
+    if (quarters < 2) shatterShape(g, 1, pos, rot, scale, gold * 1.3f, 300.0f, 800.0f, t);
+    if (quarters < 1) shatterShape(g, 2, pos, rot, scale, W1 * 1.2f, 260.0f, 700.0f, t);
+}
+
+void PlayView::vaultBurst(Vec2 at, float t) {
+    // ... and its light: a white flash, a gold pool, rings, gold sparks, a ripple, a shake and the lattice punched.
+    const Vec3 W1 = whiteF(), gold = palettes_->player[3];
+    addPool(at, 60.0f, 420.0f, W1, reduceFlashing_ ? 0.5f : 1.4f, 0.0f, 0.25f, false, 1, false, false, t);
+    addPool(at, 120.0f, 560.0f, gold, reduceFlashing_ ? 0.3f : 0.6f, 0.0f, 0.6f, false, 1, false, false, t);
+    addShockRings(at, 2, 520.0f, gold, W1, t, 0.5f);
+    addFlash(kFlRing, at, 300.0f, 0.4f, mix(gold, W1, 0.4f) * 1.4f, t);
+    if (!reduceFlashing_) addFlash(kFlStar, at, 160.0f, 0.22f, W1, t, rng_.range(0.0f, kPi));
+    SparkReq r{};
+    r.at = at;
+    r.count = 90;
+    r.kind = 1;
+    r.a = gold;
+    r.b = W1;
+    r.t0 = t;
+    sparkRequest(r);
+    addDistortion(at, 520.0f, 0.4f, 16.0f, 22.0f, t);
+    push(kImpBoss, at, 220.0f, 460.0f, t);
+    shakeAmp_ = std::fmax(shakeAmp_, 4.5f);
+}
+
+void PlayView::repriseBurst(Vec2 at, float t) {
+    // Kaleidos Reprise's explosion, on the bar line its implosion runs to (the owner, 2026-11-14: "Reprise needs an implosion before
+    // the explosion"): the run's biggest burst, a white flash and a gold one after it, a hundred sparks in each of six Tracks' colours
+    // and 400 gold, two distortion waves, a shake of 10, the lattice thrown out across the frame; and from it (drawRepriseWave) the
+    // whole set list comes home as one shockwave of ten thin lines with their glow.
+    const Vec3 gold = palettes_->player[3];
+    addPool(at, 80.0f, 1400.0f, whiteF(), reduceFlashing_ ? 0.45f : 1.0f, 0.0f, 0.3f, false, 1, false, false, t);
+    addPool(at, 200.0f, 2000.0f, gold, reduceFlashing_ ? 0.2f : 0.35f, 0.0f, 0.8f, false, 1, false, false, t + 0.2f);
+    SparkReq r{};
+    r.at = at;
+    r.kind = 1;
+    r.b = whiteF();
+    r.t0 = t;
+    for (u32 k = 0; k < 6; ++k) {
+        Vec3 c = palette_->accent;
+        for (u32 i = 0; i < palettes_->count; ++i)
+            if (palettes_->list[i].track == k + 1) c = palettes_->list[i].accent;
+        r.count = 100;
+        r.a = c;
+        sparkRequest(r);
+    }
+    r.count = 400;
+    r.a = gold;
+    sparkRequest(r);
+    addDistortion(at, 1600.0f, 0.8f, 30.0f, 40.0f, t);
+    addDistortion(at, 2800.0f, 1.2f, 24.0f, 60.0f, t + 0.3f);
+    shakeAmp_ = std::fmax(shakeAmp_, 10.0f);
+    push(kImpBoss, at, 800.0f, 4200.0f, t);
+    rpWaveT_ = t;
+    rpBurstAt_ = at;
+}
+
+void PlayView::drawRepriseWave(FrameDraw& d, const ViewInput& in) {
+    // reprise.md "Death" (the owner, 2026-11-14): one shockwave, ten thin lines a gap apart, one in each Track's colour (First Light's
+    // at the front), each glowing far past its width (the glow drawn as glass strips between the lines), spreading as an explosion
+    // does, fast and then slowing (its front at 80 + 1,420 x (1 - (1 - u)^2.5) wu), the gaps 16 wu growing to 36, fading over 1.8 s.
+    // From the burst (it outlives the boss's own drawing).
+    const float since = static_cast<float>(in.time) - rpWaveT_;
+    constexpr float kWaveLife = 1.8f, kWaveWu = 1500.0f, kWaveStartWu = 80.0f, kGap0 = 16.0f, kGap1 = 36.0f;
+    constexpr float kLineHalfPx = 0.75f, kLineLevel = 1.6f, kGlowLevel = 0.35f, kGlowReach = 1.6f, kGlowTail = 3.0f;
+    constexpr float kSegmentWu = 100.0f;
+    if (since < 0.0f || since >= kWaveLife) return;
+    const Vec2 pos = rpBurstAt_;
+    const float rf = reduceFlashing_ ? 0.6f : 1.0f;
+    const float u = since / kWaveLife;
+    const float outer = kWaveStartWu + (kWaveWu - kWaveStartWu) * (1.0f - std::pow(1.0f - u, 2.5f));
+    const float gap = kGap0 + (kGap1 - kGap0) * u;
+    const float fade = (1.0f - u) * rf;
+    constexpr float kNear = 1.0f - 1.0f / kGlowReach;  // a neighbour's share of the glow on a line
+    Vec3 line[10], knot[12];
+    float rad[12];
+    for (u32 k = 0; k < 10; ++k) {
+        line[k] = palette_->accent;
+        for (u32 i = 0; i < palettes_->count; ++i)
+            if (palettes_->list[i].track == k + 1) line[k] = palettes_->list[i].accent;
+    }
+    rad[0] = outer + kGlowTail * gap;
+    knot[0] = Vec3{};
+    for (u32 k = 0; k < 10; ++k) {
+        rad[k + 1] = outer - gap * static_cast<float>(k);
+        Vec3 g = line[k];
+        if (k > 0) g = g + line[k - 1] * kNear;
+        if (k < 9) g = g + line[k + 1] * kNear;
+        knot[k + 1] = g * (kGlowLevel * fade);
+    }
+    rad[11] = rad[10] - kGlowTail * gap;
+    knot[11] = Vec3{};
+    const u32 n = static_cast<u32>(clampf(std::ceil(kTau * rad[0] / kSegmentWu), 32.0f, 96.0f));
+    for (u32 j = 0; j + 1 < 12; ++j) {
+        const float ro = rad[j], ri = std::fmax(rad[j + 1], 0.0f);
+        if (ro <= 0.0f) break;
+        const Vec3 co = knot[j], ci = knot[j + 1];
+        for (u32 q = 0; q < n; ++q) {
+            const float a0 = kTau * static_cast<float>(q) / n, a1 = kTau * static_cast<float>(q + 1) / n;
+            const Vec2 o0 = pos + dirF(a0) * ro, o1 = pos + dirF(a1) * ro;
+            if (!visible((o0 + o1) * 0.5f, 0.5f * length(o1 - o0) + (ro - ri))) continue;
+            const Vec2 i0 = pos + dirF(a0) * ri, i1 = pos + dirF(a1) * ri;
+            d.glass.tri(toScene(i0), ci, toScene(o0), co, toScene(o1), co);
+            d.glass.tri(toScene(i0), ci, toScene(o1), co, toScene(i1), ci);
+        }
+    }
+    for (u32 k = 0; k < 10; ++k) {
+        const float r = rad[k + 1];
+        if (r <= 0.0f) break;
+        const Vec3 c = line[k] * (kLineLevel * fade);
+        for (u32 q = 0; q < n; ++q) {
+            const Vec2 p0 = pos + dirF(kTau * static_cast<float>(q) / n) * r, p1 = pos + dirF(kTau * static_cast<float>(q + 1) / n) * r;
+            if (!visible((p0 + p1) * 0.5f, 0.5f * length(p1 - p0) + 4.0f)) continue;
+            d.scene.line(toScene(p0), toScene(p1), kLineHalfPx * refPx_, c, c, 0);
+        }
     }
 }
 
@@ -285,6 +460,11 @@ u32 PlayView::feedbackWells(const ViewInput& in, LatticeWell* out, u32 cap) cons
             out[n++] = LatticeWell{pq.holeAt, kHoleLatticePull * (1.0f + 0.5f * u), kHoleLatticePeakWu, kHoleLatticeGoneWu};
         }
     }
+    if (rpBurstTick_ >= 0.0 && rpDeathTick_ >= 0.0 && in.music >= rpDeathTick_ && in.music < rpBurstTick_ && n < cap) {
+        // Kaleidos Reprise's implosion: the lattice falls into the point, harder and harder to the burst.
+        const float u = clampF(static_cast<float>((in.music - rpDeathTick_) / std::fmax(rpBurstTick_ - rpDeathTick_, 1.0)));
+        out[n++] = LatticeWell{rpBurstAt_, kRpPullWu * u * u, 200.0f, kRpReachWu};
+    }
     const BossState& b = w.boss();
     if (b.kind == BossKind::EventHorizon && b.dying && n < cap) {
         const double since = in.music - b.deathTick;
@@ -457,6 +637,23 @@ void PlayView::drawFeedbackFx(FrameDraw& d, const ViewInput& in) {
             const Vec2 dv = dirF(b.ang + b.spin * age) * (0.5f * b.len);
             d.scene.line(toScene(p - dv), toScene(p + dv), 0.9f * refPx_, b.c * (1.8f * fade), b.c * (1.8f * fade), 0);
         }
+        // A cell lost (the owner, 2026-11-14: "not clear when you are damaged"): the frame's edges flash in the danger colour.
+        const float hu = (t - cellHitT_) / 0.45f;
+        if (hu >= 0.0f && hu < 1.0f) {
+            const float sw = 2.0f * centre_.x, sh = 2.0f * centre_.y;
+            const float r = 0.22f * sh;
+            const Vec3 c = palettes_->danger * ((1.0f - hu) * (1.0f - hu) * (reduceFlashing_ ? 0.12f : 0.3f));
+            for (u32 k = 0; k <= 6; ++k) {
+                const float x = sw * static_cast<float>(k) / 6.0f;
+                d.pools.glow(Vec2{x, 0.0f}, r, c);
+                d.pools.glow(Vec2{x, sh}, r, c);
+            }
+            for (u32 k = 1; k < 3; ++k) {
+                const float y = sh * static_cast<float>(k) / 3.0f;
+                d.pools.glow(Vec2{0.0f, y}, r, c);
+                d.pools.glow(Vec2{sw, y}, r, c);
+            }
+        }
         // Event Horizon's jets.
         const float jet = t - hzBurstT_;
         if (jet >= 0.0f && jet < kHzJetS) {
@@ -532,6 +729,30 @@ void PlayView::drawFeedbackFx(FrameDraw& d, const ViewInput& in) {
                     }
                     d.pools.glow(toScene(ship), r1 * 2.6f * pxPerWu_, gold * (0.08f + 0.08f * beat_));
                 }
+            }
+        }
+        // While the ship cannot be hurt (after a hit, a guard ring's break, an Extra Life, a revive: invulS), the owner, 2026-11-14:
+        // "it's not clear when you are damaged and when you can be damaged again": a bubble round it whose bright arc drains
+        // clockwise as the time runs out, flickering in its last half second; as it ends the bubble snaps shut on the ship (it can
+        // be hurt again). The ship blinks on the sixteenths meanwhile (play_view.cpp).
+        if (local) {
+            const float inv = pq.alive ? pq.invulS : 0.0f;
+            const float rb = 1.55f * shipScale + 18.0f;
+            if (inv > invulPrev_[q] + 0.05f) invulMax_[q] = inv;
+            if (invulPrev_[q] > 0.0f && inv <= 0.0f && pq.alive && fx) addFlash(kFlImplode, ship, rb, 0.16f, Wq * 1.3f, t);
+            invulPrev_[q] = inv;
+            if (inv > 0.0f && invulMax_[q] > 0.0f) {
+                const float frac = clampF(inv / invulMax_[q]);
+                const float warn = inv < 0.5f && !reduceFlashing_ ? 0.55f + 0.45f * std::sin(t * 40.0f) : 1.0f;
+                const u32 n = 48;
+                for (u32 j = 0; j < n; ++j) {
+                    const float u0 = static_cast<float>(j) / n, u1 = static_cast<float>(j + 1) / n;
+                    const float a0 = -0.5f * kPi + kTau * u0, a1 = -0.5f * kPi + kTau * u1;
+                    const bool on = u0 < frac;
+                    const Vec3 c = on ? mix(light, Wq, 0.6f) * (1.6f * warn) : Wq * 0.16f;
+                    d.scene.line(toScene(ship + dirF(a0) * rb), toScene(ship + dirF(a1) * rb), (on ? 0.9f : 0.5f) * refPx_, c, c, kFlatStart | kFlatEnd);
+                }
+                d.pools.glow(toScene(ship), rb * 1.3f * pxPerWu_, light * (0.10f * warn));
             }
         }
         if (!pq.alive) continue;

@@ -295,7 +295,7 @@ private:
         float ang = 0.0f, spin = 0.0f, len = 0.0f, born = -100.0f, life = 0.6f;
         Vec3 c;
     };
-    static constexpr u32 kDebris = 128;
+    static constexpr u32 kDebris = 192;
     Debris debris_[kDebris];
     u32 debrisHead_ = 0;
     void addDebris(Vec2 at, u32 count, float speedLo, float speedHi, float lenLo, float lenHi, float life, Vec3 c0, Vec3 c1, float t);
@@ -303,6 +303,26 @@ private:
     float crescStepT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};
     float crescBreakT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};
     float aegisHitT_[sim::kMaxPlayers] = {-100.0f, -100.0f, -100.0f, -100.0f};
+    // The owner, 2026-11-14 (second list): a Vault's layers and its break shatter (from its glyph's own strokes); a hit and the time
+    // the ship cannot be hurt are plain to see; Kaleidos Reprise implodes before it explodes.
+    void addShard(Vec2 p, Vec2 v, float ang, float len, float life, Vec3 c, float t);
+    void shatterShape(const sim::ArenaGlyph& g, u8 layer, Vec2 pos, float rot, float scale, Vec3 c, float speedLo, float speedHi, float t);
+    void vaultLayer(const sim::ArenaGlyph& g, Vec2 pos, float rot, float scale, u8 quarter, float t);  // (drawArena) a layer lost
+    void vaultShatter(const sim::ArenaGlyph& g, Vec2 pos, float rot, float scale, u8 quarters, float t);  // ... the Vault broken
+    void vaultBurst(Vec2 at, float t);  // (eventArena, VaBreak) the break's light
+    u8 vaultQuarters_[sim::World::kArenaBodies] = {};
+    double vaultPlaced_[sim::World::kArenaBodies] = {};
+    bool vaultAlive_[sim::World::kArenaBodies] = {};
+    float vaultRot_[sim::World::kArenaBodies] = {};
+    float cellHitT_ = -100.0f;  // the local ship lost a cell (view time): the edges flash in the danger colour, the hull white
+    float invulPrev_[sim::kMaxPlayers] = {}, invulMax_[sim::kMaxPlayers] = {};
+    void repriseBurst(Vec2 at, float t);                       // the explosion, on the bar line after its implosion
+    void implodeRing(Vec2 at, float size, float life, Vec3 c, float t);  // a ring falling into a point
+    void drawRepriseWave(FrameDraw& d, const ViewInput& in);   // the ten-colour shockwave (it outlives the boss)
+    double rpBurstTick_ = -1.0;  // music ticks: the Reprise's burst is due (its implosion runs to it)
+    double rpDeathTick_ = -1.0;  // ... and its death began
+    Vec2 rpBurstAt_;
+    float rpWaveT_ = -100.0f;    // view time: the burst (its shockwave from here)
     float hzBurstT_ = -100.0f;  // Event Horizon's burst (view time) and where, for the jets drawn after it
     Vec2 hzBurstAt_;
     double hzBurstDeath_ = -1.0;  // the death (its deathTick) whose burst has been played

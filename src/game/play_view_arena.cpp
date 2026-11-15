@@ -154,7 +154,15 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
     }
     for (u32 k = 0; k < World::kArenaBodies; ++k) {
         const ArenaBody& b = bodies[k];
-        if (!b.alive) continue;
+        const bool vaultKind = b.kind == static_cast<u8>(StructKind::Vault) || b.kind == kBodyGoldVault;
+        if (!b.alive) {
+            // (2026-11-14, the owner: "missing visual effects for ... vault death"): a Vault broken flies apart (its light:
+            // eventArena's VaBreak); one that dissolved over a Track change does not.
+            if (vaultAlive_[k] && vaultKind && b.hp <= 0.0f && shown(kMuteFx))
+                vaultShatter(A.glyph[ArenaData::gVault], b.pos, vaultRot_[k], A.radius[static_cast<u32>(StructKind::Vault)], vaultQuarters_[k], now);
+            vaultAlive_[k] = false;
+            continue;
+        }
         const float R = b.kind < kStructKinds ? A.radius[b.kind] : (b.kind == kBodyCarrier ? prose::kArCarrierRadius : A.radius[0]);
         const float fade = b.gone >= 0.0 ? clamp01(1.0f - static_cast<float>((t - b.gone) / (kTrackChangeBars * bar))) * 0.7f + 0.3f : 1.0f;
         // (arena.md: a Rift's edge chevron is the enemy hue with a ring at its tip; structures get none)
@@ -174,6 +182,17 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
                 const float rot = static_cast<float>((t - b.placed) / bar) * (kTau / 12.0f);
                 const float sc = R * (1.0f + 0.06f * kick_);
                 const u8 layers = static_cast<u8>(b.quarters >= 2 ? 1u : (b.quarters >= 1 ? 3u : 7u));
+                // (2026-11-14, "missing visual effects for breaking vault layers"): each quarter lost, the layer that goes flies
+                // apart with a ring, sparks and a jolt (vaultLayer).
+                if (!vaultAlive_[k] || vaultPlaced_[k] != b.placed) {
+                    vaultAlive_[k] = true;
+                    vaultPlaced_[k] = b.placed;
+                    vaultQuarters_[k] = b.quarters;
+                }
+                vaultRot_[k] = rot;
+                for (u8 q = static_cast<u8>(vaultQuarters_[k] + 1u); q <= b.quarters && q <= 3u; ++q)
+                    if (shown(kMuteFx)) vaultLayer(A.glyph[ArenaData::gVault], b.pos, rot, sc, q, now);
+                vaultQuarters_[k] = b.quarters;
                 arenaShape(d, A.glyph[ArenaData::gVault], b.pos, rot, sc, (goldV ? gold : W1) * (1.6f * fade), gold * (1.4f * fade), W1 * (1.2f * fade), 1.6f, layers);
                 d.pools.glow(toScene(b.pos), 2.0f * R * pxPerWu_, gold * (0.2f * fade));
                 if (!goldV && b.hp >= b.hpMax && b.gone < 0.0) {
@@ -448,6 +467,11 @@ void PlayView::eventArena(const World& w, const Event& e, float t) {
         case BossCue::ElStun: addShockRings(at, 1, e.f, palette_->hue[2], W1, t, 0.3f); break;
         case BossCue::VaBreak:
         case BossCue::CoBreak:
+            // (2026-11-14: a Vault's break is a burst of its own; the Comet's and a carrier's as before)
+            if (e.b == static_cast<u8>(StructKind::Vault) || e.b == kBodyGoldVault) {
+                vaultBurst(at, t);
+                break;
+            }
             addShockRings(at, 2, 260.0f, gold, W1, t, 0.4f);
             addPool(at, 30.0f, 200.0f, gold, 0.6f, 0.0f, 0.3f, false, 1, false, false, t);
             break;

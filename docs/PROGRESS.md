@@ -4,6 +4,23 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (late night), the Vault's layers, a hit and its safe time, the Reprise's implosion
+
+"Missing visual effects for breaking vault layers and vault death; visual effects when you are damaged are not visible enough or
+missing, it's not clear when you are damaged and when you can be damaged again; Reprise needs an implosion before the explosion"
+(look.md §5 "Feedback"):
+
+- **Vault**: each quarter lost, its glyph's layer that goes flies apart stroke by stroke (`PlayView::shatterShape`, from
+  `ArenaGlyph`'s own strokes; `vaultLayer`), a ring, sparks, a jolt; broken, all that stood flies apart (`vaultShatter`) under a
+  burst of its own (`vaultBurst` on `BossCue::VaBreak`). The layers used to vanish without a sign (the view ignored `VaHit`).
+- **A hit**: the danger ring, sparks, the hull white, the frame's edges flashing red, a harder jolt; the time the ship cannot be
+  hurt (`invulS`, 2.5 s after a hit) shows as a draining bubble round it and a blink of the hull on the sixteenths, and its end
+  as the bubble snapping shut. Until now nothing showed it.
+- **Kaleidos Reprise**: the kill starts an implosion that runs to the bar line its Shards come on (the reversed cymbal's end:
+  the BossDeath event's tick), where the explosion and the ten-colour shockwave now come (`repriseBurst`, `drawRepriseWave`,
+  both from `drawFight`, so the wave outlives the boss's own drawing); its impact moved to that bar line too (play.cpp).
+- Pictures `m6_fx_vault_layer`, `m6_fx_vault_break`, `m6_fx_hit`, `m6_fx_rp_death`; Debug validation 0 messages on the first three.
+
 ## 2026-11-14 (late night), the title's demo plays the whole game
 
 "Can you make the demo AI actually get powerups? also it should never die so you can see all the tracks eventually", then

@@ -36,6 +36,7 @@ constexpr float kBossCamWu = 1800.0f, kBossZoom = 0.85f, kBossLeanShare = 0.30f,
 constexpr float kBossLeanTau = 0.5f;
 constexpr float kWallIntensity = 1.6f, kWallWidth = 2.6f, kWallSnare = 0.6f, kWallBass = 0.3f;
 constexpr float kHitShakeRefPx = 4.0f, kNovaShakeRefPx = 3.0f, kDeathShakeRefPx = 6.0f;
+constexpr float kCellHitShakeRefPx = 6.5f;  // (2026-11-14) a cell lost jolts harder than a guard ring's break
 constexpr float kMuzzleFlashS = 0.06f, kMuzzleFlashRefPx = 10.0f, kMuzzleFlash = 0.9f;
 // look.md §3 (the owner, 2026-11-14: "a substantial glow" on every red enemy projectile): an enemy bullet's pooled glow on every
 // tier, 26 ref px, 0.32, never under 0.6 of that in a crowd (the swarm gain's floor for it).
@@ -226,6 +227,14 @@ void PlayView::resetEffects() {
     for (Flash& f : flashes_) f.t = -100.0f;    // 2026-11-14
     for (Debris& b : debris_) b.born = -100.0f;
     hzBurstT_ = -100.0f;
+    for (u32 k = 0; k < sim::World::kArenaBodies; ++k) {
+        vaultQuarters_[k] = 0;
+        vaultAlive_[k] = false;
+        vaultPlaced_[k] = -1.0;
+    }
+    cellHitT_ = rpWaveT_ = -100.0f;
+    rpBurstTick_ = rpDeathTick_ = -1.0;
+    for (u32 p = 0; p < kMaxPlayers; ++p) invulPrev_[p] = invulMax_[p] = 0.0f;
     sparkReqCount_ = 0;
     trailCount_ = 0;
     for (u32 p = 0; p < kMaxPlayers; ++p) {
@@ -569,8 +578,22 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 // The lost arc, the last of the halo it was (play test 2: the halo glyphs are ornament, which shatterGlyph skips).
                 if (left < 8) shatterArcs(at, left + 1u, left, left + 1u, mix(player, white(), 0.3f) * 2.0f, t);
                 addShockRings(at, 1, kPanicRadiusWu, player, light, t, kPanicRingS);
-                push(kImpHit, at, 260.0f, 120.0f, t);
-                if (mine && kHitShakeRefPx > shakeAmp_) shakeAmp_ = kHitShakeRefPx;
+                // (2026-11-14, the owner: "visual effects when you are damaged are not visible enough"): a danger-coloured ring
+                // and sparks too, the hull white for 0.1 s and the frame's edges flashing (play_view_feedback.cpp), a harder jolt.
+                addShockRings(at, 1, 1.5f * kPanicRadiusWu, palettes_->danger, white(), t, 1.4f * kPanicRingS);
+                {
+                    SparkReq r{};
+                    r.at = at;
+                    r.count = mine ? 26 : 12;
+                    r.kind = 5;
+                    r.a = palettes_->danger;
+                    r.b = white();
+                    r.t0 = t;
+                    sparkRequest(r);
+                }
+                if (mine) cellHitT_ = t;
+                push(kImpHit, at, 340.0f, 140.0f, t);
+                if (mine && kCellHitShakeRefPx > shakeAmp_) shakeAmp_ = kCellHitShakeRefPx;
                 break;
             }
             case EventType::Down: {
@@ -1116,6 +1139,15 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         // Event Horizon's beat of black (2026-11-14): the lattice dims over the last quarter of its death bar and stays dark through
         // the beat of black (the burst lights it again).
         const BossState& b = w.boss();
+        if (rpBurstTick_ >= 0.0 && rpDeathTick_ >= 0.0 && in.music >= rpDeathTick_ && in.music < rpBurstTick_) {
+            // (Kaleidos Reprise's implosion: the lattice dims over its last third, all the light gone into the point)
+            const float u = clampf(static_cast<float>((in.music - rpDeathTick_) / std::fmax(rpBurstTick_ - rpDeathTick_, 1.0)), 0.0f, 1.0f);
+            const float dim = 1.0f - 0.8f * clampf((u - 0.67f) / 0.33f, 0.0f, 1.0f);
+            ls.restIntensity *= dim;
+            ls.warmIntensity *= dim;
+            ls.hotIntensity *= dim;
+            ls.hotPeakIntensity *= dim;
+        }
         if (b.kind == BossKind::EventHorizon && b.dying) {
             const double since = in.music - b.deathTick;
             if (since >= 0.75 * kTicksPerBar && since < kTicksPerBar + kTicksPerBeat) {
@@ -1381,6 +1413,13 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         const float heading = in.shipHeading;
         const LookLine& hull = look_->lines.playerHull;
         const u32 cells = me.cells > 8 ? 8u : me.cells;
+        // (2026-11-14, the owner: "it's not clear when you are damaged and when you can be damaged again"): while it cannot be hurt
+        // (invulS) the hull blinks on the sixteenths (down to 0.35; reduce flashing: steady at 0.7), its bubble draining round it
+        // (drawFeedbackFx); a lost cell turns the hull white for 0.1 s.
+        const bool safe = me.invulS > 0.0f;
+        const bool dimStep = safe && !reduceFlashing_ && (static_cast<i64>(std::floor(in.music / (0.25 * kTicksPerBeat))) & 1) != 0;
+        const float hullLv = safe ? (reduceFlashing_ ? 0.7f : (dimStep ? 0.35f : 1.0f)) : 1.0f;
+        const float hitWhite = clampf(1.0f - (t - cellHitT_) / 0.1f, 0.0f, 1.0f) * (t >= cellHitT_ ? 1.0f : 0.0f);
         const float haloRot = 0.3f * t;
         const float haloPulse = 1.0f + 0.25f * kick_;
         // Play test 2 (look.md 6): up to eight arcs. Regen's arc growing back is a dashed outline that fills clockwise in
@@ -1406,9 +1445,11 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         }
         const int haloG = whole == 0 ? -1 : (whole == slots ? gHalo_[whole] : gHaloPart_[whole][slots]);
         if (playerShown && !blinkOff(w.viewPlayer())) {
-            glyph(d.glyphs, gShip_, false, S, heading, heading, shipScale, hull.intensity, 0.5f * hull.width, kGlyphPlayer, player, deep);
-            glyph(d.glyphs, gShip_, true, S, heading, heading, shipScale, look_->lines.playerWhiteCopy.intensity,
+            glyph(d.glyphs, gShip_, false, S, heading, heading, shipScale, hull.intensity * hullLv, 0.5f * hull.width, kGlyphPlayer, player, deep);
+            glyph(d.glyphs, gShip_, true, S, heading, heading, shipScale, look_->lines.playerWhiteCopy.intensity * hullLv,
                   0.5f * look_->lines.playerWhiteCopy.width, kGlyphWhite, W1, W1);
+            if (hitWhite > 0.0f)
+                glyph(d.glyphs, gShip_, true, S, heading, heading, shipScale, 3.0f * hitWhite, 0.8f * hull.width, kGlyphWhite, W1, W1);
             if (cells == 1 && haloG >= 0) {
                 // The last arc pulses in the danger colour (look.md §4).
                 glyph(d.glyphs, haloG, false, S, haloRot, haloRot, shipScale, look_->lines.playerHalo.intensity * (0.8f + 1.2f * kick_),
@@ -1481,7 +1522,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             // The ship on the priority layer (look.md §6, §9): hull and halo after tone mapping with a rim.
             const Look::PriorityShip& ph = look_->priorityHull;
             const Look::PriorityShip& pa = look_->priorityHalo;
-            const Vec3 hullCore = light * 0.55f + W1 * 0.45f;
+            const Vec3 hullCore = mix(light * 0.55f + W1 * 0.45f, W1, hitWhite) * hullLv;
             const Vec3 haloCore = cells == 1 ? mix(danger, W1, 0.25f) : player * 0.75f + W1 * 0.25f;
             glyph(d.threatGlyphRims, gShip_, true, S, heading, heading, shipScale, 1.0f, 0.5f * ph.width + ph.rim, kGlyphFlat, Vec3{}, Vec3{});
             glyph(d.priorityShipCores, gShip_, true, S, heading, heading, shipScale, 1.0f, 0.5f * ph.width, kGlyphFlat, hullCore, hullCore);
