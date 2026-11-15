@@ -10,6 +10,8 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | Task | Command |
 |---|---|
 | Fetch pinned SDL / volk / Vulkan headers / ENet 1.3.18 (no-op when present; tag and commit checked) | `scripts\fetch-deps.ps1` |
+| iOS (on a Mac only; docs/IOS.md; written on this PC, never built): the same pins, the Vulkan headers from the Vulkan SDK for macOS 1.4.363.0, MoltenVK's licence; the app (CMake's Xcode generator, MoltenVK static, arm64, iOS 15+) | `scripts/fetch-deps.sh`, then `scripts/build-ios.sh --team <id> [--config Release] [--install] [--run "<app args>"] [--open] [--clean]` |
+| The iOS app icon (one 1024 px square, `ios/Assets.xcassets`) | `python -I -B scripts\make_icon.py --ios-only` (slow: over ten minutes) |
 | Build desktop (`debug` = Debug + validation, `dev` = RelWithDebInfo) | `scripts\build-desktop.ps1 [-Config debug\|dev] [-Clean]` |
 | Build and run desktop (silent unless `-Sound`: the app gets `--silent`) | `scripts\run-desktop.ps1 [-Config dev] [-NoBuild] [-AppArgs '<app args>'] [-Sound]` |
 | Desktop screenshot (+ review copy ≤ 1600 px) | `scripts\run-desktop.ps1 -Screenshot captures\x.png -Res 2400x1080 -Small` |

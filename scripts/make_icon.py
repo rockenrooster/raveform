@@ -275,15 +275,29 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--res", default=os.path.join(ROOT, "android", "app", "src", "main", "res"))
     ap.add_argument("--out", default=os.path.join(ROOT, "captures", "m6"))
+    # docs/IOS.md: the iOS app icon, one 1024 px square without alpha (iOS rounds its corners): the whole icon as the adaptive
+    # one's visible 72 dp of 108 (rendered at 1536 and its middle two thirds kept).
+    ap.add_argument("--ios", default=os.path.join(ROOT, "ios", "Assets.xcassets", "AppIcon.appiconset"))
+    ap.add_argument("--ios-only", action="store_true", help="write only the iOS icon")
     args = ap.parse_args()
     look = load("design/look.json")
     glyphs = load("design/glyphs.json")
     palettes = load("design/palettes.json")
     design = os.path.realpath(os.path.join(ROOT, "design"))
-    for path in (args.res, args.out):
+    for path in (args.res, args.out, args.ios):
         if os.path.realpath(path).startswith(design):
             print("make_icon: never writes under design/", file=sys.stderr)
             return 2
+    os.makedirs(args.ios, exist_ok=True)
+    # (rendered at 1024 and its middle two thirds scaled up to 1024: at 1536 the render needs some 20 GB and most of an hour;
+    # the home screen shows the icon at 180 px at most)
+    _, _, _, big = draw(1024, look, glyphs, palettes)
+    cut = int(round(1024 * 18.0 / 108.0))
+    ios_icon = Image.fromarray(big, "RGB").crop((cut, cut, 1024 - cut, 1024 - cut)).resize((1024, 1024), Image.LANCZOS)
+    ios_icon.save(os.path.join(args.ios, "icon_1024.png"), optimize=True)
+    print("make_icon: %s" % os.path.join(args.ios, "icon_1024.png"))
+    if args.ios_only:
+        return 0
     for dens, px in DENSITIES.items():
         bg, fg, mono, _ = draw(px, look, glyphs, palettes)
         d = os.path.join(args.res, "mipmap-" + dens)

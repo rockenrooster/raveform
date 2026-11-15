@@ -4,6 +4,32 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (night), the iOS port: written, not built
+
+"And then your last task will be porting to IOS." Apple's compilers, SDK and signing run only on macOS, so the port was
+written on this PC and **has not been compiled or run**; docs/IOS.md is how to build it on a Mac and what to check first.
+
+- **Build**: `CMakeLists.txt` takes `CMAKE_SYSTEM_NAME=iOS` (`RF_IOS`): the app bundle `raveform_ios` (bundle id
+  `dev.raveform.game`, iOS 15+, iPhone and iPad, Xcode's automatic signing with `RF_IOS_TEAM`), **MoltenVK** linked statically
+  from the Vulkan SDK for macOS 1.4.363.0 (its entry point kept for SDL's Vulkan loader, which looks in the app's own image),
+  the frameworks; no headless tools or tests. `scripts/fetch-deps.sh` (the same pins as `fetch-deps.ps1`, the headers from the
+  SDK, MoltenVK's licence) and `scripts/build-ios.sh` (generate, build, `--install`, `--run "<app args>"`, `--open`).
+- **Bundle**: `ios/Info.plist.in` (landscape, full screen, no status bar, a black `UILaunchScreen` for native resolution,
+  ProMotion's 120 Hz allowed, the local network's prompt, Documents shared), `ios/Assets.xcassets` (the icon: `make_icon.py
+  --ios-only`, one 1024 px square, the adaptive icon's visible part; the launch colour), `ios/PrivacyInfo.xcprivacy` (no
+  tracking or data collected; the reasons for the time-since-boot, file-timestamp and user-defaults APIs).
+- **Code**: `src/core/platform.h` (`RF_IOS`, `RF_MOBILE`); `src/platform/ios/ios_glue.h/.mm` (UIKit's impact haptics, the
+  device's model, the Documents folder); the app's iOS window (full screen, borderless), hints (the home indicator auto-hides;
+  the audio session is playback), touch at 163 points an inch, captures and results in Documents; first-run hints read touch on
+  every phone or tablet. The Vulkan instance asks for portability devices and the device enables `VK_KHR_portability_subset`
+  where it is listed (both harmless elsewhere). The credits list MoltenVK on iOS (libc++ is iOS's own there); the Apache
+  text comes from MoltenVK's licence where Xcode's toolchain has no LLVM licence file. The build's name follows the
+  configuration (`$<CONFIG>`), so Xcode's Debug and Release each get theirs.
+- **Checked here**: desktop dev and Debug build (Debug validation 0 messages, the names `dev` and `debug`), the APK builds.
+  **Not verified**: everything on iOS (docs/IOS.md's list: compile and link, start, formats, timestamps, touch, audio,
+  background, 120 Hz, co-op by code with an Android phone, haptics). The room list on iOS needs Apple's multicast entitlement;
+  joining by code or address does not.
+
 ## 2026-11-14 (night), the wordmark, the meteors, the demo's movement
 
 - "Make the title of the game at the main menu look way more polished", then (of a first version in letters of its own,

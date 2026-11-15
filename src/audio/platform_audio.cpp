@@ -1,5 +1,11 @@
 #include "audio/platform_audio.h"
 
+#include "core/platform.h"
+
+#if RF_IOS
+#include "platform/ios/ios_glue.h"
+#endif
+
 #if defined(__ANDROID__)
 #include <SDL3/SDL_system.h>
 #include <jni.h>
@@ -65,6 +71,13 @@ int platformAudioDeviceType(i32 deviceId) {
     }
     return static_cast<int>(t);
 }
+
+#elif RF_IOS
+
+// docs/IOS.md: the haptics are UIKit's impact taps; the output's kind is not asked (SDL's CoreAudio device; 0 = not known).
+bool platformAudioInit() { return true; }
+void platformHaptic(HapticKind kind, bool strong) { ios::haptic(static_cast<int>(kind), strong); }
+int platformAudioDeviceType(i32) { return 0; }
 
 #else
 

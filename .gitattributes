@@ -1,0 +1,2 @@
+# The shell scripts run on a Mac (docs/IOS.md): always LF, whatever a checkout's core.autocrlf.
+*.sh text eol=lf

@@ -13,6 +13,7 @@
 #include "audio/music_data.h"
 #include "audio/platform_audio.h"
 #include "core/log.h"
+#include "core/platform.h"
 #include "core/time.h"
 #include "net/bots.h"
 #include "net/lobby.h"
@@ -1623,7 +1624,7 @@ void Play::hintsTick(ViewInput& vi) {
     if (bar < lastHintBar_ + 4 || w.boss().active || now - takenT_ < 1.5f) return;
     const float hw = tuning::kFrameHalfWWu, hh = tuning::kFrameHalfHWu;
     const auto inView = [&](Vec2 p) { return std::fabs(p.x - me.pos.x) <= hw && std::fabs(p.y - me.pos.y) <= hh; };
-#if defined(__ANDROID__)
+#if RF_MOBILE
     const bool touch = true;
 #else
     const bool touch = touch_.used();

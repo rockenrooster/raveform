@@ -107,6 +107,13 @@ bool GpuContext::createInstance(bool wantValidation) {
         extensions[extensionCount++] = VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME;
         colorSpaces_ = true;
     }
+    // docs/IOS.md: on Apple's GPUs Vulkan is MoltenVK, a portability implementation; a loader lists it only to an instance that
+    // asks for portability devices (MoltenVK linked directly lists itself either way, so asking costs nothing).
+    bool portability = false;
+    if (hasInstanceExtension(nullptr, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
+        extensions[extensionCount++] = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
+        portability = true;
+    }
 
     const char* layers[1];
     u32 layerCount = 0;
@@ -163,6 +170,7 @@ bool GpuContext::createInstance(bool wantValidation) {
 
     VkInstanceCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    info.flags = portability ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0u;
     info.pNext = validation_ ? &chainedDebug : nullptr;
     info.pApplicationInfo = &app;
     info.enabledLayerCount = layerCount;
@@ -235,6 +243,9 @@ bool GpuContext::createDevice(VkSurfaceKHR surface, FramePacer& pacer) {
     const char* enabled[8];
     u32 enabledCount = 0;
     enabled[enabledCount++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+    // docs/IOS.md: a portability implementation (MoltenVK) that lists VK_KHR_portability_subset must have it enabled.
+    for (u32 i = 0; i < availableCount; ++i)
+        if (std::strcmp(available[i].extensionName, "VK_KHR_portability_subset") == 0) enabled[enabledCount++] = "VK_KHR_portability_subset";
     enabledCount += pacer.deviceExtensions(physical, available, availableCount, enabled + enabledCount,
                                            countOf(enabled) - enabledCount);
     std::free(available);

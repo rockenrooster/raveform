@@ -16,6 +16,11 @@
 #include "core/time.h"
 #include "net/wire.h"
 #include "platform/cpu_affinity.h"
+#include "core/platform.h"
+
+#if RF_IOS
+#include "platform/ios/ios_glue.h"
+#endif
 
 #if defined(__ANDROID__)
 #include "platform/android/android_glue.h"
@@ -79,6 +84,12 @@ bool App::init() {
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
     SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
     SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "0");
+#if RF_IOS
+    // docs/IOS.md: the home indicator fades away and a first swipe at the bottom edge is the game's; the music is the game, so
+    // it plays as playback (other apps' audio stops; the ring/silent switch does not mute it, as music players are not muted).
+    SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "2");
+    SDL_SetHint(SDL_HINT_AUDIO_CATEGORY, "playback");
+#endif
 
     SDL_InitFlags flags = SDL_INIT_VIDEO | SDL_INIT_EVENTS;
 #if !defined(__ANDROID__)
@@ -96,6 +107,11 @@ bool App::init() {
     char release[16] = {};
     android::systemProperty("ro.build.version.release", release, sizeof release);
     std::snprintf(os_, sizeof os_, "Android %s (API %d)", release, SDL_GetAndroidSDKVersion());
+#elif RF_IOS
+    // docs/IOS.md: full screen at the panel's native pixels (Info.plist's launch screen keeps iOS from scaling it).
+    window_ = SDL_CreateWindow("RAVEFORM", 0, 0, SDL_WINDOW_VULKAN | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS);
+    ios::deviceModel(device_, sizeof device_);
+    std::snprintf(os_, sizeof os_, "%s", SDL_GetPlatform());
 #else
     // --offscreen (the user's rule: PC test runs stay off screen): created hidden, as a utility window (no taskbar
     // button) that cannot take focus, moved left of every display by its own width and a margin, then shown without
@@ -343,6 +359,11 @@ bool App::init() {
         // 1/160 inch.
         const float density = SDL_GetWindowDisplayScale(window_);
         if (density > 0.0f) po.pxPerMm = density * 160.0f / 25.4f;
+#elif RF_IOS
+        // iOS: the display scale is pixels a point, and a point is about 1/163 inch on an iPhone (1/132 on an iPad; the controls
+        // come out a little smaller there).
+        const float density = SDL_GetWindowDisplayScale(window_);
+        if (density > 0.0f) po.pxPerMm = density * 163.0f / 25.4f;
 #endif
         if (!play_.init(po, look_, palettes_, *palette_, glyphs_, font_, tier_, &band_)) return false;
         play_.setReduceFlashing(args_.reduceFlashing);
@@ -1718,6 +1739,16 @@ void App::resolveOutputPath(const char* in, char* out, size_t capacity) const {
     if (in[0] != '/') {
         if (const char* dir = SDL_GetAndroidExternalStoragePath()) {
             std::snprintf(out, capacity, "%s/%s", dir, in);
+            return;
+        }
+    }
+#elif RF_IOS
+    // iOS: relative paths go to the app's Documents folder (Finder and the Files app show it: Info.plist UIFileSharingEnabled).
+    if (in[0] != '/') {
+        char dir[512];
+        ios::documentsPath(dir, sizeof dir);
+        if (dir[0]) {
+            std::snprintf(out, capacity, "%s%s", dir, in);
             return;
         }
     }

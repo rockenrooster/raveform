@@ -16,6 +16,7 @@ licence. Update this file with every new dependency or asset (PLAN §6). The in-
 | Android Frame Pacing (Swappy) | 2.1.3 (`androidx.games:games-frame-pacing:2.1.3`, prefab AAR, module `swappy_static`) | Google Maven; Android Game Development Kit | Apache-2.0 | Statically linked into `libmain.so` |
 | LLVM libc++ (NDK r29 `libc++_shared.so`) | NDK 29.0.14206865 | Android NDK | Apache-2.0 WITH LLVM-exception | `libc++_shared.so` in the APK (required by Oboe's prefab package) |
 | llvm-mingw runtime (libc++, libunwind, mingw-w64 CRT, winpthreads) | llvm-mingw 20260602 (clang 22.1.7) | https://github.com/mstorsjo/llvm-mingw | Apache-2.0 WITH LLVM-exception; mingw-w64 runtime: ZPL/public domain and permissive notices | Statically linked into the Windows dev exe (not distributed) |
+| MoltenVK (iOS only, docs/IOS.md) | the Vulkan SDK for macOS 1.4.363.0's `iOS/lib/MoltenVK.xcframework` (static); its LICENSE fetched by `scripts/fetch-deps.sh` | https://github.com/KhronosGroup/MoltenVK | Apache-2.0 | Statically linked into the iOS app (not built yet) |
 | Gradle wrapper (`gradlew`, `gradlew.bat`, `gradle-wrapper.jar`) | copied from SDL 3.4.20's `android-project`; runs Gradle 8.13 | https://gradle.org | Apache-2.0 | Build tooling only |
 
 ## Build tools (not shipped)

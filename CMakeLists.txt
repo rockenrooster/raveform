@@ -1,6 +1,7 @@
-# RAVEFORM - one CMake tree for the Windows dev build and the Android libmain.so.
+# RAVEFORM - one CMake tree for the Windows dev build, the Android libmain.so and the iOS app.
 # Desktop: scripts/build-desktop.ps1 (native CMake, Ninja, llvm-mingw clang).
 # Android: android/ Gradle project points externalNativeBuild here (SDK CMake 3.22.1, NDK r29).
+# iOS: scripts/build-ios.sh on a Mac (CMake's Xcode generator, CMAKE_SYSTEM_NAME=iOS, MoltenVK; docs/IOS.md).
 
 cmake_minimum_required(VERSION 3.22)
 project(raveform VERSION 0.9.0 LANGUAGES C CXX)  # (the title screen's version, src/core/build_info; android/app versionName too)
@@ -9,6 +10,25 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_STANDARD 11)
+
+# iOS (docs/IOS.md): UIKit's glue is Objective-C++ (src/platform/ios); Vulkan is MoltenVK, linked statically.
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  set(RF_IOS ON)
+  enable_language(OBJCXX)
+  set(RF_IOS_BUNDLE_ID "dev.raveform.game" CACHE STRING "The app's bundle identifier")
+  set(RF_IOS_TEAM "" CACHE STRING "The Apple development team id that signs the app (Xcode: Signing & Capabilities)")
+  set(RF_IOS_DEPLOYMENT "15.0" CACHE STRING "The oldest iOS the app runs on")
+  set(RF_IOS_BUILD_NUMBER "1" CACHE STRING "CFBundleVersion (raise it for every TestFlight upload)")
+  set(RF_MOLTENVK_XCFRAMEWORK "$ENV{VULKAN_SDK}/../iOS/lib/MoltenVK.xcframework" CACHE PATH
+      "The static MoltenVK.xcframework of the Vulkan SDK for macOS (installed with its iOS component)")
+  set(RF_MOLTENVK_LIB "${RF_MOLTENVK_XCFRAMEWORK}/ios-arm64/libMoltenVK.a")
+  if(NOT EXISTS "${RF_MOLTENVK_LIB}")
+    message(FATAL_ERROR "MoltenVK not found at ${RF_MOLTENVK_LIB}: install the Vulkan SDK for macOS with its iOS component and "
+                        "set VULKAN_SDK, or pass -DRF_MOLTENVK_XCFRAMEWORK=<path> (docs/IOS.md)")
+  endif()
+else()
+  set(RF_IOS OFF)
+endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
@@ -426,6 +446,10 @@ if(ANDROID)
 else()
   list(APPEND RF_CORE_SOURCES src/audio/audio_device_sdl.cpp)
 endif()
+if(RF_IOS)
+  list(APPEND RF_CORE_SOURCES src/platform/ios/ios_glue.mm)
+  set_source_files_properties(src/platform/ios/ios_glue.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+endif()
 
 add_library(raveform_core OBJECT ${RF_CORE_SOURCES} ${RF_GENERATED})
 target_include_directories(raveform_core PUBLIC ${RF_ROOT}/src ${RF_GEN})
@@ -439,15 +463,9 @@ add_custom_target(rf_build_stamp ALL
 target_sources(raveform_core PRIVATE src/core/build_info.cpp)
 add_dependencies(raveform_core rf_build_stamp)
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(RF_BUILD_NAME debug)
-elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-  set(RF_BUILD_NAME release)
-else()
-  set(RF_BUILD_NAME dev)
-endif()
+# (by the configuration, so Xcode's Debug and Release in one project each get theirs: debug, release, else dev)
 target_compile_definitions(raveform_core PUBLIC
-  RF_BUILD_NAME="${RF_BUILD_NAME}"
+  "RF_BUILD_NAME=\"$<IF:$<CONFIG:Debug>,debug,$<IF:$<CONFIG:Release>,release,dev>>\""
   $<$<CONFIG:Debug>:RF_DEBUG=1>)
 target_compile_options(raveform_core PUBLIC
   $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti>
@@ -491,7 +509,7 @@ target_sources(raveform_core PRIVATE
 # M4: co-op in the game (the network library; the game hosts or joins from the command line).
 target_link_libraries(raveform_core PUBLIC raveform_net)
 target_sources(raveform_core PRIVATE src/game/play_net.cpp src/game/play_view_coop.cpp src/game/play_coop.cpp src/game/screens_coop.cpp)
-if(NOT ANDROID)
+if(NOT ANDROID AND NOT RF_IOS)
   # The band without a window: offline renders, the loudness calibration, the unit tests.
   set(RF_HEADLESS_CORE src/core/json_doc.cpp src/core/log.cpp src/core/alloc_counter.cpp)
   # (M5 audio: the fights' sounds, game/pending_sounds.cpp, for their listening sheet: --render fights)
@@ -535,6 +553,35 @@ if(ANDROID)
   target_link_libraries(main PRIVATE raveform_core SDL3::SDL3-shared)
   target_compile_options(main PRIVATE -Wall -Wextra -Werror)
   target_link_options(main PRIVATE -Wl,--no-undefined)
+elseif(RF_IOS)
+  # docs/IOS.md: the app bundle (Info.plist from ios/Info.plist.in, whose launch screen gives native resolution; the icon and
+  # the launch colour in ios/Assets.xcassets; the privacy manifest), signed by Xcode's automatic signing with RF_IOS_TEAM;
+  # MoltenVK and the frameworks it and SDL draw on.
+  set(RF_IOS_DIR ${RF_ROOT}/ios)
+  set(RF_IOS_RESOURCES ${RF_IOS_DIR}/Assets.xcassets ${RF_IOS_DIR}/PrivacyInfo.xcprivacy)
+  add_executable(raveform_ios MACOSX_BUNDLE src/platform/main.cpp ${RF_IOS_RESOURCES})
+  set_target_properties(raveform_ios PROPERTIES
+    OUTPUT_NAME RAVEFORM
+    MACOSX_BUNDLE_INFO_PLIST ${RF_IOS_DIR}/Info.plist.in
+    MACOSX_BUNDLE_GUI_IDENTIFIER ${RF_IOS_BUNDLE_ID}
+    MACOSX_BUNDLE_BUNDLE_NAME RAVEFORM
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+    MACOSX_BUNDLE_BUNDLE_VERSION ${RF_IOS_BUILD_NUMBER}
+    RESOURCE "${RF_IOS_RESOURCES}"
+    XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${RF_IOS_BUNDLE_ID}
+    XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET ${RF_IOS_DEPLOYMENT}
+    XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
+    XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic
+    XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${RF_IOS_TEAM}"
+    XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME AppIcon
+    XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
+    XCODE_ATTRIBUTE_ENABLE_BITCODE NO)
+  target_link_libraries(raveform_ios PRIVATE raveform_core SDL3::SDL3-static "${RF_MOLTENVK_LIB}"
+    "-framework Metal" "-framework QuartzCore" "-framework IOSurface" "-framework UIKit" "-framework Foundation"
+    "-framework CoreGraphics")
+  # (MoltenVK's entry point: SDL's Vulkan loader finds it in the app's own image; kept by the linker)
+  target_link_options(raveform_ios PRIVATE "-Wl,-u,_vkGetInstanceProcAddr")
+  target_compile_options(raveform_ios PRIVATE -Wall -Wextra -Werror)
 else()
   add_executable(raveform_desktop src/platform/main.cpp)
   set_target_properties(raveform_desktop PROPERTIES OUTPUT_NAME raveform)
@@ -580,11 +627,17 @@ function(rf_collect_links tgt)
 endfunction()
 if(ANDROID)
   rf_collect_links(main)
+elseif(RF_IOS)
+  rf_collect_links(raveform_ios)
 else()
   rf_collect_links(raveform_desktop)
 endif()
 get_property(_rf_links GLOBAL PROPERTY RF_LINK_TARGETS)
-set(RF_LINKED_THIRD_PARTY LIBCXX)  # (the C++ standard library: libc++_shared.so on Android, static on the desktop)
+if(RF_IOS)
+  set(RF_LINKED_THIRD_PARTY MOLTENVK)  # (MoltenVK is linked by its path, not a target; libc++ is iOS's own)
+else()
+  set(RF_LINKED_THIRD_PARTY LIBCXX)  # (the C++ standard library: libc++_shared.so on Android, static on the desktop)
+endif()
 foreach(_lib IN LISTS _rf_links)
   if(_lib MATCHES "^raveform_")
     continue()
