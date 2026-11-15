@@ -4,6 +4,18 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (late night), the title's demo plays the whole game
+
+"Can you make the demo AI actually get powerups? also it should never die so you can see all the tracks eventually", then
+"instead of dying it gets a nova every time a death would happen": `Rules::demoRevive` (the title's demo only, set each frame
+by Play): the hit that would end its run brings it back with two cells, a free Nova blast and a bar of invulnerability
+(`World::demoRevive`). The bot's demo mode (`Bot::setDemo`): Boost orbs and Extra Lives pull from 1,100 wu at twice the pull,
+Shards harder; `Bot::precise()` while it closes on a Trio's orb or a pickup, when the demo's eased stick answers in 0.06 s
+instead of 0.35 (eased, it sailed past the orb and the hold emptied). Any bot now ignores a taken orb and a teammate's. Once
+the demo has played the set it starts over from Track 1 on the next bar line. Measured with `--scenario play --fast-forward
+2400` (the title, simulated): the set finished once, the second pass at Track 9 at minute 40, 0 deaths, 108 hits, 20 Novas, 40
+upgrades, 26 Boosts and 2 Extra Lives taken in the second pass. The music and palette follow its Track behind the title.
+
 ## 2026-11-14 (late night), Title v2; more feedback on nine things; the Extra Life every other Track
 
 "Things that need more visual feedback: on beat crit, crescendo, blackhole (powerup and upgrade), syncopation, stormguard, the

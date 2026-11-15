@@ -124,7 +124,12 @@ the demo comes up from a third of its light to its full light. Any input brings 
 a tap anywhere, the pointer moving (a mouse, more than 4 px), a key, a gamepad button, a stick or trigger past half. That input
 does nothing else (a tap where PLAY was does not start a run), and nothing takes a tap until the title is back; the count of
 8 bars starts again from it. The demo plays as a person would (the owner: "the demo bot also needs to have smooth movement,
-not erratic at all"): it steers with its stick eased over 0.35 s, the auto-aim assist fires for it, and it never dashes.
+not erratic at all"): it steers with its stick eased over 0.35 s (0.06 s while it closes on a Trio's orb or a pickup, so it
+holds the orb instead of sailing past it), the auto-aim assist fires for it, and it never dashes. It plays the whole game (the
+owner: "make the demo AI actually get powerups ... it should never die so you can see all the tracks eventually ... instead of
+dying it gets a nova every time a death would happen"): it goes for Boost orbs, Extra Lives and Shards from farther and harder,
+takes its Trios, and the hit that would end its run brings it back with two cells and a free Nova; once it has played the whole
+set (about twenty minutes) it starts over from Track 1. The music and the palette follow the Track it is in.
 Picture `m6_title_idle` (a strip a beat apart from a beat before it leaves; `--strip 600` every
 frame, with the tap on PLAY's place two and a half bars after it left).
 

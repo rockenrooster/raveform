@@ -22,11 +22,17 @@ public:
     void reset(u64 seed, Policy policy);
     StickInput think(const World& world, u32 player, const PlayerController& controller, double musicTick);
     Policy policy() const { return policy_; }
+    // The title's demo (the owner, 2026-11-14: "make the demo AI actually get powerups"): Boost orbs, Extra Lives and Shards
+    // pull harder and from farther; precise() says the ship is closing on (or holding) a Trio's orb or a pickup, where the demo's
+    // eased stick must answer at once (Play::attractInput) or it overshoots the orb and the hold empties.
+    void setDemo(bool on) { demo_ = on; }
+    bool precise() const { return precise_; }
 
 private:
     Rng rng_{7};
     Policy policy_ = Policy::Play;
     float wander_ = 0.0f;
+    bool demo_ = false, precise_ = false;
     u32 ticks_ = 0;
     bool dashLast_ = false, novaLast_ = false;
     Vec2 anchor_;

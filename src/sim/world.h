@@ -680,6 +680,10 @@ struct Rules {
     // M5 part 7 (measurements only: the no-trap table, GAME_DESIGN 6.6): the loadout stays as set (no Trio opens, no Boost is
     // taken) and the bosses keep no pace.
     bool frozenLoadout = false, noPace = false;
+    // The title's demo (the owner, 2026-11-14: "it should never die so you can see all the tracks eventually ... instead of dying
+    // it gets a nova every time a death would happen"): the hit that would end the run (after Auto Nova and any Extra Life) brings
+    // the ship back with two cells and a free Nova blast instead (World::demoRevive). Solo only; off in every run a person plays.
+    bool demoRevive = false;
     // 0449eb3 (GAME_DESIGN 8, "Enemy bullets by Track"): every enemy bullet as its page writes it in every Track (the tests of a
     // page's pattern; `--bullets-as-written`, the count before the rule). Off in the game.
     bool bulletsAsWritten = false;
@@ -1220,6 +1224,7 @@ private:
     void extraLifeDrop(Vec2 at, bool fromMini = false);  // (2026-11-14: odd Tracks; from Track 3 the mini-boss's death or warp-out)
     void takeExtraLife(u32 p);
     void spendExtraLife(u32 p, Vec2 from);
+    void demoRevive(u32 p, Vec2 from);
     // world_upgrades_m5.cpp (M5 part 3): the rest of the Mods, Riffs, Boosts and the Fusions.
     Vec2 chaseTarget(u32 p) const;  // where the enemies chasing player p go (Afterimage's decoy)
     void emitFx(u32 p, u8 fx, Vec2 at, Vec2 to, u8 c, float f, double tick);

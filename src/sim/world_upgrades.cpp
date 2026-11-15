@@ -529,6 +529,29 @@ void World::spendExtraLife(u32 p, Vec2 from) {
     pressNova(p, true);  // the free Nova blast (it clears the bullets and the bodies in view)
 }
 
+void World::demoRevive(u32 p, Vec2 from) {
+    // Rules::demoRevive (the title's demo): as an Extra Life spent, without one held and without the words: two cells, a free
+    // Nova blast, a bar of invulnerability; the Chain kept.
+    PlayerState& pl = players_[p];
+    ++pl.hitsTaken;
+    pl.cells = static_cast<u8>(pl.cellCap < kExtraLifeCells ? pl.cellCap : kExtraLifeCells);
+    const float tps = ticksPerSecond();
+    pl.invulS = tps > 0.0f ? static_cast<float>(kTicksPerBar) / tps : 2.0f;
+    dipS_ = kHitDipS;
+    Event ev;
+    ev.type = EventType::Hit;
+    ev.a = static_cast<u8>(p);
+    ev.b = pl.cells;
+    ev.c = 2;  // (drawn as an Extra Life spent: gold rings, the ship back with its cells)
+    ev.x = pl.pos.x;
+    ev.y = pl.pos.y;
+    ev.x2 = from.x;
+    ev.y2 = from.y;
+    ev.tick = m1_;
+    emit(ev);
+    pressNova(p, true);
+}
+
 // ---------------------------------------------------------------------------------------------- Riffs
 
 void World::updateRiffs(float dt) {

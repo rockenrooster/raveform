@@ -424,6 +424,7 @@ private:
     float scope_[kScopeN] = {};
     Vec2 attractMove_{};                          // the title's demo bot's eased stick (buildInput)
     static constexpr float kAttractMoveTau = 0.35f;  // (chosen, 2026-11-14) its time constant, seconds
+    static constexpr float kAttractPreciseTau = 0.06f;  // ... closing on a Trio's orb or a pickup (Bot::precise): it must not overshoot
     bool pausePressed_ = false;
     // Pause and the count-in (band ticks, or the simulated clock's seconds without a band).
     bool countIn_ = false;

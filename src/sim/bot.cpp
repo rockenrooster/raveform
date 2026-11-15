@@ -62,6 +62,7 @@ void Bot::reset(u64 seed, Policy policy) {
 
 StickInput Bot::think(const World& w, u32 player, const PlayerController& controller, double musicTick) {
     ++ticks_;
+    precise_ = false;
     StickInput in;
     in.assist = true;
     const PlayerState& me = w.player(player);
@@ -271,7 +272,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
         const Vec2 d = Vec2{s.x[k], s.y[k]} - pos;
         const float dist = length(d);
         if (dist > kShardReachWu || dist < 1e-3f) continue;
-        force = force + d * (0.35f * (1.0f - dist / kShardReachWu) / dist);
+        force = force + d * ((demo_ ? 0.6f : 0.35f) * (1.0f - dist / kShardReachWu) / dist);
     }
     // The swarm: keep it at a working distance.
     if (swarmN) {
@@ -741,6 +742,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
         const Vec2 d = tr.orbPos[pick] - pos;
         const float dist = length(d);
         const float ring = tuning::kTrioHoldRing * tuning::kTrioOrbWu * (isRiff(tr.upgrade[pick]) ? tuning::kTrioRiffScale : 1.0f);
+        if (demo_ && dist < 260.0f) precise_ = true;
         if (dist > 0.5f * ring) {
             if (dist > 1e-3f) force = force + d * (2.2f / dist);
         } else {
@@ -768,9 +770,12 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     }
     const BoostPickups& bp = w.boostPickups();
     for (u32 k = 0; k < bp.count; ++k) {
+        if (bp.dead[k] || bp.owner[k] != player) continue;  // (2026-11-14: a taken orb, or a teammate's, pulled it too)
         const Vec2 d = Vec2{bp.x[k], bp.y[k]} - pos;
         const float dist = length(d);
-        if (dist < 650.0f && dist > 1e-3f) force = force + d * (1.2f / dist);
+        const float reach = demo_ ? 1100.0f : 650.0f;
+        if (dist < reach && dist > 1e-3f) force = force + d * ((demo_ ? 2.4f : 1.2f) / dist);
+        if (demo_ && dist < 180.0f) precise_ = true;
     }
     // Play test 2: its own Cells while it is hurt (harder on the last cell).
     if (me.cells < me.cellCap) {

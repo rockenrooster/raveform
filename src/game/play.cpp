@@ -178,6 +178,16 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
         captureNow_ = pictureDone_ = false;
         RF_LOG("play: fast-forwarded %.1f s (%u ticks): %u enemies, %u kills, score %llu", fastForward, ticks,
                world_->enemies().count, world_->counters().kills, static_cast<unsigned long long>(world_->player(0).score));
+        {
+            const sim::PlayerState& p0 = world_->player(0);
+            u32 stacks = 0;
+            for (u8 m : p0.loadout.mods) stacks += m;
+            for (u8 r : p0.loadout.riffs) stacks += r;
+            RF_LOG("play: after it: Track %u (bar %u), level %u, %u upgrades taken (%u stacks and levels), %u Boosts taken, %u Extra Lives "
+                   "taken, %u hits, %u Novas, %u deaths",
+                   world_->phrase().track, world_->phrase().bar, p0.level, p0.loadout.taken, stacks, p0.boostsTaken, p0.extraLivesTaken,
+                   p0.hitsTaken, p0.novasUsed, world_->counters().deaths);
+        }
     }
     RF_LOG("play: %s%s, seed %llu, %.0f BPM, %s clock, spawner %s", opt.kind == PlayOptions::Kind::Stress ? "bench_stress" : (opt.kind == PlayOptions::Kind::BenchPlay ? "bench_play" : "play"),
            opt.bot ? " (bot)" : "", static_cast<unsigned long long>(opt.seed), bpm, bandDrives_ ? "the band's heard" : "the simulated",
@@ -203,7 +213,9 @@ void Play::attractInput(StickInput& in) {
     // change of mind becomes a curve, a stop a glide) and it never dashes (a dash is a jump).
     in.aimActive = false;
     in.assist = true;
-    const float k = 1.0f - std::exp(-std::fmax(frameDt_, 0.0f) / kAttractMoveTau);
+    // (2026-11-14, "make the demo AI actually get powerups": closing on a Trio's orb or a pickup the stick answers at once; eased
+    // as everywhere else it overshot the orb, the hold emptied and the Trio was never taken)
+    const float k = 1.0f - std::exp(-std::fmax(frameDt_, 0.0f) / (bot_.precise() ? kAttractPreciseTau : kAttractMoveTau));
     attractMove_ = attractMove_ + (in.move - attractMove_) * k;
     in.move = attractMove_;
     in.dash = false;
@@ -306,6 +318,16 @@ void Play::frame(float realDt) {
     if (!clock_.fromBand()) clock_.setBpm(world_->tempoAt(music1_));
     clock_.beginFrame(bv, realDt, fixed);
 
+    // The title's demo (the owner, 2026-11-14: "make the demo AI actually get powerups ... it should never die so you can see all
+    // the tracks eventually ... instead of dying it gets a nova every time a death would happen"): the bot goes for pickups, and
+    // the hit that would end its run brings it back with a free Nova (Rules::demoRevive), so it plays on through every Track.
+    const bool demo = flow_ && attract() && !opt_.bot && !opt_.autoplay && !opt_.picture[0];
+    world_->rules().demoRevive = demo;
+    bot_.setDemo(demo);
+    // (once it has played the whole set it starts over from Track 1 on the next bar line, rather than looping into the loop's
+    // ever-denser crowds)
+    if (demo && world_->phrase().track > world_->setList() && !world_->restartPending())
+        world_->requestRestartAt((std::floor(music1_ / kTicksPerBar) + 1.0) * kTicksPerBar);
     StickInput in;
     buildInput(in);
     controller_.update(in, frameDt_, clock_.heardNow(), clock_.bpm(), *world_, 0);

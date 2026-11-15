@@ -781,6 +781,10 @@ void World::hitPlayer(u32 p, Vec2 from, u16 cause, bool bullet) {
         spendExtraLife(p, from);
         return;
     }
+    if (pl.cells == 0 && rules_.demoRevive && !coop()) {
+        demoRevive(p, from);  // (the title's demo never dies: Rules::demoRevive)
+        return;
+    }
     ++pl.hitsTaken;
     if (pl.cells == 0 && coop()) {
         // GAME_DESIGN 10: in co-op the ship shatters into a beacon; the run goes on while anyone stands.
