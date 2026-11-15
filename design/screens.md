@@ -258,7 +258,7 @@ name (`ARC` for Aegis, `SINGULARITY` for the Black Hole). At most 26 characters.
 | Syncopation | `OFF-BEATS PIERCE, +50%`, `OFF-BEATS +100%` |
 | Bar Line | `A LASER CROSS EACH BAR`, `AND DIAGONALS`, `LONGER LASERS` |
 | Crescendo | `DAMAGE CLIMBS WHILE UNHIT`, `CLIMBS TWICE AS HIGH` |
-| Kick Pulse | `KICK DRUM SHOVES ENEMIES`, `THE SHOVE HURTS`, `A WIDER SHOVE` |
+| Kick Pulse | `KICK DRUM SHOVES ENEMIES`, `THE SHOVE HURTS` (two ranks since 2026-11-15) |
 | Afterparty | `LONGER, FASTER SURGE` |
 
 | Riff | Level 1 | Levels 2 to 5 |

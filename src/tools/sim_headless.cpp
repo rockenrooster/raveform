@@ -496,6 +496,12 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     // M5 part 3 (GAME_DESIGN 6.1, how a Trio is dealt): the first run's build as Track 3 ends (Mods at their cap) and as
     // Track 5 ends (a Fusion held).
     u32 t3Runs = 0, t3Capped2 = 0, t5Runs = 0, t5Fusion = 0;
+    // 2026-11-15 (the owner: "I don't think I ever got any [Fusion] in my playtesting"): the first run's first Fusion, when it
+    // came due (both ingredients at their caps: its gold orb is dealt from then on) and when it was taken; the minute, the
+    // Track and the upgrades taken by then, and which Fusion it was.
+    static float fuseDueMin[256], fuseHeldMin[256];
+    static u32 fuseDueTrack[256], fuseDueTaken[256];
+    u32 fuseKind[kFusionCount] = {};
     // M5 part 5: elites, the arena's events and its bodies broken.
     u64 elites = 0, eliteKills = 0, events[kEventKinds] = {}, broken = 0, pylonsTuned = 0, splits = 0, bombs = 0;
     double t3Capped = 0.0;
@@ -515,6 +521,8 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         bool sawDrop[4][5] = {};
         firstDeath[s] = minutes + 1.0f;
         firstDeathTrack[s] = 0;
+        fuseDueMin[s] = fuseHeldMin[s] = -1.0f;
+        fuseDueTrack[s] = fuseDueTaken[s] = 0;
         for (u32 k = 0; k < kBossKinds; ++k) {
             firstMeet[s][k] = 0;
             firstSecs[s][k] = 0.0f;
@@ -551,6 +559,19 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
             }
             const Phrase& ph = w.phrase();
             const PlayerState& p = w.player(0);
+            if (runner.deaths() == 0 && (fuseDueMin[s] < 0.0f || fuseHeldMin[s] < 0.0f)) {
+                const Loadout& lo = p.loadout;
+                if (fuseDueMin[s] < 0.0f)
+                    for (u8 f = 0; f < kFusionCount; ++f)
+                        if (lo.fused(f) || lo.fusionDue(f)) {
+                            fuseDueMin[s] = static_cast<float>(t) / 3600.0f;
+                            fuseDueTrack[s] = ph.track;
+                            fuseDueTaken[s] = lo.taken;
+                            ++fuseKind[f];
+                            break;
+                        }
+                if (fuseHeldMin[s] < 0.0f && lo.fusions) fuseHeldMin[s] = static_cast<float>(t) / 3600.0f;
+            }
             if (ph.track > maxTrack[s] && runner.deaths() == 0 && p.alive) {
                 if (ph.track == 4) {
                     u32 capped = 0;
@@ -1055,6 +1076,31 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                     t3Runs, t3Runs ? t3Capped / t3Runs : 0.0, t3Capped2, t5Runs, t5Fusion);
         logTagged("RFSIM", "{\"test\":\"crowd_build\",\"t3_runs\":%u,\"t3_capped_mean\":%.2f,\"t3_capped2\":%u,\"t5_runs\":%u,\"t5_fusion\":%u}", t3Runs,
                   t3Runs ? t3Capped / t3Runs : 0.0, t3Capped2, t5Runs, t5Fusion);
+        // 2026-11-15: the first run's first Fusion.
+        static float dueM[256], heldM[256];
+        u32 nd = 0, nh = 0, dueBy[12] = {};
+        double dueTaken = 0.0;
+        for (u32 s = 0; s < n; ++s) {
+            if (fuseDueMin[s] >= 0.0f) {
+                dueM[nd++] = fuseDueMin[s];
+                dueTaken += fuseDueTaken[s];
+                ++dueBy[fuseDueTrack[s] < 11 ? fuseDueTrack[s] : 11];
+            }
+            if (fuseHeldMin[s] >= 0.0f) heldM[nh++] = fuseHeldMin[s];
+        }
+        std::sort(dueM, dueM + nd);
+        std::sort(heldM, heldM + nh);
+        std::printf("[sim]   the first Fusion (first run): due in %u of %u runs (median minute %.1f, %.1f upgrades taken by then), taken in %u (median "
+                    "minute %.1f); due in Track",
+                    nd, n, nd ? dueM[nd / 2] : 0.0f, nd ? dueTaken / nd : 0.0, nh, nh ? heldM[nh / 2] : 0.0f);
+        for (u32 tr = 1; tr <= 11; ++tr)
+            if (dueBy[tr]) std::printf(" %u: %u", tr, dueBy[tr]);
+        std::printf("; which:");
+        for (u8 f = 0; f < kFusionCount; ++f)
+            if (fuseKind[f]) std::printf(" %s %u", fusionInfo(f).name, fuseKind[f]);
+        std::printf("\n");
+        logTagged("RFSIM", "{\"test\":\"crowd_fusion\",\"due\":%u,\"due_median_min\":%.2f,\"due_taken_mean\":%.2f,\"held\":%u,\"held_median_min\":%.2f}", nd,
+                  nd ? dueM[nd / 2] : 0.0f, nd ? dueTaken / nd : 0.0, nh, nh ? heldM[nh / 2] : 0.0f);
     }
     logTagged("RFSIM", "{\"test\":\"crowd\",\"seeds\":%u,\"minutes\":%.0f,\"policy\":\"%s\",\"first_death_median\":%.2f,\"track2\":%u,\"track3\":%u,"
                        "\"kills_per_min\":%.1f,\"overflow\":%llu,\"nan\":%u,\"allocs\":%llu}",

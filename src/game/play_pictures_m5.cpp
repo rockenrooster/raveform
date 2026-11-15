@@ -369,7 +369,7 @@ const UpPic kUpPics[] = {
     {"up_kills", {kArc, kArc, kArc, kBurn, kBurn, kBurn, kShatter, kShatter, kShatter, kGravityRounds, kGravityRounds, kSplit, kSplit, kSplit, kSplit, N}, {NB, NB}, 0, 40, kUpCrowd, 6.0f, true, kUpNone, kFxArc, 0xFF, 300, 1},
     {"up_wingmen", {kRearGuard, kRearGuard, kSyncopation, kMirror, kMirror, kMirror, kMirror, kMirror, N}, {NB, NB}, 0, 10, kUpRing, 400.0f, true, kUpNone, 0xFF, 0xFF, 337, 0},
     {"up_quartet", {kRearGuard, kRearGuard, kMirror, kMirror, kMirror, kMirror, kMirror, N}, {NB, NB}, 1u << kQuartet, 10, kUpRing, 400.0f, true, kUpNone, 0xFF, 0xFF, 337, 0},
-    {"up_defence", {kAegis, kAegis, kAegis, kAfterimage, kAfterimage, kShockstep, kShockstep, kShockstep, kKickPulse, kKickPulse, kKickPulse, N}, {NB, NB}, 0, 10, kUpRing, 400.0f, false, kUpDash, 0xFF, 0xFF, 312, 0},
+    {"up_defence", {kAegis, kAegis, kAegis, kAfterimage, kAfterimage, kShockstep, kShockstep, kShockstep, kKickPulse, kKickPulse, N}, {NB, NB}, 0, 10, kUpRing, 400.0f, false, kUpDash, 0xFF, 0xFF, 312, 0},
     {"up_barline", {kBarLine, kBarLine, kBarLine, kCrescendo, kCrescendo, N}, {NB, NB}, 0, 16, kUpCrowd, 400.0f, false, kUpNone, kFxBarLine, 0xFF, 300, 2},
     {"riff_lancer", {kLancer, kLancer, kLancer, kMinelayer, kMinelayer, kMinelayer, kStormCoil, kStormCoil, kStormCoil, kSwarm, kSwarm, kSwarm, N}, {NB, NB}, 0, 16, kUpCrowd, 400.0f, false, kUpNone, kFxLance, kLanceLancer, 300, 3},
     {"riff_singularity", {kSingularity, kSingularity, kSingularity, kComet, kComet, kComet, kSweeper, kSweeper, kSweeper, kFlak, kFlak, kFlak, N}, {NB, NB}, 0, 24, kUpCrowd, 400.0f, false, kUpNone, kFxWell, 0xFF, 300, 50},

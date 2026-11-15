@@ -348,7 +348,8 @@ constexpr float kSyncopationDamage[3] = {1.0f, 1.5f, 2.0f}; // quoted +50%, then
 constexpr u8 kSyncopationPierce = 2;
 constexpr float kBarLineWu[4] = {0.0f, 900.0f, 900.0f, 1800.0f}, kBarLineHalfWu = 16.0f, kBarLineDamage = 5.0f;
 constexpr float kCrescendoStep = 0.05f, kCrescendoMax[3] = {0.0f, 0.5f, 1.0f};  // quoted
-constexpr float kKickRingWu[4] = {0.0f, 160.0f, 160.0f, 240.0f}, kKickPush = 380.0f, kKickDamage = 2.0f;
+// Kick Pulse: cap 2 since the owner's "Limit kick pulse to 2" (2026-11-15); the third stack's 240 wu ring is gone.
+constexpr float kKickRingWu[3] = {0.0f, 160.0f, 160.0f}, kKickPush = 380.0f, kKickDamage = 2.0f;
 constexpr u32 kAfterpartyBars = 2;                          // quoted
 // Riffs 4-12 (by level 1-5).
 constexpr float kLancerDamage = 6.0f, kLancerHalfWu[6] = {0.0f, 10.0f, 16.0f, 16.0f, 22.0f, 22.0f}, kLancerLengthWu = 1600.0f;

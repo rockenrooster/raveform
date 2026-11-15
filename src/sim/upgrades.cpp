@@ -46,7 +46,7 @@ const UpgradeInfo kInfo[kUpgradeCount] = {
     {"SYNCOPATION", "syncopation", 2, true},
     {"BAR LINE", "bar_line", 3, true},
     {"CRESCENDO", "crescendo", 2, true},
-    {"KICK PULSE", "kick_pulse", 3, false},
+    {"KICK PULSE", "kick_pulse", 2, false},  // (the owner, 2026-11-15: "Limit kick pulse to 2"; it was 3, the wider ring)
     {"AFTERPARTY", "afterparty", 2, true},
     {"ORBITALS", "orbitals", kRiffMaxLevel, true},
     {"PULSE RING", "pulse_ring", kRiffMaxLevel, true},
@@ -169,7 +169,7 @@ const char* upgradeWords(u8 u, u32 level) {
         case kSyncopation: return lv <= 1 ? "OFF-BEATS PIERCE, +50%" : "OFF-BEATS +100%";
         case kBarLine: return lv <= 1 ? "A LASER CROSS EACH BAR" : (lv == 2 ? "AND DIAGONALS" : "LONGER LASERS");
         case kCrescendo: return lv <= 1 ? "DAMAGE CLIMBS WHILE UNHIT" : "CLIMBS TWICE AS HIGH";
-        case kKickPulse: return lv <= 1 ? "KICK DRUM SHOVES ENEMIES" : (lv == 2 ? "THE SHOVE HURTS" : "A WIDER SHOVE");
+        case kKickPulse: return lv <= 1 ? "KICK DRUM SHOVES ENEMIES" : "THE SHOVE HURTS";  // (cap 2 since 2026-11-15)
         case kAfterparty: return "LONGER, FASTER SURGE";
         case kOrbitals: {
             // screens.md (play test 3): the guard ring; levels 2 and 4 count its shards, 3 and 5 relight it faster.

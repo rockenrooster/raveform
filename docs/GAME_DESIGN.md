@@ -231,8 +231,8 @@ except settings, local high scores and lifetime stats.
   eight bars and is pulled by the magnet like a Shard. Look: `design/look.md` section 6.
 - **Boss kill:** an extra Trio. **Boosts** drop from enemies (roughly one every 20–30 s, director
   controlled), from Vaults and from events.
-- Limits: 4 Riff slots, Riff levels 1–5, Mod caps per the table, 2 Boosts active at once (a third
-  refreshes the oldest). Boost durations are in bars, so they are musically exact.
+- Limits: 4 Riff slots, Riff levels 1–5, Mod caps per the table, 3 Boosts active at once (6.4: the
+  same one again refreshes itself, a fourth replaces the oldest). Boost durations are in bars, so they are musically exact.
 
 ### 6.2 Mods (36) — permanent for the run, stackable
 
@@ -289,7 +289,7 @@ Rhythm
 | 32 | Syncopation | Off-beat shots pierce and deal +50% | 2 |
 | 33 | Bar Line | At each bar start a laser cross flashes through your position; then diagonals; then longer | 3 |
 | 34 | Crescendo | +5% damage per bar without being hit, up to +50%; then +100% | 2 |
-| 35 | Kick Pulse | Every kick drum emits a knockback ring around you; later adds damage and radius. The ring is on the steps of the Track's kick pattern at velocity 5 or more, as its tom is, so in Tracks 7, 9 and 10 it is not on every beat; its push and damage are scaled by 4 / (kicks a bar) so the Mod is worth the same in every Track. None in a Break | 3 |
+| 35 | Kick Pulse | Every kick drum emits a knockback ring around you; the second stack makes it hurt (the owner, 2026-11-15: "Limit kick pulse to 2"; a third stack widened the ring). The ring is on the steps of the Track's kick pattern at velocity 5 or more, as its tom is, so in Tracks 7, 9 and 10 it is not on every beat; its push and damage are scaled by 4 / (kicks a bar) so the Mod is worth the same in every Track. None in a Break | 2 |
 | 36 | Afterparty | Surge lasts two bars longer and its fire grid is one step faster | 2 |
 
 ### 6.3 Riffs (12) — autonomous weapons, each a layer in the mix

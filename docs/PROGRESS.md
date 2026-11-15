@@ -4,6 +4,24 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, Kick Pulse two ranks; why no Fusion reached the owner's play
+
+- "Limit kick pulse to 2": **cap 2** (`kMods`; it was 3). The first rank shoves, the second hurts (`THE SHOVE HURTS`); the third
+  rank's wider ring (240 wu) is gone (`kKickRingWu` 160 / 160). GAME_DESIGN 6.2 row 35, screens.md's words. GAME_DESIGN 6.1's
+  limits line also says three Boosts at once now (6.4 and `kBoostSlots` since 2026-11-14; the line still said two).
+- "I don't think I ever got any [Fusion] in my playtesting": measured with `--sim crowd --seeds 16 --minutes 40 --god` (hits
+  cost nothing, so every run goes the distance); the crowd tool now also prints the first run's first Fusion (when it came
+  due, when it was taken, the upgrades taken by then, which one). The careful picker (`--policy assist`: the careful bot's
+  movement and picks, the assist's fire): first Fusion due in 15 of 16 runs, median minute 17.9, 33.4 upgrades in (Tracks
+  3-11, most in 6-10); a Fusion held as Track 5 ends in 4 of 16 (M5 part 3's "in every run that got there" slipped as the
+  Tracks shortened). The novice (`--policy novice`: the first orb half the time, else any, as a player who does not know the
+  recipes): due in 12 of 16, median minute 18.8, 35.2 upgrades in; held as Track 5 ends in 1 of 16. Upgrades taken by minute
+  10: 23.5 (careful), 18.9 (novice). And nothing shows a recipe, and a due Fusion's orb is drawn as one more orb evenly round
+  the ring like the others: screens.md's Fusion on offer (above the ring at 230 wu, its icon x1.45, the gold flares, gold words
+  and lines) was never built. Both runs exit 1 only for pool overflows deep in the loop (god mode, Tracks 17 and 19: 58
+  Shards, 196 bullets dropped), past any run a person plays.
+- sim, net, audio and save tests, determinism and the four soaks pass.
+
 ## 2026-11-15, the audit: critical and high-priority defects
 
 "Do an audit of the project and look for anything critical and high priority." Five read-only reviews (audio, network,

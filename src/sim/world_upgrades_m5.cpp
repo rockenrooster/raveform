@@ -978,7 +978,7 @@ void World::updateUpgradesM5(float dt) {
             const float scale = kicks ? 4.0f / static_cast<float>(kicks) : 1.0f;
             forCrossings(m0_, m1_, kTicksPerStep, [&](double t, i64 k) {
                 if (!((mask >> static_cast<u32>(((k % 16) + 16) % 16)) & 1u)) return;
-                const float r = kKickRingWu[st < 3 ? st : 3];
+                const float r = kKickRingWu[st < 2 ? st : 2];
                 const float reach = r + kQuerySlackWu;
                 grid_.query(pl.pos.x - reach, pl.pos.y - reach, pl.pos.x + reach, pl.pos.y + reach, [&](u32 i) {
                     if (e.flags[i] & kFlagDead) return;
