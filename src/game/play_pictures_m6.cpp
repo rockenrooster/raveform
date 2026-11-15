@@ -561,7 +561,17 @@ bool Play::scriptInputM6(StickInput& in) {
             w.playerMut(0).levelsBanked = 0;
             const BossState& b = w.boss();
             const double inBeat = std::fmod(music1_, kTicksPerBeat);
-            if (t >= 200 && b.active && !b.dying && inBeat < 5.0) w.killBossNextTick(0, true);
+            // (a video kills on a bar's third beat: the payout's bar line, the first at least half a bar on, is then a bar and a
+            // half away, the longest an implosion runs)
+            const double inBar = std::fmod(music1_, kTicksPerBar);
+            const bool killNow = stripFrames_ > 30 ? (inBar >= 2.0 * kTicksPerBeat && inBar < 2.0 * kTicksPerBeat + 5.0) : inBeat < 5.0;
+            if (t >= 200 && b.active && !b.dying && killNow) w.killBossNextTick(0, true);
+            if (stripFrames_ > 30) {
+                // (a video: every frame, from half a second or so before the kill)
+                stripStride_ = 1;
+                if (captureFrom_ < 0 && t == 170) captureFrom_ = now;
+                return true;
+            }
             if (captureFrom_ < 0 && b.dying) {
                 stripStride_ = static_cast<u32>(std::lround(1800.0 / std::fmax(w.tempoAt(music1_), 30.0f)));
                 captureFrom_ = now;
