@@ -9,7 +9,7 @@
 // Track 1's first Groove; the HUD comes in on beat 2. Home: the game-over screen leaves in a beat, the title builds itself
 // over the next bar on Track 1's palette and bed, and its run fades up over the bar after.
 //
-// Title v2 (design/title.md, 2026-11-14): the title builds itself on a cold start (the intro: a point of light, the rule thrown
+// Title v2 (screens.md "Title", 2026-11-14): the title builds itself on a cold start (the intro: a point of light, the rule thrown
 // out of it, the word played a letter a sixteenth) and on home (the same from the rule's throw); the drop gathers all the title's
 // light into one point on the bar line (the word falls into its rule, the rule draws in to the frame's centre, PLAY shrinks into
 // it) and the downbeat bursts it (a clamped flash, eight rays in the letters' colours, the ship drawn there).
@@ -51,7 +51,7 @@ float easeOutBack(float p) {  // (6% past and back: the fan snapping open)
     const float q = p - 1.0f, k = 1.3f;
     return 1.0f + (k + 1.0f) * q * q * q + k * q * q;
 }
-// design/title.md §4, made "much faster" (the owner, 2026-11-14): the point a beat before the rule's throw; the word from b 1 to
+// screens.md "Title", made "much faster" (the owner, 2026-11-14): the point a beat before the rule's throw; the word from b 1 to
 // 2.75, a sixteenth a letter; PLAY takes a tap from b 3; the run behind comes up over b 4 to 8. The flash lasts 120 ms.
 constexpr float kIntroPointBeats = 1.0f, kWordFrom = 1.0f, kWordStep = 0.25f, kControlsFrom = 3.0f, kBuildDone = 4.0f;
 constexpr float kFlashS = 0.12f;
@@ -136,7 +136,7 @@ void Play::dropInTap(Screen from) {
     transLine_ = world_->restartTick();
     transBeat_ = (std::floor(transTap_ / kTicksPerBeat) + 1.0) * kTicksPerBeat;  // a game-over screen leaves on the next beat
     {
-        // The control that was tapped (it shrinks into the point in the wait's last half beat; design/title.md §6).
+        // The control that was tapped (it shrinks into the point in the wait's last half beat; screens.md "Transitions").
         const float s = ui_.s(), W = ui_.W(), H = ui_.H(), right = W - std::fmax(132.0f * s, ui_.insetMax().x);
         switch (from) {
             case Screen::GameOver:
@@ -235,7 +235,7 @@ void Play::homeTap() {
     applySettings();
     if (band_) band_->playSfx(audio::Sfx::UiBack);
     pulse(0);
-    wordNotes(transLine_ + kWordFrom * kTicksPerBeat, kWordStep * kTicksPerBeat);  // (design/title.md §5: the word played as it builds)
+    wordNotes(transLine_ + kWordFrom * kTicksPerBeat, kWordStep * kTicksPerBeat);  // (screens.md "Transitions": the word played as it builds)
     if (bandDrives_ && band_ && band_->active() && band_->view().running) {
         const double bpm = band_->view().bpm > 1.0 ? static_cast<double>(band_->view().bpm) : 120.0;
         bandFilter(kHomeLowpassHz, static_cast<float>(60.0 / bpm));  // the bed carries on, filtered
@@ -361,7 +361,7 @@ void Play::transitionFrame() {
 }
 
 Play::TitleLook Play::buildLook(float b, bool intro) const {
-    // design/title.md §4 and §5, the build home and the intro share, b beats from the rule's throw: the rule thrown from its centre
+    // screens.md "Title" and "Transitions", the build home and the intro share, b beats from the rule's throw: the rule thrown from its centre
     // to the edges in half a beat (its ends waking over the next three quarters); the fan snapping open on b 1 (6% past and back);
     // the word played from b 1, a letter a sixteenth; on b 3 the tagline opening the rule from the centre, PLAY rising 14 px into
     // its place (taking a tap from then), then CO-OP and SETTINGS with their captions, then the best, the note and the version.
@@ -405,7 +405,7 @@ float Play::introBeats() const {
 }
 
 void Play::startIntro() {
-    // design/title.md §4: on the next beat line the point; a beat later the rule's throw with a crash, the filter opening over its
+    // screens.md "Title": on the next beat line the point; a beat later the rule's throw with a crash, the filter opening over its
     // beat; a riser over the point's beat; the word's eight notes on their sixteenths.
     introPending_ = false;
     const double now = transNow();
@@ -430,7 +430,7 @@ void Play::wordNotes(double firstTick, double stepTicks) {
 }
 
 void Play::wordNotesFrame() {
-    // design/title.md §7: the word's eight notes, A3 C4 E4 A4 C5 E5 G5 A5, one a letter as it is struck, rising in velocity, panned
+    // screens.md "Title": the word's eight notes, A3 C4 E4 A4 C5 E5 G5 A5, one a letter as it is struck, rising in velocity, panned
     // across the word; each placed on its tick a beat ahead (a skipped intro plays no more of them). The lead's voice is the
     // SawGlide recipe held still (a detuned saw pair through the lead's low-pass), half a beat long.
     if (notesBase_ < 0.0) return;
@@ -464,7 +464,7 @@ Play::TitleLook Play::titleLook() const {
         }
         case Trans::Wait: {
             if (transFrom_ != Screen::Title) return t;
-            // design/title.md §6, the drop's wait: the side controls, their captions and the best fade and sink over its first
+            // screens.md "Transitions", the drop's wait: the side controls, their captions and the best fade and sink over its first
             // beat and the motes fall back into the rule; the fan folds flat and the tubes run hot by its last beat (in a two-beat
             // wait over the first); in the last beat's first half the tagline goes and the rule closes its gap in an eighth while
             // the word falls into its line (the rule taking its light); in the second half the rule draws in from both edges to its
@@ -525,7 +525,7 @@ Play::TitleLook Play::titleLook() const {
                 t.playGather = down(backFrom_.playGather);
             }
             if (titleHideLine_ >= 0.0 && (titleWakeAt_ >= 0.0 || transBeats(titleHideLine_) > 0.0f)) {
-                // design/title.md §5, the quiet title leaving over its bar: beat 1 the best, the note, CO-OP and SETTINGS; beat 2
+                // screens.md "Transitions", the quiet title leaving over its bar: beat 1 the best, the note, CO-OP and SETTINGS; beat 2
                 // PLAY; half a beat later the tagline, the rule's gap and the motes; beat 3 the fan folding flat and the word fading;
                 // beat 4 the rule drawing back into its centre. Nothing takes a tap until it is all back (the input that wakes it
                 // presses nothing).
@@ -563,7 +563,7 @@ void Play::titleIdleFrame(UiPointer& ptr) {
     uiActivity_ = false;
     const double now = transNow();
     if (trans_ == Trans::Intro || introPending_) {
-        // design/title.md §4: any input skips the intro (it is eaten): everything not yet on screen arrives inside a beat, and the
+        // screens.md "Title": any input skips the intro (it is eaten): everything not yet on screen arrives inside a beat, and the
         // word's notes not yet placed are not played.
         const float b = introBeats();
         if (input && b < kControlsFrom && introSkipAt_ < 0.0) {
@@ -681,7 +681,7 @@ void Play::drawTitleShip(Ui& ui, Vec2 c, float angle, float scale, float level, 
 }
 
 void Play::drawArrive(Ui& ui) {
-    // design/title.md §6, the downbeat (every drop-in: PLAY, RETRY, the pause's RESTART, a co-op START or RETRY): the point the
+    // screens.md "Transitions", the downbeat (every drop-in: PLAY, RETRY, the pause's RESTART, a co-op START or RETRY): the point the
     // light gathered into bursts: a clamped flash pool, eight rays (one a letter of the word, in its colour) leaving it from 60 to
     // 1,360 px over half a beat, the lattice lit from it (PlayView::dropRing), and the ship drawing itself there with its halo over
     // the beat. Reduce flashing: no flash, no rays.
@@ -725,7 +725,7 @@ void Play::drawArrive(Ui& ui) {
 }
 
 void Play::drawDropGather(Ui& ui) {
-    // design/title.md §6: RETRY, the pause's RESTART and the co-op lobby's START: in the wait's last half beat their lit control
+    // screens.md "Transitions": RETRY, the pause's RESTART and the co-op lobby's START: in the wait's last half beat their lit control
     // shrinks into the point at the frame's centre (PLAY's own is drawn by the title).
     if (trans_ != Trans::Wait || transFrom_ == Screen::Title) return;
     const float h2 = clamp01(static_cast<float>((transNow() - (transLine_ - 0.5 * kTicksPerBeat)) / (0.5 * kTicksPerBeat)));

@@ -71,7 +71,7 @@ const M6Pic kM6Pics[] = {
     {"fx_cresc_break", M6::FxCresc, 0, nullptr}, {"fx_sync", M6::FxSync, 0, nullptr}, {"fx_burn", M6::FxBurn, 0, nullptr},
     {"fx_well", M6::FxWell, 0, nullptr},   {"fx_hole", M6::FxHole, 0, nullptr},    {"fx_coil", M6::FxCoil, 0, nullptr},
     {"fx_aegis", M6::FxAegis, 0, nullptr}, {"fx_meteor", M6::FxMeteor, 0, nullptr}, {"fx_hz_death", M6::FxHzDeath, 1, "horizon"},
-    // Title v2 (design/title.md): the intro as a cold start plays it, a strip an eighth apart from the beat before its point; the
+    // Title v2 (screens.md "Title"): the intro as a cold start plays it, a strip an eighth apart from the beat before its point; the
     // drop from PLAY on a bar's second beat, an eighth apart from two beats before its bar line.
     {"t2_intro", M6::T2Intro, 0, nullptr}, {"t2_drop", M6::T2Drop, 0, nullptr},
 };

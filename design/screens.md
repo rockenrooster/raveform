@@ -72,7 +72,8 @@ Rules:
 
 ## Title (M3; Title v2, 2026-11-14)
 
-Title v2, "First Light", is built from `design/title.md` (pictures `design/previews/title_v2*.png`) with the owner's answers of
+Title v2, "First Light", is built from the plan of 2026-11-14 (folded in here, its file deleted; its pictures are
+`design/previews/title_v2*.png`) with the owner's answers of
 2026-11-14: the ship under PLAY is gone; the intro plays on every cold start but much faster than the plan (a bar and a beat); leaving
 the app keeps its cut; the word keeps the font's own letter spacing (6 units a letter, not 5.25); the run behind stays at a third of
 its light; the captions under CO-OP and SETTINGS stay; and there is **no reflection** (the word's under the rule and the fan's).

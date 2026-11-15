@@ -205,7 +205,7 @@ bool Ui::pill(u32 id, Vec2 c, Vec2 size, const char* label, float cap, bool prim
     bool pressed = false;
     keep(a, b, true, label);
     const bool tapped = enabled && hit(id, a, b, pressed);
-    // design/title.md (2026-11-14, the folder's rule: clear, high-contrast hover and pressed states): with a mouse over it, a white
+    // screens.md "Title" (2026-11-14, the folder's rule: clear, high-contrast hover and pressed states): with a mouse over it, a white
     // fill at 0.10, the outline 3 px at 1.6 and the label at 1.5.
     const bool over = enabled && !pressed && hover(a, b);
     const Vec3 tone = primary ? player_ : (colour.x + colour.y + colour.z > 0.0f ? colour : Vec3{1.0f, 1.0f, 1.0f});
@@ -377,7 +377,7 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
             break;
         default: break;
     }
-    drawDropGather(ui_);  // (design/title.md §6: RETRY, RESTART and START shrink into the point in the wait's last half beat)
+    drawDropGather(ui_);  // (screens.md "Transitions": RETRY, RESTART and START shrink into the point in the wait's last half beat)
     ui_.end();
     uiPtr_.pressed = uiPtr_.released = false;
 }
@@ -406,14 +406,14 @@ void Play::screenNotice(Ui& ui) {
         settings_.noticeSeen = true;
         saveSettings(settings_);
         screen_ = Screen::Title;
-        if (!opt_.autoplay) introPending_ = true;  // (design/title.md §4: the intro follows the notice)
+        if (!opt_.autoplay) introPending_ = true;  // (screens.md "Title": the intro follows the notice)
         if (band_) band_->playSfx(audio::Sfx::UiConfirm);
     }
     keyPrimary_ = keyBack_ = false;
 }
 
 void Play::screenTitle(Ui& ui) {
-    // Title v2 (design/title.md; game/title_v2.cpp): the fan, the word, the rule with its tagline and the motes, PLAY with its beat
+    // Title v2 (screens.md "Title"; game/title_v2.cpp): the fan, the word, the rule with its tagline and the motes, PLAY with its beat
     // dots, CO-OP and SETTINGS with their captions, the best, the note and the version. M6 (screens.md "Transitions"): each piece
     // at the level the drop-in's wait, home's building, the intro or the quiet title gives it.
     const float s = ui.s(), W = ui.W(), H = ui.H(), cx = 0.5f * W;
@@ -467,7 +467,7 @@ void Play::screenTitle(Ui& ui) {
         ui.text({W - std::fmax(132.0f * s, ui.insetMax().x), H - 30.0f * s + sink}, 11.0f * s, white, 0.4f, buildStampLine(), 1.0f);
     }
     setHudFade(1.0f);
-    // M4 stage B: why a co-op session ended (the host left, the connection was lost), for a few seconds (design/title.md: y 940).
+    // M4 stage B: why a co-op session ended (the host left, the connection was lost), for a few seconds (screens.md "Title": y 940).
     coopMessageT_ += frameDt_;
     if (coopMessage_[0] && coopMessageT_ < 10.0f && trans_ == Trans::None) ui.text({cx, 940.0f * s}, 18.0f * s, palettes_->danger, 1.5f, coopMessage_);
     // c9218dc (screens.md "Every other way in or out of a run"): a peer whose host has left came home; the line stands under
@@ -481,7 +481,7 @@ void Play::screenTitle(Ui& ui) {
             ui.text({cx, 940.0f * s}, 18.0f * s, palettes_->danger, 1.5f * level, titleNote_);
         }
     }
-    // Back in the drop-in's wait cancels it, until its last beat (design/title.md §6: from there the drop is committed).
+    // Back in the drop-in's wait cancels it, until its last beat (screens.md "Transitions": from there the drop is committed).
     if (waiting && keyBack_ && transNow() < transLine_ - kTicksPerBeat) dropInCancel();
     keyPrimary_ = keyBack_ = false;
 }

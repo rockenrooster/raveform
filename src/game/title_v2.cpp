@@ -1,4 +1,4 @@
-// Title v2, "First Light" (design/title.md; built 2026-11-14 with the owner's answers: the ship under PLAY gone, the intro on every
+// Title v2, "First Light" (screens.md "Title"; built 2026-11-14 with the owner's answers: the ship under PLAY gone, the intro on every
 // cold start but much faster, the cut kept when leaving the app, the font's own letter spacing, the run behind at a third as
 // before, the captions kept, and no reflection). "Sound becomes light": the word stands over a line of light whose ends are the
 // music and whose middle is a laser rule carrying the tagline; a fan of seven beams behind the word; motes rising off the rule;
@@ -33,13 +33,13 @@ float hashT(u32 n) {  // 0..1 from an integer (a mote keeps its place, phase and
     return static_cast<float>(n & 0xFFFFu) / 65535.0f;
 }
 
-// design/title.md §3: reference px at 2400x1080, scaling with the screen's height.
+// screens.md "Title": reference px at 2400x1080, scaling with the screen's height.
 constexpr float kRuleY = 432.0f;                                   // the rule (and the fan's and the depth's centre)
 constexpr float kWordCap = 240.0f, kWordBase = 378.0f;             // cap height; baseline (the caps' top at 138)
 constexpr float kHorizon = 0.56f;                                  // the chrome's horizon in each letter, down from its top
 constexpr float kTubeHalf = 7.0f, kCoreHalf = 2.0f;                // the tube 14 px, its white-hot core 4 px
 constexpr float kHotTube = 0.25f, kHotCore = 0.75f, kHotLevel = 0.4f;  // the drop's heat: 17.5 px, 7 px, +40%
-// The depth: title.md's six copies each 1.1% smaller about the rule's centre, drawn as twelve half steps (six steps of 10 px at
+// The depth: the plan's six copies each 1.1% smaller about the rule's centre, drawn as twelve half steps (six steps of 10 px at
 // the word's ends showed as separate tubes, a comb, without the mock's bloom to melt them together); six on the low tier.
 constexpr u32 kDepth = 12, kDepthLow = 6;
 constexpr float kDepthSpan = 0.066f, kDepthLevel = 0.17f;
@@ -126,7 +126,7 @@ void Play::drawTitle(Ui& ui, const TitleLook& tl) {
     };
     float letterX[8];
     for (u32 j = 0; j < 8; ++j) letterX[j] = place(j, Vec2{0.5f * (minX[j] + maxX[j]), 0.0f}).x;
-    // Each letter's strike (design/title.md §4): white-hot for 60 ms (tube x 1.2 at 3.5), dark for 40 ms, then lit; reduce flashing
+    // Each letter's strike (screens.md "Title"): white-hot for 60 ms (tube x 1.2 at 3.5), dark for 40 ms, then lit; reduce flashing
     // fades it on over an eighth instead.
     float letterLevel[8];
     bool letterHot[8];
@@ -435,7 +435,7 @@ void Play::drawTitle(Ui& ui, const TitleLook& tl) {
 }
 
 bool Play::titlePlay(Ui& ui, const TitleLook& tl) {
-    // design/title.md §3: PLAY at (1200, 800), 640 x 150: glass in P1, an outline of 80% P1 and 20% white, a wide P1 pool, its label a
+    // screens.md "Title": PLAY at (1200, 800), 640 x 150: glass in P1, an outline of 80% P1 and 20% white, a wide P1 pool, its label a
     // tube 11 px above its centre, and the four beat dots inside it (the beat's lit, beat 1 in the accent). Every beat a ring leaves
     // it (1.0 on beat 1). Hover and pressed states as the table gives them. In the drop's wait it stays pressed, a ring leaves it
     // at the tap, its dots count the beats left, and in the last half beat it shrinks into the point.

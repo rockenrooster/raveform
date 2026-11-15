@@ -483,7 +483,7 @@ private:
 
     // M6 (screens.md "Transitions", game/play_transitions.cpp): the drop-in (PLAY, RETRY, a co-op START or RETRY: the screen
     // leaves over the wait to the run's first bar line and the run arrives on it) and home (game over to the title).
-    // Title v2 (design/title.md, 2026-11-14): Intro, the title building itself on a cold start.
+    // Title v2 (screens.md "Title", 2026-11-14): Intro, the title building itself on a cold start.
     enum class Trans : u8 { None, Wait, Arrive, Home, Intro };
     Trans trans_ = Trans::None;
     Screen transFrom_ = Screen::Title;  // the screen a drop-in leaves (Title, GameOver, CoopLobby) or home leaves (GameOver, Paused)
@@ -492,7 +492,7 @@ private:
     double transBeat_ = 0.0;  // run ticks: the beat a game-over screen leaves on (home; RETRY's wait)
     bool transFilter_ = false;  // a transition closed the band's low-pass (it opens it again)
     Palette homeFrom_;          // home: the palette the run ended in, cross-fading to Track 1's over the title's bar
-    // The title's pieces as a transition has them (game/title_v2.cpp draws them; design/title.md): the controls' levels 0..1 and
+    // The title's pieces as a transition has them (game/title_v2.cpp draws them; screens.md "Title"): the controls' levels 0..1 and
     // whether PLAY and the side controls take taps; the rule (its light, how far it reaches from its centre, its slide to the
     // frame's centre, the word's light it takes in the drop, the music at its ends, the tagline's gap), the point of light, the fan,
     // the word (its light, its letters struck a strikeStep apart from `struck` beats ago, its fall into the rule, its heat), the
@@ -519,7 +519,7 @@ private:
     };
     TitleLook titleLook() const;
     TitleLook buildLook(float b, bool intro) const;  // the intro's and home's build, b beats from the rule's throw
-    // The intro (design/title.md §4, the owner: "every cold start but make it much faster"): a point of light on a beat, the rule
+    // The intro (screens.md "Title", the owner: "every cold start but make it much faster"): a point of light on a beat, the rule
     // thrown out on the next, the word played a letter a sixteenth, then the tagline and the controls: a bar and a beat. Any input
     // skips it (everything arrives inside a beat).
     bool introPending_ = false;  // a cold start: the intro begins once the band runs (or after a second)
@@ -529,7 +529,7 @@ private:
     float introSkipB_ = 0.0f;    // where it stood then
     float introBeats() const;    // b now (the skip's quickening included)
     void startIntro();
-    // The word's eight notes (design/title.md §7): placed on their sixteenths a beat ahead (so a skip silences the rest).
+    // The word's eight notes (screens.md "Title"): placed on their sixteenths a beat ahead (so a skip silences the rest).
     double notesBase_ = -1.0, notesStep_ = 0.0;
     u8 notesPlaced_ = 0;
     void wordNotes(double firstTick, double stepTicks);
@@ -537,7 +537,7 @@ private:
     // The drop's lit control (PLAY, RETRY, RESTART's YES, the lobby's START) as it was tapped: it shrinks into the point.
     Vec2 dropCtlC_, dropCtlHalf_;
     void drawDropGather(Ui& ui);
-    bool lowTier_ = false;  // design/title.md §8: three depth layers, 40 motes
+    bool lowTier_ = false;  // screens.md "Title": three depth layers, 40 motes
     void drawTitle(Ui& ui, const TitleLook& tl);      // the fan, the word, the rule and its tagline, the motes, the point
     bool titlePlay(Ui& ui, const TitleLook& tl);      // PLAY with its beat dots and rings; true when tapped
     // screens.md "Title" (the owner, 2026-11-14: "after waiting at the main menu for a while the menu fades away so you can see the
