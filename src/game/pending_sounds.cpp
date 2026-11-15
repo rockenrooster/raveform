@@ -768,6 +768,17 @@ void playFightCue(audio::CommandSink& band, FightVoices& voices, const sim::Even
             break;
         }
         case SoundPlay::Pair: {
+            if (r.cue == BossCue::RiClose) {
+                // arena.md, "a reversed cymbal cut short, then glass" (the owner, 2026-11-14: "make it audible"). The cue comes as the
+                // Rift closes, and a cymbal ending on that tick had gone by before the band heard of it (the band renders ahead of the
+                // game; since 549153b it plays nothing then): the cymbal's last part swells from the close to the next eighth at least
+                // a sixteenth on (125-375 ms at 120 BPM), where the glass breaks.
+                const double eighth = 0.5 * kTicksPerBeatD, sixteenth = 0.25 * kTicksPerBeatD;
+                const double end = std::ceil((e.tick + sixteenth) / eighth) * eighth + (tick - e.tick);  // (on the song's eighths)
+                recipe(band, static_cast<Recipe>(r.id), midi, r.gain, pan, end, static_cast<float>((end - tick) / kTicksPerBeatD), r.p2);
+                recipe(band, static_cast<Recipe>(r.id2), midi, r.gain, pan, end, r.p1, r.p2);
+                break;
+            }
             // Event Horizon fed: louder the bigger the meal (the cue's f, 0..1).
             const float g = r.cue == BossCue::HzFed ? r.gain * std::fmin(std::fmax(e.f, 0.3f), 1.0f) : r.gain;
             recipe(band, static_cast<Recipe>(r.id), midi, g, pan, tick, r.p1, r.p2);

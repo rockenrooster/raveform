@@ -1324,7 +1324,7 @@ struct EngineSink final : CommandSink {
 enum class FS : u8 {
     HzEat, HzStarved, FbEcho, FbHead, MqStep, MqBurst, MqOpen, Brood, BsFire, CdChord, CdFan, CdInversion, CdBurst, ApBlock, ApSecond,
     MgStorm, MgBlinkLeap, RpEcho, RpArp, RpDeath, MmFire, MmDash, Tether, WvBurst, Well, ElArmored, ElSplitting, ElVolatile,
-    ElRegenerating, ElMagnetic, ElPhasing, VaBreak, PyTuned, Rift, LeSplit, Comet, Eclipse, Convoy, Storm, ChoirSend, Colossus,
+    ElRegenerating, ElMagnetic, ElPhasing, VaBreak, PyTuned, Rift, RiftClose, LeSplit, Comet, Eclipse, Convoy, Storm, ChoirSend, Colossus,
     HitWeak, HitArmour, ExtraLife, Orbitals
 };
 struct FightEntry {
@@ -1371,6 +1371,7 @@ constexpr FightEntry kFightSheet[] = {
     {FS::VaBreak, 2, false, 0.5f, 0, 2, "Vault (Solar Wind): the break, bells up the chord with a glass burst"},
     {FS::PyTuned, 2, false, 0.5f, 0, 2, "Pylon: tuned, three bells up the chord"},
     {FS::Rift, 3, false, 0.6f, 0, 4, "Rift (Reef): its drone on the chord's bass while open, the cutoff rising through the Build; four through a bar (a tom)"},
+    {FS::RiftClose, 3, false, 0.3f, 0, 2, "Rift destroyed (Reef), off the grid and heard late as in the game: a reversed cymbal cut short, then glass on the next eighth"},
     {FS::LeSplit, 6, false, 0.5f, 3, 2, "Lens (Zenith): splits, glass ticks a fifth above the lead's note"},
     {FS::Comet, 1, false, 0.5f, 0, 2, "Comet (First Light): its announcement, a saw glide over two beats, then a bell for each beat's Shards"},
     {FS::Eclipse, 6, false, 0.7f, 0, 3, "Eclipse (Zenith): the low-pass at 1.2 kHz, a tick on each flash, let go as it ends"},
@@ -1674,6 +1675,12 @@ int fightSheet(const Options& opt, const MusicData& music, const SampleBank& ban
                     sc.riftSurge[0] = 0xFF;
                     sc.build = now < 384.0 ? 0.0f : static_cast<float>((now - 384.0) / (3.0 * 384.0));
                     each(96.0, 384.0, 4, [&](double T, u32) { cue(T, BossCue::RiThrough, 0, 0.0f, 0.3f); });
+                    break;
+                case FS::RiftClose:
+                    // Broken by the player between beats (bar 1, tick 130): the game hears it a few ticks after its tick, as the band
+                    // has already rendered past it (posted 6 ticks late here, not half a beat early as the sheet's other cues).
+                    sc.fight = false;
+                    cue(384.0 + 130.0, BossCue::RiClose, 0, 0.0f, 0.2f, 384.0 + 130.0 + 48.0 + 6.0);
                     break;
                 case FS::LeSplit:
                     sc.fight = false;

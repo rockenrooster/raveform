@@ -14,10 +14,15 @@ cymbal, the swelling crackle) asked for after that tick has been rendered was st
 sample's length plus the lateness), and the render's `frames - pos` wrapped (u32), so the voice read a block past the buffer:
 garbage in the mix (a click or burst) or, where the buffer ends on a guard page, the crash. A cue at the sim's own tick is
 always that late (the render runs ~5 ticks ahead of it): the arena's Rift closing at a cycle-2 Drop and a Rift destroyed
-(`BossCue::RiClose`, "a reversed cymbal cut short, then glass") and a Cloaked elite (`ElCloaked`) send one, in solo play
-as in co-op. Fixed in `Engine::playSample` (a start at or past the end plays nothing) with a guard in the render; test
-`testLateEndingRecipes` (audio suite: before the fix the late cymbal left energy 0.003 and the crackle 0.22 where silence was
-due). Those cues' reversed cymbals are now silent (their glass and the rest still sound): as sent, they could never be heard.
+(`BossCue::RiClose`, "a reversed cymbal cut short, then glass") send one, in solo play as in co-op. Fixed in
+`Engine::playSample` (a start at or past the end plays nothing) with a guard in the render; test `testLateEndingRecipes`
+(audio suite: before the fix the late cymbal left energy 0.003 and the crackle 0.22 where silence was due).
+
+"Make it audible" (the owner): as sent, the Rift's reversed cymbal could never be heard. Now (`pending_sounds.cpp`, the
+`RiClose` pair) it swells from the close to the next eighth at least a sixteenth on (125-375 ms at 120 BPM) and the glass
+breaks there. The fights sheet has it (`--render fights`, "Rift destroyed", posted 6 ticks late as the game hears it): the
+effects bus swells for ~290 ms, 0.029 to 0.041 RMS, into the glass on the eighth. (A Cloaked elite's cymbal ends a beat after
+its cue: heard as written.)
 
 Also: the 20 s co-op log line `net: world:` (what each peer holds and draws, for the earlier "bullets on p2 and p3" report)
 now has the clients' kill predictions (confirmed, undone), late spawns and unknown ids. On these phones the bullets drew on
