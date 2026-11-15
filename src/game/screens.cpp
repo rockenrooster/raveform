@@ -368,7 +368,10 @@ void Play::screenNotice(Ui& ui) {
     ui.tube({cx, 300.0f * s}, 64.0f * s, palette_->accent, white, palette_->hue[2], 1.6f, "BEFORE YOU PLAY");
     for (u32 k = 0; k < 3; ++k) ui.text({cx, (420.0f + 48.0f * static_cast<float>(k)) * s}, 20.0f * s, white, 1.15f, kNoticeLines[k]);
     const char* rf = settings_.reduceFlashing ? "REDUCE FLASHING: ON" : "REDUCE FLASHING: OFF";
-    if (ui.pill(1, {cx - 330.0f * s, 760.0f * s}, {520.0f * s, 120.0f * s}, rf, 30.0f * s, false, true, settings_.reduceFlashing)) {
+    // (as wide as its longer label needs: at 520 the label ran past the pill's ends, seen on the Moto 2026-11-14; its right end
+    // 140 px left of CONTINUE's)
+    const float rfw = std::fmax(520.0f * s, ui.measure(30.0f * s, "REDUCE FLASHING: OFF") + 90.0f * s);
+    if (ui.pill(1, {cx - 70.0f * s - 0.5f * rfw, 760.0f * s}, {rfw, 120.0f * s}, rf, 30.0f * s, false, true, settings_.reduceFlashing)) {
         settings_.reduceFlashing = !settings_.reduceFlashing;
         applySettings();
         if (band_) band_->playSfx(audio::Sfx::UiTick);
