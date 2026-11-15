@@ -62,9 +62,9 @@ constexpr float kHzPullWu = 30.0f, kHzPeakWu = 160.0f, kHzReachWu = 800.0f;  // 
 constexpr float kRpPullWu = 34.0f, kRpReachWu = 1200.0f;                     // Kaleidos Reprise's implosion (likewise)
 constexpr float kDebrisDrag = 3.0f;                                   // 1/s
 constexpr float kHzJetS = 0.8f, kHzJetWu = 1800.0f, kHzJetAxis = 1.05f;
-// The Reprise's flashbang (asked twice: a near-whiteout, not a flicker): white for 0.12 s, then falling away with a 0.45 s time
-// constant (40% at 0.5 s, 10% at 1.1 s), a gold afterglow for 1.8 s.
-constexpr float kFlashbangS = 1.8f, kFlashbangHoldS = 0.12f, kFlashbangTauS = 0.45f;
+// The Reprise's flashbang: white for two frames, falling away with a 0.18 s time constant, a gold afterglow for 1.2 s (the owner,
+// 2026-11-14, of a longer whiteout tried after it: "Reprise death v2 was what i wanted").
+constexpr float kFlashbangS = 1.2f, kFlashbangHoldS = 0.035f, kFlashbangTauS = 0.18f;
 }  // namespace
 
 void PlayView::addFlash(u8 kind, Vec2 at, float size, float life, Vec3 c, float t, float rot) {
@@ -659,14 +659,14 @@ void PlayView::drawFeedbackFx(FrameDraw& d, const ViewInput& in) {
             }
         }
         // Kaleidos Reprise's burst is a flashbang (the owner, 2026-11-14: "the explosion should also have a borderline flashbang
-        // visual", asked again after a first, two-frame one): the whole frame white for 0.12 s (the HUD's additive layer, after the
-        // tone map: past every light), falling away slowly, a gold afterglow under it. Reduce flashing: a soft glow at 0.18 instead.
+        // visual"): the whole frame white for two frames (the HUD's additive layer, after the tone map: past every light), falling
+        // away over about half a second, a gold afterglow under it for a second. Reduce flashing: a soft glow at 0.18 instead.
         {
             const float a = t - rpWaveT_;
             if (a >= 0.0f && a < kFlashbangS) {
                 float white = a < kFlashbangHoldS ? 1.0f : std::exp(-(a - kFlashbangHoldS) / kFlashbangTauS);
                 if (reduceFlashing_) white *= 0.18f;
-                const float warm = (reduceFlashing_ ? 0.05f : 0.2f) * (1.0f - a / kFlashbangS);
+                const float warm = (reduceFlashing_ ? 0.05f : 0.16f) * (1.0f - a / kFlashbangS);
                 const Vec3 c = W1 * white + palettes_->player[3] * warm;
                 const float sw = 2.0f * centre_.x, sh = 2.0f * centre_.y;
                 d.hud.line(Vec2{-10.0f, 0.5f * sh}, Vec2{sw + 10.0f, 0.5f * sh}, 0.5f * sh + 10.0f, c, c, 0);

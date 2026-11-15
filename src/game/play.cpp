@@ -672,7 +672,9 @@ void Play::afterTick() {
                         band_->playRecipe(audio::Recipe::Impact, -1, 0.8f, 0.0f, burst + (coop() ? netBandOffset_ : clock_.offset()));
                     }
                 }
-                hitStopUntil_ = clock_.simTime() + static_cast<double>(look_->boom.bossHitStopMs) * 0.001 * (finale ? 3.0 : 1.0);
+                // (the Reprise has none since 2026-11-14: its quick implosion is the held breath, and a 150 ms hold with the catch-up
+                // after it, three ticks a frame, read as a stutter: the owner, "is there a stutter on the reprise death?")
+                if (!finale) hitStopUntil_ = clock_.simTime() + static_cast<double>(look_->boom.bossHitStopMs) * 0.001;
                 // M6 (screens.md "A finished run"): the set list's last boss has fallen: the run is won (SET COMPLETE for two bars,
                 // then the loop's own card).
                 if (w.phrase().track == w.setList() && !runSetComplete_) {
