@@ -799,12 +799,16 @@ CONTROLS and LOOK (video and accessibility together); layout in `design/screens.
 
 | Group | Options |
 |---|---|
-| Controls | Auto-aim assist; stick size and position; swap sides; button layout; gamepad mapping |
+| Controls | Auto-aim assist; Auto Nova; stick size and position (floating or fixed sticks, the touch layout dragged into place); swap sides; button layout (button size, the layout); gamepad mapping (Nova, Dash, Pause) |
 | Audio | Master, music, effects; **sound**: Club / Arcade / Velvet (three characters of the same music, `design/music/variants.json`; Club is the default); **sync calibration** (flash-and-click slider); haptics on/off and strength; in co-op: "music from host only" |
-| Video | Effects: Auto / Low / Medium / High / Ultra; frame-rate target: Auto / 60 / 90 / 120; reduce flashing; shake amount; vivid colour (where supported) |
-| Accessibility | Colour-blind-safe palettes; high-contrast threats; UI scale |
+| Video | Effects: Auto / Low / Medium / High / Ultra; frame-rate target: Auto / 60 / 90 / 120; reduce flashing; vivid colour (where supported) |
+| Accessibility | UI scale |
 
-Local high scores: top 10 for solo and for each co-op player count. Lifetime stats screen.
+(2026-11-15, the owner: of the rows not yet built, "just do Stick size and position, button layout, gamepad mapping":
+shake amount, colour-blind-safe palettes and high-contrast threats are cut.)
+
+Local high scores: top 10 for solo and for each co-op player count (a co-op run's team score goes to its count's table,
+never to solo's). Lifetime stats beside them on the SCORES screen (`design/screens.md` "Scores").
 
 ---
 

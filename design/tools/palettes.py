@@ -42,12 +42,15 @@ PALETTES = [
          accent=dict(L=0.80, h=320, cf=0.9),
          enemies=[dict(L=0.70, h=300, cf=0.97), dict(L=0.66, h=268, cf=0.97), dict(L=0.72, h=318, cf=0.95),
                   dict(L=0.80, h=172, cf=0.95), dict(L=0.76, h=238, cf=0.95)]),
+    # 2026-11-15 (the gold rule, below): the sun is the accent's; the crowd a flare's tangerine (warm as Furnace's and
+    # Afterglow's, as it always was), the hunters lime (P2's lime was already among Solar's hues: h118). The old amber
+    # (h70) and yellow (h95) stay listed last, out of the gold's way, as the record of what Solar was.
     dict(id="solar", name="Solar", track=2,
          bg0=dict(L=0.10, h=200, c=0.030), bg1=dict(L=0.17, h=185, c=0.050),
          grid=dict(L=0.42, h=190, c=0.08), gridHot=dict(L=0.88, h=190, c=0.06),
          accent=dict(L=0.90, h=100, cf=0.9),
-         enemies=[dict(L=0.80, h=70, cf=0.97), dict(L=0.88, h=95, cf=0.97), dict(L=0.88, h=118, cf=0.95),
-                  dict(L=0.70, h=292, cf=0.95), dict(L=0.72, h=250, cf=0.95)]),
+         enemies=[dict(L=0.80, h=55, cf=0.97), dict(L=0.88, h=122, cf=0.95), dict(L=0.70, h=292, cf=0.95),
+                  dict(L=0.80, h=70, cf=0.97), dict(L=0.88, h=95, cf=0.97)]),
     dict(id="reef", name="Reef", track=3,
          bg0=dict(L=0.10, h=250, c=0.045), bg1=dict(L=0.18, h=235, c=0.070),
          grid=dict(L=0.45, h=215, c=0.10), gridHot=dict(L=0.88, h=215, c=0.07),
@@ -60,26 +63,31 @@ PALETTES = [
          accent=dict(L=0.82, h=300, cf=0.9),
          enemies=[dict(L=0.86, h=150, cf=0.97), dict(L=0.70, h=295, cf=0.97), dict(L=0.74, h=322, cf=0.95),
                   dict(L=0.80, h=232, cf=0.95), dict(L=0.90, h=115, cf=0.95)]),
+    # 2026-11-15 (the gold rule): an ember crowd, blue-flame hunters, violet-smoke specials; the white-hot hunters (h98, the
+    # pickup's own colour) are gone.
     dict(id="furnace", name="Furnace", track=5,
          bg0=dict(L=0.09, h=60, c=0.012), bg1=dict(L=0.16, h=55, c=0.038),
          grid=dict(L=0.40, h=60, c=0.085), gridHot=dict(L=0.88, h=60, c=0.06),
          accent=dict(L=0.80, h=250, cf=0.9),
-         enemies=[dict(L=0.80, h=68, cf=0.97), dict(L=0.93, h=98, c=0.08), dict(L=0.68, h=258, cf=0.97),
-                  dict(L=0.70, h=300, cf=0.95), dict(L=0.90, h=108, cf=0.95)]),
+         enemies=[dict(L=0.74, h=58, cf=0.97), dict(L=0.68, h=258, cf=0.97), dict(L=0.70, h=300, cf=0.95),
+                  dict(L=0.93, h=98, c=0.08), dict(L=0.90, h=108, cf=0.95)]),
+    # 2026-11-15 (the gold rule; the owner: "Track 6's enemies are the same colour as the pickups"): noon's crowd is the white
+    # of the sky, cool, where it was the pickups' cream; the hunters teal, the specials violet.
     dict(id="zenith", name="Zenith", track=6,
          bg0=dict(L=0.08, h=260, c=0.020), bg1=dict(L=0.16, h=255, c=0.040),
          grid=dict(L=0.50, h=250, c=0.06), gridHot=dict(L=0.95, h=240, c=0.05),
          accent=dict(L=0.97, h=90, c=0.04),
-         enemies=[dict(L=0.95, h=95, c=0.06), dict(L=0.70, h=258, cf=0.97), dict(L=0.66, h=288, cf=0.97),
-                  dict(L=0.88, h=165, cf=0.95), dict(L=0.84, h=228, cf=0.95)]),
+         enemies=[dict(L=0.90, h=240, c=0.07), dict(L=0.88, h=165, cf=0.95), dict(L=0.66, h=288, cf=0.97),
+                  dict(L=0.70, h=258, cf=0.97), dict(L=0.95, h=95, c=0.06)]),
     # Tracks 7 to 10 (2026-11-12, when the set list grew to ten).
     # Afterglow: dusk. Peach-gold and lavender on plum; the first major key gets the warmest sky.
+    # (2026-11-15, the gold rule: the peach moves off the gold to coral; the sky keeps its gold in the accent)
     dict(id="afterglow", name="Afterglow", track=7,
          bg0=dict(L=0.10, h=320, c=0.035), bg1=dict(L=0.18, h=340, c=0.060),
          grid=dict(L=0.44, h=310, c=0.09), gridHot=dict(L=0.88, h=310, c=0.06),
          accent=dict(L=0.88, h=75, cf=0.9),
-         enemies=[dict(L=0.84, h=72, cf=0.97), dict(L=0.72, h=300, cf=0.97), dict(L=0.72, h=250, cf=0.95),
-                  dict(L=0.86, h=168, cf=0.95), dict(L=0.90, h=110, cf=0.95)]),
+         enemies=[dict(L=0.78, h=50, cf=0.97), dict(L=0.72, h=300, cf=0.97), dict(L=0.72, h=250, cf=0.95),
+                  dict(L=0.86, h=168, cf=0.95), dict(L=0.84, h=72, cf=0.97)]),
     # Arcadia: the arcade. Saturated primaries on near-black, a green grid.
     dict(id="arcadia", name="Arcadia", track=8,
          bg0=dict(L=0.07, h=270, c=0.015), bg1=dict(L=0.14, h=265, c=0.035),
@@ -88,25 +96,41 @@ PALETTES = [
          enemies=[dict(L=0.86, h=145, cf=0.97), dict(L=0.70, h=250, cf=0.97), dict(L=0.72, h=320, cf=0.95),
                   dict(L=0.92, h=95, cf=0.95), dict(L=0.86, h=190, cf=0.95)]),
     # Mirage: turquoise and sand over deep teal; the grid is the sand.
+    # (2026-11-15, the gold rule: the sand stays the grid's; the crowd is the oasis's green, 40 degrees clear of P1's cyan)
     dict(id="mirage", name="Mirage", track=9,
          bg0=dict(L=0.10, h=215, c=0.030), bg1=dict(L=0.19, h=195, c=0.055),
          grid=dict(L=0.46, h=80, c=0.07), gridHot=dict(L=0.90, h=85, c=0.06),
          accent=dict(L=0.86, h=180, cf=0.9),
-         enemies=[dict(L=0.86, h=180, cf=0.97), dict(L=0.88, h=80, cf=0.95), dict(L=0.70, h=285, cf=0.97),
-                  dict(L=0.78, h=235, cf=0.95), dict(L=0.88, h=150, cf=0.95)]),
+         enemies=[dict(L=0.86, h=160, cf=0.97), dict(L=0.70, h=285, cf=0.97), dict(L=0.78, h=235, cf=0.95),
+                  dict(L=0.86, h=180, cf=0.97), dict(L=0.88, h=80, cf=0.95)]),
     # Last Light: Ultraviolet's violets again, with gold in them and a warm horizon: the first Track at dawn.
+    # (2026-11-15, the gold rule: the gold is the horizon's and the accent's now; the hunters are dawn's rose)
     dict(id="lastlight", name="Last Light", track=10,
          bg0=dict(L=0.09, h=280, c=0.040), bg1=dict(L=0.19, h=60, c=0.050),
          grid=dict(L=0.44, h=275, c=0.11), gridHot=dict(L=0.90, h=80, c=0.06),
          accent=dict(L=0.92, h=90, cf=0.9),
-         enemies=[dict(L=0.70, h=290, cf=0.97), dict(L=0.90, h=85, cf=0.95), dict(L=0.72, h=250, cf=0.97),
-                  dict(L=0.74, h=325, cf=0.95), dict(L=0.86, h=165, cf=0.95)]),
+         enemies=[dict(L=0.70, h=290, cf=0.97), dict(L=0.74, h=325, cf=0.95), dict(L=0.72, h=250, cf=0.97),
+                  dict(L=0.86, h=165, cf=0.95), dict(L=0.90, h=85, cf=0.95)]),
 ]
 
 MIN_HUE_GAP_DANGER = 30.0
 MIN_HUE_GAP_PLAYER = 25.0
-LOW_CHROMA = 0.09  # near-white colours ignore hue rules
+LOW_CHROMA = 0.09  # near-white colours ignore the danger and player rules (not the gold rule)
 PARTNER_HUE_STEP = 40.0   # an enemy hue's gradient partner sits this far along the colour wheel
+# The gold rule (2026-11-15; the owner, on the review: "Track 6's enemies are the same colour as the pickups. Tracks 5 and 7
+# are close. fix"). What the game gives is gold in every run, solo too: Shards and the Trio's orbs in the pickup white-gold,
+# Boost orbs, Cells, the Extra Life, Vaults and the level-up Trio's ring in P4's gold. No enemy hue comes within
+# MIN_HUE_GAP_GOLD of either gold's hue, whatever its chroma (a warm near-white is the pickup's own colour), and a partner
+# keeps clear of them as well (where neither of its two hues can, it is the hue itself, lighter).
+MIN_HUE_GAP_GOLD = 25.0
+
+
+def gold_hues():
+    return [CONSTANTS["players"][3]["h"], CONSTANTS["pickup"]["h"]]
+
+
+def gold_gap(h):
+    return min(ld.hue_distance(h, g) for g in gold_hues())
 
 
 def resolve(spec):
@@ -116,36 +140,48 @@ def resolve(spec):
 
 
 def partners(entry):
-    """The two candidate partner colours of an enemy hue (the far end of its hull gradient): the hue
-    moved PARTNER_HUE_STEP either way, slightly lighter. Near-white hues get one warm pale partner."""
+    """The candidate partner colours of an enemy hue (the far end of its hull gradient): the hue moved
+    PARTNER_HUE_STEP either way, slightly lighter, and (third) the hue itself, lighter, for when neither
+    of the first two keeps clear (pick_partner). A near-white's partners are its own hue, pale."""
     L, c, h = entry["oklch"]
     if c < LOW_CHROMA:
-        return [resolve(dict(L=0.86, h=85, cf=0.6))] * 2
-    return [resolve(dict(L=min(0.9, L + 0.05), h=(h + step) % 360.0, cf=0.95)) for step in (PARTNER_HUE_STEP, -PARTNER_HUE_STEP)]
+        return [resolve(dict(L=0.86, h=h, cf=0.6))] * 3
+    moved = [resolve(dict(L=min(0.9, L + 0.05), h=(h + step) % 360.0, cf=0.95)) for step in (PARTNER_HUE_STEP, -PARTNER_HUE_STEP)]
+    return moved + [resolve(dict(L=min(0.92, L + 0.08), h=h, cf=0.8))]
 
 
 def pick_partner(options, player_hues, danger_hue):
-    """The partner whose hue stays farther from the danger hue and from every present player's hue."""
-    def clearance(option):
-        return min([ld.hue_distance(option["oklch"][2], danger_hue)] + [ld.hue_distance(option["oklch"][2], ph) for ph in player_hues])
-    return 0 if clearance(options[0]) >= clearance(options[1]) else 1
+    """Of the two moved partners, the one that keeps clear of the danger hue, every present player's hue and
+    the golds, by the larger margin; where neither keeps clear, the third (the hue itself, lighter)."""
+    def margin(option):
+        h = option["oklch"][2]
+        return min([ld.hue_distance(h, danger_hue) - MIN_HUE_GAP_DANGER, gold_gap(h) - MIN_HUE_GAP_GOLD] +
+                   [ld.hue_distance(h, ph) - MIN_HUE_GAP_PLAYER for ph in player_hues])
+    m0, m1 = margin(options[0]), margin(options[1])
+    if max(m0, m1) < 0.0 and len(options) > 2:
+        return 2
+    return 0 if m0 >= m1 else 1
 
 
 def pick_enemy_hues(candidates, player_hues, danger_hue, count=3):
-    """Designer order is preference order. Skip a candidate that sits too close to the danger hue or to
-    a present player's hue; if fewer than `count` survive, fill with the least-bad remaining ones."""
+    """Designer order is preference order. Skip a candidate that sits too close to the danger hue, to
+    a present player's hue or to the golds; if fewer than `count` survive, fill with the least-bad remaining ones."""
     ok, rest = [], []
     for i, cand in enumerate(candidates):
         L, c, h = cand["oklch"]
+        gap_g = gold_gap(h)
         if c < LOW_CHROMA:
-            ok.append(i)
+            if gap_g >= MIN_HUE_GAP_GOLD:
+                ok.append(i)
+            else:
+                rest.append((gap_g - MIN_HUE_GAP_GOLD, i))
             continue
         gap_d = ld.hue_distance(h, danger_hue)
         gap_p = min([ld.hue_distance(h, ph) for ph in player_hues] or [360.0])
-        if gap_d >= MIN_HUE_GAP_DANGER and gap_p >= MIN_HUE_GAP_PLAYER:
+        if gap_d >= MIN_HUE_GAP_DANGER and gap_p >= MIN_HUE_GAP_PLAYER and gap_g >= MIN_HUE_GAP_GOLD:
             ok.append(i)
         else:
-            rest.append((min(gap_d - MIN_HUE_GAP_DANGER, gap_p - MIN_HUE_GAP_PLAYER), i))
+            rest.append((min(gap_d - MIN_HUE_GAP_DANGER, gap_p - MIN_HUE_GAP_PLAYER, gap_g - MIN_HUE_GAP_GOLD), i))
     rest.sort(reverse=True)
     chosen = ok[:count]
     for _, i in rest:
@@ -184,14 +220,17 @@ def build():
         selectionRule=dict(
             text="Take enemyCandidates in listed order; skip any whose hue is within minHueGapDanger of the "
                  "danger hue or within minHueGapPlayer of a present player's hue (colours with chroma below "
-                 "lowChroma are exempt); use the first three that remain; if fewer than three remain, fill "
-                 "with the skipped candidates that violate the gaps least.",
-            minHueGapDanger=MIN_HUE_GAP_DANGER, minHueGapPlayer=MIN_HUE_GAP_PLAYER, lowChroma=LOW_CHROMA),
+                 "lowChroma are exempt from those two), or within minHueGapGold of the gifts' golds (P4's hue "
+                 "and the pickup's, in every run, whatever the chroma: 2026-11-15); use the first three that "
+                 "remain; if fewer than three remain, fill with the skipped candidates that violate the gaps least.",
+            minHueGapDanger=MIN_HUE_GAP_DANGER, minHueGapPlayer=MIN_HUE_GAP_PLAYER, lowChroma=LOW_CHROMA,
+            minHueGapGold=MIN_HUE_GAP_GOLD, goldHues=gold_hues()),
         partnerRule=dict(
-            text="Every enemy hue has two candidate partners (enemyCandidates[i].partners): its hue moved "
-                 "hueStep degrees up or down the wheel. Use the one whose hue (oklch[2]) is farther from the "
-                 "danger hue and from the hue of every player present; on a tie use the first. soloPartner "
-                 "and fourPlayerPartner are that choice precomputed for P1 alone and for all four players.",
+            text="Every enemy hue has three candidate partners (enemyCandidates[i].partners): its hue moved "
+                 "hueStep degrees up or down the wheel, and the hue itself, lighter. Use whichever of the first "
+                 "two keeps clear of the danger hue, every present player's hue and the golds by the larger "
+                 "margin (on a tie the first); if neither keeps clear, the third. soloPartner and "
+                 "fourPlayerPartner are that choice precomputed for P1 alone and for all four players.",
             hueStep=PARTNER_HUE_STEP),
         constants=const, palettes=out)
 

@@ -18,6 +18,11 @@ Pen, is in `design/bosses/minibosses.md`.
 - **Structures** are placed on the first downbeat of the Track, 1,000 to 1,800 wu from the players' centre, at least 700 wu from each other; the last Track's dissolve over the Track change's Break unless a player is within 600 wu, in which case they stay until that player leaves.
 - **Events:** Track 1 has one, the Comet, in the Groove of its second cycle; from Track 2 one event a Track, in the Groove of its second cycle; from Track 4 a second one in the Groove of its first cycle (every Track is two cycles since 2026-11-14). Drawn by the seed from the Track's list, never the event of the Track before. Announced one bar ahead by a gold edge chevron and its name as world text at the place (cap 22, gold), then it runs.
 - **Indicators:** structures get no edge chevron (they are found); events get the gold one; a Rift's is the enemy hue with a ring at its tip.
+- **Names** (2026-11-15, the owner: "a hint each, as the Vault has"): every structure carries its name as world text above it,
+  as the Vault does (cap 22; the Vault's gold, the others white at 0.8), until it is first used: `VAULT` until its first hit,
+  `PYLON` until it is first tuned, `RIFT` until its first hit (only while it is open), `BUMPER` until its first charge,
+  `CURRENT` until a ship first rides it, `LENS` until it first splits a shot. Each also has a first-run hint
+  (screens.md "First-run hints").
 - **Co-op:** placed round the players' centre; every reward is for each player (Boost orbs and Shards are each player's own, as everywhere).
 - **Caps:** at most 6 structures and 1 event alive; what an event or a structure spawns counts against the enemy and bullet caps.
 

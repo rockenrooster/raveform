@@ -96,7 +96,7 @@ run used by the word, the rule, the fan and the motes: P1 cyan -> white -> the p
 | **PLAY** | (1200, 800), 640 x 150 | Glass in P1 at 0.08, an outline of 80% P1 and 20% white (3 px at 1.8), a P1 pool of radius 350; its label a tube (cap 60) 11 px above its centre; **the four beat dots inside it**, 47 px under its centre (the beat's lit at 1.9, beat 1 in the accent, the rest 0.32). Every beat a copy of its outline leaves it, growing 40 px over the beat (1.0 on beat 1, 0.7 on the others; half with reduce flashing). Hover (a mouse): fill 0.18, outline at 2.3, the label's core at 2.2; pressed: fill 0.45, outline 4 px at 2.6, label 1.5 / 2.4, pool 0.10 |
 | CO-OP, SETTINGS | (640, 800) and (1760, 800), 340 x 104, label 30 | As every pill (since Title v2 every pill has a hover state with a mouse: a white fill at 0.10, the outline 3 px at 1.6, the label at 1.5). A caption 28 px under each, cap 12, white at 0.5: `2-4 PLAYERS   ONE WI-FI` and `SOUND   CONTROLS   LOOK` |
 | Notes | y 940, cap 18, danger | `THE HOST LEFT` and the co-op messages |
-| Best | Bottom left, cap 14, gold | `BEST 1,204,880  TRACK 05  X412` |
+| Best, **SCORES** | Bottom left | `BEST 1,204,880  TRACK 05  X412` (cap 14, gold) stands 24 px over a pill `SCORES` (300 x 84, label 26, as CO-OP's pill), its left edge on the margin, its foot 70 px off the bottom. It opens SCORES (2026-11-15; below). It arrives with the best in the intro and leaves with it on the quiet title |
 | Note | Bottom right, cap 14, white at 0.5 | `HEADPHONES RECOMMENDED`; on first launch the photosensitivity notice takes this screen first |
 | Version | Bottom right under the note, cap 11, white at 0.4 | The version, the build's commit and its date and minute: `V0.9.0  F0CD14F  2026-11-14 16:40` (the owner, 2026-11-14: "include a version # with build date at the bottom right at the main menu"); the version is `CMakeLists.txt`'s project version |
 
@@ -162,8 +162,50 @@ Rules:
 - Nothing on this screen opens a second screen except `SYNC`.
 - CONTROLS holds auto-aim assist, Auto Nova (on by default: `AUTO NOVA  FIRES ONE BEFORE YOUR LAST CELL GOES`), stick size and position (drawn as the real sticks, dragged into
   place), swap sides, button layout, gamepad mapping. LOOK holds effects (Auto / Low / Medium / High /
-  Ultra), frame-rate target, reduce flashing, shake, vivid colour, colour-blind-safe palettes,
-  high-contrast threats and UI scale, with the bot's run behind it so each change is seen at once.
+  Ultra), frame-rate target, reduce flashing, vivid colour and UI scale, with the bot's run behind it so each change is
+  seen at once. (2026-11-15, the owner: of the six rows not yet built, "just do Stick size and position, button layout,
+  gamepad mapping": shake, colour-blind-safe palettes and high-contrast threats are cut.)
+
+**CONTROLS** (2026-11-15). Two columns of rows, each row a label (cap 18, white at 1.1) over its control, the columns'
+centres 520 px either side of the centre; a column's rows 130 px apart from y 330. Segmented pills 420 wide, 80 tall.
+
+| Left column: TOUCH | Right column: PLAY |
+|---|---|
+| `SWAP SIDES: AIM WITH THE LEFT THUMB` OFF / ON | `AUTO-AIM ASSIST: FIRES BY ITSELF, AT A BOSS'S WEAK POINT TOO` OFF / ON |
+| `STICKS` FLOATING / FIXED | `AUTO NOVA  FIRES ONE BEFORE YOUR LAST CELL GOES` OFF / ON |
+| `STICK SIZE` S / M / L | `GAMEPAD` three pills in a row, 200 wide: `NOVA  RB`, `DASH  LB`, `PAUSE  START` |
+| `BUTTON SIZE` S / M / L | `RESET HINTS` (its line under it, as now) |
+| `EDIT TOUCH LAYOUT` (a pill 420 x 90): opens the touch layout | |
+
+- **STICKS.** FLOATING (the default, as built): a stick's centre is where the thumb lands in its half; its place is where
+  its ring rests. FIXED: the stick's centre is its place; a thumb landing anywhere in that half steers from there.
+- **STICK SIZE**: the rings' radius (how far a full push is) x 0.8 / 1 / 1.25; **BUTTON SIZE**: NOVA's and DASH's x 0.85 /
+  1 / 1.2, never under the 9 mm minimum. Both on top of the UI scale.
+- **GAMEPAD.** Tapping a pill makes it `PRESS A BUTTON` in the player colour; the next pad button pressed (A, B, X, Y,
+  LB, RB, LT, RT, BACK, START, the sticks' clicks) is that action's; one that held another action swaps with it; Back or
+  a tap elsewhere cancels. Firing stays the right stick and the menus' A and B stay. The pill shows the button's name.
+
+**Touch layout** (2026-11-15; `EDIT TOUCH LAYOUT`). The run's controls as they are drawn in a run, over the bot's run at a
+fifth: the two sticks' rings (their places), NOVA and DASH, each with its name under it (cap 14). Drag any of the four to
+move it; it keeps inside the screen's safe area and at least 24 px from the others (it stops against them). `STICK SIZE`
+and `BUTTON SIZE` as on CONTROLS, at the top centre. `RESET` (bottom left) puts all four back where the layout puts
+them; `DONE` (bottom right) saves and returns to CONTROLS; Back does the same. The places are kept as fractions of the
+screen, so they hold on any screen; SWAP SIDES mirrors them.
+
+## Scores (2026-11-15)
+
+From the title's `SCORES`. The bot's run behind at a fifth, as SETTINGS has it.
+
+| Element | Place | Behaviour |
+|---|---|---|
+| `SCORES` | Top centre, cap 44, accent | — |
+| Tabs | Four pills 300 x 84 at y 168, 340 apart | `SOLO`, `2 PLAYERS`, `3 PLAYERS`, `4 PLAYERS`; the open one glass in the player colour |
+| **Table** | Left of centre, from y 280 | Ten rows, 56 px apart, cap 26: rank, score (thousands grouped), `TRACK 07`, the time `12:41`, `X412` (best Chain), and a gold star for a run that finished the set. The latest run's row in the player colour; the rest white at 0.9. An empty table reads `NO RUNS YET` |
+| **Lifetime** | Right column, from y 280 | Label cap 14 in the accent, value cap 34 in white, six of them: `RUNS`, `TIME PLAYED`, `KILLS`, `BOSSES BEATEN`, `SETS COMPLETE`, `BEST CHAIN` (solo and co-op together) |
+| **DONE** | Bottom right, 460 x 124 | Back to the title; Back does the same |
+
+A solo run's score goes to SOLO; a co-op run's team score goes to the table of its player count (each device keeps its
+own tables), never to SOLO. The title's BEST is SOLO's first row.
 - **COLOUR** (M6, 2026-11-14; TECH_SPEC 5.2), beside REDUCE FLASHING: `STANDARD` / `VIVID` under `COLOUR (VIVID: THE
   SCREEN'S WIDE GAMUT)`. VIVID presents the frame in Display-P3, so the screen maps the game's colours into its wider gamut
   (every colour more saturated, white and greys as they were); it changes at once (the swapchain is rebuilt) and is saved.
@@ -356,10 +398,18 @@ The palette is the one the run ended in. The score is the headline; everything e
 | **Score** | Centred under it, cap 150 | White → gold → amber top to bottom, 9 px tubes. Counts up over one bar. A new best gets a gold four-arm flare and `NEW BEST` |
 | Four numbers | One row: `TIME`, `TRACK`, `BEST CHAIN`, `KILLS` | Label cap 14 in accent, value cap 40. Four, never more |
 | What ended it (M6) | One line under the four numbers, cap 14 | `ENDED BY` in the accent and the name of what took the last cell in white, as the game names it (`CAROM`, `LONGWAVE`, `A VOLATILE BLAST`, `METEOR RAIN`); an enemy's bullet names the enemy. Nothing when the run ended by finishing the set |
-| **Set list** | A bar across the width | The run drawn as the song it was: one segment per Track, as long as the time spent in it, in that Track's accent colour with its name under it. A white star where a boss fell, a gold tick for each upgrade taken, a danger-coloured cross for each hit taken. It plays back as a ten-second medley of the run while the screen is up |
+| **Set list** | A bar across the width | The run drawn as the song it was: one segment per Track, as long as the time spent in it, in that Track's accent colour with its name under it. A white star where a boss fell, a gold tick for each upgrade taken, a danger-coloured cross for each hit taken. It plays back as a ten-second medley of the run while the screen is up (below) |
 | Your band | Under the set list | The icons of the Riffs and the most-stacked Mods the run ended with |
 | **RETRY** | Bottom right, 600 × 140, label 52, player colour | One tap: a new run ("Transitions": the drop-in, from game over) |
 | HOME | Under it, 330 × 90 | Back to the title ("Transitions": home) |
+
+**The medley** (built 2026-11-15, the owner: "build"). On the bar line after the score has counted up, the band plays the
+run back: for each Track the run reached, in order, its Drop at its own tempo and key, **one bar each** (two bars each when
+the run reached fewer than five Tracks; a run in the loop plays the set's ten), hard cuts on the bar lines, the Drop's
+impact only on the first. While a Track plays, its segment of the set list is lit (its accent at full, a white line
+sweeping along it in time) and the others rest at their level. After the last bar the bed carries on filtered, as before.
+About ten seconds; RETRY and HOME end it on the next beat as their transitions take the music. Solo and co-op alike (each
+device plays its own).
 
 **A finished run (M6).** When the tenth Track's boss falls the run has been won, and the game says so
 before the loop begins: the Track name card's place shows `SET COMPLETE` (cap 44, gold) with the score
@@ -481,6 +531,11 @@ The game explains itself once, in the world, while the player plays. No tutorial
 | The first Boost orb in view | `GOLD ORBS ARE SHORT POWERS` |
 | The first Extra Life in view | `EXTRA LIFE: ONE MORE TRY` |
 | The first Vault in view | `BREAK IT FOR A PRIZE` |
+| The first Pylon in view (2026-11-15, the owner: "a hint each, as the Vault has") | `STAND IN ITS RING TO ARM IT` |
+| The first open Rift in view | `SHOOT IT SHUT FOR A PRIZE` |
+| The first Bumper in view | `BOUNCED SHOTS HIT HARDER` |
+| The first Current in view | `SHOOT ALONG IT: HITS HARDER` |
+| The first Lens in view | `SHOTS THROUGH IT SPLIT IN 3` |
 
 ## App icon and name (M6)
 

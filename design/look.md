@@ -105,7 +105,16 @@ Per-palette roles: `bg0` (edge of the background), `bg1` (centre glow), `grid` (
 `gridHot` (lattice when stretched — the grid hue pushed almost to white, never a saturated colour, so
 a hot lattice cannot be mistaken for an enemy), `accent` (titles, Drop flash, palette-coloured UI, enemy
 ornaments), and five `enemyCandidates` of which three are used per run. The selection rule is stored in
-the JSON (`selectionRule`): skip candidates within 30° of the danger hue or 25° of a present player's hue.
+the JSON (`selectionRule`): skip candidates within 30° of the danger hue or 25° of a present player's hue,
+and (the gold rule, 2026-11-15; the owner: "Track 6's enemies are the same colour as the pickups. Tracks 5
+and 7 are close. fix") within 25° of the gifts' golds, P4's 88° and the pickup's 95°, in every run and
+whatever the chroma: what the game gives is gold (Shards and the Trio's orbs white-gold; Boost orbs, Cells,
+the Extra Life and Vaults P4's gold), so no enemy is. It moved six palettes' enemies: Solar's crowd
+tangerine and hunters lime (were amber and yellow), Furnace's hunters blue flame (were white-hot cream),
+Zenith's crowd the sky's cool white and hunters teal (were the pickups' cream), Afterglow's crowd coral
+(was peach-gold), Mirage's crowd the oasis's green (was sand gold), Last Light's hunters dawn's rose (were
+gold). A partner keeps clear of the golds too; where neither of its two hues can, it is the hue itself,
+lighter (Reef's hunters, Aurora's and Arcadia's crowds). `design/previews/palettes.png`.
 
 Enemy hue assignment: the three hues are dealt to families by role — hue 1 to the Track's fodder
 families, hue 2 to its hunters and heavies, hue 3 to its specials — so colour hints at behaviour while
