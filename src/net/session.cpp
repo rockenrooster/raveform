@@ -579,6 +579,9 @@ void Session::onBye(u8) {
 
 void Session::onPing(i64 t0) {
     if (!host() || from_ < 1) return;
+    // Pause-on-leave: an away client heard again (its pings while its clock settles) is back in time, whatever the wait says: the
+    // room's 60 s count from now (audit 2026-11-15: one back at 59 s was dropped before its word came).
+    if (seatAway(static_cast<u32>(from_))) awaySinceUs_[from_] = localNow_;
     // Answered at once, and sent at once, so its send time is the moment it leaves.
     const i64 now = nowLocal();
     scratch_.reset();
@@ -1063,6 +1066,8 @@ void Session::onHeartbeat(const MsgHeartbeat& m) {
     }
     song_.set(a);
     beatHeardUs_ = localNow_;  // (pause-on-leave: a client back from away waits for a fresh one)
+    // (an away host heard again, its band settling before it says it is back: the wait counts from now; audit 2026-11-15)
+    if (awayMask_ & 1u) awaySinceUs_[0] = localNow_;
     if (m.bossOn && m.run == world_->runId()) world_->netBossState(m.bossPart, m.bossParts, m.bossCore, Vec2{m.bossX, m.bossY});
 }
 
@@ -1258,17 +1263,38 @@ void Session::goAway(i64 localUs) {
     awayFromUs_ = localUs;
     if (host()) {
         hostSetAway(0, true);  // (it flushes)
+        // The word again, unreliable, twice, each in a datagram of its own: a reliable one lost now is resent only when the host
+        // is back, and a client that missed it would play on alone and then time the host out (audit 2026-11-15).
+        MsgPause a;
+        a.kind = kAwayMask;
+        a.away = awayMask_;
+        MsgPause p;
+        p.kind = kPauseAt;
+        p.runTick = pauseAt_;
+        for (u32 copy = 0; copy < 2; ++copy) {
+            scratch_.reset();
+            scratch_.putPause(a);
+            if (paused() && !resuming()) scratch_.putPause(p);
+            for (u32 s = 1; s < kMaxPlayers; ++s)
+                if (welcomed_[s] && seatPeer_[s] >= 0) sendTo(static_cast<u32>(seatPeer_[s]), kChControl, scratch_, false);
+            link_.flush();
+        }
         return;
     }
     MsgPause m;
     m.kind = kAwayAsk;
     reliable([&](PacketWriter& w) { return w.putPause(m); });
     flushReliable();
-    scratch_.reset();
-    scratch_.putPause(m);
-    sendTo(0, kChControl, scratch_, false);  // (a second copy: a reliable one lost now is never resent, this device stops)
     link_.setPeerTimeout(0, kAwayLinkMs);
     link_.flush();
+    // Two more copies, unreliable, each in a datagram of its own (a reliable one lost now is resent only when this device is
+    // back; audit 2026-11-15: one copy queued with it left in the same datagram).
+    for (u32 copy = 0; copy < 2; ++copy) {
+        scratch_.reset();
+        scratch_.putPause(m);
+        sendTo(0, kChControl, scratch_, false);
+        link_.flush();
+    }
 }
 
 void Session::comeBack(i64 localUs) {

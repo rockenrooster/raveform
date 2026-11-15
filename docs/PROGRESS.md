@@ -4,6 +4,45 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, the audit: critical and high-priority defects
+
+"Do an audit of the project and look for anything critical and high priority." Five read-only reviews (audio, network,
+simulation, platform/rendering/Android, game layer and saves), each finding then checked against the code, and the sanitizer
+suite (ASan + UBSan: the unit tests, determinism, a 3-minute bot run, fights in Tracks 4, 7 and 10, the 3-minute net soak, and
+the three away cases): no sanitizer report anywhere. Fixed (all confirmed by reading; the first two also on the Moto):
+
+- **Critical: a pause in a run's first two beats could never be left.** The drop-in's arrival ends on the run's clock, which a
+  solo pause holds, and while it lasts the screens take no input: PAUSED stayed up for good (the pause ring is live while the HUD
+  fades in). `pauseRun` now ends the arrival. On the Moto: a pause at 0:00, then RESUME, and the run went on.
+- **A solo run did not pause when the app left the screen** (a call, home): it went on the moment the app came back. It pauses
+  now (`appBackground`). On the Moto: home at 0:16, back to PAUSED.
+- **CREDITS opened from the pause's settings unfroze the run**: it played on behind the licences, and a death there left a dead
+  ship with no game over (no way out but killing the app). From the title, the demo stopped. (`underPauseMenu`, `attract`.)
+- **Audio on a route not at 48 kHz**: the stream was opened at the device's rate, and the band writes silence at any rate but
+  48 kHz, which also stops its heard clock and so the game (a USB DAC, Bluetooth on the legacy path, or a route change mid-run).
+  48 kHz is asked for now; Oboe resamples. **A failed first open was never retried**; it is, every half second.
+- **The warp swells, the enemy-shot blips and the Nova's blast** went to the band in run ticks without the song offset: after any
+  solo pause, and in co-op, they sounded early, or late and (the warp's) silent, or queued minutes ahead and pushed other
+  sounds out (after the sync screen).
+- **Co-op: game over while a pause was coming trapped the host** (the run held on the pause's tick, RETRY's drop-in waited for
+  good, HOME disabled). The host lifts the pause behind the game over.
+- **Co-op: a client's Rifts never opened** (only the host set the open tick and nothing told the clients): a client's shots went
+  through an open Rift. Clients open them by the same phrase rule.
+- **Pause-on-leave hardening**: the away notice's backup copies leave in datagrams of their own (one lost datagram took both),
+  the host's notice has copies too; an away player heard again (pings, heartbeats) restarts the 60 s, so a return near the end
+  of the wait no longer loses the room; leaving a room mid re-align no longer silences the next room's song for 12 s.
+- **A lost GPU device or a failed submit froze the game for good** (the submit's fence never signalled; a lost device spun on a
+  frozen screen): the app now closes instead.
+- **Cadence's death bursts and the Arpeggiator's death run never played** (the dying boss's update returned before them).
+- Held keys stuck into the next run (keyboard); a gamepad's A on the game over restarted the world behind it (A / Start are now
+  the screens' main control, B is back, Start pauses); an arena operation's event kind is bounds-checked.
+
+**Open, not fixed (recommended next):** Windows saves fail under a non-ASCII profile path (`fopen`/`MoveFileExA` read UTF-8 as
+ANSI; desktop only); the band's command queue drops commands once full while the engine is not rendering and nothing re-sends
+the state (rare now that the stream re-opens); three rare Android/Vulkan paths (a render-target rebuild that fails half-way under
+memory pressure; the surface hand-off's narrow race on a fast home-after-resume; a dead surface after the 2 s release timeout
+during first-launch init); the release build is still signed with the debug key (Play will refuse it).
+
 ## 2026-11-14 (late night), pause-on-leave; the music in step between phones
 
 "Yes build it" (pause-on-leave) and "make sure that the music stays in sync between devices since it is a music focused game".

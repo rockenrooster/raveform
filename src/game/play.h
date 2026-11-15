@@ -216,8 +216,13 @@ private:
     // The title's attract run (the bot plays it) behind the notice, the title, its settings and (M4 stage B) the
     // join and local network screens.
     bool attract() const {
-        return flow_ && (screen_ == Screen::Notice || screen_ == Screen::Title || (screen_ == Screen::Settings && settingsBack_ == Screen::Title) ||
+        return flow_ && (screen_ == Screen::Notice || screen_ == Screen::Title || ((screen_ == Screen::Settings || screen_ == Screen::Credits) && settingsBack_ == Screen::Title) ||
                          screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission);
+    }
+    // The pause or a screen opened from it (SETTINGS, and CREDITS from there: audit 2026-11-15, the run went on behind the
+    // credits and a death there left a dead ship with no game over).
+    bool underPauseMenu() const {
+        return screen_ == Screen::Paused || ((screen_ == Screen::Settings || screen_ == Screen::Credits) && settingsBack_ == Screen::Paused);
     }
     void uiPointer(Vec2 pos, bool down);
     void buildInput(sim::StickInput& in);

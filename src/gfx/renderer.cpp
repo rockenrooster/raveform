@@ -1192,6 +1192,7 @@ bool Renderer::setStaticScene(const StaticScene& s) {
 }
 
 bool Renderer::beginFrame(FrameDraw& draw) {
+    if (fatal_) return false;
     if (surfaceLost_) {
         RF_WARN("renderer: surface lost, recreating");
         releaseSurface();
@@ -1206,6 +1207,7 @@ bool Renderer::beginFrame(FrameDraw& draw) {
     const u64 t1 = nowNs();
     if (r != VK_SUCCESS) {
         RF_ERR("vkWaitForFences: %s", vkResultName(r));
+        if (r == VK_ERROR_DEVICE_LOST) fatal_ = true;
         return false;
     }
     r = vkAcquireNextImageKHR(gpu_.device, swapchain_.handle, UINT64_MAX, f.acquired, VK_NULL_HANDLE, &f.imageIndex);
@@ -1227,6 +1229,7 @@ bool Renderer::beginFrame(FrameDraw& draw) {
         rebuildPending_ = true;  // still render and present this image, rebuild afterwards
     } else if (r != VK_SUCCESS) {
         RF_ERR("vkAcquireNextImageKHR: %s", vkResultName(r));
+        if (r == VK_ERROR_DEVICE_LOST) fatal_ = true;
         return false;
     }
     vkResetFences(gpu_.device, 1, &f.fence);  // only once we know this frame will be submitted
@@ -1767,6 +1770,7 @@ bool Renderer::endFrame(const FrameDraw& draw, const FrameParams& params, bool c
     timings_.submitEnd = nowNs();
     if (r != VK_SUCCESS) {
         RF_ERR("vkQueueSubmit: %s", vkResultName(r));
+        fatal_ = true;  // (its fence was reset and will never signal: the next wait on it would hang)
         return false;
     }
 
@@ -1787,6 +1791,7 @@ bool Renderer::endFrame(const FrameDraw& draw, const FrameParams& params, bool c
         surfaceLost_ = true;
     } else if (r != VK_SUCCESS) {
         RF_ERR("present: %s", vkResultName(r));
+        if (r == VK_ERROR_DEVICE_LOST) fatal_ = true;
     }
     if (doCapture) {
         capture_.pending = true;

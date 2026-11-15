@@ -67,11 +67,16 @@ struct AudioDevice::Impl {
 
     bool openStream() {
         oboe::AudioStreamBuilder builder;
+        // (audit 2026-11-15) The band renders at 48 kHz and writes silence at any other rate, and its heard clock (the game's
+        // clock) then stands still: a route at 44.1 kHz (a USB DAC, Bluetooth on the legacy path) froze the game silent. The rate
+        // is asked for; where the device runs another, Oboe resamples (its default quality, Medium).
         builder.setDirection(oboe::Direction::Output)
             ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
             ->setSharingMode(oboe::SharingMode::Exclusive)
             ->setFormat(oboe::AudioFormat::Float)
             ->setChannelCount(oboe::ChannelCount::Stereo)
+            ->setSampleRate(48000)
+            ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
             ->setUsage(oboe::Usage::Game)
             ->setDataCallback(callbacks)
             ->setErrorCallback(callbacks);
@@ -124,7 +129,9 @@ bool AudioDevice::open(AudioRenderFn fn, void* user) {
     impl_->callbacks->user = user;
     impl_->callbacks->disconnected.store(false);
     impl_->callbacks->failed.store(false);
-    return impl_->openStream();
+    if (impl_->openStream()) return true;
+    impl_->retryAtNs = nowNs() + 500000000ull;  // (audit 2026-11-15: a failed first open was never tried again; update() retries it)
+    return false;
 }
 
 void AudioDevice::close() {

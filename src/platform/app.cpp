@@ -791,6 +791,12 @@ void App::frame(u64 loopStartNs) {
     audioDoneNs_ = nowNs();
     FrameDraw draw;
     if (!renderer_.beginFrame(draw)) {
+        if (renderer_.fatal() && !quit_) {
+            // (audit 2026-11-15) The GPU device is lost or a submit failed: the app closes (the high scores and settings are
+            // already saved as they change) rather than hang on a frozen screen; launched again, it starts afresh.
+            RF_ERR("renderer: the GPU cannot draw any more (device lost or a failed submit): closing");
+            quit_ = true;
+        }
         discontinuity_ = true;
         SDL_Delay(2);
         return;

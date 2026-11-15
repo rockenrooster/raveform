@@ -201,14 +201,27 @@ void World::arenaBar(const Phrase& ph, u32 bar, double barTick) {
             }
         }
     }
+    // Rifts: open with the Groove of the Track's second cycle, through the Build; at the Drop they close and give nothing.
+    // A Rift Surge's open at the start of a Build and close at the end of the Drop.
+    const auto riftOpen = [&](const ArenaBody& b) {
+        return b.surge ? (ph.section == Section::Build || ph.section == Section::Drop) && !fight
+                       : ph.cycle == 2 && (ph.section == Section::Groove || ph.section == Section::Build) && !fight;
+    };
+    if (!host) {
+        // (audit 2026-11-15) A client opens its Rifts by the same rule, on the same bar line (the phrase is the host's): only the
+        // host ever did, so on a client an open Rift took no shots (from stayed 0) while its fodder streamed out of it. The host
+        // still brings the fodder through and closes it (logArena 7).
+        for (ArenaBody& b : arena_)
+            if (b.alive && b.kind == static_cast<u8>(StructKind::Rift) && b.from <= 0.0 && riftOpen(b)) {
+                b.from = barTick;
+                emitCue(BossCue::RiOpen, barTick, 0, 0.0f, b.pos);
+            }
+    }
     if (host) {
-        // Rifts: open with the Groove of the Track's second cycle, through the Build; at the Drop they close and give nothing.
-        // A Rift Surge's open at the start of a Build and close at the end of the Drop.
         for (u32 k = 0; k < kArenaBodies; ++k) {
             ArenaBody& b = arena_[k];
             if (!b.alive || b.kind != static_cast<u8>(StructKind::Rift)) continue;
-            const bool open = b.surge ? (ph.section == Section::Build || ph.section == Section::Drop) && !fight
-                                      : ph.cycle == 2 && (ph.section == Section::Groove || ph.section == Section::Build) && !fight;
+            const bool open = riftOpen(b);
             const bool closing = b.surge ? (ph.section == Section::Break) : (ph.cycle == 2 && ph.section == Section::Drop) || ph.cycle == 3 ||
                                                                                ph.trackChange;
             if (b.from <= 0.0 && open) {
@@ -1022,7 +1035,12 @@ void World::applyArenaOp(const NetOp& op) {
             o.hpMax = o.hp;
             break;
         }
-        case 4: startEvent(static_cast<EventKind>(a), op.tick); arenaEvent_.pos = Vec2{op.x, op.y}; arenaEvent_.dir = Vec2{op.x2, op.y2}; break;
+        case 4:
+            if (a >= kEventKinds) break;  // (audit 2026-11-15: the parser lets an arena op's value reach 31; eight events exist)
+            startEvent(static_cast<EventKind>(a), op.tick);
+            arenaEvent_.pos = Vec2{op.x, op.y};
+            arenaEvent_.dir = Vec2{op.x2, op.y2};
+            break;
         case 5:
             if (a < kArenaMeteors) {
                 meteors_[a].at = Vec2{op.x, op.y};

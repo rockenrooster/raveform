@@ -287,6 +287,9 @@ public:
     // False: skip this frame (no surface, minimized, swapchain out of date).
     bool beginFrame(FrameDraw& draw);
     bool endFrame(const FrameDraw& draw, const FrameParams& params, bool capture);
+    // (audit 2026-11-15) The GPU device is lost or a submit failed: nothing more can be drawn (a submit that failed left its
+    // frame's fence unsignalled, and the next wait on it would hang). The app closes instead of freezing.
+    bool fatal() const { return fatal_; }
     bool saveCapture(const char* path);
 
     const GpuContext& gpu() const { return gpu_; }
@@ -467,6 +470,7 @@ private:
 
     bool rebuildPending_ = false;
     bool surfaceLost_ = false;
+    bool fatal_ = false;
     u32 rebuilds_ = 0;
     u32 lastCapsules_ = 0;
     FrameTimings timings_;

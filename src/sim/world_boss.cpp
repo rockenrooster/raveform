@@ -1210,6 +1210,10 @@ void World::updateBoss(float dt) {
         s.bodyPrevAng[k] = s.bodyAng[k];
     }
     if (s.dying) {
+        // (audit 2026-11-15) Cadence's and the Arpeggiator's deaths are sounded in their own updates' dying branches (the four
+        // bursts on the last bar's beats; the run of chirps up the scale), which this return came before: neither ever played.
+        if (s.kind == BossKind::Cadence) updateCadence(dt);
+        else if (s.kind == BossKind::Arpeggiator) updateArpeggiator(dt);
         if (s.payoutTick >= 0.0 && m1_ >= s.payoutTick) {
             s.payoutTick = -1.0;
             bossPayout();

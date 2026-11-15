@@ -302,7 +302,7 @@ void Play::frame(float realDt) {
             }
         }
     }
-    const bool frozen = countIn_ || (flow_ && (screen_ == Screen::Paused || (screen_ == Screen::Settings && settingsBack_ == Screen::Paused)));
+    const bool frozen = countIn_ || (flow_ && underPauseMenu());
     paused_ = frozen;
     if (frozen) {
         stats_.ticksLastFrame = 0;
@@ -501,6 +501,10 @@ void Play::afterTick() {
             case EventType::Restart:
                 controller_.reset(w.player(seat_).pos);
                 touch_.reset();
+                // (audit 2026-11-15) Keys let go on a screen (the game over, a count-in) never reached keys_: a new run drifted
+                // on a key released before it, and a Nova or Dash key held down kept its first press from counting.
+                for (bool& k : keys_) k = false;
+                keyNova_ = keyDash_ = mouseFire_ = mouseNova_ = false;
                 // M6 (screens.md "Transitions"): the drop-in's downbeat; home's title bar line.
                 if (trans_ == Trans::Wait) dropInLands(e.tick);
                 else if (trans_ == Trans::Home) homeArrives(e.tick);
@@ -547,9 +551,11 @@ void Play::afterTick() {
                 break;
             case EventType::WarpStart:
                 // One swell per landing beat, ending as the enemies become solid.
+                // (audit 2026-11-15: this, the enemy shot's blip and the Nova's blast went to the band in run ticks, with no song
+                // offset: after any pause, and in co-op, they sounded early, or late and silent, or queued minutes ahead)
                 if (bandDrives_ && e.tick != lastWarpTick_) {
                     const float pan = clampf((e.x - w.player(seat_).pos.x) / 800.0f, -1.0f, 1.0f) * 0.6f;
-                    band_->warp(e.tick, pan);
+                    band_->warp(e.tick + (coop() ? netBandOffset_ : clock_.offset()), pan);
                     lastWarpTick_ = e.tick;
                 }
                 break;
@@ -560,7 +566,8 @@ void Play::afterTick() {
                     lastTellTick_ = e.tick;
                     band_->playSfx(audio::Sfx::Tick, 0.7f);
                     // (M5: a fight's own lines carry kBossSpecies, no species.)
-                    if (e.species != kBossSpecies && w.species().get(e.species).ranged()) band_->sfxAt(audio::Sfx::EnemyShot, e.tick);
+                    if (e.species != kBossSpecies && w.species().get(e.species).ranged())
+                        band_->sfxAt(audio::Sfx::EnemyShot, e.tick + (coop() ? netBandOffset_ : clock_.offset()));
                 }
                 break;
             case EventType::Hit:
@@ -578,7 +585,7 @@ void Play::afterTick() {
                 // M5: Black Hole's Nova is its own cue (the three-beat inhale and the blast with the sub drop).
                 const PlayerState& me = w.player(seat_);
                 const bool hole = me.holeFrom >= 0.0 && me.holeBlow == e.tick;
-                if (bandDrives_ && e.a == seat_ && !hole) band_->nova(e.tick);
+                if (bandDrives_ && e.a == seat_ && !hole) band_->nova(e.tick + (coop() ? netBandOffset_ : clock_.offset()));
                 break;
             }
             case EventType::Upgrade:
@@ -1165,7 +1172,7 @@ void Play::applySettings() {
     if (band_ && band_->active()) {
         if (band_->variant() != settings_.variant) band_->setVariant(settings_.variant);
         // The music under pause (and its settings): dipped and behind the low-pass, until the count-in ends.
-        const bool underPause = screen_ == Screen::Paused || (screen_ == Screen::Settings && settingsBack_ == Screen::Paused);
+        const bool underPause = underPauseMenu();
         const float pauseDip = underPause ? 0.45f : 1.0f;
         band_->setGains(settings_.music * settings_.master * pauseDip, settings_.effects * settings_.master);
         band_->setMuffle(underPause);
@@ -1201,6 +1208,9 @@ void Play::openSettings(Screen back) {
 }
 
 void Play::pauseRun() {
+    // (audit 2026-11-15) A pause in the drop-in's arrival (the run's first two beats) ends the arrival now: it ends on the run's
+    // clock, which a solo pause holds, and while it lasts the screens take no input, so PAUSED could never be left.
+    if (flow_ && screen_ == Screen::Run && trans_ == Trans::Arrive) trans_ = Trans::None;
     if (coop()) {
         // M4 stage B (GAME_DESIGN 10): any player may pause; it holds for everyone on the next beat (even while down).
         if (flow_ && screen_ == Screen::Run) coopPause(true);
@@ -1454,7 +1464,18 @@ void Play::padButton(int button, bool down) {
         case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: padDash_ = down; break;   // LB / L1
         case SDL_GAMEPAD_BUTTON_SOUTH:
         case SDL_GAMEPAD_BUTTON_START:
-            if (down && !world_->player(seat_).alive) retryRequest_ = true;
+            if (!down) break;
+            if (flow_) {
+                // (audit 2026-11-15) The screens: A / Start is the screen's main control as Enter is (RETRY on the game over, RESUME,
+                // PLAY); Start pauses a run. Until now A restarted the world behind the game over, which stayed up.
+                if (screen_ != Screen::Run) keyPrimary_ = true;
+                else if (button == SDL_GAMEPAD_BUTTON_START) pauseRun();
+            } else if (!world_->player(seat_).alive) {
+                retryRequest_ = true;
+            }
+            break;
+        case SDL_GAMEPAD_BUTTON_EAST:  // B: back, as Escape
+            if (down && flow_ && screen_ != Screen::Run) keyBack_ = true;
             break;
         default: break;
     }

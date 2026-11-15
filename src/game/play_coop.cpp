@@ -189,6 +189,11 @@ void Play::leaveCoop(const char* message) {
     netRunStarted_ = netSongStarted_ = false;
     coopFlowActive_ = coopRunShown_ = coopOver_ = false;
     paused_ = false;
+    // (audit 2026-11-15: a host that left during its band's re-align published no song in its next room for 12 s)
+    hostRealign_ = false;
+    hostBandShift_ = 0.0;
+    hostRealignOkS_ = hostRealignS_ = 0.0f;
+    netServoFromUs_ = netServoAt_ = 0;
     if (bandDrives_ && band_) {
         band_->setRate(1.0f);
         band_->setHold(false);
@@ -226,8 +231,13 @@ void Play::leaveCoop(const char* message) {
 
 void Play::appBackground() {
     // Pause-on-leave (2026-11-14): this app leaves the screen. In a co-op run the room pauses on the next sixteenth and waits
-    // for this player (what the session sends now leaves before the main loop stops).
-    if (!session_ || !session_->running()) return;
+    // for this player (what the session sends now leaves before the main loop stops). Solo (audit 2026-11-15): the run pauses,
+    // so a call or a trip home no longer drops the player back into a fight in full swing.
+    if (!session_) {
+        if (flow_ && screen_ == Screen::Run) pauseRun();
+        return;
+    }
+    if (!session_->running()) return;
     awayAtUs_ = net::wireNowUs();
     session_->goAway(awayAtUs_);
     RF_LOG("net: away: this app left the screen at run bar %u; the room pauses and waits up to %u s", world_->phrase().bar, net::kAwayWaitMs / 1000u);
@@ -319,11 +329,15 @@ void Play::coopFlow() {
             for (bool& k : keys_) k = false;
             applySettings();
         }
-        if (!held && (screen_ == Screen::Paused || (screen_ == Screen::Settings && settingsBack_ == Screen::Paused))) {
+        if (!held && underPauseMenu()) {
             screen_ = Screen::Run;
             applySettings();
         }
     }
+    // (audit 2026-11-15) Every ship down while a pause was coming (or one a client asked for after): the game over is up and the
+    // run is held on the pause's tick, which the host's RETRY could never get past (its drop-in waited for good, HOME disabled).
+    // The host lifts it; its count-in runs behind the game over.
+    if (coopOver_ && s.host() && s.paused() && !s.resuming()) s.requestPause(false);
     if (coopRunShown_ && screen_ == Screen::Run && !coopOver_) runSeconds_ += frameDt_;
     if (screen_ == Screen::GameOver) overS_ += frameDt_;
     // --coop-start [N] (tests, pictures, device runs): the host starts once N are seated and ready, and goes again
