@@ -4,6 +4,26 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (late night), "multiplayer is a little buggy still": a crash in the audio thread
+
+Co-op on the two phones here (the Moto hosting, the Galaxy Tab SM-X230 joining, both bots; our APK, the locks): the Moto's
+process died at Track 3's second Drop, the moment the Choir came in, and the Tab's run ended with "THE HOST LEFT". The
+tombstone: SIGSEGV (SEGV_ACCERR) on the AudioTrack thread in `Engine::renderBlock` (engine.cpp, a mono one-shot at rate 1:
+`ldr q20, [x26]`, the sample's data). The cause, reproduced on the desktop: a recipe that *ends* on its tick (the reversed
+cymbal, the swelling crackle) asked for after that tick has been rendered was started past its sample's end (`from` = the
+sample's length plus the lateness), and the render's `frames - pos` wrapped (u32), so the voice read a block past the buffer:
+garbage in the mix (a click or burst) or, where the buffer ends on a guard page, the crash. A cue at the sim's own tick is
+always that late (the render runs ~5 ticks ahead of it): the arena's Rift closing at a cycle-2 Drop and a Rift destroyed
+(`BossCue::RiClose`, "a reversed cymbal cut short, then glass") and a Cloaked elite (`ElCloaked`) send one, in solo play
+as in co-op. Fixed in `Engine::playSample` (a start at or past the end plays nothing) with a guard in the render; test
+`testLateEndingRecipes` (audio suite: before the fix the late cymbal left energy 0.003 and the crackle 0.22 where silence was
+due). Those cues' reversed cymbals are now silent (their glass and the rest still sound): as sent, they could never be heard.
+
+Also: the 20 s co-op log line `net: world:` (what each peer holds and draws, for the earlier "bullets on p2 and p3" report)
+now has the clients' kill predictions (confirmed, undone), late spawns and unknown ids. On these phones the bullets drew on
+both peers in every 20 s window; a 2.5 s trip to the background on the client came back with one visible correction (65 wu on
+screen for that window), the session kept.
+
 ## 2026-11-14 (late night), the Reprise's implosion quick, a big shake and a flashbang
 
 "Implosion needs to be quick and big camera shake on explosion", then "the explosion should also have a borderline flashbang

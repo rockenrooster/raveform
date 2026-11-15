@@ -2259,6 +2259,43 @@ void testSfxRate() {
     const double one = ringFrames(1.0f), half = ringFrames(0.5f);
     CHECK_MSG(one > 0.0 && half > 1.6 * one && half < 2.4 * one, "the growl rings %.0f frames at rate 1, %.0f at 0.5", one, half);
 }
+
+// (2026-11-14: a phone hosting co-op crashed in the audio thread, reading past a reversed cymbal's sample.) A recipe that ends on
+// its tick (the reversed cymbal, the swelling crackle) asked for after that tick has been rendered plays nothing; one whose start
+// has passed and whose end has not plays what is left of it.
+void testLateEndingRecipes() {
+    const auto late = [](Recipe r, double endFromNowTicks, double& energy, bool& finite) {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Script), 0, 0));
+        Capture warm;
+        runEngine(e, warm, kRate, 256);
+        freeCapture(warm);
+        Command k = cmd(CmdType::Recipe, static_cast<u8>(r), 0, 255, 1.0f);
+        k.when = Timing::AtTick;
+        k.tick = e.tempo().tickAt(static_cast<double>(kRate)) + endFromNowTicks;
+        k.z = 1.0f;      // a beat long
+        k.level = 1.0f;  // (the crackle: the swelling one, which ends on its tick)
+        e.post(k);
+        Capture c;
+        runEngine(e, c, kRate, 256);
+        energy = 0.0;
+        finite = true;
+        for (u64 i = 0; i < 2 * c.frames; ++i) {
+            finite = finite && std::isfinite(c.out[i]);
+            energy += static_cast<double>(c.out[i]) * c.out[i];
+        }
+        freeCapture(c);
+    };
+    for (Recipe r : {Recipe::RevCymbal, Recipe::CrackleShot}) {
+        double past = 0.0, tail = 0.0;
+        bool f0 = true, f1 = true;
+        late(r, -48.0, past, f0);  // its end half a beat ago
+        late(r, 48.0, tail, f1);   // half a beat of it left
+        CHECK_MSG(f0 && f1 && past < 1e-12 && tail > 1e-6, "%s asked for late: energy %.3g once its end had passed (want 0), %.3g with half a beat left",
+                  r == Recipe::RevCymbal ? "the reversed cymbal" : "the swelling crackle", past, tail);
+    }
+}
 }  // namespace
 
 // The owner's play of f0624e5: the set list's tempi are 110 + 5 a Track; the engine's tests were written at 120 + 6 (their frame
@@ -2301,6 +2338,7 @@ int main() {
         {"no allocations in any mode", testNoAllocations},
         {"pause low-pass on the music (M3 stage C)", testPauseMuffle},
         {"effect playback rate (M3 stage C)", testSfxRate},
+        {"a reversed cymbal asked for after its end plays nothing past its sample (2026-11-14, a co-op host's crash)", testLateEndingRecipes},
         {"no kick on the beat: beats from the clock, sidechain from the kicks (M5: Tracks 7, 9, 10)", testKicklessBeats},
         {"no kick on the beat: fill, Build, riser, swell (M5: Tracks 7, 9, 10)", testKicklessBuild},
         {"the set list: nine Track changes, 120 to 174 BPM (M5)", testSetListTrackChanges},

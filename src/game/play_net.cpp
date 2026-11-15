@@ -260,6 +260,14 @@ void Play::netFrame(float realDt) {
         RF_LOG("net: diag %s", line);
         net::formatDiagPoses(s.diag(), s.seats(), s.seat(), line, sizeof line);
         RF_LOG("net: diag %s", line);
+        // (2026-11-14, "bullets on p2 and p3 are not rendering", intermittent): what this device's world holds and draws, to set
+        // beside the other peers' lines for the same 20 s.
+        RF_LOG("net: world: Track %u bar %u, %u enemies, %u enemy bullets alive (%u drawn on screen), %u fired in all (%u held, %u dropped), "
+               "%u shots, players alive %u, boss %s; kills predicted %u (confirmed %u, undone %u), late spawns %u, unknown ids %u",
+               w.phrase().track, w.phrase().bar, w.enemies().count, w.bullets().count, view_.stats().bulletsInView, c.bulletsAll, c.bulletsHeld,
+               c.bulletsDropped, w.shots().count,
+               (w.player(0).alive ? 1u : 0u) | (w.player(1).alive ? 2u : 0u) | (w.player(2).alive ? 4u : 0u) | (w.player(3).alive ? 8u : 0u),
+               w.boss().active ? (w.boss().dying ? "dying" : "on") : "off", c.predicted, c.confirmed, c.undone, c.lateSpawns, c.unknownIds);
         if (!s.host()) {
             net::formatDiagCorrections(s.diag(), line, sizeof line);
             RF_LOG("net: diag %s", line);

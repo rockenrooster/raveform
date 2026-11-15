@@ -485,7 +485,7 @@ void Engine::playRecipeAt(Recipe r, i32 midi, float gain, float pan, i64 frame, 
             const float rate = want > have ? static_cast<float>(have / want) : 1.0f;
             double from = want > have ? 0.0 : have - want;
             i64 start = frame - static_cast<i64>(want);
-            if (start < frame_) {  // M5: asked for late, it still ends on its tick (what is left of it plays)
+            if (start < frame_) {  // M5: asked for late, it still ends on its tick (what is left of it plays; nothing once it has passed)
                 from += static_cast<double>(frame_ - start) * rate;
                 start = frame_;
             }

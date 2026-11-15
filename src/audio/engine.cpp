@@ -763,6 +763,11 @@ void Engine::shapeLead(LeadVoice* v, float bend, float cutoff, bool reverse) {
 Engine::SampleVoice* Engine::playSample(i32 id, Bus bus, i64 frame, float gain, float pan, float rate, double from) {
     if (id < 0) return nullptr;
     const Sample& s = bank_->sample(id);
+    // (2026-11-14, a phone hosting co-op crashed in this thread: a reversed cymbal asked for after the frame it ends on had been
+    // rendered was started past its sample's end, and the render's frames - pos wrapped and read beyond the buffer.) A start at
+    // or past the end has nothing left to play.
+    if (!(from >= 0.0)) from = 0.0;
+    if (!s.data || s.frames == 0 || from >= static_cast<double>(s.frames)) return nullptr;
     SampleVoice* v = allocVoice(smp_, kSampleVoices, order_[PoolSample]);
     v->active = true;
     v->data = s.data;
@@ -2609,6 +2614,10 @@ void Engine::renderBlock(float* out, u32 n, u32 channels) {
             if (ended) v.active = false;
         } else if (v.rate == 1.0f) {
             u32 pos = static_cast<u32>(v.pos);
+            if (pos >= v.frames) {  // (never: playSample refuses such a start; frames - pos below would wrap)
+                v.active = false;
+                continue;
+            }
             u32 cnt = n - i0;
             if (v.frames - pos < cnt) cnt = v.frames - pos;
             if (v.channels == 2) {
