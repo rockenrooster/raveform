@@ -23,6 +23,11 @@ float clampU(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
 float wrapPi(float a) { return std::remainder(a, 6.28318530718f); }  // (-pi, pi]
 const Vec3 kIce{0.55f, 0.85f, 1.0f};  // (Burn's fire: play_view_feedback.cpp burnFlames)
 constexpr float kBoltS = 0.09f;       // look.md 5: a zap's 90 ms
+// The owner, 2026-11-14 ("just a more visible lightning zap, like brighter glow or something on the zap"): Storm Coil's and Chain
+// Storm's zaps are held 140 ms (full for the first 50 ms), their strands brighter and thicker (the middle one white-hot), with a
+// pooled glow along each in the owner's light colour (gold for Chain Storm) and a brighter spark at each end.
+constexpr float kHeavyBoltS = 0.14f, kHeavyBoltHoldS = 0.05f;
+constexpr float kHeavyGlowStepWu = 14.0f, kHeavyGlowWu = 18.0f, kHeavyGlow = 0.45f;
 // The owner's play of f0624e5 (Fractal "isn't visually clear"): a Fork's split drawn as a Y of light (look.md 5): two straight
 // arms along the halves' paths in their colour (60 degrees round the hue wheel while they can split again, 120 for the last).
 constexpr u8 kBoltForkMore = 4, kBoltForkLast = 5;
@@ -379,28 +384,40 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
             d.sparkles.glow(toScene(b.a), 9.0f * refPx_, c * (0.9f * lv));
             continue;
         }
-        if (age < 0.0f || age > kBoltS) continue;
-        const float lvl = (b.owner == w.viewPlayer() ? 1.0f : 0.6f) * (reduceFlashing_ ? 0.8f : 1.4f);  // (M6: reduce flashing)
-        const Vec3 outer = (b.style == 2 ? palettes_->player[3] : palettes_->player[b.owner < kMaxPlayers ? b.owner : 0]) * lvl;
+        const bool heavy = b.style == 2 || b.style == 3;  // Chain Storm's and Storm Coil's zaps (2026-11-14)
+        if (age < 0.0f || age > (heavy ? kHeavyBoltS : kBoltS)) continue;
+        const float fade = heavy && age > kHeavyBoltHoldS ? 1.0f - (age - kHeavyBoltHoldS) / (kHeavyBoltS - kHeavyBoltHoldS) : 1.0f;
+        const float lvl = (b.owner == w.viewPlayer() ? 1.0f : 0.6f) * (reduceFlashing_ ? 0.8f : 1.4f) * fade;  // (M6: reduce flashing)
+        const u32 own = b.owner < kMaxPlayers ? b.owner : 0u;
+        const Vec3 tone = b.style == 2 ? palettes_->player[3] : (heavy ? palettes_->playerLight[own] : palettes_->player[own]);
+        const Vec3 outer = tone * lvl;
         const Vec2 dv = b.b - b.a;
         const float len = length(dv);
         if (len < 1.0f) continue;
         const Vec2 dir = dv * (1.0f / len), side = perpU(dir);
-        const bool heavy = b.style == 2 || b.style == 3;  // Chain Storm's and Storm Coil's zaps, thicker (2026-11-14)
         for (u32 strand = 0; strand < 3; ++strand) {
-            const Vec3 c = strand == 1 ? W1 * lvl : outer;
+            const Vec3 c = strand == 1 ? W1 * (lvl * (heavy ? 1.6f : 1.0f)) : outer;
+            const float hw = heavy ? (strand == 1 ? 1.1f : 0.9f) : 0.6f;
             Vec2 prev = b.a;
             float along = 0.0f;
             while (along < len) {
                 along = std::fmin(len, along + rng_.range(18.0f, 30.0f));
                 const float push = along >= len ? 0.0f : rng_.range(-10.0f, 10.0f);
                 const Vec2 p = b.a + dir * along + side * push;
-                d.scene.line(toScene(prev), toScene(p), (heavy ? 0.9f : 0.6f) * refPx_, c, c, 0);
+                d.scene.line(toScene(prev), toScene(p), hw * refPx_, c, c, 0);
                 prev = p;
             }
         }
-        d.sparkles.glow(toScene(b.a), (heavy ? 7.0f : 5.0f) * refPx_, outer * (heavy ? 0.8f : 0.6f));
-        d.sparkles.glow(toScene(b.b), (heavy ? 9.0f : 5.0f) * refPx_, outer * (heavy ? 1.0f : 0.6f));
+        if (heavy && shown(kMuteFx)) {
+            // The glow along it: pooled light a disc every 14 wu on the line between its ends.
+            const u32 n = 1u + static_cast<u32>(len / kHeavyGlowStepWu);
+            for (u32 k = 0; k < n; ++k) {
+                const Vec2 p = b.a + dir * (len * (static_cast<float>(k) + 0.5f) / static_cast<float>(n));
+                if (visible(p, kHeavyGlowWu)) d.pools.glow(toScene(p), kHeavyGlowWu * pxPerWu_, tone * (kHeavyGlow * lvl));
+            }
+        }
+        d.sparkles.glow(toScene(b.a), (heavy ? 9.0f : 5.0f) * refPx_, outer * (heavy ? 1.0f : 0.6f));
+        d.sparkles.glow(toScene(b.b), (heavy ? 13.0f : 5.0f) * refPx_, mix(outer, W1 * lvl, heavy ? 0.4f : 0.0f) * (heavy ? 1.3f : 0.6f));
     }
 
     // Frozen bodies wear a ring of ice; burning ones glow like embers.

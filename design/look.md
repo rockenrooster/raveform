@@ -494,8 +494,10 @@ teammate's at 0.6; reduce flashing halves the flashes).
   streaks on spirals, faster near the core, rings falling inward, a white photon ring round a dark core, all quickening and
   brightening toward the blast. Placed: a ring folds in, light is drawn to it. Blown: a white flash, debris of light, a ring,
   the lattice thrown out, a shake (Black Hole's harder).
-- **Storm Coil.** Its reach is a dashed ring turning slowly with three crackles crawling round it; its zaps (and Chain
-  Storm's) are thicker and each ends in a small star. **Aegis.** The arc glows along its length and at its ends; a block
+- **Storm Coil.** (No ring for its reach: the owner, "the ring for storm coil isn't needed, just a more visible lightning
+  zap, like brighter glow".) Its zaps (and Chain Storm's) are held 140 ms, full for the first 50; their strands thicker and
+  brighter, the middle one white-hot; a pooled glow along each in the owner's light colour (gold for Chain Storm); a brighter
+  spark at each end and a star at the body it strikes. **Aegis.** The arc glows along its length and at its ends; a block
   flashes white where it struck (a star and a ring, sparks thrown off) and the whole arc flares for 0.18 s.
 - **A meteor** accelerates into the ground and smashes: its rock flies apart in pieces, a white star, a crater rim glowing
   gold-white to danger for 1.6 s with embers, a gold pool, the lattice punched, a hard shake.

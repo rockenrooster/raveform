@@ -12,8 +12,9 @@
 // - Singularity's well and Black Hole's singularity: the lattice falls into them; an accretion disc (streaks on spirals, faster
 //   near the core), rings falling in, a white photon ring round a dark core, all quickening toward the blast; placed, a ring folds
 //   in and light is drawn to it; blown, a white flash, debris of light, a ring, the lattice thrown out, a shake.
-// - Storm Coil ("stormguard"): its reach a dashed ring with three crackles crawling round it; its zaps (and Chain Storm's) thicker,
-//   each ending in a small star. Aegis: the arc glows; a block flashes white where it struck and the whole arc flares.
+// - Storm Coil ("stormguard"; the owner then: "the ring for storm coil isn't needed, just a more visible lightning zap"): its zaps
+//   (and Chain Storm's) brighter and held longer, with a pooled glow along each, each ending in a star. Aegis: the arc glows; a block
+//   flashes white where it struck and the whole arc flares.
 // - The meteor smashes (play_view_arena.cpp falls it faster and faster): its rock flies apart, a white star, a crater rim glowing
 //   for a bar, the lattice punched, a hard shake.
 // - Event Horizon's death: over the bar light is torn in toward the point and the lattice falls in after it, the screen trembling;
@@ -51,7 +52,6 @@ enum FlashKind : u8 { kFlCrit = 1, kFlBlock, kFlZap, kFlImplode, kFlCrater, kFlR
 constexpr float kCritFlashWu = 46.0f, kCritFlashS = 0.22f, kCritPoolWu = 70.0f;
 constexpr u32 kCrescTicks = 10;
 constexpr float kCrescStepS = 0.3f;
-constexpr float kCoilCrawlDeg = 22.0f;
 constexpr float kAegisFlareS = 0.18f;
 // The lattice's pull (wu at its peak, rising by half toward the blast), where it peaks and how far it reaches: a funnel round the
 // core, hot only near it (a pull over the whole reach heated the whole frame white).
@@ -201,7 +201,7 @@ void PlayView::wellBlow(const Event& e, float t) {
 
 void PlayView::zapHit(Vec2 at, u32 owner, bool gold, float t) {
     const Vec3 c = gold ? palettes_->player[3] : palettes_->playerLight[owner < kMaxPlayers ? owner : 0];
-    addFlash(kFlZap, at, 16.0f, 0.12f, mix(c, whiteF(), 0.4f), t, rng_.range(0.0f, kPi));
+    addFlash(kFlZap, at, 24.0f, 0.16f, mix(c, whiteF(), 0.4f), t, rng_.range(0.0f, kPi));
 }
 
 void PlayView::meteorImpact(Vec2 at, float ringWu, float t) {
@@ -536,29 +536,8 @@ void PlayView::drawFeedbackFx(FrameDraw& d, const ViewInput& in) {
         }
         if (!pq.alive) continue;
 
-        // Storm Coil: its reach, a dashed ring turning slowly, three crackles crawling round it (jagged afresh every frame).
-        if (const u8 L = l.riffs[riffIndex(kStormCoil)]; L && fx) {
-            const float R = tuning::kCoilReachWu[L < 5 ? L : 5];
-            const u32 n = 48;
-            const float turn = t * 0.25f;
-            const Vec3 ring = light * (0.32f + 0.18f * beat_);
-            for (u32 j = 0; j < n; j += 2) {
-                const float a0 = turn + kTau * static_cast<float>(j) / n, a1 = turn + kTau * static_cast<float>(j + 1) / n;
-                d.scene.line(toScene(ship + dirF(a0) * R), toScene(ship + dirF(a1) * R), 0.5f * refPx_, ring, ring, 0);
-            }
-            const Vec3 crack = mix(light, Wq, 0.6f) * 1.3f;
-            const float span = kCoilCrawlDeg * (kTau / 360.0f);
-            for (u32 k = 0; k < 3; ++k) {
-                const float a0 = t * (1.1f + 0.35f * static_cast<float>(k)) + 2.1f * static_cast<float>(k);
-                Vec2 prev = ship + dirF(a0) * R;
-                for (u32 s = 1; s <= 5; ++s) {
-                    const Vec2 p = ship + dirF(a0 + span * static_cast<float>(s) / 5.0f) * (R + (s < 5 ? rng_.range(-9.0f, 9.0f) : 0.0f));
-                    d.scene.line(toScene(prev), toScene(p), 0.6f * refPx_, crack, crack, 0);
-                    prev = p;
-                }
-                d.sparkles.glow(toScene(prev), 6.0f * refPx_, light * 0.9f);
-            }
-        }
+        // (Storm Coil's reach ring is gone: the owner, 2026-11-14, "the ring for storm coil isn't needed, just a more visible
+        // lightning zap"; its zaps glow instead, play_view_upgrades.cpp.)
 
         // Aegis: the arc glows along its length and at its two ends; a block flares the whole arc white.
         if (const u8 st = l.mods[kAegis]) {

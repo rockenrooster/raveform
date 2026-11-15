@@ -22,8 +22,9 @@ much faster, the cut kept when leaving the app, the font's own letter spacing, t
   and Singularity**: the lattice falls into them (per-well reach, `LatticeWell`), an accretion disc of streaks on spirals, rings
   falling in, a white photon ring round a dark core, all quickening to the blast; placed, a ring folds in; blown, a white
   flash, debris of light, a ring, the lattice thrown out, a shake. **"Stormguard"** (no upgrade has that name: Storm Coil and
-  Aegis both got it): Storm Coil's reach a dashed ring with three crackles, its zaps (and Chain Storm's) thicker, each ending in
-  a star; Aegis's arc glows, and a block (`kFxAegis`, never drawn before) flashes white where it struck and flares the arc.
+  Aegis both got it): Storm Coil's zaps (and Chain Storm's) held 140 ms, brighter and thicker, with a pooled glow along each
+  and a star where each strikes (a first reach ring was dropped: "the ring for storm coil isn't needed, just a more visible
+  lightning zap"); Aegis's arc glows, and a block (`kFxAegis`, never drawn before) flashes white where it struck and flares the arc.
   **The meteor** falls faster and faster (its speed tripling over the fall) and smashes: its rock in pieces, a white star, a
   crater rim glowing for a bar and more, a harder shake. **Event Horizon's death**: its burst never played (the boss went on the
   very tick it was due, before the frame that would have shown it: `PlayView::drawFight` plays it now); over the death bar light
