@@ -517,8 +517,8 @@ teammate's at 0.6; reduce flashing halves the flashes).
   the core: its rays draw back, brighter; the ten Tracks' colours come home
   first, ten thin rings closing from beyond the frame into the core (its shockwave run backwards); light streaks spiral in faster
   and faster; the lattice falls in and goes dark over the last third; the screen trembles harder; the core shrinks to a blinding
-  point. On that beat the burst with its impact: a flashbang (the whole frame white for two frames on the HUD's additive layer,
-  falling away over about half a second, a gold afterglow for a second; reduce flashing: a soft glow at 0.18), a big camera shake
+  point. On that beat the burst with its impact: a flashbang (the whole frame white for 0.12 s on the HUD's additive layer, then
+  falling away with a 0.45 s time constant, a gold afterglow for 1.8 s; reduce flashing: a soft glow at 0.18), a big camera shake
   (26 ref px past the 6 px cap of every other shake, falling away over about half a second; reduce flashing: 9), the flashes and
   sparks, and the shockwave of the ten colours.
 - **Event Horizon's death.** Over the death bar light is torn in toward the point (streaks in the Track's hues on spirals,

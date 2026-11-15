@@ -10,7 +10,7 @@ M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in
 visual": the Reprise's payout (its Shards) now comes on the first beat line at least three quarters of a beat after its death
 (`sim::repriseBurstTick`, 0.75 to 1.75 beats; until now the bar line at least half a bar on, up to a bar and a half), the
 implosion running to it; the reversed cymbal is as long as the implosion (`BossCue::RpDeath` carries its length in f) and the
-impact lands on that beat. The burst: a flashbang (the HUD's additive layer, white for two frames, falling away over ~0.5 s) and a
+impact lands on that beat. The burst: a flashbang (the HUD's additive layer, white for 0.12 s, then a 0.45 s fall; asked again after a first two-frame one) and a
 big shake channel (`PlayView::bigShake_`, 26 ref px past the look's 6 px cap, ~0.45 s). Video `captures\video\reprise_death.mp4`
 (the `m6_fx_rp_death` picture with a long strip: every frame from before the kill, the kill on a bar's third beat).
 
