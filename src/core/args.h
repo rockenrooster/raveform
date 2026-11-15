@@ -77,6 +77,7 @@ struct AppArgs {
     float fastForward = 0.0f;  // --fast-forward S: S seconds of the game before the first frame (pictures)
     bool noHits = false;       // --nohits: hits cost nothing (a measured run deep in the game, e.g. Track 3; C2)
     bool loadoutMax = false;   // M5 --loadout max: every Mod at its cap, the heaviest Riffs at 5, Chorus and Fractal held (benchmarks)
+    bool vivid = false;        // M6 --vivid: COLOUR VIVID (Display-P3 where offered) for this run, not saved (device checks)
     char picture[32] = {};     // --picture <name>: a scripted review scene (fire, kill_small, ..., sentry)
     char fight[24] = {};       // --fight <id>[:<phase>] (M5): the run starts in the fight's home Track and plays on to it
     u8 fightPhase = 0;         // ... with its parts taken down to that phase (0 its first; a mini-boss: 1 half health)

@@ -22,6 +22,7 @@ struct Settings {
     u8 frameRate = 0;            // 0 Auto, 1 60, 2 90, 3 120
     bool reduceFlashing = false;
     u8 uiScale = 1;              // M6: HUD text and touch controls 0 90%, 1 100%, 2 115%, 3 130%
+    bool vivid = false;          // M6 (TECH_SPEC 5.2): COLOUR VIVID, Display-P3 where the screen offers it (STANDARD: sRGB)
     // First launch.
     bool noticeSeen = false;     // the photosensitivity notice was acknowledged
     u32 probedTier = 0;          // the tier probe's pick (0: not probed yet), 1 Low .. 4 Ultra

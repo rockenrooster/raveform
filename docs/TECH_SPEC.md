@@ -192,6 +192,11 @@ Only passes 2 and 6 are full resolution.
   projections by the rotation. Recreate the swapchain on `VK_SUBOPTIMAL_KHR` / `OUT_OF_DATE`.
 - **Swapchain:** FIFO; `R8G8B8A8`/`B8G8R8A8`; sRGB by default, Display-P3 as an optional "vivid" mode
   where `VK_EXT_swapchain_colorspace` offers it. Two frames in flight. Present through Swappy on Android.
+  Built (M6, 2026-11-14): the instance enables the extension when the loader lists it; with SETTINGS, LOOK, COLOUR VIVID
+  the swapchain takes the first 8-bit format (`B8G8R8A8_SRGB`, `R8G8B8A8_SRGB`, then the UNORM ones, encoded in the shader)
+  in `VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT` (its transfer curve is sRGB's), else sRGB. The values written do not change:
+  the display maps them into its wider gamut, the HUD and the threat layer with the rest. The log's swapchain line names
+  the colour space and whether Display-P3 is offered; `--vivid` turns it on for one run.
 
 ### 5.3 Primitives
 

@@ -37,6 +37,14 @@ struct LatticeView {
     // M3: the arena (GAME_DESIGN 9): lines whose rest nodes lie outside these world bounds are not drawn.
     bool bounded = false;
     Vec2 boundsMin, boundsMax;
+    // morgana.md "The storm", "The oasis" (M5 part 6's rest, 2026-11-14): Fata Morgana's wind whips the drawn lattice along it,
+    // in gusts that travel downwind (up to windAmpWu); inside her oasis the lattice lies at rest and takes calmTint.
+    bool wind = false;
+    Vec2 windDir{1.0f, 0.0f};
+    float windAmpWu = 0.0f, windPhase = 0.0f;  // the gusts' phase (radians; it grows with time)
+    Vec2 calmAt;
+    float calmRadiusWu = 0.0f, calmTintMix = 0.0f;
+    Vec3 calmTint;
 };
 
 class Lattice {

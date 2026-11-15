@@ -770,6 +770,21 @@ void PlayView::telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, double fireTick, floa
     }
 }
 
+void PlayView::tellRing(FrameDraw& d, Vec2 c, float r, double fireTick) {
+    // A tell's moving front (a Volatile bomb's and a meteor's ring filling in from its edge): a tell, so see-through as the dashed
+    // ones are (look.md §5, 0449eb3): 1.5 px of danger in the scene light only, at the tells' level rising over the last beat;
+    // solid, since it moves (it had been a solid line on the priority layer: noticed in af4b101's review, changed 2026-11-14).
+    if (!shown(kMuteBullet) || r <= 0.5f || !visible(c, r + 20.0f)) return;
+    const float rise = fireTick >= 0.0 ? clampf(1.0f - static_cast<float>((fireTick - tellNow_) / kTicksPerBeat), 0.0f, 1.0f) : 0.0f;
+    const Vec3 col = palettes_->danger * (kTellLevel + (kTellLevelFiring - kTellLevel) * rise);
+    const float hw = 0.5f * kTellWidthRefPx * refPx_;
+    const u32 n = r > 120.0f ? 40u : 24u;
+    for (u32 k = 0; k < n; ++k) {
+        const float a0 = 6.28318530718f * static_cast<float>(k) / n, a1 = 6.28318530718f * static_cast<float>(k + 1) / n;
+        d.scene.line(toScene(c + Vec2{std::cos(a0), std::sin(a0)} * r), toScene(c + Vec2{std::cos(a1), std::sin(a1)} * r), hw, col, col, 0);
+    }
+}
+
 void PlayView::tellMark(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight) {
     // A glint or a chevron (look.md §5): danger in the scene at the telegraph line's level (look.md §3), never on the priority
     // layer (0449eb3: a tell is see-through).
@@ -1096,6 +1111,24 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         ls.restIntensity = prose::kArEclipseLattice;
         ls.warmIntensity *= eclipseK_;
         ls.hotIntensity *= eclipseK_;
+    }
+    {
+        // morgana.md "The storm" and "The oasis" (M5 part 6's rest, 2026-11-14): her wind whips the lattice 10 wu along it (the
+        // streaks' wind, drawMorgana), the oasis at rest in the accent's tint; at her death the storm drops at once and the whole
+        // lattice takes the tint for her death's bar.
+        const BossState& b = w.boss();
+        if (b.active && b.kind == BossKind::Morgana && in.music >= b.enterTick) {
+            const float now = static_cast<float>(in.time);
+            const float entrance = clampf(static_cast<float>((in.music - b.enterTick) / kTicksPerBar), 0.0f, 1.0f);
+            lv.wind = true;
+            lv.windDir = dir(0.35f + 0.25f * std::sin(now * 0.13f));
+            lv.windAmpWu = b.dying ? 0.0f : prose::kMgLatticeWindWu * entrance;
+            lv.windPhase = now * (6.28318530718f * prose::kMgGustHz);
+            lv.calmAt = w.morganaOasis(in.music);
+            lv.calmRadiusWu = b.dying ? 1.0e6f : w.species().morgana.oasisRadius;
+            lv.calmTint = palette_->accent;
+            lv.calmTintMix = prose::kMgOasisTint * (b.dying ? clampf(1.0f - static_cast<float>((in.music - b.deathTick) / kTicksPerBar), 0.0f, 1.0f) : entrance);
+        }
     }
     lattice_.setWells(nullptr, 0, 0.0f);
     if (shown(kMuteGrid)) lattice_.draw(d.scene, lv, ls);

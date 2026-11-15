@@ -139,6 +139,8 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
             usedNext = true;
         } else if (is("--nohits")) {
             a.noHits = true;
+        } else if (is("--vivid")) {
+            a.vivid = true;
         } else if (is("--loadout") && next) {
             ok = std::strcmp(next, "max") == 0;
             a.loadoutMax = ok;

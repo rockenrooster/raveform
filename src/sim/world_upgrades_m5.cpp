@@ -845,6 +845,8 @@ void World::hitExtras(u32 p) {
         Enemies& e = enemies_;
         for (u32 i = 0; i < e.count; ++i)
             if (!(e.flags[i] & kFlagDead) && lengthSq(Vec2{e.x[i], e.y[i]} - c) <= r2) novaKill(i, p);
+        // M6 (A2's rest, 2026-11-14): an arena body in its reach takes the Nova's blast in proportion to its reach (420 of 1,400).
+        arenaArea(static_cast<u8>(p), c, r, kBossNovaDamage * kBossNovaShareM5 * (kLastLightWu / kNovaFrontWu));
     }
     emitFx(p, kFxLastLight, c, c, 0, r, m1_);
 }
@@ -1012,6 +1014,14 @@ void World::updateUpgradesM5(float dt) {
                     if (local) hitEnemy(i, kChainStormDamage, owner, at, normalizeOr(at - from, Vec2{1.0f, 0.0f}));
                     from = at;
                 }
+                // M6 (A2's rest, 2026-11-14): an arena body within its reach takes a bolt from the ship too (the two nearest).
+                u32 bodies[2];
+                float bodyD[2];
+                const u32 nb = arenaInReach(pl.pos, kChainStormWu, bodies, bodyD, 2);
+                for (u32 k = 0; k < nb; ++k) {
+                    emitFx(p, kFxArc, pl.pos, arena_[bodies[k]].pos, 1, 2.0f, t);
+                    if (local) damageBody(bodies[k], kChainStormDamage, owner, arena_[bodies[k]].pos, false);
+                }
             }
             if (pl.boost(kCarousel) && shotRoom(p)) {
                 const u32 k = static_cast<u32>(((beat % 6) + 6) % 6);
@@ -1058,6 +1068,13 @@ void World::updateUpgradesM5(float dt) {
                 if (local) hitEnemy(i, kColossusRamDamage, owner, Vec2{e.x[i], e.y[i]}, n);
                 rammed = true;
             });
+            // M6 (A2's rest, 2026-11-14): it rams an arena body as it rams an enemy, every tick of the touch.
+            u32 body;
+            float bodyD;
+            if (arenaInReach(pl.pos, r, &body, &bodyD, 1)) {
+                if (local) arenaArea(owner, pl.pos, r, kColossusRamDamage);
+                rammed = true;
+            }
             if (rammed) emitFx(p, kFxRam, pl.pos, pl.pos, 0, r, m1_);
         }
 
@@ -1142,12 +1159,27 @@ void World::updateRiffsM5(float dt) {
         // Storm Coil: on every triplet eighth it zaps the nearest enemies (one a level up to five) within its reach.
         if (const u8 L = lv(kStormCoil)) {
             forCrossings(m0_, m1_, (hyper ? 0.5 : 1.0) * kTicksPerBeat / 3.0, [&](double t, i64) {
-                u32 near[5];
-                const u32 n = nearestEnemies(pl.pos, kCoilReachWu[L < 5 ? L : 5], near, L < 5 ? L : 5);
-                for (u32 k = 0; k < n; ++k) {
-                    const Vec2 at{e.x[near[k]], e.y[near[k]]};
+                // M6 (A2's rest, 2026-11-14): its zaps go to the nearest targets in reach, an arena body as an enemy is.
+                const u32 cap = L < 5 ? L : 5;
+                const float reach = kCoilReachWu[cap];
+                u32 near[5], bodies[2];
+                float bodyD[2];
+                const u32 n = nearestEnemies(pl.pos, reach, near, cap);
+                const u32 nb = arenaInReach(pl.pos, reach, bodies, bodyD, cap < 2 ? cap : 2);
+                u32 ie = 0, ib = 0;
+                for (u32 k = 0; k < cap && (ie < n || ib < nb); ++k) {
+                    const float de = ie < n ? length(Vec2{e.x[near[ie]], e.y[near[ie]]} - pl.pos) - e.radius[near[ie]] : 1e30f;
+                    if (ib < nb && bodyD[ib] < de) {
+                        const Vec2 at = arena_[bodies[ib]].pos;
+                        emitFx(p, kFxArc, pl.pos, at, static_cast<u8>(k + 1), 3.0f, t);
+                        if (local) damageBody(bodies[ib], kCoilDamage, owner, at, false);
+                        ++ib;
+                        continue;
+                    }
+                    const Vec2 at{e.x[near[ie]], e.y[near[ie]]};
                     emitFx(p, kFxArc, pl.pos, at, static_cast<u8>(k + 1), 3.0f, t);
-                    if (local) hitEnemy(near[k], kCoilDamage, owner, at, normalizeOr(at - pl.pos, Vec2{1.0f, 0.0f}));
+                    if (local) hitEnemy(near[ie], kCoilDamage, owner, at, normalizeOr(at - pl.pos, Vec2{1.0f, 0.0f}));
+                    ++ie;
                 }
             });
         }

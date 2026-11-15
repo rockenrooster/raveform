@@ -258,6 +258,14 @@ public:
     bool hasSurface() const { return swapchain_.hasSurface(); }
     bool hasSwapchain() const { return swapchain_.valid(); }
     void requestRebuild() { rebuildPending_ = true; }
+    // TECH_SPEC 5.2 (M6): the VIVID look (Display-P3) where the surface offers it; a change rebuilds the swapchain.
+    void setWideColour(bool on) {
+        if (on == swapchain_.wantP3) return;
+        swapchain_.wantP3 = on;
+        rebuildPending_ = true;
+    }
+    bool wideColourOffered() const { return swapchain_.p3Offered; }
+    bool wideColourOn() const { return swapchain_.colorSpace == VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT; }
 
     // Uploads a replayed scene (once, at load). Drawn every frame before the dynamic batches.
     bool setStaticScene(const StaticScene& scene);

@@ -28,7 +28,7 @@ u32 World::elitesAlive() const {
     return n;
 }
 
-u16 World::drawTraits(u32 track) {
+u16 World::drawTraits(u32 track, u16 exclude) {
     // traits.md: one in Tracks 2-6, two in 7-10, in the loop one more each time round (at most four); drawn from the traits
     // the run has met (their Track reached); never Cloaked and Phasing on one body.
     const TraitData& td = species_->traits;
@@ -41,7 +41,7 @@ u16 World::drawTraits(u32 track) {
     u8 pool[kTraitCount];
     u32 m = 0;
     for (u32 t = 0; t < kTraitCount; ++t)
-        if (td.fromTrack[t] < met || (td.fromTrack[t] == met && td.fromCycle[t] <= cycle)) pool[m++] = static_cast<u8>(t);
+        if (!hasTrait(exclude, t) && (td.fromTrack[t] < met || (td.fromTrack[t] == met && td.fromCycle[t] <= cycle))) pool[m++] = static_cast<u8>(t);
     u16 out = 0;
     for (u32 k = 0; k < n && m; ++k) {
         const u32 pick = static_cast<u32>(rand01(arenaRng_) * static_cast<float>(m)) % m;
@@ -68,13 +68,15 @@ void World::eliteBar(const Phrase& ph, double land) {
     const TraitData& td = species_->traits;
     const u32 cap = (ph.track >= 7 || inLoop(ph.track, d.songs)) ? td.alive[1] : td.alive[0];
     if (elitesAlive() >= cap || enemies_.count + 2 >= aliveCap()) return;
-    // Any species of the Track's roster but Shoal darts and Wyrm segments (decisions: no Wyrm heads, no Tether pairs yet).
+    // Any species of the Track's roster but Shoal darts and Wyrm segments: a Wyrm comes with its head elite (its chain follows),
+    // a Tether with its pair or triad elite (2026-11-14, traits.md "Who"; they had been left out).
     u16 cand[SpeciesTable::kMaxRoster];
     u32 n = 0;
     for (u32 k = 0; k < species_->rosterCount; ++k) {
         const SpeciesTable::RosterEntry& r = species_->roster[k];
         const Family f = species_->get(r.species).family;
-        if (!familyBuilt(f) || f == Family::Shoal || f == Family::Wyrm || f == Family::Tether) continue;
+        if (!familyBuilt(f) || f == Family::Shoal) continue;
+        if ((f == Family::Wyrm || f == Family::Tether) && enemies_.count + species_->family(f).segmentsMax + 4 >= aliveCap()) continue;
         if (static_cast<float>(bullets_.count) > kBulletPoolShooters * static_cast<float>(Bullets::kCap) && species_->get(r.species).shoots())
             continue;  // M5 part 7 (GAME_DESIGN 6.6): no shooters while the pool is above 70%
         const bool debuted = inLoop(ph.track, d.songs) ? r.track <= d.songs : (r.track < ph.track || (r.track == ph.track && r.cycle <= ph.cycle));
@@ -91,7 +93,25 @@ void World::eliteBar(const Phrase& ph, double land) {
     const Vec2 c = formationCentre(&fp);
     const float a = randRange(arenaRng_, 0.0f, kTau);
     const float r = randRange(arenaRng_, 0.6f * kFrameHalfWWu, 0.9f * kFrameHalfWWu);
+    const Family fam = species_->get(sp).family;
+    if (fam == Family::Wyrm || fam == Family::Tether) {
+        // (no Twin and no Splitting on a chain or a pair: their second body or their halves would be loose members)
+        const Vec2 at = c + dirOf(a) * r;
+        spawnEliteCreature(sp, at, angleOf(c - at), land, drawTraits(ph.track, static_cast<u16>(traitBit(kTwin) | traitBit(kSplitting))));
+        return;
+    }
     spawnElite(sp, c + dirOf(a) * r, land, drawTraits(ph.track));
+}
+
+void World::spawnEliteCreature(u16 species, Vec2 pos, float heading, double land, u16 traits) {
+    // A Wyrm's head elite (its segments as they are) or every member of a Tether's pair or triad, told to the clients as any elite.
+    const u16 id = spawnCreature(species, pos, heading, land);
+    const bool wyrm = species_->get(species).family == Family::Wyrm;
+    for (u32 i = 0; i < enemies_.count; ++i) {
+        if (enemies_.group[i] != id || (enemies_.flags[i] & kFlagDead) || (wyrm && enemies_.step[i] != 0)) continue;
+        makeElite(i, static_cast<u16>(traits | kEliteBit));
+        if (role_ == NetRole::Host) logArena(1, 0, 0, Vec2{}, Vec2{}, static_cast<double>(traits | kEliteBit), enemies_.serial[i]);
+    }
 }
 
 i32 World::spawnElite(u16 species, Vec2 pos, double land, u16 traits) {

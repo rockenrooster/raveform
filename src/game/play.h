@@ -45,6 +45,7 @@ struct PlayOptions {
     float fastForwardS = 0.0f;  // --fast-forward S: run S seconds of the game before the first frame
     bool noHits = false;        // C2: hits cost nothing (--nohits: a measured run deep in the game)
     bool loadoutMax = false;    // M5 --loadout max: the upgrades' worst case (benchmarks)
+    bool vivid = false;         // M6 --vivid: COLOUR VIVID for this run
     char fight[24] = {};        // M5 --fight <id>: the run starts in the fight's home Track and plays on to it (pictures, benchmarks)
     u8 fightPhase = 0;          // ... its parts taken down to that phase once it fights
     bool fightHold = false;     // ... and held there (its health comes back: a benchmark of the phase)
@@ -176,6 +177,9 @@ public:
         return r;
     }
     const Settings& settings() const { return settings_; }
+    // TECH_SPEC 5.2 (M6): COLOUR, VIVID (Display-P3) where the screen offers it; the app tells the screens what it offers.
+    bool wantsVivid() const { return opt_.vivid || (flow_ && settings_.vivid); }
+    void setWideColourOffered(bool offered) { wideColourOffered_ = offered; }
     // The first-launch tier probe runs behind the title: its stage is drawn, this draws the title over it.
     void renderProbeTitle(FrameDraw& d, FrameParams& params, const LookVariant& variant, float W, float H, Vec2 insetMin, Vec2 insetMax);
     // Pictures (scripted screens): show a screen as it is in the game.
@@ -411,6 +415,7 @@ private:
     Vec2 insetMin_, insetMax_;
     bool syncRequest_ = false;
     i32 tierRequest_ = -1;
+    bool wideColourOffered_ = false;
     static constexpr u32 kScopeN = 750;  // about a bar of the master bus at 120 BPM
     float scope_[kScopeN] = {};
     float titleShipAngle_ = -1.5708f;

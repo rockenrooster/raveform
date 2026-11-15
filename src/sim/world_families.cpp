@@ -117,7 +117,7 @@ void World::moveFamily(u32 i, const Species& s, const FamilyData& fd, float dt, 
                 e.b[i] = std::fmax(e.b[i] - fd.closeRate * dt, 0.0f);
                 want = tangent + radial * clampf((dist - e.b[i]) / kFlankerRadialWu, -1.0f, 1.0f);
             }
-            if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(want), kFlankerTurn * dt);
+            if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(want), kFlankerTurn * dt * turnK_);
             // M5 part 4, C: faster for every other Flanker that died near it (step counts them).
             const float quick = s.variant == kVariantC ? std::fmin(1.0f + v.speedUpPerDeath * static_cast<float>(e.step[i]), v.speedMaxFactor) : 1.0f;
             const Vec2 vel = dirOf(e.heading[i]) * (s.speed * quick);
@@ -166,7 +166,7 @@ void World::moveFamily(u32 i, const Species& s, const FamilyData& fd, float dt, 
                 }
                 break;
             }
-            if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(to), kSkitterTurn * dt);
+            if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(to), kSkitterTurn * dt * turnK_);
             const Vec2 vel = dirOf(e.heading[i]) * s.speed;
             e.vx[i] = vel.x;
             e.vy[i] = vel.y;
@@ -246,14 +246,14 @@ void World::moveFamily(u32 i, const Species& s, const FamilyData& fd, float dt, 
         case Family::Brood: {
             if (static_cast<u16>(e.species[i]) == SpeciesTable::kBroodling) {
                 // A mini: it chases like a Hound (GAME_DESIGN 7.2, species.json brood.motion).
-                if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(to), species_->family(Family::Hound).turnRate * dt);
+                if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(to), species_->family(Family::Hound).turnRate * dt * turnK_);
                 const Vec2 vel = dirOf(e.heading[i]) * s.speed;
                 e.vx[i] = vel.x;
                 e.vy[i] = vel.y;
                 break;
             }
             // A slow carrier drifting toward the nearest player.
-            if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(to), 1.0f * dt);
+            if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(to), 1.0f * dt * turnK_);
             const Vec2 vel = dirOf(e.heading[i]) * s.speed;
             e.vx[i] = vel.x;
             e.vy[i] = vel.y;

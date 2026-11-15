@@ -94,7 +94,109 @@ bool World::feedbackHits(Vec2 at, Vec2& from) const {
             return true;
         }
     }
+    // feedback.md rule 4: what each Echo carries (its player's Orbitals, Pulse Rings and Sweeper, a delay behind).
+    for (u32 slot = 0; slot < FeedbackState::kEchoes; ++slot) {
+        if (!(f.active & (1u << slot))) continue;
+        EchoRiffs r;
+        if (!feedbackEchoRiffs(slot, m0_, m1_, r)) continue;
+        for (u32 k = 0; k < r.shards; ++k) {
+            const float rr = kOrbitalHitWu + kPlayerHitRadius;
+            if (lengthSq(at - r.shard[k]) <= rr * rr) {
+                from = r.shard[k];
+                return true;
+            }
+        }
+        for (u32 k = 0; k < r.rings; ++k) {
+            const float dist = length(at - r.ringAt[k]);
+            if (r.ringR[k] > 0.0f && dist >= r.ringRPrev[k] - prose::kFbNullBand && dist <= r.ringR[k] + kPlayerHitRadius) {
+                from = r.ringAt[k];
+                return true;
+            }
+        }
+        const Vec2 v = at - r.at;
+        const float dist = length(v);
+        if (r.arms && dist <= r.armLen + kPlayerHitRadius && dist > 1.0f) {
+            const float slack = std::fmin(kPlayerHitRadius / dist, 0.5f);
+            for (u32 arm = 0; arm < r.arms; ++arm) {
+                const float swept = std::fmax(wrapAngle(r.armAngle[arm] - r.armAnglePrev[arm]), 0.0f);
+                const float back = wrapAngle(r.armAngle[arm] - angleOf(v));  // how far the arm has passed the ship
+                if (back >= -slack && back <= swept + slack) {
+                    from = r.at;
+                    return true;
+                }
+            }
+        }
+    }
     return false;
+}
+
+bool World::feedbackEchoAt(u32 p, u32 echo, double t, Vec2& at) const {
+    // As updateFeedback places it: where the player stood a delay before t, reflected through the Head (the second Echo twice:
+    // where the player stood), 220-900 wu from it.
+    Vec2 rel, aim;
+    bool alive = false;
+    if (!feedbackPose(p, t - feedbackDelay(echo), rel, aim, alive) || !alive) return false;
+    if (lengthSq(rel) < 1.0f) rel = Vec2{1.0f, 0.0f};
+    const float dist = clampf(length(rel), prose::kFbMinWu, prose::kFbMaxWu);
+    at = boss_.pos + normalizeOr(rel, Vec2{1.0f, 0.0f}) * ((echo == 0 ? -1.0f : 1.0f) * dist);
+    return true;
+}
+
+bool World::feedbackEchoRiffs(u32 slot, double t0, double t1, EchoRiffs& out) const {
+    const u32 p = slot / 2u, echo = slot % 2u;
+    out = EchoRiffs{};
+    if (p >= playerCount_ || !players_[p].present || !feedbackEchoAt(p, echo, t1, out.at)) return false;
+    const PlayerState& pl = players_[p];
+    const Loadout& l = pl.loadout;
+    const bool hyper = pl.boost(kHyper);
+    const double D = feedbackDelay(echo);
+    const float sign = echo == 0 ? -1.0f : 1.0f;  // (the first Echo is the player point-reflected: its shapes turned half round)
+    // Orbitals: the shards lit then, round the Echo, a turn a bar (half under Hyper).
+    if (const u8 lv = l.riffs[riffIndex(kOrbitals)]) {
+        const u32 n = orbitalCount(lv), lit = orbitalsLit(p, t1 - D);
+        const double turn = hyper ? 0.5 * kTicksPerBar : kTicksPerBar;
+        const double ph = std::fmod(std::fmax(t1 - D - director_.startTick, 0.0), turn) / turn;
+        for (u32 k = 0; k < n && k < lit && out.shards < 11u; ++k) {
+            const float a = static_cast<float>(ph) * kTau + kTau * static_cast<float>(k) / static_cast<float>(n) - 0.25f * kTau;
+            out.shard[out.shards++] = out.at + dirOf(a) * (kOrbitalRadiusWu * sign);
+        }
+    }
+    // Pulse Ring: its rings from where the Echo stood as each left, on the player's grid (the delay is whole beats).
+    if (const u8 lv = l.riffs[riffIndex(kPulseRing)]) {
+        double every = lv >= 5 ? 0.5 * kTicksPerBeat : kTicksPerBeat;
+        if (hyper) every *= 0.5;
+        const double tps = static_cast<double>(ticksPerSecond());
+        const double grow = static_cast<double>(kPulseGrowS) * tps, second = static_cast<double>(kPulseSecondRingS) * tps;
+        const float reach = lv >= 3 ? kPulseRadiusWide : kPulseRadiusWu;
+        for (double T = std::floor(t1 / every) * every; T > t1 - grow - second - every && out.rings < 4u; T -= every) {
+            Vec2 c;
+            if (!feedbackEchoAt(p, echo, T, c)) continue;
+            for (u32 ring = 0; ring < (lv >= 2 ? 2u : 1u) && out.rings < 4u; ++ring) {
+                const double start = T + (ring ? second : 0.0);
+                if (start > t1 || t1 - start > grow) continue;
+                out.ringAt[out.rings] = c;
+                out.ringR[out.rings] = reach * static_cast<float>(clampf(static_cast<float>((t1 - start) / grow), 0.0f, 1.0f));
+                out.ringRPrev[out.rings] = t0 > start ? reach * clampf(static_cast<float>((t0 - start) / grow), 0.0f, 1.0f) : 0.0f;
+                ++out.rings;
+            }
+        }
+    }
+    // Sweeper: its arm (two from level 3) round the Echo, where the player's stood a delay ago.
+    if (const u8 L = l.riffs[riffIndex(kSweeper)]) {
+        double turn = L >= 5 ? kTicksPerBar : 2.0 * kTicksPerBar;
+        if (hyper) turn *= 0.5;
+        const auto angleAt = [&](double t) {
+            const double song = std::fmax(t - D + static_cast<double>(songShift_) * kTicksPerBar, 0.0);
+            return static_cast<float>(std::fmod(song, turn) / turn) * kTau - 0.25f * kTau + (echo == 0 ? kPi : 0.0f);
+        };
+        out.arms = L >= 3 ? 2u : 1u;
+        out.armLen = kSweeperLengthWu[L < 5 ? L : 5];
+        for (u32 arm = 0; arm < out.arms; ++arm) {
+            out.armAngle[arm] = angleAt(t1) + static_cast<float>(arm) * kPi;
+            out.armAnglePrev[arm] = angleAt(t0) + static_cast<float>(arm) * kPi;
+        }
+    }
+    return true;
 }
 
 float World::feedbackScale() const {

@@ -4,6 +4,33 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (night), the polish batch: tells, arena bodies, the leftovers, the Beam's swing, VIVID colour
+
+The owner, on the list of gaps: "lets work on these too: 3, 4, 5, 7, wide color".
+
+- **3, the two tells drawn as threats**: a Volatile bomb's and a meteor's filling front were solid lines on the priority
+  layer; now `PlayView::tellRing`, a solid 1.5 px danger line in the scene light at the tells' level, rising over the last
+  beat, as the dashed tells are (look.md 5 "Hurts").
+- **4, what passed through arena bodies** (M6 A2's rest): Chain Storm's and Storm Coil's bolts strike a Vault, Rift, gold
+  Vault, Comet or carrier in their reach as they strike enemies (Chain Storm: the two nearest, a bolt each from the ship;
+  Storm Coil: its zaps go to the nearest targets, a body as an enemy is), Colossus rams them every tick of the touch, Last
+  Light's mini-Nova hits them with the Nova's blast in proportion to its reach (420 of 1,400). `World::arenaInReach`.
+- **5, the leftovers**: Swift turns 1.3 times as fast (`World::turnK_` on every family's turn); a Wyrm's head and a Tether's
+  pair or triad can be elites (traits.md "Who"; no Twin or Splitting on them: their extra bodies would be loose members;
+  `spawnEliteCreature`, `spawnCreature` returns the group); Fata Morgana's wind whips the drawn lattice 10 wu along it in
+  gusts travelling downwind, the oasis at rest in the accent's tint, the whole lattice tinted as she dies (morgana.md;
+  `LatticeView` wind and calm); **Feedback's Echo carries its player's Orbitals, Pulse Rings and Sweeper** a delay behind,
+  round the Echo, the first Echo's point-reflected (feedback.md rule 4; `World::feedbackEchoRiffs`): shards, ring fronts and
+  arms hurt as echo shots do (a cell), drawn as danger shards and lethal lines. New picture `m6_fb_riffs`.
+- **7, the Beam under the assist**: the drawn Beam swings to a new aim over about 45 ms instead of jumping (the assist
+  changes target between ticks, and a teammate's Beam follows its poses a few ticks late; one picture had two players'
+  views of one Beam a hundred degrees apart). The hits are as they were.
+- **Wide colour** (TECH_SPEC 5.2, PLAN M6): SETTINGS, LOOK, COLOUR: STANDARD / VIVID, VIVID presenting in Display-P3 where
+  the screen offers it (the Moto does, PLAN 3.2; this PC does not: the row says so). `--vivid` for a run.
+- Ran: sim 6,114 / save 60 / net 131,368 / audio 2,718 checks, 0 failures; determinism PASS; the clean 4-minute loopback
+  soak (2 players) PASS, 0 census mismatches. Pictures `captures\pt5\` (Morgana's wind, the Volatile tell, Meteor Rain),
+  `captures\m6\m6_fb_riffs*`, `settings_look_colour.png`.
+
 ## 2026-11-14 (night), the quiet title
 
 - "Like maybe after waiting at the main menu for a while the menu fades away so you can see the demo until you tap the screen

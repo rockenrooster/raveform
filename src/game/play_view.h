@@ -145,6 +145,7 @@ private:
     // look.md §5 (0449eb3): a tell is see-through: dashed here, 1.5 px, in the scene light only, the danger colour at 0.35 rising
     // to 0.6 over the beat before `fireTick` (when what it warns of fires; < 0: unknown, 0.35 throughout).
     void telegraphLine(FrameDraw& d, Vec2 a, Vec2 b, double fireTick, float sceneLight = 1.0f);
+    void tellRing(FrameDraw& d, Vec2 c, float r, double fireTick);  // a tell's solid ring (a fill's front), see-through as a tell
     // A shooter's glint and a Ram's chevrons (look.md §5): marks, not dashes; in the scene light only as well.
     void tellMark(FrameDraw& d, Vec2 a, Vec2 b, float sceneLight);
     // look.md v2.5, a lethal beam is a laser too: the priority capsule exactly as wide as it kills, a 2 px white-pink line on
@@ -240,6 +241,8 @@ private:
     u32 deathShown_ = 0;
     double deathSeenTick_ = -1.0;
     double tellNow_ = 0.0;  // the frame's musical position, for the tells' rise (telegraphLine)
+    float beamAngle_[sim::kMaxPlayers] = {};  // each player's drawn Beam, swinging to its aim (drawUpgrades)
+    bool beamDrawn_[sim::kMaxPlayers] = {};
     // Edge indicator (look.md §6, M3 stage C): a chevron inside the screen edge pointing at world, on a dark
     // disc, in the threat layer; oss: the larger double chevron, scaled by swell.
     // tip: 1 a small ring at its tip (a downed teammate, M4), 2 a plus (a Cell while its player is on the last cell, play

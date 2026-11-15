@@ -180,6 +180,9 @@ constexpr float kMgSandLevel = 0.8f;       // owner's red-line pass, 2026-11-14)
 constexpr float kMgSandWu = 4.0f;          // "each drawn as a lethal line is (... a 4 wu capsule ...)"
 constexpr float kMgEdgeLevel = 2.2f;      // the oasis: "a ring in the palette's accent at 2.2 with a second ring 12 wu inside it"
 constexpr float kMgInnerRingWu = 12.0f;
+constexpr float kMgLatticeWindWu = 10.0f;  // "with the lattice whipped 10 wu along the wind" (drawn: PlayView, Lattice::draw)
+constexpr float kMgGustHz = 1.2f;          // (chosen, 2026-11-14) the gusts' crests pass a point this often
+constexpr float kMgOasisTint = 0.5f;       // (chosen) "inside, the lattice is at rest and tinted with the accent": this much of it
 constexpr float kMgLatticeWhipWu = 10.0f; // "the lattice whipped 10 wu along the wind"
 constexpr float kMgStormLowPassHz = 2000.0f;  // sound: "outside it the music bus is also low-passed at 2 kHz"
 

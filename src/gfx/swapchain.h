@@ -42,6 +42,10 @@ public:
     int rotationDeg = 0;
     bool srgbFormat = true;  // the format encodes linear -> sRGB on write
     bool canCapture = false; // images allow TRANSFER_SRC (screenshots)
+    // TECH_SPEC 5.2 (M6): the VIVID look presents in Display-P3 (the same values, mapped by the display to its wider gamut)
+    // where the surface offers an 8-bit format in that colour space. wantP3 is the setting; p3Offered what the surface lists.
+    bool wantP3 = false;
+    bool p3Offered = false;
     u32 imageCount = 0;
     VkImage images[kMaxImages] = {};
     VkImageView views[kMaxImages] = {};

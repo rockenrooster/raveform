@@ -146,12 +146,17 @@ bool Swapchain::create(GpuContext& gpu, FramePacer& pacer, SDL_Window* window) {
     int chosen = -1;
     const VkFormat preferred[] = {VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_B8G8R8A8_UNORM,
                                   VK_FORMAT_R8G8B8A8_UNORM};
-    for (u32 p = 0; p < countOf(preferred) && chosen < 0; ++p)
-        for (u32 i = 0; i < formatCount; ++i)
-            if (formats[i].format == preferred[p] && formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-                chosen = static_cast<int>(i);
-                break;
-            }
+    const auto pick = [&](VkColorSpaceKHR space) {
+        for (u32 p = 0; p < countOf(preferred); ++p)
+            for (u32 i = 0; i < formatCount; ++i)
+                if (formats[i].format == preferred[p] && formats[i].colorSpace == space) return static_cast<int>(i);
+        return -1;
+    };
+    // TECH_SPEC 5.2: Display-P3 (its curve is sRGB's) for the VIVID look, where offered; sRGB otherwise.
+    const int p3 = gpu.colorSpaces() ? pick(VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT) : -1;
+    p3Offered = p3 >= 0;
+    if (wantP3 && p3 >= 0) chosen = p3;
+    if (chosen < 0) chosen = pick(VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
     if (chosen < 0) chosen = 0;
     format = formats[chosen].format;
     colorSpace = formats[chosen].colorSpace;
@@ -222,9 +227,11 @@ bool Swapchain::create(GpuContext& gpu, FramePacer& pacer, SDL_Window* window) {
     }
 
     pacer.onSwapchainCreated(handle, nativeWindow);
-    RF_LOG("swapchain: image %ux%u, logical %ux%u, %s, %u images, transform %s (%d deg), present %s, capture %s",
-           extent.width, extent.height, logical.width, logical.height, formatName(format), imageCount,
-           transformName(caps.currentTransform), rotationDeg, pacer.modeName(), canCapture ? "yes" : "no");
+    RF_LOG("swapchain: image %ux%u, logical %ux%u, %s, %s (Display-P3 %s), %u images, transform %s (%d deg), present %s, capture %s",
+           extent.width, extent.height, logical.width, logical.height, formatName(format),
+           colorSpace == VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT ? "Display-P3" : (colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR ? "sRGB" : "other colour space"),
+           p3Offered ? "offered" : "not offered", imageCount, transformName(caps.currentTransform), rotationDeg, pacer.modeName(),
+           canCapture ? "yes" : "no");
     return true;
 }
 

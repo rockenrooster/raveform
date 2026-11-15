@@ -306,6 +306,7 @@ bool App::init() {
         po.fastForwardS = args_.fastForward;
         po.noHits = args_.noHits;
         po.loadoutMax = args_.loadoutMax;
+        po.vivid = args_.vivid;
         std::memcpy(po.fight, args_.fight, sizeof po.fight);
         po.fightPhase = args_.fightPhase;
         po.fightHold = args_.fightHold;
@@ -889,6 +890,9 @@ void App::frame(u64 loopStartNs) {
             syncFromPlay_ = true;
             content_ = Content::Audio;
         }
+        // TECH_SPEC 5.2 (M6): SETTINGS, LOOK, COLOUR: VIVID presents in Display-P3 where the surface offers it.
+        renderer_.setWideColour(play_.wantsVivid());
+        play_.setWideColourOffered(renderer_.wideColourOffered());
         const i32 tierReq = play_.takeTierRequest();
         if (tierReq >= 0 && !args_.tier[0]) {
             applyTier(tierReq == 0 ? autoTier_ : static_cast<Tier>(tierReq - 1));

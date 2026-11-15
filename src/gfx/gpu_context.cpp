@@ -102,6 +102,11 @@ bool GpuContext::createInstance(bool wantValidation) {
     Uint32 sdlCount = 0;
     const char* const* sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&sdlCount);
     for (Uint32 i = 0; i < sdlCount && extensionCount < 12; ++i) extensions[extensionCount++] = sdlExtensions[i];
+    // TECH_SPEC 5.2 (M6, 2026-11-14): the Display-P3 colour space for the VIVID look, where the loader offers it.
+    if (hasInstanceExtension(nullptr, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME)) {
+        extensions[extensionCount++] = VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME;
+        colorSpaces_ = true;
+    }
 
     const char* layers[1];
     u32 layerCount = 0;

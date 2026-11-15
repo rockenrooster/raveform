@@ -975,8 +975,22 @@ void Play::screenSettings(Ui& ui) {
         const u32 fx = ui.segmented(7, {cx, 390.0f * s}, 1100.0f * s, 76.0f * s, kFx, 5, settings_.effectsTier, 24.0f * s);
         ui.text({cx, 500.0f * s}, 18.0f * s, white, 1.1f, "FRAME-RATE TARGET (FROM THE NEXT START)");
         const u32 hz = ui.segmented(8, {cx, 570.0f * s}, 880.0f * s, 76.0f * s, kHz, 4, settings_.frameRate, 24.0f * s);
-        ui.text({cx, 680.0f * s}, 18.0f * s, white, 1.1f, "REDUCE FLASHING");
-        const u32 rfl = ui.segmented(4, {cx, 750.0f * s}, 420.0f * s, 76.0f * s, kOnOff, 2, settings_.reduceFlashing ? 1u : 0u, 24.0f * s);
+        // M6 (TECH_SPEC 5.2, 2026-11-14): REDUCE FLASHING and beside it COLOUR, VIVID only where the screen offers Display-P3.
+        const float rx = cx - 330.0f * s, vx = cx + 330.0f * s;
+        ui.text({rx, 680.0f * s}, 18.0f * s, white, 1.1f, "REDUCE FLASHING");
+        const u32 rfl = ui.segmented(4, {rx, 750.0f * s}, 420.0f * s, 76.0f * s, kOnOff, 2, settings_.reduceFlashing ? 1u : 0u, 24.0f * s);
+        if (wideColourOffered_) {
+            static const char* const kColour[2] = {"STANDARD", "VIVID"};
+            ui.text({vx, 680.0f * s}, 18.0f * s, white, 1.1f, "COLOUR (VIVID: THE SCREEN'S WIDE GAMUT)");
+            const u32 vv = ui.segmented(17, {vx, 750.0f * s}, 520.0f * s, 76.0f * s, kColour, 2, settings_.vivid ? 1u : 0u, 24.0f * s);
+            if ((vv != 0) != settings_.vivid) {
+                settings_.vivid = vv != 0;
+                changed = true;
+            }
+        } else {
+            ui.text({vx, 680.0f * s}, 18.0f * s, white, 1.1f, "COLOUR");
+            ui.text({vx, 760.0f * s}, 15.0f * s, white, 0.6f, "STANDARD (THIS SCREEN HAS NO WIDE GAMUT)");
+        }
         if (fx != settings_.effectsTier) {
             settings_.effectsTier = static_cast<u8>(fx);
             tierRequest_ = static_cast<i32>(fx);

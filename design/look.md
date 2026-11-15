@@ -428,7 +428,7 @@ domes, white rings that only stop shots). Every area in the game is one of five,
 
 | Kind | What it does | Look |
 |---|---|---|
-| **Hurts** | Takes a cell from a ship inside or touching it | Its edge drawn as a lethal line (danger, thin core, strong glow) and a faint danger fill (0.08) inside while it can hurt; before it can, its tell (dashed, filling) |
+| **Hurts** | Takes a cell from a ship inside or touching it | Its edge drawn as a lethal line (danger, thin core, strong glow) and a faint danger fill (0.08) inside while it can hurt; before it can, its tell (dashed, filling): the filling front is a tell too, a solid 1.5 px line in the scene light only at the tells' level (a Volatile bomb's and a meteor's had been solid priority lines until 2026-11-14) |
 | **Holds** | Stops ships (a fence, the Pen's wall) | A solid line in the enemy's own hue, 1.5 px, never white, never danger |
 | **Shields** | Stops shots only: a ship flies through it unharmed (domes) | A dotted ring in the enemy's hue at half its light, no fill, never white, never danger |
 | **Pulls** | Moves ships, hurts nobody (Wells, Event Horizon's reach) | A ring in the enemy's hue with rings drifting inward |

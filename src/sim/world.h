@@ -909,6 +909,21 @@ public:
     bool feedbackPose(u32 p, double t, Vec2& rel, Vec2& aim, bool& alive) const;
     bool feedbackHits(Vec2 at, Vec2& from) const;
     float feedbackNullRadius(const FeedbackTape::Null& n, double t) const;
+    // feedback.md rule 4 ("what surrounds the ship surrounds the Echo"; built 2026-11-14, they had not been echoed): an Echo's
+    // Orbitals shards, Pulse Rings and Sweeper arms, its player's as they ran a delay ago round where the Echo stood, the first
+    // Echo's point-reflected through the Head. Over (t0, t1]: the rings' fronts and the arms' sweep for the hits.
+    struct EchoRiffs {
+        Vec2 at;
+        u32 shards = 0;
+        Vec2 shard[11];
+        u32 rings = 0;
+        Vec2 ringAt[4];
+        float ringR[4] = {}, ringRPrev[4] = {};
+        u32 arms = 0;
+        float armLen = 0.0f, armAngle[2] = {}, armAnglePrev[2] = {};
+    };
+    bool feedbackEchoAt(u32 p, u32 echo, double t, Vec2& at) const;  // where player p's Echo stood at song time t
+    bool feedbackEchoRiffs(u32 slot, double t0, double t1, EchoRiffs& out) const;
     u8 choirHeld(u32 k, double t, float* angle) const;
     float choirRingAngle(double t) const;
     // The Voices that sing on the eighth at song time t (this bar's caller and groups; the next bar's caller as it will move
@@ -1217,6 +1232,7 @@ private:
     void arenaLine(u8 owner, Vec2 from, Vec2 dir, float len, float half, float dmg);
     void arenaRing(u8 owner, Vec2 c, float r0, float r, float dmg);
     void arenaSweep(u8 owner, Vec2 c, float len, float a1, float swept, u32 arms, float dmg);
+    u32 arenaInReach(Vec2 c, float reach, u32* out, float* dist, u32 cap) const;  // bodies within reach, nearest edge first
     u32 lineHit(u8 owner, Vec2 from, Vec2 dir, float len, float half, float dmg);
     void arcFrom(u32 i, u8 owner, u32 jumps, float dmg, u8 style);
     void pullBodies(Vec2 at, float r, float speed, float dt);
@@ -1259,7 +1275,7 @@ private:
     };
     void buildGroups();
     const Group* groupOf(u16 id) const;
-    void spawnCreature(u16 speciesIndex, Vec2 p, float heading, double landTick);
+    u16 spawnCreature(u16 speciesIndex, Vec2 p, float heading, double landTick);  // its group id
     void landFamily4(u32 i, const Species& s, const FamilyData& fd, Vec2 to);
     void moveFamily4(u32 i, const Species& s, const FamilyData& fd, float dt, i32 tp, Vec2 to, bool engaged);
     void updateTrails();
@@ -1432,10 +1448,12 @@ private:
     // world_elites.cpp (M5 part 5, design/traits.md)
     void eliteBar(const Phrase& ph, double land);     // the director buys an elite with the threat budget
     i32 spawnElite(u16 species, Vec2 pos, double land, u16 traits);
+    void spawnEliteCreature(u16 species, Vec2 pos, float heading, double land, u16 traits);  // a Wyrm's head, a Tether's pair
     void makeElite(u32 i, u16 traits);
-    u16 drawTraits(u32 track);
+    u16 drawTraits(u32 track, u16 exclude = 0);
     void updateElites(float dt);                     // shields, Regenerating, Twins' spacing, Magnetic, the Commanders' reach
     float eliteSpeed(u32 i) const;                   // Swift and a Commander's reach
+    float turnK_ = 1.0f;                             // the enemy being moved: its turns' factor (Swift x 1.3; updateEnemies)
     bool eliteSheds(u32 i, Vec2 shotDir) const;      // Shielded's front, Armored's outer hull (a spark, no flash)
     void eliteHit(u32 i, float dmg);                 // Regenerating's quiet, a Twin's shared health, Armored's shatter
     void eliteDeath(u32 i, u8 killer);               // Splitting, Volatile, Magnetic, Commander, Twin (every device)

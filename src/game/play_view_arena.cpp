@@ -279,7 +279,8 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
             default: break;
         }
     }
-    // Volatile bombs: a danger ring of 160 wu filling from its edge over two beats (priority layer).
+    // Volatile bombs: a danger ring of 160 wu filling from its edge over two beats. Its edge dashed and its filling front solid,
+    // both tells and so see-through (look.md 5: in the scene light only; the front had been a solid priority line until 2026-11-14).
     const auto fillRing = [&](Vec2 c, float r, float u, double fireTick) {
         const u32 n = 40;
         for (u32 k = 0; k < n; ++k) {
@@ -288,13 +289,7 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
             telegraphLine(d, c + dirv(a0) * r, c + dirv(a1) * r, fireTick);
         }
         if (u > 0.0f) d.pools.glow(toScene(c), r * (1.0f - 0.6f * (1.0f - u)) * pxPerWu_, danger * (0.06f + 0.1f * u));
-        if (shown(kMutePriority)) {
-            const float rr = r * (1.0f - u);
-            for (u32 k = 0; k < n; ++k) {
-                const float a0 = kTau * k / n, a1 = kTau * (k + 1) / n;
-                d.threatCores.line(toScreen(c + dirv(a0) * rr), toScreen(c + dirv(a1) * rr), refPx_, danger * 0.8f, danger * 0.8f, 0);
-            }
-        }
+        tellRing(d, c, r * (1.0f - u), fireTick);
     };
     for (u32 k = 0; k < World::kArenaBombs; ++k) {
         const ArenaBomb& b = w.bombs()[k];

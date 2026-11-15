@@ -153,8 +153,21 @@ u32 Lattice::draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle
     for (int j = j0_; j < j0_ + rows_; ++j) {
         for (int i = i0_; i < i0_ + cols_; ++i) {
             const u32 s = slot(i, j);
-            Vec2 p = Vec2{static_cast<float>(i) * spacing_, static_cast<float>(j) * spacing_} + d_[s];
+            const Vec2 restAt{static_cast<float>(i) * spacing_, static_cast<float>(j) * spacing_};
+            Vec2 p = restAt + d_[s];
             float heat = length(d_[s]);
+            float calm = 0.0f;  // morgana.md: 1 inside the oasis (at rest, tinted), 0 in the storm
+            if (view.wind) {
+                // The storm: gusts travelling downwind (a crest every 360 wu, bent a little across the wind so they do not read
+                // as straight bars), blowing the nodes up to windAmpWu along it; the oasis keeps its nodes at rest.
+                calm = 1.0f - smooth(view.calmRadiusWu - 30.0f, view.calmRadiusWu + 30.0f, length(restAt - view.calmAt));
+                const Vec2 across{-view.windDir.y, view.windDir.x};
+                const float g = std::sin(dot(restAt, view.windDir) * (6.28318530718f / 360.0f) - view.windPhase +
+                                         0.8f * std::sin(dot(restAt, across) * (6.28318530718f / 900.0f)));
+                const Vec2 blow = view.windDir * (view.windAmpWu * (0.5f + 0.5f * g) * (1.0f - calm));
+                p = restAt + d_[s] * (1.0f - calm) + blow;
+                heat = length(d_[s]) * (1.0f - calm) + 0.3f * length(blow);
+            }
             const float springs = heat;
             const Vec2 fromPlayer = p - view.player;
             const float dist = length(fromPlayer);
@@ -181,6 +194,7 @@ u32 Lattice::draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle
                 const float t = clampf(dist / st.tintRadiusWu, 0.0f, 1.0f) * 2.0f;
                 rest = t < 1.0f ? mix(near, st.grid, t) : mix(st.grid, far, t - 1.0f);
             }
+            if (calm > 0.0f) rest = mix(rest, view.calmTint, view.calmTintMix * calm);  // (the oasis's tint)
             const float f1 = smooth(st.warmFromWu - 1.5f, st.warmFromWu, heat);
             const float f2 = smooth(st.hotFromWu - 2.0f, st.hotFromWu, heat);
             const float peak = clampf((heat - st.hotFromWu) / st.hotFromWu, 0.0f, 1.0f);

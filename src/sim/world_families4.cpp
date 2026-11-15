@@ -72,7 +72,7 @@ const World::Group* World::groupOf(u16 id) const {
     return nullptr;
 }
 
-void World::spawnCreature(u16 speciesIndex, Vec2 p, float heading, double landTick) {
+u16 World::spawnCreature(u16 speciesIndex, Vec2 p, float heading, double landTick) {
     // A Wyrm's chain (head first, the body behind it) or a Tether's pair or triad round p, as one group.
     const Species& s = species_->get(speciesIndex);
     const FamilyData& fd = species_->family(s.family);
@@ -83,22 +83,23 @@ void World::spawnCreature(u16 speciesIndex, Vec2 p, float heading, double landTi
         const Vec2 back = dirOf(heading) * -fd.segmentSpacing;
         for (u32 k = 0; k < n; ++k) {
             const i32 i = spawnEnemy(speciesIndex, p + back * static_cast<float>(k), heading, landTick);
-            if (i < 0) return;
+            if (i < 0) return id;
             enemies_.group[i] = id;
             enemies_.step[i] = static_cast<u8>(k);
             enemies_.a[i] = k == 0 ? 1.0f : 0.0f;
         }
-        return;
+        return id;
     }
     const u32 n = (s.variant == kVariantC && fd.v.triad) ? 3u : 2u;
     const float R = n == 3 ? fd.v.triadSideWu / std::sqrt(3.0f) : 0.5f * fd.pairDistance;
     for (u32 k = 0; k < n; ++k) {
         const Vec2 at = p + dirOf(heading + kTau * static_cast<float>(k) / static_cast<float>(n)) * R;
         const i32 i = spawnEnemy(speciesIndex, at, heading, landTick);
-        if (i < 0) return;
+        if (i < 0) return id;
         enemies_.group[i] = id;
         enemies_.step[i] = static_cast<u8>(n);
     }
+    return id;
 }
 
 // ---------------------------------------------------------------------------------------------- landing
@@ -176,7 +177,7 @@ void World::moveFamily4(u32 i, const Species& s, const FamilyData& fd, float dt,
             if (s.variant == kVariantC && e.a[i] > 0.5f) lead = -1;  // a grown head leads its own half
             if (lead < 0) {
                 // The head: toward its player at turnRate, weaving across its line (waveAmplitude, wavePeriodBeats).
-                if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(to), fd.turnRate * dt);
+                if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(to), fd.turnRate * dt * turnK_);
                 const float w = kTau / (fd.wavePeriodBeats * 60.0f / std::fmax(bpm_, 30.0f));
                 const float ph = static_cast<float>(std::fmod(m1_ / (fd.wavePeriodBeats * kTicksPerBeat), 1.0)) * kTau + static_cast<float>(e.group[i]);
                 const Vec2 f = dirOf(e.heading[i]) * s.speed + perpOf(dirOf(e.heading[i])) * (fd.waveAmplitude * w * std::cos(ph));

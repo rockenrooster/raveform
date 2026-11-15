@@ -183,15 +183,17 @@ void World::updateEnemies(float dt) {
         if (p0.alive && std::fabs(x - p0.pos.x) <= kFrameHalfWWu && std::fabs(y - p0.pos.y) <= kFrameHalfHWu)
             threatInView_ += s.threat * ((e.traits[i] & kEliteBit) ? species_->traits.threat : 1.0f);  // M5 part 5: an elite x 4
 
+        // traits.md: Swift turns 1.3 times as fast (each family's turn below takes turnK_; 2026-11-14, M5 part 5's rest).
+        turnK_ = ((e.traits[i] & kEliteBit) && hasTrait(e.traits[i], kSwift)) ? species_->traits.swiftTurn : 1.0f;
         switch (minionMotion(i, dt) ? Family::Count : s.family) {
             case Family::Drifter: {
                 // Wander (a new turn rate each beat), leaning a little toward the nearest player.
                 if (beat) e.a[i] = randRange(e.rng[i], -fd.wanderTurn, fd.wanderTurn);
-                float h = e.heading[i] + e.a[i] * dt;
+                float h = e.heading[i] + e.a[i] * dt * turnK_;
                 if (tp >= 0) {
                     // C2: while a boss lives drifters give the fight room (they turn away inside kCrowdBossRoomWu).
                     const float home = boss_.active ? (lengthSq(to) < kCrowdBossRoomWu * kCrowdBossRoomWu ? -kDrifterHomeTurn : 0.0f) : kDrifterHomeTurn;
-                    h += clampf(wrapAngle(angleOf(to) - h), -1.0f, 1.0f) * home * dt;
+                    h += clampf(wrapAngle(angleOf(to) - h), -1.0f, 1.0f) * home * dt * turnK_;
                 }
                 e.heading[i] = h;
                 const Vec2 v = dirOf(h) * s.speed;
@@ -204,7 +206,7 @@ void World::updateEnemies(float dt) {
                 houndShield(i, s, fd, tp, to, dt);  // M5: Hound C
                 // Steer straight at the nearest player; a pack keeps a little apart.
                 float h = e.heading[i];
-                if (tp >= 0) h = turnToward(h, angleOf(to), fd.turnRate * dt);
+                if (tp >= 0) h = turnToward(h, angleOf(to), fd.turnRate * dt * turnK_);
                 e.heading[i] = h;
                 Vec2 v = dirOf(h) * s.speed;
                 const float R = kHoundSeparationWu;
@@ -292,7 +294,7 @@ void World::updateEnemies(float dt) {
                     default: {
                         e.step[i] = 0;  // M5 part 4: Ram C's rebounds this dash
                         float h = e.heading[i];
-                        if (tp >= 0) h = turnToward(h, angleOf(to), 3.0f * dt);
+                        if (tp >= 0) h = turnToward(h, angleOf(to), 3.0f * dt * turnK_);
                         e.heading[i] = h;
                         const Vec2 v = dirOf(h) * s.speed;
                         e.vx[i] = v.x;
@@ -333,7 +335,7 @@ void World::updateEnemies(float dt) {
                 // Stationary once placed; the B variant fires a rotating three-arm pattern every two
                 // sixteenths while a player is near, after a glint of one beat.
                 e.vx[i] = e.vy[i] = 0.0f;
-                if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(to), 2.0f * dt);
+                if (tp >= 0) e.heading[i] = turnToward(e.heading[i], angleOf(to), 2.0f * dt * turnK_);
                 if (s.variant != kVariantB) break;
                 const double fireEvery = kTicksPerStep * static_cast<double>(fd.fireEverySteps ? fd.fireEverySteps : 2u);
                 const auto volley = [&](double t) {

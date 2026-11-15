@@ -640,6 +640,29 @@ void PlayView::drawFeedback(FrameDraw& d, const ViewInput& in) {
             }
         }
     }
+    // ---- What each Echo carries (feedback.md rule 4, 2026-11-14): its player's Orbitals as danger shards with a glow, its Pulse
+    // Rings' fronts and its Sweeper's arms as lethal lines (look.md 5: they hurt), a delay behind, round the Echo.
+    for (u32 e = 0; e < FeedbackState::kEchoes; ++e) {
+        if (!(f.active & (1u << e))) continue;
+        World::EchoRiffs r;
+        if (!w.feedbackEchoRiffs(e, t - kTicksPerStep * 0.25, t, r)) continue;
+        for (u32 k = 0; k < r.shards; ++k) {
+            if (!visible(r.shard[k], 20.0f)) continue;
+            d.pools.glow(toScene(r.shard[k]), 22.0f * refPx_, danger * 0.35f);
+            lethalBeam(d, r.shard[k] - Vec2{tuning::kOrbitalHitWu * 0.6f, 0.0f}, r.shard[k] + Vec2{tuning::kOrbitalHitWu * 0.6f, 0.0f}, 2.0f * tuning::kOrbitalHitWu);
+        }
+        for (u32 k = 0; k < r.rings; ++k) {
+            if (r.ringR[k] <= 1.0f) continue;
+            const u32 segs = 40;
+            for (u32 j = 0; j < segs; ++j) {
+                const Vec2 p0 = r.ringAt[k] + dirv(kTau * j / segs) * r.ringR[k], p1 = r.ringAt[k] + dirv(kTau * (j + 1) / segs) * r.ringR[k];
+                if (!visible(p0, 30.0f) && !visible(p1, 30.0f)) continue;
+                lethalBeam(d, p0, p1, kBandEdgeWu);
+            }
+        }
+        for (u32 arm = 0; arm < r.arms; ++arm)
+            lethalBeam(d, r.at, r.at + dirv(r.armAngle[arm]) * r.armLen, kBandEdgeWu);
+    }
     // ---- The Nulls: a danger ring the size of the Nova it echoes.
     for (const FeedbackTape::Null& n : tape.nulls) {
         const float r = w.feedbackNullRadius(n, t);

@@ -20,6 +20,7 @@ Vec3 whiteU() { return {1.0f, 1.0f, 1.0f}; }
 Vec2 dirU(float a) { return {std::cos(a), std::sin(a)}; }
 Vec2 perpU(Vec2 v) { return {-v.y, v.x}; }
 float clampU(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
+float wrapPi(float a) { return std::remainder(a, 6.28318530718f); }  // (-pi, pi]
 const Vec3 kIce{0.55f, 0.85f, 1.0f};
 const Vec3 kFire{1.0f, 0.42f, 0.08f};
 constexpr float kBoltS = 0.09f;       // look.md 5: a zap's 90 ms
@@ -39,6 +40,7 @@ constexpr float kBeatPeakS = 2.0f / 60.0f, kBeatFallS = 0.110f;  // look.md 5 (a
 // A held beam's core moves between 1.0 and 1.2 on the 1/32 grid (look.md v2.5 says 1.0-1.4; the lead's checkpoint after part 4:
 // the core's bloom widened the Beam Boost's haze, so 1.2).
 constexpr float kHeldCoreSwing = 0.2f;
+constexpr float kBeamSwingS = 0.045f;  // (chosen, 2026-11-14) the drawn Beam swings to a new aim with this time constant
 }  // namespace
 
 void PlayView::drawBeam(FrameDraw& d, Vec2 from, Vec2 dir, float len, float w, float corePx, Vec3 noseCol, Vec3 farCol, Vec3 glowCol,
@@ -237,16 +239,25 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
             d.scene.line(toScene(ship), toScene(ship + aim * tuning::kLancerLengthWu), 0.8f * refPx_, c, c * 0.1f, 0);
         }
 
-        // Beam: the primary as a held laser while it fires (look.md 5: edges and fill steady, the core on the 1/32 grid).
-        if (pq.boost(kBeam) && (in.music - pq.beamTick) < 2.0 * w.leadGrid(q) + 2.0) {
+        // Beam: the primary as a held laser while it fires (look.md 5: edges and fill steady, the core on the 1/32 grid). The
+        // drawn beam swings to a new aim over about 45 ms instead of jumping to it (the assist changes target between ticks, and
+        // a teammate's beam follows its poses a few ticks late, so a jump looked like a second beam; 2026-11-14): "a sweeping
+        // laser". It starts where it is aimed.
+        const bool beaming = pq.boost(kBeam) && (in.music - pq.beamTick) < 2.0 * w.leadGrid(q) + 2.0;
+        if (beaming) {
+            const float target = angleOf(aim);
+            if (!beamDrawn_[q]) beamAngle_[q] = target;
+            else beamAngle_[q] += wrapPi(target - beamAngle_[q]) * (1.0f - std::exp(-std::fmax(in.dt, 0.0f) / kBeamSwingS));
+            const Vec2 bdir = dirU(beamAngle_[q]);
             const float half = tuning::kBeamHalfWu + 4.0f * static_cast<float>(pq.beamLanes > 1u ? pq.beamLanes - 1u : 0u);  // (as World::beamVolley)
             const float shotLvl = look_->lines.playerShot.intensity * lvl;
             const u32 step32 = static_cast<u32>(std::floor(in.music / (kTicksPerStep * 0.5)));
             const float cl = shotLvl * (1.0f + kHeldCoreSwing * static_cast<float>((step32 * 2654435761u >> 28) & 15u) / 15.0f);
             const Vec3 own = palettes_->player[q];
-            drawBeam(d, ship + aim * tuning::kMuzzleWu, aim, tuning::kBeamLengthWu - tuning::kMuzzleWu, 2.0f * half, 2.0f,
+            drawBeam(d, ship + bdir * tuning::kMuzzleWu, bdir, tuning::kBeamLengthWu - tuning::kMuzzleWu, 2.0f * half, 2.0f,
                      reduceFlashing_ ? own : mix(own, W1, 0.7f), palettes_->playerLight[q] * lvl, own, cl, (reduceFlashing_ ? 0.15f : 0.25f) * lvl);
         }
+        beamDrawn_[q] = beaming;
 
         // Wingmen (Mirror, Quartet) and Chorus's ghosts: the ship's glyph, smaller and dimmer, in formation.
         {

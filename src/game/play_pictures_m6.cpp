@@ -19,7 +19,7 @@ using namespace sim;
 
 namespace {
 enum class M6 : u8 { Hint, EndedBy, SetCard, SetOver, TitleStar, UiScale, MiniStays, Flash, Credits, LwEntrance, LwLunge, LwClose, DropTitle,
-                     DropRetry, Home, PauseRestart, PauseQuit, HzWave, HzTouch, TitleIdle };
+                     DropRetry, Home, PauseRestart, PauseQuit, HzWave, HzTouch, TitleIdle, FbRiffs };
 struct M6Pic {
     const char* name;   // m6_<name>
     M6 kind;
@@ -57,6 +57,9 @@ const M6Pic kM6Pics[] = {
     // bars later bringing it back (PLAY not pressed): eight frames a beat apart from a beat before the bar line it leaves on, or
     // with --strip above 8 every frame from there (the video).
     {"title_idle", M6::TitleIdle, 0, nullptr},
+    // feedback.md rule 4 (2026-11-14): the Echo carries its player's Orbitals, Pulse Rings and Sweeper. The ship, given the three
+    // at level 3, held 300 wu from the Head (its first Echo 300 wu the other side), the fight held; from its fourth bar.
+    {"fb_riffs", M6::FbRiffs, 0, "feedback"},
 };
 constexpr u32 kM6Count = sizeof(kM6Pics) / sizeof(kM6Pics[0]);
 constexpr u32 kM6At = 300;  // after the run's Track card (2.25 bars)
@@ -160,6 +163,15 @@ bool Play::scriptSetupM6() {
             if (!setupFight(pic.fight, pic.arg)) return true;
             opt_.fightHold = true;
             break;
+        case M6::FbRiffs: {
+            if (!setupFight(pic.fight, pic.arg)) return true;
+            opt_.fightHold = true;
+            Loadout& l = w.playerMut(0).loadout;
+            l.riffs[riffIndex(kOrbitals)] = 3;
+            l.riffs[riffIndex(kPulseRing)] = 3;
+            l.riffs[riffIndex(kSweeper)] = 3;
+            break;
+        }
         case M6::MiniStays:
         case M6::Flash:
             if (!setupFight(pic.fight, 0)) return true;
@@ -428,6 +440,26 @@ bool Play::scriptInputM6(StickInput& in) {
             if (w.thrown(0, music1_)) scriptFlags_ |= 0x80u;
             if (!(scriptFlags_ & 0x80u)) in.move = normalizeOr(c - ship, Vec2{1.0f, 0.0f});
             if (length(ship - c) < w.species().horizon.horizonRadius + kPlayerHitRadius + 60.0f) captureFrom_ = now;
+            return true;
+        }
+        case M6::FbRiffs: {
+            in = bot_.think(w, 0, controller_, clock_.heardNow());
+            if (ffRunning_) return true;
+            const BossState& b = w.boss();
+            if (!b.active || b.dying || b.kind != BossKind::Feedback) return true;
+            // (held still 300 wu left of the Head, the assist firing: the Echo plays the shots and the Riffs on the right)
+            in = StickInput{};
+            in.assist = true;
+            w.closeTrioNow(0);
+            w.playerMut(0).levelsBanked = 0;
+            if (!(scriptFlags_ & 0x40u)) {
+                controller_.reset(b.pos + Vec2{-300.0f, 0.0f});
+                scriptFlags_ |= 0x40u;
+            }
+            if (captureFrom_ < 0 && music1_ >= b.fightTick + 3.0 * kTicksPerBar) {
+                stripStride_ = stripFrames_ > 8 ? 1u : 6u;
+                captureFrom_ = now;
+            }
             return true;
         }
         case M6::MiniStays:

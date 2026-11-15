@@ -39,6 +39,7 @@ public:
     u32 validationMessages() const { return validationMessages_.load(std::memory_order_relaxed); }
     u32 loaderMessages() const { return loaderMessages_.load(std::memory_order_relaxed); }
     bool validationEnabled() const { return validation_; }
+    bool colorSpaces() const { return colorSpaces_; }  // VK_EXT_swapchain_colorspace on (Display-P3 may be offered)
 
     VkInstance instance = VK_NULL_HANDLE;
     VkPhysicalDevice physical = VK_NULL_HANDLE;
@@ -60,6 +61,7 @@ private:
 
     VkDebugUtilsMessengerEXT messenger_ = VK_NULL_HANDLE;
     bool validation_ = false;
+    bool colorSpaces_ = false;
     std::atomic<u32> validationMessages_{0};
     std::atomic<u32> loaderMessages_{0};
 };

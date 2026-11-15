@@ -637,6 +637,26 @@ void World::arenaSweep(u8 owner, Vec2 c, float len, float a1, float swept, u32 a
         }
     }
 }
+u32 World::arenaInReach(Vec2 c, float reach, u32* out, float* dist, u32 cap) const {
+    // The hurtable bodies whose edge lies within `reach` of `c`, nearest edge first (ties in slot order): what Chain Storm's and
+    // Storm Coil's bolts may strike besides the enemies (M6 A2's rest, 2026-11-14).
+    u32 n = 0;
+    for (u32 k = 0; k < kArenaBodies; ++k) {
+        if (!arenaHurtable(k)) continue;
+        const float d = length(arena_[k].pos - c) - bodyRadius(species_->arena, arena_[k].kind);
+        if (d > reach || (n == cap && (cap == 0 || d >= dist[cap - 1]))) continue;  // (out of reach, or farther than all kept)
+        u32 j = n < cap ? n++ : cap - 1;
+        while (j > 0 && dist[j - 1] > d) {
+            out[j] = out[j - 1];
+            dist[j] = dist[j - 1];
+            --j;
+        }
+        out[j] = k;
+        dist[j] = d;
+    }
+    return n;
+}
+
 void World::damageBody(u32 slot, float dmg, u8 owner, Vec2 at, bool fromNet) {
     ArenaBody& b = arena_[slot];
     if (slot >= kArenaBodies || !b.alive || !hasHealth(b.kind) || b.hp <= 0.0f) return;

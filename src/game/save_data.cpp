@@ -55,6 +55,7 @@ bool loadSettingsFile(const char* path, Settings& s) {
         if (is("notice_seen")) s.noticeSeen = n != 0;
         if (is("probed_tier")) s.probedTier = static_cast<u32>(n >= 0 && n < 5 ? n : 0);
         if (is("ui_scale")) s.uiScale = static_cast<u8>(n >= 0 && n < 4 ? n : 1);
+        if (is("vivid")) s.vivid = n != 0;
         if (is("hints_seen")) s.hintsSeen = static_cast<u32>(std::strtoul(v, nullptr, 10)) & 0x7FFu;  // (eleven hints)
         if (is("runs_ended")) s.runsEnded = static_cast<u32>(std::strtoul(v, nullptr, 10));
     });
@@ -65,10 +66,10 @@ bool saveSettingsFile(const char* path, const Settings& s) {
     const int n = std::snprintf(text, sizeof text,
                                 "variant=%u\nmaster=%.3f\nmusic=%.3f\neffects=%.3f\nhaptics=%u\nswap_sides=%d\nauto_aim=%d\n"
                                 "effects_tier=%u\nframe_rate=%u\nreduce_flashing=%d\nnotice_seen=%d\nprobed_tier=%u\nmusic_host_only=%d\n"
-                                "auto_nova=%d\nui_scale=%u\nhints_seen=%u\nruns_ended=%u\n",
+                                "auto_nova=%d\nui_scale=%u\nhints_seen=%u\nruns_ended=%u\nvivid=%d\n",
                                 s.variant, s.master, s.music, s.effects, s.haptics, s.swapSides ? 1 : 0, s.autoAim ? 1 : 0, s.effectsTier,
                                 s.frameRate, s.reduceFlashing ? 1 : 0, s.noticeSeen ? 1 : 0, s.probedTier, s.musicHostOnly ? 1 : 0,
-                                s.autoNova ? 1 : 0, s.uiScale, s.hintsSeen, s.runsEnded);
+                                s.autoNova ? 1 : 0, s.uiScale, s.hintsSeen, s.runsEnded, s.vivid ? 1 : 0);
     return n > 0 && n < static_cast<int>(sizeof text) && saveFileAtomic(path, text, static_cast<size_t>(n));
 }
 

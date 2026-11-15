@@ -130,6 +130,10 @@ Rules:
   place), swap sides, button layout, gamepad mapping. LOOK holds effects (Auto / Low / Medium / High /
   Ultra), frame-rate target, reduce flashing, shake, vivid colour, colour-blind-safe palettes,
   high-contrast threats and UI scale, with the bot's run behind it so each change is seen at once.
+- **COLOUR** (M6, 2026-11-14; TECH_SPEC 5.2), beside REDUCE FLASHING: `STANDARD` / `VIVID` under `COLOUR (VIVID: THE
+  SCREEN'S WIDE GAMUT)`. VIVID presents the frame in Display-P3, so the screen maps the game's colours into its wider gamut
+  (every colour more saturated, white and greys as they were); it changes at once (the swapchain is rebuilt) and is saved.
+  Where the screen offers no Display-P3 the row reads `STANDARD (THIS SCREEN HAS NO WIDE GAMUT)` and has no control.
 
 ## The Trio (M3)
 
