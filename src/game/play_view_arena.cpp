@@ -22,7 +22,8 @@ Vec3 whiteV() { return {1.0f, 1.0f, 1.0f}; }
 float clamp01(float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
 constexpr float kVaultChevronWu = 1200.0f;  // arena.md (play test 3, quoted): a Vault's gold chevron while off screen this near
 // arena.md Meteor Rain (the owner, 2026-11-14): the meteor falls from this far up its line over the warning, its tail this long.
-constexpr float kMeteorFallWu = 800.0f, kMeteorTailWu = 160.0f;
+constexpr float kMeteorFallWu = 800.0f, kMeteorTailWu = 200.0f;
+constexpr float kMeteorBodyWu = 44.0f;  // (chosen, 2026-11-14) the rock's radius at the ground: 40% of its 110 wu ring
 }  // namespace
 
 void PlayView::arenaShape(FrameDraw& d, const ArenaGlyph& g, Vec2 pos, float rot, float scale, Vec3 c0, Vec3 c1, Vec3 c2, float widthRef, u8 layers) {
@@ -304,14 +305,45 @@ void PlayView::drawArena(FrameDraw& d, const ViewInput& in) {
         // The owner, 2026-11-14 ("meteor rain needs more of a visual impact on where it lands"): the meteor itself falls onto its
         // ring over the warning's two beats, from high on the frame's upper right, faster as it comes, landing at the centre on
         // the beat: a white-hot head with a gold tail.
+        // The owner, the same evening: "Meteor projectiles need to be bigger so that it makes sense with the hit area size and
+        // impact force": a burning rock about 40% of its ring across (kMeteorBodyWu), growing as it comes down out of the sky,
+        // white-hot on its leading side and gold behind, turning; a cone of fire behind it (five streaks from its rim), embers,
+        // and a warm pooled glow, all brighter as it nears the ground.
         if (shown(kMuteFx) && u > 0.0f && t < m.land) {
-            const Vec2 fall = normalizeOr(Vec2{0.45f, -1.0f}, Vec2{0.0f, -1.0f});
+            const Vec2 fall = normalizeOr(Vec2{0.45f, -1.0f}, Vec2{0.0f, -1.0f});  // (from the ring up toward where it came from)
+            const Vec2 side{-fall.y, fall.x};
             const float k1 = (1.0f - u) * (1.0f - u);
             const Vec2 head = m.at + fall * (kMeteorFallWu * k1);
-            const Vec2 tail = head + fall * (kMeteorTailWu * (0.4f + 0.6f * u));
-            const float lv = 0.5f + 1.5f * u;
-            d.scene.line(toScene(tail), toScene(head), 1.4f * refPx_, gold * 0.0f, W1 * (1.6f * lv), 0);
-            d.sparkles.glow(toScene(head), 16.0f * refPx_, gold * (0.8f * lv));
+            const float R = kMeteorBodyWu * (0.55f + 0.45f * u);
+            const float lv = 0.6f + 1.2f * u;
+            const Vec3 fire = mix(gold, W1, 0.25f);
+            // The tail: five streaks from its rim, gold to nothing, longer as it speeds up.
+            const float tailLen = kMeteorTailWu * (1.0f + 1.5f * u) + 2.0f * R;
+            for (int sx = -2; sx <= 2; ++sx) {
+                const float f = static_cast<float>(sx) / 2.0f;
+                const Vec2 from = head + side * (R * 0.8f * f) + fall * (R * 0.2f);
+                const Vec2 to = head + fall * (tailLen * (1.0f - 0.22f * std::fabs(f))) + side * (R * 0.3f * f);
+                d.scene.line(toScene(to), toScene(from), (3.2f - 1.0f * std::fabs(f)) * refPx_, Vec3{}, fire * (1.1f * lv), 0);
+            }
+            // The rock: a rough ring of nine points, turning; each edge white where it faces the way it falls, gold behind.
+            static constexpr float kRough[9] = {1.0f, 0.82f, 0.95f, 1.08f, 0.86f, 1.02f, 0.9f, 1.1f, 0.84f};
+            const float spin = static_cast<float>(t / kTicksPerBeat) * 0.9f + 1.7f * static_cast<float>(k);
+            Vec2 pts[9];
+            for (u32 q = 0; q < 9; ++q) pts[q] = head + dirv(spin + kTau * static_cast<float>(q) / 9.0f) * (R * kRough[q]);
+            for (u32 q = 0; q < 9; ++q) {
+                const Vec2 a = pts[q], b = pts[(q + 1) % 9];
+                const float lead = clamp01(0.5f - 0.5f * dot(normalizeOr((a + b) * 0.5f - head, fall), fall));  // 1 facing the ground
+                const Vec3 c = mix(gold, W1, lead) * ((1.2f + 0.8f * lead) * lv);
+                d.scene.line(toScene(a), toScene(b), 1.6f * refPx_, c, c, 0);
+            }
+            d.pools.glow(toScene(head), R * 3.2f * pxPerWu_, mix(gold, palettes_->danger, 0.3f) * (0.22f * lv));
+            d.sparkles.glow(toScene(head - fall * (0.25f * R)), R * 1.1f * pxPerWu_, W1 * (0.7f * lv));
+            // Embers: flecks shed behind it, flickering.
+            for (u32 q = 0; q < 6; ++q) {
+                const float ph = std::fmod(static_cast<float>(t) * 0.11f + 0.37f * static_cast<float>(q) + 0.13f * static_cast<float>(k), 1.0f);
+                const Vec2 e = head + fall * (R + ph * 1.4f * tailLen * 0.5f) + side * (R * 0.9f * std::sin(5.3f * static_cast<float>(q) + 3.0f * ph));
+                d.sparkles.glow(toScene(e), 5.0f * refPx_ * (1.0f - ph), fire * ((1.0f - ph) * 1.2f * lv));
+            }
         }
     }
     // The event: its announcement (a gold edge chevron and its name at the place; the Comet a white chevron two beats ahead),

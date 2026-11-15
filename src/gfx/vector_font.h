@@ -29,6 +29,9 @@ public:
     // colours with their intensity), each stroke `halfWidth` px. Returns the advance in pixels.
     float drawField(CapsuleBatch& batch, Vec2 origin, float capHeight, float halfWidth, Vec3 top, Vec3 middle, Vec3 bottom,
                     const char* text) const;
+    // A glyph's segments in font units (x right 0..6, y up from the baseline 0..6), for drawing it stroke by stroke (the title's
+    // wordmark, screens.md "Title"). Returns how many, at most `cap`.
+    u32 glyphSegments(char c, Vec2* a, Vec2* b, u32 cap) const;
     u32 glyphCount() const { return glyphCount_; }
     u32 segmentCount() const { return segmentCount_; }
 

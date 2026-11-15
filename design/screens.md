@@ -78,7 +78,8 @@ light, in the palette of Track 1, with the music at full level.
 | Element | Place | Behaviour |
 |---|---|---|
 | **Waveform** | Across the whole width at 48% of the height, 2 px, running cyan → white → first enemy hue → magenta | The actual music, drawn as a line: about a bar of the master bus, scrolling. A faint mirrored echo of it underneath. The logo stands on its own sound |
-| **Logo** `RAVEFORM` | Centred, cap height 190, top at 216 | Tubes 11 px wide in the same colour field as the waveform, white copy 3.2 px, a pool of the first enemy hue behind, two four-arm flares on its corners. Swells 2% on the kick |
+| **Logo** `RAVEFORM` | Centred, cap height 190, top at 216 | The game's font, each stroke drawn as chrome neon (the owner, 2026-11-14: "make the title of the game at the main menu look way more polished"; of a version in letters of its own, "i like the previous font"): a soft pooled halo in the waveform's colour field, a glowing extrusion six layers deep down and right in the deep hue, the tube 11 px (above each letter's horizon, 56% down, the field's colour with a little white at the top; below it the accent's chrome deepening to the foot), a white-hot core 3.3 px; strokes that run straight on meet flat (no beads). Every second bar on the downbeat a sheen of light crosses the letters in a beat and a half. Four-point glints at the R's top corner (the kick) and the M's foot (the backbeat). A laser underline 30 px under it, 1.08 times its width, in the field's colours, fading at both ends, wider on the kick. Swells 2% on the kick |
+| Tagline, beat dots | 74 and 108 px under the logo's baseline | As before, under the underline |
 | Tagline `SOUND BECOMES LIGHT` | Under the logo, cap height 22, accent | — |
 | Beat dots | Four, under the tagline | The current beat is lit; beat 1 in the accent |
 | **PLAY** | Centre, 600 × 140, label 52, player colour | One tap starts a run ("Transitions": the drop-in). This is the control a thumb finds first |
@@ -96,7 +97,9 @@ second, the tagline and the beat dots half a beat later, the logo on the third, 
 the demo comes up from a third of its light to its full light. Any input brings it all back over a beat from where it stood:
 a tap anywhere, the pointer moving (a mouse, more than 4 px), a key, a gamepad button, a stick or trigger past half. That input
 does nothing else (a tap where PLAY was does not start a run), and nothing takes a tap until the title is back; the count of
-8 bars starts again from it. Picture `m6_title_idle` (a strip a beat apart from a beat before it leaves; `--strip 600` every
+8 bars starts again from it. The demo plays as a person would (the owner: "the demo bot also needs to have smooth movement,
+not erratic at all"): it steers with its stick eased over 0.35 s, the auto-aim assist fires for it, and it never dashes.
+Picture `m6_title_idle` (a strip a beat apart from a beat before it leaves; `--strip 600` every
 frame, with the tap on PLAY's place two and a half bars after it left).
 
 ## Settings (M3)

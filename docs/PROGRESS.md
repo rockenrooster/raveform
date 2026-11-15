@@ -4,6 +4,20 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (night), the wordmark, the meteors, the demo's movement
+
+- "Make the title of the game at the main menu look way more polished", then (of a first version in letters of its own,
+  extended and leaning) "i like the previous font": the game's font's strokes (`VectorFont::glyphSegments`, new) drawn as
+  chrome neon in `Play::drawTitleLogo`: a pooled halo (the HUD is drawn after the bloom, so its glow is drawn here), a glowing
+  extrusion, the tube in a chrome split at each letter's horizon, a white-hot core, flat joins where strokes run straight on,
+  a sheen every second bar (on the run's music clock, so pictures show it), two glints, a laser underline (screens.md
+  "Title"). Video `captures\video\title_logo.mp4`.
+- "Meteor projectiles need to be bigger so that it makes sense with the hit area size and impact force": a burning rock 88 wu
+  across at the ground (40% of its ring; 55% of that as it starts high up), white-hot facing the ground, a cone of fire,
+  embers, a warm glow (arena.md). Picture `captures\pt5\meteor_*`.
+- "The demo bot also needs to have smooth movement, not erratic at all": the title's demo steers with its stick eased over
+  0.35 s and never dashes (`Play::attractInput`, also in the title's pictures). Video `captures\video\title_demo_smooth.mp4`.
+
 ## 2026-11-14 (night), the polish batch: tells, arena bodies, the leftovers, the Beam's swing, VIVID colour
 
 The owner, on the list of gaps: "lets work on these too: 3, 4, 5, 7, wide color".

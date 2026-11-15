@@ -252,6 +252,7 @@ bool Play::scriptInputM6(StickInput& in) {
             const bool tapNow = captureFrom_ < 0 && inBar >= kTicksPerBeat && inBar < kTicksPerBeat + 4.0;
             if (pic.kind == M6::DropTitle) {
                 in = trans_ == Trans::None ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+                if (trans_ == Trans::None) attractInput(in);  // (the title's demo, as in the game)
                 if (t >= kM6At && tapNow) {
                     startRun();
                     captureFrom_ = now + static_cast<i64>(std::lround(1.25 * stripStride_));
@@ -314,10 +315,12 @@ bool Play::scriptInputM6(StickInput& in) {
             return true;
         case M6::TitleStar:
             in = bot_.think(w, 0, controller_, clock_.heardNow());
+            attractInput(in);
             if (captureFrom_ < 0 && t == kM6At) captureFrom_ = now;
             return true;
         case M6::TitleIdle: {
             in = bot_.think(w, 0, controller_, clock_.heardNow());
+            attractInput(in);  // (the title's demo, as in the game)
             const Vec2 play{0.5f * layoutW_, 759.0f * layoutH_ / 1080.0f};  // (PLAY's centre, screenTitle)
             if (captureFrom_ < 0 && titleHideLine_ >= 0.0 && titleWakeAt_ < 0.0) {
                 const double beat = 3600.0 / std::fmax(w.tempoAt(music1_), 30.0f);  // frames a beat

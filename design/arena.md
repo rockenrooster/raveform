@@ -229,3 +229,9 @@ an event written longer ends with it (the Elite Hunt's twelve bars are eight).
 alone on the first downbeat, for a dead boss's body). Track 1 has no structure. From Track 2 a
 Vault carries its name, `VAULT`, as world text above it (cap 22, gold) until its first hit, and a
 gold edge chevron while it is off screen within 1,200 wu, like any pickup worth going to.
+
+**Meteor Rain, the meteor** (the owner, 2026-11-14: "Meteor projectiles need to be bigger so that it makes sense with the hit area
+size and impact force"): each falls onto its ring over the warning's two beats as a burning rock 88 wu across at the ground (40% of
+its 220 wu ring), smaller (55%) high in the sky as it starts, turning; white-hot on the side facing the ground and gold behind; a
+cone of fire behind it (five streaks from its rim, 200 wu and more as it speeds up), embers shed behind, and a warm glow, all
+brighter as it nears the ground. Drawn only (`PlayView`, `kMeteorBodyWu`); where it hurts is the ring, as before.

@@ -132,6 +132,18 @@ float VectorFont::drawField(CapsuleBatch& batch, Vec2 origin, float capHeight, f
     return x - origin.x;
 }
 
+u32 VectorFont::glyphSegments(char c, Vec2* a, Vec2* b, u32 cap) const {
+    const Glyph* g = lookup(c);
+    if (!g) return 0;
+    u32 n = 0;
+    for (u32 k = 0; k < g->count && n < cap; ++k, ++n) {
+        const Segment& s = segments_[g->first + k];
+        a[n] = Vec2{static_cast<float>(s.x0), static_cast<float>(s.y0)};
+        b[n] = Vec2{static_cast<float>(s.x1), static_cast<float>(s.y1)};
+    }
+    return n;
+}
+
 float VectorFont::measure(const TextStyle& style, const char* text) const {
     return static_cast<float>(std::strlen(text)) * kAdvanceUnits * style.capHeight / kCapUnits;
 }

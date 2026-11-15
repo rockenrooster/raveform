@@ -214,6 +214,7 @@ private:
     }
     void uiPointer(Vec2 pos, bool down);
     void buildInput(sim::StickInput& in);
+    void attractInput(sim::StickInput& in);  // the title's demo bot: steered, the assist firing, its stick eased, no dashes
     void runTick(double music0, double music1, bool firstOfFrame);
     void afterTick();
     void bandFrame();
@@ -419,6 +420,8 @@ private:
     static constexpr u32 kScopeN = 750;  // about a bar of the master bus at 120 BPM
     float scope_[kScopeN] = {};
     float titleShipAngle_ = -1.5708f;
+    Vec2 attractMove_{};                          // the title's demo bot's eased stick (buildInput)
+    static constexpr float kAttractMoveTau = 0.35f;  // (chosen, 2026-11-14) its time constant, seconds
     bool pausePressed_ = false;
     // Pause and the count-in (band ticks, or the simulated clock's seconds without a band).
     bool countIn_ = false;

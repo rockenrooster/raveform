@@ -190,6 +190,20 @@ void Play::setLayout(float w, float h, Vec2 insetMin, Vec2 insetMax) {
 
 // ---------------------------------------------------------------------------------------------- frame
 
+void Play::attractInput(StickInput& in) {
+    // The title's demo (the attract run, and the title's pictures). The owner, 2026-11-14: "the demo camera doesn't seem to have
+    // the same easing as the auto aim camera movement": the bot aims by hand and its aim jumps from target to target, and the
+    // camera leans along the aim; here it steers and the auto-aim assist fires for it (its aim held on a target), as the owner
+    // plays. Then "the demo bot also needs to have smooth movement, not erratic at all": its stick is eased (kAttractMoveTau: a
+    // change of mind becomes a curve, a stop a glide) and it never dashes (a dash is a jump).
+    in.aimActive = false;
+    in.assist = true;
+    const float k = 1.0f - std::exp(-std::fmax(frameDt_, 0.0f) / kAttractMoveTau);
+    attractMove_ = attractMove_ + (in.move - attractMove_) * k;
+    in.move = attractMove_;
+    in.dash = false;
+}
+
 void Play::buildInput(StickInput& in) {
     in = StickInput{};
     if (opt_.picture[0]) {
@@ -203,13 +217,8 @@ void Play::buildInput(StickInput& in) {
     if (opt_.bot || opt_.autoplay || attract()) {
         // The bot plays (--bot, benchmarks, and the title's attract run).
         in = bot_.think(*world_, seat_, controller_, coop() ? netHeard_ : clock_.heardNow());
-        if (attract() && !opt_.bot && !opt_.autoplay) {
-            // The owner, 2026-11-14: "the demo camera doesn't seem to have the same easing as the auto aim camera movement".
-            // The bot aims by hand and its aim jumps from target to target, and the camera leans along the aim; in the title's
-            // attract run it steers and the auto-aim assist fires for it (its aim held on a target), as the owner plays.
-            in.aimActive = false;
-            in.assist = true;
-        }
+        if (attract() && !opt_.bot && !opt_.autoplay) attractInput(in);
+        else attractMove_ = Vec2{};
         return;
     }
     in.assist = settings_.autoAim || !flow_;

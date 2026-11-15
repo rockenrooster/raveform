@@ -23,6 +23,12 @@ namespace {
 constexpr float kTwoPi = 6.28318530718f;
 Vec2 polarV(float a, float r) { return Vec2{std::cos(a) * r, std::sin(a) * r}; }
 float clamp01(float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
+
+// screens.md "Title", the wordmark (the owner, 2026-11-14: "make the title of the game at the main menu look way more polished",
+// then of a version in letters of its own: "i like the previous font"): the game's font's own strokes, drawn as chrome neon.
+constexpr float kLogoHorizon = 0.56f;  // the chrome's horizon in each letter (down from the caps' top, in cap heights)
+constexpr float kLogoTubeRefPx = 5.5f, kLogoHaloShare = 3.0f, kLogoCoreShare = 0.3f;  // half widths at 1080 lines
+constexpr u32 kLogoDepth = 6;          // the extrusion's layers, each a little down and right
 struct UiColour {
     const Ui* ui;
 };
@@ -433,56 +439,187 @@ void Play::drawTitleWave(Ui& ui, float level, float flat, float drawn) {
 }
 
 void Play::drawTitleLogo(Ui& ui, float level, float write, float out, float tag) {
-    // The logo: tubes in the same colour field as the waveform, a white copy, a pool of the first hue, two flares; it swells 2%
-    // on the kick. M6 (screens.md "Transitions"): home writes it letter by letter (its tubes stroking on, as the Track name
-    // card's letters do); the drop-in's downbeat streaks its letters out to both sides.
+    // screens.md "Title", the wordmark (the owner, 2026-11-14: "make the title of the game at the main menu look way more
+    // polished"; of letters of its own, "i like the previous font"): RAVEFORM in the game's font, each stroke drawn as chrome
+    // neon: a soft pooled halo, a glowing extrusion down and right, the tube (above each letter's horizon the colour field the
+    // waveform has, a little white at the top; below it the accent's chrome deepening to the foot) and a white-hot core. Every
+    // second bar a sheen crosses the letters on the downbeat; glints at the R's top and the M's foot (the kick, the backbeat); a
+    // laser underline in the field's colours over the tagline. The whole swells 2% on the kick. M6 (screens.md "Transitions"): home writes it letter by letter (its strokes drawn on along their paths); the
+    // drop-in's downbeat streaks its letters out to both sides.
     const float s = ui.s(), W = ui.W(), cx = 0.5f * W;
     const Vec3 white{1.0f, 1.0f, 1.0f};
-    const Vec3 cyan = palette_->hue[1], mag = palette_->accent, hue0 = palette_->hue[0];
+    const Vec3 cyan = palette_->hue[1], mag = palette_->accent, hue0 = palette_->hue[0], deep = palette_->hue[2];
     const float k = view_.kick();
     const float cap = 190.0f * s * (1.0f + 0.02f * k);
     const char* logo = "RAVEFORM";
-    const float w = ui.measure(cap, logo);
-    const float x0 = cx - 0.5f * w, base = (216.0f * s) + cap;
-    const float adv = w / 8.0f;
+    const float w = ui.measure(cap, logo);  // (the font's advance: a cap height a letter)
+    const float top = 216.0f * s, base = top + cap, x0 = cx - 0.5f * w;
+    const auto field = [&](float u) {
+        return u < 0.33f ? cyan + (white - cyan) * (u / 0.33f)
+                         : (u < 0.66f ? white + (hue0 - white) * ((u - 0.33f) / 0.33f) : hue0 + (mag - hue0) * ((u - 0.66f) / 0.34f));
+    };
+    // The chrome by height in a letter (y 0 top .. 1 foot), its field colour by the place across the word (u 0 .. 1).
+    const auto chrome = [&](float u, float y, float& lvOut) {
+        if (y < kLogoHorizon) {
+            lvOut = 1.5f;
+            return mix(white, field(u), 0.65f + 0.35f * (y / kLogoHorizon));  // (the field's colour, a little white at the top)
+        }
+        const float f = (y - kLogoHorizon) / (1.0f - kLogoHorizon);
+        lvOut = 1.7f - 0.6f * f;
+        return mix(mix(field(u), mag, 0.55f), deep, 0.35f * f);  // (the accent's chrome, deepening to the foot)
+    };
+    // The sheen: on the downbeat of every second bar, across the word in a beat and a half.
+    const double heard = transNow();  // (the run's music: the band's heard clock in the game, the simulated one in pictures)
+    const float sheenBeats = static_cast<float>(std::fmod(std::fmax(heard, 0.0), 2.0 * kTicksPerBar) / kTicksPerBeat);
+    const float sheenAt = -0.15f + 1.3f * (sheenBeats / 1.5f);
+    const auto sheen = [&](float u) {
+        if (sheenBeats > 1.5f) return 0.0f;
+        const float d = (u - sheenAt) / 0.09f;
+        return std::exp(-d * d);
+    };
+    const float beatPos = static_cast<float>(std::fmod(std::fmax(heard, 0.0), kTicksPerBar) / kTicksPerBeat);
+    const float backbeat = (static_cast<u32>(beatPos) % 2u == 1u) ? std::exp(-6.0f * (beatPos - std::floor(beatPos))) : 0.0f;
+
+    struct Seg {
+        Vec2 a, b;
+        float ya, yb;
+        u32 flags;  // flat ends where the stroke runs straight on into the next (look.md 4 joints: no beads)
+    };
+    Seg segs[96];
+    float xLetter = x0;
     if (level > 0.0f && write > 0.0f) {
-        char ch[2] = {0, 0};
         for (u32 j = 0; j < 8; ++j) {
-            ch[0] = logo[j];
             const float on = std::fmax(0.0f, std::fmin(1.0f, (write * 10.0f - static_cast<float>(j)) * 0.5f));
+            const float lx = xLetter;
+            xLetter += cap;
             if (on <= 0.0f) continue;
-            const float u = (static_cast<float>(j) + 0.5f) / 8.0f;
-            Vec3 c = u < 0.33f ? cyan + (white - cyan) * (u / 0.33f)
-                               : (u < 0.66f ? white + (hue0 - white) * ((u - 0.33f) / 0.33f) : hue0 + (mag - hue0) * ((u - 0.66f) / 0.34f));
+            // The letter's segments in its box (the O's ring and speaker as polygons), split at the horizon so the chrome turns
+            // there, in drawing order.
+            u32 n = 0;
+            const auto add = [&](float ax, float ay, float bx, float by) {
+                const auto place = [&](float x, float y) { return Vec2{lx + x * cap, top + y * cap}; };
+                if ((ay - kLogoHorizon) * (by - kLogoHorizon) < 0.0f && n + 2 <= countOf(segs)) {
+                    const float t = (kLogoHorizon - ay) / (by - ay);
+                    const float mx = ax + (bx - ax) * t;
+                    segs[n++] = Seg{place(ax, ay), place(mx, kLogoHorizon), ay, kLogoHorizon, 0u};
+                    segs[n++] = Seg{place(mx, kLogoHorizon), place(bx, by), kLogoHorizon, by, 0u};
+                } else if (n < countOf(segs)) {
+                    segs[n++] = Seg{place(ax, ay), place(bx, by), ay, by, 0u};
+                }
+            };
+            {
+                // The font's strokes (font units: x 0..6 across a cap height's advance, y 6 at the caps' top, 0 at the baseline).
+                Vec2 fa[48], fb[48];
+                const u32 m = ui.font().glyphSegments(logo[j], fa, fb, 48);
+                const float unit = 1.0f / VectorFont::kCapUnits;
+                for (u32 q = 0; q < m; ++q) add(fa[q].x * unit, 1.0f - fa[q].y * unit, fb[q].x * unit, 1.0f - fb[q].y * unit);
+            }
+            // Where two segments meet running straight on (within 20 degrees), both ends are flat: one tube, no bead.
+            for (u32 q = 0; q < n; ++q)
+                for (u32 r = 0; r < n; ++r) {
+                    if (q == r) continue;
+                    const Vec2 dq = normalizeOr(segs[q].b - segs[q].a, Vec2{1.0f, 0.0f}), dr = normalizeOr(segs[r].b - segs[r].a, Vec2{1.0f, 0.0f});
+                    const float near = 0.5f * s;
+                    if (lengthSq(segs[q].b - segs[r].a) <= near * near && dot(dq, dr) >= 0.94f) {
+                        segs[q].flags |= kFlatEnd;
+                        segs[r].flags |= kFlatStart;
+                    }
+                    if (lengthSq(segs[q].b - segs[r].b) <= near * near && dot(dq, dr) <= -0.94f) {
+                        segs[q].flags |= kFlatEnd;
+                        segs[r].flags |= kFlatEnd;
+                    }
+                    if (lengthSq(segs[q].a - segs[r].a) <= near * near && dot(dq, dr) <= -0.94f) {
+                        segs[q].flags |= kFlatStart;
+                        segs[r].flags |= kFlatStart;
+                    }
+                }
+            // Written on along its path: the first `on` of its length.
+            float total = 0.0f;
+            for (u32 q = 0; q < n; ++q) total += length(segs[q].b - segs[q].a);
+            float budget = on * total;
+            u32 shown = 0;
+            for (; shown < n && budget > 0.0f; ++shown) {
+                const float len = length(segs[shown].b - segs[shown].a);
+                if (len > budget && len > 1e-4f) {
+                    const float t = budget / len;
+                    segs[shown].b = segs[shown].a + (segs[shown].b - segs[shown].a) * t;
+                    segs[shown].yb = segs[shown].ya + (segs[shown].yb - segs[shown].ya) * t;
+                    segs[shown].flags &= ~static_cast<u32>(kFlatEnd);  // (the end being drawn is round)
+                }
+                budget -= len;
+            }
             const float side = j < 4 ? -1.0f : 1.0f;
+            const float tube = kLogoTubeRefPx * s * (0.4f + 0.6f * on);
             for (u32 g = 0; g < (out > 0.0f ? 3u : 1u); ++g) {
                 const float lag = 1.0f - 0.3f * static_cast<float>(g);
-                const float dx = side * 0.75f * W * out * out * lag;
-                const float lv = level * on * (1.0f - out) * (g == 0 ? 1.0f : 0.45f / static_cast<float>(g));
+                const Vec2 dx{side * 0.75f * W * out * out * lag, 0.0f};
+                const float lv = level * (1.0f - out) * (g == 0 ? 1.0f : 0.45f / static_cast<float>(g));
                 if (lv <= 0.01f) continue;
-                const Vec3 kc = ui.col(c, 1.7f * lv);
-                ui.font().drawField(ui.draw().hud, {x0 + adv * static_cast<float>(j) + dx, base - cap}, cap, 5.5f * s * on, kc, kc, kc, ch);
-                const Vec3 wc = ui.col(white, 1.4f * lv);
-                ui.font().drawField(ui.draw().hud, {x0 + adv * static_cast<float>(j) + dx, base - cap}, cap, 1.6f * s * on, wc, wc, wc, ch);
+                CapsuleBatch& hud = ui.draw().hud;
+                // The halo: soft pooled light along every stroke (the HUD is drawn after the bloom, so its glow is drawn here).
+                const float haloR = tube * kLogoHaloShare * 2.2f;
+                for (u32 q = 0; q < shown; ++q) {
+                    const Vec2 a = segs[q].a + dx, b = segs[q].b + dx;
+                    const float len = length(b - a);
+                    const u32 discs = 1u + static_cast<u32>(len / (0.6f * haloR));
+                    for (u32 t = 0; t <= discs; ++t) {
+                        const Vec2 p = a + (b - a) * (static_cast<float>(t) / static_cast<float>(discs));
+                        const float u = clamp01((p.x - dx.x - x0) / w), sh = sheen(u);  // (the sheen: a burst of light along the tubes)
+                        ui.draw().pools.glow(p, haloR * (1.0f + 0.6f * sh), mix(field(u), white, 0.5f * sh) * ((0.022f + 0.11f * sh) * lv * hudFade()));
+                    }
+                }
+                // The extrusion: layers down and right in the deep hue, dimmer as they go back.
+                for (u32 d = kLogoDepth; d >= 1; --d) {
+                    const Vec2 off = Vec2{0.9f, 1.3f} * (static_cast<float>(d) * 1.4f * s) + dx;
+                    const Vec3 c = ui.col(mix(deep, mag, 0.4f), 0.26f * lv * (1.0f - static_cast<float>(d) / (kLogoDepth + 1.0f)));
+                    for (u32 q = 0; q < shown; ++q) hud.line(segs[q].a + off, segs[q].b + off, tube, c, c, segs[q].flags);
+                }
+                for (u32 q = 0; q < shown; ++q) {
+                    const Seg& g0 = segs[q];
+                    const float ua = clamp01((g0.a.x - x0) / w), ub = clamp01((g0.b.x - x0) / w);
+                    float la = 0.0f, lb = 0.0f;
+                    const Vec3 ca = chrome(ua, g0.ya, la), cb = chrome(ub, g0.yb, lb);
+                    const Vec2 a = g0.a + dx, b = g0.b + dx;
+                    const float sa = sheen(ua), sb = sheen(ub);
+                    hud.line(a, b, tube, ui.col(mix(ca, white, 0.6f * sa), (la + 1.2f * sa) * lv), ui.col(mix(cb, white, 0.6f * sb), (lb + 1.2f * sb) * lv),
+                             g0.flags);
+                    const float ka = 1.3f - 0.8f * g0.ya + 2.0f * sa, kb = 1.3f - 0.8f * g0.yb + 2.0f * sb;
+                    hud.line(a, b, tube * kLogoCoreShare, ui.col(white, ka * lv), ui.col(white, kb * lv), g0.flags);  // the white-hot core
+                }
             }
         }
         const float lv = level * write * (1.0f - out);
-        ui.draw().pools.glow({cx, base - 0.5f * cap}, 0.55f * w, hue0 * (0.10f * lv * hudFade()));
-        for (const Vec2 f : {Vec2{x0 + 10.0f * s, 216.0f * s}, Vec2{x0 + w - 10.0f * s, base}}) {
+        ui.draw().pools.glow({cx, top + 0.5f * cap}, 0.55f * w, hue0 * (0.08f * lv * hudFade()));
+        // The glints: four-point stars at the R's top corner (on the kick) and the M's right foot (on the backbeat).
+        const auto glint = [&](Vec2 at, float amount) {
+            if (amount <= 0.02f) return;
             for (u32 a = 0; a < 4; ++a) {
-                const Vec2 dv = polarV(kTwoPi * (static_cast<float>(a) / 8.0f + 0.06f), 110.0f * s);
-                const Vec3 c = ui.col(white, 1.4f * lv);
-                ui.draw().hud.line(f - dv, f + dv, 0.8f * s, Vec3{}, c, 0);
-                ui.draw().hud.line(f, f + dv, 0.8f * s, c, Vec3{}, 0);
+                const float len = (a % 2u ? 16.0f : 34.0f) * s * (0.6f + 0.6f * amount);
+                const Vec2 dv = polarV(kTwoPi * 0.125f * static_cast<float>(a), len);  // (0, 45, 90, 135 degrees, both ways)
+                const Vec3 c = ui.col(white, (0.6f + 1.2f * amount) * lv);
+                ui.draw().hud.line(at - dv, at, 0.8f * s, Vec3{}, c, 0);
+                ui.draw().hud.line(at, at + dv, 0.8f * s, c, Vec3{}, 0);
             }
+        };
+        glint(Vec2{x0 + 0.02f * cap, top}, 0.35f + 0.65f * k);
+        glint(Vec2{x0 + w - 0.17f * cap, base}, 0.35f + 0.65f * backbeat);
+        // The laser underline: the field's colours, fading out at both ends, wider on the kick.
+        const float y = base + 30.0f * s, uw = 1.08f * w, ux = cx - 0.5f * uw;
+        const u32 parts = 12;
+        for (u32 q = 0; q < parts; ++q) {
+            const float u0 = static_cast<float>(q) / parts, u1 = static_cast<float>(q + 1) / parts;
+            const auto fade = [](float u) { return clamp01(std::fmin(u, 1.0f - u) / 0.18f); };
+            const Vec3 c0 = ui.col(field(u0), 1.4f * lv * fade(u0)), c1 = ui.col(field(u1), 1.4f * lv * fade(u1));
+            ui.draw().hud.line(Vec2{ux + uw * u0, y}, Vec2{ux + uw * u1, y}, (1.0f + 0.4f * k) * s, c0, c1, 0);
+            ui.draw().hud.line(Vec2{ux + uw * u0, y}, Vec2{ux + uw * u1, y}, 3.5f * s, c0 * 0.18f, c1 * 0.18f, 0);
         }
     }
     if (tag <= 0.0f) return;
-    ui.text({cx, base + 50.0f * s}, 22.0f * s, mag, 1.3f * tag, "SOUND  BECOMES  LIGHT");
+    ui.text({cx, base + 74.0f * s}, 22.0f * s, mag, 1.3f * tag, "SOUND  BECOMES  LIGHT");
     // Beat dots: the current beat lit, beat 1 in the accent.
     const u32 beat = static_cast<u32>(std::fmod(clock_.heardNow(), kTicksPerBar) / kTicksPerBeat) % 4u;
     for (u32 b = 0; b < 4; ++b) {
-        const Vec2 c{cx + (static_cast<float>(b) - 1.5f) * 36.0f * s, base + 86.0f * s};
+        const Vec2 c{cx + (static_cast<float>(b) - 1.5f) * 36.0f * s, base + 108.0f * s};
         ui.dot(c, 4.0f * s, b == 0 ? mag : white, (b == beat ? 1.8f : 0.35f) * tag);
     }
 }
