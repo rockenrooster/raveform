@@ -511,6 +511,7 @@ void Band::update(i64 displayLeadNs) {
     view_.running = modelValid_;
     view_.timestamped = timestamped_;
     view_.heardFrame = model_;
+    view_.heardNs = modelNs_;  // (the moment heardFrame is the model's for: this frame's display time once the clock was read)
     const double heardNow = model_ - static_cast<double>(displayLeadNs) * r * 1e-9;
     view_.latencyMs = (static_cast<double>(engine_->writeFrame()) - heardNow - static_cast<double>(syncOffsetMs_) * r * 1e-3) / r * 1e3;
     if (haveNextTempo_ && view_.heardFrame >= nextSongStartFrame_) {

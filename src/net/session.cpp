@@ -22,6 +22,7 @@ constexpr u32 kClaimsDense = 400;         // claims in a second above which a cl
 constexpr u32 kDensePoses = 3;            // ... 10 Hz (a teammate sees a kill at most 67 ms later; the lead's rule: 100 ms)
 constexpr i64 kCensusEveryUs = 2000000;
 constexpr i64 kPingFastUs = 50000, kPingUs = 250000;  // TECH_SPEC 8.2: 4 Hz (20 Hz until 16 samples)
+constexpr i64 kBackSettleUs = 500000;  // pause-on-leave: a client back from away settles its clock at least this long
 constexpr i64 kInterpUs = 66000;        // remote players drawn ~66 ms behind
 constexpr i64 kExtrapMaxUs = 100000;
 // Predicted remote players (fillRemote): carried on from the newest pose for at most this long, a new pose's jump spread
@@ -318,6 +319,11 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     errMax_ = 0.0f;
     errN_ = corrCount_ = 0;
     nextPoseUs_ = nextBeatUs_ = nextCensusUs_ = nextPingUs_ = 0;
+    awayMask_ = 0;
+    pauseByAway_ = goneAway_ = returning_ = false;
+    awayFromUs_ = backFromUs_ = beatHeardUs_ = 0;
+    for (i64& t : awaySinceUs_) t = 0;
+    lastAwayMs_ = 0.0f;
     for (i64& t : nextCorrUs_) t = 0;
     for (float& b : downBudget_) b = 0.0f;
     for (float& b : pending_) b = 0.0f;
@@ -494,6 +500,9 @@ void Session::handleDisconnect(u32 peer) {
     pushOp(op);
     if (state_ == SessionState::Running) relayEvent(m, static_cast<u32>(s));
     reliable([&](PacketWriter& w) { return w.putSeats(seatMask_); });
+    // Pause-on-leave: a player away past the room's wait is gone; the room no longer waits for them (and counts in if nobody else
+    // is away).
+    if (seatAway(static_cast<u32>(s))) hostSetAway(static_cast<u32>(s), false);
 }
 
 void Session::onHello(const MsgHello& m) {
@@ -581,6 +590,9 @@ void Session::onPing(i64 t0) {
 void Session::onPong(i64 t0, i64 t1, i64 t2) {
     if (host()) return;
     pingOutUs_ = 0;
+    // Pause-on-leave: the answer to a ping sent before this device was away (its round trip the whole time away) is not a
+    // sample of the clock: it led the fresh estimate astray by a sixteenth of its error (the soak: 152 ms after 5 s away).
+    if (returning_ && t0 < backFromUs_) return;
     clock_.addSample(t0, t1, t2, nowLocal());
 }
 
@@ -735,6 +747,9 @@ void Session::onPause(const MsgPause& m) {
         if (from_ < 1) return;
         if (m.kind == kPauseAsk) hostPause(true);
         if (m.kind == kResumeAsk) hostPause(false);
+        // Pause-on-leave: (an away comes twice, reliable and not: a lost one would never be resent, its sender has stopped)
+        if (m.kind == kAwayAsk) hostSetAway(static_cast<u32>(from_), true);
+        if (m.kind == kBackAsk) hostSetAway(static_cast<u32>(from_), false);
         return;
     }
     if (m.kind == kPauseAt) {
@@ -743,6 +758,13 @@ void Session::onPause(const MsgPause& m) {
     } else if (m.kind == kResumeAt) {
         resumeAt_ = m.songTick;
         nextOffset_ = m.runOffset;
+    } else if (m.kind == kAwayMask) {
+        // While the host is away nothing comes from it: it is waited for as long as the room waits for anyone (send() counts
+        // kAwayWaitMs; ENet's own limit lies past it).
+        const bool hostWas = (awayMask_ & 1u) != 0, hostNow = (m.away & 1u) != 0;
+        awayMask_ = m.away;
+        if (hostNow && !hostWas) awaySinceUs_[0] = localNow_;
+        if (hostNow != hostWas && !goneAway_) link_.setPeerTimeout(0, hostNow ? kAwayLinkMs : 0);
     }
 }
 
@@ -1040,6 +1062,7 @@ void Session::onHeartbeat(const MsgHeartbeat& m) {
         if (std::fabs(r) > diag_.songResidualMaxMs) diag_.songResidualMaxMs = std::fabs(r);
     }
     song_.set(a);
+    beatHeardUs_ = localNow_;  // (pause-on-leave: a client back from away waits for a fresh one)
     if (m.bossOn && m.run == world_->runId()) world_->netBossState(m.bossPart, m.bossParts, m.bossCore, Vec2{m.bossX, m.bossY});
 }
 
@@ -1093,7 +1116,7 @@ bool Session::requestStart() {
 
 void Session::requestRetry() {
     // The run is over for everyone (every player down): a new one on the next bar line, the seats still taken.
-    if (!host() || state_ != SessionState::Running || world_->restartPending()) return;
+    if (!host() || state_ != SessionState::Running || world_->restartPending() || awayMask_) return;  // (not while a player is away)
     world_->requestRestart();
 }
 
@@ -1147,7 +1170,7 @@ void Session::requestPause(bool on) {
     reliable([&](PacketWriter& w) { return w.putPause(m); });
 }
 
-void Session::hostPause(bool on) {
+void Session::hostPause(bool on, bool away) {
     // GAME_DESIGN 10: any player may pause; it takes hold for everyone on the next beat (at least 120 ms away,
     // so every client hears of it first). RESUME counts four beats in, as solo play does (screens.md).
     if (!song_.valid() || state_ != SessionState::Running) return;
@@ -1160,13 +1183,16 @@ void Session::hostPause(bool on) {
         // beat before it heard (the soak's "every peer on the same tick: NO").
         const double rto = (static_cast<double>(stats_.rttMs) + 4.0 * static_cast<double>(stats_.rttVarMs)) * 1e-3;
         const double lead = std::fmin(std::fmax(0.12 + 1.5 * rto, 0.12), 0.6);
-        pauseAt_ = std::ceil((runNow + lead * tps) / kBeat) * kBeat;
+        // Pause-on-leave: an away's pause holds on the next sixteenth (the one who left has already stopped; the others play
+        // on with them standing still until it holds).
+        const double grid = away ? kBeat / 4.0 : kBeat;
+        pauseAt_ = std::ceil((runNow + lead * tps) / grid) * grid;
         resumeAt_ = -1.0;
         MsgPause m;
         m.kind = kPauseAt;
         m.runTick = pauseAt_;
         sendPause(m);
-    } else if (!on && paused() && !resuming()) {
+    } else if (!on && paused() && !resuming() && !awayMask_) {  // (nobody may lift the pause while a player is away)
         const double barStart = std::floor(pauseAt_ / kBar) * kBar;
         const double frac = pauseAt_ - barStart;
         const double line = std::ceil((song + 4.0 * kBeat - frac + 8.0) / kBar) * kBar;
@@ -1181,6 +1207,100 @@ void Session::hostPause(bool on) {
 }
 
 void Session::sendPause(const MsgPause& m) { reliable([&](PacketWriter& w) { return w.putPause(m); }); }
+
+// ---------------------------------------------------------------------------------------------- pause-on-leave
+
+void Session::applyAwayTimeouts() {
+    // A client away, or every client while the host is away (none hears the other then), is waited for kAwayWaitMs, which the
+    // session counts itself (send(): ENet re-checks a silent peer only as its resends back off, so its own limit lies past it).
+    for (u32 s = 1; s < kMaxPlayers; ++s)
+        if (seatPeer_[s] >= 0) link_.setPeerTimeout(static_cast<u32>(seatPeer_[s]), (awayMask_ & 1u) || seatAway(s) ? kAwayLinkMs : 0);
+}
+
+void Session::hostSetAway(u32 seat, bool on) {
+    if (seat >= kMaxPlayers || state_ != SessionState::Running) return;
+    const u8 bit = static_cast<u8>(1u << seat);
+    const u8 next = on ? static_cast<u8>(awayMask_ | bit) : static_cast<u8>(awayMask_ & ~bit);
+    if (next == awayMask_) return;
+    awayMask_ = next;
+    if (on) awaySinceUs_[seat] = localNow_;
+    applyAwayTimeouts();
+    MsgPause m;
+    m.kind = kAwayMask;
+    m.away = awayMask_;
+    sendPause(m);
+    if (on) {
+        // The room holds for them: a pause on the next sixteenth, or a count-in under way goes back to the pause.
+        if (!paused()) {
+            hostPause(true, true);
+            pauseByAway_ = true;
+        } else if (resuming()) {
+            resumeAt_ = -1.0;
+            MsgPause p;
+            p.kind = kPauseAt;
+            p.runTick = pauseAt_;
+            sendPause(p);
+            pauseByAway_ = true;
+        }
+    } else if (!awayMask_ && pauseByAway_ && paused() && !resuming()) {
+        // Everyone is back: the room counts in (a pause someone asked for before the away stays theirs to lift).
+        pauseByAway_ = false;
+        hostPause(false);
+    }
+    flushReliable();
+    link_.flush();
+}
+
+void Session::goAway(i64 localUs) {
+    if (state_ != SessionState::Running || goneAway_) return;
+    goneAway_ = true;
+    returning_ = false;
+    awayFromUs_ = localUs;
+    if (host()) {
+        hostSetAway(0, true);  // (it flushes)
+        return;
+    }
+    MsgPause m;
+    m.kind = kAwayAsk;
+    reliable([&](PacketWriter& w) { return w.putPause(m); });
+    flushReliable();
+    scratch_.reset();
+    scratch_.putPause(m);
+    sendTo(0, kChControl, scratch_, false);  // (a second copy: a reliable one lost now is never resent, this device stops)
+    link_.setPeerTimeout(0, kAwayLinkMs);
+    link_.flush();
+}
+
+void Session::comeBack(i64 localUs) {
+    if (!goneAway_) return;
+    lastAwayMs_ = static_cast<float>(static_cast<double>(localUs - awayFromUs_) * 1e-3);
+    localNow_ = localUs;
+    if (host()) hostNow_ = localUs;  // (the frame's time is the last one before it left: what decides now must not use it)
+    if (state_ != SessionState::Running) {
+        goneAway_ = false;
+        return;
+    }
+    if (localUs - awayFromUs_ > static_cast<i64>(kAwayWaitMs) * 1000 - 1000000) {
+        // Past the room's wait (a second's margin): it went on without this device (or, the host, its clients are gone).
+        state_ = SessionState::Ended;
+        endReason_ = "away too long";
+        goneAway_ = false;
+        return;
+    }
+    returning_ = true;
+    backFromUs_ = localUs;
+    if (!host()) {
+        // The clock settles again on fresh samples (pinged at 20 Hz until there are kSamples of them); send() says it is back.
+        clock_.forgetSamples();
+        nextPingUs_ = 0;
+    }
+}
+
+void Session::hostReturned() {
+    if (!host() || !goneAway_) return;
+    goneAway_ = returning_ = false;
+    hostSetAway(0, false);
+}
 
 void Session::resumed() {
     runOffset_ = nextOffset_;
@@ -1900,7 +2020,7 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
             // The other players' newest poses, to each client (not its own back).
             MsgPose all[kMaxPlayers];
             for (u32 c = 1; c < kMaxPlayers; ++c) {
-                if (!welcomed_[c] || seatPeer_[c] < 0) continue;
+                if (!welcomed_[c] || seatPeer_[c] < 0 || seatAway(c)) continue;  // (an away seat hears nothing: its app has stopped)
                 u32 n = 0;
                 all[n++] = m;
                 for (u32 s = 1; s < seats_; ++s) {
@@ -1984,6 +2104,7 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
                 ++n;
             }
             if (n) scratch_.putStats(st, n);
+            // (to an away seat too: 4 Hz is nothing, and back it has the song at once)
             for (u32 s = 1; s < kMaxPlayers; ++s)
                 if (welcomed_[s] && seatPeer_[s] >= 0) sendTo(static_cast<u32>(seatPeer_[s]), kChUnreliable, scratch_, false);
             // In a fight 10 Hz: the boss's health rides with it, and with every player's damage a quarter second behind a
@@ -1996,7 +2117,7 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
             lastPrioUs_ = localUs;
             updatePriorities(dt > 0.1f ? 0.1f : dt);
             for (u32 s = 1; s < seats_; ++s) {
-                if (!welcomed_[s] || seatPeer_[s] < 0 || localUs < nextCorrUs_[s]) continue;
+                if (!welcomed_[s] || seatPeer_[s] < 0 || localUs < nextCorrUs_[s] || seatAway(s)) continue;
                 sendCorrections(s, w.music());
                 const i64 every = cfg_.corrEveryUs;
                 nextCorrUs_[s] = localUs - nextCorrUs_[s] > every ? localUs + every : nextCorrUs_[s] + every;
@@ -2016,8 +2137,35 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
         }
         flushReliable();
     }
-    // A client's ping (TECH_SPEC 8.2: 4 Hz; 20 Hz until it has 16 samples), stamped as it leaves.
-    if (!host() && poseFrame && localUs >= nextPingUs_) {
+    // Pause-on-leave: a client back from away tells the host once its clock has settled on fresh samples (the steered clock
+    // takes the new estimate at once: the run is paused for everyone) and the host is heard; the room then counts in.
+    if (!host() && returning_ && state_ == SessionState::Running && clock_.samples() >= ClockSync::kSamples && !hostQuiet &&
+        localUs - backFromUs_ >= kBackSettleUs && beatHeardUs_ > backFromUs_) {
+        clock_.snap();
+        MsgPause m;
+        m.kind = kBackAsk;
+        reliable([&](PacketWriter& w) { return w.putPause(m); });
+        flushReliable();
+        returning_ = goneAway_ = false;
+        link_.setPeerTimeout(0, (awayMask_ & 1u) ? kAwayLinkMs : 0);
+    }
+    // Pause-on-leave, the room's wait: the host drops a client away longer than kAwayWaitMs (it leaves the run, the room counts
+    // in); a client gives up on a host away that long ("the host is gone": home with its score).
+    if (state_ == SessionState::Running && awayMask_) {
+        if (host()) {
+            for (u32 s2 = 1; s2 < kMaxPlayers; ++s2) {
+                if (!seatAway(s2) || seatPeer_[s2] < 0 || localUs - awaySinceUs_[s2] <= static_cast<i64>(kAwayWaitMs) * 1000) continue;
+                const u32 peer = static_cast<u32>(seatPeer_[s2]);
+                link_.drop(peer);
+                handleDisconnect(peer);  // (as a peer that timed out: its player leaves the run; hostSetAway lifts the wait)
+            }
+        } else if ((awayMask_ & 1u) && !goneAway_ && localUs - awaySinceUs_[0] > static_cast<i64>(kAwayWaitMs) * 1000) {
+            state_ = SessionState::Ended;
+            endReason_ = "the host is gone";
+        }
+    }
+    // A client's ping (TECH_SPEC 8.2: 4 Hz; 20 Hz until it has 16 samples), stamped as it leaves (none while the host is away).
+    if (!host() && poseFrame && localUs >= nextPingUs_ && !(awayMask_ & 1u)) {
         scratch_.reset();
         scratch_.putPing(nowLocal());
         sendTo(0, kChControl, scratch_, false);

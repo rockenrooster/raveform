@@ -37,6 +37,7 @@ struct BeatView {
     bool running = false;            // the band plays and the clock is known
     double heardFrame = 0.0;         // engine frame reaching the ear at the frame's display time
     double heardTick = 0.0;          // musical position then (96 ticks per quarter)
+    i64 heardNs = 0;                 // that display time (audioNowNs's clock): co-op's music sync places the song by it
     double songSeconds = 0.0;        // heard seconds since the song began
     double bpm = 120.0;
     double latencyMs = 0.0;          // write head to ear

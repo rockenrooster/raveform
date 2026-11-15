@@ -33,5 +33,11 @@ if ($LASTEXITCODE -ne 0) { $failed += 1; Write-Host "[test] save tests failed ($
 if ($LASTEXITCODE -ne 0) { $failed += 1; Write-Host "[test] loopback soak (clean) failed ($LASTEXITCODE)" }
 & (Join-Path $dir 'raveform_headless.exe') --net soak --minutes 6 --pause --netsim 'loss=0.05,jitter=80' | Select-Object -Last 11
 if ($LASTEXITCODE -ne 0) { $failed += 1; Write-Host "[test] loopback soak (5% loss, 80 ms jitter) failed ($LASTEXITCODE)" }
+# Pause-on-leave (2026-11-14): a client's app off the screen for 5 s, then the host's for 10 s: the room holds on one tick and
+# counts in once they are back, nobody dropped.
+& (Join-Path $dir 'raveform_headless.exe') --net soak --minutes 2 --away-at 50 --away-for 5 | Select-Object -Last 3
+if ($LASTEXITCODE -ne 0) { $failed += 1; Write-Host "[test] loopback soak, a client away 5 s, failed ($LASTEXITCODE)" }
+& (Join-Path $dir 'raveform_headless.exe') --net soak --minutes 2 --away-at 50 --away-for 10 --away-seat 0 | Select-Object -Last 3
+if ($LASTEXITCODE -ne 0) { $failed += 1; Write-Host "[test] loopback soak, the host away 10 s, failed ($LASTEXITCODE)" }
 if ($failed) { exit 1 }
 Write-Host '[test] all passed'

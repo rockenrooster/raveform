@@ -85,8 +85,13 @@ void NetPeer::frame(i64 trueUs) {
             }
         }
         if (runStarted_) {
-            u32 n = 0;
-            while (simHostUs_ + kTickUs <= hostNow && n < 3) {
+            u32 n = 0, steps = 0;
+            // Paused (pause-on-leave: a peer back from away, the run frozen short of the pause's tick), the run catches up to the
+            // pause's tick at once in ticks of its own instead of dropping time into one long tick.
+            // Back from away before the room's pause has reached it (it left before the word came): nothing ticks until it does.
+            const bool hold = session_.awaitingRoom();
+            const auto cap = [&] { return hold ? 0u : (session_.paused() ? 600u : 3u); };  // (asked each step: a resume ends the catch-up)
+            while (simHostUs_ + kTickUs <= hostNow && n < cap() && steps++ < 8000u) {
                 const i64 tEnd = simHostUs_ + kTickUs;
                 simHostUs_ = tEnd;
                 double song = session_.songAt(tEnd);
@@ -102,7 +107,7 @@ void NetPeer::frame(i64 trueUs) {
                 ++n;
             }
             if (n > stats_.maxTicksInFrame) stats_.maxTicksInFrame = n;
-            if (hostNow - simHostUs_ > 3 * kTickUs) {
+            if (hostNow - simHostUs_ > 3 * kTickUs && !session_.paused() && !hold) {
                 simHostUs_ = hostNow - kTickUs / 2;  // TECH_SPEC 4: beyond three ticks a frame, drop time
                 ++stats_.dropped;
                 session_.noteTimeDropped();

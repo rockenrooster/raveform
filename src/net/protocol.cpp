@@ -413,7 +413,8 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             m.runTick = r.f64v();
             m.songTick = r.f64v();
             m.runOffset = r.f64v();
-            if (r.bad() || m.kind > kResumeAt || !finite(m.runTick) || !finite(m.songTick) || !finite(m.runOffset)) return false;
+            m.away = r.u8v();
+            if (r.bad() || m.kind > kAwayMask || m.away > 0xF || !finite(m.runTick) || !finite(m.songTick) || !finite(m.runOffset)) return false;
             if (sink) sink->onPause(m);
             return true;
         }
@@ -942,11 +943,12 @@ bool PacketWriter::putCensus(const MsgCensus& m) {
     return true;
 }
 bool PacketWriter::putPause(const MsgPause& m) {
-    if (!begin(Msg::Pause, 25)) return false;
+    if (!begin(Msg::Pause, 26)) return false;
     u8v(m.kind);
     f64v(m.runTick);
     f64v(m.songTick);
     f64v(m.runOffset);
+    u8v(m.away);
     return true;
 }
 bool PacketWriter::putSeats(u8 mask) {

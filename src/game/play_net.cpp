@@ -8,10 +8,12 @@
 // band toward the host's song: a rate correction of at most 0.3% on bar lines, or, when it is far off (at the
 // start, after a stall), a hold on its next bar line until the host's song catches up (the re-seek).
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <new>
 
+#include "audio/audio_device.h"
 #include "core/log.h"
 #include "core/time.h"
 #include "game/play.h"
@@ -28,6 +30,16 @@ constexpr i64 kTickUs = 16667;            // 1/60 s of host time
 constexpr float kRateGainPerMs = 0.0003f; // the band's rate correction: 0.03% for each millisecond it is off ...
 constexpr float kRateMax = 0.003f;        // ... at most 0.3% (TECH_SPEC 8.2)
 constexpr float kReseekMs = 60.0f;        // farther off than this, the band re-seeks on a bar line (a stall)
+// Music sync (2026-11-14): the song the devices share is the one heard this long after a frame begins, on every device alike
+// (true time). Until now each device placed it at its own display time (two refresh periods ahead: 33 ms at 60 Hz, 17 ms at
+// 120 Hz), so phones at different refresh rates played the music that far apart. 33 ms keeps the 60 Hz phones as they were.
+constexpr i64 kNetLeadUs = 33333;
+// Pause-on-leave, the host back from away: its band counts as on the song after this long within kRealignMs of it; past
+// kRealignGiveUpS (no band, a stream that will not start) it publishes again as it is.
+constexpr float kRealignMs = 2.0f, kRealignHoldS = 0.5f, kRealignGiveUpS = 12.0f;
+// (Back from away, the band's heard clock first rides on a buffer estimate, hundreds of ms off, until the reopened stream's
+// timestamps come: a re-seek taken then holds the wrong length and a second one follows (the phones, 2026-11-14: 341 then
+// 803 ms). The servo waits a second after the return: netServoFromUs_, set in appForeground.)
 // Diagnostics of the player shots on this screen (netFrame; one Play a process), logged every 20 s.
 struct ShotDiag {
     double lastDrawnUs = 0.0;
@@ -90,21 +102,27 @@ void Play::netFrame(float realDt) {
     net::Session& s = *session_;
     World& w = *world_;
     const i64 localUs = net::wireNowUs();
+    netLocalUs_ = localUs;
     s.receive(localUs);
     seat_ = s.seat();
+    if (s.awayMask() != awayLogged_) {
+        RF_LOG("net: away: seats away now 0x%x (were 0x%x)%s", s.awayMask(), awayLogged_, s.paused() ? ", the room is paused" : "");
+        awayLogged_ = s.awayMask();
+    }
     const i64 hostNow = s.hostNow();
     const BeatView* bv = (bandDrives_ && band_ && band_->view().running) ? &band_->view() : nullptr;
     clock_.beginFrame(bv, realDt, false);  // the band bridge's bookkeeping (latency); the run follows the song model
     if (s.host()) {
-        // The song every device follows: the band's heard clock (the simulated one without a band). With a band,
-        // nothing is published until it plays (no run is scheduled on a clock that is about to change).
+        // The song every device follows: the band's heard clock (the simulated one without a band), as heard kNetLeadUs
+        // after this frame's start. With a band, nothing is published until it plays (no run is scheduled on a clock that is
+        // about to change), nor while the band is brought back onto the song after an away (hostRealign_).
         if (bandDrives_) {
-            if (bv && bv->bpm > 1.0) {
+            if (bv && bv->bpm > 1.0 && !hostRealign_) {
                 net::SongAnchor a;
                 a.hostUs = hostNow;
-                a.song = bv->heardTick;
+                a.song = heardSongAt(localUs + kNetLeadUs) - hostBandShift_;
                 a.tps = bv->bpm * 96.0 / 60.0;
-                a.nextBar = (std::floor(bv->heardTick / kTicksPerBar) + 1.0) * kTicksPerBar;
+                a.nextBar = (std::floor(a.song / kTicksPerBar) + 1.0) * kTicksPerBar;
                 a.tpsNext = netRunStarted_ ? static_cast<double>(w.tempoAt(a.nextBar - s.runOffset() + 1.0)) * 96.0 / 60.0 : a.tps;
                 s.setHostSong(a);
             }
@@ -116,7 +134,7 @@ void Play::netFrame(float realDt) {
             netSongClock_.advanceTo(hostNow, &netTempoOf, this);
             s.setHostSong(netSongClock_.anchor(&netTempoOf, this));
         }
-        netBandOffset_ = s.runOffset();
+        if (!hostRealign_) netBandOffset_ = s.runOffset() + hostBandShift_;
     }
     // A pause holds the band's section, as in solo play (the run stops on the pause's beat; the song goes on).
     const bool held = s.paused() || s.resuming();
@@ -152,8 +170,15 @@ void Play::netFrame(float realDt) {
             }
         }
         if (netRunStarted_) {
-            u32 n = 0;
-            while (netSimHostUs_ + kTickUs <= hostNow && n < 3) {
+            u32 n = 0, steps = 0;
+            // Paused (pause-on-leave: back from away, the run stopped short of the room's pause tick), the run catches up to
+            // that tick at once in ticks of its own (the run is held, so a long frame shows nothing) instead of dropping time
+            // into one long tick.
+            // Back from away before the room's pause has reached this device (it left before the word came): nothing ticks
+            // until it does.
+            const bool hold = s.awaitingRoom();
+            const auto cap = [&] { return hold ? 0u : (s.paused() ? 600u : 3u); };  // (asked each step: a resume ends the catch-up)
+            while (netSimHostUs_ + kTickUs <= hostNow && n < cap() && steps++ < 8000u) {
                 const i64 tEnd = netSimHostUs_ + kTickUs;
                 netSimHostUs_ = tEnd;
                 const double song = s.songAt(tEnd);
@@ -169,7 +194,7 @@ void Play::netFrame(float realDt) {
                 netTick(m1, bpm > 1.0f ? bpm : 120.0f, n == 0);
                 ++n;
             }
-            if (hostNow - netSimHostUs_ > 3 * kTickUs) {
+            if (hostNow - netSimHostUs_ > 3 * kTickUs && !s.paused() && !hold) {
                 netSimHostUs_ = hostNow - kTickUs / 2;  // TECH_SPEC 4: beyond three ticks a frame, drop time
                 ++netDropped_;
                 s.noteTimeDropped();
@@ -178,7 +203,25 @@ void Play::netFrame(float realDt) {
             alpha_ = clampf(static_cast<float>(static_cast<double>(hostNow - netSimHostUs_) / static_cast<double>(kTickUs)), 0.0f, 1.0f);
         }
     }
-    if (!s.host()) netBandServo();
+    if (!s.host() || hostRealign_) netBandServo();
+    if (hostRealign_) {
+        // Pause-on-leave, the host back: its band is on the song the room kept (within kRealignMs for kRealignHoldS, no re-seek
+        // under way) before it publishes it again, whole bars off it now (hostBandShift_); then the room counts in.
+        const bool measured = netServoAt_ == netLocalUs_;  // (the servo measured this frame: past its settling, no re-seek under way)
+        hostRealignOkS_ = (measured && std::fabs(netBandErrMs_) < kRealignMs) ? hostRealignOkS_ + frameDt_ : 0.0f;
+        hostRealignS_ += frameDt_;
+        if (hostRealignOkS_ >= kRealignHoldS || hostRealignS_ >= kRealignGiveUpS) {
+            const bool onSong = hostRealignOkS_ >= kRealignHoldS;
+            hostBandShift_ = netBandOffset_ - s.runOffset();  // (the servo's whole bars either way: the song never jumps by bars)
+            if (band_) band_->setRate(1.0f);
+            netRatePosted_ = 1.0f;
+            netHoldUntil_ = -1.0;
+            hostRealign_ = false;
+            RF_LOG("net: back: the band %s (%.1f ms off it, %+.0f bars), the room counts in", onSong ? "is on the room's song" : "did not settle: published as it is",
+                   static_cast<double>(netBandErrMs_), hostBandShift_ / kTicksPerBar);
+            s.hostReturned();
+        }
+    }
     {
         // A teammate who leaves the run (its ship fades where it was), logged as it happens (device checks).
         u8 present = 0;
@@ -272,6 +315,25 @@ void Play::netFrame(float realDt) {
             net::formatDiagCorrections(s.diag(), line, sizeof line);
             RF_LOG("net: diag %s", line);
         }
+        {
+            // Music sync (2026-11-14): this device's band against the room's song over the 20 s (a client's; frames outside a
+            // re-seek), and the song its speaker plays at this moment by the wall clock, to set beside another device's line by
+            // an outside clock (the true offset between their speakers).
+            const double rms = netErrN_ ? std::sqrt(netErrSum2_ / static_cast<double>(netErrN_)) : 0.0;
+            double heard = -1.0;
+            long long wallUs = 0;
+            if (bandDrives_ && band_ && band_->view().running) {
+                const i64 now = net::wireNowUs();
+                wallUs = static_cast<long long>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+                heard = heardSongAt(now) - (netBandOffset_ - s.runOffset());  // (band ticks to the song's: whole bars)
+            }
+            RF_LOG("net: music: band against the room's song %.2f ms RMS, max %.2f (%u frames), %u re-seeks; heard: song %.3f at wall %lld us, "
+                   "%.4f ticks/ms",
+                   rms, netErrMax_, netErrN_, netSeeks_, heard, wallUs, s.tpsAt(s.hostNow()) * 1e-3);
+            netErrSum2_ = netErrMax_ = 0.0;
+            netErrN_ = 0;
+        }
         s.resetDiag();
         ShotDiag& g = g_shotDiag;
         RF_LOG("net: diag shots: frames whose drawn step is off the panel's period by more than a quarter %u of %u; straight shots whose "
@@ -313,15 +375,29 @@ void Play::netTick(double m1, float bpm, bool firstOfFrame) {
     afterTick();
 }
 
+double Play::heardSongAt(i64 localUs) const {
+    // This device's band: the song tick heard at local time `localUs` (the net clock). The view's tick is heard at its own
+    // moment on the audio clock; the two clocks are read side by side (Android: the boot clock and the monotonic one, apart by
+    // the time the device has slept), and the tick carried by the band's tempo (a few tens of ms: its rate trim is lost in that).
+    const BeatView& v = band_->view();
+    const i64 audioNow = audioNowNs();
+    const i64 wireNow = net::wireNowUs();
+    const double atNs = static_cast<double>(audioNow) + static_cast<double>(localUs - wireNow) * 1000.0;
+    return v.heardTick + (atNs - static_cast<double>(v.heardNs)) * 1e-9 * v.bpm * (96.0 / 60.0);
+}
+
 void Play::netBandServo() {
     // A client's band follows the host's song (TECH_SPEC 8.2): its heard tick against the host's song at this
     // frame's host time, whole bars apart (the band's own count of bars is its own).
     const net::Session& s = *session_;
     if (!bandDrives_ || !band_ || !band_->view().running || !s.songValid()) return;
+    if (netLocalUs_ < netServoFromUs_) return;  // (back from away: the heard clock settles on the stream's timestamps first)
     const BeatView& v = band_->view();
     const i64 hostNow = s.hostNow();
     const double model = s.songAt(hostNow), tps = s.tpsAt(hostNow);
-    const double diff = v.heardTick - model;
+    // (2026-11-14) The band as heard kNetLeadUs after this frame's start, as the host publishes its own: the same true moment on
+    // every device, whatever its refresh rate (the view's tick is the display time's, two refresh periods on).
+    const double diff = heardSongAt(netLocalUs_ + kNetLeadUs) - model;
     const double bars = std::floor(diff / kTicksPerBar + 0.5);
     const double err = diff - bars * kTicksPerBar;  // within half a bar; > 0: the band is ahead
     netBandOffset_ = s.runOffset() + bars * kTicksPerBar;
@@ -329,6 +405,14 @@ void Play::netBandServo() {
     if (netHoldUntil_ >= 0.0) {
         if (v.heardTick < netHoldUntil_) return;  // a re-seek under way
         netHoldUntil_ = -1.0;
+    }
+    netServoAt_ = netLocalUs_;  // (a measure this frame, outside a re-seek: the host's re-align counts only these)
+    {
+        // Music sync diagnostics (the 20 s log line): how far this device's band sits from the room's song, frame by frame.
+        const double e = static_cast<double>(netBandErrMs_);
+        netErrSum2_ += e * e;
+        ++netErrN_;
+        if (std::fabs(e) > netErrMax_) netErrMax_ = std::fabs(e);
     }
     if (std::fabs(netBandErrMs_) > kReseekMs) {
         // At the start, or after a stall: the band's next bar line waits until the host's song reaches one.

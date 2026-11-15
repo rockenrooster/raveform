@@ -4,6 +4,42 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-14 (late night), pause-on-leave; the music in step between phones
+
+"Yes build it" (pause-on-leave) and "make sure that the music stays in sync between devices since it is a music focused game".
+
+**Pause-on-leave** (net/session.cpp `goAway`, `comeBack`, `hostReturned`, `hostSetAway`; protocol `0x5246050B`: `kAwayAsk`,
+`kBackAsk`, `kAwayMask`, `MsgPause::away`). When a player's app leaves the screen (Android: home, a call, the lock; App's
+background event, on the main thread before the pump blocks) the session says so at once (a client: reliable and a second
+unreliable copy, since nothing lost then is ever resent) and the host pauses the room on the next sixteenth. The room waits
+60 s (`kAwayWaitMs`, counted by the session: ENet re-checks a silent peer only as its resends back off, so its own limit is set
+past it). Every screen shows `WAITING FOR <NAME>` in place of RESUME; nobody can resume or retry meanwhile. Back, a device first
+holds its run until the room's pause and (a client) a fresh song anchor have reached it, catches up to the pause tick in ticks
+of its own (paused, the tick cap is 600 and no time is dropped), re-settles its clock on fresh samples (a client; the answer to
+a ping sent before it left is not a sample, and no sample with a round trip over a second counts) or brings its band onto the
+song the room kept (the host: as a client's servo does, then it publishes again whole bars off, `hostBandShift_`), and the room
+counts in. Past the wait the host drops the seat and plays on; the returning device goes home with `AWAY TOO LONG: THE RUN WENT
+ON WITHOUT YOU` (a host: `... THE ROOM CLOSED`); clients give up on a host away past it. The net clock is the boot clock on
+Android (CLOCK_MONOTONIC stops while a locked phone sleeps). The loopback soak has `--away-at S --away-for D [--away-seat N]`;
+`scripts\test.ps1` runs a client away 5 s and the host away 10 s (2 minutes each). Soaks: a client away 2, 5, 30, 45 s and the
+host 10, 20 s all pass (the room held on one tick, played on 3.4-4.8 s after the return, nobody dropped, 0 census
+mismatches); away 70 s: a client is dropped at 60 s and the room plays on; the host's clients give up and go home.
+
+**The music between phones** (play_net.cpp `heardSongAt`, `kNetLeadUs`; BeatView::heardNs). The shared song was each
+device's band as heard at its own display time (two refresh periods ahead), so a 120 Hz phone's music sat 17 ms off a 60 Hz
+one's; now the host publishes, and every client steers to, the song as heard 33 ms after a frame begins, the same true moment
+on every device (the 60 Hz phones as before), placed by the band's own heard time on the audio clock (read beside the net
+clock), not the frame's. Measured with an outside clock (each phone's wall clock against this PC's over USB, `echo
+$EPOCHREALTIME` in a persistent adb shell: round trips 0.6-1.8 ms, repeat measurements within 0.1 ms; each phone logs every
+20 s the song its speaker plays at a moment of its wall clock, `net: music:`): the Moto hosting and the Tab joining play
+**within 0.4-0.8 ms of each other**, before and after each away. The client's band against the room's song frame by frame:
+0.24-0.34 ms RMS, 0.5-0.6 ms max. The phone runs of the away found three faults on the return, all fixed: a re-seek taken
+before the reopened stream's timestamps came held the wrong length (a second re-seek followed: 341 then 803 ms; the servo now
+waits a second); the host's re-align gave up at 8 s and then published its band without its whole-bar shift (the song jumped
+six bars back for everyone; now 12 s, and the shift is always the servo's); and the re-align counted the servo's last error
+while the servo was still waiting (it "settled" in 0.45 s on a stale 0 ms and the clients re-seeked 1 s; now only frames the
+servo measured count).
+
 ## 2026-11-14 (late night), "multiplayer is a little buggy still": a crash in the audio thread
 
 Co-op on the two phones here (the Moto hosting, the Galaxy Tab SM-X230 joining, both bots; our APK, the locks): the Moto's

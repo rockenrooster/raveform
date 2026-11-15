@@ -468,7 +468,30 @@ void Play::screenPauseCoop(Ui& ui) {
         keyPrimary_ = keyBack_ = false;
         return;
     }
-    if (ui.pill(20, {cx, 600.0f * s}, {600.0f * s, 130.0f * s}, "RESUME", 52.0f * s, true) || keyPrimary_ || keyBack_) coopPause(false);
+    // Pause-on-leave (2026-11-14): while a player's app is off the screen the room waits for them (RESUME is theirs to give
+    // back: the count-in starts by itself once everyone is here); this device, just back, gets in time first.
+    const u8 others = se ? static_cast<u8>(se->awayMask() & ~(1u << seat_)) : 0;
+    if (others || (se && se->goneAway())) {
+        char who[96] = {};
+        if (others) {
+            std::snprintf(who, sizeof who, "WAITING FOR");
+            for (u32 q = 0; q < kMaxPlayers; ++q) {
+                if (!((others >> q) & 1u)) continue;
+                const char* nm = se->seatName(q);
+                char one[24];
+                std::snprintf(one, sizeof one, " %s", nm && *nm ? nm : (q == 0 ? "THE HOST" : "A PLAYER"));
+                std::strncat(who, one, sizeof who - std::strlen(who) - 1);
+            }
+        } else {
+            std::snprintf(who, sizeof who, "BACK: GETTING IN TIME WITH THE ROOM");
+        }
+        ui.text({cx, 580.0f * s}, 30.0f * s, palettes_->player[seat_], 1.5f, who);
+        ui.text({cx, 640.0f * s}, 16.0f * s, white, 0.7f,
+                others ? "THEY LEFT THE GAME. THE RUN GOES ON WHEN THEY ARE BACK" : "THE RUN GOES ON WITH A COUNT-IN");
+        if (keyPrimary_ || keyBack_) keyPrimary_ = keyBack_ = false;
+    } else if (ui.pill(20, {cx, 600.0f * s}, {600.0f * s, 130.0f * s}, "RESUME", 52.0f * s, true) || keyPrimary_ || keyBack_) {
+        coopPause(false);
+    }
     if (ui.pill(22, {cx + 340.0f * s, 780.0f * s}, {320.0f * s, 100.0f * s}, "SETTINGS", 30.0f * s, false)) openSettings(Screen::Paused);
     if (ui.pill(23, {cx - 340.0f * s, 780.0f * s}, {320.0f * s, 100.0f * s}, "LEAVE RUN", 30.0f * s, false, true, false, Vec3{0.6f, 0.6f, 0.6f}))
         askQuit_ = true;

@@ -384,6 +384,14 @@ Back toggles pause. In co-op any player can pause; it takes hold on the next bea
 count-in is shared. Under `PAUSED` a line in cap 16 says so: `FOR EVERYONE IN THE ROOM`. The run line
 reads the team's score, the Track and the time; RESTART is not offered and QUIT RUN reads `LEAVE RUN`.
 
+**Pause-on-leave (co-op, 2026-11-14).** When a player's app leaves the screen (home, a call, the lock), the room pauses
+for them on the next sixteenth and waits up to a minute. Every screen shows the pause with, in place of RESUME,
+`WAITING FOR <NAME>` (cap 30, the player's colour) over `THEY LEFT THE GAME. THE RUN GOES ON WHEN THEY ARE BACK` (cap 16);
+nobody can resume meanwhile. The one who left comes back to `BACK: GETTING IN TIME WITH THE ROOM` while their clock and
+music settle (about a second), then the shared count-in starts by itself. Away longer than the wait, the room drops them
+and plays on; back, they go home with `AWAY TOO LONG: THE RUN WENT ON WITHOUT YOU` under PLAY (the host:
+`AWAY TOO LONG: THE ROOM CLOSED`). A pause someone asked for before the away stays theirs to lift.
+
 ## Co-op (M4)
 
 Three screens lead into a co-op run: the local network notice (once), the join screen, the lobby.

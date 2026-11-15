@@ -224,6 +224,36 @@ void Play::leaveCoop(const char* message) {
     applySettings();
 }
 
+void Play::appBackground() {
+    // Pause-on-leave (2026-11-14): this app leaves the screen. In a co-op run the room pauses on the next sixteenth and waits
+    // for this player (what the session sends now leaves before the main loop stops).
+    if (!session_ || !session_->running()) return;
+    awayAtUs_ = net::wireNowUs();
+    session_->goAway(awayAtUs_);
+    RF_LOG("net: away: this app left the screen at run bar %u; the room pauses and waits up to %u s", world_->phrase().bar, net::kAwayWaitMs / 1000u);
+}
+
+void Play::appForeground() {
+    if (!session_ || !session_->goneAway()) return;
+    session_->comeBack(net::wireNowUs());
+    netServoFromUs_ = net::wireNowUs() + 1000000;  // (the band's heard clock settles on the reopened stream's timestamps first)
+    RF_LOG("net: back after %.1f s%s", static_cast<double>(session_->lastAwayMs()) * 1e-3,
+           session_->state() == net::SessionState::Ended ? ": away too long, the run went on without this device"
+                                                          : (session_->host() ? "; the band is brought onto the room's song" : "; the clock settles"));
+    touch_.reset();
+    mouseFire_ = mouseNova_ = false;
+    for (bool& k : keys_) k = false;
+    if (session_->host() && session_->state() == net::SessionState::Running) {
+        if (bandDrives_ && band_) {
+            hostRealign_ = true;
+            hostRealignOkS_ = hostRealignS_ = 0.0f;
+            netHoldUntil_ = -1.0;
+        } else {
+            session_->hostReturned();
+        }
+    }
+}
+
 void Play::coopPause(bool on) {
     // GAME_DESIGN 10: any player may pause; it takes hold on the next beat for everyone, the count-in is shared.
     if (!session_ || !netRunStarted_ || coopOver_) return;
@@ -256,6 +286,11 @@ void Play::coopFlow() {
         else
             std::snprintf(msg, sizeof msg, "THE CONNECTION WAS LOST");
         RF_LOG("net: the session ended (%s)", why);
+        if (std::strcmp(why, "away too long") == 0) {
+            // Pause-on-leave: this app was off the screen past the room's wait (net::kAwayWaitMs): the others went on.
+            homeLeaveCoop(s.host() ? "AWAY TOO LONG: THE ROOM CLOSED" : "AWAY TOO LONG: THE RUN WENT ON WITHOUT YOU");
+            return;
+        }
         if (gone && coopSeated_) {
             // c9218dc (screens.md "Every other way in or out of a run"): a peer whose host has left goes home, the host's message
             // under PLAY for two bars (its score kept: leaveCoop).

@@ -174,6 +174,10 @@ public:
         return r;
     }
     void returnFromSync();
+    // Pause-on-leave (2026-11-14): the app leaves the screen (Android: home, a call, the lock; called before the main loop
+    // stops) and comes back. In co-op the room pauses for this player and waits for them (net::kAwayWaitMs).
+    void appBackground();
+    void appForeground();
     i32 takeTierRequest() {
         const i32 r = tierRequest_;
         tierRequest_ = -1;
@@ -305,6 +309,23 @@ private:
     double netHoldUntil_ = -1.0;  // band ticks: a re-seek is under way until the band's song passes this
     float netBandErrMs_ = 0.0f;   // the band's heard song against the model's (client)
     u32 netSeeks_ = 0;
+    // Music sync (2026-11-14): the song every device shares is what is heard kNetLeadUs after a frame's start (true time, on
+    // every device alike), not each one's display time (two refresh periods: a 120 Hz phone's band sat 17 ms off a 60 Hz one's).
+    i64 netLocalUs_ = 0;        // this frame's local time (net clock), the one hostNow was taken at
+    double heardSongAt(i64 localUs) const;  // this device's band: the song tick heard at that local time
+    // Pause-on-leave, the host back from away: its band is brought onto the song the others kept (as a client's is) before
+    // it publishes again; its band ticks then run whole bars off the song (hostBandShift_, song = band - shift).
+    bool hostRealign_ = false;
+    double hostBandShift_ = 0.0;
+    float hostRealignOkS_ = 0.0f;  // how long the band has sat on the song
+    float hostRealignS_ = 0.0f;    // how long the re-align has taken
+    i64 netServoFromUs_ = 0;       // back from away: the band servo waits until then (its heard clock settling)
+    i64 netServoAt_ = 0;           // the frame (local time) the servo last measured the band outside a re-seek
+    u8 awayLogged_ = 0;            // the away mask at the last log line
+    i64 awayAtUs_ = 0;             // this device: when it left (diagnostics, the message)
+    // Music sync diagnostics: the last 20 s window's band error (client; ms) and the song heard (log line "net: heard").
+    double netErrSum2_ = 0.0, netErrMax_ = 0.0;
+    u32 netErrN_ = 0;
     u32 netDropped_ = 0;
     u64 logScrN_ = 0;          // the on-screen error's sums at the last 20 s log line
     double logScrSum2_ = 0.0;

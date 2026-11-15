@@ -177,6 +177,10 @@ u32 formatDiagPoses(const NetDiag& d, u32 seats, u32 self, char* out, u32 size);
 u32 formatDiagTicks(const NetDiag& d, char* out, u32 size);
 
 constexpr i64 kConnectTimeoutUs = 6000000;  // M4 stage B: a join nobody answers ends after 6 s ("no answer")
+// Pause-on-leave (2026-11-14, the owner): how long the room waits for a player whose app has left the screen (Android: home, a
+// call, the lock) before it drops them and goes on; ENet's own wait for a silent peer is 5 s.
+constexpr u32 kAwayWaitMs = 60000;
+constexpr u32 kAwayLinkMs = kAwayWaitMs + 30000;  // ENet's own limit meanwhile (the session counts the wait; ENet re-checks late)
 
 class Session : public PacketSink {
 public:
@@ -217,6 +221,21 @@ public:
     double resumeSong() const { return resumeAt_; }
     void resumed();  // the driver passed resumeSong(): the run goes on with the new offset
     void requestPause(bool on);
+    // Pause-on-leave (2026-11-14): this device's app leaves the screen (called before its main loop stops: what it sends leaves
+    // at once). The room pauses for everyone (on the next sixteenth, as the host decides) and waits up to kAwayWaitMs. Back,
+    // comeBack(): a client's clock settles again (it may jump while the run is paused), then it tells the host, and the room counts in
+    // once nobody is away; the host's driver re-aligns its band first and then calls hostReturned(). Away longer than the
+    // wait, comeBack ends the session ("away too long"): the others went on.
+    void goAway(i64 localUs);
+    void comeBack(i64 localUs);
+    void hostReturned();
+    bool goneAway() const { return goneAway_; }  // this device: between goAway and the room hearing it is back
+    // Back from away and not yet in step with the room: the room's pause or (a client) a fresh song anchor has not come; the
+    // driver ticks nothing until both have (its catch-up to the pause's tick then runs on the room's song).
+    bool awaitingRoom() const { return goneAway_ && (!paused() || (!host() && beatHeardUs_ <= backFromUs_)); }
+    u8 awayMask() const { return awayMask_; }     // the seats away, as the host has them
+    // Diagnostics: this device's last time away (ms) and a client's settling after it.
+    float lastAwayMs() const { return lastAwayMs_; }
     // M4 stage B: the lobby (design/screens.md). A seat is taken once its player is welcomed and ready once its
     // clock has settled; the host starts when every seated player is ready and at least two are seated.
     u8 lobbySeats() const { return lobbySeats_; }
@@ -297,7 +316,10 @@ private:
     void handleDisconnect(u32 peer);
     void maybeStart();
     void startRun(double bar, u64 seed, u16 run);
-    void hostPause(bool on);
+    void hostPause(bool on, bool away = false);
+    void hostSetAway(u32 seat, bool on);  // host: a seat's app left the screen or is back (the room's pause, the timeouts)
+    void applyAwayTimeouts();             // host: a long wait for every client away (or all of them while the host is away)
+    bool seatAway(u32 seat) const { return seat < sim::kMaxPlayers && ((awayMask_ >> seat) & 1u) != 0; }
     void sendPause(const MsgPause& m);
     // Outgoing: reliable messages to every client (host) or to the host (client), streamed out a packet at a time.
     template <typename F>
@@ -341,6 +363,15 @@ private:
     SongModel song_;
     double runOffset_ = 0.0;
     double pauseAt_ = -1.0, resumeAt_ = -1.0, nextOffset_ = 0.0;
+    // Pause-on-leave: the seats away (the host's word), whether the pause is theirs (it lifts by itself when all are back),
+    // and this device's own away and return.
+    u8 awayMask_ = 0;
+    bool pauseByAway_ = false;
+    bool goneAway_ = false, returning_ = false;
+    i64 awayFromUs_ = 0, backFromUs_ = 0;
+    i64 beatHeardUs_ = 0;  // client: when the last heartbeat (the song's anchor) came
+    i64 awaySinceUs_[sim::kMaxPlayers] = {};  // host: when each seat went away; a client: [0], when it heard the host had
+    float lastAwayMs_ = 0.0f;
     i64 nextPingUs_ = 0;
     u16 announcedRun_ = 0;
 

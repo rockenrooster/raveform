@@ -434,6 +434,14 @@ are what corrections exist for.
   current host time, compensating for its own output latency, with a gentle rate correction (±0.3%).
   Re-seek only at start or after a stall, on a bar line. Target: under 10 ms between devices, so phones
   on speakers in one room sound like one system. Offer "music from host only" for rooms where it does not.
+  (2026-11-14) The anchor and each band's place against it are taken at one true moment, 33 ms after the frame
+  begins, on every device alike — not at each device's display time, which is two refresh periods away and so
+  put a 120 Hz phone's music 17 ms off a 60 Hz one's. The net clock is the boot clock on Android (it runs on while
+  a locked phone sleeps), and a device back from away re-settles its clock on fresh samples while the room is paused.
+- Pause-on-leave (2026-11-14): a device whose app leaves the screen says so before it stops; the room pauses on
+  the next sixteenth and waits up to 60 s (the session counts it; ENet's own limit lies past it), then drops it and
+  plays on. Back in time, it catches up to the pause tick in ticks of its own, settles its clock (a client) or brings
+  its band onto the song the others kept (the host), and the shared count-in starts once nobody is away.
 
 ### 8.3 Lobby and discovery
 

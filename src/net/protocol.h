@@ -10,7 +10,7 @@
 
 namespace rf::net {
 
-constexpr u32 kProtocolVersion = 0x5246050Au;  // 'R' 'F', play test 3 (the Extra Life's drop and take, a Hit's ring and Extra Life flags in opts[0]); 0x...509 M5 part 7 (a boss's pace: kGeomBossPace); 0x...508 M5 part 6 (the bosses of Tracks 8 to 10 and mini-bosses batch 3: new kinds, two new decisions) with M4 net's 0x...507 (Event Horizon's phase and its drift's point decided by the host: kGeomHorizonPhase, kGeomHorizonDrift); 0x...506 M5 part 5 (the arena's operations and claims on its bodies); 0x...505 M5 part 4 (the enemy states kLane, kCourt, kEgg; the fights' new decisions) and M4 net's follow-up (motion corrections, 0x...504 on its branch); 0x...503 M5 part 3
+constexpr u32 kProtocolVersion = 0x5246050Bu;  // 'R' 'F', pause-on-leave (2026-11-14: kAwayAsk, kBackAsk, kAwayMask; MsgPause::away); 0x...50A play test 3 (the Extra Life's drop and take, a Hit's ring and Extra Life flags in opts[0]); 0x...509 M5 part 7 (a boss's pace: kGeomBossPace); 0x...508 M5 part 6 (the bosses of Tracks 8 to 10 and mini-bosses batch 3: new kinds, two new decisions) with M4 net's 0x...507 (Event Horizon's phase and its drift's point decided by the host: kGeomHorizonPhase, kGeomHorizonDrift); 0x...506 M5 part 5 (the arena's operations and claims on its bodies); 0x...505 M5 part 4 (the enemy states kLane, kCourt, kEgg; the fights' new decisions) and M4 net's follow-up (motion corrections, 0x...504 on its branch); 0x...503 M5 part 3
 constexpr u32 kMaxPacketBytes = 1200;
 
 enum class Msg : u8 {
@@ -99,12 +99,15 @@ struct MsgCensus {
     u32 count = 0;
     u64 digest = 0;
 };
-enum PauseKind : u8 { kPauseAsk = 0, kResumeAsk = 1, kPauseAt = 2, kResumeAt = 3 };
+// Pause-on-leave (2026-11-14): a client whose app leaves the screen says so (kAwayAsk) before it stops, and once it is back
+// and its clock has settled again (kBackAsk); the host tells everyone which seats are away (kAwayMask, after every change).
+enum PauseKind : u8 { kPauseAsk = 0, kResumeAsk = 1, kPauseAt = 2, kResumeAt = 3, kAwayAsk = 4, kBackAsk = 5, kAwayMask = 6 };
 struct MsgPause {
     u8 kind = kPauseAsk;
-    double runTick = 0.0;    // kPauseAt: the run freezes on this tick (a beat)
+    double runTick = 0.0;    // kPauseAt: the run freezes on this tick (a beat; a sixteenth for an away)
     double songTick = 0.0;   // kResumeAt: the run goes on when the song reaches this
     double runOffset = 0.0;  // kResumeAt: song ticks minus run ticks from then on
+    u8 away = 0;             // kAwayMask: the seats away (bit per seat)
 };
 struct PoseState {
     float x = 0, y = 0, vx = 0, vy = 0, aim = 0, heading = 0;

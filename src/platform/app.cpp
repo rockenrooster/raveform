@@ -486,6 +486,7 @@ void App::enterBackground() {
         logTagged("RFBENCH", "{\"scenario\":\"%s\",\"aborted\":\"%s\"}", bench_.scenario(), bench_.abortReason());
         quit_ = true;
     }
+    if (content_ == Content::Play) play_.appBackground();  // pause-on-leave: a co-op room pauses for this player (main thread, before the pump blocks)
     audio_.close();
     renderer_.releaseSurface();  // the UI thread's surfaceDestroyed() waits for this
 }
@@ -499,6 +500,7 @@ void App::enterForeground() {
     logTagged("RFLIFE", "foreground %u", foregrounds_);
     applyAffinity();  // Android resets thread affinities when the app changes cpuset
     if (!openAudio()) RF_WARN("audio: reopen after foreground failed");  // M2 audio: the band or the tone
+    if (content_ == Content::Play) play_.appForeground();  // pause-on-leave: back in the room (its clock or its band first)
     refreshDisplay();  // the swapchain itself is rebuilt by the next beginFrame()
 }
 

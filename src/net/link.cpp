@@ -194,6 +194,21 @@ void Link::disconnect(u32 peer, u32 reason) {
     if (peer < h->peerCount) enet_peer_disconnect_later(&h->peers[peer], reason);
 }
 
+void Link::setPeerTimeout(u32 peer, u32 ms) {
+    if (!host_) return;
+    ENetHost* h = H(host_);
+    if (peer >= h->peerCount) return;
+    if (ms) enet_peer_timeout(&h->peers[peer], ENET_PEER_TIMEOUT_LIMIT, ms, ms);
+    else enet_peer_timeout(&h->peers[peer], ENET_PEER_TIMEOUT_LIMIT, ENET_PEER_TIMEOUT_MINIMUM, ENET_PEER_TIMEOUT_MAXIMUM);
+}
+
+void Link::drop(u32 peer) {
+    if (!host_) return;
+    ENetHost* h = H(host_);
+    if (peer < h->peerCount) enet_peer_reset(&h->peers[peer]);
+    if (peer < kMaxLinkPeers) heard_[peer] = 0;
+}
+
 bool Link::connected(u32 peer) const {
     if (!host_) return false;
     ENetHost* h = H(host_);

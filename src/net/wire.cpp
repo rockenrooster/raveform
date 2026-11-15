@@ -10,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <cerrno>
+#include <ctime>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -277,9 +278,17 @@ void wireSetSimTimeUs(i64 us) { g_simUs.store(us); }
 
 i64 wireNowUs() {
     if (g_simClock.load(std::memory_order_relaxed)) return g_simUs.load(std::memory_order_relaxed);
-    // Monotonic, offset so it never starts near zero (ENet treats a zero time as "never").
+    // Monotonic, offset so it never starts near zero (ENet treats a zero time as "never"). On Android and Linux the boot clock:
+    // it goes on while the device sleeps (a phone locked mid-run), so a peer's time keeps step with the others' and its clock
+    // offset stays right across it (CLOCK_MONOTONIC stops while the device is suspended; 2026-11-14, pause-on-leave).
+#if defined(__ANDROID__) || defined(__linux__)
+    timespec ts{};
+    clock_gettime(CLOCK_BOOTTIME, &ts);
+    return static_cast<i64>(ts.tv_sec) * 1000000ll + static_cast<i64>(ts.tv_nsec) / 1000 + 1000000000ll;
+#else
     return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() +
            1000000000ll;
+#endif
 }
 
 bool netInit() {

@@ -60,6 +60,11 @@ public:
     bool send(u32 peer, u8 channel, const void* data, u32 size, bool reliable);
     void flush();
     void disconnect(u32 peer, u32 reason);
+    // How long a silent peer is waited for before it is dropped: ms > 0 that long (pause-on-leave: a peer whose app left the
+    // screen), 0 ENet's own (5 to 30 s).
+    void setPeerTimeout(u32 peer, u32 ms);
+    // The peer is forgotten at once, without a word (ENet's reset: no event follows; the caller handles it as a disconnect).
+    void drop(u32 peer);
     bool connected(u32 peer) const;
     LinkPeerStats peerStats(u32 peer) const;
     WireStats wire() const;

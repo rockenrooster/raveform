@@ -28,6 +28,7 @@ void ClockSync::addSample(i64 t0, i64 t1, i64 t2, i64 t3) {
     s.local = t3;
     s.rtt = (t3 - t0) - (t2 - t1);
     if (s.rtt < 0) s.rtt = 0;
+    if (s.rtt > kMaxRttUs) return;  // (a round trip of seconds, a device that stopped: it says nothing of the clocks)
     s.offset = ((t1 - t0) + (t2 - t3)) / 2;
     ring_[head_] = s;
     head_ = (head_ + 1) % kSamples;
@@ -61,6 +62,12 @@ void ClockSync::choose() {
 void ClockSync::snap() {
     steered_ = average_;
     steeredValid_ = valid();
+}
+
+void ClockSync::forgetSamples() {
+    count_ = head_ = 0;
+    best_ = Sample{};
+    estimates_ = 0;  // (the next sample sets the average outright: addSample's weight is 1 / estimates)
 }
 
 i64 ClockSync::hostNowUs(i64 localUs) {

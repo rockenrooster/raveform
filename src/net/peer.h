@@ -34,6 +34,13 @@ public:
     void stop();
     void frame(i64 trueUs);
     i64 localUs(i64 trueUs) const;
+    // Pause-on-leave (tests, the soak's --away): this peer's app leaves the screen (the driver then stops calling frame() and
+    // pumping its socket, as Android stops the app) and comes back. Without a band, a host is back at once.
+    void goAway(i64 trueUs) { session_.goAway(localUs(trueUs)); }
+    void comeBack(i64 trueUs) {
+        session_.comeBack(localUs(trueUs));
+        session_.hostReturned();
+    }
 
     sim::World& world() { return *world_; }
     const sim::World& world() const { return *world_; }

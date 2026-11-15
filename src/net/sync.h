@@ -25,6 +25,7 @@ public:
     static constexpr u32 kSamples = 16;
     static constexpr double kMaxDilation = 0.01;  // TECH_SPEC 8.2: +-1%
     static constexpr double kAverageSamples = 80.0;  // the average's reach, in samples (20 s at 4 Hz)
+    static constexpr i64 kMaxRttUs = 1000000;        // a sample whose round trip took longer is dropped
 
     void reset();
     void addSample(i64 t0, i64 t1, i64 t2, i64 t3);
@@ -37,6 +38,9 @@ public:
     i64 hostNowUs(i64 localUs);
     i64 hostAt(i64 localUs) const { return localUs + static_cast<i64>(steered_); }  // without advancing
     void snap();  // the steered offset jumps to the estimate (before a run starts)
+    // Pause-on-leave: the samples from before this device was away are forgotten (the steered clock runs on); the estimate
+    // starts again from the next ones, and snap() may take it once they have settled (the run is paused for everyone then).
+    void forgetSamples();
     double steeredUs() const { return steered_; }
     float dilation() const { return dilation_; }  // the last frame's (rate - 1)
 
