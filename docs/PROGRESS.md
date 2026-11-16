@@ -4,6 +4,19 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, the review's batch 2 dropped
+
+The owner: "No need batch 2". These are not built, and their specs in `design/screens.md`, `design/arena.md` and
+`docs/GAME_DESIGN.md` (Settings) are marked so:
+
+- the structures' first-run hints and their names over them;
+- CONTROLS' stick size and position, button size, the touch layout editor and gamepad mapping;
+- the SCORES screen with its co-op tables and lifetime stats;
+- the game-over medley.
+
+Left as found: with the maximum loadout, a Trio orb's words can run off the screen's right edge (batch 1's
+`captures\fix1\hud\loadout_max_2400x1080.png`, CONFETTI).
+
 ## 2026-11-15, the release pipeline on GitHub (docs/RELEASE_PIPELINE.md)
 
 The owner asked for "a GitHub repo and a release pipeline that automatically builds a release apk available for download".

@@ -799,16 +799,20 @@ CONTROLS and LOOK (video and accessibility together); layout in `design/screens.
 
 | Group | Options |
 |---|---|
-| Controls | Auto-aim assist; Auto Nova; stick size and position (floating or fixed sticks, the touch layout dragged into place); swap sides; button layout (button size, the layout); gamepad mapping (Nova, Dash, Pause) |
+| Controls | Auto-aim assist; Auto Nova; swap sides; reset hints |
 | Audio | Master, music, effects; **sound**: Club / Arcade / Velvet (three characters of the same music, `design/music/variants.json`; Club is the default); **sync calibration** (flash-and-click slider); haptics on/off and strength; in co-op: "music from host only" |
 | Video | Effects: Auto / Low / Medium / High / Ultra; frame-rate target: Auto / 60 / 90 / 120; reduce flashing; vivid colour (where supported) |
 | Accessibility | UI scale |
 
 (2026-11-15, the owner: of the rows not yet built, "just do Stick size and position, button layout, gamepad mapping":
-shake amount, colour-blind-safe palettes and high-contrast threats are cut.)
+shake amount, colour-blind-safe palettes and high-contrast threats are cut. Later that day the owner dropped those three
+too, "No need batch 2": stick size and position, button layout and gamepad mapping are not built; `design/screens.md`
+keeps their spec as a record.)
 
 Local high scores: top 10 for solo and for each co-op player count (a co-op run's team score goes to its count's table,
-never to solo's). Lifetime stats beside them on the SCORES screen (`design/screens.md` "Scores").
+never to solo's). Lifetime stats beside them on the SCORES screen (`design/screens.md` "Scores"). Not built: the owner
+dropped the SCORES screen, its tables and the lifetime stats on 2026-11-15 ("No need batch 2"); the title's BEST line is
+as built.
 
 ---
 
