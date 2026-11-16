@@ -1504,6 +1504,9 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         const bool safe = me.invulS > 0.0f;
         const bool dimStep = safe && !reduceFlashing_ && (static_cast<i64>(std::floor(in.music / (0.25 * kTicksPerBeat))) & 1) != 0;
         const float hullLv = safe ? (reduceFlashing_ ? 0.7f : (dimStep ? 0.35f : 1.0f)) : 1.0f;
+        // (2026-11-16) In a transition the ship fades with the run's light, as its shots do (play_view_shots.cpp); its priority
+        // layer fades by params.threatLevel (Play::render).
+        const float shipLight = in.runLight;
         const float hitWhite = clampf(1.0f - (t - cellHitT_) / 0.1f, 0.0f, 1.0f) * (t >= cellHitT_ ? 1.0f : 0.0f);
         const float haloRot = 0.3f * t;
         const float haloPulse = 1.0f + 0.25f * kick_;
@@ -1530,17 +1533,20 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         }
         const int haloG = whole == 0 ? -1 : (whole == slots ? gHalo_[whole] : gHaloPart_[whole][slots]);
         if (playerShown && !blinkOff(w.viewPlayer())) {
-            glyph(d.glyphs, gShip_, false, S, heading, heading, shipScale, hull.intensity * hullLv, 0.5f * hull.width, kGlyphPlayer, player, deep);
-            glyph(d.glyphs, gShip_, true, S, heading, heading, shipScale, look_->lines.playerWhiteCopy.intensity * hullLv,
+            glyph(d.glyphs, gShip_, false, S, heading, heading, shipScale, hull.intensity * hullLv * shipLight, 0.5f * hull.width, kGlyphPlayer,
+                  player, deep);
+            glyph(d.glyphs, gShip_, true, S, heading, heading, shipScale, look_->lines.playerWhiteCopy.intensity * hullLv * shipLight,
                   0.5f * look_->lines.playerWhiteCopy.width, kGlyphWhite, W1, W1);
             if (hitWhite > 0.0f)
-                glyph(d.glyphs, gShip_, true, S, heading, heading, shipScale, 3.0f * hitWhite, 0.8f * hull.width, kGlyphWhite, W1, W1);
+                glyph(d.glyphs, gShip_, true, S, heading, heading, shipScale, 3.0f * hitWhite * shipLight, 0.8f * hull.width, kGlyphWhite, W1,
+                      W1);
             if (cells == 1 && haloG >= 0) {
                 // The last arc pulses in the danger colour (look.md §4).
-                glyph(d.glyphs, haloG, false, S, haloRot, haloRot, shipScale, look_->lines.playerHalo.intensity * (0.8f + 1.2f * kick_),
-                      0.5f * look_->lines.playerHalo.width, kGlyphFlat, danger, danger);
+                glyph(d.glyphs, haloG, false, S, haloRot, haloRot, shipScale,
+                      look_->lines.playerHalo.intensity * (0.8f + 1.2f * kick_) * shipLight, 0.5f * look_->lines.playerHalo.width, kGlyphFlat,
+                      danger, danger);
             } else if (haloG >= 0) {
-                glyph(d.glyphs, haloG, false, S, haloRot, haloRot, shipScale, look_->lines.playerHalo.intensity * haloPulse,
+                glyph(d.glyphs, haloG, false, S, haloRot, haloRot, shipScale, look_->lines.playerHalo.intensity * haloPulse * shipLight,
                       0.5f * look_->lines.playerHalo.width, kGlyphRingA, player, light);
             }
             if (grow >= 0.0f) {
@@ -1553,7 +1559,8 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
                 const float phi0 = -(mid + 0.5f * span) + haloRot;
                 const float R = 1.55f * shipScale;
                 const float hw = 0.5f * look_->lines.playerHalo.width * refPx_;
-                const Vec3 lit = (cells == 1 && growDashed ? danger : mix(player, light, 0.5f)) * (look_->lines.playerHalo.intensity * haloPulse);
+                const Vec3 lit =
+                    (cells == 1 && growDashed ? danger : mix(player, light, 0.5f)) * (look_->lines.playerHalo.intensity * haloPulse * shipLight);
                 // Dashes about 8 degrees long (two at least: at eight cells an arc spans 19 degrees).
                 const u32 dashes = static_cast<u32>(clampf(span / (8.0f * deg), 2.0f, 8.0f));
                 const u32 segs = growDashed ? 2 * dashes - 1 : 14;
@@ -1564,7 +1571,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
                         if (s % 2) continue;  // the gaps
                         const bool on = u0 < grow;
                         const Vec2 q1 = on && u1 > grow ? S + dir(phi0 + grow * span) * R : p1;
-                        d.scene.line(toScene(p0), toScene(p1), 0.8f * hw, W1 * 0.6f, W1 * 0.6f, 0);  // the outline
+                        d.scene.line(toScene(p0), toScene(p1), 0.8f * hw, W1 * (0.6f * shipLight), W1 * (0.6f * shipLight), 0);  // the outline
                         if (on) d.scene.line(toScene(p0), toScene(q1), hw, lit * 1.3f, lit * 1.3f, 0);
                     } else if (u0 < grow) {
                         const Vec2 q1 = u1 <= grow ? p1 : S + dir(phi0 + grow * span) * R;
@@ -1572,7 +1579,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
                     }
                 }
             }
-            d.pools.glow(toScene(S), look_->soft.playerPool.radius[0] * pxPerWu_, player * look_->soft.playerPool.intensity[0]);
+            d.pools.glow(toScene(S), look_->soft.playerPool.radius[0] * pxPerWu_, player * (look_->soft.playerPool.intensity[0] * shipLight));
             // Trail: 13 dashes over the last 100 wu of path, white -> player -> deep, fading to nothing.
             const LookLine& tr = look_->lines.playerTrail;
             Vec2 path[14];
@@ -1595,7 +1602,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             const auto field = [&](float u) {
                 const float f = clampf(u, 0.0f, 1.0f) * 2.0f;
                 const Vec3 c = f < 1.0f ? mix(W1, player, f) : mix(player, deep, f - 1.0f);
-                return c * (tr.intensity * (1.0f - u));
+                return c * (tr.intensity * (1.0f - u) * shipLight);
             };
             for (u32 k = 0; k + 1 < have; ++k) {
                 const float u0 = static_cast<float>(k) / 13.0f, u1 = (static_cast<float>(k) + 0.6f) / 13.0f;
@@ -1635,13 +1642,13 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         for (u32 k = 0; k < kDashGhosts; ++k) {
             const float u = static_cast<float>(k) / static_cast<float>(kDashGhosts);
             const Vec2 p = lerp2(ds.from, ds.to, u);
-            const float i = look_->lines.playerHull.intensity * 0.6f * fade * (0.35f + 0.65f * u);
+            const float i = look_->lines.playerHull.intensity * 0.6f * fade * (0.35f + 0.65f * u) * in.runLight;
             glyph(d.glyphs, gShip_, true, p, ds.heading, ds.heading, shipScale, i, 0.5f * look_->lines.playerHull.width, kGlyphPlayer, pc,
                   pd);
         }
         if (ds.perfect) {
-            flare(d.scene, ds.to, 0.0f, 46.0f * (0.6f + 0.4f * fade), 2, W1 * (2.4f * fade), 0.7f);
-            d.sparkles.glow(toScene(ds.to), 14.0f * refPx_, mix(pc, W1, 0.6f) * (1.6f * fade));
+            flare(d.scene, ds.to, 0.0f, 46.0f * (0.6f + 0.4f * fade), 2, W1 * (2.4f * fade * in.runLight), 0.7f);
+            d.sparkles.glow(toScene(ds.to), 14.0f * refPx_, mix(pc, W1, 0.6f) * (1.6f * fade * in.runLight));
         }
     }
     // The Nova: the inhale (sparks falling in, the screen dimming) and the front.
@@ -1781,7 +1788,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
 
     // ---- M6 (screens.md "First-run hints"): one line of world text 70 wu above the ship, cap 22, white at 0.85 with the
     // priority layer's dark rim.
-    if (in.hint && in.hintLevel > 0.01f && !in.noShips) {
+    if (in.hint && in.hintLevel > 0.01f && !in.noShips && in.runLight >= 0.7f) {  // (not over a run still coming up or leaving)
         const float cap = 22.0f * pxPerWu_;
         const float wText = font_->measure(TextStyle{cap}, in.hint);
         const Vec2 sc = toScreen(in.shipPos);  // (the priority layer: the threat view, which does not shake)

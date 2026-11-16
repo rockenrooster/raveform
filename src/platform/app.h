@@ -149,6 +149,12 @@ private:
     // (BandDefaults::waiting): the RAVEFORM word over a line that fills with the bake.
     static void loadingTrampoline(void* self, float done);
     void loadingFrame(float done);
+    // The loading screen's word, line and caption on the HUD layer; `cover`: over a veil that hides the scene (the tier probe's
+    // stage, measured behind it), else on the palette's background.
+    void drawLoading(FrameDraw& draw, float done, bool cover);
+    // A frame of the first-launch tier probe behind the loading screen (App::init, the game with its screens): its stage drawn,
+    // advanced and measured, covered.
+    void probeLoadingFrame();
     u64 loadingStartNs_ = 0;
     float loadingShown_ = 0.0f;
     // M2 audio end

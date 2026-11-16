@@ -4,6 +4,29 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-16, a first launch: the tier probe behind the loading screen; the title's demo ship fades with its run
+
+The owner, on a very first launch (build 341): "tons of garbage on screen like its in the middle of a mid game fight before the game
+loads", and "once the game loads, the demo ship is invisible for a bit but still shooting bullets".
+- **The fight was the tier probe.** On a device with GPU timers the first launch measures its tiers on the M1 endgame stage (about
+  700 enemies and 1,500 bullets under a saturating GPU load), and it ran behind the notice and the title at a third of its light
+  (M3 stage B). In the game with its screens (`content_ == Play`, `flows()`, not a benchmark) the probe now runs in `App::init`,
+  right after the bake, frame by frame under the loading screen (`App::probeLoadingFrame`: the stage advanced, drawn and measured
+  as before, an opaque veil over it on `FrameDraw::under`, the loading screen's word and full line on the HUD), and the notice or
+  the title comes after it. The loading screen is drawn on the HUD layer in both phases now (a soft halo under the word in place of
+  the bloom), so the two look alike. Desktop (`--tier auto`): 0.7 s behind the loading screen, the same tier as before (ultra).
+  Benchmarks and stages keep the old probe (its stage on screen, `SETTING UP FOR THIS DEVICE`). Devices without GPU timers (the
+  Fire 7) never ran it.
+- **The ship.** In a transition (the title's run coming up over the bar after its build, a run dissolving under a wait) the run's
+  ship was hidden while its light stayed under 0.7 (`vi.noShips`, `Play::render`) and its shots went on at that light. The ship now
+  fades with the run like its shots (its hull, halo, trail, pool and Dash ghosts by `ViewInput::runLight`), its priority layer with
+  it (`params.threatLevel` takes the lower of the screen's level and the run's light); the drop-in's first beat still draws the
+  screen's own ship alone. The first-run hints stay hidden under a run below 0.7 as before.
+
+`scripts\test.ps1` and the solo flow test (52 checks) pass. Not seen on a phone with GPU timers: the Galaxy tablets were in other
+sessions' use and the Motos were not attached; on the way the tablet `R5GL362BEHX`'s RAVEFORM data was cleared (`pm clear`, its
+dev build, while RAVEFORM was in front: a mistake of this session's; whatever settings and scores were on it are gone).
+
 ## 2026-11-16, the first launch shows a loading screen, not a black one
 
 The owner, after build 340's first launch on the Fire 7: the screen stayed black for about 13 s. With no cache the band bakes

@@ -444,6 +444,15 @@ bool App::init() {
             RF_LOG("tier: first launch on this GPU, measuring (budget %.2f ms of GPU work at the top clock)",
                    tierProbe_.budgetMs);
             setProbeCandidate(static_cast<u32>(Tier::Ultra));
+            if (content_ == Content::Play && play_.flows() && !benchPending_) {
+                // 2026-11-16 (the owner, on a first launch: "tons of garbage on screen like its in the middle of a mid game fight
+                // before the game loads"): the probe's endgame stage ran behind the notice and the title. In the game with its screens
+                // it runs here instead, covered by the loading screen (its line full), and the first screen comes after it.
+                const u64 probeFrom = nowNs();
+                while (tierProbe_.active && !quit_) probeLoadingFrame();
+                probeLastNs_ = 0;
+                RF_LOG("tier: the probe ran behind the loading screen for %.1f s", nsToSec(nowNs() - probeFrom));
+            }
         }
     }
     RF_LOG("tier %s (%s), %u cuts (bloom %u levels, afterglow %s, distortion %s, aberration %s, sparks x%.2f, glass %s, "
@@ -1759,6 +1768,16 @@ void App::loadingFrame(float done) {
         SDL_Delay(16);
         return;
     }
+    drawLoading(draw, done, false);
+    FrameParams params;
+    params.look = variant_;
+    params.bloom = args_.bloom;
+    params.vignette = true;
+    params.dtSeconds = 1.0f / 60.0f;
+    renderer_.endFrame(draw, params, false);
+}
+
+void App::drawLoading(FrameDraw& draw, float done, bool cover) {
     const u64 now = nowNs();
     if (!loadingStartNs_) loadingStartNs_ = now;
     const float t = static_cast<float>(nsToSec(now - loadingStartNs_));
@@ -1769,47 +1788,85 @@ void App::loadingFrame(float done) {
         if (palettes_.list[i].track == 1) pal = &palettes_.list[i];
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const Vec3 accent = pal->accent;
-    // Fades in over half a second (a fast bake shows a flicker of it at most).
+    if (cover) {
+        // The tier probe's stage under it is measured, not seen: one capsule wider and taller than the screen on the layer over the
+        // run's priority layer (as Ui::scrim), opaque, about the background's own colour (it is near black).
+        const Vec3 veil = (pal->bg0 + pal->bg1) * (0.5f * look_.bgLevel);
+        draw.under.line(Vec2{-0.5f * w, 0.5f * h}, Vec2{1.5f * w, 0.5f * h}, h, veil, veil, capsuleOpacity(1.0f));
+    } else {
+        Background bg;
+        bg.edge = pal->bg0 * look_.bgLevel;
+        bg.centre = pal->bg1 * look_.bgLevel;
+        bg.cx = look_.bgCentre[0];
+        bg.cy = look_.bgCentre[1];
+        bg.radius = look_.bgRadius;
+        bg.power = look_.bgPower;
+        renderer_.setBackground(bg);
+    }
+    // Everything on the HUD layer (display-linear, additive, over the veil): fades in over half a second (a fast bake shows a
+    // flicker of it at most).
     const float in = clampf(t / 0.5f, 0.0f, 1.0f);
 
-    // The word, the title's colours: white at the top through the accent to the baseline, in the scene so it blooms.
+    // The word, the title's colours (white at the top through the accent to the baseline): a soft halo under a bright core.
     const char* word = "RAVEFORM";
     const float cap = 96.0f * s;
     const float wordW = font_.measure(TextStyle{cap}, word);
-    font_.drawField(draw.scene, Vec2{0.5f * (w - wordW), 0.5f * h - cap - 34.0f * s}, cap, 3.2f * s, white * (1.4f * in),
-                    mix(white, accent, 0.5f) * (1.3f * in), accent * (1.6f * in), word);
+    const Vec2 at{0.5f * (w - wordW), 0.5f * h - cap - 34.0f * s};
+    const Vec3 mid = mix(white, accent, 0.45f);
+    font_.drawField(draw.hud, at, cap, 8.0f * s, white * (0.05f * in), mid * (0.07f * in), accent * (0.09f * in), word);
+    font_.drawField(draw.hud, at, cap, 4.2f * s, white * (0.10f * in), mid * (0.13f * in), accent * (0.16f * in), word);
+    font_.drawField(draw.hud, at, cap, 2.2f * s, white * (0.95f * in), mid * (0.95f * in), accent * in, word);
 
     // The line fills with the bake (eased, never backwards); a playhead at its end pulses on a 120 BPM beat.
     loadingShown_ += (clampf(done, 0.0f, 1.0f) - loadingShown_) * 0.12f;
     const float lineW = 600.0f * s, y = 0.5f * h + 46.0f * s, x0 = 0.5f * (w - lineW), head = x0 + lineW * loadingShown_;
-    draw.scene.line(Vec2{x0, y}, Vec2{x0 + lineW, y}, 1.0f * s, white * (0.10f * in), white * (0.10f * in), 0);
-    if (head > x0 + 0.5f) draw.scene.line(Vec2{x0, y}, Vec2{head, y}, 1.6f * s, accent * (0.5f * in), accent * (1.7f * in), 0);
+    draw.hud.line(Vec2{x0, y}, Vec2{x0 + lineW, y}, 1.0f * s, white * (0.12f * in), white * (0.12f * in), 0);
+    if (head > x0 + 0.5f) {
+        draw.hud.line(Vec2{x0, y}, Vec2{head, y}, 4.0f * s, accent * (0.08f * in), accent * (0.16f * in), 0);
+        draw.hud.line(Vec2{x0, y}, Vec2{head, y}, 1.6f * s, accent * (0.5f * in), accent * (0.95f * in), 0);
+    }
     const float beat = std::fmod(t * 2.0f, 1.0f);  // 120 BPM
     const float pulse = std::exp(-beat * 5.0f);
-    draw.scene.line(Vec2{head, y}, Vec2{head, y}, (3.5f + 3.0f * pulse) * s, white * ((1.4f + 1.6f * pulse) * in),
-                    white * ((1.4f + 1.6f * pulse) * in), kDisc);
+    draw.hud.line(Vec2{head, y}, Vec2{head, y}, (9.0f + 4.0f * pulse) * s, accent * ((0.10f + 0.10f * pulse) * in),
+                  accent * ((0.10f + 0.10f * pulse) * in), kDisc);
+    draw.hud.line(Vec2{head, y}, Vec2{head, y}, (3.0f + 1.5f * pulse) * s, white * ((0.8f + 0.2f * pulse) * in),
+                  white * ((0.8f + 0.2f * pulse) * in), kDisc);
 
     TextStyle caption;
     caption.capHeight = 18.0f * s;
     caption.intensity = 0.75f * in;
     const char* tuning = "TUNING UP";
-    font_.draw(draw.scene, Vec2{0.5f * (w - font_.measure(caption, tuning)), y + 36.0f * s}, caption, tuning);
+    font_.draw(draw.hud, Vec2{0.5f * (w - font_.measure(caption, tuning)), y + 36.0f * s}, caption, tuning);
+}
 
-    Background bg;
-    bg.edge = pal->bg0 * look_.bgLevel;
-    bg.centre = pal->bg1 * look_.bgLevel;
-    bg.cx = look_.bgCentre[0];
-    bg.cy = look_.bgCentre[1];
-    bg.radius = look_.bgRadius;
-    bg.power = look_.bgPower;
-    renderer_.setBackground(bg);
+void App::probeLoadingFrame() {
+    SDL_PumpEvents();  // the event watch keeps the lifecycle (in the background: no surface, and the probe waits)
+    audio_.update();
+    band_.update(static_cast<i64>(2 * renderer_.pacer().refreshPeriodNs()));  // (as App::frame: the band plays meanwhile)
+    FrameDraw draw;
+    if (!renderer_.beginFrame(draw)) {
+        SDL_Delay(16);
+        return;
+    }
+    const VkExtent2D logical = renderer_.swapchain().logical;
+    const float w = static_cast<float>(logical.width), h = static_cast<float>(logical.height);
+    // As App::frame's probe: the stage takes as many 1/60 s steps as real time passed, under a saturating GPU load.
+    const u64 now = nowNs();
+    const float probeDt = probeLastNs_ ? static_cast<float>(nsToSec(now - probeLastNs_)) : 1.0f / 60.0f;
+    probeLastNs_ = now;
+    const u32 steps = static_cast<u32>(clampf(probeDt * 60.0f + 0.5f, 1.0f, 30.0f));
+    for (u32 k = 0; k < steps; ++k) probeStage_.advance(1.0f / 60.0f);
     FrameParams params;
     params.look = variant_;
     params.bloom = args_.bloom;
     params.vignette = true;
-    params.accent = accent;
-    params.dtSeconds = 1.0f / 60.0f;
+    params.dtSeconds = probeDt;
+    probeStage_.render(draw, params, background_, w, h);
+    renderer_.setBackground(background_);
+    params.gpuBurn = 20;  // keeps the GPU saturated, so its governor holds the top clock
+    drawLoading(draw, 1.0f, true);  // over it: the loading screen, its line full (the sounds are baked)
     renderer_.endFrame(draw, params, false);
+    stepTierProbe();
 }
 
 bool App::openAudio() {

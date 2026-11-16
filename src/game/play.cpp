@@ -1034,9 +1034,12 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     vi.backgroundOnly = flow_ && !coop() && (screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission);
     // M6 (screens.md "Transitions"): the run's own light as the transitions have it; its ship goes with it, and on the drop-in's
     // downbeat beat the screen draws the ship (the title's gliding in, or the ship drawing itself) until the run's takes over.
+    // 2026-11-16 (the owner: "the demo ship is invisible for a bit but still shooting bullets"): the ship was hidden while the run's
+    // light stayed under 0.7 (the title's run coming up, the run dissolving under a wait) while its shots, dimmed, went on. It fades
+    // with the run now (PlayView, and the priority layer below by params.threatLevel).
     if (flow_) {
         vi.runLight = transRunLight();
-        if (vi.runLight < 0.7f || (trans_ == Trans::Arrive && transBeats(transLine_) < 1.0f)) vi.noShips = true;
+        if (trans_ == Trans::Arrive && transBeats(transLine_) < 1.0f) vi.noShips = true;
     }
     hintsTick(vi);  // M6: the first-run hints
     {
@@ -1343,7 +1346,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     }
     // 2026-11-16 (the owner: "pause menu buttons need more visibility ... hard to see when pausing mid/late game"): under a screen the
     // run's own HUD and its priority layer fade with the run behind (runUnderLevel).
-    params.threatLevel = runUnderLevel(false);
+    params.threatLevel = std::fmin(runUnderLevel(false), vi.runLight);  // (and with the run's light in a transition)
     if (runHud) {
         // M6 (screens.md "Transitions"): the drop-in brings the HUD in over its second beat (the Track name card writes itself as
         // always).
