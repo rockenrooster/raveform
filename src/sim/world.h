@@ -83,7 +83,9 @@ struct NetEnemyState {
 };
 // What a player's own device decided, applied to that player in the other worlds (reliable).
 enum NetPlayerEventKind : u8 {
-    kPeNova, kPeDash, kPeHit, kPeDown, kPeRevive, kPeTrioOpen, kPeTrioTake, kPeBoostTake, kPeHalo, kPeLeave, kPeWell, kPeKnock, kPeCount
+    kPeNova, kPeDash, kPeHit, kPeDown, kPeRevive, kPeTrioOpen, kPeTrioTake, kPeBoostTake, kPeHalo, kPeLeave, kPeWell, kPeKnock,
+    kPeCut, kPeSpin,  // M8 TRACERS versus: this player's tracer cut (x, y), spun out (x, y the push; tick: no line until then)
+    kPeCount
 };
 // One operation from the network, applied inside the next tick (so its events land in the tick's buffer
 // and the view and the band see them like any other). `run`: the run it belongs to (World::runId());
@@ -235,6 +237,10 @@ enum class EventType : u8 {
     TilesLost,
     FloorCount,
     GelTake,
+    // M8 TRACERS versus (tracers.md "Versus: turf"): a rival flew across this player's tracer (a = the player, b = the rival; x, y
+    // the cut); a rival's ring popped round this player's ship (a = the player, b = the ring's owner; x, y the push).
+    Cut,
+    SpinOut,
 };
 enum UpgradeFx : u8 {
     kFxFork,          // a shot forked: x, y
@@ -1111,6 +1117,18 @@ public:
     // Pictures and tests: the floor set as given (an owner a tile, TracerFloor::kDark for none); `house`: a full house on the next
     // bar line, as if the floor had just filled.
     void scriptFloor(const u8* owners, bool house);
+    // M8 TRACERS co-op (tracers.md "Caps and the wire"): a ring or the host's house from the network (applied on the next tick in
+    // arrival order: false, the queue is full); the host's floor (taken unless it predates a ring this device's players locked);
+    // the host's snapshot of it; what each seat has locked; how alike the floors were (tiles that differed at each snapshot).
+    bool netRing(const NetRing& r);
+    void netFloor(const NetFloor& f);
+    void floorSnapshot(NetFloor& out) const;
+    u16 ringsLocked(u32 p) const { return ringsLocked_[p < kMaxPlayers ? p : 0]; }
+    u32 floorSnapshots() const { return floorSnapshots_; }
+    u32 floorDiffSnapshots() const { return floorDiffSnapshots_; }
+    u32 floorDiffTiles() const { return floorDiffTiles_; }
+    // M8 versus: what the match counts for player p (TRACERS: the tiles in its colour; else its score).
+    u64 versusCount(u32 p) const;
     // A run on the bar line `bar` (musical ticks) with this seed, these seats and this id: every device resets
     // at the same musical position (the co-op start; a RETRY when every player is down).
     void scheduleRun(double bar, u64 seed, u32 players, u16 runId, u8 presentMask = 0xF);
@@ -1688,6 +1706,25 @@ private:
     TracerFloor floor_;
     u16 bestRing_[kMaxPlayers] = {};
     u32 tracersEliteFrom_ = 0;  // the bar the elites begin on (the second Groove's first)
+    static constexpr u32 kNetRings = 16;
+    NetRing netRings_[kNetRings];
+    u32 netRingCount_ = 0;
+    NetFloor netFloor_;
+    bool netFloorPending_ = false;
+    u16 ringsLocked_[kMaxPlayers] = {};
+    u32 floorSnapshots_ = 0, floorDiffSnapshots_ = 0, floorDiffTiles_ = 0;
+    // Co-op welds (tracers.md "Lines weld"): this device's player's first crossing of a teammate's line, waiting for the second.
+    struct Weld {
+        u8 mate = 0xFF;
+        double bornMine = -1.0, bornTheirs = -1.0;  // the crossing segments' first points (by their birth: indices move as tails burn)
+        double tick = -1.0;
+        Vec2 at;
+    } weld_[kMaxPlayers];
+    void applyNetRings();
+    void applyNetFloor();
+    void crossings(u32 p);  // a local player's newest piece against the others' lines: welds (co-op), cuts (versus)
+    void spinOut(u32 q, const TracerRing& r);
+    void cutLine(u32 p, Vec2 at);  // a line cut where it passes `at`: the part from there back to its tail goes dark
     void resetTracers();
     void updateTracers();
     void layTracer(u32 p);

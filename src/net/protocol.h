@@ -11,7 +11,7 @@
 
 namespace rf::net {
 
-constexpr u32 kProtocolVersion = 0x5246050Eu;  // 'R' 'F', M8 part 1 versus (the crown and the underdog in MsgDirector, kPeKnock); 0x...50D ONE TRACK's outro bar in MsgDirector; 0x...50C M8 part 0 (the room's setup in MsgLobby and MsgRunStart, the crowns, the beacon's mode); 0x...50B pause-on-leave (2026-11-14: kAwayAsk, kBackAsk, kAwayMask; MsgPause::away); 0x...50A play test 3 (the Extra Life's drop and take, a Hit's ring and Extra Life flags in opts[0]); 0x...509 M5 part 7 (a boss's pace: kGeomBossPace); 0x...508 M5 part 6 (the bosses of Tracks 8 to 10 and mini-bosses batch 3: new kinds, two new decisions) with M4 net's 0x...507 (Event Horizon's phase and its drift's point decided by the host: kGeomHorizonPhase, kGeomHorizonDrift); 0x...506 M5 part 5 (the arena's operations and claims on its bodies); 0x...505 M5 part 4 (the enemy states kLane, kCourt, kEgg; the fights' new decisions) and M4 net's follow-up (motion corrections, 0x...504 on its branch); 0x...503 M5 part 3
+constexpr u32 kProtocolVersion = 0x5246050Fu;  // 'R' 'F', M8 part 4 TRACERS (Msg::Ring, Msg::Floor, kPeCut, kPeSpin); 0x...50E M8 part 1 versus (the crown and the underdog in MsgDirector, kPeKnock); 0x...50D ONE TRACK's outro bar in MsgDirector; 0x...50C M8 part 0 (the room's setup in MsgLobby and MsgRunStart, the crowns, the beacon's mode); 0x...50B pause-on-leave (2026-11-14: kAwayAsk, kBackAsk, kAwayMask; MsgPause::away); 0x...50A play test 3 (the Extra Life's drop and take, a Hit's ring and Extra Life flags in opts[0]); 0x...509 M5 part 7 (a boss's pace: kGeomBossPace); 0x...508 M5 part 6 (the bosses of Tracks 8 to 10 and mini-bosses batch 3: new kinds, two new decisions) with M4 net's 0x...507 (Event Horizon's phase and its drift's point decided by the host: kGeomHorizonPhase, kGeomHorizonDrift); 0x...506 M5 part 5 (the arena's operations and claims on its bodies); 0x...505 M5 part 4 (the enemy states kLane, kCourt, kEgg; the fights' new decisions) and M4 net's follow-up (motion corrections, 0x...504 on its branch); 0x...503 M5 part 3
 constexpr u32 kMaxPacketBytes = 1200;
 
 enum class Msg : u8 {
@@ -19,6 +19,7 @@ enum class Msg : u8 {
     Hello = 1, Welcome, Refuse, Ping, Pong, Bye,
     // the game, reliable (channel 0)
     RunStart = 16, Spawns, Deaths, Claims, BossClaims, Boss, BoostDrop, Director, PlayerEvent, Census, Pause, Seats, Ready, Lobby, Bed,
+    Ring, Floor,  // M8 TRACERS (tracers.md "Caps and the wire"): a ring (or the host's house), the host's floor
     // the game, unreliable (channel 1)
     Pose = 48, Players, Corrections, Heartbeat, Stats, Attention, Motions,
 };
@@ -187,6 +188,8 @@ public:
     virtual void onMotion(const NetMotion&) {}
     virtual void onHeartbeat(const MsgHeartbeat&) {}
     virtual void onStats(const MsgStats&) {}
+    virtual void onRing(const sim::NetRing&) {}
+    virtual void onFloor(const sim::NetFloor&) {}
     // Client -> host: enemies on the client's screen that no correction has reached for a while.
     virtual void onAttention(u16, const u32*, u32) {}
 };
@@ -237,6 +240,10 @@ public:
     bool putHeartbeat(const MsgHeartbeat& m);
     bool putStats(const MsgStats* s, u32 n);
     bool putAttention(u16 run, const u32* serials, u32 n);
+    // M8 TRACERS: a ring's corners at 1/16 wu (4 bytes each), its pop's eighth and owners (16 + 4n bytes); the floor's tiles a nibble
+    // each (0-3 a seat, 14 the house's chase, 15 dark), the house and the rings each seat has locked (14 + 452 bytes).
+    bool putRing(const sim::NetRing& m);
+    bool putFloor(const sim::NetFloor& m);
 
     // Raw access for tests (the fuzzer builds broken packets).
     u8* raw() { return buf_; }

@@ -233,6 +233,7 @@ bool flag(int argc, char** argv, const char* name) {
 // --remote-poses interp|predict: where every peer of this process takes a remote player for a tick (net/session.h).
 RemotePoses g_remotePoses = SessionConfig{}.remotePoses;
 bool g_versus = false;  // M8: --versus (a versus run, the host's setup)
+sim::RunSetup g_setup;  // M8: --mode <id>[:<track>] (the host's run)
 // --fight <id>: the soak starts in that fight's home Track and measures from the fight on, for --minutes.
 bool g_fightOn = false;
 // --away-at S --away-for D [--away-seat N] (pause-on-leave, 2026-11-14): seat N's app (default the last client; 0 the host)
@@ -327,6 +328,7 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
         c.session.remotePoses = g_remotePoses;
         tune(c.session);
         c.session.seed = seed;
+        c.session.setup = g_setup;
         c.session.setup.versus = g_versus;
         c.botSeed = seed * 31 + k;
         c.clockOffsetUs = kOffsets[k];
@@ -984,6 +986,20 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                 players, minutes, wallS, sim.delayMs, sim.jitterMs, sim.loss * 100.0f, sim.duplicate * 100.0f, sim.reorder * 100.0f);
     std::printf("[net]   run: %u kills, %u downs, %u revives, %u restarts, Track %u, bar %u, %u enemies alive at the end\n", hc.kills,
                 hc.downs, hc.revives, hc.restarts, hw.phrase().track, hw.phrase().bar, hw.enemies().count);
+    if (hw.setup().mode == sim::Mode::Tracers) {
+        // M8 TRACERS (tracers.md "What to check"): every device's floor against the host's: at each of the host's snapshots (the tiles
+        // that differed when it came) and at the end.
+        for (u32 k = 1; k < players; ++k) {
+            if (off(k)) continue;
+            const World& cw = peers[k].world();
+            u32 endDiff = 0;
+            for (u32 t = 0; t < sim::TracerFloor::kTiles; ++t) endDiff += cw.tracerFloor().owner[t] != hw.tracerFloor().owner[t] ? 1u : 0u;
+            std::printf("[net]   TRACERS client %u: %u floor snapshots taken, %u found tiles that differed (%u tiles in all); %u tiles differ at "
+                        "the end; rings locked by seat (host): %u %u %u %u, houses %u (host %u)\n",
+                        k, cw.floorSnapshots(), cw.floorDiffSnapshots(), cw.floorDiffTiles(), endDiff, hw.ringsLocked(0), hw.ringsLocked(1),
+                        hw.ringsLocked(2), hw.ringsLocked(3), cw.tracerFloor().houses, hw.tracerFloor().houses);
+        }
+    }
     std::printf("[net]   disconnects %u, stalls %u; census %u checks, %u mismatches; predicted kills %u (confirmed %u, undone %u); "
                 "late spawns %u, unknown ids %u; enemies on a client's screen not on the host's %llu\n",
                 disconnects, stalls, census, mismatches, predicted, confirmed, undone, late, unknown, static_cast<unsigned long long>(missing));
@@ -1334,6 +1350,10 @@ int netHeadlessMain(int argc, char** argv) {
         if ((v = arg(argc, argv, "--away-for"))) g_awayForS = static_cast<float>(std::atof(v));
         if ((v = arg(argc, argv, "--away-seat"))) g_awaySeat = static_cast<u32>(std::atoi(v));
         g_versus = flag(argc, argv, "--versus");
+        if ((v = arg(argc, argv, "--mode")) && !sim::parseModeArg(v, g_setup)) {
+            std::printf("[net] --mode: unknown mode or Track %s" "\n", v);
+            return 2;
+        }
         code = runSoak(*species, minutes, players, sim, seed, flag(argc, argv, "--pause"), dropAt);
     } else if (std::strcmp(mode, "host") == 0 || std::strcmp(mode, "join") == 0) {
         code = runPeer(*species, std::strcmp(mode, "host") == 0, argc, argv);

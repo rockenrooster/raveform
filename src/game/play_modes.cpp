@@ -103,11 +103,11 @@ void Play::modesEvent(const Event& e) {
                     u32 at = 0;
                     for (u32 q = 0; q < kMaxPlayers; ++q) {
                         if (!w.player(q).present) continue;
-                        if (podiumWinner_ == 0xFF || w.player(q).score > best) {
-                            best = w.player(q).score;
+                        if (podiumWinner_ == 0xFF || w.versusCount(q) > best) {  // (TRACERS: the tiles in each colour)
+                            best = w.versusCount(q);
                             podiumWinner_ = static_cast<u8>(q);
                             at = 1;
-                        } else if (w.player(q).score == best) {
+                        } else if (w.versusCount(q) == best) {
                             ++at;
                         }
                     }

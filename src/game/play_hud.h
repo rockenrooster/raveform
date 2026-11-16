@@ -81,6 +81,7 @@ struct HudState {
     // the gels' cards beside the Boosts' (an upgrade's icon, its name and words, the bars it has left).
     const char* levelLabel = nullptr;
     bool noRiffs = false;
+    bool turf = false;  // TRACERS versus: the floor's shares as a bar across the top
     struct GelCard {
         u8 icon = 0;  // an upgrade (its icon)
         const char* name = nullptr;

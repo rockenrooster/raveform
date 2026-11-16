@@ -4559,6 +4559,115 @@ void testTracers() {
     }
 }
 
+
+// Two seats on one device (both local): each flies its own path, one point a tick (a player standing still: its path's last point).
+void flyTwo(World& w, double& music, const Vec2* a, u32 na, const Vec2* b, u32 nb, u32 ticks, u32* counts, EventType watch) {
+    for (u32 k = 0; k < ticks; ++k) {
+        TickInput in;
+        in.music0 = music;
+        in.music1 = music + kTicksPerSimTick;
+        in.bpm = kBpm;
+        const Vec2* paths[2] = {a, b};
+        const u32 lens[2] = {na, nb};
+        for (u32 p = 0; p < 2; ++p) {
+            const u32 j = k < lens[p] ? k : lens[p] - 1u;
+            in.players[p].present = true;
+            in.players[p].pos = paths[p][j];
+            const Vec2 d = (k < lens[p] && j) ? paths[p][j] - paths[p][j - 1u] : Vec2{};
+            in.players[p].vel = d * 60.0f;
+            in.players[p].aim = Vec2{1.0f, 0.0f};
+        }
+        w.tick(in);
+        music = in.music1;
+        for (u32 i = 0; i < w.eventCount(); ++i)
+            if (w.events()[i].type == watch) ++counts[0];
+    }
+}
+
+void testTracersTogether() {
+    g_test = "tracers together";
+    static Vec2 a[400], b[400];
+    // Co-op: player 1 crosses player 0's line twice: a duet ring of the two pieces between the crossings, both owners on it.
+    {
+        auto* w = new (std::nothrow) World;
+        w->init(g_species);
+        w->spawner().mode = Spawner::Mode::Off;
+        RunSetup su;
+        su.mode = Mode::Tracers;
+        su.track = 3;
+        w->resetRun(7, 0.0, 2, 0x3, su);
+        u32 na = 0, nb = 0;
+        for (float x = -400.0f; x <= 400.0f; x += 16.0f) a[na++] = Vec2{x, 0.0f};          // player 0: a line along y = 0
+        for (float y = -200.0f; y <= 160.0f; y += 16.0f) b[nb++] = Vec2{-200.0f, y};       // player 1: up across it at x = -200,
+        for (float x = -200.0f; x <= 200.0f; x += 16.0f) b[nb++] = Vec2{x, 160.0f};        // over the top,
+        for (float y = 160.0f; y >= -200.0f; y -= 16.0f) b[nb++] = Vec2{200.0f, y};        // and down across it again at x = 200
+        double music = 0.0;
+        u32 rings = 0;
+        // (player 0 lays its line first; then player 1 flies, player 0 standing at its line's end)
+        static Vec2 a2[400];
+        u32 n2 = 0;
+        for (u32 k = 0; k < na; ++k) a2[n2++] = a[k];
+        for (u32 k = 0; k < nb; ++k) a2[n2++] = a[na - 1u];
+        static Vec2 b2[600];
+        u32 m2 = 0;
+        for (u32 k = 0; k < na; ++k) b2[m2++] = b[0];
+        for (u32 k = 0; k < nb; ++k) b2[m2++] = b[k];
+        flyTwo(*w, music, a2, n2, b2, m2, n2 > m2 ? n2 : m2, &rings, EventType::RingLock);
+        bool duet = false;
+        for (u32 k = 0; k < World::kRings; ++k) duet = duet || (w->ring(k).active && w->ring(k).owner == 1 && w->ring(k).owner2 == 0);
+        u32 lit0 = 0, lit1 = 0;
+        for (u8 o : w->tracerFloor().owner) {
+            lit0 += o == 0 ? 1u : 0u;
+            lit1 += o == 1 ? 1u : 0u;
+        }
+        CHECK_MSG(duet && lit0 > 10 && lit1 > 10, "duet %d tiles %u %u (rings %u)", duet, lit0, lit1, rings);
+        delete w;
+    }
+    // Versus: player 1 flies across player 0's line: it is cut there (the part back to its tail goes dark).
+    {
+        auto* w = new (std::nothrow) World;
+        w->init(g_species);
+        w->spawner().mode = Spawner::Mode::Off;
+        RunSetup su;
+        su.mode = Mode::Tracers;
+        su.track = 3;
+        su.versus = true;
+        w->resetRun(7, 0.0, 2, 0x3, su);
+        u32 na = 0, nb = 0;
+        for (float x = -400.0f; x <= 400.0f; x += 16.0f) a[na++] = Vec2{x, 0.0f};
+        for (u32 k = 0; k < na; ++k) b[nb++] = Vec2{0.0f, -300.0f};  // (player 1 waits below)
+        for (float y = -300.0f; y <= 300.0f; y += 16.0f) b[nb++] = Vec2{0.0f, y};
+        double music = 0.0;
+        u32 cuts = 0;
+        flyTwo(*w, music, a, na, b, nb, nb, &cuts, EventType::Cut);
+        // (player 0's line was from x = -400 to 400; cut at x = 0, what is left begins near there)
+        const TracerLine& t = w->tracer(0);
+        CHECK_MSG(cuts == 1 && t.count > 0 && t.at(0).x > -40.0f, "cuts %u, line from %.0f (%u points)", cuts, t.count ? static_cast<double>(t.at(0).x) : 0.0,
+                  t.count);
+        delete w;
+    }
+    // Versus: player 0 rings round player 1 standing still: when it pops, player 1 is spun out (its line out, dazzled, pushed).
+    {
+        auto* w = new (std::nothrow) World;
+        w->init(g_species);
+        w->spawner().mode = Spawner::Mode::Off;
+        RunSetup su;
+        su.mode = Mode::Tracers;
+        su.track = 3;
+        su.versus = true;
+        w->resetRun(7, 0.0, 2, 0x3, su);
+        const Vec2 way[5] = {{-150.0f, -198.0f}, {-150.0f, 150.0f}, {150.0f, 150.0f}, {150.0f, -150.0f}, {-198.0f, -150.0f}};
+        const u32 na = pathPoints(way, 4, a, 400);
+        u32 nb = 0;
+        for (u32 k = 0; k < na + 40u; ++k) b[nb++] = Vec2{0.0f, 0.0f};
+        double music = 0.0;
+        u32 spins = 0;
+        flyTwo(*w, music, a, na, b, nb, nb, &spins, EventType::SpinOut);
+        CHECK_MSG(spins == 1 && w->player(1).dazzledUntil > music - 4.0 * kTicksPerBeat, "spins %u", spins);
+        delete w;
+    }
+}
+
 int main() {
     g_species = new (std::nothrow) SpeciesTable;
     if (!g_species || !g_species->load()) {
@@ -4609,6 +4718,7 @@ int main() {
     testModes();
     testOneTrack();
     testTracers();
+    testTracersTogether();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;
     return g_failures;

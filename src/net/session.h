@@ -344,6 +344,13 @@ private:
     void noteClaimSecond(u32 claims, u32 bossClaims);
     void sendTo(u32 peer, u8 channel, const PacketWriter& w, bool rel);
     void relayEvent(const MsgPlayerEvent& m, u32 exceptSeat);
+    // M8 TRACERS (tracers.md "Caps and the wire"): a client's ring to the other clients; the host's house and floor.
+    void onRing(const sim::NetRing& m) override;
+    void onFloor(const sim::NetFloor& m) override;
+    void relayRing(const sim::NetRing& m, u32 exceptSeat);
+    double sentChase_ = -1.0;
+    i64 nextFloorUs_ = 0;
+    sim::NetFloor floorOut_;
     void sendCorrections(u32 seat, double hostMusic);
     bool motionOnly(u32 seat, u32 index) const;
     void refillBudgets(i64 localUs);

@@ -310,6 +310,26 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
             d.pools.glow({x0 + 0.5f * (x1 - x0) * fill, yc}, 40.0f * s, gold * (0.06f + 0.10f * flash) * g_hudFade);
         }
     }
+    // M8 TRACERS versus (tracers.md "Versus: turf"; screens.md "The versus HUD"): the floor as a bar across the top, each player's
+    // share in their colour from the left, the dark rest an outline; the leader's part brighter.
+    if (st.turf && st.world) {
+        const sim::TracerFloor& f = st.world->tracerFloor();
+        u32 n[sim::kMaxPlayers] = {};
+        for (u8 o : f.owner)
+            if (o < sim::kMaxPlayers) ++n[o];
+        const float x0 = 0.5f * W - 420.0f * s, x1 = 0.5f * W + 420.0f * s, y = top + 4.0f * s, hh = 4.0f * s;
+        const Vec3 oc = col(white, 0.3f);
+        d.hud.line({x0, y - hh}, {x1, y - hh}, 0.45f * s, oc, oc, 0);
+        d.hud.line({x0, y + hh}, {x1, y + hh}, 0.45f * s, oc, oc, 0);
+        float at = x0;
+        for (u32 q = 0; q < sim::kMaxPlayers; ++q) {
+            if (!n[q]) continue;
+            const float wq = (x1 - x0) * static_cast<float>(n[q]) / static_cast<float>(sim::TracerFloor::kTiles);
+            const Vec3 c = col(palettes.player[q], q == st.crown ? 2.0f : 1.4f);
+            d.hud.line({at, y}, {at + wq, y}, hh, c, c, kFlatStart | kFlatEnd);
+            at += wq;
+        }
+    }
     // M4 stage B: co-op, each player's own score under the team's, in their colour, ranked (yours brighter).
     if (st.coopPlayers > 1) {
         const float y0 = top + 160.0f * s;  // under the Shard level (play test 2)

@@ -21,6 +21,7 @@ constexpr i64 kPingWaitUs = 500000;       // a client services every frame this 
 constexpr u32 kClaimsDense = 400;         // claims in a second above which a client sends them every kDensePoses poses
 constexpr u32 kDensePoses = 3;            // ... 10 Hz (a teammate sees a kill at most 67 ms later; the lead's rule: 100 ms)
 constexpr i64 kCensusEveryUs = 2000000;
+constexpr i64 kFloorEveryUs = 2000000;  // M8 TRACERS: the host's floor to every client (tracers.md "The floor: the host")
 constexpr i64 kPingFastUs = 50000, kPingUs = 250000;  // TECH_SPEC 8.2: 4 Hz (20 Hz until 16 samples)
 constexpr i64 kBackSettleUs = 500000;  // pause-on-leave: a client back from away settles its clock at least this long
 constexpr i64 kInterpUs = 66000;        // remote players drawn ~66 ms behind
@@ -1590,6 +1591,50 @@ void Session::afterTick() {
             reliable([&](PacketWriter& pw) { return pw.putCensus(c); });
             nextCensusUs_ = localNow_ + kCensusEveryUs;
         }
+        // M8 TRACERS: the house decided here goes to everyone at once (its chase is on the next bar line); the floor every two
+        // seconds (a client takes it unless it predates a ring of its own).
+        if (w.setup().mode == sim::Mode::Tracers) {
+            const sim::TracerFloor& f = w.tracerFloor();
+            if (f.chaseTick >= 0.0 && f.chaseTick != sentChase_) {
+                sim::NetRing h;
+                h.run = run;
+                h.kind = 1;
+                h.tick = f.chaseTick;
+                reliable([&](PacketWriter& pw) { return pw.putRing(h); });
+                sentChase_ = f.chaseTick;
+            }
+            if (localNow_ >= nextFloorUs_) {
+                w.floorSnapshot(floorOut_);
+                reliable([&](PacketWriter& pw) { return pw.putFloor(floorOut_); });
+                nextFloorUs_ = localNow_ + kFloorEveryUs;
+            }
+        }
+    }
+}
+
+void Session::onRing(const sim::NetRing& m) {
+    if (host()) {
+        if (from_ < 1 || m.kind != 0 || m.owner != static_cast<u32>(from_)) return;  // a client speaks for its own rings only
+    } else if (m.kind == 0 && m.owner == seat_) {
+        return;
+    }
+    world_->netRing(m);
+    if (host()) relayRing(m, static_cast<u32>(from_));
+}
+
+void Session::onFloor(const sim::NetFloor& m) {
+    if (host()) return;
+    world_->netFloor(m);
+}
+
+void Session::relayRing(const sim::NetRing& m, u32 exceptSeat) {
+    // Another client's ring: to every other client, in the reliable stream's order.
+    flushReliable();
+    for (u32 s = 1; s < kMaxPlayers; ++s) {
+        if (!welcomed_[s] || s == exceptSeat || seatPeer_[s] < 0) continue;
+        scratch_.reset();
+        scratch_.putRing(m);
+        sendTo(static_cast<u32>(seatPeer_[s]), kChReliable, scratch_, true);
     }
 }
 
@@ -1637,6 +1682,34 @@ void Session::collectLocalEvents() {
             case EventType::Knock:  // M8 versus: the bar line it is back on
                 m.kind = kPeKnock;
                 m.tick = e.tick;
+                break;
+            case EventType::RingLock: {
+                // M8 TRACERS: a ring this device's player locked (a fizzle stays here): its corners to the host and on to all.
+                if (e.c || e.species >= World::kRings) continue;
+                const sim::TracerRing& r = w.ring(e.species);
+                if (!r.active || r.owner != e.a) continue;
+                sim::NetRing out;
+                out.run = w.runId();
+                out.kind = 0;
+                out.owner = r.owner;
+                out.owner2 = r.owner2;
+                out.echo = r.echo ? 1 : 0;
+                out.tick = r.popTick;
+                out.n = r.n;
+                for (u32 k = 0; k < r.n && k < 48; ++k) out.pt[k] = r.pt[k];
+                reliable([&](PacketWriter& pw) { return pw.putRing(out); });
+                continue;
+            }
+            case EventType::Cut: m.kind = kPeCut; break;  // M8 TRACERS versus: where its line was cut
+            case EventType::GelTake:  // M8 TRACERS: a gel taken (its orb, as a Boost's)
+                m.kind = kPeBoostTake;
+                m.b = static_cast<u8>(sim::kPickupGel + e.b);
+                break;
+            case EventType::SpinOut:
+                m.kind = kPeSpin;
+                m.tick = e.tick;
+                m.x = w.player(e.a).pos.x;
+                m.y = w.player(e.a).pos.y;
                 break;
             case EventType::Revive:
                 m.kind = kPeRevive;

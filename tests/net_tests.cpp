@@ -1180,12 +1180,85 @@ void testRelayClocks(const SpeciesTable& species) {
 
 }  // namespace
 
+// M8 part 4 (TRACERS): a ring's corners and the host's floor round trip; a ring of two corners, an owner out of range and a floor
+// nibble that is no seat are refused.
+struct TracersSink : PacketSink {
+    sim::NetRing ring;
+    sim::NetFloor floor;
+    u32 rings = 0, floors = 0;
+    void onRing(const sim::NetRing& m) override {
+        ring = m;
+        ++rings;
+    }
+    void onFloor(const sim::NetFloor& m) override {
+        floor = m;
+        ++floors;
+    }
+};
+
+void testTracersWire() {
+    g_test = "tracers wire";
+    PacketWriter w;
+    sim::NetRing r;
+    r.run = 3;
+    r.owner = 2;
+    r.owner2 = 1;
+    r.echo = 1;
+    r.tick = 12345.5;
+    r.n = 5;
+    for (u32 k = 0; k < 5; ++k) r.pt[k] = Vec2{-850.0f + 400.0f * static_cast<float>(k), 419.5f - 100.25f * static_cast<float>(k)};
+    static sim::NetFloor f;
+    f.run = 3;
+    f.house = 2;
+    f.houses = 1;
+    for (u32 p = 0; p < 4; ++p) f.rings[p] = static_cast<u16>(10 + p);
+    for (u32 t = 0; t < sim::NetFloor::kTiles; ++t)
+        f.owner[t] = t % 7 == 0 ? sim::TracerFloor::kDark : (t % 11 == 0 ? sim::TracerFloor::kHouse : static_cast<u8>(t % 4));
+    CHECK(w.putRing(r) && w.putFloor(f));
+    TracersSink sink;
+    CHECK(parsePacket(w.data(), w.size(), sink));
+    CHECK(sink.rings == 1 && sink.floors == 1);
+    bool corners = sink.ring.n == 5;
+    for (u32 k = 0; k < 5 && corners; ++k)
+        corners = std::fabs(sink.ring.pt[k].x - r.pt[k].x) <= 1.0f / 16.0f && std::fabs(sink.ring.pt[k].y - r.pt[k].y) <= 1.0f / 16.0f;
+    CHECK(corners && sink.ring.owner == 2 && sink.ring.owner2 == 1 && sink.ring.echo == 1 && sink.ring.tick == 12345.5 && sink.ring.run == 3);
+    CHECK(std::memcmp(sink.floor.owner, f.owner, sizeof f.owner) == 0 && sink.floor.house == 2 && sink.floor.houses == 1 && sink.floor.rings[3] == 13);
+    // The house: a ring of kind 1 with no corners.
+    sim::NetRing h;
+    h.run = 3;
+    h.kind = 1;
+    h.tick = 7680.0;
+    w.reset();
+    CHECK(w.putRing(h));
+    TracersSink s2;
+    CHECK(parsePacket(w.data(), w.size(), s2) && s2.ring.kind == 1 && s2.ring.n == 0 && s2.ring.tick == 7680.0);
+    // Refused: a ring of two corners; a ring's owner out of range; a floor tile no seat holds (nibble 5).
+    sim::NetRing bad = r;
+    bad.n = 2;
+    w.reset();
+    w.putRing(bad);
+    TracersSink s3;
+    CHECK(!parsePacket(w.data(), w.size(), s3) && s3.rings == 0);
+    bad = r;
+    bad.owner = 4;
+    w.reset();
+    w.putRing(bad);
+    CHECK(!parsePacket(w.data(), w.size(), s3));
+    w.reset();
+    w.putFloor(f);
+    u8 buf[kMaxPacketBytes];
+    std::memcpy(buf, w.data(), w.size());
+    buf[3 + 14 + 10] = 0x55;  // (a tile pair's nibbles: seat 5)
+    CHECK(!parsePacket(buf, w.size(), s3) && s3.floors == 0);
+}
+
 int main() {
     auto* species = new (std::nothrow) SpeciesTable;
     if (!species || !species->load()) {
         std::printf("species table failed to load\n");
         return 1;
     }
+    testTracersWire();
     testRoundTrip();
     testFuzz();
     testWire();

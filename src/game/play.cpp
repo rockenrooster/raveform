@@ -1042,7 +1042,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         for (u32 q = 0; q < kMaxPlayers; ++q)
             if (w.player(q).present) {
                 hs.score += w.player(q).score;
-                hs.playerScore[q] = w.player(q).score;
+                hs.playerScore[q] = w.setup().versus ? w.versusCount(q) : w.player(q).score;  // (M8 TRACERS versus: the tiles)
                 u32 at = hs.rankCount++;
                 while (at > 0 && hs.playerScore[hs.rank[at - 1]] < hs.playerScore[q]) {
                     hs.rank[at] = hs.rank[at - 1];
@@ -1120,6 +1120,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         std::snprintf(tracerLine, sizeof tracerLine, "TRACER %.0f BEATS", w.tracerLifeTicks(me) / kTicksPerBeat);
         hs.levelLabel = tracerLine;
         hs.noRiffs = true;
+        hs.turf = w.setup().versus;  // (tracers.md "Versus: turf": the bar across the top in the players' colours)
         hs.gelCount = 0;
         static const char* kGelName[kGels] = {"LONG", "ECHO"};
         for (u32 g = 0; g < kGels; ++g) {

@@ -217,7 +217,7 @@ void World::versusBar(u32 bar) {
     for (u32 p = 0; p < playerCount_; ++p) {
         const PlayerState& pl = players_[p];
         if (!pl.present) continue;
-        const u64 c = pl.score;  // (THE SET, ONE TRACK: the score)
+        const u64 c = versusCount(p);  // (THE SET, ONE TRACK: the score; TRACERS: the tiles)
         if (leader == 0xFF || c > best) {
             best = c;
             leader = static_cast<u8>(p);

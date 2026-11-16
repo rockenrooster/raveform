@@ -47,6 +47,10 @@ void World::resetTracers() {
     floor_ = TracerFloor{};
     for (u8& o : floor_.owner) o = TracerFloor::kDark;
     for (u16& b : bestRing_) b = 0;
+    for (u16& n : ringsLocked_) n = 0;
+    for (Weld& wd : weld_) wd = Weld{};
+    netRingCount_ = 0;
+    netFloorPending_ = false;
     // The elites begin with the form's second Groove (tracers.md rule 14).
     tracersEliteFrom_ = 0;
     u32 grooves = 0, at = 0;
@@ -80,12 +84,17 @@ void World::breakTracer(u32 p) {
 
 void World::updateTracers() {
     if (!species_) return;
+    if (netRingCount_) applyNetRings();  // (co-op: the others' rings and the host's house, in arrival order)
+    if (netFloorPending_) applyNetFloor();
     for (u32 p = 0; p < playerCount_; ++p) layTracer(p);
+    if (playerCount_ > 1)
+        for (u32 p = 0; p < playerCount_; ++p)
+            if (isLocal(p) && players_[p].present && players_[p].alive) crossings(p);
     // ECHO (rule 15): a ring popped under the gel pops again a beat later, half as large again about its centre, catching what
     // has walked in.
     const ModesData::Tracers& d = species_->modes.tracers;
     for (TracerRing& r : rings_) {
-        if (!r.active || !r.popped || r.echo || !gel(r.owner, kGelEcho)) continue;
+        if (!r.active || !r.popped || r.echo || !gel(r.owner, kGelEcho) || !isLocal(r.owner)) continue;
         const double at = r.popTick + static_cast<double>(d.echoBeats) * kTicksPerBeat;
         if (m0_ >= at || m1_ < at) continue;
         Vec2 poly[TracerRing::kCorners];
@@ -99,7 +108,13 @@ void World::updateTracers() {
     for (TracerRing& r : rings_) {
         if (!r.active) continue;
         if (!r.popped && m1_ >= r.popTick) popRing(r);
-        else if (r.popped && m1_ > r.popTick + 2.0 * kTicksPerBeat) r.active = false;
+        else if (r.popped && m1_ > r.popTick + 2.0 * kTicksPerBeat) {
+            r.active = false;
+            for (u32 k = 0; k < r.caught; ++k) {  // (co-op: a body another device's ring caught, its verdict never come: let go)
+                const i32 i = indexOf(r.handle[k]);
+                if (i >= 0) enemies_.flags[i] = static_cast<u8>(enemies_.flags[i] & ~kFlagCaught);
+            }
+        }
     }
     houseStep();
 }
@@ -141,6 +156,229 @@ void World::layTracer(u32 p) {
     ++t.count;
     // A ring is its owner's to close (each device its own players'; tracers.md "Caps and the wire").
     if (isLocal(p) && t.count > d.skipNewest + 1u) closeRing(p);
+}
+
+void World::crossings(u32 p) {
+    // Every tick, this device's player against the other lines. Co-op (tracers.md "Lines weld"): its newest piece crossing a
+    // teammate's line twice closes a duet ring of the two pieces between the crossings (its own forward, the teammate's back),
+    // found by the points' birth ticks (a line's indices move as its tail burns). Versus: a rival's ship crossing this player's own
+    // line cuts it (the device of the ship it happens to says so: Cut, then kPeCut).
+    const ModesData::Tracers& d = species_->modes.tracers;
+    const TracerLine& mine = tracers_[p];
+    if (!setup_.versus && mine.count >= 2 && mine.bornAt(mine.count - 1u) == m1_) {
+        const u32 n = mine.count;
+        const Vec2 a = mine.at(n - 2u), b = mine.at(n - 1u);
+        for (u32 q = 0; q < playerCount_; ++q) {
+            if (q == p || !players_[q].present || !players_[q].alive) continue;
+            const TracerLine& other = tracers_[q];
+            for (u32 k = 0; k + 1u < other.count; ++k) {
+                float u = 0.0f;
+                if (!segCross(a, b, other.at(k), other.at(k + 1u), u)) continue;
+                const Vec2 at = a + (b - a) * u;
+                Weld& wd = weld_[p];
+                const double fresh = static_cast<double>(d.lifeBeats) * kTicksPerBeat;
+                // (the first crossing's points, if both lines still hold them)
+                i32 jm = -1, jt = -1;
+                if (wd.mate == q && m1_ - wd.tick <= fresh) {
+                    for (u32 j = 0; j < n; ++j)
+                        if (mine.bornAt(j) == wd.bornMine) jm = static_cast<i32>(j);
+                    for (u32 j = 0; j < other.count; ++j)
+                        if (other.bornAt(j) == wd.bornTheirs) jt = static_cast<i32>(j);
+                }
+                if (jm < 0 || jt < 0 || static_cast<u32>(jm) + d.skipNewest >= n - 2u || static_cast<u32>(jt) == k) {
+                    wd.mate = static_cast<u8>(q);
+                    wd.bornMine = mine.bornAt(n - 2u);
+                    wd.bornTheirs = other.bornAt(k);
+                    wd.tick = m1_;
+                    wd.at = at;
+                    break;
+                }
+                // The second crossing: mine from the first crossing forward, then theirs from here back to it.
+                Vec2 poly[TracerLine::kMax * 2 + 2];
+                u32 m = 0;
+                poly[m++] = wd.at;
+                for (u32 j = static_cast<u32>(jm) + 1u; j < n - 1u && m < TracerLine::kMax; ++j) poly[m++] = mine.at(j);
+                poly[m++] = at;
+                if (k > static_cast<u32>(jt)) {
+                    for (u32 j = k; j > static_cast<u32>(jt) && m < 2u * TracerLine::kMax; --j) poly[m++] = other.at(j);
+                } else {
+                    for (u32 j = k + 1u; j <= static_cast<u32>(jt) && m < 2u * TracerLine::kMax; ++j) poly[m++] = other.at(j);
+                }
+                wd = Weld{};
+                if (ringTiles(poly, m) < d.minTiles) break;
+                const double eighth = kTicksPerBeat / 2.0;
+                const double pop = std::ceil(m1_ / eighth - 1e-9) * eighth;
+                if (lockRing(static_cast<u8>(p), static_cast<u8>(q), poly, m, false, pop > m1_ ? pop : m1_ + eighth)) {
+                    // Both lines go on from their ships (the pieces used cut loose: here the whole of both, as every device does).
+                    breakTracer(p);
+                    breakTracer(q);
+                }
+                return;
+            }
+        }
+    }
+    if (!setup_.versus) return;
+    const TracerLine& own = tracers_[p];
+    for (u32 q = 0; q < playerCount_; ++q) {
+        if (q == p || !players_[q].present || !players_[q].alive) continue;
+        const Vec2 qa = players_[q].prevPos, qb = players_[q].pos;
+        if (lengthSq(qb - qa) < 1.0f) continue;
+        for (u32 k = 0; k + 1u + d.skipNewest < own.count; ++k) {
+            float u = 0.0f;
+            if (!segCross(qa, qb, own.at(k), own.at(k + 1u), u)) continue;
+            const Vec2 at = qa + (qb - qa) * u;
+            cutLine(p, at);
+            Event ev;
+            ev.type = EventType::Cut;
+            ev.a = static_cast<u8>(p);
+            ev.b = static_cast<u8>(q);
+            ev.x = at.x;
+            ev.y = at.y;
+            emit(ev);
+            return;
+        }
+    }
+}
+
+void World::cutLine(u32 p, Vec2 at) {
+    // The part of p's line from where it passes `at` back to its tail goes dark (the nearest point of it is where it was cut).
+    TracerLine& t = tracers_[p];
+    u32 best = 0;
+    float bestD = 1e30f;
+    for (u32 k = 0; k < t.count; ++k) {
+        const float dd = lengthSq(t.at(k) - at);
+        if (dd < bestD) {
+            bestD = dd;
+            best = k;
+        }
+    }
+    if (!t.count || bestD > 60.0f * 60.0f) return;
+    const u32 drop = best + 1u;
+    t.head = static_cast<u16>((t.head + drop) % TracerLine::kMax);
+    t.count = static_cast<u16>(t.count - drop);
+}
+
+void World::spinOut(u32 q, const TracerRing& r) {
+    // tracers.md "Caught in a ring": a rival ship inside a ring as it pops is pushed spinOutWu out through the ring's nearest side (a
+    // push it rides), its tracer put out, and for dazzledBeats it lays no line and cannot be hurt. No cell is lost.
+    const ModesData::Tracers& d = species_->modes.tracers;
+    PlayerState& pl = players_[q];
+    const Vec2 s = pl.pos;
+    Vec2 near = s;
+    float nearD = 1e30f;
+    for (u32 j = 0; j < r.n; ++j) {
+        const Vec2 a = r.pt[j], b = r.pt[(j + 1u) % r.n], ab = b - a;
+        const float l2 = lengthSq(ab);
+        const float u = l2 > 1e-6f ? clampf(dot(s - a, ab) / l2, 0.0f, 1.0f) : 0.0f;
+        const Vec2 c = a + ab * u;
+        const float dd = lengthSq(c - s);
+        if (dd < nearD) {
+            nearD = dd;
+            near = c;
+        }
+    }
+    const Vec2 dir = normalizeOr(near - s, normalizeOr(s - r.centre, Vec2{1.0f, 0.0f}));
+    const double beats = static_cast<double>(d.dazzledBeats) * kTicksPerBeat;
+    shovePlayer(q, PlayerState::kShoveRival, dir * d.spinOutWu, m1_, beats);
+    breakTracer(q);
+    pl.dazzledUntil = m1_ + beats;
+    pl.invulS = std::fmax(pl.invulS, static_cast<float>(beats / ticksPerSecond()));
+    Event ev;
+    ev.type = EventType::SpinOut;
+    ev.a = static_cast<u8>(q);
+    ev.b = r.owner;
+    ev.x = dir.x * d.spinOutWu;
+    ev.y = dir.y * d.spinOutWu;
+    ev.tick = pl.dazzledUntil;
+    emit(ev);
+}
+
+bool World::netRing(const NetRing& r) {
+    if (netRingCount_ >= kNetRings) {
+        ++counters_.netOpsDropped;
+        return false;
+    }
+    netRings_[netRingCount_++] = r;
+    return true;
+}
+
+void World::applyNetRings() {
+    // Another device's ring locks here from its corners (the same corners, the same pop, so every floor is lit alike); a duet's
+    // partner on this device lets its line go on from its ship. The host's house: the chase on its bar line.
+    u32 keep = 0;
+    for (u32 k = 0; k < netRingCount_; ++k) {
+        const NetRing& r = netRings_[k];
+        const std::int16_t ahead = static_cast<std::int16_t>(static_cast<u16>(r.run - runId_));
+        if (ahead > 0) {
+            netRings_[keep++] = r;
+            continue;
+        }
+        if (ahead < 0) continue;
+        if (r.kind == 1) {
+            TracerFloor& f = floor_;
+            if (f.chaseTick < 0.0 && f.popTick < 0.0 && f.darkTick < 0.0) f.chaseTick = r.tick;
+            continue;
+        }
+        if (r.owner >= kMaxPlayers || isLocal(r.owner) || r.n < 3) continue;
+        lockRing(r.owner, r.owner2, r.pt, r.n, r.echo != 0, r.tick);
+        if (!r.echo) {
+            breakTracer(r.owner);
+            if (r.owner2 < kMaxPlayers) breakTracer(r.owner2);
+        }
+    }
+    netRingCount_ = keep;
+}
+
+void World::netFloor(const NetFloor& f) {
+    netFloor_ = f;
+    netFloorPending_ = true;
+}
+
+void World::floorSnapshot(NetFloor& out) const {
+    out.run = runId_;
+    out.house = floor_.house;
+    out.houses = floor_.houses;
+    for (u32 p = 0; p < kMaxPlayers; ++p) out.rings[p] = ringsLocked_[p];
+    for (u32 t = 0; t < TracerFloor::kTiles; ++t) out.owner[t] = floor_.owner[t];
+}
+
+void World::applyNetFloor() {
+    // The host's floor (tracers.md: "The floor: the host"): taken unless it is older than a ring this device's players locked (it is
+    // then on its way to the host; the next snapshot has it). Tiles that differed are counted (the soak's measure).
+    netFloorPending_ = false;
+    const NetFloor& n = netFloor_;
+    if (n.run != runId_ || role_ != NetRole::Client) return;
+    for (u32 p = 0; p < playerCount_; ++p)
+        if (isLocal(p) && n.rings[p] < ringsLocked_[p]) return;
+    TracerFloor& f = floor_;
+    if (f.chaseTick >= 0.0 || f.popTick >= 0.0 || f.darkTick >= 0.0) return;  // (a house under way: its own steps)
+    u32 diff = 0;
+    for (u32 t = 0; t < TracerFloor::kTiles; ++t) {
+        if (f.owner[t] == n.owner[t]) continue;
+        ++diff;
+        if (f.owner[t] == TracerFloor::kDark) ++f.lit;
+        else if (n.owner[t] == TracerFloor::kDark) --f.lit;
+        f.owner[t] = n.owner[t];
+        f.order[t] = n.owner[t] == TracerFloor::kDark ? 0 : ++f.serial;
+    }
+    if (n.houses > f.houses) {
+        f.houses = n.houses;
+        f.house = n.house;
+    }
+    ++floorSnapshots_;
+    if (diff) {
+        ++floorDiffSnapshots_;
+        floorDiffTiles_ += diff;
+    }
+}
+
+u64 World::versusCount(u32 p) const {
+    if (setup_.mode == Mode::Tracers) {
+        u64 n = 0;
+        for (u8 o : floor_.owner) n += o == p ? 1u : 0u;
+        return n;
+    }
+    return players_[p < kMaxPlayers ? p : 0].score;
 }
 
 bool World::closingHint(u32 p, Vec2& at, float& dist) const {
@@ -343,8 +581,10 @@ bool World::lockRing(u8 owner, u8 owner2, const Vec2* poly, u32 m, bool echo, do
     }
     f.lastRing = centre;
     if (owner < kMaxPlayers && r.caught > bestRing_[owner]) bestRing_[owner] = r.caught;
-    // Rule 11: the floor nine tenths lit is a full house, on the next bar line (no houses in versus: the floor is the score).
-    if (!setup_.versus && f.chaseTick < 0.0 && f.popTick < 0.0 && f.darkTick < 0.0 &&
+    if (owner < kMaxPlayers && ringsLocked_[owner] < 0xFFFF) ++ringsLocked_[owner];
+    // Rule 11: the floor nine tenths lit is a full house, on the next bar line (no houses in versus: the floor is the score). In
+    // co-op the host's floor decides (its house comes to the clients as a ring of kind 1).
+    if (!setup_.versus && role_ != NetRole::Client && f.chaseTick < 0.0 && f.popTick < 0.0 && f.darkTick < 0.0 &&
         static_cast<float>(f.lit) >= d.fullHouseShare * static_cast<float>(TracerFloor::kTiles) - 0.5f)
         f.chaseTick = tickOfBar(barOf(m1_ + 1.0) + 1u);
     ev.b = static_cast<u8>(r.caught < 255 ? r.caught : 255);
@@ -352,6 +592,8 @@ bool World::lockRing(u8 owner, u8 owner2, const Vec2* poly, u32 m, bool echo, do
     ev.x = centre.x;
     ev.y = centre.y;
     ev.x2 = r.radius;
+    ev.y2 = echo ? 1.0f : 0.0f;
+    ev.species = static_cast<u16>(slot - rings_);  // (the session sends this ring's corners)
     emit(ev);
     return true;
 }
@@ -361,20 +603,49 @@ void World::popRing(TracerRing& r) {
     // its full health instead and is let go (four rings, or a Nova: rule 14).
     const ModesData::Tracers& d = species_->modes.tracers;
     r.popped = true;
+    // Versus: a rival ship of this device's inside the ring as it pops is spun out (its own device says so).
+    if (setup_.versus)
+        for (u32 q = 0; q < playerCount_; ++q)
+            if (q != r.owner && isLocal(q) && players_[q].present && players_[q].alive && r.n >= 3 && insidePoly(r.pt, r.n, players_[q].pos))
+                spinOut(q, r);
     const float saved = rules_.scoreMultiplier;
     rules_.scoreMultiplier = saved * static_cast<float>(r.bonus);
     Enemies& e = enemies_;
     u32 popped = 0;
+    const bool mine = r.owner < kMaxPlayers && isLocal(r.owner);
+    const bool partner = r.owner2 < kMaxPlayers && isLocal(r.owner2) && r.owner2 != r.owner;
     for (u32 k = 0; k < r.caught; ++k) {
         const i32 i = indexOf(r.handle[k]);
         if (i < 0 || (e.flags[i] & kFlagDead)) continue;
+        // (a duet pays its partner too, with the partner's own Chain, at the ring's bonus: tracers.md "Lines weld")
+        if (partner && !(e.traits[i] & kEliteBit)) {
+            PlayerState& pp = players_[r.owner2];
+            pp.score += static_cast<u64>(std::llround(static_cast<double>(species_->get(e.species[i]).score) * static_cast<double>(pp.chain) *
+                                                      static_cast<double>(rules_.scoreMultiplier)));
+        }
+        if (!mine) {
+            // Another device's ring: its owner claims the deaths and the host's verdicts follow; the caught stay caught a beat.
+            e.frozenUntil[i] = std::fmax(e.frozenUntil[i], r.popTick + kTicksPerBeat);
+            ++popped;
+            continue;
+        }
         e.flags[i] = static_cast<u8>(e.flags[i] & ~kFlagCaught);
         if (e.traits[i] & kEliteBit) {
+            if (role_ == NetRole::Client) {
+                logClaim(static_cast<u32>(i), d.heavyShare * e.hpMax[i], kClaimHit);  // (the host takes its health and decides)
+                e.frozenUntil[i] = m1_;
+                continue;
+            }
             e.hp[i] -= d.heavyShare * e.hpMax[i];
             e.frozenUntil[i] = m1_;
             if (e.hp[i] > 0.0f) continue;
         }
-        killEnemy(static_cast<u32>(i), r.owner);
+        if (role_ == NetRole::Client) {
+            logClaim(static_cast<u32>(i), 0.0f, kClaimKill);
+            predictKill(static_cast<u32>(i), r.owner, false);
+        } else {
+            killEnemy(static_cast<u32>(i), r.owner);
+        }
         ++popped;
     }
     rules_.scoreMultiplier = saved;

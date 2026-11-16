@@ -159,6 +159,22 @@ struct TracerRing {
     float radius = 0.0f;  // the farthest corner from the centre (the pop's pool, the words)
     u32 handle[kCaught] = {};
 };
+// TRACERS on the wire (tracers.md "Caps and the wire"): a ring from its owner's device (kind 0: its corners, its pop's eighth, its
+// owners; ECHO's second pop flagged), the host's house (kind 1: the chase's bar line in `tick`); the host's floor.
+struct NetRing {
+    u16 run = 0;
+    u8 kind = 0, owner = 0, owner2 = 0xFF, echo = 0, n = 0;
+    double tick = 0.0;
+    Vec2 pt[48];
+};
+struct TracerFloor;
+struct NetFloor {
+    static constexpr u32 kTiles = 43 * 21;
+    u16 run = 0;
+    u16 house = 1, houses = 0;
+    u16 rings[4] = {};  // the rings the host has locked of each seat (a snapshot older than a seat's own last ring is not taken)
+    u8 owner[kTiles] = {};
+};
 struct TracerFloor {
     static constexpr u32 kTilesX = 43, kTilesY = 21, kTiles = kTilesX * kTilesY;
     static constexpr u8 kDark = 0xFF, kHouse = 0xFE;  // an owner: dark; lit by the house's chase

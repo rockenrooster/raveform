@@ -406,6 +406,17 @@ void World::applyPlayerOp(const NetOp& op) {
             pl.pos = pl.prevPos = Vec2{op.x, op.y};
             knockOut(p, op.tick);
             break;
+        case kPeCut:
+            // M8 TRACERS versus: that player's line was cut there (its own device saw the rival cross it).
+            if (setup_.mode == Mode::Tracers) cutLine(p, Vec2{op.x, op.y});
+            break;
+        case kPeSpin:
+            // ... spun out by a ring: its line out, none until the tick given (its own device pushed it; its poses carry the push).
+            if (setup_.mode == Mode::Tracers) {
+                breakTracer(p);
+                pl.dazzledUntil = op.tick;
+            }
+            break;
         case kPeRevive:
             if (!pl.present || !pl.down) break;
             pl.beacon = Vec2{op.x, op.y};
@@ -468,7 +479,9 @@ void World::applyPlayerOp(const NetOp& op) {
             i32 best = -1;
             float bestD = 0.0f;
             for (u32 i = 0; i < b.count; ++i) {
-                if (b.dead[i] || (b.owner[i] != p && b.owner[i] != 0xFF) || (b.type[i] == kPickupExtraLife) != (op.b == kPickupExtraLife)) continue;
+                if (b.dead[i] || (b.owner[i] != p && b.owner[i] != 0xFF) || (b.type[i] == kPickupExtraLife) != (op.b == kPickupExtraLife) ||
+                    isGelDrop(b.type[i]) != isGelDrop(op.b))
+                    continue;
                 const float d = lengthSq(Vec2{b.x[i] - op.x, b.y[i] - op.y});
                 if (best < 0 || d < bestD) {
                     best = static_cast<i32>(i);
@@ -477,6 +490,7 @@ void World::applyPlayerOp(const NetOp& op) {
             }
             if (best >= 0) b.dead[best] = 1;
             if (op.b == kPickupExtraLife) takeExtraLife(p);  // play test 3
+            else if (isGelDrop(op.b)) takeGel(p, static_cast<u8>(op.b - kPickupGel), Vec2{op.x, op.y});  // M8 TRACERS
             else if (op.b < kBoostCount) activateBoost(p, op.b);
             break;
         }
@@ -579,7 +593,15 @@ void World::finishKill(u32 i, u8 killer, u8 kind) {
             PlayerState& pl = players_[killer];
             ++pl.kills;
             const double elite = (e.traits[i] & kEliteBit) ? static_cast<double>(species_->traits.score) : 1.0;  // M5 part 5
-            pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * elite * static_cast<double>(pl.chain) * rules_.scoreMultiplier));
+            // (M8 TRACERS: a body this player's ring popped pays the ring's bonus, as on the host)
+            double bonus = 1.0;
+            if (setup_.mode == Mode::Tracers)
+                for (const TracerRing& r : rings_) {
+                    if (!r.active || !r.popped || r.owner != killer) continue;
+                    for (u32 k = 0; k < r.caught; ++k)
+                        if (r.handle[k] == e.handle[i]) bonus = static_cast<double>(r.bonus);
+                }
+            pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * elite * static_cast<double>(pl.chain) * rules_.scoreMultiplier * bonus));
         }
     }
     if (kind != kDeathDissolve && e.state[i] != kWarping) dropShards(i, killer);

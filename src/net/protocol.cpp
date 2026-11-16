@@ -343,7 +343,8 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             m.x = r.f32v();
             m.y = r.f32v();
             m.type = r.u8v();
-            if (r.bad() || !inWorld(m.x, m.y) || (m.type >= kBoostCount && !sim::isExtraLifeDrop(m.type))) return false;  // (play test 3: an Extra Life)
+            if (r.bad() || !inWorld(m.x, m.y) || (m.type >= kBoostCount && !sim::isExtraLifeDrop(m.type) && !sim::isGelDrop(m.type)))
+                return false;  // (play test 3: an Extra Life; M8 TRACERS: a gel)
             if (sink) sink->onBoostDrop(m);
             return true;
         }
@@ -389,7 +390,7 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 case kPeHit: bMax = kMaxCells; break;
                 case kPeTrioOpen: bMax = sim::kMaxOrbs; break;
                 case kPeTrioTake: bMax = 255; break;  // an upgrade or a Boost orb (play test 2), checked below
-                case kPeBoostTake: bMax = m.b == sim::kPickupExtraLife ? 255u : kBoostCount - 1; break;  // (play test 3: an Extra Life)
+                case kPeBoostTake: bMax = m.b == sim::kPickupExtraLife || sim::isGelDrop(m.b) ? 255u : kBoostCount - 1; break;  // (an Extra Life; a gel)
                 case kPeHalo: bMax = 3; break;
                 case kPeWell: bMax = sim::kRiffMaxLevel; break;
                 case kPeDash:
@@ -403,6 +404,44 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 for (u32 k = 0; k < m.b; ++k)
                     if (!sim::validOrb(m.opts[k])) return false;
             if (sink) sink->onPlayerEvent(m);
+            return true;
+        }
+        case Msg::Ring: {
+            sim::NetRing m;
+            m.run = r.u16v();
+            m.kind = r.u8v();
+            m.owner = r.u8v();
+            m.owner2 = r.u8v();
+            m.echo = r.u8v();
+            m.tick = r.f64v();
+            m.n = r.u8v();
+            if (r.bad() || m.kind > 1 || m.owner >= kMaxPlayers || (m.owner2 != 0xFF && m.owner2 >= kMaxPlayers) || m.echo > 1 || !finite(m.tick) ||
+                m.n > 48 || (m.kind == 0 && m.n < 3) || (m.kind == 1 && m.n != 0))
+                return false;
+            for (u32 k = 0; k < m.n; ++k) {
+                m.pt[k].x = static_cast<float>(r.i16v()) / 16.0f;
+                m.pt[k].y = static_cast<float>(r.i16v()) / 16.0f;
+            }
+            if (r.bad()) return false;
+            if (sink) sink->onRing(m);
+            return true;
+        }
+        case Msg::Floor: {
+            sim::NetFloor m;  // (a kilobyte on the stack: the parsers of the loopback bots' thread and the main one never share it)
+            m.run = r.u16v();
+            m.house = r.u16v();
+            m.houses = r.u16v();
+            for (u16& n : m.rings) n = r.u16v();
+            for (u32 t = 0; t < sim::NetFloor::kTiles; t += 2) {
+                const u8 b = r.u8v();
+                const u8 lo = b & 0x0Fu, hi = static_cast<u8>(b >> 4);
+                const auto owner = [](u8 v) -> u8 { return v == 15 ? sim::TracerFloor::kDark : (v == 14 ? sim::TracerFloor::kHouse : v); };
+                if ((lo > 3 && lo < 14) || (hi > 3 && hi < 14)) return false;
+                m.owner[t] = owner(lo);
+                if (t + 1 < sim::NetFloor::kTiles) m.owner[t + 1] = owner(hi);
+            }
+            if (r.bad() || m.house < 1) return false;
+            if (sink) sink->onFloor(m);
             return true;
         }
         case Msg::Census: {
@@ -950,6 +989,35 @@ bool PacketWriter::putPlayerEvent(const MsgPlayerEvent& m) {
     f32v(m.x2);
     f32v(m.y2);
     f64v(m.tick);
+    return true;
+}
+bool PacketWriter::putRing(const sim::NetRing& m) {
+    const u32 n = m.kind == 0 ? (m.n > 48 ? 48u : m.n) : 0u;
+    if (!begin(Msg::Ring, 15 + 4 * n)) return false;
+    u16v(m.run);
+    u8v(m.kind);
+    u8v(m.owner);
+    u8v(m.owner2);
+    u8v(m.echo);
+    f64v(m.tick);
+    u8v(static_cast<u8>(n));
+    for (u32 k = 0; k < n; ++k) {
+        u16v(static_cast<u16>(q16(m.pt[k].x, 1.0f / 16.0f)));
+        u16v(static_cast<u16>(q16(m.pt[k].y, 1.0f / 16.0f)));
+    }
+    return true;
+}
+bool PacketWriter::putFloor(const sim::NetFloor& m) {
+    if (!begin(Msg::Floor, 14 + (sim::NetFloor::kTiles + 1) / 2)) return false;
+    u16v(m.run);
+    u16v(m.house);
+    u16v(m.houses);
+    for (u16 n : m.rings) u16v(n);
+    const auto nib = [](u8 o) -> u8 { return o == sim::TracerFloor::kDark ? 15u : (o == sim::TracerFloor::kHouse ? 14u : (o < 4 ? o : 15u)); };
+    for (u32 t = 0; t < sim::NetFloor::kTiles; t += 2) {
+        const u8 lo = nib(m.owner[t]), hi = t + 1 < sim::NetFloor::kTiles ? nib(m.owner[t + 1]) : 15u;
+        u8v(static_cast<u8>(lo | (hi << 4)));
+    }
     return true;
 }
 bool PacketWriter::putCensus(const MsgCensus& m) {
