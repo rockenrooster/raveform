@@ -12,30 +12,29 @@ float srgbChannel(u32 v) {
     const float c = static_cast<float>(v & 0xFFu) / 255.0f;
     return c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
 }
+// The 256 values once (the same formula, so the same floats): every Stroke line converts its colour, the HUD's and the
+// screens' by the thousand a frame, and three powf a line were a twentieth of a Cortex-A53's frame.
+struct SrgbTable {
+    float v[256];
+    SrgbTable() {
+        for (u32 i = 0; i < 256; ++i) v[i] = srgbChannel(i);
+    }
+};
+// On first use (a namespace-scope table could be read by another file's static initialiser before its own ran).
+const float* srgbTable() {
+    static const SrgbTable t;
+    return t.v;
+}
 }  // namespace
 
-Vec3 srgbToLinear(u32 c) { return {srgbChannel(c), srgbChannel(c >> 8), srgbChannel(c >> 16)}; }
+Vec3 srgbToLinear(u32 c) {
+    const float* t = srgbTable();
+    return {t[c & 0xFFu], t[(c >> 8) & 0xFFu], t[(c >> 16) & 0xFFu]};
+}
 
 u32 packLinear(Vec3 c) {
     const auto q = [](float v) { return static_cast<u32>(clampf(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
     return q(c.x) | (q(c.y) << 8) | (q(c.z) << 16) | (255u << 24);
-}
-
-void writeCapsule(CapsuleGpu& out, Vec2 a, Vec2 b, float halfWidth, Vec3 c0, Vec3 c1, u32 flags) {
-    CapsuleGpu g;
-    g.p0x = a.x;
-    g.p0y = a.y;
-    g.p1x = b.x;
-    g.p1y = b.y;
-    g.c0[0] = floatToHalf(c0.x);
-    g.c0[1] = floatToHalf(c0.y);
-    g.c0[2] = floatToHalf(c0.z);
-    g.c0[3] = floatToHalf(halfWidth);
-    g.c1[0] = floatToHalf(c1.x);
-    g.c1[1] = floatToHalf(c1.y);
-    g.c1[2] = floatToHalf(c1.z);
-    g.c1[3] = floatToHalf(static_cast<float>(flags));
-    std::memcpy(&out, &g, sizeof g);  // one sequential write into write-combined memory
 }
 
 void writeGlow(GlowGpu& out, Vec2 p, float radius, Vec3 colour) {
@@ -44,10 +43,7 @@ void writeGlow(GlowGpu& out, Vec2 p, float radius, Vec3 colour) {
     g.y = p.y;
     g.radius = radius;
     g.pad = 0.0f;
-    g.rgb[0] = floatToHalf(colour.x);
-    g.rgb[1] = floatToHalf(colour.y);
-    g.rgb[2] = floatToHalf(colour.z);
-    g.rgb[3] = 0;
+    floatToHalf4(colour.x, colour.y, colour.z, 0.0f, g.rgb);
     std::memcpy(&out, &g, sizeof g);
 }
 
@@ -55,10 +51,7 @@ void writeTriVertex(TriVertexGpu& out, Vec2 p, Vec3 colour) {
     TriVertexGpu v;
     v.x = p.x;
     v.y = p.y;
-    v.rgb[0] = floatToHalf(colour.x);
-    v.rgb[1] = floatToHalf(colour.y);
-    v.rgb[2] = floatToHalf(colour.z);
-    v.rgb[3] = 0;
+    floatToHalf4(colour.x, colour.y, colour.z, 0.0f, v.rgb);
     std::memcpy(&out, &v, sizeof v);
 }
 

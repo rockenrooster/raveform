@@ -934,8 +934,9 @@ void App::frame(u64 loopStartNs) {
         play_.setWideColourOffered(renderer_.wideColourOffered());
         const i32 tierReq = play_.takeTierRequest();
         if (tierReq >= 0 && !args_.tier[0]) {
-            applyTier(tierReq == 0 ? autoTier_ : static_cast<Tier>(tierReq - 1));
-            governor_.reset(tier_.tier, static_cast<float>(renderer_.pacer().targetIntervalNs() * 1e-6));
+            const Tier t = tierReq == 0 ? autoTier_ : static_cast<Tier>(tierReq - 1);
+            governor_.reset(t, static_cast<float>(renderer_.pacer().targetIntervalNs() * 1e-6));  // first: no cuts carried over
+            applyTier(t);
             RF_LOG("tier: %s (settings)", tier_.name);
         }
     } else if (content_ == Content::Sheet) {
@@ -1040,11 +1041,13 @@ void App::nextPalette() {
 
 void App::applyTier(Tier t) {
     tier_ = tierSettings(t);
-    applyCuts(tier_, args_.cuts);
+    // --cuts, and below Low the governor's own (Governor::cuts, 2026-11-16).
+    const u32 cuts = args_.cuts + (governorOn_ ? governor_.cuts() : 0u);
+    applyCuts(tier_, cuts < kMaxCuts ? cuts : kMaxCuts);
     renderer_.setTier(tier_.render);
     if (content_ == Content::Stage) stage_.setTier(tier_);
     if (content_ == Content::Play) play_.setTier(tier_);  // M3
-    RF_LOG("tier: %s", tier_.name);
+    RF_LOG("tier: %s, %u cuts", tier_.name, tier_.cuts);
     if (overlayOn_) refreshOverlay(nowNs());
 }
 
@@ -1098,8 +1101,8 @@ void App::finishTierProbe(Tier chosen) {
            tierName(chosen), p.startNs ? nsToSec(nowNs() - p.startNs) : 0.0, p.ms[0], p.ms[1], p.ms[2], p.ms[3], p.budgetMs,
            tierCachePath_);
     renderer_.resetParticles();  // the probe's sparks live on the probe's clock
+    governor_.reset(chosen, static_cast<float>(renderer_.pacer().targetIntervalNs() * 1e-6));  // first: no cuts carried over
     applyTier(chosen);
-    governor_.reset(tier_.tier, static_cast<float>(renderer_.pacer().targetIntervalNs() * 1e-6));
     lastFrameNs_ = 0;
     if (benchPending_) {
         benchPending_ = false;
@@ -1263,10 +1266,11 @@ void App::afterPresent(u64 loopStartNs, u64 presentedNs, bool captured) {
         }
         const GpuPassTimes& gt = renderer_.gpuTimes();
         const Tier before = governor_.tier();
+        const u32 cutsBefore = governor_.cuts();
         const bool changed = governor_.update(intervalMs * 0.001f, governorMissed_, gt.valid ? gt.ms[GpuPassTimes::Total] : 0.0f, 0);
         stage_.setDensity(governor_.density());
         play_.setDensity(governor_.density());  // M3
-        if (changed && governor_.tier() != before) applyTier(governor_.tier());
+        if (changed && (governor_.tier() != before || governor_.cuts() != cutsBefore)) applyTier(governor_.tier());
     }
     if (std::strcmp(args_.scenario, "lifecycle_test") == 0) stepLifecycleTest();
     if (args_.frames && frames_ >= args_.frames) quit_ = true;

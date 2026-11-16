@@ -5,6 +5,9 @@
 // Colours are linear light already multiplied by their HDR intensity (binary16).
 // Layouts are shared with shaders/capsule.vert, glow.vert and tri.vert.
 
+#include <cstring>
+
+#include "core/half.h"
 #include "core/math.h"
 #include "core/types.h"
 
@@ -99,7 +102,17 @@ u32 packLinear(Vec3 c);
 // Linear-light colour from an sRGB byte colour (M0 content and the dev overlay).
 Vec3 srgbToLinear(u32 rgba8);
 
-void writeCapsule(CapsuleGpu& out, Vec2 a, Vec2 b, float halfWidth, Vec3 c0, Vec3 c1, u32 flags);
+// Inline: the frame writes thousands (the lattice alone a few thousand), and a call per capsule costs on an in-order core.
+inline void writeCapsule(CapsuleGpu& out, Vec2 a, Vec2 b, float halfWidth, Vec3 c0, Vec3 c1, u32 flags) {
+    CapsuleGpu g;
+    g.p0x = a.x;
+    g.p0y = a.y;
+    g.p1x = b.x;
+    g.p1y = b.y;
+    floatToHalf4(c0.x, c0.y, c0.z, halfWidth, g.c0);
+    floatToHalf4(c1.x, c1.y, c1.z, static_cast<float>(flags), g.c1);
+    std::memcpy(&out, &g, sizeof g);  // one sequential write into write-combined memory
+}
 void writeGlow(GlowGpu& out, Vec2 p, float radius, Vec3 colour);
 void writeTriVertex(TriVertexGpu& out, Vec2 p, Vec3 colour);
 

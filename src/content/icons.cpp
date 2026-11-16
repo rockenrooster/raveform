@@ -19,6 +19,7 @@ IconSet::~IconSet() {
     delete[] icons_;
     delete[] layers_;
     delete[] pts_;
+    delete[] ptColour_;
 }
 
 bool IconSet::load() {
@@ -50,7 +51,8 @@ bool IconSet::load() {
     icons_ = new (std::nothrow) Icon[icons];
     layers_ = new (std::nothrow) Layer[layers];
     pts_ = new (std::nothrow) Vec2[pts ? pts : 1];
-    if (!icons_ || !layers_ || !pts_) return false;
+    ptColour_ = new (std::nothrow) Vec3[pts ? pts : 1];
+    if (!icons_ || !layers_ || !pts_ || !ptColour_) return false;
     for (const JsonValue* ic = doc.firstChild(list); ic; ic = doc.nextSibling(ic)) {
         Icon& out = icons_[iconCount_++];
         doc.text("id", out.id, sizeof out.id, ic);
@@ -102,6 +104,11 @@ bool IconSet::load() {
             }
             l.count = ptCount_ - l.first;
         }
+    }
+    // Every point's gradient colour once: the HUD draws its icons every frame, and the colour of a point never changes.
+    for (u32 k = 0; k < layerCount_; ++k) {
+        const Layer& l = layers_[k];
+        for (u32 j = 0; j < l.count; ++j) ptColour_[l.first + j] = colourAt(l, pts_[l.first + j]);
     }
     RF_LOG("icons: %u icons, %u layers", iconCount_, layerCount_);
     return true;
@@ -159,10 +166,10 @@ void IconSet::draw(FrameDraw& d, i32 icon, Vec2 c, float radiusPx, float intensi
             case 1: {
                 if (l.count < 3) break;
                 const Vec2 p0 = pts_[l.first];
-                const Vec3 c0 = colourAt(l, p0) * in;
+                const Vec3 c0 = ptColour_[l.first] * in;
                 for (u32 j = 1; j + 1 < l.count; ++j) {
                     const Vec2 p1 = pts_[l.first + j], p2 = pts_[l.first + j + 1];
-                    d.glass.tri(at(p0), c0, at(p1), colourAt(l, p1) * in, at(p2), colourAt(l, p2) * in);
+                    d.glass.tri(at(p0), c0, at(p1), ptColour_[l.first + j] * in, at(p2), ptColour_[l.first + j + 1] * in);
                 }
                 break;
             }
@@ -170,7 +177,7 @@ void IconSet::draw(FrameDraw& d, i32 icon, Vec2 c, float radiusPx, float intensi
                 const float hw = 0.5f * l.width * R / 60.0f;
                 for (u32 j = 0; j + 1 < l.count; j += 2) {
                     const Vec2 a = pts_[l.first + j], b = pts_[l.first + j + 1];
-                    d.scene.line(at(a), at(b), hw, colourAt(l, a) * in, colourAt(l, b) * in, 0);
+                    d.scene.line(at(a), at(b), hw, ptColour_[l.first + j] * in, ptColour_[l.first + j + 1] * in, 0);
                 }
                 break;
             }
@@ -201,7 +208,7 @@ void IconSet::drawHud(CapsuleBatch& hud, i32 icon, Vec2 c, float radiusPx, float
         const float hw = std::fmax(0.5f * l.width * R / 60.0f, 0.6f);
         for (u32 j = 0; j + 1 < l.count; j += 2) {
             const Vec2 a = pts_[l.first + j], b = pts_[l.first + j + 1];
-            hud.line(at(a), at(b), hw, fn(user, colourAt(l, a), in), fn(user, colourAt(l, b), in), 0);
+            hud.line(at(a), at(b), hw, fn(user, ptColour_[l.first + j], in), fn(user, ptColour_[l.first + j + 1], in), 0);
         }
     }
 }

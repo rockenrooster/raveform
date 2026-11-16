@@ -107,7 +107,8 @@ the scripted M1 stages of `design/scenes.md`; `glyph_sheet --page 1|2|3`: a stil
 low|medium|high|ultra|auto` (effect tier, TECH_SPEC 5.4; without it pictures and tests use high, everything else
 the tier the first-launch probe chose for this GPU, cached in `SDL_GetPrefPath()/tier.txt`; `auto` measures
 again), `--cuts N` (the first N cuts of look.md §10 on top of the tier), `--reduce-flashing` (look.md §7; key R),
-`--governor on|off` (governor v1; default on for interactive stages, off in benchmarks), `--look
+`--governor on|off` (governor v1; default on for interactive stages, off in benchmarks; below Low it takes look.md §10's cuts one at a
+time, 2026-11-16: run a weak device's benchmark with `--governor on` to see it as played), `--look
 signal|laser|haze` (Signal is the game's look; the others are developer switches), `--palette <id>` (default
 reef), `--mute <names>` (analysis pictures: `background, grid, heat, enemy, elite, boss, aura, bullet, priority,
 sparks, flash, killpool, fx, warp, shard, player, afterglow, distortion, aberration, vignette, pump, sparkles,

@@ -237,6 +237,12 @@ function Start-RfApp {
         throw "$Serial is in use by another app ($(Get-RfForegroundPackage $Serial)); not launching over it"
     }
     & $RF_ADB -s $Serial shell input keyevent KEYCODE_WAKEUP | Out-Null
+    # A lock screen (no PIN on the test devices) keeps the activity behind it, in the background: the Fire 7 sleeps
+    # behind one between runs. Dismissing it changes no setting; with a PIN the bouncer stays and the run reports it.
+    if ((& $RF_ADB -s $Serial shell 'dumpsys window') | Select-String 'isKeyguardShowing=true' -Quiet) {
+        & $RF_ADB -s $Serial shell wm dismiss-keyguard | Out-Null
+        Start-Sleep -Milliseconds 800
+    }
     Stop-RfApp $Serial
     $cmd = "am start -W -n $RF_ACTIVITY"
     if ($AppArgs) { $cmd += " --es args '$AppArgs'" }

@@ -48,6 +48,7 @@ private:
     Layer* layers_ = nullptr;
     u32 layerCount_ = 0;
     Vec2* pts_ = nullptr;
+    Vec3* ptColour_ = nullptr;  // colourAt(its layer, the point), once at load: gradients need atan2 or a square root a point
     u32 ptCount_ = 0;
 };
 

@@ -26,6 +26,8 @@ Lattice::~Lattice() {
     std::free(col_);
     std::free(hw_);
     std::free(flat_);
+    std::free(colSlot_);
+    std::free(rowBase_);
 }
 
 bool Lattice::init(float spacingWu, float viewW, float viewH) {
@@ -40,6 +42,8 @@ bool Lattice::init(float spacingWu, float viewW, float viewH) {
     std::free(col_);
     std::free(hw_);
     std::free(flat_);
+    std::free(colSlot_);
+    std::free(rowBase_);
     d_ = static_cast<Vec2*>(std::calloc(n, sizeof(Vec2)));
     v_ = static_cast<Vec2*>(std::calloc(n, sizeof(Vec2)));
     acc_ = static_cast<Vec2*>(std::calloc(n, sizeof(Vec2)));
@@ -47,8 +51,20 @@ bool Lattice::init(float spacingWu, float viewW, float viewH) {
     col_ = static_cast<Vec3*>(std::calloc(n, sizeof(Vec3)));
     hw_ = static_cast<float*>(std::calloc(n, sizeof(float)));
     flat_ = static_cast<u8*>(std::calloc(n, 1));
+    colSlot_ = static_cast<int*>(std::calloc(static_cast<size_t>(cols_), sizeof(int)));
+    rowBase_ = static_cast<int*>(std::calloc(static_cast<size_t>(rows_), sizeof(int)));
     placed_ = false;
-    return d_ && v_ && acc_ && px_ && col_ && hw_ && flat_;
+    indexed_ = false;
+    return d_ && v_ && acc_ && px_ && col_ && hw_ && flat_ && colSlot_ && rowBase_;
+}
+
+void Lattice::ensureIndex() {
+    if (indexed_ && indexI0_ == i0_ && indexJ0_ == j0_) return;
+    for (int k = 0; k < cols_; ++k) colSlot_[k] = (((i0_ + k) % cols_) + cols_) % cols_;
+    for (int k = 0; k < rows_; ++k) rowBase_[k] = ((((j0_ + k) % rows_) + rows_) % rows_) * cols_;
+    indexI0_ = i0_;
+    indexJ0_ = j0_;
+    indexed_ = true;
 }
 
 void Lattice::recentre(Vec2 camera) {
@@ -83,6 +99,7 @@ void Lattice::recentre(Vec2 camera) {
 
 void Lattice::impulse(Vec2 at, float strength, float radiusWu) {
     if (!placed_ || strength == 0.0f) return;
+    ensureIndex();
     const float reach = 3.0f * radiusWu;
     const int ia = static_cast<int>(std::floor((at.x - reach) / spacing_));
     const int ib = static_cast<int>(std::ceil((at.x + reach) / spacing_));
@@ -90,8 +107,9 @@ void Lattice::impulse(Vec2 at, float strength, float radiusWu) {
     const int jb = static_cast<int>(std::ceil((at.y + reach) / spacing_));
     const float inv = 1.0f / (radiusWu * radiusWu);
     for (int j = ja > j0_ ? ja : j0_; j <= jb && j < j0_ + rows_; ++j) {
+        const int rb = rowBase_[j - j0_];
         for (int i = ia > i0_ ? ia : i0_; i <= ib && i < i0_ + cols_; ++i) {
-            const u32 s = slot(i, j);
+            const u32 s = static_cast<u32>(rb + colSlot_[i - i0_]);
             const Vec2 p = Vec2{static_cast<float>(i) * spacing_, static_cast<float>(j) * spacing_} + d_[s];
             const Vec2 e = p - at;
             const float r2 = dot(e, e);
@@ -104,20 +122,27 @@ void Lattice::impulse(Vec2 at, float strength, float radiusWu) {
 
 void Lattice::step(float dt) {
     if (!placed_) return;
+    ensureIndex();
     stepRemainder_ += dt;
     int substeps = 0;
     while (stepRemainder_ >= kSubstep && substeps < 4) {
         stepRemainder_ -= kSubstep;
         ++substeps;
-        for (int j = j0_; j < j0_ + rows_; ++j) {
-            for (int i = i0_; i < i0_ + cols_; ++i) {
-                const u32 s = slot(i, j);
+        for (int jj = 0; jj < rows_; ++jj) {
+            const int j = j0_ + jj;
+            const int rb = rowBase_[jj];
+            const int rbUp = jj > 0 ? rowBase_[jj - 1] : 0;
+            const int rbDown = jj + 1 < rows_ ? rowBase_[jj + 1] : 0;
+            for (int ii = 0; ii < cols_; ++ii) {
+                const int i = i0_ + ii;
+                const int cs = colSlot_[ii];
+                const u32 s = static_cast<u32>(rb + cs);
                 const Vec2 d = d_[s];
                 Vec2 nb{};
-                if (i > i0_) nb = nb + d_[slot(i - 1, j)];
-                if (i + 1 < i0_ + cols_) nb = nb + d_[slot(i + 1, j)];
-                if (j > j0_) nb = nb + d_[slot(i, j - 1)];
-                if (j + 1 < j0_ + rows_) nb = nb + d_[slot(i, j + 1)];
+                if (ii > 0) nb = nb + d_[rb + colSlot_[ii - 1]];
+                if (ii + 1 < cols_) nb = nb + d_[rb + colSlot_[ii + 1]];
+                if (jj > 0) nb = nb + d_[rbUp + cs];
+                if (jj + 1 < rows_) nb = nb + d_[rbDown + cs];
                 Vec2 a = d * (-kAnchor - 4.0f * kCouple) + nb * kCouple - v_[s] * kDamping;
                 for (u32 w = 0; w < wellCount_; ++w) {
                     const LatticeWell& wl = wells_[w];
@@ -142,16 +167,21 @@ void Lattice::step(float dt) {
 
 u32 Lattice::draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle& st) {
     if (!placed_) return 0;
+    ensureIndex();
     const Vec3 near = st.grid * (1.0f - st.tintNearPlayerMix) + st.player * st.tintNearPlayerMix;
     const Vec3 far = st.grid * (1.0f - st.tintFarThirdHueMix) + st.thirdHue * st.tintFarThirdHueMix;
     const Vec3 warm = mix(st.grid, st.gridHot, st.warmTowardHot) * st.warmIntensity;
     const float cos20 = std::cos(20.0f * kPi / 180.0f);
+    const float cos20sq = cos20 * cos20;
 
     // Pass 1: every node's drawn position, colour and width.
     heat_ = HeatStats{};
-    for (int j = j0_; j < j0_ + rows_; ++j) {
-        for (int i = i0_; i < i0_ + cols_; ++i) {
-            const u32 s = slot(i, j);
+    for (int jj = 0; jj < rows_; ++jj) {
+        const int j = j0_ + jj;
+        const int rb = rowBase_[jj];
+        for (int ii = 0; ii < cols_; ++ii) {
+            const int i = i0_ + ii;
+            const u32 s = static_cast<u32>(rb + colSlot_[ii]);
             const Vec2 restAt{static_cast<float>(i) * spacing_, static_cast<float>(j) * spacing_};
             Vec2 p = restAt + d_[s];
             float heat = length(d_[s]);
@@ -207,22 +237,25 @@ u32 Lattice::draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle
             hw_[s] = 0.5f * w * view.refPx;
         }
     }
-    // Pass 2: where the lines run straight through a node (look.md §4 joints), both ends are flat.
-    for (int j = j0_; j < j0_ + rows_; ++j) {
-        for (int i = i0_; i < i0_ + cols_; ++i) {
-            const u32 s = slot(i, j);
+    // Pass 2: where the lines run straight through a node (look.md §4 joints), both ends are flat. The turn is under 20
+    // degrees when a.b >= cos 20 |a| |b|, compared squared (no square roots; a.b must be positive).
+    const auto straight = [cos20sq](Vec2 a, Vec2 b) {
+        const float aa = dot(a, a), bb = dot(b, b), ab = dot(a, b);
+        return aa > 1e-6f && bb > 1e-6f && ab >= 0.0f && ab * ab >= cos20sq * aa * bb;
+    };
+    for (int jj = 0; jj < rows_; ++jj) {
+        const int rb = rowBase_[jj];
+        for (int ii = 0; ii < cols_; ++ii) {
+            const int cs = colSlot_[ii];
+            const u32 s = static_cast<u32>(rb + cs);
             u8 f = 0;
-            if (i > i0_ && i + 1 < i0_ + cols_) {
-                const Vec2 a = px_[s] - px_[slot(i - 1, j)], b = px_[slot(i + 1, j)] - px_[s];
-                const float la = length(a), lb = length(b);
-                if (la > 1e-3f && lb > 1e-3f && dot(a, b) >= cos20 * la * lb) f |= 1u;
+            if (ii > 0 && ii + 1 < cols_) {
+                if (straight(px_[s] - px_[rb + colSlot_[ii - 1]], px_[rb + colSlot_[ii + 1]] - px_[s])) f |= 1u;
             } else {
                 f |= 1u;
             }
-            if (j > j0_ && j + 1 < j0_ + rows_) {
-                const Vec2 a = px_[s] - px_[slot(i, j - 1)], b = px_[slot(i, j + 1)] - px_[s];
-                const float la = length(a), lb = length(b);
-                if (la > 1e-3f && lb > 1e-3f && dot(a, b) >= cos20 * la * lb) f |= 2u;
+            if (jj > 0 && jj + 1 < rows_) {
+                if (straight(px_[s] - px_[rowBase_[jj - 1] + cs], px_[rowBase_[jj + 1] + cs] - px_[s])) f |= 2u;
             } else {
                 f |= 2u;
             }
@@ -257,14 +290,18 @@ u32 Lattice::draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle
         return true;
     };
     u32 n = 0;
-    for (int j = j0_; j < j0_ + rows_; ++j) {
-        for (int i = i0_; i < i0_ + cols_; ++i) {
-            const u32 s = slot(i, j);
+    for (int jj = 0; jj < rows_; ++jj) {
+        const int j = j0_ + jj;
+        const int rb = rowBase_[jj];
+        for (int ii = 0; ii < cols_; ++ii) {
+            const int i = i0_ + ii;
+            const int cs = colSlot_[ii];
+            const u32 s = static_cast<u32>(rb + cs);
             const Vec2 a = px_[s];
             const bool aOut = outside(a);
             if (!inArena(i, j)) continue;
-            if (i + 1 < i0_ + cols_ && inArena(i + 1, j)) {
-                const u32 t = slot(i + 1, j);
+            if (ii + 1 < cols_ && inArena(i + 1, j)) {
+                const u32 t = static_cast<u32>(rb + colSlot_[ii + 1]);
                 if (!(aOut && outside(px_[t]))) {
                     const u32 flags = ((flat_[s] & 1u) ? kFlatStart : 0u) | ((flat_[t] & 1u) ? kFlatEnd : 0u);
                     Vec3 c;
@@ -275,8 +312,8 @@ u32 Lattice::draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle
                     ++n;
                 }
             }
-            if (j + 1 < j0_ + rows_ && inArena(i, j + 1)) {
-                const u32 t = slot(i, j + 1);
+            if (jj + 1 < rows_ && inArena(i, j + 1)) {
+                const u32 t = static_cast<u32>(rowBase_[jj + 1] + cs);
                 if (!(aOut && outside(px_[t]))) {
                     const u32 flags = ((flat_[s] & 2u) ? kFlatStart : 0u) | ((flat_[t] & 2u) ? kFlatEnd : 0u);
                     Vec3 c;

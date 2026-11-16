@@ -4,6 +4,58 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-16, the low end: an Amazon Fire 7 (2022)
+
+The owner added a low-end tablet over wireless debugging: "see if anything can be done for optimization". It is an Amazon Fire 7
+(2022, `KFQUWI`, `fire` in `RF_DEVICES`): MediaTek MT8168, four Cortex-A53 at 2.0 GHz, Mali-G52 (Bifrost r26) with Vulkan 1.1.131
+and **no GPU timestamps**, 2 GB, 1024 x 600 at 59.82 Hz, Fire OS 8.3 (Android 11), well below the Moto. The owner's own settings on
+it were EFFECTS Low; the first-launch probe could not measure without GPU timers and had chosen Medium.
+
+**Measured before** (build c197549; tier low, governor off as in every benchmark, shared device over Wi-Fi):
+
+| Moment | Panel missed | Main thread p50 / p95 (ms) |
+|---|---|---|
+| THE SET at minute 2 | 0.28%: PASS | 7.3 / 9.0 |
+| THE SET's densest (`--drop 10.1`) | 0.20%: PASS (Medium: 0.17%) | 8.1 / 9.5 |
+| FULL BLAST, wave 4 held | **every frame two periods: 30 fps, FAIL** | 16.2 / 21.3 |
+
+A CPU profile of FULL BLAST (simpleperf, `cpu-clock`, call graphs): the game thread was 54% of the process's time, the audio callback
+33%, the Mali driver's thread 11%. On the game thread: the lattice 25% (drawing 11, writing its capsules a good part of 9.5, the
+springs 6), the HUD 9% (the band row's icons: gradient colours by `atan2` per point), `powf` 5% (`srgbToLinear` on every Stroke
+line), the simulation 14% per two ticks.
+
+**What changed** (view-side only: THE SET's determinism hashes are unchanged, `f8d9e8972c671db2` / `6d9e281fa6d95425`):
+- **The lattice** (`game/lattice.cpp`): `slot()` took four integer divisions and the springs and the drawing called it a dozen times
+  a node; the window's slots are now two small tables (`colSlot_`, `rowBase_`, rebuilt when the window moves), the arithmetic on the
+  nodes unchanged and in the same order. The joints' straightness test compares squares (no square roots).
+- **Instance writers**: `floatToHalf4` (`core/half.h`) converts four floats in one NEON `FCVTN` on arm64 (the scalar path elsewhere,
+  so the desktop's pictures are unchanged); `writeCapsule` is inline and uses it, as do glows, glass, glyph instances and sparks.
+- **`srgbToLinear`** reads a 256-entry table (the same formula, the same floats). **Icons**: every point's gradient colour once at
+  load (`IconSet::ptColour_`).
+- **The governor below Low** (`Governor::cuts`, `App::applyTier`): at Low with the spark density at its floor and still over
+  budget, it takes look.md §10's cuts one at a time (glass, sparkles, nebula, ... lattice, ornaments); with room to spare (GPU
+  timers only) the last one comes back first. The settings' tier change and the probe's end reset the governor before applying.
+- `Start-RfApp` dismisses a lock screen (the Fire sleeps behind one between runs; no PIN on the test devices).
+
+**Measured after** (the same moments; the Fire):
+- FULL BLAST, governor off: the main thread 12.2 / 18.4 ms at 30 fps (two ticks a frame): **-25%**, still locked at 30. A 20 s run
+  holds 60 (3.3% missed, main 7.7 ms p50); a 60 s run falls to 30 at its first spike and stays: a missed frame doubles the next
+  one's simulation and events, so near its limit a device locks at half rate. With **the governor on, as in play**: 60 s at 60 fps,
+  **2.6% missed: PASS**, main 7.6 / 9.9 ms, two cuts taken in the warm-up (glass, sparkles).
+- Every mode's heaviest moment, 30 s, governor on, tier low: TRACERS (four players' floor) 0.5% missed, SONGLINE 0.11%, JAM with
+  every toy 0.39% (one cut), HEADLINERS act 10 0.22%, THE SET's Track 10 Drop held 0.11% (main 6.2 ms p50, was 8.1): all PASS.
+- A Galaxy Tab A11+ (regression, Wi-Fi): THE SET's densest 0 missed, main 2.4 ms p50, GPU 14.3 ms p95. `scripts\test.ps1` passes.
+- Pictures: `captures\GN41WE04450600BJ-20261116-133246.png` (FULL BLAST on the Fire, overlay on), `captures\fire\` (desktop).
+
+Decided alone: hardware half conversion rounds exact ties to even where the scalar path rounds them up (one half-ulp on exact ties,
+arm64 only); the cuts stay for the session on a device without GPU timers (nothing tells the governor it has room again).
+
+Not done, not verified: **the Moto was not attached** (not re-measured; nothing it ran changed but the view's arithmetic). The probe
+still falls back to Medium without GPU timers (the governor now takes it down as needed). The Fire's audio callback is about half a
+core in FULL BLAST (one underrun a minute, the buffer growing 1920 to 2880 frames); the DSP was not touched (a change there needs the
+loudness calibration). **The Fire's storage is 95% full** (547 MB free of 10 GB): an install was refused until this session's 51 MB of
+profiling files were deleted; the owner's to clear. The Fire now runs this PC's dev build.
+
 ## 2026-11-16, the owner's first play of the modes: the title's controls and MODES's swipe
 
 The owner, playing build-334: "mode selection is still unresponsive for a while once main menu is loaded, all buttons should be

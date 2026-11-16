@@ -52,18 +52,24 @@ bool writeTierCache(const char* path, const char* gpu, const char* driver, Tier 
 // (present intervals above 1.5 periods; the raw present-call P95 jitters above the period with no frame
 // late) and the GPU work per frame, which the GPU's own clock governor holds near 85% of the period
 // whenever it can, so "room to spare" means clearly below that and "over" means saturated.
+// Below Low (2026-11-16, an Amazon Fire 7: four Cortex-A53, a Mali-G52 without GPU timers): at Low with the density at its
+// floor and still over budget, it takes look.md §10's cuts one at a time (cuts()), so the weakest devices have somewhere to go.
+// A frame that misses doubles the next one's simulation and events, so a device near its limit can lock at half rate until
+// the load drops; the cuts are what lets it out. With room to spare (GPU timers only) the cuts come back first, the last first.
 class Governor {
 public:
     void reset(Tier start, float periodMs);
-    // Returns true when the tier changed (read tier()); density() changes without a tier change.
+    // Returns true when the tier or the cuts changed (read tier() and cuts()); density() changes without either.
     bool update(float dtSeconds, float missedFraction, float gpuMs, int thermalStatus);
     Tier tier() const { return tier_; }
+    u32 cuts() const { return cuts_; }
     float density() const { return density_; }
     u32 stepsDown() const { return down_; }
     u32 stepsUp() const { return up_; }
 
 private:
     Tier tier_ = Tier::High;
+    u32 cuts_ = 0;
     float budgetMs_ = 16.7f;
     float density_ = 1.0f;
     float over_ = 0.0f;

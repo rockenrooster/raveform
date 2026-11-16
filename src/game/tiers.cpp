@@ -141,6 +141,7 @@ bool writeTierCache(const char* path, const char* gpu, const char* driver, Tier 
 
 void Governor::reset(Tier start, float periodMs) {
     tier_ = start;
+    cuts_ = 0;
     budgetMs_ = periodMs;
     density_ = 1.0f;
     over_ = under_ = 0.0f;
@@ -166,11 +167,19 @@ bool Governor::update(float dt, float missedFraction, float gpuMs, int thermalSt
             density_ = 1.0f;
             return true;
         }
+        if (cuts_ < kMaxCuts) {  // below Low: the next of look.md §10's cuts
+            ++cuts_;
+            return true;
+        }
         return false;
     }
     if (under_ >= 10.0f) {
         under_ = 0.0f;
         ++up_;
+        if (cuts_ > 0) {  // the last cut taken comes back first
+            --cuts_;
+            return true;
+        }
         if (density_ < 1.0f) {
             density_ = density_ + 0.25f > 1.0f ? 1.0f : density_ + 0.25f;
             return false;

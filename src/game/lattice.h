@@ -101,6 +101,10 @@ private:
         const int rj = ((j % rows_) + rows_) % rows_;
         return static_cast<u32>(rj * cols_ + ci);
     }
+    // The window's slots by column and by row (colSlot_[i - i0_] + rowBase_[j - j0_] == slot(i, j)), rebuilt when the window
+    // has moved: slot() costs four integer divisions, and step and draw took it a dozen times a node, a few thousand nodes a
+    // frame (on a Cortex-A53 a fifth of the frame). The arithmetic on the nodes is the same, in the same order.
+    void ensureIndex();
 
     HeatStats heat_;
     float spacing_ = 20.0f;
@@ -114,6 +118,10 @@ private:
     Vec3* col_ = nullptr;   // scratch: colour x intensity
     float* hw_ = nullptr;   // scratch: half width (ref px)
     u8* flat_ = nullptr;    // scratch: bit 0 straight through horizontally, bit 1 vertically
+    int* colSlot_ = nullptr;  // ensureIndex(): cols_ entries
+    int* rowBase_ = nullptr;  // ensureIndex(): rows_ entries
+    int indexI0_ = 0, indexJ0_ = 0;
+    bool indexed_ = false;
     LatticeWell wells_[4];
     u32 wellCount_ = 0;
     float stepRemainder_ = 0.0f;
