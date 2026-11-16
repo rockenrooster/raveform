@@ -131,6 +131,64 @@ Measured: the 5-minute four-bot net soak, versus against team: both pass, census
 error RMS 1.70 wu (team 1.56), p95 2.0 (2.25), max 165 wu (85: a shoved or knocked-out ship's moment); downstream 268 kbps at most
 (264). The set's determinism hashes are unchanged.
 
+### Part 6: JAM and POP-OFF (2026-11-16)
+
+Built (`design/modes/jam.md`, `sound.md` "JAM" and "What the band needs" 5; `world_mode_jam.cpp`, the view `play_view_jam.cpp`):
+**the room** on the Stage on the chosen Track (home Toybox), nothing hurting (the rules' god mode), four cells, the Nova back every
+bar; **the 25 pads** of `modes.json` (the mixer's eight under the rig, DROP, TOYS, BOOSTS, EMPTY, SOUND, the twelve Tracks); the
+mixer by a fly-over (entering it), the others by the Trio's two-beat hold; **the mixer** a bit a layer, switched on the next bar line
+at least half a bar away; **DROP** the room's own Build of four and Drop of eight (`DirectorState::jamDropBar`, `phraseAt`'s JAM
+branch: the Groove in eight-bar phrases), resting eight bars after; **the Track pads** the Track-change Break into any of the twelve
+(a bonus Track its music and tempo over the crowd it borrows), the mixer kept; **SOUND** the band's sound stepping on from the
+player's own; **the shelves** (`modes.json` `jam.shelves`: seven of toys, three of Boosts) as the Trio's ring round where the ship
+stood, a beat in an orb takes it and every further beat a stack to its cap, a fifth Riff sends the oldest home, a due Fusion's gold
+orb above the ring, a Boost for eight bars; the shelf stays within 300 wu and closes two bars after; **EMPTY** everything back in the
+box; **presents** (a Boost orb at each Shard level); **the dancers** (twenty a layer on, twenty more a layer for each further player,
+at most 160, x 1.6 in a Drop; an elite every eight bars from five layers; no threat budget); **POPS** (a pop one). **POP-OFF**
+(versus; `forms.popOff`): the card's two bars, the draft (five Trios two bars each for every player), the Build (the dancers
+gathering to 100), the Drop of sixteen bars kept at 200 bodies with an elite every four bars and a shared Boost orb every four; a
+pop one, an elite five (the score, so the players' stats carry it to the podium). **The view**: each layer a light (KICK a ring
+through the lattice on every beat, HATS star dust along the top wall, BASS a pool at each end of the floor, CLAP the walls and two
+fixtures' beams on two and four, OPEN HAT two beams sweeping and crossing on the off-beats, SHAKER the floor's shimmer, CHORDS the
+mirror ball's 24 glints a turn in four bars, STABS a fan of five beams from the bottom wall; the beams end at the walls), the pads
+(edge, word at cap 14 wu, a mixer pad lit with its line up to its fixture or blinking NEXT BAR, the hold's fill in the player's
+colour, DROP's double ring and clock, the Track pads in their accents with the playing one's name), the shelves (icon, name, pips,
+the hold's fill). **The band**: `Band::setBedMask` (the bed by the mixer from the bar line; every bed layer in a Drop), the tick and
+the sweep of a layer, the confirm chord, a toy's chord and its stacks' bells, EMPTY's back chord and closing sweep. The HUD's
+`POPS` in the mode's colours (no Chain), POP-OFF's card and goal line (`PICK 2 OF 5`, `GET READY`, `POP!   BARS LEFT 13`), three
+first-run hints. **Together**: a device asks for a room pad (`kPeJamPad`); the host puts the change on its bar line and tells all
+(arena operation 10); toys, Boosts and EMPTY are the player's events (`kPeJamTake`, `kPeJamEmpty`): protocol `0x52460511`. The
+wanderer (`Bot::thinkJam`). Tools: `raveform_headless --sim mode --jam [--minutes 10] [--track N] [--trace]`, `--net soak --mode
+jam:12 [--versus]`, `scripts\review-m8.ps1 -Part p6`. JAM is built: every mode of the line-up is.
+
+Measured:
+- **The mixer** (the audio suite): all 256 settings on Toybox, a bar each in the Groove: none clips; the loudest (all but SHAKER)
+  -15.9 dB against the Drop's -15.1 dB.
+- **The wanderer**, ten minutes on each of four seeds: nothing refused by any pool, nothing left after any of 7-15 EMPTYs, 3 to 6
+  DROPs, 4 to 17 Track changes, 184 to 265 toys taken, 255 to 312 bodies at most (a Brood's young past the dancers' 256).
+- **The Moto** (shared; `bench_play --mode jam:12 --loadout max --tier low`, the wanderer playing, 60 s): 3,594 frames, 0 missed,
+  the panel's P95 one period: the contract holds; GPU 13.1 / 14.2 / 15.9 ms, 16,193 capsules at most (the lights and the pads'
+  words), worst audio callback 1.03 ms. **The room on the phone** (2400 x 1080): every pad's word reads at about 17 px.
+- **Co-op and POP-OFF** (`--net soak --minutes 3 --players 4 --mode jam:12`, and `--minutes 2 --versus`): pass, census clean.
+- Tests: the sim suite's JAM (every toy to its cap and emptied, the fifth Riff, a Boost's eight bars, the mixer on its bar line,
+  DROP's Build and Drop, a Track pad's Break into Track 3); the audio suite's mixer. **The set's determinism hashes are unchanged.**
+
+Decided alone:
+- **The room's bar lines**: a change waits for the first bar line at least half a bar away, on every device (the host's word).
+- A Track change completes on its bar line on every device (the director's state takes the new Track there), and ends any DROP's
+  rest.
+- HATS is the conductor's off-beat hat layer, OPEN HAT its open hat; CHORDS the pad at its full level.
+- The stabs' fan flashes on the bar's first and third beats and CLAP's on two and four (the band's own steps are not read back).
+- POP-OFF's pops are its score (one, an elite five), so the podium's counts come with the players' stats as the set's scores do.
+- The dancers left over when a layer goes off stay (the director only fills); a Brood's young can take the room past 256.
+- The wanderer: a pad at random (the mixer most often), held its beats and half a beat more; with a shelf open an orb one to four
+  beats; EMPTY when the dice say so.
+
+Not done in part 6: the moments (`--mode jam:12:drop:hold`), the pads' live signal lines, the walls' swell on the kick, the
+background's breathing with the bass, `EMPTY`'s flight of icons back to the pads, the Trio-style two rising notes while DROP fills,
+the dancers standing still with the kick off (they move as always), the SOUND pad's name of the next sound, the shelf's
+label naming its kind (`WEAPONS 1 OF 3`: here `SHELF 2 OF 7`), POP-OFF's side-by-side count.
+
 ### Part 5: SONGLINE (2026-11-16)
 
 Built (`design/modes/songline.md`, `sound.md` "SONGLINE" and "What the band needs" 1 and 4; `world_mode_songline.cpp`, the view
