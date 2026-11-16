@@ -281,6 +281,63 @@ public class RaveformActivity extends SDLActivity {
     }
     // M4 stage B end
 
+    // The updater (the owner, 2026-11-15: "a small button in the main menu that shows if an update is available, and tapping it
+    // goes to the github"): the latest release's build number, asked of GitHub's API once a launch on a thread of its own. Native
+    // code asks only for a build that has a number (the release workflow's; a local build never asks) and shows the button.
+    private static final String LATEST_RELEASE = "https://api.github.com/repos/rockenrooster/raveform/releases/latest";
+    private static volatile boolean sUpdateAsked;
+
+    static void checkForUpdate() {
+        if (sUpdateAsked) {
+            return;
+        }
+        sUpdateAsked = true;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                int build = 0;
+                java.net.HttpURLConnection connection = null;
+                try {
+                    connection = (java.net.HttpURLConnection) new java.net.URL(LATEST_RELEASE).openConnection();
+                    connection.setConnectTimeout(8000);
+                    connection.setReadTimeout(8000);
+                    connection.setRequestProperty("Accept", "application/vnd.github+json");
+                    connection.setRequestProperty("User-Agent", "raveform-updater");
+                    if (connection.getResponseCode() == 200) {
+                        java.io.InputStream in = connection.getInputStream();
+                        java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
+                        byte[] chunk = new byte[8192];
+                        for (int n; (n = in.read(chunk)) > 0 && body.size() < (1 << 20);) {
+                            body.write(chunk, 0, n);
+                        }
+                        in.close();
+                        String tag = new org.json.JSONObject(body.toString("UTF-8")).optString("tag_name", "");
+                        if (tag.startsWith("build-")) {
+                            build = Integer.parseInt(tag.substring(6));
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "update: the latest release could not be read: " + e);
+                } finally {
+                    if (connection != null) {
+                        connection.disconnect();
+                    }
+                }
+                Log.i(TAG, "update: the latest release is build " + build);
+                if (build > 0) {
+                    try {
+                        nativeUpdateFound(build);
+                    } catch (Throwable t) {  // (never let the updater take the game down)
+                        Log.w(TAG, "update: " + t);
+                    }
+                }
+            }
+        }, "raveform-update").start();
+    }
+
+    /** The latest release's build number, for the title's update button. */
+    static native void nativeUpdateFound(int build);
+
     /** Blocks until the render thread has destroyed its Vulkan surface (or the timeout passes). */
     static native boolean nativeWaitSurfaceReleased(int timeoutMs);
 

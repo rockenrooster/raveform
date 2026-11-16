@@ -74,6 +74,8 @@ jobs:
             echo "RF_SIGNED=run" >> "$GITHUB_ENV"
           fi
           unset RF_KEYSTORE_BASE64
+          # (the build number the title shows and compares with the latest release's: the commit count, as the tag build-<n>)
+          export RF_BUILD_NUMBER=$(git rev-list --count HEAD)
           bash ./gradlew --no-daemon --console=plain :app:assembleRelease
 
       - name: Package (the APK, its SHA-256, the symbols) and write the notes

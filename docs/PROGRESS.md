@@ -4,6 +4,17 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, the updater: an UPDATE pill on the title when GitHub has a newer build
+
+The owner: "a small button in the main menu that shows if an update is available, and tapping it goes to the github".
+docs/RELEASE_PIPELINE.md "The updater" has the whole of it: GitHub builds carry their build number (the commit count, as their
+tag), ask GitHub's API for the latest release once a launch (Java, a thread of its own; a local build never asks), and the title
+shows a gold `UPDATE: BUILD <n>` pill over the note while that is newer; tapping it opens the release page (`SDL_OpenURL`). The
+version line shows the build number. Picture `screen_title_update` (`captures\updater\`). Checked: the desktop build and the
+picture; the Android dev build compiles with both JNI functions exported; GitHub's API answers `tag_name` `build-288` without an
+account. Not checked on a phone (the Moto had just been given a build, perhaps by the owner, and a second device was unknown):
+the first GitHub build with the updater shows the pill once a newer one is published.
+
 ## 2026-11-15, Singularity holds what it catches; Kaleidos and Polyrhythm easier
 
 - **Singularity** (the owner: "i'm wondering if it fails to suck in some enemies"). The well's pull (260 wu/s) was added to each

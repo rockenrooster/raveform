@@ -23,6 +23,9 @@ do. The long soak of PLAN M7 is replaced by the owner's short-runs rule. Nothing
    the draft answers are below.
 6. **The version**: `versionCode 1`, `versionName '0.0.1-m0'` in `android/app/build.gradle`; the release's numbers are the
    owner's (or the lead's) to set.
+   **The updater** (2026-11-15, docs/RELEASE_PIPELINE.md): a build for Play must be made without `RF_BUILD_NUMBER`, so it never
+   asks GitHub and shows no UPDATE pill (Play's policy: an app on Play updates only through Play). The Data safety form's
+   answer is unchanged: the request to GitHub carries no user data.
 7. **A test track first**: an internal testing release, and the Console's pre-launch report on its test devices. The device
    catalogue will exclude phones without Vulkan 1.1 (the manifest requires it: intended, PLAN 3.2).
 

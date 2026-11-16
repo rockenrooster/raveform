@@ -30,6 +30,11 @@ void setMulticastLock(bool on);
 int localNetworkState();
 void requestLocalNetwork();
 
+// The updater (2026-11-15; screens.md "Title", Update): RaveformActivity reads the latest GitHub release's build number once, on a
+// thread of its own (JNI: the title's first frame only); latestBuild() is that number once it came, else 0.
+void checkForUpdate();
+int latestBuild();
+
 }  // namespace rf::android
 
 #endif

@@ -456,8 +456,10 @@ target_include_directories(raveform_core PUBLIC ${RF_ROOT}/src ${RF_GEN})
 target_link_libraries(raveform_core PUBLIC rf_volk SDL3::Headers)
 # The build stamp (the owner, 2026-11-14: the version and build date at the bottom right of the title): rewritten on every build
 # when its minute changes, so only build_info.cpp recompiles.
+# The GitHub release workflow passes its build number (the commit count; the release's tag build-<n>); a local build has 0.
+set(RF_BUILD_NUMBER 0 CACHE STRING "The GitHub release's build number (docs/RELEASE_PIPELINE.md); 0 for a local build")
 add_custom_target(rf_build_stamp ALL
-  COMMAND ${CMAKE_COMMAND} -DOUT=${RF_GEN}/build_stamp.h -DSRC=${RF_ROOT} -DVERSION=${PROJECT_VERSION} -P ${RF_ROOT}/cmake/build_stamp.cmake
+  COMMAND ${CMAKE_COMMAND} -DOUT=${RF_GEN}/build_stamp.h -DSRC=${RF_ROOT} -DVERSION=${PROJECT_VERSION} -DBUILD_NUMBER=${RF_BUILD_NUMBER} -P ${RF_ROOT}/cmake/build_stamp.cmake
   BYPRODUCTS ${RF_GEN}/build_stamp.h
   COMMENT "build stamp")
 target_sources(raveform_core PRIVATE src/core/build_info.cpp)

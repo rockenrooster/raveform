@@ -15,10 +15,32 @@
 #include "core/platform.h"
 #include "game/play.h"
 #include "game/play_hud.h"
+#include <SDL3/SDL_misc.h>
+#if defined(__ANDROID__)
+#include "platform/android/android_glue.h"
+#endif
 
 namespace rf {
 
 using namespace sim;
+
+u32 Play::updateBuild() {
+    // The updater (the owner, 2026-11-15: "a small button in the main menu that shows if an update is available, and tapping it goes
+    // to the github"): the latest GitHub release's build number when it is newer than this build's. Only a build from the release
+    // workflow has a number; it asks once, on its first title (RaveformActivity.checkForUpdate, a thread of its own).
+    u32 latest = fakeUpdateBuild_;
+#if defined(__ANDROID__)
+    if (!latest && buildNumber() > 0) {
+        if (!updateAsked_) {
+            updateAsked_ = true;
+            android::checkForUpdate();
+        }
+        const int got = android::latestBuild();
+        latest = got > 0 ? static_cast<u32>(got) : 0u;
+    }
+#endif
+    return latest > buildNumber() ? latest : 0u;
+}
 
 namespace {
 constexpr float kTwoPi = 6.28318530718f;
@@ -465,6 +487,20 @@ void Play::screenTitle(Ui& ui) {
         // screens.md "Title" (the owner, 2026-11-14: "include a version # with build date at the bottom right at the main menu"):
         // under the note, the version, the build's commit and its date and minute (src/core/build_info).
         ui.text({W - std::fmax(132.0f * s, ui.insetMax().x), H - 30.0f * s + sink}, 11.0f * s, white, 0.4f, buildStampLine(), 1.0f);
+        // The updater (screens.md "Title", Update): over the note, a gold pill while GitHub has a newer release than this build;
+        // tapping it opens the release's page in the browser.
+        if (const u32 newer = updateBuild()) {
+            char label[40];
+            std::snprintf(label, sizeof label, "UPDATE: BUILD %u", newer);
+            const float uw = std::fmax(340.0f * s, ui.measure(22.0f * s, label) + 80.0f * s), uh = 72.0f * s;
+            const float right = W - std::fmax(132.0f * s, ui.insetMax().x);
+            if (ui.pill(13, {right - 0.5f * uw, H - 128.0f * s + sink}, {uw, uh}, label, 22.0f * s, false, true, false, palettes_->player[3]) &&
+                tl.sideTaps) {
+                if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+                RF_LOG("title: update to build %u: opening the release page", newer);
+                SDL_OpenURL("https://github.com/rockenrooster/raveform/releases/latest");
+            }
+        }
     }
     setHudFade(1.0f);
     // M4 stage B: why a co-op session ended (the host left, the connection was lost), for a few seconds (screens.md "Title": y 940).

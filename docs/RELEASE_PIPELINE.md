@@ -72,6 +72,24 @@ What the choice means (the other was this PC's debug keystore, which Play never 
 uninstall, which takes the phone's settings and scores. A local release build signs with the release key when the same four
 variables are set (`RF_KEYSTORE` the keystore's path) before `build-android.ps1 -Config release`.
 
+## The updater (2026-11-15)
+
+The owner: "a small button in the main menu that shows if an update is available, and tapping it goes to the github".
+
+- Every GitHub build carries its build number: the workflow sets `RF_BUILD_NUMBER` (the commit count, the number in its tag
+  `build-<n>`), `android/app/build.gradle` passes it to CMake (`-DRF_BUILD_NUMBER`), and `cmake/build_stamp.cmake` writes it
+  into `build_stamp.h` (`rf::buildNumber()`). The title's version line shows it (`V0.9.0  BUILD 291  ...`). A local build has 0.
+- A build with a number asks GitHub once a launch, as its first title shows (`Play::updateBuild`, `android::checkForUpdate`,
+  `RaveformActivity.checkForUpdate`): on a thread of its own it reads
+  `https://api.github.com/repos/rockenrooster/raveform/releases/latest` (no account; GitHub allows 60 such requests an hour from
+  an address), takes the number from `tag_name`, and hands it to native code (`nativeUpdateFound`). Nothing is sent but the
+  request; no answer (offline, rate-limited) means no button.
+- While that number is higher than the build's own, the title shows a gold `UPDATE: BUILD <n>` pill over the note
+  (design/screens.md "Title"); tapping it opens the latest release's page in the browser (`SDL_OpenURL`), where the APK is.
+- The picture `--picture screen_title_update` shows the pill as if GitHub had build 999 (desktop builds never ask).
+- A build for the Play store must not have it (Play's policy: an app updates only through Play): build it without
+  `RF_BUILD_NUMBER` (RELEASE_CHECKLIST).
+
 ## Version
 
 `versionName` is `android/app/build.gradle`'s (kept equal to `CMakeLists.txt`'s project VERSION); the title screen shows it

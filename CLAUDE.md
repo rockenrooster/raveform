@@ -133,7 +133,7 @@ SETTINGS (SOUND, CONTROLS, LOOK). Settings go to `settings.txt`, scores to `high
 to `baked_audio.bin`, all in `SDL_GetPrefPath()` (`adb shell pm clear dev.raveform.game` brings the first launch
 back). `--autoplay`: the screens with the bot playing each run (tap PLAY and RETRY); `--reckless-after S` makes that bot
 careless after S seconds of a run, so a loop test reaches game over. Stage B pictures:
-`--picture screen_notice|screen_title|screen_settings_sound|screen_settings_controls|screen_settings_look|
+`--picture screen_notice|screen_title|screen_title_update|screen_settings_sound|screen_settings_controls|screen_settings_look|
 screen_pause|screen_game_over|trio|trio_answer|trio_take|trio_locked|trio_hold|split2..5|hud_groove|hud_build|hud_drop|hud_break|riff_orbitals|
 riff_pulse|riff_sentinel|boost_prism|boost_hyper|boost_halo|boost_magnet_storm|edge|boss_bloom|boss_refraction|
 boss_spiral|boss_naked|boss_beam_tell|boss_beam|boss_iris|boss_pair_death|boss_death|track_change|bot_3|bot_6|

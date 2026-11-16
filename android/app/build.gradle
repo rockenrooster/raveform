@@ -6,6 +6,9 @@ plugins {
 // RF_KEY_ALIAS and RF_KEY_PASSWORD, as the GitHub release workflow sets them from the repository's secrets. Without RF_KEYSTORE
 // the release is signed with the debug key, as before.
 def rfKeystore = providers.environmentVariable('RF_KEYSTORE').orNull
+// The GitHub release's build number (the workflow's RF_BUILD_NUMBER, the commit count; the title shows it and asks GitHub for a newer
+// one); a local build has 0.
+def rfBuildNumber = providers.environmentVariable('RF_BUILD_NUMBER').orNull ?: '0'
 
 // Native code is the root CMake tree; SDL's Java glue comes straight from the pinned SDL checkout.
 android {
@@ -25,7 +28,7 @@ android {
         externalNativeBuild {
             cmake {
                 // Oboe's prefab package is a shared library built against c++_shared.
-                arguments '-DANDROID_STL=c++_shared'
+                arguments '-DANDROID_STL=c++_shared', '-DRF_BUILD_NUMBER=' + rfBuildNumber
                 abiFilters 'arm64-v8a'
             }
         }

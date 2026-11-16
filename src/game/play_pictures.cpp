@@ -38,6 +38,10 @@ bool Play::scriptSetupB() {
         w.spawner().mode = Spawner::Mode::Slice;
         if (is(p, "screen_notice")) screen_ = Screen::Notice;
         else if (is(p, "screen_title")) screen_ = Screen::Title;
+        else if (is(p, "screen_title_update")) {  // (2026-11-15: the updater's pill, as if GitHub had build 999)
+            screen_ = Screen::Title;
+            fakeUpdateBuild_ = 999;
+        }
         else if (starts(p, "screen_settings")) {
             screen_ = Screen::Settings;
             settingsBack_ = Screen::Title;
@@ -187,7 +191,7 @@ bool Play::scriptInputB(StickInput& in) {
                 w.spawnBullet(pl.pos, Vec2{}, 0.0f);
             }
             if (screen_ == Screen::GameOver && captureFrom_ < 0 && overS_ > 2.6f) captureFrom_ = now;
-        } else if (captureFrom_ < 0 && t == (is(p, "screen_title") ? 300u : 150u)) {
+        } else if (captureFrom_ < 0 && t == ((is(p, "screen_title") || is(p, "screen_title_update")) ? 300u : 150u)) {
             captureFrom_ = now;
         }
         return true;

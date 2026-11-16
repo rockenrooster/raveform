@@ -604,6 +604,11 @@ private:
     // host has gone), with a line under PLAY for two bars.
     void leavePause();
     void homeLeaveCoop(const char* note);
+    // The updater (the owner, 2026-11-15; screens.md "Title", Update): the newer GitHub release's build number, else 0 (asked of
+    // GitHub once, on the title, by a build that has a number; a local build never asks). Pictures set fakeUpdateBuild_.
+    u32 updateBuild();
+    bool updateAsked_ = false;
+    u32 fakeUpdateBuild_ = 0;
     char titleNote_[48] = {};
     double titleNoteAt_ = -1.0;  // run ticks: the line stands under PLAY from here for two bars
     double netSongRun_ = 0.0;    // co-op: the song's run position now, not held by a pause (the transitions' clock)

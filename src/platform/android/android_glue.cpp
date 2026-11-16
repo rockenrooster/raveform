@@ -3,6 +3,7 @@
 #include <SDL3/SDL_system.h>
 #include <sys/system_properties.h>
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
@@ -15,6 +16,7 @@ std::mutex g_surfaceMutex;
 std::condition_variable g_surfaceReleased;
 bool g_surfaceInUse = false;
 jobject g_activity = nullptr;
+std::atomic<int> g_latestBuild{0};  // (the updater: set on RaveformActivity's thread, read by the title)
 }  // namespace
 
 jobject activityRef() {
@@ -88,7 +90,18 @@ void requestLocalNetwork() {
     callActivity("requestLocalNetwork", "()V", [&](JNIEnv* env, jclass cls, jmethodID m) { env->CallStaticVoidMethod(cls, m); });
 }
 
+void checkForUpdate() {
+    callActivity("checkForUpdate", "()V", [&](JNIEnv* env, jclass cls, jmethodID m) { env->CallStaticVoidMethod(cls, m); });
+}
+
+int latestBuild() { return g_latestBuild.load(std::memory_order_relaxed); }
+
 }  // namespace rf::android
+
+// RaveformActivity.nativeUpdateFound(int): the latest GitHub release's build number, from its update thread.
+extern "C" JNIEXPORT void JNICALL Java_dev_raveform_game_RaveformActivity_nativeUpdateFound(JNIEnv*, jclass, jint build) {
+    rf::android::g_latestBuild.store(static_cast<int>(build), std::memory_order_relaxed);
+}
 
 // RaveformActivity.nativeWaitSurfaceReleased(int): called on the UI thread from surfaceDestroyed().
 extern "C" JNIEXPORT jboolean JNICALL Java_dev_raveform_game_RaveformActivity_nativeWaitSurfaceReleased(JNIEnv*, jclass,
