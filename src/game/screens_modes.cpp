@@ -45,7 +45,7 @@ void groupDigits(char* out, size_t cap, u64 v) {
 }
 // A release build (the GitHub releases' native Release) shows only the modes that are built (docs/MODES_PLAN.md part 0).
 constexpr bool kReleaseBuild = RF_BUILD_NAME[0] == 'r';
-constexpr bool kVersusBuilt = false;  // (part 1: until then a release build offers no TEAM / VERSUS)
+constexpr bool kVersusBuilt = true;  // (part 1; before it a release build offered no TEAM / VERSUS)
 // The title's eight notes (screens.md "Title"): A3 C4 E4 A4 C5 E5 G5 A5. MODES's letters are the first five, its cards the next
 // three as they are thrown; going along the row plays the first seven, a card each (design/modes/screens.md "Transitions").
 constexpr i32 kWordMidi[8] = {57, 60, 64, 69, 72, 76, 79, 81};
@@ -912,8 +912,9 @@ void Play::screenModes(Ui& ui, const ModesLook& ml) {
     drawModesWord(ui, ml);
     // The row: three cards in view (five drawn while it slides), wrapping round.
     const float slide = modesSlideAt_ >= 0.0 ? modesSlideFrom_ * (1.0f - smooth01(transBeats(modesSlideAt_) / 0.5f)) : 0.0f;
-    const i32 reach = n >= 5 ? 2 : (n >= 3 ? 1 : 0);
+    const i32 reach = n >= 5 ? 2 : (n >= 2 ? 1 : 0);
     for (i32 k = -reach; k <= reach; ++k) {
+        if (n == 2 && k < 0 && std::fabs(slide) < 0.02f) continue;  // (two modes, a release build's: the other on the right)
         const Mode m = row[static_cast<u32>(((static_cast<i32>(at) + k) % static_cast<i32>(n) + static_cast<i32>(n)) % static_cast<i32>(n))];
         const float pos = static_cast<float>(k) + slide;
         if (std::fabs(pos) > 1.6f) continue;

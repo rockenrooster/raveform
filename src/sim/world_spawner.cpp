@@ -601,6 +601,7 @@ void World::directorBar(double barTick, u32 bar) {
         d.midHolding = false;
     }
     phrase_ = phraseAt(d, bar);
+    if (setup_.versus && role_ != NetRole::Client) versusBar(bar);  // M8: the crown and the underdog
     const Phrase& ph = phrase_;
     bool anyAlive = false;
     for (u32 p = 0; p < playerCount_; ++p) anyAlive = anyAlive || players_[p].alive;

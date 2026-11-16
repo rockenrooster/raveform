@@ -47,6 +47,7 @@ struct SessionConfig {
     bool autoStart = true;
     bool autoRestart = true;
     bool beacon = false;
+    sim::RunSetup setup;        // M8: the room's setup from the start (the headless tools' --versus; the game sets it later)
     RemotePoses remotePoses = RemotePoses::Direct;  // (docs/PROGRESS_m4_net.md: 10 seeds, impaired 6.47 -> 6.03, clean 5.39 -> 5.19)
     bool motionCorrections = true;  // host: a moving Shoal's corrections are motion corrections (protocol.h NetMotion)
     bool phaseBeat = true;          // host: a heartbeat at once when Event Horizon's phase changes

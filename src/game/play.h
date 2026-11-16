@@ -738,6 +738,11 @@ private:
     void modesEndRun(bool died);                // (endRun) a mode's records instead of the set's table
     void drawLoadIn(FrameDraw& d, const LookVariant& variant);  // the kit's icons spiralling in
     void nextTrack();                           // NEXT TRACK: the next Track as a new run, its own kit
+    void drawVersusWorld(FrameDraw& d, const LookVariant& variant);  // versus: the crown on the leader, BACK IN n where a ship stood
+    void screenPodium(Ui& ui);                  // versus: the match's end (design/modes/screens.md "The podium")
+    float podiumS_ = 0.0f;                      // seconds the podium has stood
+    u8 podiumWinner_ = 0xFF;                    // the winner (0xFF: a draw)
+    bool podiumCounted_ = false;                // the room's crown given for this match (the host's)
     bool modeRun() const { return world_->setup().mode != sim::Mode::Set; }
     bool runCleared_ = false;      // the run's Track was cleared (its outro over)
     bool trackComplete_ = false;   // TRACK COMPLETE's card (from the boss's death)

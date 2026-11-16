@@ -91,8 +91,28 @@ and it clears 11 or 12 of 12; with a quarter, longer still but Track 9 cleared 3
 definition, and the owner's rule that the game is easy and beatable with the auto-aim alone): **for the owner** whether ONE TRACK's
 fights should be longer (a smaller kit) at the cost of some clears.
 
-Not done in part 1 yet: versus (counts, crown, shove, shared Boosts, the underdog, the knock-out, the podium, REMATCH, crowns), the
-two-phone check, the versus net soak; the load-in's bed layers (the engine has no bed mask yet: `sound.md`'s `setBedMask`) and the
+### Part 1, second half: versus for THE SET and ONE TRACK (2026-11-16)
+
+Built (`design/modes/README.md` 7 and 8): the knock-out (`World::knockOut`: a hit with no cell, after Auto Nova and an Extra Life,
+knocks the ship out until the second bar line after; it comes back where it was with two cells, a panic pulse, a bar unhurt and half
+its Chain; its own device decides, `kPeKnock` tells the others; `BACK IN 2`, `BACK IN 1` where it stood); the crown and the
+underdog on every bar line (`World::versusBar`, the host's or solo's: the leader by score, none while level; the last, under
+`modes.json` `versus.underdogShare` of the leader, with the host's HELP on), sent in `MsgDirector` (protocol `0x5246050E`); the
+underdog's Shards count double for the Chain; the shove (`World::rivalShove`: a Dash's 140 wu ring pushes each rival ship in it
+200 wu over a quarter second, a push it rides in the third shove slot, applied by the rival's own device; not a ship that cannot be
+hurt); shared Boost orbs (one orb, owner "anyone"); THE SET in versus ends at the set list's last boss with the outro, no encore; the
+versus HUD (your own score; the ranking with the crown and UNDERDOG), the crown over the leader's ship (18 wu, 26 wu above, the
+pickup's white-gold), the podium at the match's end (WINNER or A DRAW, the winner's ring, ship and crown, the table with each
+seat's crowns, the host's REMATCH, LEAVE), the room's crowns (the host gives the winner one); versus keeps no records. TEAM /
+VERSUS is offered in the room's MODES from this build. `raveform_headless --net soak --versus`.
+
+Measured: the 5-minute four-bot net soak, versus against team: both pass, census 450 checks and 0 mismatches each; the on-screen
+error RMS 1.70 wu (team 1.56), p95 2.0 (2.25), max 165 wu (85: a shoved or knocked-out ship's moment); downstream 268 kbps at most
+(264). The set's determinism hashes are unchanged.
+
+Not done in part 1 yet: the podium's arrival on the music (the table counting up, the winner named on the next bar line with its
+bell and confetti) and LOBBY (back to the lobby with the room standing: the session has no way back to its lobby yet); the
+two-phone versus check; the load-in's bed layers (the engine has no bed mask yet: `sound.md`'s `setBedMask`) and the
 outro's held chord and reversed cymbal (the band plays a Break under it).
 
 Not done in part 0: `m8_modes_bonus` (the bonus Tracks come with part 4: the strips stop at ten chips; TRACERS's and JAM's homes

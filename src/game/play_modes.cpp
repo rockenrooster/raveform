@@ -7,12 +7,14 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 #include "audio/band.h"
 #include "audio/cues.h"
 #include "core/log.h"
 #include "game/play.h"
 #include "game/play_hud.h"
+#include "net/session.h"
 
 namespace rf {
 
@@ -28,6 +30,17 @@ Vec3 lookColour(const void* user, Vec3 c, float i) {
     return hudColour(*k->look, *k->variant, c, i);
 }
 float clamp01(float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
+void groupDigits(char* out, size_t cap, u64 v) {
+    char raw[32];
+    std::snprintf(raw, sizeof raw, "%llu", static_cast<unsigned long long>(v));
+    const size_t n = std::strlen(raw);
+    size_t o = 0;
+    for (size_t i = 0; i < n && o + 2 < cap; ++i) {
+        if (i && (n - i) % 3 == 0) out[o++] = ',';
+        out[o++] = raw[i];
+    }
+    out[o] = 0;
+}
 // The load-in's climbing run (README.md 5: a chirp a landing, one note further up the Track's scale, two octaves, then again from
 // the middle): the minor pentatonic over two octaves.
 constexpr i32 kClimb[11] = {0, 3, 5, 7, 10, 12, 15, 17, 19, 22, 24};
@@ -63,15 +76,49 @@ void Play::modesEvent(const Event& e) {
                 RF_LOG("play: TRACK COMPLETE (Track %u, run %.1f s, the boss in %.1f s)", w.phrase().track, runSeconds_, bossSecs_);
             }
             break;
+        case EventType::Crown:
+            // V5: the crown changes hands on a bar line, with a bell.
+            if (bandDrives_ && band_ && e.a != 0xFF) band_->playRecipe(audio::Recipe::Bell, 84, 0.6f);
+            break;
+        case EventType::Knock:
+            if (e.a == seat_) pulse(2);
+            break;
         case EventType::RunEnd:
             // The outro is over: the result (the Track cleared).
             runCleared_ = true;
             RF_LOG("play: the run ends (Track %u cleared, %.1f s, score %llu)", w.phrase().track, runSeconds_,
                    static_cast<unsigned long long>(w.player(seat_).score));
-            if (flow_ && screen_ == Screen::Run) {
+            if (flow_ && (screen_ == Screen::Run || (coop() && (screen_ == Screen::Paused || screen_ == Screen::Settings)))) {
                 endRun(false);
+                coopOver_ = coop();
                 screen_ = Screen::GameOver;
                 overS_ = -0.6f;
+                podiumS_ = 0.0f;
+                podiumCounted_ = false;
+                podiumWinner_ = 0xFF;
+                if (w.setup().versus) {
+                    // The winner: the best count; a draw when the top is level.
+                    u64 best = 0;
+                    u32 at = 0;
+                    for (u32 q = 0; q < kMaxPlayers; ++q) {
+                        if (!w.player(q).present) continue;
+                        if (podiumWinner_ == 0xFF || w.player(q).score > best) {
+                            best = w.player(q).score;
+                            podiumWinner_ = static_cast<u8>(q);
+                            at = 1;
+                        } else if (w.player(q).score == best) {
+                            ++at;
+                        }
+                    }
+                    if (at != 1) podiumWinner_ = 0xFF;
+                    if (session_ && session_->host() && podiumWinner_ != 0xFF) {
+                        // V8: the room keeps each seat's wins as crowns while it stands (the lobby's message carries them).
+                        const u8 c = session_->crowns(podiumWinner_);
+                        session_->setCrowns(podiumWinner_, static_cast<u8>(c < 255 ? c + 1 : 255));
+                        podiumCounted_ = true;
+                    }
+                    RF_LOG("play: the versus match ends: %s", podiumWinner_ == 0xFF ? "a draw" : "a winner");
+                }
             } else if (!flow_ || opt_.bot) {
                 retryRequest_ = true;  // (a benchmark or the bot: the same Track again)
             }
@@ -195,6 +242,110 @@ void Play::nextTrack() {
     if (world_->restartPending()) world_->cancelRestart();
     dropInTap(Screen::GameOver);
     RF_LOG("play: NEXT TRACK: Track %u", su.track);
+}
+
+void Play::drawVersusWorld(FrameDraw& d, const LookVariant& variant) {
+    // README.md 8, V5: the leader's ship wears a small crown (18 wu wide, 26 wu above the ship, the pickup's white-gold at 2.0) on
+    // every device; README.md 7: a knocked out ship's place reads BACK IN 2, BACK IN 1 (bars; cap 22 wu, the player's colour).
+    const World& w = *world_;
+    const float px = view_.pxPerWu();
+    const u8 crown = w.director().crown;
+    if (crown < kMaxPlayers && w.player(crown).present && w.player(crown).alive) {
+        const PlayerState& pl = w.player(crown);
+        const Vec2 c = view_.toScreen(pl.prevPos + (pl.pos - pl.prevPos) * alpha_ + Vec2{0.0f, -26.0f});
+        const float hw = 9.0f * px, h = 8.0f * px;
+        const Vec3 wg = hudColour(*look_, variant, mix(palettes_->pickup, Vec3{1.0f, 1.0f, 1.0f}, 0.35f), 2.0f);
+        const Vec2 pts[7] = {{c.x - hw, c.y}, {c.x - hw, c.y - h}, {c.x - 0.5f * hw, c.y - 0.5f * h}, {c.x, c.y - 1.3f * h},
+                             {c.x + 0.5f * hw, c.y - 0.5f * h}, {c.x + hw, c.y - h}, {c.x + hw, c.y}};
+        for (u32 j = 0; j + 1 < 7; ++j) d.hud.line(pts[j], pts[j + 1], 0.9f, wg, wg, 0);
+        d.hud.line(pts[6], pts[0], 0.9f, wg, wg, 0);
+    }
+    const double now = musicPrev_ + (music1_ - musicPrev_) * static_cast<double>(alpha_);
+    for (u32 q = 0; q < kMaxPlayers; ++q) {
+        const PlayerState& pl = w.player(q);
+        if (!pl.present || !pl.knocked) continue;
+        const u32 left = static_cast<u32>(std::ceil((pl.backTick - now) / kTicksPerBar - 1e-6));
+        char line[16];
+        std::snprintf(line, sizeof line, "BACK IN %u", left < 1 ? 1u : left);
+        const float cap = 22.0f * px;
+        const Vec2 at = view_.toScreen(pl.pos);
+        const Vec3 c = hudColour(*look_, variant, palettes_->player[q], 1.6f);
+        const float wdt = font_->measure(TextStyle{cap}, line);
+        font_->drawField(d.hud, {at.x - 0.5f * wdt, at.y - 0.5f * cap}, cap, 0.06f * cap, c, c, c, line);
+    }
+}
+
+void Play::screenPodium(Ui& ui) {
+    // design/modes/screens.md "The podium": WINNER (A DRAW when level at the top), the winner's ring with their ship and the crown,
+    // their name and count, the table (every player best first: place, name, count, best Chain, crowns in this room), the host's
+    // REMATCH (the same match on a new seed: the drop-in on every device; the others WAITING FOR HOST), LEAVE for everyone.
+    const float s = ui.s(), W = ui.W(), H = ui.H(), cx = 0.5f * W;
+    const Vec3 white{1.0f, 1.0f, 1.0f};
+    const World& w = *world_;
+    podiumS_ += frameDt_;
+    const float in = clamp01(podiumS_ / 0.6f);
+    const u8 win = podiumWinner_;
+    ui.text({cx, 104.0f * s}, 44.0f * s, palette_->accent, 1.6f * in, win == 0xFF ? "A DRAW" : "WINNER");
+    if (win != 0xFF) {
+        const Vec3 pc = palettes_->player[win], pl = palettes_->playerLight[win];
+        const Vec2 c{cx, 330.0f * s};
+        ui.draw().pools.glow(c, 500.0f * s, pc * (0.06f * in * hudFade()));
+        ui.dot(c, 140.0f * s, pc, 0.07f * in);
+        ui.ring(c, 150.0f * s, 1.4f * s, pc, 2.0f * in, 72);
+        drawTitleShip(ui, c, -1.5707963f + 0.3f * podiumS_, 3.0f, in, false);
+        // the crown over the ring, 120 px wide, the pickup's white-gold at 2.0
+        const Vec3 wg = ui.col(mix(palettes_->pickup, white, 0.35f), 2.0f * in);
+        const float hw = 60.0f * s, h = 52.0f * s, by = c.y - 150.0f * s - 18.0f * s;
+        const Vec2 pts[7] = {{cx - hw, by}, {cx - hw, by - h}, {cx - 0.5f * hw, by - 0.5f * h}, {cx, by - 1.3f * h},
+                             {cx + 0.5f * hw, by - 0.5f * h}, {cx + hw, by - h}, {cx + hw, by}};
+        for (u32 j = 0; j + 1 < 7; ++j) ui.draw().hud.line(pts[j], pts[j + 1], 1.4f * s, wg, wg, 0);
+        ui.draw().hud.line(pts[6], pts[0], 1.4f * s, wg, wg, 0);
+        (void)pl;
+        char name[32];
+        const char* given = session_ ? session_->seatName(win) : "";
+        std::snprintf(name, sizeof name, "P%u%s%s", win + 1u, given[0] ? "  " : "", given);
+        ui.text({cx, 540.0f * s}, 34.0f * s, pc, 1.6f * in, name);
+        char num[32];
+        groupDigits(num, sizeof num, w.player(win).score);
+        ui.font().drawField(ui.draw().hud, {cx - 0.5f * ui.measure(60.0f * s, num), 620.0f * s - 60.0f * s}, 60.0f * s, 2.4f * s, ui.col(white, 1.6f * in),
+                            ui.col(white, 1.6f * in), ui.col(pc, 1.6f * in), num);
+    }
+    // The table, best first.
+    u8 order[kMaxPlayers];
+    u32 n = 0;
+    for (u32 q = 0; q < kMaxPlayers; ++q)
+        if (w.player(q).present) {
+            u32 at = n++;
+            while (at > 0 && w.player(order[at - 1]).score < w.player(q).score) {
+                order[at] = order[at - 1];
+                --at;
+            }
+            order[at] = static_cast<u8>(q);
+        }
+    for (u32 k = 0; k < n; ++k) {
+        const u8 q = order[k];
+        const float y = (700.0f + 46.0f * static_cast<float>(k)) * s;
+        const Vec3 pc = palettes_->player[q];
+        char left[48], right[64], num[32], chain[32];
+        std::snprintf(left, sizeof left, "%u  P%u%s", k + 1u, q + 1u, q == seat_ ? " (YOU)" : "");
+        groupDigits(num, sizeof num, w.player(q).score);
+        groupDigits(chain, sizeof chain, w.player(q).bestChain);
+        const u8 crowns = session_ ? session_->crowns(q) : 0;
+        std::snprintf(right, sizeof right, "%s   X%s   %u CROWN%s", num, chain, crowns, crowns == 1 ? "" : "S");
+        ui.text({cx - 420.0f * s, y}, 22.0f * s, pc, 1.4f * in, left, 0.0f);
+        ui.text({cx + 420.0f * s, y}, 22.0f * s, pc, 1.4f * in, right, 1.0f);
+    }
+    const bool host = session_ && session_->host();
+    if (ui.pill(43, {cx, 968.0f * s}, {600.0f * s, 130.0f * s}, "REMATCH", 52.0f * s, true, host && in >= 1.0f) || (keyPrimary_ && host)) {
+        session_->requestRetry();
+        if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+    }
+    if (!host) ui.text({cx, 1060.0f * s}, 14.0f * s, white, 0.8f, "WAITING FOR HOST");
+    if ((ui.pill(44, {282.0f * s, 968.0f * s}, {300.0f * s, 90.0f * s}, "LEAVE", 28.0f * s, false, true, trans_ == Trans::Home) || keyBack_) &&
+        trans_ == Trans::None)
+        homeTap();
+    keyPrimary_ = keyBack_ = false;
+    (void)H;
 }
 
 }  // namespace rf

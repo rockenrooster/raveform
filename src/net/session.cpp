@@ -270,6 +270,7 @@ bool Session::start(const SessionConfig& cfg, World* world, u64 content) {
     cfg_ = cfg;
     world_ = world;
     content_ = content;
+    roomSetup_ = cfg.setup;  // M8
     stats_ = SessionStats{};
     diag_ = NetDiag{};
     for (i64& t : poseArrivedUs_) t = 0;
@@ -710,6 +711,8 @@ void Session::onDirector(const MsgDirector& m) {
     op.opts[1] = m.d.miniSpawned ? 1 : 0;
     op.opts[2] = m.d.lastMini;
     op.serial = m.d.outroBar;  // M8
+    op.opts[3] = m.d.crown;
+    op.opts[4] = m.d.underdog;
     pushOp(op);
 }
 
@@ -1631,6 +1634,10 @@ void Session::collectLocalEvents() {
                 m.b = kPickupExtraLife;
                 break;
             case EventType::Down: m.kind = kPeDown; break;
+            case EventType::Knock:  // M8 versus: the bar line it is back on
+                m.kind = kPeKnock;
+                m.tick = e.tick;
+                break;
             case EventType::Revive:
                 m.kind = kPeRevive;
                 m.b = e.b;

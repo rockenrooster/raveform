@@ -366,7 +366,8 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
             params.exposurePump *= transExposure(coop() ? 0.2f : 0.45f);
             if (coop()) {
                 setHudFade(trans_ == Trans::Wait || trans_ == Trans::Home ? 1.0f - gameOverOut() : 1.0f);  // (M6: a co-op RETRY's wait, HOME)
-                screenGameOverCoop(ui_);
+                if (world_->setup().versus && runCleared_) screenPodium(ui_);  // M8: a versus match's end
+                else screenGameOverCoop(ui_);
                 setHudFade(1.0f);
             } else if ((trans_ == Trans::Home || trans_ == Trans::Wait) && transFrom_ == Screen::Paused) {
                 // (M6: QUIT RUN takes home's way, RESTART RETRY's drop-in (c9218dc): the pause screen fades out in its beat)

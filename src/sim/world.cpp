@@ -158,7 +158,7 @@ void World::tick(const TickInput& in) {
     applyPlayers(in);
     if (role_ != NetRole::Solo) updateDowned();
     runSpawner();  // the director first: the phrase this tick plays in (Surge, the Build's last bar)
-    if (setup_.mode != Mode::Set) updateModes();  // M8: the kit landing, the outro, the run's end
+    if (setup_ != RunSetup{}) updateModes();  // M8: the kit landing, the outro, the run's end, versus
     // The loop's ramps this tick (GAME_DESIGN 8, "The loop is where a run ends"): 1 through Track 3.
     loopSpeed_ = std::fmin(loopRamp(kLoopEnemySpeedRamp, phrase_.track, director_.songs), kLoopEnemySpeedMax);
     loopBulletSpeed_ = std::fmin(loopRamp(kLoopBulletSpeedRamp, phrase_.track, director_.songs), kLoopBulletSpeedMax);
@@ -294,6 +294,7 @@ void World::applyPlayers(const TickInput& in) {
             ++pl.dashes;
             if (ps.perfectDash) ++pl.perfectDashes;
             dashExtras(p, ps.dashFrom, ps.dashTo, ps.perfectDash);  // M5: Afterimage, Shockstep
+            if (setup_.versus) rivalShove(p, ps.dashTo);           // M8 versus (V3)
             pl.lastDashFrom = ps.dashFrom;  // M5 part 4: Mimic C
             pl.lastDashTo = ps.dashTo;
             pl.lastDashTick = m1_;
@@ -782,7 +783,8 @@ void World::collide() {
         h.dead[i] = 1;
         // GAME_DESIGN 5: each Shard collected adds +1 to that player's Chain (a merged one: all it is worth, 2026-11-15)
         const u32 worth = h.value[i] ? h.value[i] : 1u;
-        pl.chain += worth;
+        // (M8 versus, README.md 8: the underdog's Shards count double for the Chain until the next bar line)
+        pl.chain += setup_.versus && director_.underdog == h.owner[i] ? 2u * worth : worth;
         if (pl.chain > pl.bestChain) pl.bestChain = pl.chain;
         pl.pickups += worth;
         Event ev;
@@ -819,6 +821,11 @@ void World::hitPlayer(u32 p, Vec2 from, u16 cause, bool bullet) {
         return;
     }
     ++pl.hitsTaken;
+    if (pl.cells == 0 && setup_.versus) {
+        // M8 (design/modes/README.md 7, V6): nobody is out in versus: the ship is knocked out and back on the second bar line after.
+        knockOut(p, tickOfBar(barOf(m1_) + 2u));
+        return;
+    }
     if (pl.cells == 0 && coop()) {
         // GAME_DESIGN 10: in co-op the ship shatters into a beacon; the run goes on while anyone stands.
         downPlayer(p);
@@ -1515,6 +1522,14 @@ u64 World::hash() const {
     if (director_.outroBar != kNoBar) {
         val(director_.outroBar);
         val(director_.runEnded);
+    }
+    if (setup_.versus) {
+        val(director_.crown);
+        val(director_.underdog);
+        for (const PlayerState& pl : players_) {
+            val(pl.knocked);
+            val(pl.backTick);
+        }
     }
     for (const KitState& k : kit_)
         if (k.count) {

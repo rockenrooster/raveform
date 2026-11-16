@@ -768,10 +768,12 @@ void World::dropBoost(Vec2 pos, u8 type) {
         return;
     }
     const u8 t = type < kBoostCount ? type : kPrism;
-    // Loot is instanced (GAME_DESIGN 10): in co-op one orb per player, each only its owner can take.
+    // Loot is instanced (GAME_DESIGN 10): in co-op one orb per player, each only its owner can take. M8 versus (V4): one orb, the
+    // first ship to touch it has it (owner 0xFF).
     u32 made = 0;
-    for (u32 p = 0; p < (coop() ? playerCount_ : 1u); ++p) {
-        if (coop() && !players_[p].present) continue;
+    const bool shared = setup_.versus;
+    for (u32 p = 0; p < (coop() && !shared ? playerCount_ : 1u); ++p) {
+        if (coop() && !shared && !players_[p].present) continue;
         if (b.count >= BoostPickups::kCap) break;
         const u32 i = b.count++;
         b.x[i] = x;
@@ -779,7 +781,7 @@ void World::dropBoost(Vec2 pos, u8 type) {
         b.born[i] = m1_;
         b.type[i] = t;
         b.dead[i] = 0;
-        b.owner[i] = static_cast<u8>(p);
+        b.owner[i] = shared ? static_cast<u8>(0xFF) : static_cast<u8>(p);
         ++made;
     }
     if (!made) return;
@@ -904,7 +906,7 @@ void World::updateBoosts() {
         for (u32 p = 0; p < playerCount_; ++p) {
             const PlayerState& pl = players_[p];
             if (!pl.alive) continue;
-            if (b.owner[i] != p || !isLocal(p)) continue;  // M4: only its owner takes it, on the owner's device
+            if ((b.owner[i] != p && b.owner[i] != 0xFF) || !isLocal(p)) continue;  // M4: only its owner takes it (M8 versus: anyone)
             const float r = kBoostPickupWu + kPlayerVisualRadius;
             if (lengthSq(pl.pos - Vec2{b.x[i], b.y[i]}) > r * r) continue;
             if (b.type[i] == kPickupExtraLife) {

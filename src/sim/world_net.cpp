@@ -232,7 +232,7 @@ void World::applyNetOp(const NetOp& op) {
                 killBoss(op.b);
                 // The host's bar line, not this device's reading of it.
                 if (!mini) {
-                    if (setup_.mode == Mode::OneTrack) director_.outroBar = op.u;  // (M8: the outro)
+                    if (setup_.mode == Mode::OneTrack || (setup_.versus && director_.track >= director_.songs)) director_.outroBar = op.u;  // (M8: the outro)
                     else director_.changeBar = op.u;
                 } else {
                     const u32 natural = miniNaturalEnd();
@@ -263,6 +263,8 @@ void World::applyNetOp(const NetOp& op) {
                 d.miniSpawned = op.opts[1] != 0;
                 d.lastMini = op.opts[2];
                 d.outroBar = op.serial;
+                d.crown = op.opts[3];
+                d.underdog = op.opts[4];
                 netDirector(d);
             }
             break;
@@ -317,6 +319,7 @@ void World::applyPlayerOp(const NetOp& op) {
         case kPeDash: {
             ++pl.dashes;
             dashExtras(p, Vec2{op.x, op.y}, Vec2{op.x2, op.y2}, op.b != 0);  // the Dash's shock ring drawn here (its hits: its owner's)
+            if (setup_.versus) rivalShove(p, Vec2{op.x2, op.y2});            // M8 versus (V3): this device's ships in its ring
             pl.lastDashFrom = Vec2{op.x, op.y};  // M5 part 4: Mimic C
             pl.lastDashTo = Vec2{op.x2, op.y2};
             pl.lastDashTick = m1_;
@@ -392,6 +395,12 @@ void World::applyPlayerOp(const NetOp& op) {
             pl.pos = pl.prevPos = Vec2{op.x, op.y};
             downPlayer(p);
             break;
+        case kPeKnock:
+            // M8 versus: that ship's own device knocked it out; back on the bar line it says.
+            if (!pl.present || pl.knocked) break;
+            pl.pos = pl.prevPos = Vec2{op.x, op.y};
+            knockOut(p, op.tick);
+            break;
         case kPeRevive:
             if (!pl.present || !pl.down) break;
             pl.beacon = Vec2{op.x, op.y};
@@ -454,7 +463,7 @@ void World::applyPlayerOp(const NetOp& op) {
             i32 best = -1;
             float bestD = 0.0f;
             for (u32 i = 0; i < b.count; ++i) {
-                if (b.dead[i] || b.owner[i] != p || (b.type[i] == kPickupExtraLife) != (op.b == kPickupExtraLife)) continue;
+                if (b.dead[i] || (b.owner[i] != p && b.owner[i] != 0xFF) || (b.type[i] == kPickupExtraLife) != (op.b == kPickupExtraLife)) continue;
                 const float d = lengthSq(Vec2{b.x[i] - op.x, b.y[i] - op.y});
                 if (best < 0 || d < bestD) {
                     best = static_cast<i32>(i);
@@ -771,6 +780,8 @@ World::DirectorSync World::directorSync() const {
     d.miniSpawned = director_.miniSpawned;
     d.lastMini = director_.lastMini;
     d.outroBar = director_.outroBar;
+    d.crown = director_.crown;
+    d.underdog = director_.underdog;
     return d;
 }
 
@@ -787,6 +798,15 @@ void World::netDirector(const DirectorSync& d) {
     s.miniSpawned = d.miniSpawned;
     s.lastMini = d.lastMini;
     s.outroBar = d.outroBar;
+    if (s.crown != d.crown) {
+        Event ev;
+        ev.type = EventType::Crown;
+        ev.a = d.crown;
+        ev.b = s.crown;
+        emit(ev);
+    }
+    s.crown = d.crown;
+    s.underdog = d.underdog;
     if (s.lastBar != kNoBar) {
         // The bar being played, as the host's state places it (a boss death moved the Track's end).
         const u32 bar = barOf(m1_);

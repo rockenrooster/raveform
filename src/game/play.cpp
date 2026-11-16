@@ -1048,6 +1048,14 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
                 }
                 hs.rank[at] = static_cast<u8>(q);
             }
+        if (w.setup().versus) {
+            // M8 versus (design/modes/screens.md "The versus HUD"): your own count where the score stands; the ranking under it
+            // with the crown and the underdog.
+            hs.versus = true;
+            hs.score = p.score;
+            hs.crown = w.director().crown;
+            hs.underdog = w.director().underdog;
+        }
     }
     hs.chain = p.chain;
     hs.chainPulse = view_.chainPulse(vi.time);
@@ -1134,6 +1142,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         setHudFade(flow_ && trans_ == Trans::Arrive ? clampf(transBeats(transLine_) - 1.0f, 0.0f, 1.0f) : 1.0f);
         drawHud(d, *font_, *look_, variant, *palettes_, *palette_, hs, touch_, W, H, insetMin, insetMax);
         if (modeRun()) drawLoadIn(d, variant);  // M8: the kit's icons spiralling in
+        if (w.setup().versus) drawVersusWorld(d, variant);  // M8: the crown, BACK IN n
         setHudFade(1.0f);
     }
     if (flow_) renderScreens(d, params, variant, W, H, insetMin, insetMax);
@@ -1402,8 +1411,9 @@ void Play::beginCountIn() {
 }
 
 void Play::endRun(bool died) {
-    if (modeRun()) {
-        // M8 (design/modes/README.md 9): a mode's run keeps its own records, never the set's table.
+    if (modeRun() || world_->setup().versus) {
+        // M8 (design/modes/README.md 9): a mode's run keeps its own records, never the set's table (versus: nothing but the room's
+        // crowns).
         modesEndRun(died);
         if (settings_.runsEnded < 0xFFFFFFFFu) ++settings_.runsEnded;
         if (!opt_.picture[0] && !opt_.fixedStep) saveSettings(settings_);

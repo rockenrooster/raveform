@@ -2,11 +2,15 @@
 // kit and its load-in, ONE TRACK's outro and the run's end. Nothing here runs in THE SET (World::tick calls updateModes only for
 // another mode), so the set's state and hash are as they were.
 
+#include <cmath>
+
 #include "sim/bot.h"
 #include "sim/tuning.h"
 #include "sim/world.h"
 
 namespace rf::sim {
+
+using namespace tuning;
 
 namespace {
 // The loadout's part of taking an upgrade (World::applyUpgrade without the ship: its cells, Novas and drones come as it lands).
@@ -91,6 +95,26 @@ void World::updateModes() {
             }
         }
     }
+    // Versus (README.md 7): a knocked out ship comes back on its bar line where it was, with two cells, a panic pulse, one bar in
+    // which it cannot be hurt and half its Chain.
+    if (setup_.versus)
+        for (u32 p = 0; p < playerCount_; ++p) {
+            PlayerState& pl = players_[p];
+            if (!pl.knocked || m1_ < pl.backTick) continue;
+            pl.knocked = false;
+            pl.alive = true;
+            pl.cells = pl.cellCap < 2 ? pl.cellCap : static_cast<u8>(2);
+            pl.chain = pl.chain / 2 > 1 ? pl.chain / 2 : 1u;
+            pl.invulS = static_cast<float>(kTicksPerBar) / ticksPerSecond();
+            pl.vel = Vec2{};
+            panicPulse(p);
+            Event ev;
+            ev.type = EventType::KnockBack;
+            ev.a = static_cast<u8>(p);
+            ev.x = pl.pos.x;
+            ev.y = pl.pos.y;
+            emit(ev);
+        }
     // ONE TRACK's outro (one_track.md): every Shard on the field flies to its player, as under Magnet Storm.
     if (phrase_.outro)
         for (u32 i = 0; i < shards_.count; ++i) shards_.homing[i] = 1;
@@ -103,6 +127,105 @@ void World::updateModes() {
         ev.a = 0;
         ev.tick = tickOfBar(d.outroBar + d.outroBars);
         emit(ev);
+    }
+}
+
+void World::knockOut(u32 p, double backTick) {
+    // README.md 7: the ship shatters (the view's large kill in its colour) and is out until that bar line; nothing hits it, it
+    // fires nothing, its Trio closes. Its own device decides and tells the others (kPeKnock).
+    PlayerState& pl = players_[p];
+    pl.alive = false;
+    pl.knocked = true;
+    pl.backTick = backTick;
+    pl.fire = 0;
+    pl.dashing = false;
+    pl.novaPending = false;
+    pl.novaInvulS = 0.0f;
+    pl.invulS = 0.0f;
+    trio_[p].open = false;
+    Event ev;
+    ev.type = EventType::Knock;
+    ev.a = static_cast<u8>(p);
+    ev.x = pl.pos.x;
+    ev.y = pl.pos.y;
+    ev.tick = backTick;
+    emit(ev);
+}
+
+void World::versusBar(u32 bar) {
+    // README.md 8, V5 and V7, on every bar line: the leader wears the crown (none while the top is level); the player in last
+    // place, holding under modes.json's share of the leader's count, is the underdog until the next line (the host's switch).
+    (void)bar;
+    DirectorState& d = director_;
+    u64 best = 0, worst = ~0ull;
+    u32 atBest = 0, atWorst = 0;
+    u8 leader = 0xFF, last = 0xFF;
+    for (u32 p = 0; p < playerCount_; ++p) {
+        const PlayerState& pl = players_[p];
+        if (!pl.present) continue;
+        const u64 c = pl.score;  // (THE SET, ONE TRACK: the score)
+        if (leader == 0xFF || c > best) {
+            best = c;
+            leader = static_cast<u8>(p);
+            atBest = 1;
+        } else if (c == best) {
+            ++atBest;
+        }
+        if (last == 0xFF || c < worst) {
+            worst = c;
+            last = static_cast<u8>(p);
+            atWorst = 1;
+        } else if (c == worst) {
+            ++atWorst;
+        }
+    }
+    const u8 crown = atBest == 1 && best > 0 ? leader : static_cast<u8>(0xFF);
+    if (crown != d.crown) {
+        Event ev;
+        ev.type = EventType::Crown;
+        ev.a = crown;
+        ev.b = d.crown;
+        emit(ev);
+        d.crown = crown;
+    }
+    const float share = species_ ? species_->modes.versus.underdogShare : 0.7f;
+    d.underdog = setup_.help && atWorst == 1 && last != leader && static_cast<double>(worst) < static_cast<double>(share) * static_cast<double>(best)
+                     ? last
+                     : static_cast<u8>(0xFF);
+}
+
+void World::rivalShove(u32 q, Vec2 dashEnd) {
+    // V3: a Dash's shock ring (140 wu) pushes each rival ship in it 200 wu away from where the Dash ended over a quarter of a second,
+    // a push it rides (PlayerState::shoves); the rival's own device applies it; a ship that cannot be hurt cannot be shoved.
+    const float reach = kDashRingWu;
+    const float by = species_ ? species_->modes.versus.shoveWu : 200.0f;
+    const double ticks = static_cast<double>(species_ ? species_->modes.versus.shoveSeconds : 0.25f) * ticksPerSecond();
+    for (u32 p = 0; p < playerCount_; ++p) {
+        if (p == q || !isLocal(p)) continue;
+        const PlayerState& pl = players_[p];
+        if (!pl.present || !pl.alive || pl.invulS > 0.0f || pl.novaInvulS > 0.0f || sheltered(p)) continue;
+        const Vec2 d = pl.pos - dashEnd;
+        if (lengthSq(d) > reach * reach) continue;
+        shovePlayer(p, PlayerState::kShoveRival, normalizeOr(d, Vec2{1.0f, 0.0f}) * by, m1_, ticks);
+    }
+}
+
+void World::panicPulse(u32 p) {
+    // GAME_DESIGN 5: clears the bullets within 220 wu and shoves the enemies there (as a hit's).
+    const Vec2 c = players_[p].pos;
+    const float r2 = kPanicRadiusWu * kPanicRadiusWu;
+    for (u32 b = 0; b < bullets_.count; ++b) {
+        const float dx = bullets_.x[b] - c.x, dy = bullets_.y[b] - c.y;
+        if (dx * dx + dy * dy <= r2) bullets_.dead[b] = 1;
+    }
+    Enemies& e = enemies_;
+    for (u32 i = 0; i < e.count; ++i) {
+        const float dx = e.x[i] - c.x, dy = e.y[i] - c.y;
+        const float d2 = dx * dx + dy * dy;
+        if (d2 > r2 || d2 < 1e-6f) continue;
+        const float dd = std::sqrt(d2);
+        e.kx[i] += dx / dd * kPanicShoveWu;
+        e.ky[i] += dy / dd * kPanicShoveWu;
     }
 }
 

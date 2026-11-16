@@ -122,6 +122,9 @@ struct DirectorState {
     u32 outroBar = kNoBar;
     u8 outroBars = 4;
     bool runEnded = false;
+    // M8 versus (design/modes/README.md 8, V5 and V7): the leader as of the last bar line (the crown; 0xFF: none, the count level at
+    // the top) and the underdog until the next (0xFF: none). The host's (or the solo world's) decision; clients take it.
+    u8 crown = 0xFF, underdog = 0xFF;
 };
 
 // Where bar `bar` of the run sits, given what the director knows now.

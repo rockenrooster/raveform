@@ -321,7 +321,24 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
             const float cap = 13.0f * s;
             const float lvl = q == st.me ? 1.7f : 1.1f;
             const Vec3 pc = col(palettes.player[q], lvl);
-            font.drawField(d.hud, {m, y0 + static_cast<float>(k) * 26.0f * s}, cap, 0.65f * s, pc, pc, pc, line);
+            const float ly = y0 + static_cast<float>(k) * 26.0f * s;
+            font.drawField(d.hud, {m, ly}, cap, 0.65f * s, pc, pc, pc, line);
+            if (st.versus) {
+                // M8 versus: the leader's row carries the crown; the underdog's UNDERDOG at cap 10.
+                const float after = m + font.measure(TextStyle{cap}, line) + 14.0f * s;
+                if (q == st.crown) {
+                    const Vec3 wg = col(mix(palettes.pickup, white, 0.35f), 2.0f);
+                    const float cx0 = after + 9.0f * s, by = ly + cap;
+                    const Vec2 pts[7] = {{cx0 - 8.0f * s, by}, {cx0 - 8.0f * s, by - 8.0f * s}, {cx0 - 4.0f * s, by - 4.0f * s}, {cx0, by - 11.0f * s},
+                                         {cx0 + 4.0f * s, by - 4.0f * s}, {cx0 + 8.0f * s, by - 8.0f * s}, {cx0 + 8.0f * s, by}};
+                    for (u32 j = 0; j + 1 < 7; ++j) d.hud.line(pts[j], pts[j + 1], 0.8f * s, wg, wg, 0);
+                    d.hud.line(pts[6], pts[0], 0.8f * s, wg, wg, 0);
+                }
+                if (q == st.underdog) {
+                    const Vec3 uc = col(palettes.player[q], 1.3f);
+                    font.drawField(d.hud, {after + (q == st.crown ? 30.0f * s : 0.0f), ly + 2.0f * s}, 10.0f * s, 0.5f * s, uc, uc, uc, "UNDERDOG");
+                }
+            }
         }
     }
     // Nova stock: top right, one four-point star per Nova, lit in the player colour. 2026-11-15: the Nova a Shard level gives

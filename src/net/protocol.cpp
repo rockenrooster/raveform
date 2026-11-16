@@ -361,6 +361,9 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             m.d.miniSpawned = r.u8v() != 0;
             m.d.lastMini = r.u8v();
             m.d.outroBar = r.u32v();  // M8
+            m.d.crown = r.u8v();
+            m.d.underdog = r.u8v();
+            if ((m.d.crown != 0xFF && m.d.crown >= kMaxPlayers) || (m.d.underdog != 0xFF && m.d.underdog >= kMaxPlayers)) return false;
             if (r.bad() || !finite(m.d.startTick) || m.d.track < 1 || !finite(m.d.assist) || m.d.assist < 0.1f || m.d.assist > 10.0f)
                 return false;
             if (sink) sink->onDirector(m);
@@ -918,7 +921,7 @@ bool PacketWriter::putBoostDrop(const MsgBoostDrop& m) {
     return true;
 }
 bool PacketWriter::putDirector(const MsgDirector& m) {
-    if (!begin(Msg::Director, 32)) return false;
+    if (!begin(Msg::Director, 34)) return false;
     u16v(m.run);
     f64v(m.d.startTick);
     u32v(m.d.trackBar);
@@ -931,6 +934,8 @@ bool PacketWriter::putDirector(const MsgDirector& m) {
     u8v(m.d.miniSpawned ? 1 : 0);
     u8v(m.d.lastMini);
     u32v(m.d.outroBar);  // M8
+    u8v(m.d.crown);
+    u8v(m.d.underdog);
     return true;
 }
 bool PacketWriter::putPlayerEvent(const MsgPlayerEvent& m) {

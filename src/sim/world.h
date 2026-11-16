@@ -81,7 +81,7 @@ struct NetEnemyState {
 };
 // What a player's own device decided, applied to that player in the other worlds (reliable).
 enum NetPlayerEventKind : u8 {
-    kPeNova, kPeDash, kPeHit, kPeDown, kPeRevive, kPeTrioOpen, kPeTrioTake, kPeBoostTake, kPeHalo, kPeLeave, kPeWell, kPeCount
+    kPeNova, kPeDash, kPeHit, kPeDown, kPeRevive, kPeTrioOpen, kPeTrioTake, kPeBoostTake, kPeHalo, kPeLeave, kPeWell, kPeKnock, kPeCount
 };
 // One operation from the network, applied inside the next tick (so its events land in the tick's buffer
 // and the view and the band see them like any other). `run`: the run it belongs to (World::runId());
@@ -216,6 +216,11 @@ enum class EventType : u8 {
     // outro over): a = 0 the Track cleared; tick = the bar line.
     KitLand,
     RunEnd,
+    // M8 versus (README.md 7, 8): the crown changed hands on a bar line (a = the leader, 0xFF none; b = the one before); a ship
+    // knocked out (a = player; x, y; tick = the bar line it is back on); back (a = player; x, y).
+    Crown,
+    Knock,
+    KnockBack,
 };
 enum UpgradeFx : u8 {
     kFxFork,          // a shot forked: x, y
@@ -594,6 +599,8 @@ struct PlayerState {
     u32 boostsTaken = 0;
     // M4 co-op (GAME_DESIGN 10): down, a beacon, revive.
     bool down = false;         // shattered into a beacon (alive is false); the run goes on
+    bool knocked = false;      // M8 versus (README.md 7): knocked out (alive is false), back on backTick's bar line
+    double backTick = 0.0;
     Vec2 beacon;
     double reviveTicks = 0.0;  // musical ticks a teammate has stood in the beacon's ring
     u32 downs = 0, revives = 0;
@@ -657,7 +664,7 @@ struct PlayerState {
         double tick = -1e9, ticks = 1.0;
         u32 serial = 0;
     };
-    static constexpr u32 kShoves = 2, kShoveWave = 0, kShoveThrow = 1;
+    static constexpr u32 kShoves = 3, kShoveWave = 0, kShoveThrow = 1, kShoveRival = 2;  // (M8 versus: a rival's Dash, V3)
     Shove shoves[kShoves];
     Vec2 lastDashFrom, lastDashTo;  // M5 part 4 (Mimic C copies it): the last Dash, and when it began
     double lastDashTick = -1e9;
@@ -1060,6 +1067,7 @@ public:
         double from = 0.0;  // the load-in's first downbeat (musical ticks)
     };
     const KitState& kit(u32 p) const { return kit_[p < kMaxPlayers ? p : 0]; }
+    void knockOut(u32 p, double backTick);  // M8 versus: a ship out until that bar line (a remote ship's from its device's word)
     double kitLandTick(u32 p, u32 k) const;
     bool runEnded() const { return director_.runEnded; }  // M8: ONE TRACK's outro is over
     // A run on the bar line `bar` (musical ticks) with this seed, these seats and this id: every device resets
@@ -1093,10 +1101,12 @@ public:
         bool midHolding = false, miniSpawned = false;
         u8 lastMini = 0xFF;
         u32 outroBar = kNoBar;  // M8: ONE TRACK's outro
+        u8 crown = 0xFF, underdog = 0xFF;  // M8 versus: the host's
         bool operator==(const DirectorSync& o) const {
             return startTick == o.startTick && trackBar == o.trackBar && changeBar == o.changeBar && track == o.track &&
                    bossSpawned == o.bossSpawned && assist == o.assist && midHold == o.midHold && midHolding == o.midHolding &&
-                   miniSpawned == o.miniSpawned && lastMini == o.lastMini && outroBar == o.outroBar;
+                   miniSpawned == o.miniSpawned && lastMini == o.lastMini && outroBar == o.outroBar && crown == o.crown &&
+                   underdog == o.underdog;
         }
     };
     DirectorSync directorSync() const;
@@ -1630,7 +1640,10 @@ private:
     RunSetup setup_;  // M8 (in the hash only when it is not THE SET's, so the set's hash stays as it was)
     KitState kit_[kMaxPlayers];  // M8: each player's kit (world_modes.cpp)
     void dealKit(u32 p, u32 count, u32 act);
-    void updateModes();  // M8: the kit landing, the outro's Shards, the run's end
+    void updateModes();  // M8: the kit landing, the outro's Shards, the run's end, the knocked out coming back
+    void versusBar(u32 bar);              // M8 versus: the crown and the underdog on a bar line (the host's, or solo's)
+    void rivalShove(u32 q, Vec2 dashEnd);  // M8 versus (V3): a Dash's ring pushes this device's rivals in it
+    void panicPulse(u32 p);               // a hit's (or a return's) panic pulse round player p
     RunSetup restartSetup_;  // M8: the next run's (setNextSetup)
     u64 tick_ = 0;
     u64 runTicks_ = 0;  // ticks since this run began (M4: the same on every device)

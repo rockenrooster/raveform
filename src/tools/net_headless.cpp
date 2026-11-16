@@ -232,6 +232,7 @@ bool flag(int argc, char** argv, const char* name) {
 
 // --remote-poses interp|predict: where every peer of this process takes a remote player for a tick (net/session.h).
 RemotePoses g_remotePoses = SessionConfig{}.remotePoses;
+bool g_versus = false;  // M8: --versus (a versus run, the host's setup)
 // --fight <id>: the soak starts in that fight's home Track and measures from the fight on, for --minutes.
 bool g_fightOn = false;
 // --away-at S --away-for D [--away-seat N] (pause-on-leave, 2026-11-14): seat N's app (default the last client; 0 the host)
@@ -326,6 +327,7 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
         c.session.remotePoses = g_remotePoses;
         tune(c.session);
         c.session.seed = seed;
+        c.session.setup.versus = g_versus;
         c.botSeed = seed * 31 + k;
         c.clockOffsetUs = kOffsets[k];
         c.clockPpm = kPpm[k];
@@ -1331,6 +1333,7 @@ int netHeadlessMain(int argc, char** argv) {
         if ((v = arg(argc, argv, "--away-at"))) g_awayAtS = static_cast<float>(std::atof(v));
         if ((v = arg(argc, argv, "--away-for"))) g_awayForS = static_cast<float>(std::atof(v));
         if ((v = arg(argc, argv, "--away-seat"))) g_awaySeat = static_cast<u32>(std::atoi(v));
+        g_versus = flag(argc, argv, "--versus");
         code = runSoak(*species, minutes, players, sim, seed, flag(argc, argv, "--pause"), dropAt);
     } else if (std::strcmp(mode, "host") == 0 || std::strcmp(mode, "join") == 0) {
         code = runPeer(*species, std::strcmp(mode, "host") == 0, argc, argv);

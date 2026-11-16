@@ -835,7 +835,8 @@ void World::killBoss(u8 owner) {
             bossPayout();
         }
         // The Track ends: its Track-change Break begins on that bar line (M8, ONE TRACK: its outro, and the run's end).
-        if (setup_.mode == Mode::OneTrack) d.outroBar = endBar;
+        // (M8 versus, one_track.md: THE SET in versus ends at the set list's last boss, SET COMPLETE, without the encore)
+        if (setup_.mode == Mode::OneTrack || (setup_.versus && d.track >= d.songs)) d.outroBar = endBar;
         else d.changeBar = endBar;
     }
     if (role_ == NetRole::Host && netLog_.bossCount < NetLog::kBoss) {

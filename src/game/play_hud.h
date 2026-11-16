@@ -102,6 +102,8 @@ struct HudState {
     u8 rank[4] = {};             // seats, the highest score first
     u8 rankCount = 0;
     u8 me = 0;                   // this device's seat
+    bool versus = false;         // M8 versus: the score is this player's own; the ranking carries the crown and the underdog
+    u8 crown = 0xFF, underdog = 0xFF;
     // M5 (screens.md "Boss hint"): the boss's rule in plain words, under its name; 0..1.
     const char* bossHint = nullptr;
     float bossHintLevel = 0.0f;
