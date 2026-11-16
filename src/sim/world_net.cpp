@@ -58,7 +58,11 @@ i32 World::firstAlive() const {
     return -1;
 }
 
-u32 World::aliveCap() const { return kDirectorAliveCap + (coop() ? kCoopAliveCapPerPlayer * (presentCount() - 1) : 0u); }
+u32 World::aliveCap() const {
+    // (M8 TRACERS, tracers.md rule 13: never above crowd.max on the Stage, whatever the players)
+    if (setup_.mode == Mode::Tracers && species_) return static_cast<u32>(species_->modes.tracers.crowdMax);
+    return kDirectorAliveCap + (coop() ? kCoopAliveCapPerPlayer * (presentCount() - 1) : 0u);
+}
 
 float World::coopBudgetScale() const {
     return coop() ? 1.0f + kCoopBudgetPerPlayer * static_cast<float>(presentCount() - 1) : 1.0f;

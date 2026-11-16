@@ -130,6 +130,42 @@ void Play::modesEvent(const Event& e) {
             kitChirps_ = 0;
             bossFromS_ = bossSecs_ = -1.0f;
             break;
+        // M8 TRACERS (tracers.md "Sound"; sound.md "TRACERS"): a lock is a glass tick on the chord's root at once (a fizzle one
+        // woodblock); the pop is the ring's chord on its eighth line, larger by the bonus (x 5 a tom on the root, x 8 at 1.2 with
+        // the sub drop); a full house is a tom roll over the chase into the Drop's impact, the gong and the stab.
+        case EventType::RingLock:
+            if (!bandDrives_ || !band_) break;
+            if (e.c) {
+                if (e.a == seat_) band_->playRecipe(audio::Recipe::Woodblock, -1, 0.7f);
+            } else {
+                band_->playRecipe(audio::Recipe::Glass, -1, e.a == seat_ ? 0.9f : 0.5f);
+                const double at = e.tick + (coop() ? netBandOffset_ : clock_.offset());
+                const u32 bonus = w.species().modes.tracers.bonusFor(e.b);
+                const float gain = bonus >= 8 ? 1.2f : (bonus >= 5 ? 1.0f : (bonus >= 3 ? 0.85f : (bonus >= 2 ? 0.7f : 0.55f)));
+                band_->playRecipe(audio::Recipe::Stab, -1, e.a == seat_ ? gain : 0.6f * gain, 0.0f, at, bonus >= 5 ? 1.5f : 1.0f);
+                if (bonus >= 5) band_->playRecipe(audio::Recipe::Tom, -1, 0.8f, 0.0f, at);
+                if (bonus >= 8) band_->playRecipe(audio::Recipe::SubDrop, -1, 0.9f, 0.0f, at);
+            }
+            break;
+        case EventType::House:
+            if (!bandDrives_ || !band_) break;
+            if (e.b == 0) {
+                const double pop = e.tick + 2.0 * kTicksPerBeat + (coop() ? netBandOffset_ : clock_.offset());
+                band_->playRecipe(audio::Recipe::TomRoll, -1, 0.9f, 0.0f, pop, 2.0f);
+                band_->playRecipe(audio::Recipe::Impact, -1, 0.9f, 0.0f, pop);
+                band_->playRecipe(audio::Recipe::Gong, -1, 0.7f, 0.0f, pop);
+                band_->playRecipe(audio::Recipe::Stab, -1, 1.1f, 0.0f, pop, 2.0f);
+                pulse(2);
+            }
+            break;
+        case EventType::FloorCount:
+            // The count: the "upgrade taken" chord as the sweep reaches the far wall (the chirps a column are the engine's part to
+            // come: pending_sounds.cpp).
+            if (bandDrives_ && band_ && e.a == seat_) band_->sfxAt(audio::Sfx::Upgrade, e.tick + 2.0 * kTicksPerBeat + (coop() ? netBandOffset_ : clock_.offset()));
+            break;
+        case EventType::GelTake:
+            if (bandDrives_ && band_ && e.a == seat_) band_->playSfx(audio::Sfx::Upgrade, 0.8f);
+            break;
         default: break;
     }
 }
@@ -387,12 +423,13 @@ void Play::screenPodium(Ui& ui) {
         ui.text({cx + 420.0f * s, y}, 22.0f * s, pc, 1.4f * in, right, 1.0f);
     }
     const bool host = session_ && session_->host();
-    if (ui.pill(43, {cx, 968.0f * s}, {600.0f * s, 130.0f * s}, "REMATCH", 52.0f * s, true, host && in >= 1.0f) || (keyPrimary_ && host)) {
+    // (the device check, 2026-11-16: the pill 120 tall at 950, so WAITING FOR HOST keeps the 24 px rule under it)
+    if (ui.pill(43, {cx, 950.0f * s}, {600.0f * s, 120.0f * s}, "REMATCH", 52.0f * s, true, host && in >= 1.0f) || (keyPrimary_ && host)) {
         session_->requestRetry();
         if (band_) band_->playSfx(audio::Sfx::UiConfirm);
     }
-    if (!host) ui.text({cx, 1060.0f * s}, 14.0f * s, white, 0.8f, "WAITING FOR HOST");
-    if ((ui.pill(44, {282.0f * s, 968.0f * s}, {300.0f * s, 90.0f * s}, "LEAVE", 28.0f * s, false, true, trans_ == Trans::Home) || keyBack_) &&
+    if (!host) ui.text({cx, 1052.0f * s}, 14.0f * s, white, 0.8f, "WAITING FOR HOST", 0.5f);
+    if ((ui.pill(44, {282.0f * s, 950.0f * s}, {300.0f * s, 90.0f * s}, "LEAVE", 28.0f * s, false, true, trans_ == Trans::Home) || keyBack_) &&
         trans_ == Trans::None)
         homeTap();
     keyPrimary_ = keyBack_ = false;

@@ -1561,6 +1561,97 @@ int runModeBlast(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Policy 
     return 0;
 }
 
+// M8 part 4 (design/modes/tracers.md "What to check"): TRACERS on each Track: the ring-flier fills a house on every Track; the
+// child-like bot (half a second late, no Dash) is knocked out at most twice a run on Mirrorball (until the bonus Tracks are in:
+// on Reef, whose crowd Mirrorball borrows).
+int runModeTracers(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Policy policy, u32 onlyTrack, bool trace) {
+    auto* world = new (std::nothrow) World;
+    if (!world) return 2;
+    const bool child = policy == Bot::Policy::Child || policy == Bot::Policy::Novice;
+    const char* policyName = child ? "child-like" : "ring-flier";
+    std::printf("[mode] TRACERS, the %s bot, %u seeds a Track\n", policyName, seeds);
+    std::printf("[mode] track  ended  minutes  housed  houses(mean,min)  floor%%  rings/min  fizzles  best_ring  x5+  knockouts(mean,max)  score(mean)  enemies_max  overflow\n");
+    u32 worstHouses = 1000, worstKnocks = 0;
+    for (u32 track = 1; track <= kMaxSongs; ++track) {
+        if (onlyTrack && track != onlyTrack) continue;
+        u32 ended = 0, minHouses = 1000, koMax = 0, bestRing = 0, overflow = 0, enemiesMax = 0, housed = 0;
+        u32 hitsBy[kFamilyCount + 1] = {};  // (the last: anything else)
+        double houses = 0.0, floorShare = 0.0, rings = 0.0, fizzles = 0.0, big = 0.0, ko = 0.0, score = 0.0, minutes = 0.0;
+        for (u32 s = 0; s < seeds; ++s) {
+            world->init(&species);
+            SimRunner runner;
+            runner.autoRetry = false;
+            RunSetup su;
+            su.mode = Mode::Tracers;
+            su.track = static_cast<u8>(track);
+            runner.start(world, seed0 + s, Spawner::Mode::Slice, policy, 120.0f, false, su);
+            applyLevers(*world);
+            World& w = *world;
+            const auto drops = [&]() { const auto& c = w.counters(); return c.enemiesDropped + c.bulletsDropped + c.shotsDropped + c.shardsDropped + c.eventsDropped; };
+            const u32 over0 = drops();
+            u32 knocks = 0, t = 0, ringN = 0, fizzN = 0, bigN = 0;
+            float lit = 0.0f;
+            for (; t < 8u * 3600u; ++t) {
+                runner.step();
+                for (u32 k = 0; k < w.eventCount(); ++k) {
+                    const Event& ev = w.events()[k];
+                    if (ev.type == EventType::Knock) ++knocks;
+                    if ((ev.type == EventType::Hit || ev.type == EventType::Knock) && ev.a == 0) {
+                        const u16 cause = w.player(0).lastHitCause;
+                        ++hitsBy[cause < SpeciesTable::kCount ? static_cast<u32>(species.get(cause).family) : kFamilyCount];
+                    }
+                    if (ev.type == EventType::RingLock) {
+                        if (ev.c) ++fizzN;
+                        else ++ringN;
+                        if (trace)
+                            std::printf("[trace] t %6.2f s bar %3u  %s  tiles %3.0f  caught %3u  radius %4.0f  lit %3u  level %u  life %.1f beats\n", t / 60.0,
+                                        w.phrase().bar, ev.c ? "fizzle" : "ring  ", static_cast<double>(ev.f), ev.b, static_cast<double>(ev.x2),
+                                        w.tracerFloor().lit, w.player(0).level, w.tracerLifeTicks(0) / kTicksPerBeat);
+                    }
+                    if (trace && ev.type == EventType::House) std::printf("[trace] t %6.2f s HOUSE %u stage %u\n", t / 60.0, ev.a, ev.b);
+                    if (trace && ev.type == EventType::Knock) std::printf("[trace] t %6.2f s KNOCKED OUT\n", t / 60.0);
+                    if (ev.type == EventType::RingPop && ev.c >= 5) ++bigN;
+                }
+                if (w.enemies().count > enemiesMax) enemiesMax = w.enemies().count;
+                if (!w.runEnded()) lit = static_cast<float>(w.tracerFloor().lit);
+                if (w.runEnded()) {
+                    ++ended;
+                    break;
+                }
+            }
+            overflow += drops() - over0;
+            const u32 h = w.tracerFloor().houses;
+            houses += h;
+            if (h) ++housed;
+            if (trace) std::printf("[trace] seed %llu: %u houses, the floor at %u, %u knock-outs\n", static_cast<unsigned long long>(seed0 + s), h, w.tracerFloor().lit, knocks);
+            if (h < minHouses) minHouses = h;
+            floorShare += lit / static_cast<float>(TracerFloor::kTiles);
+            const double mins = static_cast<double>(t) / 3600.0;
+            minutes += mins;
+            rings += mins > 0.0 ? ringN / mins : 0.0;
+            fizzles += fizzN;
+            big += bigN;
+            ko += knocks;
+            if (knocks > koMax) koMax = knocks;
+            if (w.bestRing(0) > bestRing) bestRing = w.bestRing(0);
+            score += static_cast<double>(w.player(0).score);
+        }
+        std::printf("[mode] %5u  %3u/%-3u  %7.2f  %3u/%-3u  %6.2f,%-3u  %6.1f  %9.1f  %7.1f  %9u  %4.1f  %8.2f,%-4u  %11.0f  %11u  %u\n", track, ended, seeds, minutes / seeds, housed,
+                    seeds, houses / seeds, minHouses, 100.0 * floorShare / seeds, rings / seeds, fizzles / seeds, bestRing, big / seeds, ko / seeds, koMax, score / seeds,
+                    enemiesMax, overflow);
+        std::printf("[mode]        hits a run by family:");
+        for (u32 k = 0; k <= kFamilyCount; ++k)
+            if (hitsBy[k]) std::printf(" %s %.2f", k < kFamilyCount ? familyName(static_cast<Family>(k)) : "other", static_cast<double>(hitsBy[k]) / seeds);
+        std::printf("\n");
+        if (minHouses < worstHouses) worstHouses = minHouses;
+        if (koMax > worstKnocks) worstKnocks = koMax;
+    }
+    std::printf("RFSIM {\"test\":\"mode_tracers\",\"policy\":\"%s\",\"seeds\":%u,\"worst_houses\":%u,\"worst_knockouts\":%u}\n", policyName, seeds,
+                worstHouses, worstKnocks);
+    delete world;
+    return 0;
+}
+
 // M8 part 1 (design/modes/README.md 5): the kit's numbers measured: the upgrades (Trios taken) the bot holds as each Track's first
 // bar begins and as its boss enters, the median over the seeds of THE SET's runs (one run each, to its first death or 60
 // minutes). The numbers modes.json's kit.atTrackStart and kit.atBoss take.
@@ -1630,6 +1721,7 @@ int simHeadlessMain(int argc, char** argv) {
     float kitScale = -1.0f;                         // --kit-scale F (M8: the kit's numbers x F, tuning)
     bool modeHeadliners = false;                    // --sim mode --headliners (M8 part 2)
     bool modeBlast = false;                         // --sim mode --blast (M8 part 3)
+    bool modeTracers = false;                       // --sim mode --tracers (M8 part 4)
     const char* isoOnly = nullptr;
     for (int i = 3; i < argc; ++i) {
         const char* a = argv[i];
@@ -1644,6 +1736,7 @@ int simHeadlessMain(int argc, char** argv) {
             policy = std::strcmp(next, "reckless") == 0 ? Bot::Policy::Reckless
                      : std::strcmp(next, "novice") == 0 ? Bot::Policy::Novice
                      : std::strcmp(next, "assist") == 0 ? Bot::Policy::Assist
+                     : std::strcmp(next, "child") == 0  ? Bot::Policy::Child
                                                         : Bot::Policy::Play;
             policyGiven = true;
             ++i;
@@ -1705,6 +1798,8 @@ int simHeadlessMain(int argc, char** argv) {
             modeHeadliners = true;
         } else if (std::strcmp(a, "--blast") == 0) {
             modeBlast = true;
+        } else if (std::strcmp(a, "--tracers") == 0) {
+            modeTracers = true;
         } else if (std::strcmp(a, "--kit-scale") == 0 && next) {
             kitScale = static_cast<float>(std::atof(next));
             ++i;
@@ -1749,6 +1844,7 @@ int simHeadlessMain(int argc, char** argv) {
         // M8 part 1: ONE TRACK, each Track over seeds (the assist bot unless --policy says otherwise).
         if (modeHeadliners) code = runModeHeadliners(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist);
         else if (modeBlast) code = runModeBlast(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist, modeTrack);
+        else if (modeTracers) code = runModeTracers(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Play, modeTrack, trace);
         else code = runModeOne(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist, modeTrack);
     } else if (std::strcmp(mode, "kit") == 0) {
         // M8 part 1: the kit's numbers (the assist bot's upgrades by Track in THE SET).

@@ -208,6 +208,11 @@ bool PlayView::setTier(const TierSettings& tier) {
     tier_ = tier;
     // The window covers the widest view (zoom 0.75 on a 20:9 screen) plus margins.
     if (newLattice && !lattice_.init(tier.gridSpacingWu, 1600.0f / 0.75f, 720.0f / 0.75f)) return false;
+    // M8 (README.md 4): the Stage's, every tier alike: 20 wu, so every other line is a tile's side (the Stage and its margin).
+    if (!stageLatticeReady_) {
+        if (!stageLattice_.init(20.0f, 1900.0f, 1000.0f)) return false;
+        stageLatticeReady_ = true;
+    }
     return true;
 }
 
@@ -228,6 +233,9 @@ void PlayView::resetEffects() {
     for (Flash& f : flashes_) f.t = -100.0f;    // 2026-11-14
     for (Debris& b : debris_) b.born = -100.0f;
     hzBurstT_ = -100.0f;
+    floorReady_ = false;  // M8 TRACERS: the floor, the words, the house and the count start afresh
+    houseT_ = houseDarkT_ = countT_ = -100.0f;
+    for (RingWords& r : ringWords_) r.t = -100.0f;
     for (u32 k = 0; k < sim::World::kArenaBodies; ++k) {
         vaultQuarters_[k] = 0;
         vaultAlive_[k] = false;
@@ -472,6 +480,7 @@ void PlayView::onEvents(const World& w, double tickEnd) {
     }
     const u32 me = w.viewPlayer();
     if (!buildReady_) buildColours(palettes_->player[me]);
+    lat_ = w.onStage() ? &stageLattice_ : &lattice_;  // (M8: the Stage's lattice takes its impulses)
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         const float t = static_cast<float>(tickEnd - e.age);
@@ -706,6 +715,12 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 break;
             }
             case EventType::Restart: resetEffects(); break;
+            case EventType::RingLock:
+            case EventType::RingPop:
+            case EventType::House:
+            case EventType::TilesLost:
+            case EventType::FloorCount:
+            case EventType::GelTake: tracersEvent(w, e, t); break;  // M8 TRACERS (play_view_modes.cpp)
             default: eventB(w, e, t); break;
         }
     }
@@ -913,7 +928,19 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             if (l > kBossLeanMaxWu) leanTarget = leanTarget * (kBossLeanMaxWu / l);
         }
     }
-    {
+    const bool stage = w.onStage();
+    lat_ = stage ? &stageLattice_ : &lattice_;
+    if (stage) {
+        // M8 (design/modes/README.md 4): the Stage's camera, fixed on its centre at the largest zoom at which the Stage and
+        // fitMarginWu round it fit the screen; no look-ahead, no lean, no breathing (the kick's punch and the shake stay). (On a
+        // 16:10 screen that zoom is under the page's 0.75: the whole room wins; PROGRESS, M8 part 4.)
+        const ModesData::Stage& st = w.species().modes.stage;
+        const float zx = W / (kRefPxPerWu * refPx_ * (st.widthWu + 2.0f * st.fitMarginWu));
+        const float zy = H / (kRefPxPerWu * refPx_ * (st.heightWu + 2.0f * st.fitMarginWu));
+        zoomBase_ = std::fmin(zx, zy);
+        lookAhead_ = Vec2{};
+        bossLean_ = Vec2{};
+    } else {
         // The lead follows the course at cruising speed at most (a Dash does not swing the camera).
         const float sp = length(in.shipVel);
         Vec2 target = (sp > kPlayerSpeed ? in.shipVel * (kPlayerSpeed / sp) : in.shipVel) * kLookAheadS;
@@ -927,22 +954,24 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         zoomBase_ = clampf(zoomBase_, fightZoom > 0.0f ? std::fmin(look_->zoomMin, fightZoom) : std::fmin(look_->zoomMin, zoomBase_), look_->zoomMax);
     }
     sectionLook(in);
+    if (stage) sectionZoom_ = 1.0f;
     zoom_ = zoomBase_ * sectionZoom_ * (1.0f + look_->zoomKick * beatAmt * kick_);
     pxPerWu_ = kRefPxPerWu * refPx_ * zoom_;
     centre_ = {0.5f * W, 0.5f * H};
     viewW_ = W / pxPerWu_;
     viewH_ = H / pxPerWu_;
-    cam_ = in.camFixed ? in.camPos : S + lookAhead_ + bossLean_;
+    cam_ = stage ? Vec2{} : (in.camFixed ? in.camPos : S + lookAhead_ + bossLean_);
     // The view may look up to 240 wu past a wall, no further.
     const float mx = kArenaHalfW + 240.0f - 0.5f * viewW_, my = kArenaHalfH + 240.0f - 0.5f * viewH_;
-    if (mx > 0.0f) cam_.x = clampf(cam_.x, -mx, mx);
-    if (my > 0.0f) cam_.y = clampf(cam_.y, -my, my);
+    if (!stage && mx > 0.0f) cam_.x = clampf(cam_.x, -mx, mx);
+    if (!stage && my > 0.0f) cam_.y = clampf(cam_.y, -my, my);
     shakeAmp_ *= std::exp(-in.dt / 0.15f);
     bigShake_ *= std::exp(-in.dt / kBigShakeTauS);
     const float shakePx = (clampf(shakeAmp_, 0.0f, look_->shakeMaxRefPx) + clampf(bigShake_, 0.0f, kBigShakeMaxRefPx)) * refPx_;
     shake_ = shakePx > 0.05f ? dir(rng_.range(0.0f, kTau)) * shakePx : Vec2{};
-    lattice_.recentre(cam_);
-    lattice_.step(in.dt * w.timeScale());
+    lat_->recentre(cam_);
+    lat_->step(in.dt * w.timeScale());
+    if (stage) tracersFloor(w, t);  // M8: the floor's light this frame
     stats_.zoom = zoom_;
 
     // ---- Light budget (look.md §3) from the previous frame's load.
@@ -1103,8 +1132,9 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     lv.player = S;
     lv.hatShimmer = look_->latticeHatShimmer * beatAmt * hat_;
     lv.bounded = true;
-    lv.boundsMin = Vec2{-kArenaHalfW, -kArenaHalfH};
-    lv.boundsMax = Vec2{kArenaHalfW, kArenaHalfH};
+    lv.boundsMin = Vec2{-w.halfW(), -w.halfH()};  // (M8: the Stage's walls on the Stage)
+    lv.boundsMax = Vec2{w.halfW(), w.halfH()};
+    if (stage) stageLatticeView(lv, w);
     for (double kt : {lastKickT_, prevKickT_}) {
         const float age = t - static_cast<float>(kt);
         if (age < 0.0f || age > 2.5f || lv.rippleCount >= 4) continue;
@@ -1188,9 +1218,9 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     {
         // (2026-11-14) Singularity's well, Black Hole's singularity and Event Horizon's death bar pull the lattice (from the next step).
         LatticeWell wells[4];
-        lattice_.setWells(wells, feedbackWells(in, wells, 4));
+        lat_->setWells(wells, feedbackWells(in, wells, 4));
     }
-    if (shown(kMuteGrid)) lattice_.draw(d.scene, lv, ls);
+    if (shown(kMuteGrid)) lat_->draw(d.scene, lv, ls);
 
     // ---- Arena walls (GAME_DESIGN 9): glowing lines in the accent; the snare flashes them, the bass
     // breathes their width (GAME_DESIGN 11.1).
@@ -1198,7 +1228,8 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
         const float i = kWallIntensity * (1.0f + kWallSnare * beatAmt * snare_);
         const float hw = 0.5f * kWallWidth * (1.0f + kWallBass * beatAmt * bass_) * refPx_;
         const Vec3 c = accent * i;
-        const Vec2 corners[4] = {{-kArenaHalfW, -kArenaHalfH}, {kArenaHalfW, -kArenaHalfH}, {kArenaHalfW, kArenaHalfH}, {-kArenaHalfW, kArenaHalfH}};
+        const float hwx = w.halfW(), hwy = w.halfH();  // (M8: the Stage's walls on the Stage)
+        const Vec2 corners[4] = {{-hwx, -hwy}, {hwx, -hwy}, {hwx, hwy}, {-hwx, hwy}};
         for (u32 k = 0; k < 4; ++k) {
             Vec2 p0 = corners[k], p1 = corners[(k + 1) % 4];
             // Clip to the view (plus a margin) so a 9,600 wu line stays a short capsule.
@@ -1222,6 +1253,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     }
 
     drawArena(d, in);  // M5 part 5: the structures and the event, under the bodies
+    if (stage) drawStageFloor(d, in);  // M8: the rig and the floor's edges, under the bodies
 
     // ---- Enemies.
     const Enemies& e = w.enemies();
@@ -1266,13 +1298,20 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             continue;
         }
         Vec3 hue = palette_->hue[s.hue], partner = palette_->partner[s.hue];
+        const bool caught = stage && (e.flags[i] & kFlagCaught) && caughtBy_[i] < kMaxPlayers;  // (M8 TRACERS, tracers.md "A lock")
+        if (caught) {
+            hue = palettes_->player[caughtBy_[i]];
+            partner = palettes_->playerLight[caughtBy_[i]];
+            d.sparkles.glow(toScene(pos), 3.5f * refPx_, W1 * 1.4f);
+        }
         if (w.worldStretch() < 1.0f) {
             // look.md 5 (Time Stretch on the world): enemy hulls lose a third of their chroma; the room slows, the player does not.
             const auto grey = [](Vec3 c) { const float l = 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z; return c + (Vec3{l, l, l} - c) * (1.0f / 3.0f); };
             hue = grey(hue);
             partner = grey(partner);
         }
-        float intensity = (look_->lines.enemyHullTier1.intensity + le.hullIntensityPerTier * (static_cast<float>(s.tier) - 1.0f)) * crowd * enemyLight_;
+        float intensity = (look_->lines.enemyHullTier1.intensity + le.hullIntensityPerTier * (static_cast<float>(s.tier) - 1.0f)) * crowd * enemyLight_ *
+                          (caught ? 0.8f : 1.0f);
         float halfWidth = 0.5f * look_->lines.enemyHullTier1.width;
         float eliteLevel = 1.0f;
         if (elite) {
@@ -1392,6 +1431,8 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             }
         }
     }
+
+    if (stage) drawStageLines(d, in);  // M8: the tracers, the closing hint, the rings (over the bodies, under the ships)
 
     // ---- The player: two-tone ship, halo (one arc per Shield cell), trail, pool, priority layer.
     const PlayerState& me = w.player(w.viewPlayer());
@@ -1781,7 +1822,7 @@ void PlayView::dropRing(Vec2 at, double t) {
 }
 
 void PlayView::push(u8 kind, Vec2 at, float amp, float radius, float t) {
-    lattice_.impulse(at, amp, radius);
+    lat_->impulse(at, amp, radius);
     ImpulseNote& n = impulses_[impulseHead_];
     impulseHead_ = (impulseHead_ + 1) % kImpulseNotes;
     n.t = t;
@@ -1807,7 +1848,7 @@ void PlayView::latticeTrace(char* out, u32 capacity) const {
     for (u32 k = 0; k < kImpKinds && o < capacity; ++k)
         o += static_cast<u32>(std::snprintf(out + o, capacity - o, " %s %u (sum %.0f)%s", kNames[k], count[k], static_cast<double>(sum[k]),
                                             k + 1 < kImpKinds ? "," : ""));
-    const Lattice::HeatStats& h = lattice_.heatStats();
+    const Lattice::HeatStats& h = lat_->heatStats();
     const float n = h.nodes ? static_cast<float>(h.nodes) : 1.0f;
     if (o < capacity)
         o += static_cast<u32>(std::snprintf(out + o, capacity - o,

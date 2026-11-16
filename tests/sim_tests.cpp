@@ -4378,6 +4378,187 @@ void testOneTrack() {
     delete b;
 }
 
+
+// ---------------------------------------------------------------------------------------------- M8 TRACERS (part 4)
+
+// A TRACERS world on the Stage with nothing spawning and one ship, flown along `pts` one point a tick (each 16 wu or more apart,
+// so each lays one point of the tracer). Returns the RingLock events (c = 1: fizzles) through `rings` and `fizzles`.
+World* tracersWorld() {
+    auto* w = new (std::nothrow) World;
+    w->init(g_species);
+    w->spawner().mode = Spawner::Mode::Off;
+    RunSetup su;
+    su.mode = Mode::Tracers;
+    su.track = 3;
+    w->resetRun(7, 0.0, 1, 0xF, su);
+    return w;
+}
+
+void flyTracer(World& w, double& music, const Vec2* pts, u32 n, u32& rings, u32& fizzles) {
+    for (u32 k = 0; k < n; ++k) {
+        TickInput in;
+        in.music0 = music;
+        in.music1 = music + kTicksPerSimTick;
+        in.bpm = kBpm;
+        in.players[0].present = true;
+        in.players[0].pos = pts[k];
+        const Vec2 d = k ? pts[k] - pts[k - 1] : Vec2{16.0f, 0.0f};
+        in.players[0].vel = d * 60.0f;  // (16 wu a tick: 960 wu/s, above the line's 120)
+        in.players[0].aim = Vec2{1.0f, 0.0f};
+        w.tick(in);
+        music = in.music1;
+        for (u32 i = 0; i < w.eventCount(); ++i) {
+            const Event& e = w.events()[i];
+            if (e.type != EventType::RingLock) continue;
+            if (e.c) ++fizzles;
+            else ++rings;
+        }
+    }
+}
+
+// The points of a path through `way` (each leg a whole number of 16 wu steps), from its first waypoint.
+u32 pathPoints(const Vec2* way, u32 legs, Vec2* out, u32 cap) {
+    u32 n = 0;
+    out[n++] = way[0];
+    for (u32 l = 0; l < legs; ++l) {
+        const Vec2 a = way[l], b = way[l + 1];
+        const u32 steps = static_cast<u32>(std::lround(length(b - a) / 16.0f));
+        for (u32 s = 1; s <= steps && n < cap; ++s) out[n++] = a + (b - a) * (static_cast<float>(s) / static_cast<float>(steps));
+    }
+    return n;
+}
+
+void testTracers() {
+    g_test = "tracers";
+    CHECK(g_species->modes.tracers.boostCount == 9 && g_species->modes.tracers.maxVertices == 48 && g_species->modes.stage.tilesX == 43);
+    static Vec2 pts[600];
+    // A square flown each way round lights the same tiles (both crossing at the corner (-90, -90); no thinning: 45 corners).
+    u8 floorA[TracerFloor::kTiles];
+    {
+        World* w = tracersWorld();
+        double music = 0.0;
+        u32 rings = 0, fizzles = 0;
+        const Vec2 way[5] = {{-90.0f, -138.0f}, {-90.0f, 90.0f}, {90.0f, 90.0f}, {90.0f, -90.0f}, {-138.0f, -90.0f}};
+        const u32 n = pathPoints(way, 4, pts, 600);
+        flyTracer(*w, music, pts, n, rings, fizzles);
+        CHECK_MSG(rings == 1 && fizzles == 0, "rings %u fizzles %u", rings, fizzles);
+        std::memcpy(floorA, w->tracerFloor().owner, sizeof floorA);
+        CHECK_MSG(w->tracerFloor().lit == 25, "lit %u", w->tracerFloor().lit);
+        delete w;
+    }
+    {
+        World* w = tracersWorld();
+        double music = 0.0;
+        u32 rings = 0, fizzles = 0;
+        const Vec2 way[5] = {{-138.0f, -90.0f}, {90.0f, -90.0f}, {90.0f, 90.0f}, {-90.0f, 90.0f}, {-90.0f, -138.0f}};
+        const u32 n = pathPoints(way, 4, pts, 600);
+        flyTracer(*w, music, pts, n, rings, fizzles);
+        CHECK_MSG(rings == 1 && fizzles == 0, "rings %u fizzles %u", rings, fizzles);
+        CHECK(std::memcmp(floorA, w->tracerFloor().owner, sizeof floorA) == 0);
+        delete w;
+    }
+    // A figure of eight from its right end closes its second (left) loop only: no tile right of the crossing is lit.
+    {
+        World* w = tracersWorld();
+        double music = 0.0;
+        u32 rings = 0, fizzles = 0, n = 0;
+        Vec2 last{1e9f, 1e9f};
+        for (float t = 0.5f * 3.14159265f; t <= 2.0f * 3.14159265f + 0.3f && n < 600; t += 0.0005f) {
+            const Vec2 q{320.0f * std::sin(t), 320.0f * std::sin(t) * std::cos(t)};
+            if (lengthSq(q - last) < 16.5f * 16.5f) continue;
+            pts[n++] = last = q;
+        }
+        flyTracer(*w, music, pts, n, rings, fizzles);
+        u32 right = 0, left = 0;
+        for (u32 t = 0; t < TracerFloor::kTiles; ++t) {
+            if (w->tracerFloor().owner[t] == TracerFloor::kDark) continue;
+            if (w->tileCentre(t).x > 0.0f) ++right;
+            else ++left;
+        }
+        CHECK_MSG(rings == 1 && right == 0 && left >= 20, "rings %u right %u left %u", rings, right, left);
+        delete w;
+    }
+    // The snap closes at 36 wu and not at 37 (an open square, its last point straight above its first).
+    for (u32 pass = 0; pass < 2; ++pass) {
+        World* w = tracersWorld();
+        double music = 0.0;
+        u32 rings = 0, fizzles = 0;
+        const float y0 = pass == 0 ? -4.0f : -5.0f;
+        const Vec2 way[6] = {{0.0f, y0}, {304.0f, y0}, {304.0f, 304.0f}, {0.0f, 304.0f}, {0.0f, 32.0f}};
+        u32 n = pathPoints(way, 3, pts, 600);  // (the first three legs from y0)
+        // The fourth leg down x = 0 in 16 wu steps from 304 to 32.
+        for (float y = 288.0f; y >= 32.0f - 0.5f && n < 600; y -= 16.0f) pts[n++] = Vec2{0.0f, y};
+        flyTracer(*w, music, pts, n, rings, fizzles);
+        if (pass == 0) CHECK_MSG(rings == 1, "the snap at 36 wu: rings %u", rings);
+        else CHECK_MSG(rings == 0 && fizzles == 0, "no snap at 37 wu: rings %u fizzles %u", rings, fizzles);
+        delete w;
+    }
+    // A ring of three tiles fizzles (one dry tick), lights nothing and leaves the line flying on.
+    {
+        World* w = tracersWorld();
+        double music = 0.0;
+        u32 rings = 0, fizzles = 0;
+        const Vec2 way[5] = {{-56.0f, -47.0f}, {-56.0f, 17.0f}, {56.0f, 17.0f}, {56.0f, -15.0f}, {-72.0f, -15.0f}};
+        const u32 n = pathPoints(way, 4, pts, 600);
+        flyTracer(*w, music, pts, n, rings, fizzles);
+        CHECK_MSG(rings == 0 && fizzles == 1 && w->tracerFloor().lit == 0, "rings %u fizzles %u lit %u", rings, fizzles, w->tracerFloor().lit);
+        CHECK(w->tracer(0).count == n);
+        delete w;
+    }
+    // A big circle (about 150 points, thinned to 48 corners) lights within one tile's width of the full line's tiles.
+    {
+        World* w = tracersWorld();
+        double music = 0.0;
+        u32 rings = 0, fizzles = 0, n = 0;
+        const float r = 380.0f;
+        for (u32 k = 0; k <= 152 && n < 600; ++k) {
+            const float a = -1.5707963f + 6.2831853f * static_cast<float>(k) / 150.0f;
+            pts[n++] = Vec2{r * std::cos(a), r * std::sin(a) * 0.95f};
+        }
+        flyTracer(*w, music, pts, n, rings, fizzles);
+        u32 off = 0, lit = 0;
+        for (u32 t = 0; t < TracerFloor::kTiles; ++t) {
+            const Vec2 c = w->tileCentre(t);
+            const float e = std::sqrt(c.x * c.x + (c.y / 0.95f) * (c.y / 0.95f));
+            const bool in = e < r, on = w->tracerFloor().owner[t] != TracerFloor::kDark;
+            lit += on ? 1u : 0u;
+            if (in != on && std::fabs(e - r) > 40.0f) ++off;
+        }
+        CHECK_MSG(rings == 1 && w->ring(0).n <= 48 && off == 0 && lit > 250, "rings %u corners %u off %u lit %u", rings, w->ring(0).n, off, lit);
+        delete w;
+    }
+    // Two worlds, the same rings in the same order: the same floor; no gun, no enemy bullet, the run ends on its 48th bar.
+    {
+        RunSetup su;
+        su.mode = Mode::Tracers;
+        su.track = 3;
+        World* a = new (std::nothrow) World;
+        World* b = new (std::nothrow) World;
+        a->init(g_species);
+        b->init(g_species);
+        SimRunner ra, rb;
+        ra.autoRetry = rb.autoRetry = false;
+        ra.start(a, 5, Spawner::Mode::Slice, Bot::Policy::Play, kBpm, true, su);
+        rb.start(b, 5, Spawner::Mode::Slice, Bot::Policy::Play, kBpm, true, su);
+        CHECK(a->onStage() && a->halfW() == 860.0f && a->halfH() == 420.0f);
+        bool same = true, noShots = true, noBullets = true, ended = false;
+        u32 rings = 0;
+        for (u32 t = 0; t < 4u * 3600u && !ended; ++t) {
+            ra.step();
+            rb.step();
+            for (u32 k = 0; k < a->eventCount(); ++k) rings += a->events()[k].type == EventType::RingLock && !a->events()[k].c ? 1u : 0u;
+            noShots = noShots && a->shots().count == 0;
+            noBullets = noBullets && a->bullets().count == 0;
+            if (t % 600 == 599) same = same && a->hash() == b->hash() && std::memcmp(a->tracerFloor().owner, b->tracerFloor().owner, TracerFloor::kTiles) == 0;
+            ended = a->runEnded();
+        }
+        CHECK_MSG(same && noShots && noBullets && ended && rings >= 6, "same %d shots %d bullets %d ended %d rings %u", same, noShots, noBullets, ended, rings);
+        CHECK(a->phrase().bar == g_species->modes.forms.timed48.bars() || a->phrase().ended);
+        delete a;
+        delete b;
+    }
+}
+
 int main() {
     g_species = new (std::nothrow) SpeciesTable;
     if (!g_species || !g_species->load()) {
@@ -4427,6 +4608,7 @@ int main() {
     testFamiliesM5b();
     testModes();
     testOneTrack();
+    testTracers();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;
     return g_failures;

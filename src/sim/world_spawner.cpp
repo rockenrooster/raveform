@@ -90,8 +90,8 @@ Vec2 World::spawnAnchor(Vec2 player) {
         const float a = rng_.range(0.0f, kTau);
         const float rx = rng_.range(kSpawnNearWu, kSpawnFarWu);
         Vec2 p = player + Vec2{std::cos(a) * rx, std::sin(a) * rx * kSpawnSquash};
-        p.x = clampf(p.x, -kArenaHalfW + 60.0f, kArenaHalfW - 60.0f);
-        p.y = clampf(p.y, -kArenaHalfH + 60.0f, kArenaHalfH - 60.0f);
+        p.x = clampf(p.x, -halfW() + 60.0f, halfW() - 60.0f);
+        p.y = clampf(p.y, -halfH() + 60.0f, halfH() - 60.0f);
         best = p;
         const Vec2 d = p - player;
         if (lengthSq(d) >= kSpawnMinPlayerWu * kSpawnMinPlayerWu) break;
@@ -233,8 +233,10 @@ i32 World::pickSpecies(int kind) {
     const bool loop = inLoop(t, director_.songs);
     // M5 part 7 (GAME_DESIGN 6.6): no shooting species while the enemy bullets alive are above 70% of their pool.
     const bool poolFull = static_cast<float>(bullets_.count) > kBulletPoolShooters * static_cast<float>(Bullets::kCap);
+    const bool tracers = setup_.mode == Mode::Tracers;
     const auto debuted = [&](const SpeciesTable::RosterEntry& r) {
         if (!familyBuilt(species_->get(r.species).family)) return false;
+        if (tracers && !tracersBody(r.species)) return false;  // (M8 tracers.md rule 13: contact only)
         if (poolFull && species_->get(r.species).shoots()) return false;
         if (loop) return r.track <= director_.songs;
         return r.track < t || (r.track == t && r.cycle <= c);
@@ -317,7 +319,7 @@ void World::spawnCrowd(u16 speciesIndex, u32 count, double landTick, Vec2 c, u32
     // cornerOutsideWu outside its corners. Formations keep 260 wu from a ship and out of the Trio's ring.
     const SpeciesTable::Crowd& cr = species_->crowd;
     const float hw = kFrameHalfWWu, hh = kFrameHalfHWu;
-    const float limX = kArenaHalfW - 60.0f, limY = kArenaHalfH - 60.0f;
+    const float limX = halfW() - 60.0f, limY = halfH() - 60.0f;
     const auto inArena = [&](Vec2 p) { return Vec2{clampf(p.x, -limX, limX), clampf(p.y, -limY, limY)}; };
     const u32 first = enemies_.count;  // what this call adds is arriving: counted on its way in
     const float r = rng_.uniform();
@@ -390,7 +392,13 @@ void World::spawnCrowd(u16 speciesIndex, u32 count, double landTick, Vec2 c, u32
 
 u32 World::crowdCount(Vec2 c) const {
     // In and just around the frame (count.frameScale each way), and the crowd's fodder still on its way in
-    // (it lands outside the frame; counting it keeps the next bar from ordering it twice).
+    // (it lands outside the frame; counting it keeps the next bar from ordering it twice). M8: on the Stage, all of it (one room).
+    if (stage_) {
+        u32 n = 0;
+        for (u32 i = 0; i < enemies_.count; ++i)
+            if (!(enemies_.flags[i] & kFlagDead)) ++n;
+        return n;
+    }
     const SpeciesTable::Crowd& cr = species_->crowd;
     const float cx = kFrameHalfWWu * cr.countFrameScale, cy = kFrameHalfHWu * cr.countFrameScale;
     const float sx = kFrameHalfWWu * cr.strayFrameScale, sy = kFrameHalfHWu * cr.strayFrameScale;
@@ -429,6 +437,11 @@ void World::spendCrowd(double landTick, const Phrase& ph) {
         const MiniData& md = species_->minis;
         target = std::fmin(target / c.miniDrop * md.penCrowdScale, md.penCrowdMax);
     }
+    if (setup_.mode == Mode::Tracers) {
+        // M8 (tracers.md rule 13, rule 11): half the Track's crowd, 15% more a house, scaled by the players as the set's budget is,
+        // never above crowd.max on the Stage.
+        target = std::fmin(target * tracersCrowdScale() * coopBudgetScale(), species_->modes.tracers.crowdMax);
+    }
     crowdGoal_ = target;
     // Arrivals stop being on their way once they land (kCrowdArrivingBars after it) or reach a counted frame.
     {
@@ -444,8 +457,8 @@ void World::spendCrowd(double landTick, const Phrase& ph) {
     }
     const u32 killed = director_.crowdKills;
     director_.crowdKills = 0;
-    if (coop()) {
-        // M4: the target holds for every player's frame (GAME_DESIGN 8).
+    if (coop() && !stage_) {
+        // M4: the target holds for every player's frame (GAME_DESIGN 8). (M8: on the Stage every player's frame is the one room.)
         spendCrowdCoop(landTick, target, lost, killed);
         return;
     }
@@ -469,7 +482,7 @@ void World::spendCrowd(double landTick, const Phrase& ph) {
     if (gap < 1.0f) return;
     u32 want = static_cast<u32>(std::ceil(gap + director_.crowdDebt)) + lost;
     if (want < c.formationMin && gap >= static_cast<float>(c.formationMin)) want = c.formationMin;
-    const Vec2 centre = players_[needy].pos;
+    const Vec2 centre = stage_ ? Vec2{} : players_[needy].pos;  // (M8: on the Stage the crowd comes in at its walls)
     for (u32 formations = 0; formations < 8 && want; ++formations) {
         if (enemies_.count >= aliveCap()) return;
         const u32 room = aliveCap() - enemies_.count;
@@ -487,7 +500,9 @@ void World::spendCrowd(double landTick, const Phrase& ph) {
 
 void World::strayFodder() {
     // Fodder outside every player's frame grown by stray.frameScale for stray.bars bars dissolves without
-    // Shards (GAME_DESIGN 8, species.json firstSlice.crowd.stray); the crowd replaces it at the frame.
+    // Shards (GAME_DESIGN 8, species.json firstSlice.crowd.stray); the crowd replaces it at the frame. (M8: nothing strays on the
+    // Stage: the whole room is in view.)
+    if (stage_) return;
     const SpeciesTable::Crowd& c = species_->crowd;
     Enemies& e = enemies_;
     const float sx = kFrameHalfWWu * c.strayFrameScale, sy = kFrameHalfHWu * c.strayFrameScale;
@@ -524,6 +539,7 @@ void World::megaWave(double landTick) {
     const Phrase next = phraseAt(d, barOf(landTick + 1.0));
     const float base = baseBudget(*species_, next.track, next.cycle, d.songs);
     float wave = kMegaWaveBars * base * kDropScaleStart * d.assist * coopBudgetScale() * loopRamp(kLoopThreatRamp, next.track, d.songs);
+    if (setup_.mode == Mode::Tracers) wave *= species_->modes.tracers.threatScale * tracersCrowdScale() / species_->modes.tracers.crowdScale;
     for (u32 formations = 0; formations < 16 && wave > 0.0f; ++formations) {
         if (enemies_.count >= aliveCap()) return;
         const i32 sp = pickSpecies(2);  // threats (the crowd brings the Drop's fodder)
@@ -556,6 +572,7 @@ void World::spotlight(double landTick, const Phrase& next) {
     for (u32 k = 0; k < species_->rosterCount; ++k) {
         const SpeciesTable::RosterEntry& r = species_->roster[k];
         if (r.track != next.track || r.cycle != next.cycle) continue;
+        if (setup_.mode == Mode::Tracers && !tracersBody(r.species)) continue;  // (M8 tracers.md rule 13: contact only)
         const Species& s = species_->get(r.species);
         const Vec2 at = p0 + Vec2{side * kSpotlightWu, -60.0f * side};
         spawnFormation(r.species, spotlightCount(s.family, species_->family(s.family).groupMin), at, landTick);
@@ -617,6 +634,9 @@ void World::directorBar(double barTick, u32 bar) {
         const u32 inWave = phrase_.section == Section::Drop ? phrase_.sectionBar + 4u : phrase_.sectionBar;
         if (every && inWave % every == 0) d.boostDue = true;
     }
+    if (d.formCount && setup_.mode == Mode::Tracers && species_ && !phrase_.ended && bar > 0 && species_->modes.tracers.boostEveryBars &&
+        bar % species_->modes.tracers.boostEveryBars == 0)
+        d.boostDue = true;  // M8 TRACERS (rule 15): a Boost orb every six bars (the next kill drops it)
     if (d.actForm && phrase_.trackChange && phrase_.sectionBar == 0 && species_) {
         // M8 HEADLINERS (headliners.md rule 1): the top-up: whatever a player is short of the kit the next act's boss was tuned
         // against, landed over the Break's first two bars (the act's own stream).
@@ -741,7 +761,7 @@ void World::directorBar(double barTick, u32 bar) {
     // Play test 2 (GAME_DESIGN 6.1): Regen counts the bar; a banked Shard level opens its Trio on this bar line. Each device
     // its own players'.
     regenBar();
-    if (anyAlive && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios)) openLevelTrios(bar);
+    if (anyAlive && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios) && setup_.mode != Mode::Tracers) openLevelTrios(bar);  // (M8 TRACERS: no Trio; a level lengthens the tracer)
     // M5 part 5: the arena's structures and events (the host places and starts them; every device keeps them).
     if (anyAlive) arenaBar(ph, bar, barTick);
     // M4: a client follows the host's phrase; the host's director alone spawns.
@@ -761,6 +781,7 @@ void World::directorBar(double barTick, u32 bar) {
     const bool miniFight = boss_.active && !boss_.dying && isMiniBoss(boss_.kind);  // M5: fodder only while it lives
     d.budgetPerBar = ph.bossDrop || miniFight ? 0.0f
                                  : base * sectionScale(ph) * d.assist * coopBudgetScale() * kThreatBudgetScale * loopRamp(kLoopThreatRamp, ph.track, d.songs);
+    if (setup_.mode == Mode::Tracers) d.budgetPerBar *= species_->modes.tracers.threatScale * tracersCrowdScale() / species_->modes.tracers.crowdScale;  // (M8: half the hunters', 15% more a house)
     if (d.budgetPerBar <= 0.0f) return;
     d.bank = std::fmin(d.bank + d.budgetPerBar, d.budgetPerBar * kBankBars);
     eliteBar(ph, land);  // M5 part 5: an elite first, when one is due (traits.md)
@@ -789,7 +810,7 @@ void World::replaceCrowd(double beatTick) {
     const u32 room = aliveCap() - enemies_.count;
     if (n > room) n = room;
     const u32 before = counters_.spawned;
-    spawnCrowd(static_cast<u16>(sp), n, beatTick + kWarpBeats * kTicksPerBeat, players_[needy].pos, static_cast<u32>(needy));
+    spawnCrowd(static_cast<u16>(sp), n, beatTick + kWarpBeats * kTicksPerBeat, stage_ ? Vec2{} : players_[needy].pos, static_cast<u32>(needy));
     const u32 made = counters_.spawned - before;
     director_.crowdLost = director_.crowdLost > made ? director_.crowdLost - made : 0u;
 }
@@ -836,7 +857,7 @@ void World::runDirector() {
     rules_.magnetMultiplier = ph.surge() ? 2.0f : 1.0f;
     if (spawner_.mode == Spawner::Mode::Slice) cellClock();  // play test 2: each device its own players' Cells
     if (client) return;
-    if (ph.section == Section::Break && ph.sectionBar == 0)
+    if (ph.section == Section::Break && ph.sectionBar == 0 && setup_.mode != Mode::Tracers)  // (M8 TRACERS: what is left drifts)
         dissolveFodder(static_cast<float>((m1_ - tickOfBar(ph.bar)) / kTicksPerBar));
     // Boosts: one is due every 20-30 s of play outside the Breaks; the next kill drops it. (M8 FULL BLAST: on the waves' bar lines.)
     if (spawner_.mode == Spawner::Mode::Slice && ph.section != Section::Break && !d.boostDue && !d.formCount && --d.boostTicks <= 0)

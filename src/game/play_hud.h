@@ -77,6 +77,17 @@ struct HudState {
     const char* cardName = nullptr;              // ... and the boss's name in place of the Track's
     const char* completeLine = nullptr;          // M8 HEADLINERS: the time under HEADLINERS COMPLETE in place of the score
     const char* goalLine = nullptr;              // M8 (design/modes/screens.md "The goal line"): ACT 3 OF 10   4:12
+    // M8 TRACERS (tracers.md "HUD"): the Shard level's bar labelled TRACER 9 BEATS; no Riff slots (the Boost cards a row lower);
+    // the gels' cards beside the Boosts' (an upgrade's icon, its name and words, the bars it has left).
+    const char* levelLabel = nullptr;
+    bool noRiffs = false;
+    struct GelCard {
+        u8 icon = 0;  // an upgrade (its icon)
+        const char* name = nullptr;
+        const char* words = nullptr;
+        double from = 0.0, until = 0.0;
+    } gels[2];
+    u32 gelCount = 0;
     u8 bossFlashPart = 0xFF;    // ... the part (Kaleidos's pair, a Longwave segment, a Voice; 0xFF the whole bar)
     float dashCharge = 1.0f;
     bool alive = true;

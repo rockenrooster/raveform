@@ -460,6 +460,39 @@ private:
     Vec2 cloudTile_, starTile_;
 
     Lattice lattice_;
+    // M8 part 4 (README.md 4): the Stage's lattice (its lines every 20 wu, so every other one is a tile's side; allocated with the
+    // other at init) and the one drawn this frame.
+    Lattice stageLattice_;
+    Lattice* lat_ = &lattice_;
+    bool stageLatticeReady_ = false;
+    // M8 TRACERS (play_view_modes.cpp; tracers.md "Look"): the floor as drawn (each tile's colour index and light, the light
+    // coming in over a quarter beat, a tile gone dark blinking out), each caught body's ring owner, the rings' words, the house,
+    // the count.
+    void drawStageFloor(FrameDraw& d, const ViewInput& in);
+    void drawStageLines(FrameDraw& d, const ViewInput& in);
+    void tracersEvent(const sim::World& w, const sim::Event& e, float t);
+    void tracersFloor(const sim::World& w, float t);
+    void stageLatticeView(LatticeView& lv, const sim::World& w);
+    u8 floorSeen_[sim::TracerFloor::kTiles] = {};
+    u8 floorDraw_[sim::TracerFloor::kTiles] = {};
+    float tileLight_[sim::TracerFloor::kTiles] = {};
+    float tileLitT_[sim::TracerFloor::kTiles] = {};
+    float tileGoneT_[sim::TracerFloor::kTiles] = {};
+    u8 tileGoneOwner_[sim::TracerFloor::kTiles] = {};
+    bool floorReady_ = false;
+    Vec3 tileColour_[6];
+    u8 caughtBy_[sim::kMaxEnemies] = {};
+    struct RingWords {
+        Vec2 at;
+        float t = -100.0f;
+        u8 bonus = 0, owner = 0;
+    };
+    RingWords ringWords_[8];
+    u32 ringWordsHead_ = 0;
+    float houseT_ = -100.0f, houseDarkT_ = -100.0f, countT_ = -100.0f;
+    u8 houseNo_ = 0;
+    Vec2 houseAt_;
+    bool houseDarkNow_ = false;
 
     // M3 stage B.
     const IconSet* icons_ = nullptr;

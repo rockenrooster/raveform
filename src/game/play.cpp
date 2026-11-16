@@ -341,7 +341,8 @@ void Play::frame(float realDt) {
     StickInput in;
     buildInput(in);
     controller_.update(in, frameDt_, clock_.heardNow(), clock_.bpm(), *world_, 0);
-    if (bandDrives_) band_->setFireMode(controller_.pose().fire);
+    // (M8 TRACERS, tracers.md rule 2: the line is the lead: the band plays it as if fire were held while the tracer is laid)
+    if (bandDrives_) band_->setFireMode(world_->setup().mode == Mode::Tracers ? (world_->tracer(world_->viewPlayer()).laying ? 1 : 0) : controller_.pose().fire);
 
     stats_.ticksLastFrame = 0;
     // A hit-stop (a boss's death, look.md §5) holds the ticks and the view's clock while the song runs on; the
@@ -1099,6 +1100,38 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         if (ph.barsLeft <= 8 && ph.barsLeft > 6) std::snprintf(goalLine_, sizeof goalLine_, "LAST CALL");
         else std::snprintf(goalLine_, sizeof goalLine_, "WAVE %u OF 4   BARS LEFT %u", ph.wave ? ph.wave : 1u, ph.barsLeft);
         hs.goalLine = goalLine_;
+    }
+    if (w.setup().mode == Mode::Tracers && species_) {
+        // M8 (tracers.md "HUD"): the run's card (TRACERS over the Track; RING THEM. LIGHT THE FLOOR); the goal line FLOOR 62%   HOUSE 2
+        // (LAST CALL in its two bars), the Shard level's bar as the tracer's length, no Riff slots, the gels' cards.
+        const Phrase& ph = w.phrase();
+        const TracerFloor& f = w.tracerFloor();
+        const u32 me = w.viewPlayer();
+        std::snprintf(cardSmall_, sizeof cardSmall_, "TRACK %u  %s", ph.track, songName(ph.song));
+        std::snprintf(cardName_, sizeof cardName_, "TRACERS");
+        hs.cardSmall = cardSmall_;
+        hs.cardName = cardName_;
+        const u32 share = static_cast<u32>(100.0f * static_cast<float>(f.lit) / static_cast<float>(TracerFloor::kTiles) + 0.5f);
+        if (ph.barsLeft <= 8 && ph.barsLeft > 6) std::snprintf(goalLine_, sizeof goalLine_, "LAST CALL");
+        else if (w.setup().versus) std::snprintf(goalLine_, sizeof goalLine_, "FLOOR %u%%", share);
+        else std::snprintf(goalLine_, sizeof goalLine_, "FLOOR %u%%   HOUSE %u", share, static_cast<unsigned>(f.house));
+        hs.goalLine = goalLine_;
+        static char tracerLine[24];
+        std::snprintf(tracerLine, sizeof tracerLine, "TRACER %.0f BEATS", w.tracerLifeTicks(me) / kTicksPerBeat);
+        hs.levelLabel = tracerLine;
+        hs.noRiffs = true;
+        hs.gelCount = 0;
+        static const char* kGelName[kGels] = {"LONG", "ECHO"};
+        for (u32 g = 0; g < kGels; ++g) {
+            const PlayerState& pl = w.player(me);
+            if (pl.gelUntil[g] <= vi.music) continue;
+            HudState::GelCard& c = hs.gels[hs.gelCount++];
+            c.icon = g == kGelLong ? static_cast<u8>(kEncore) : static_cast<u8>(kEcho);
+            c.name = kGelName[g];
+            c.words = g == kGelLong ? "TRACER TWICE AS LONG" : "EVERY RING POPS TWICE";
+            c.until = pl.gelUntil[g];
+            c.from = pl.gelUntil[g] - static_cast<double>(species_->modes.tracers.gelBars[g]) * kTicksPerBar;
+        }
     }
     if (w.setup().mode == Mode::Headliners) {
         // M8 (headliners.md "Look"): the act's card (ACT 3 OF 10, the boss's name, the Track and its tempo under it); the goal

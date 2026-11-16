@@ -82,6 +82,153 @@ void Bot::reset(u64 seed, Policy policy) {
     novPick_ = 0;
     for (Vec2& m : novMove_) m = Vec2{};
     novMoveAt_ = 0;
+    ringOn_ = false;
+    ringCount_ = ringTicks_ = 0;
+    for (Vec2& m : childMove_) m = Vec2{};
+    childAt_ = 0;
+}
+
+void Bot::pickCircle(const World& w, u32 player, Vec2 pos) {
+    // The nearest twelve solid bodies (not caught, not landing): a circle round them, as big as the tracer can close; with fewer
+    // than three, a circle over a dark part of the floor.
+    const Enemies& e = w.enemies();
+    u32 idx[12];
+    float dd[12];
+    u32 n = 0;
+    for (u32 i = 0; i < e.count; ++i) {
+        if ((e.flags[i] & (kFlagDead | kFlagCaught)) || e.state[i] == kWarping) continue;
+        const float d = lengthSq(Vec2{e.x[i], e.y[i]} - pos);
+        if (n < 12) {
+            idx[n] = i;
+            dd[n++] = d;
+        } else {
+            u32 far = 0;
+            for (u32 k = 1; k < 12; ++k)
+                if (dd[k] > dd[far]) far = k;
+            if (d >= dd[far]) continue;
+            idx[far] = i;
+            dd[far] = d;
+        }
+    }
+    // The largest circle the tracer can close with room to spare (its life at full speed, less the way onto the circle); smaller
+    // ones close sooner. (A circle may run past the walls: the ship slides along them, and its line lights the tiles at the edge.)
+    const float lifeS = static_cast<float>(w.tracerLifeTicks(player) / w.ticksPerSecond());
+    const float hw = w.halfW(), hh = w.halfH();
+    const float rMax = clampf(0.8f * kPlayerSpeed * lifeS / kTau, 120.0f, hh - 40.0f);
+    const float radii[3] = {120.0f, 0.5f * (120.0f + rMax), rMax};
+    const TracerFloor& f = w.tracerFloor();
+    const float tw = w.species().modes.stage.tileWu;
+    // Bodies are the score; dark tiles are the house. Early on a body is worth two tiles; with the floor mostly lit, half of one.
+    // (The child draws its loops on the floor and catches what happens to be there; at one cell the ring-flier keeps off crowds.)
+    const bool child = policy_ == Policy::Child || policy_ == Policy::Novice;
+    const float bodyWorth = (child || w.player(player).cells <= 1) ? -0.5f
+                                                                     : (static_cast<float>(f.lit) < 0.6f * static_cast<float>(TracerFloor::kTiles) ? 2.0f : 0.5f);
+    // What a circle is worth a second: the dark tiles and bodies it holds over the time to fly to it and round it.
+    const auto worth = [&](Vec2 c, float r) {
+        u32 dark = 0, bodies = 0;
+        const i32 x0 = static_cast<i32>(std::floor((c.x - r + hw) / tw)), x1 = static_cast<i32>(std::floor((c.x + r + hw) / tw));
+        const i32 y0 = static_cast<i32>(std::floor((c.y - r + hh) / tw)), y1 = static_cast<i32>(std::floor((c.y + r + hh) / tw));
+        for (i32 y = y0 < 0 ? 0 : y0; y <= y1 && y < static_cast<i32>(TracerFloor::kTilesY); ++y)
+            for (i32 x = x0 < 0 ? 0 : x0; x <= x1 && x < static_cast<i32>(TracerFloor::kTilesX); ++x) {
+                const u32 t = static_cast<u32>(y) * TracerFloor::kTilesX + static_cast<u32>(x);
+                if (f.owner[t] == TracerFloor::kDark && lengthSq(w.tileCentre(t) - c) < r * r) ++dark;
+            }
+        for (u32 i = 0; i < e.count; ++i)
+            if (!(e.flags[i] & (kFlagDead | kFlagCaught)) && e.state[i] != kWarping && lengthSq(Vec2{e.x[i], e.y[i]} - c) < r * r) ++bodies;
+        const float way = std::fmax(length(c - pos) - r, 0.0f);
+        return (static_cast<float>(dark) + bodyWorth * static_cast<float>(bodies)) / ((kTau * r + way) / kPlayerSpeed + 0.5f);
+    };
+    Vec2 best = pos;
+    float bestR = rMax, bestWorth = -1.0f;
+    const auto consider = [&](Vec2 c0) {
+        for (const float r : radii) {
+            const Vec2 c{clampf(c0.x, -hw + 0.4f * r, hw - 0.4f * r), clampf(c0.y, -hh + 0.4f * r, hh - 0.4f * r)};
+            const float v = worth(c, r);
+            if (v > bestWorth) {
+                bestWorth = v;
+                best = c;
+                bestR = r;
+            }
+        }
+    };
+    consider(pos);
+    if (n >= 3) {
+        Vec2 c{};
+        for (u32 k = 0; k < n; ++k) c = c + Vec2{e.x[idx[k]], e.y[idx[k]]};
+        consider(c * (1.0f / static_cast<float>(n)));
+    }
+    for (u32 tries = 0; tries < 24; ++tries) {
+        const u32 t = rng_.below(TracerFloor::kTiles);
+        if (f.owner[t] == TracerFloor::kDark) consider(w.tileCentre(t));
+    }
+    ringC_ = best;
+    ringR_ = bestR;
+    const Vec2 c = best;
+    const Vec2 rel = pos - c;
+    const Vec2 vel = w.player(player).vel;
+    ringDir_ = (rel.x * vel.y - rel.y * vel.x) >= 0.0f ? 1.0f : -1.0f;
+    ringOn_ = true;
+    ringTicks_ = 0;
+}
+
+StickInput Bot::thinkTracers(const World& w, u32 player, const PlayerController& controller, StickInput in) {
+    const PlayerState& me = w.player(player);
+    const Vec2 pos = controller.pose().pos;
+    const Enemies& e = w.enemies();
+    const bool child = policy_ == Policy::Child || policy_ == Policy::Novice;
+    in.aimActive = false;
+    in.assist = false;
+    const TracerLine& tl = w.tracer(player);
+    // The ring locked (the tracer began again from the ship), or this circle went on too long: the next.
+    const bool closed = ringOn_ && tl.count + 4u < ringCount_;
+    ringCount_ = tl.count;
+    if (!ringOn_ || closed || ++ringTicks_ > 60u * 7u) pickCircle(w, player, pos);
+    const Vec2 rel = pos - ringC_;
+    const float a = lengthSq(rel) > 1.0f ? angleOf(rel) : 0.0f;
+    // The point ahead on the circle, kept inside the walls (a circle past a wall runs along it; a corner never holds the ship).
+    Vec2 goal = ringC_ + dirOf(a + ringDir_ * 0.5f) * ringR_;
+    const float gx = w.halfW() - 16.0f, gy = w.halfH() - 16.0f;
+    goal = Vec2{clampf(goal.x, -gx, gx), clampf(goal.y, -gy, gy)};
+    if (lengthSq(goal - pos) < 24.0f * 24.0f) goal = ringC_ + dirOf(a + ringDir_ * 1.2f) * ringR_;
+    Vec2 move = normalizeOr(goal - pos, Vec2{1.0f, 0.0f});
+    // What is about to touch the ship: the ring-flier dashes through it, the child only steers away (late).
+    bool danger = false;
+    Vec2 push{};
+    u32 near = 0;
+    for (u32 i = 0; i < e.count; ++i) {
+        if (e.flags[i] & (kFlagDead | kFlagCaught)) continue;
+        const Vec2 d = pos + me.vel * 0.12f - Vec2{e.x[i], e.y[i]};
+        const float dist = length(d);
+        const float reach = e.radius[i] + 36.0f;
+        // (a body still landing is kept clear of, as the careful bot keeps clear of one: it is solid on its beat)
+        if (e.state[i] == kWarping) {
+            if (dist < reach + 60.0f && dist > 1e-3f) push = push + d * ((reach + 60.0f - dist) / (dist * (reach + 60.0f)));
+            continue;
+        }
+        if (dist < 150.0f) ++near;
+        if (dist < reach + 40.0f && dist > 1e-3f) push = push + d * ((reach + 40.0f - dist) / (dist * (reach + 40.0f)));
+        if (dist < reach) danger = true;
+    }
+    bool dash = false;
+    if (danger && !child && !me.dashing) dash = true;
+    if (child) {
+        // Half a second late to what comes at it: it draws its loop as it means to, and turns from a body half a second after
+        // it would have seen it (the push it feels now is the one of then).
+        childMove_[childAt_ % kChildDelayTicks] = push;
+        ++childAt_;
+        push = childAt_ >= kChildDelayTicks ? childMove_[childAt_ % kChildDelayTicks] : Vec2{};
+    }
+    if (lengthSq(push) > 1e-6f) move = normalizeOr(move + push * (child ? 1.2f : 0.8f), move);
+    in.move = move;
+    in.dash = dash && !dashLast_;
+    dashLast_ = dash;
+    // A Nova when crowded at two cells, or when a hit is coming and no Dash is ready.
+    // (the child never presses NOVA: Auto Nova keeps its stock for the last cell)
+    const bool nova = !child && me.novas > 0 && !me.novaPending && !me.dashing &&
+                      ((near >= 6 && me.cells <= 2) || (danger && controller.charges() == 0 && me.invulS <= 0.0f));
+    in.nova = nova && !novaLast_;
+    novaLast_ = nova;
+    return in;
 }
 
 StickInput Bot::think(const World& w, u32 player, const PlayerController& controller, double musicTick) {
@@ -92,6 +239,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     const PlayerState& me = w.player(player);
     const PlayerPose& pose = controller.pose();
     if (!me.alive) return in;
+    if (w.setup().mode == Mode::Tracers && policy_ != Policy::Stress) return thinkTracers(w, player, controller, in);  // (M8)
     const Vec2 pos = pose.pos;
     const Enemies& e = w.enemies();
     const Bullets& b = w.bullets();

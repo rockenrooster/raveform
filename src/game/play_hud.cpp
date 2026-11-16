@@ -290,8 +290,9 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
     // it stays full until the level's Trio opens, when it empties.
     if (st.runHud) {
         const float cap = 12.0f * s, y = top + 132.0f * s;
-        char lv[16];
-        std::snprintf(lv, sizeof lv, "LV %u", st.level);
+        char lv[24];
+        if (st.levelLabel) std::snprintf(lv, sizeof lv, "%s", st.levelLabel);  // (M8 TRACERS: TRACER 9 BEATS)
+        else std::snprintf(lv, sizeof lv, "LV %u", st.level);
         const Vec3 lc = col(mix(gold, white, 0.6f + 0.4f * st.levelFlash), 1.3f + 0.9f * st.levelFlash);
         font.drawField(d.hud, {m, y}, cap, 0.75f * s, lc, lc, lc, lv);
         const float x0 = m + 70.0f * s, x1 = x0 + 220.0f * s, yc = y + 0.5f * cap, hh = 2.5f * s;
@@ -540,15 +541,15 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         const float r = 26.0f * s;
         u8 riffOrder[kRiffSlots] = {kNoUpgrade, kNoUpgrade, kNoUpgrade, kNoUpgrade};
         u32 n = 0;
-        // Riffs in the order they were taken.
-        for (u32 pass = 1; pass < 256 && n < kRiffSlots; ++pass)
+        // Riffs in the order they were taken. (M8 TRACERS: none, and no slots.)
+        for (u32 pass = 1; pass < 256 && n < kRiffSlots && !st.noRiffs; ++pass)
             for (u8 u = kOrbitals; u < kUpgradeCount; ++u)
                 if (me.loadout.order[u] == pass) riffOrder[n++] = u;
         for (u32 k = 0; k < kRiffSlots; ++k) {
             const Vec2 c{cx + (static_cast<float>(k) - 1.5f) * slot, rowY};
             slotX[k] = c.x;
             if (riffOrder[k] == kNoUpgrade) {
-                circle(d.hud, c, r, 0.8f * s, col(white, 0.22f), 24);
+                if (!st.noRiffs) circle(d.hud, c, r, 0.8f * s, col(white, 0.22f), 24);
                 continue;
             }
             const u8 u = riffOrder[k];
@@ -611,54 +612,74 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
     {
         // screens.md (Boost cards, M5): laid out from what they say: side by side, centred as a pair, 48 px between the nearer
         // ends of their text (name or words, the wider); a pair wider than 900 px drops its words.
+        // (M8 TRACERS: the gels' cards beside them, kBoostSlots + 1.., laid out alike; the cards a row lower, where the Riff slots
+        // would stand)
         const float capN = 16.5f * s, capW = 11.0f * s;
-        float width[kBoostSlots] = {}, nameW[kBoostSlots] = {};
-        bool words[kBoostSlots] = {};
+        constexpr u32 kCards = kBoostSlots + 2;
+        i32 icon[kCards];
+        const char* name[kCards] = {};
+        const char* wordsText[kCards] = {};
+        double from[kCards] = {};
+        u32 left[kCards] = {};
+        float width[kCards] = {}, nameW[kCards] = {};
+        bool words[kCards] = {};
         u32 count = 0;
-        for (u32 k = 0; k < kBoostSlots; ++k) {
-            const ActiveBoost& b = me.boosts[k];
-            if (b.type == kNoBoost) continue;
-            const BoostInfo& bi = boostInfo(b.type);
-            const float since = static_cast<float>((st.music - b.from) / kTicksPerBar);
+        for (u32 k = 0; k < kCards; ++k) {
+            icon[k] = -1;
+            if (k < kBoostSlots) {
+                const ActiveBoost& b = me.boosts[k];
+                if (b.type == kNoBoost) continue;
+                const BoostInfo& bi = boostInfo(b.type);
+                icon[k] = st.boostIcons ? st.boostIcons[b.type] : -1;
+                name[k] = bi.name;
+                wordsText[k] = bi.words;
+                from[k] = b.from;
+                left[k] = b.type == kHalo ? b.hits : static_cast<u32>(std::ceil((b.until - st.music) / kTicksPerBar));
+            } else {
+                const u32 g = k - kBoostSlots;
+                if (g >= st.gelCount || !st.gels[g].name) continue;
+                icon[k] = st.upgradeIcons ? st.upgradeIcons[st.gels[g].icon] : -1;
+                name[k] = st.gels[g].name;
+                wordsText[k] = st.gels[g].words;
+                from[k] = st.gels[g].from;
+                left[k] = static_cast<u32>(std::ceil((st.gels[g].until - st.music) / kTicksPerBar));
+            }
+            const float since = static_cast<float>((st.music - from[k]) / kTicksPerBar);
             words[k] = since >= 0.0f && since < 2.0f;
-            nameW[k] = textW(font, capN, bi.name);
-            width[k] = std::fmax(nameW[k], words[k] ? textW(font, capW, bi.words) : 0.0f);
+            nameW[k] = textW(font, capN, name[k]);
+            width[k] = std::fmax(nameW[k], words[k] ? textW(font, capW, wordsText[k]) : 0.0f);
             ++count;
         }
         // (three at once since 2026-11-14: a gap between each neighbouring pair)
         const float gaps = count > 1 ? 48.0f * s * static_cast<float>(count - 1) : 0.0f;
         float total = gaps;
-        for (u32 k = 0; k < kBoostSlots; ++k) total += width[k];
+        for (u32 k = 0; k < kCards; ++k) total += width[k];
         if (total > 900.0f * s) {
             total = gaps;
-            for (u32 k = 0; k < kBoostSlots; ++k) {
+            for (u32 k = 0; k < kCards; ++k) {
                 words[k] = false;
                 width[k] = nameW[k];
                 total += width[k];
             }
         }
         float left0 = cx - 0.5f * total;
-        for (u32 k = 0; k < kBoostSlots; ++k) {
-            const ActiveBoost& b = me.boosts[k];
-            if (b.type == kNoBoost) continue;
-            const BoostInfo& bi = boostInfo(b.type);
-            const float x = left0 + 0.5f * width[k], y = rowY - 116.0f * s - lift;
+        for (u32 k = 0; k < kCards; ++k) {
+            if (!name[k]) continue;
+            const float x = left0 + 0.5f * width[k], y = st.noRiffs ? rowY - 20.0f * s : rowY - 116.0f * s - lift;
             left0 += width[k] + 48.0f * s;
-            if (st.icons) st.icons->drawHud(d.hud, st.boostIcons[b.type], {x, y}, 15.0f * s, 1.0f, hudFn, &ctx);
+            if (st.icons && icon[k] >= 0) st.icons->drawHud(d.hud, icon[k], {x, y}, 15.0f * s, 1.0f, hudFn, &ctx);
             const float cap = 16.5f * s, top = y + (15.0f + 9.0f) * s;
-            font.drawField(d.hud, {x - 0.5f * textW(font, cap, bi.name), top}, cap, 0.7f * s, col(gold, 1.4f), col(gold, 1.4f), col(gold, 1.4f), bi.name);
-            const float since = static_cast<float>((st.music - b.from) / kTicksPerBar);
+            font.drawField(d.hud, {x - 0.5f * textW(font, cap, name[k]), top}, cap, 0.7f * s, col(gold, 1.4f), col(gold, 1.4f), col(gold, 1.4f), name[k]);
+            const float since = static_cast<float>((st.music - from[k]) / kTicksPerBar);
             if (words[k] && since >= 0.0f && since < 2.0f) {
                 const float kk = since < 1.5f ? 1.0f : (2.0f - since) * 2.0f, c2 = capW;
-                font.drawField(d.hud, {x - 0.5f * textW(font, c2, bi.words), top + cap + 8.0f * s}, c2, 0.55f * s, col(white, 1.1f * kk),
-                               col(white, 1.1f * kk), col(white, 1.1f * kk), bi.words);
+                font.drawField(d.hud, {x - 0.5f * textW(font, c2, wordsText[k]), top + cap + 8.0f * s}, c2, 0.55f * s, col(white, 1.1f * kk),
+                               col(white, 1.1f * kk), col(white, 1.1f * kk), wordsText[k]);
             }
-            const u32 left = b.type == kHalo ? b.hits : static_cast<u32>(std::ceil((b.until - st.music) / kTicksPerBar));
-            for (u32 p = 0; p < left && p < 8; ++p) {
+            for (u32 p = 0; p < left[k] && p < 8; ++p) {
                 const Vec2 q{x + 28.0f * s + static_cast<float>(p) * 10.0f * s, y};
                 d.hud.line(q, q, 2.4f * s, col(gold, 1.6f), col(gold, 1.6f), 0);
             }
-            
         }
     }
     // The orb just taken flies to the band row.

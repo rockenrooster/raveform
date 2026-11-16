@@ -423,7 +423,7 @@ void World::updateEnemies(float dt) {
                 }
             }
         }
-        const float lx = kArenaHalfW - r, ly = kArenaHalfH - r;
+        const float lx = halfW() - r, ly = halfH() - r;
         const bool hitX = e.x[i] < -lx || e.x[i] > lx;
         const bool hitY = e.y[i] < -ly || e.y[i] > ly;
         if (!hitX && !hitY) continue;

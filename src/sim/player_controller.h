@@ -36,6 +36,7 @@ public:
     }
     // Dash charge for the HUD: 1 when ready, else how far the recharge has come.
     float dashCharge(double musicTick) const;
+    u32 charges() const { return charges_; }  // Dash charges ready (the bots)
     u32 autoTarget() const { return targetHandle_; }  // auto-aim target (0: none)
     bool firing() const { return pose_.fire != 0; }
 

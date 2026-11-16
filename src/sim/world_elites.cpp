@@ -61,7 +61,13 @@ void World::eliteBar(const Phrase& ph, double land) {
     // in 16 bars in Track 3 falling evenly to once in 8 by Track 6 (and so on). The budget pays x 4 the species' threat.
     DirectorState& d = director_;
     const bool blast = d.formCount && setup_.mode == Mode::FullBlast && species_;
-    if (blast) {
+    const bool tracers = d.formCount && setup_.mode == Mode::Tracers && species_;
+    if (tracers) {
+        // M8 TRACERS (tracers.md rule 14): one every eight bars from the second Groove on (not in the Break), contact species only.
+        const u32 every = species_->modes.tracers.eliteEveryBars;
+        if (ph.ended || ph.section == Section::Break || ph.bar < tracersEliteFrom_ || !every || (ph.bar - tracersEliteFrom_) % every) return;
+        eliteClock_ += 1.0f;
+    } else if (blast) {
         // M8 FULL BLAST (full_blast.md "Numbers"): wave 2 four elites on its Drop's downbeat and one every 4 bars, wave 4 two and one
         // every 2 bars; on any Track; none in the other waves.
         const ModesData::Blast::Wave& wv = species_->modes.blast.wave[ph.wave ? (ph.wave - 1u) % 4u : 0u];
@@ -91,12 +97,13 @@ void World::eliteBar(const Phrase& ph, double land) {
         if (static_cast<float>(bullets_.count) > kBulletPoolShooters * static_cast<float>(Bullets::kCap) && species_->get(r.species).shoots())
             continue;  // M5 part 7 (GAME_DESIGN 6.6): no shooters while the pool is above 70%
         const bool debuted = inLoop(ph.track, d.songs) ? r.track <= d.songs : (r.track < ph.track || (r.track == ph.track && r.cycle <= ph.cycle) || (blast && r.track <= 2u));
+        if (tracers && !tracersBody(r.species)) continue;
         if (debuted) cand[n++] = r.species;
     }
     if (!n) return;
     const u16 sp = cand[static_cast<u32>(rand01(arenaRng_) * static_cast<float>(n)) % n];
     const float cost = species_->get(sp).threat * td.threat;
-    if (!blast && d.bank + 1e-4f < cost && cost <= d.budgetPerBar * kBankBars) return;  // it waits for the bank (FULL BLAST's do not)
+    if (!blast && !tracers && d.bank + 1e-4f < cost && cost <= d.budgetPerBar * kBankBars) return;  // it waits for the bank (FULL BLAST's and TRACERS's do not)
     d.bank = std::fmax(d.bank - cost, 0.0f);
     eliteClock_ -= 1.0f;
     // Where a threat formation lands: round the formation's player, outside the central third of its view.
@@ -109,6 +116,11 @@ void World::eliteBar(const Phrase& ph, double land) {
         // (no Twin and no Splitting on a chain or a pair: their second body or their halves would be loose members)
         const Vec2 at = c + dirOf(a) * r;
         spawnEliteCreature(sp, at, angleOf(c - at), land, drawTraits(ph.track, static_cast<u16>(traitBit(kTwin) | traitBit(kSplitting))));
+        return;
+    }
+    if (tracers) {
+        // (on the Stage: anywhere in the room clear of the ships; no Volatile or Cloaked elite: tracers.md rule 14)
+        spawnElite(sp, stageSpot(species_->modes.stage.spawnClearWu), land, drawTraits(ph.track, static_cast<u16>(traitBit(kVolatile) | traitBit(kCloaked))));
         return;
     }
     spawnElite(sp, c + dirOf(a) * r, land, drawTraits(ph.track));

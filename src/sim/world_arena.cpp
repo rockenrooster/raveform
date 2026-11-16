@@ -174,6 +174,7 @@ void World::placeStructures(u32 track, double tick) {
 // ---------------------------------------------------------------------------------------------- the director's bar and beat
 
 void World::arenaBar(const Phrase& ph, u32 bar, double barTick) {
+    if (stage_) return;  // (M8: the Stage has no structures and no events; README.md 4)
     const bool host = role_ != NetRole::Client;
     const bool fight = boss_.active && !boss_.dying;
     if (host && spawner_.mode == Spawner::Mode::Slice) {
@@ -254,6 +255,7 @@ void World::arenaBar(const Phrase& ph, u32 bar, double barTick) {
 }
 
 void World::arenaBeat(double beatTick) {
+    if (stage_) return;
     // Bumpers discharge on the beat after their eighth hit; a tuned Pylon pulses on the One; Meteor Rain's rings and landings;
     // the Storm Cell's lightning.
     const bool host = role_ != NetRole::Client;

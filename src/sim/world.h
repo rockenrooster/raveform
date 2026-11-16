@@ -8,6 +8,8 @@
 // random streams (the spawner's PCG32, one xorshift state per enemy), and no allocation after init().
 // hash() digests the whole state (TECH_SPEC 7.3).
 
+#include <cmath>
+
 #include "game/rng.h"
 #include "sim/boss.h"
 #include "sim/director.h"
@@ -221,6 +223,18 @@ enum class EventType : u8 {
     Crown,
     Knock,
     KnockBack,
+    // M8 TRACERS (design/modes/tracers.md): a ring locked (a = its owner, b = the bodies caught, c = 1 it fizzled (too small), f = the
+    // tiles it lit; x, y = its centre (a fizzle: the ship), x2 = its radius; tick = the eighth it pops on); a ring popped (a = owner,
+    // b = the bodies it killed, c = its bonus, x2 = 1 ECHO's second pop; x, y = centre, f = radius); the house (a = its number, b = 0
+    // the chase from the last ring's centre x, y, 1 the crowd's pop and the pay, 2 the floor going dark; tick); a knock-out's lights
+    // (a = player, f = the tiles gone dark); the floor's count at the end (a = player, f = its tiles; tick = the last downbeat);
+    // a gel taken (a = player, b = the gel; x, y).
+    RingLock,
+    RingPop,
+    House,
+    TilesLost,
+    FloorCount,
+    GelTake,
 };
 enum UpgradeFx : u8 {
     kFxFork,          // a shot forked: x, y
@@ -298,7 +312,9 @@ enum EnemyState : u8 {
     kEgg,          // M5 part 4: a Brood Mother's egg (a = its place round her, until = its hatch)
     kStateCount
 };
-enum EnemyFlag : u8 { kFlagDead = 1, kFlagEngaged = 2, kFlagArriving = 4, kFlagPredicted = 8, kFlagCalled = 16 };  // arriving: crowd fodder on its way into the frame
+enum EnemyFlag : u8 { kFlagDead = 1, kFlagEngaged = 2, kFlagArriving = 4, kFlagPredicted = 8, kFlagCalled = 16, kFlagCaught = 32 };  // arriving: crowd fodder on its way into the frame
+// kFlagCaught (M8 TRACERS, tracers.md rule 7): inside a locked ring until it pops: it stands still, takes the ring's owner's colour
+// and hurts nobody.
 constexpr u8 kBurnSpread = 0x80;  // Enemies::burnLevel: the fire was caught from a burning death (play test 3: it spreads no further)
 // kFlagCalled (M5): a mini-boss called it (the Alpha's pack, the Hive's darts); sent with its spawn.
 // kFlagPredicted (co-op client, with kFlagDead): its own hit killed it and the host has not answered yet; it
@@ -445,6 +461,9 @@ inline i32 shotLane(u8 flags) { return static_cast<i32>((flags & kShotLaneMask) 
 // kPickupExtraLife + the owner.
 constexpr u8 kPickupExtraLife = 0xF0;
 inline bool isExtraLifeDrop(u8 type) { return type >= kPickupExtraLife && type < kPickupExtraLife + kMaxPlayers; }
+// M8 TRACERS (tracers.md rule 15): a gel's orb (kPickupGel + the gel), dropped and taken as a Boost's.
+constexpr u8 kPickupGel = 0xE0;
+inline bool isGelDrop(u8 type) { return type >= kPickupGel && type < kPickupGel + kGels; }
 struct BoostPickups {
     static constexpr u32 kCap = 32;
     u32 count = 0;
@@ -679,6 +698,9 @@ struct PlayerState {
     // Play test 3 (GAME_DESIGN 5): an Extra Life held (at most one), spent on the hit that would end the run.
     u8 extraLives = 0;
     u32 extraLivesTaken = 0, extraLivesSpent = 0, ringBreaks = 0;
+    // M8 TRACERS: a gel held until then (tracers.md rule 15; musical ticks), a versus spin-out's dazzle (no line until then).
+    double gelUntil[kGels] = {-1e18, -1e18};
+    double dazzledUntil = -1e18;
     u16 lastHitCause = kCauseNone;  // M6: what the last hit was (the game over's ENDED BY)
     bool lastHitBullet = false;     // ... and whether it was a bullet (the balance tables)
     bool invulnerable() const { return invulS > 0.0f || novaInvulS > 0.0f || dashing || boost(kColossus); }
@@ -1057,6 +1079,11 @@ public:
     u32 viewPlayer() const { return viewPlayer_; }  // the first local player: the camera's ship, the band's intensity
     u16 runId() const { return runId_; }
     const RunSetup& setup() const { return setup_; }  // M8: this run's mode, Track and versus (kept by RETRY)
+    // M8 (design/modes/README.md 4): the walls: the arena's, or the Stage's moved in (TRACERS, JAM): 1,720 x 840 wu round the origin.
+    float halfW() const { return stage_ ? stageHalf_.x : kArenaHalfW; }
+    float halfH() const { return stage_ ? stageHalf_.y : kArenaHalfH; }
+    bool onStage() const { return stage_; }
+    bool insideWalls(float x, float y) const { return std::fabs(x) <= halfW() && std::fabs(y) <= halfH(); }
     // M8 (design/modes/README.md 5): a run that starts in the middle of the set starts with the kit, the build a run of THE SET would
     // have by then: dealt at the run's start by the Trio's own rules and the careful bot's pick, from a stream of the run's seed, the
     // seat and the act, and landed on the ship one a sixteenth over the run's first two bars (each applied as it lands).
@@ -1070,6 +1097,17 @@ public:
     void knockOut(u32 p, double backTick);  // M8 versus: a ship out until that bar line (a remote ship's from its device's word)
     double kitLandTick(u32 p, u32 k) const;
     bool runEnded() const { return director_.runEnded; }  // M8: ONE TRACK's outro is over
+    // M8 TRACERS (design/modes/tracers.md; world_mode_tracers.cpp): each player's tracer, the rings alive, the floor.
+    static constexpr u32 kRings = 8;
+    const TracerLine& tracer(u32 p) const { return tracers_[p < kMaxPlayers ? p : 0]; }
+    const TracerRing& ring(u32 k) const { return rings_[k < kRings ? k : 0]; }
+    const TracerFloor& tracerFloor() const { return floor_; }
+    Vec2 tileCentre(u32 t) const;
+    double tracerLifeTicks(u32 p) const;  // its points' life now (beats by the Shard level, LONG's, the underdog's)
+    bool gel(u32 p, u32 g) const { return p < kMaxPlayers && g < kGels && players_[p].gelUntil[g] > m1_; }
+    u32 bestRing(u32 p) const { return bestRing_[p < kMaxPlayers ? p : 0]; }
+    // The place a tracer would close on from the ship (the hint, tracers.md rule 5): false when nothing is within hintWu.
+    bool closingHint(u32 p, Vec2& at, float& dist) const;
     // A run on the bar line `bar` (musical ticks) with this seed, these seats and this id: every device resets
     // at the same musical position (the co-op start; a RETRY when every player is down).
     void scheduleRun(double bar, u64 seed, u32 players, u16 runId, u8 presentMask = 0xF);
@@ -1639,6 +1677,30 @@ private:
     u64 seed_ = 1;
     RunSetup setup_;  // M8 (in the hash only when it is not THE SET's, so the set's hash stays as it was)
     KitState kit_[kMaxPlayers];  // M8: each player's kit (world_modes.cpp)
+    bool stage_ = false;         // M8: the Stage's walls (README.md 4)
+    Vec2 stageHalf_{kArenaHalfW, kArenaHalfH};
+    // M8 TRACERS (world_mode_tracers.cpp).
+    TracerLine tracers_[kMaxPlayers];
+    TracerRing rings_[kRings];
+    TracerFloor floor_;
+    u16 bestRing_[kMaxPlayers] = {};
+    u32 tracersEliteFrom_ = 0;  // the bar the elites begin on (the second Groove's first)
+    void resetTracers();
+    void updateTracers();
+    void layTracer(u32 p);
+    void closeRing(u32 p);
+    u32 ringTiles(const Vec2* poly, u32 m) const;
+    bool lockRing(u8 owner, u8 owner2, const Vec2* poly, u32 m, bool echo, double popTick);
+    void popRing(TracerRing& r);
+    void houseStep();
+    void tracersEnd();
+    void tracersKnock(u32 p);
+    void breakTracer(u32 p);
+    void takeGel(u32 p, u8 gel, Vec2 at);
+    Vec2 stageSpot(float clearWu);
+    bool tracersBody(u16 species) const;  // a species TRACERS's crowd may bring (tracers.md rule 13)
+    u8 boostPick();                       // the next Boost orb's kind (THE SET's draw, or the mode's list)
+    float tracersCrowdScale() const;      // half the Track's, 15% more a house
     void dealKit(u32 p, u32 count, u32 act);
     void dealFullBlast(u32 p);  // M8 FULL BLAST: every power on, as a kit (README.md 5's torrent)
     void updateModes();  // M8: the kit landing, the outro's Shards, the run's end, the knocked out coming back

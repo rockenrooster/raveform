@@ -52,6 +52,15 @@ struct LatticeView {
     Vec2 calmAt;
     float calmRadiusWu = 0.0f, calmTintMix = 0.0f;
     Vec3 calmTint;
+    // M8 TRACERS (design/modes/tracers.md "Look", a lit tile): the floor's tiles (tilesX x tilesY of tileWu from tileOrigin); a
+    // line whose two sides lie in tiles of the same colour index (tileOwner, 0xFF dark) is drawn in tileColour[index] x tileLevel x
+    // that tile's light (tileLight, 0..1), over a little of its own heat. Null: none.
+    const u8* tileOwner = nullptr;
+    const float* tileLight = nullptr;
+    const Vec3* tileColour = nullptr;
+    Vec2 tileOrigin;
+    float tileWu = 40.0f, tileLevel = 0.55f;
+    u32 tilesX = 0, tilesY = 0;
 };
 
 class Lattice {

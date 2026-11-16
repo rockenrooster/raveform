@@ -746,8 +746,8 @@ void World::updateRiffs(float dt) {
 
 void World::dropBoost(Vec2 pos, u8 type) {
     BoostPickups& b = boostPickups_;
-    const float x = clampf(pos.x, -kArenaHalfW + 40.0f, kArenaHalfW - 40.0f);
-    const float y = clampf(pos.y, -kArenaHalfH + 40.0f, kArenaHalfH - 40.0f);
+    const float x = clampf(pos.x, -halfW() + 40.0f, halfW() - 40.0f);
+    const float y = clampf(pos.y, -halfH() + 40.0f, halfH() - 40.0f);
     if (isExtraLifeDrop(type)) {
         if (director_.formCount) return;  // (M8: no Extra Lives fall in a timed mode; nothing ends its run)
         // Play test 3 (GAME_DESIGN 5): an Extra Life, one orb for its owner (kPickupExtraLife + the owner).
@@ -768,7 +768,7 @@ void World::dropBoost(Vec2 pos, u8 type) {
         }
         return;
     }
-    const u8 t = type < kBoostCount ? type : kPrism;
+    const u8 t = (type < kBoostCount || isGelDrop(type)) ? type : kPrism;  // (M8 TRACERS: a gel's orb drops as a Boost's)
     // Loot is instanced (GAME_DESIGN 10): in co-op one orb per player, each only its owner can take. M8 versus (V4): one orb, the
     // first ship to touch it has it (owner 0xFF).
     u32 made = 0;
@@ -918,7 +918,8 @@ void World::updateBoosts() {
                 break;
             }
             b.dead[i] = 1;
-            activateBoost(p, b.type[i]);
+            if (isGelDrop(b.type[i])) takeGel(p, static_cast<u8>(b.type[i] - kPickupGel), Vec2{b.x[i], b.y[i]});  // (M8 TRACERS)
+            else activateBoost(p, b.type[i]);
             break;
         }
     }

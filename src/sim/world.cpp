@@ -16,7 +16,7 @@ namespace {
 constexpr float kMaxSpeciesRadius = 40.0f;  // larger than any species' radius (ram V: 18 x 1.3 = 23.4); M5 part 5: elites grow past it (maxEnemyR_)
 constexpr float kGridSlack = 32.0f;       // enemies move at most ~25 wu a tick after the grid was built
 
-bool insideArena(float x, float y) { return std::fabs(x) <= kArenaHalfW && std::fabs(y) <= kArenaHalfH; }
+
 }  // namespace
 
 // ---------------------------------------------------------------------------------------------- set-up
@@ -40,6 +40,8 @@ void World::init(const SpeciesTable* species) {
 void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask, const RunSetup& setup) {
     seed_ = seed;
     setup_ = restartSetup_ = setup;  // M8 (MODES_PLAN 2.1): THE SET by default; RETRY keeps it unless told otherwise
+    stage_ = false;                  // M8 (README.md 4): the arena's walls unless the mode is on the Stage
+    stageHalf_ = Vec2{kArenaHalfW, kArenaHalfH};
     rng_.reseed(seed * 0x9E3779B97F4A7C15ull + 0x632BE59BD9B4E019ull);
     Enemies& e = enemies_;
     // Free every slot; generations keep counting, so a handle from the last run stays stale.
@@ -127,6 +129,21 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask, co
         for (u32 p = 0; p < playerCount_; ++p)
             if (players_[p].present) dealFullBlast(p);
     }
+    if (setup.mode == Mode::Tracers && species_) {
+        // M8 (tracers.md): 48 bars on the chosen Track (modes.json forms.timed48) on the Stage; no gun, no kit, four cells.
+        const Form& f = species_->modes.forms.timed48;
+        const u32 track = setup.track < 1 ? 1u : (setup.track > kMaxSongs ? kMaxSongs : setup.track);
+        director_.track = static_cast<u8>(track);
+        director_.formCount = static_cast<u8>(f.count < 12 ? f.count : 12u);
+        for (u32 k = 0; k < director_.formCount; ++k) {
+            director_.formKind[k] = static_cast<u8>(f.s[k].kind);
+            director_.formBars[k] = static_cast<u8>(f.s[k].bars);
+        }
+        phrase_ = phraseAt(director_, 0);
+        stage_ = true;
+        stageHalf_ = Vec2{0.5f * species_->modes.stage.widthWu, 0.5f * species_->modes.stage.heightWu};
+        resetTracers();
+    }
     if (setup.mode == Mode::Headliners && species_) {
         // M8 (headliners.md): the ten bosses back to back from First Light, the acts' form; the kit a run holds as Kaleidos enters;
         // one Extra Life held at the start.
@@ -189,6 +206,7 @@ void World::tick(const TickInput& in) {
     if (role_ != NetRole::Solo) updateDowned();
     runSpawner();  // the director first: the phrase this tick plays in (Surge, the Build's last bar)
     if (setup_ != RunSetup{}) updateModes();  // M8: the kit landing, the outro, the run's end, versus
+    if (setup_.mode == Mode::Tracers) updateTracers();  // M8: the tracers, the rings, the floor (tracers.md)
     // The loop's ramps this tick (GAME_DESIGN 8, "The loop is where a run ends"): 1 through Track 3.
     loopSpeed_ = std::fmin(loopRamp(kLoopEnemySpeedRamp, phrase_.track, director_.songs), kLoopEnemySpeedMax);
     loopBulletSpeed_ = std::fmin(loopRamp(kLoopBulletSpeedRamp, phrase_.track, director_.songs), kLoopBulletSpeedMax);
@@ -313,7 +331,7 @@ void World::applyPlayers(const TickInput& in) {
             pl.vel = Vec2{};
             continue;
         }
-        pl.pos = Vec2{clampf(ps.pos.x, -kArenaHalfW, kArenaHalfW), clampf(ps.pos.y, -kArenaHalfH, kArenaHalfH)};
+        pl.pos = Vec2{clampf(ps.pos.x, -halfW(), halfW()), clampf(ps.pos.y, -halfH(), halfH())};
         pl.vel = ps.vel;
         pl.aim = ps.aim;
         pl.heading = ps.heading;
@@ -373,6 +391,7 @@ bool World::pressNova(u32 p, bool free, bool pressed) {
 }
 
 void World::spawnShots(const TickInput& in) {
+    if (setup_.mode == Mode::Tracers) return;  // M8 (tracers.md rule 2): the gun is off; the line is the lead
     for (u32 p = 0; p < playerCount_; ++p) {
         const PlayerState& pl = players_[p];
         if (!pl.alive) continue;
@@ -533,7 +552,7 @@ void World::moveProjectiles(float dt) {
         b.x[i] += b.vx[i] * bdt;
         b.y[i] += b.vy[i] * bdt;
         b.life[i] -= bdt;
-        if (b.life[i] <= 0.0f || !insideArena(b.x[i], b.y[i])) b.dead[i] = 1;
+        if (b.life[i] <= 0.0f || !insideWalls(b.x[i], b.y[i])) b.dead[i] = 1;
     }
     Shots& s = shots_;
     steerShots(dt);  // M5: Seeker, missiles, sparks
@@ -557,23 +576,23 @@ void World::moveProjectiles(float dt) {
             shotBlast(i, Vec2{s.x[i], s.y[i]}, -1);
             continue;
         }
-        if (!insideArena(s.x[i], s.y[i]) && s.bounces[i] > 0) {
+        if (!insideWalls(s.x[i], s.y[i]) && s.bounces[i] > 0) {
             // Ricochet (GAME_DESIGN 6.2): off the arena wall, mirrored.
             --s.bounces[i];
             if (s.mods[i] & kShotFever) s.speed[i] = std::fmin(s.speed[i] * kFeverSpeedUp, 3.0f * kShotSpeed);  // M5: Ricochet Fever
-            if (std::fabs(s.x[i]) > kArenaHalfW) {
+            if (std::fabs(s.x[i]) > halfW()) {
                 s.dx[i] = -s.dx[i];
-                s.x[i] = std::copysign(2.0f * kArenaHalfW - std::fabs(s.x[i]), s.x[i]);
+                s.x[i] = std::copysign(2.0f * halfW() - std::fabs(s.x[i]), s.x[i]);
             }
-            if (std::fabs(s.y[i]) > kArenaHalfH) {
+            if (std::fabs(s.y[i]) > halfH()) {
                 s.dy[i] = -s.dy[i];
-                s.y[i] = std::copysign(2.0f * kArenaHalfH - std::fabs(s.y[i]), s.y[i]);
+                s.y[i] = std::copysign(2.0f * halfH() - std::fabs(s.y[i]), s.y[i]);
             }
             s.px[i] = s.x[i] - s.dx[i] * s.speed[i] * dt;
             s.py[i] = s.y[i] - s.dy[i] * s.speed[i] * dt;
             s.lastHit[i] = 0xFFFFFFFFu;
         }
-        if (s.life[i] <= 0.0f || !insideArena(s.x[i], s.y[i])) s.dead[i] = 1;
+        if (s.life[i] <= 0.0f || !insideWalls(s.x[i], s.y[i])) s.dead[i] = 1;
     }
     // Shards: loose ones slow down and wait; inside a player's magnet they home in; after four bars they
     // are gone (GAME_DESIGN 5). Play test 1: while more than kShardsCrowded are out (the stronger build kills several
@@ -773,7 +792,7 @@ void World::collide() {
         i32 contact = -1;
         const float reach = maxEnemyR_ + kGridSlack + kPlayerHitRadius;
         grid_.query(c.x - reach, c.y - reach, c.x + reach, c.y + reach, [&](u32 i) {
-            if ((e.flags[i] & kFlagDead) || contact >= 0 || elitePhased(i)) return;  // (M5: Phasing's touch is harmless off its half)
+            if ((e.flags[i] & (kFlagDead | kFlagCaught)) || contact >= 0 || elitePhased(i)) return;  // (M5: Phasing's touch is harmless off its half; M8: a caught body hurts nobody)
             const float r = e.radius[i] * kContactShrink + kPlayerHitRadius;
             const float dx = e.x[i] - c.x, dy = e.y[i] - c.y;
             if (dx * dx + dy * dy <= r * r) contact = static_cast<i32>(i);
@@ -851,6 +870,7 @@ void World::hitPlayer(u32 p, Vec2 from, u16 cause, bool bullet) {
         return;
     }
     ++pl.hitsTaken;
+    if (setup_.mode == Mode::Tracers) breakTracer(p);  // M8 (tracers.md rule 3): a hit puts the whole tracer out
     if (pl.cells == 0 && (setup_.versus || director_.formCount)) {  // (M8: and the timed modes: FULL BLAST's power cut)
         // M8 (design/modes/README.md 7, V6): nobody is out in versus: the ship is knocked out and back on the second bar line after.
         knockOut(p, tickOfBar(barOf(m1_) + 2u));
@@ -950,7 +970,7 @@ void World::killEnemy(u32 i, u8 killer) {
         }
         // A Boost is due (GAME_DESIGN 6.1, director controlled): this kill drops it.
         if (director_.boostDue && spawner_.mode == Spawner::Mode::Slice) {
-            dropBoost(Vec2{e.x[i], e.y[i]}, static_cast<u8>(upgradeRng_.below(kBoostCount)));
+            dropBoost(Vec2{e.x[i], e.y[i]}, boostPick());  // (M8: TRACERS draws from its own list)
             director_.boostDue = false;
             director_.boostTicks = static_cast<i32>(rng_.range(kBoostEveryLoS, kBoostEveryHiS) / kDt);
         }
@@ -1033,8 +1053,8 @@ i32 World::spawnEnemyAs(u16 speciesIndex, Vec2 pos, float heading, double landTi
     e.handle[i] = (static_cast<u32>(e.gen[slot]) << 16) | slot;
     // M5: while the Pen stands the director's spawns land inside it (a client takes the host's places as they are).
     if (pen_.up && !serial) pos = penPlace(pos, s.radius);
-    pos.x = clampf(pos.x, -kArenaHalfW + s.radius, kArenaHalfW - s.radius);
-    pos.y = clampf(pos.y, -kArenaHalfH + s.radius, kArenaHalfH - s.radius);
+    pos.x = clampf(pos.x, -halfW() + s.radius, halfW() - s.radius);
+    pos.y = clampf(pos.y, -halfH() + s.radius, halfH() - s.radius);
     e.x[i] = e.px[i] = pos.x;
     e.y[i] = e.py[i] = pos.y;
     e.vx[i] = e.vy[i] = e.kx[i] = e.ky[i] = 0.0f;
@@ -1567,6 +1587,44 @@ u64 World::hash() const {
         for (const PlayerState& pl : players_) {
             val(pl.knocked);
             val(pl.backTick);
+        }
+    }
+    if (setup_.mode == Mode::Tracers) {
+        // M8 TRACERS: the tracers, the rings, the floor (tracers.md "Caps and the wire").
+        for (const TracerLine& t : tracers_) {
+            val(t.count);
+            for (u32 k = 0; k < t.count; ++k) {
+                const Vec2 q = t.at(k);
+                val(q.x);
+                val(q.y);
+                val(t.bornAt(k));
+            }
+        }
+        for (const TracerRing& r : rings_)
+            if (r.active) {
+                val(r.n);
+                val(r.popped);
+                val(r.owner);
+                val(r.owner2);
+                val(r.caught);
+                val(r.popTick);
+                for (u32 k = 0; k < r.n; ++k) {
+                    val(r.pt[k].x);
+                    val(r.pt[k].y);
+                }
+            }
+        mix(floor_.owner, sizeof floor_.owner);
+        mix(floor_.order, sizeof floor_.order);
+        val(floor_.lit);
+        val(floor_.house);
+        val(floor_.houses);
+        val(floor_.chaseTick);
+        val(floor_.popTick);
+        val(floor_.darkTick);
+        for (const PlayerState& pl : players_) {
+            val(pl.gelUntil[0]);
+            val(pl.gelUntil[1]);
+            val(pl.dazzledUntil);
         }
     }
     for (const KitState& k : kit_)

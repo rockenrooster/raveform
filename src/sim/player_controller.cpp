@@ -60,6 +60,7 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
     p.present = true;
     if (!state.alive) {
         takeShoves(state, musicTick, p, false);
+        if (state.knocked && world.onStage()) p.pos = Vec2{};  // (M8 README.md 7: on the Stage a knocked out ship comes back at its centre)
         p.vel = Vec2{};
         p.fire = 0;
         p.dashing = false;
@@ -103,8 +104,8 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
         p.perfectDash = perfect;
         p.dashFrom = p.pos;
         Vec2 to = p.pos + dir * kDashWu;
-        to.x = clampf(to.x, -kArenaHalfW + kPlayerVisualRadius, kArenaHalfW - kPlayerVisualRadius);
-        to.y = clampf(to.y, -kArenaHalfH + kPlayerVisualRadius, kArenaHalfH - kPlayerVisualRadius);
+        to.x = clampf(to.x, -world.halfW() + kPlayerVisualRadius, world.halfW() - kPlayerVisualRadius);
+        to.y = clampf(to.y, -world.halfH() + kPlayerVisualRadius, world.halfH() - kPlayerVisualRadius);
         p.dashTo = to;
     }
     dashHeld_ = in.dash;
@@ -151,7 +152,7 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
         }
     }
     // The walls (GAME_DESIGN 9).
-    const float lx = kArenaHalfW - kPlayerVisualRadius, ly = kArenaHalfH - kPlayerVisualRadius;
+    const float lx = world.halfW() - kPlayerVisualRadius, ly = world.halfH() - kPlayerVisualRadius;
     if (p.pos.x < -lx || p.pos.x > lx) {
         p.pos.x = clampf(p.pos.x, -lx, lx);
         p.vel.x = 0.0f;

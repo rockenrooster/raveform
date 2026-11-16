@@ -134,9 +134,9 @@ void World::updateModes() {
             }
         }
     }
-    // Versus (README.md 7): a knocked out ship comes back on its bar line where it was, with two cells, a panic pulse, one bar in
-    // which it cannot be hurt and half its Chain.
-    if (setup_.versus)
+    // The knock-out (README.md 7: versus and every timed mode): a knocked out ship comes back on its bar line where it was, with two
+    // cells, a panic pulse, one bar in which it cannot be hurt and half its Chain.
+    if (setup_.versus || director_.formCount)
         for (u32 p = 0; p < playerCount_; ++p) {
             PlayerState& pl = players_[p];
             if (!pl.knocked || m1_ < pl.backTick) continue;
@@ -146,6 +146,7 @@ void World::updateModes() {
             pl.chain = pl.chain / 2 > 1 ? pl.chain / 2 : 1u;
             pl.invulS = static_cast<float>(kTicksPerBar) / ticksPerSecond();
             pl.vel = Vec2{};
+            if (stage_) pl.pos = pl.prevPos = Vec2{};  // (README.md 7: on the Stage, back at its centre)
             panicPulse(p);
             Event ev;
             ev.type = EventType::KnockBack;
@@ -161,6 +162,7 @@ void World::updateModes() {
     // pops in one ring from the ship outward, with no score and no Shards).
     DirectorState& d = director_;
     if (d.formCount && !d.runEnded && phrase_.ended) {
+        if (setup_.mode == Mode::Tracers) tracersEnd();  // (tracers.md rule 12: the floor pays)
         Enemies& e = enemies_;
         for (u32 i = 0; i < e.count; ++i)
             if (!(e.flags[i] & kFlagDead)) e.flags[i] |= kFlagDead;
@@ -191,6 +193,10 @@ void World::knockOut(u32 p, double backTick) {
     pl.novaInvulS = 0.0f;
     pl.invulS = 0.0f;
     trio_[p].open = false;
+    if (setup_.mode == Mode::Tracers) {
+        breakTracer(p);
+        tracersKnock(p);  // (tracers.md rule 17: the lights)
+    }
     Event ev;
     ev.type = EventType::Knock;
     ev.a = static_cast<u8>(p);

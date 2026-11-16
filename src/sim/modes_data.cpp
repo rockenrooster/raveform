@@ -6,6 +6,7 @@
 
 #include "core/json_doc.h"
 #include "core/log.h"
+#include "sim/upgrades.h"
 
 namespace rf::sim {
 
@@ -314,6 +315,86 @@ bool ModesData::load() {
     versus.crownAboveWu = static_cast<float>(r.num("versus.crown.aboveWu"));
     versus.crownLevel = static_cast<float>(r.num("versus.crown.level"));
     versus.crownSparks = static_cast<u32>(r.num("versus.crown.sparks"));
+    {
+        // TRACERS (tracers.md; modes.json tracers).
+        Tracers& t = tracers;
+        t.lifeBeats = static_cast<float>(r.num("tracers.tracer.lifeBeats"));
+        t.lifeBeatsPerLevel = static_cast<float>(r.num("tracers.tracer.lifeBeatsPerLevel"));
+        t.lifeBeatsMax = static_cast<float>(r.num("tracers.tracer.lifeBeatsMax"));
+        t.minSpeedWu = static_cast<float>(r.num("tracers.tracer.minSpeedWu"));
+        t.pointEveryWu = static_cast<float>(r.num("tracers.tracer.pointEveryWu"));
+        t.maxPoints = static_cast<u32>(r.num("tracers.tracer.maxPoints"));
+        t.skipNewest = static_cast<u32>(r.num("tracers.tracer.skipNewestPoints"));
+        t.snapWu = static_cast<float>(r.num("tracers.tracer.closeSnapWu"));
+        t.hintWu = static_cast<float>(r.num("tracers.tracer.hintWu"));
+        t.width = static_cast<float>(r.num("tracers.tracer.width"));
+        t.level = static_cast<float>(r.num("tracers.tracer.level"));
+        t.nodePx = static_cast<float>(r.num("tracers.tracer.nodeSparklePx"));
+        t.expiringBeats = static_cast<float>(r.num("tracers.tracer.expiringBeats"));
+        t.minTiles = static_cast<u32>(r.num("tracers.ring.minTiles"));
+        t.maxVertices = static_cast<u32>(r.num("tracers.ring.maxVertices"));
+        t.maxAlive = static_cast<u32>(r.num("tracers.ring.maxAlive"));
+        for (u32 k = 0; k < 5; ++k) {
+            std::snprintf(p, sizeof p, "tracers.ring.bonusFrom.%u", k);
+            t.bonusFrom[k] = static_cast<u8>(r.num(p));
+            std::snprintf(p, sizeof p, "tracers.ring.bonus.%u", k);
+            t.bonus[k] = static_cast<u8>(r.num(p));
+        }
+        t.heavyShare = static_cast<float>(r.num("tracers.ring.heavyShare"));
+        t.duetBonus = static_cast<float>(r.num("tracers.ring.duetBonus"));
+        t.fullHouseShare = static_cast<float>(r.num("tracers.floor.fullHouseShare"));
+        t.housePayout = static_cast<float>(r.num("tracers.floor.fullHousePayout"));
+        t.endPerTile = static_cast<float>(r.num("tracers.floor.endBonusPerTile"));
+        t.litLevel = static_cast<float>(r.num("tracers.floor.litLevel"));
+        t.restLevel = static_cast<float>(r.num("tracers.floor.restLevel"));
+        t.edgeWidth = static_cast<float>(r.num("tracers.floor.edgeWidth"));
+        t.edgeLevel = static_cast<float>(r.num("tracers.floor.edgeLevel"));
+        t.edgeGlowWu = static_cast<float>(r.num("tracers.floor.edgeGlowWu"));
+        t.edgeGlow = static_cast<float>(r.num("tracers.floor.edgeGlow"));
+        t.houseCrowdStep = static_cast<float>(r.num("tracers.floor.houseCrowdStep"));
+        t.crowdScale = static_cast<float>(r.num("tracers.crowd.stageScale"));
+        t.crowdMax = static_cast<float>(r.num("tracers.crowd.max"));
+        t.threatScale = static_cast<float>(r.num("tracers.crowd.threatScale"));
+        t.eliteEveryBars = static_cast<u32>(r.num("tracers.crowd.eliteEveryBars"));
+        t.boostEveryBars = static_cast<u32>(r.num("tracers.boostEveryBars"));
+        t.longScale = static_cast<float>(r.num("tracers.gels.long.tracerScale"));
+        t.gelBars[kGelLong] = static_cast<float>(r.num("tracers.gels.long.bars"));
+        t.gelBars[kGelEcho] = static_cast<float>(r.num("tracers.gels.echo.bars"));
+        t.echoBeats = static_cast<float>(r.num("tracers.gels.echo.secondRingBeats"));
+        t.echoScale = static_cast<float>(r.num("tracers.gels.echo.secondRingScale"));
+        t.knockShare = static_cast<float>(r.num("tracers.knockOutCost.litShare"));
+        t.spinOutWu = static_cast<float>(r.num("tracers.versus.spinOutWu"));
+        t.dazzledBeats = static_cast<float>(r.num("tracers.versus.dazzledBeats"));
+        // The mode's orbs by name (the Boosts of GAME_DESIGN 6.4 it allows, and its two gels).
+        static const struct {
+            const char* name;
+            u8 orb;
+        } kOrbs[] = {{"timeStretch", kTimeStretch}, {"freezeFrame", kFreezeFrame}, {"halo", kHalo},       {"magnetStorm", kMagnetStorm},
+                     {"blackHole", kBlackHole},     {"colossus", kColossus},       {"confetti", kConfetti}, {"long", static_cast<u8>(kGelOrb | kGelLong)},
+                     {"echo", static_cast<u8>(kGelOrb | kGelEcho)}};
+        t.boostCount = 0;
+        for (u32 k = 0; k < 12; ++k) {
+            char name[24] = {};
+            std::snprintf(p, sizeof p, "tracers.boosts.%u", k);
+            if (!doc.text(p, name, sizeof name)) break;
+            bool known = false;
+            for (const auto& o : kOrbs)
+                if (std::strcmp(o.name, name) == 0) {
+                    t.boosts[t.boostCount++] = o.orb;
+                    known = true;
+                }
+            if (!known) {
+                RF_ERR("modes.json: tracers.boosts names '%s', which the game does not have", name);
+                r.ok = false;
+            }
+        }
+        if (t.maxPoints > TracerLine::kMax || t.maxVertices > TracerRing::kCorners || t.maxAlive < 1 || t.maxAlive > 8 || !t.boostCount ||
+            stage.tilesX != TracerFloor::kTilesX || stage.tilesY != TracerFloor::kTilesY || t.skipNewest + 2u >= t.maxPoints) {
+            RF_ERR("modes.json: tracers' caps (%u points, %u corners, %u rings, %u x %u tiles) are outside the world's", t.maxPoints, t.maxVertices,
+                   t.maxAlive, stage.tilesX, stage.tilesY);
+            r.ok = false;
+        }
+    }
     // The timed forms must add up to their modes' lengths (design/modes/README.md 6).
     if (forms.blast.bars() != mode[static_cast<u32>(Mode::FullBlast)].timedBars || forms.timed48.bars() != mode[static_cast<u32>(Mode::Tracers)].timedBars ||
         forms.timed48.bars() != mode[static_cast<u32>(Mode::Songline)].timedBars) {

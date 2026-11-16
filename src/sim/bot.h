@@ -21,7 +21,9 @@ u32 botPickOrb(const Loadout& l, const u8* orbs, u32 n);
 
 class Bot {
 public:
-    enum class Policy : u8 { Play, Stress, Reckless, Novice, Assist };
+    // M8 TRACERS (design/modes/tracers.md "What to check"): every policy flies rings there; Child is the child-like one (half a
+    // second late, no Dash), and the Novice flies as it does.
+    enum class Policy : u8 { Play, Stress, Reckless, Novice, Assist, Child };
     void setPolicy(Policy p) { policy_ = p; }  // --autoplay --reckless-after: the run ends on its own
     void reset(u64 seed, Policy policy);
     StickInput think(const World& world, u32 player, const PlayerController& controller, double musicTick);
@@ -47,6 +49,17 @@ private:
     static constexpr u32 kNoviceDelayTicks = 15;  // tuning::kNoviceReactS at 60 Hz
     Vec2 novMove_[kNoviceDelayTicks] = {};        // its steering, a quarter of a second behind
     u32 novMoveAt_ = 0;
+    // M8 TRACERS: the ring-flier circles the nearest twelve bodies (or a dark part of the floor) and starts the next circle when the
+    // ring locks; the child does the same half a second late and never dashes.
+    StickInput thinkTracers(const World& w, u32 player, const PlayerController& controller, StickInput in);
+    void pickCircle(const World& w, u32 player, Vec2 pos);
+    Vec2 ringC_;
+    float ringR_ = 0.0f, ringDir_ = 1.0f;
+    bool ringOn_ = false;
+    u32 ringCount_ = 0, ringTicks_ = 0;
+    static constexpr u32 kChildDelayTicks = 30;  // half a second at 60 Hz
+    Vec2 childMove_[kChildDelayTicks] = {};
+    u32 childAt_ = 0;
 };
 
 }  // namespace rf::sim

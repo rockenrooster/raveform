@@ -3,6 +3,7 @@
 // modes' numbers, read from design/modes/modes.json at start-up (never retyped). THE SET is the setup's default: every run that
 // does not ask for another mode is the set, bit for bit (MODES_PLAN briefing 4).
 
+#include "core/math.h"
 #include "core/types.h"
 
 namespace rf::sim {
@@ -99,11 +100,74 @@ struct ModesData {
         float crownWidthWu = 0, crownAboveWu = 0, crownLevel = 0;
         u32 crownSparks = 0;
     } versus;
+    struct Tracers {  // tracers.md (modes.json tracers)
+        float lifeBeats = 8.0f, lifeBeatsPerLevel = 1.0f, lifeBeatsMax = 16.0f, minSpeedWu = 120.0f, pointEveryWu = 16.0f;
+        u32 maxPoints = 160, skipNewest = 6;
+        float snapWu = 36.0f, hintWu = 120.0f, width = 2.2f, level = 2.6f, nodePx = 9.0f, expiringBeats = 2.0f;
+        u32 minTiles = 4, maxVertices = 48, maxAlive = 8;
+        u8 bonusFrom[5] = {1, 5, 10, 20, 40}, bonus[5] = {1, 2, 3, 5, 8};
+        float heavyShare = 0.25f, duetBonus = 2.0f;
+        float fullHouseShare = 0.9f, housePayout = 5000.0f, endPerTile = 10.0f;
+        float litLevel = 0.55f, restLevel = 0.3f, edgeWidth = 1.5f, edgeLevel = 1.4f, edgeGlowWu = 10.0f, edgeGlow = 0.2f;
+        float houseCrowdStep = 0.15f, crowdScale = 0.5f, crowdMax = 200.0f, threatScale = 0.5f;
+        u32 eliteEveryBars = 8, boostEveryBars = 6;
+        u8 boosts[12] = {};  // the mode's orbs: a Boost (sim/upgrades.h), or kGelOrb | a gel
+        u8 boostCount = 0;
+        float longScale = 2.0f, gelBars[2] = {4.0f, 4.0f}, echoBeats = 1.0f, echoScale = 1.5f;
+        float knockShare = 0.25f, spinOutWu = 300.0f, dazzledBeats = 2.0f;
+        u8 bonusFor(u32 caught) const {  // the ring's bonus for what it caught (rule 8)
+            u8 b = bonus[0];
+            for (u32 k = 0; k < 5; ++k)
+                if (caught >= bonusFrom[k]) b = bonus[k];
+            return b;
+        }
+    } tracers;
 
     const Info& of(Mode m) const { return mode[static_cast<u32>(m) < kModeCount ? static_cast<u32>(m) : 0]; }
     bool takes(Mode m, u32 track) const;  // the mode plays that Track
     bool load();
 };
 u64 modesDataDigest();  // design/modes/modes.json and the bonus Tracks (co-op peers must match)
+
+// TRACERS's gels (tracers.md rule 15): two Boost-like orbs of the mode's own, held for four bars.
+constexpr u8 kGelLong = 0, kGelEcho = 1, kGels = 2;
+constexpr u8 kGelOrb = 0x80;  // ModesData::Tracers::boosts: kGelOrb | the gel
+
+// TRACERS's state in the world (tracers.md "Caps and the wire"): each player's tracer, the rings alive, the floor.
+struct TracerLine {
+    static constexpr u32 kMax = 160;  // points a player
+    Vec2 pt[kMax];
+    double born[kMax] = {};
+    u8 node[kMax] = {};  // 1: a sixteenth fell while this point was laid (a bead and a note of the lead)
+    u16 head = 0, count = 0;
+    bool laying = false;
+    double fizzleTick = -1e18;  // the last dry tick (one a beat at most)
+    Vec2 at(u32 k) const { return pt[(head + k) % kMax]; }
+    double bornAt(u32 k) const { return born[(head + k) % kMax]; }
+    bool nodeAt(u32 k) const { return node[(head + k) % kMax] != 0; }
+};
+struct TracerRing {
+    static constexpr u32 kCorners = 48, kCaught = 224;
+    Vec2 pt[kCorners];
+    u8 n = 0;
+    bool active = false, popped = false, echo = false;  // echo: ECHO's second pop of a ring
+    u8 owner = 0, owner2 = 0xFF;                        // owner2: a duet's partner (0xFF: none)
+    u8 bonus = 1;
+    u16 caught = 0, tiles = 0;
+    double lockTick = 0.0, popTick = 0.0;
+    Vec2 centre;
+    float radius = 0.0f;  // the farthest corner from the centre (the pop's pool, the words)
+    u32 handle[kCaught] = {};
+};
+struct TracerFloor {
+    static constexpr u32 kTilesX = 43, kTilesY = 21, kTiles = kTilesX * kTilesY;
+    static constexpr u8 kDark = 0xFF, kHouse = 0xFE;  // an owner: dark; lit by the house's chase
+    u8 owner[kTiles] = {};
+    u16 order[kTiles] = {};  // the order it was lit in (the knock-out's "oldest")
+    u16 serial = 0, lit = 0;
+    u16 house = 1, houses = 0;
+    double chaseTick = -1.0, popTick = -1.0, darkTick = -1.0;  // FULL HOUSE: the chase, the crowd's pop and the pay, the dark
+    Vec2 lastRing;  // the last ring's centre (the chase's spiral starts there)
+};
 
 }  // namespace rf::sim

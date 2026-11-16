@@ -240,6 +240,22 @@ u32 Lattice::draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle
         const float x = static_cast<float>(i) * spacing_, y = static_cast<float>(j) * spacing_;
         return x >= view.boundsMin.x && x <= view.boundsMax.x && y >= view.boundsMin.y && y <= view.boundsMax.y;
     };
+    // M8 TRACERS: the colour index of the tiles on both sides of a line (its rest midpoint, a quarter spacing either way across it);
+    // 0xFF unless both are lit alike.
+    const auto tileOf = [&](Vec2 p) -> i32 {
+        const float fx = (p.x - view.tileOrigin.x) / view.tileWu, fy = (p.y - view.tileOrigin.y) / view.tileWu;
+        if (fx < 0.0f || fy < 0.0f) return -1;
+        const u32 x = static_cast<u32>(fx), y = static_cast<u32>(fy);
+        return (x < view.tilesX && y < view.tilesY) ? static_cast<i32>(y * view.tilesX + x) : -1;
+    };
+    const auto tinted = [&](Vec2 mid, Vec2 across, Vec3& c) {
+        const i32 t0 = tileOf(mid + across), t1 = tileOf(mid - across);
+        if (t0 < 0 || t1 < 0 || view.tileOwner[t0] == 0xFF || view.tileOwner[t0] != view.tileOwner[t1]) return false;
+        const float light = view.tileLight ? std::fmin(view.tileLight[t0], view.tileLight[t1]) : 1.0f;
+        if (light <= 0.01f) return false;
+        c = view.tileColour[view.tileOwner[t0]] * (view.tileLevel * light);
+        return true;
+    };
     u32 n = 0;
     for (int j = j0_; j < j0_ + rows_; ++j) {
         for (int i = i0_; i < i0_ + cols_; ++i) {
@@ -251,7 +267,11 @@ u32 Lattice::draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle
                 const u32 t = slot(i + 1, j);
                 if (!(aOut && outside(px_[t]))) {
                     const u32 flags = ((flat_[s] & 1u) ? kFlatStart : 0u) | ((flat_[t] & 1u) ? kFlatEnd : 0u);
-                    out.line(a, px_[t], hw_[s] > hw_[t] ? hw_[s] : hw_[t], col_[s], col_[t], flags);
+                    Vec3 c;
+                    if (view.tileOwner && tinted(Vec2{(static_cast<float>(i) + 0.5f) * spacing_, static_cast<float>(j) * spacing_}, Vec2{0.0f, 0.25f * spacing_}, c))
+                        out.line(a, px_[t], hw_[s] > hw_[t] ? hw_[s] : hw_[t], c + col_[s] * 0.3f, c + col_[t] * 0.3f, flags);
+                    else
+                        out.line(a, px_[t], hw_[s] > hw_[t] ? hw_[s] : hw_[t], col_[s], col_[t], flags);
                     ++n;
                 }
             }
@@ -259,7 +279,11 @@ u32 Lattice::draw(CapsuleBatch& out, const LatticeView& view, const LatticeStyle
                 const u32 t = slot(i, j + 1);
                 if (!(aOut && outside(px_[t]))) {
                     const u32 flags = ((flat_[s] & 2u) ? kFlatStart : 0u) | ((flat_[t] & 2u) ? kFlatEnd : 0u);
-                    out.line(a, px_[t], hw_[s] > hw_[t] ? hw_[s] : hw_[t], col_[s], col_[t], flags);
+                    Vec3 c;
+                    if (view.tileOwner && tinted(Vec2{static_cast<float>(i) * spacing_, (static_cast<float>(j) + 0.5f) * spacing_}, Vec2{0.25f * spacing_, 0.0f}, c))
+                        out.line(a, px_[t], hw_[s] > hw_[t] ? hw_[s] : hw_[t], c + col_[s] * 0.3f, c + col_[t] * 0.3f, flags);
+                    else
+                        out.line(a, px_[t], hw_[s] > hw_[t] ? hw_[s] : hw_[t], col_[s], col_[t], flags);
                     ++n;
                 }
             }
