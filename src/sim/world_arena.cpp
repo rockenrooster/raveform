@@ -1001,6 +1001,9 @@ void World::applyArenaOp(const NetOp& op) {
     const u8 code = static_cast<u8>(op.a - kArenaOpBase);
     const u8 a = op.c, b = op.b;
     switch (code) {
+        case 12: songChord(op.tick); break;                           // M8 SONGLINE: a step's chord (co-op)
+        case 13: songOwner(op.tick, a, b != 0); break;               // ... a gate given (versus)
+        case 14: songBack(a != 0, Vec2{op.x, op.y}); break;          // ... the line bending back, or flying on
         case 1: {  // an elite: enemy op.u with the traits in op.tick
             const i32 i = indexOfSerial(op.u);
             if (i >= 0 && !(enemies_.traits[i] & kEliteBit)) makeElite(static_cast<u32>(i), static_cast<u16>(op.tick));

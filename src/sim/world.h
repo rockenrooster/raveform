@@ -85,6 +85,7 @@ struct NetEnemyState {
 enum NetPlayerEventKind : u8 {
     kPeNova, kPeDash, kPeHit, kPeDown, kPeRevive, kPeTrioOpen, kPeTrioTake, kPeBoostTake, kPeHalo, kPeLeave, kPeWell, kPeKnock,
     kPeCut, kPeSpin,  // M8 TRACERS versus: this player's tracer cut (x, y), spun out (x, y the push; tick: no line until then)
+    kPeGate,          // M8 SONGLINE: this player threaded a gate (tick = the gate's birth, b = 1 in time, y2 = the ticks after it was threaded)
     kPeCount
 };
 // One operation from the network, applied inside the next tick (so its events land in the tick's buffer
@@ -251,6 +252,11 @@ enum class EventType : u8 {
     StreakTier,
     SparkBack,
     GateCount,
+    // M8 SONGLINE together: every player present threaded their gate of one step (co-op's chord: tick = the step's gates' birth,
+    // x, y one of them); versus: the host gave a gate to a player (a = the player, c = 1 in time, b = the player it was taken from
+    // or 0xFF; x, y the gate).
+    SongChord,
+    GateOwner,
 };
 enum UpgradeFx : u8 {
     kFxFork,          // a shot forked: x, y
@@ -765,6 +771,8 @@ struct WorldCounters {
     u32 bulletsHeld = 0;                  // ... the crowd's bullets not fired: the pool above kBulletPoolCrowd
     // M4 co-op.
     u32 netOpsDropped = 0, netLogDropped = 0;  // pool overflows of the network's queues
+    u32 sparkSyncs = 0;  // M8 SONGLINE, a client: the host's point of the line taken (more than 2 wu off)
+    u32 songChords = 0;  // M8 SONGLINE co-op: the steps every player threaded together
     u32 predicted = 0, confirmed = 0, undone = 0, lateSpawns = 0, unknownIds = 0, downs = 0, revives = 0;
     u32 censusChecks = 0, censusMismatches = 0;
     i32 censusLastDiff = 0;  // this world's count minus the host's at the last mismatch
@@ -1186,11 +1194,17 @@ public:
         u8 lastMini = 0xFF;
         u32 outroBar = kNoBar;  // M8: ONE TRACK's outro
         u8 crown = 0xFF, underdog = 0xFF;  // M8 versus: the host's
+        // M8 SONGLINE (songline.md "Caps and the wire"): once a bar, the line's point a bar ahead as the host has it (its step,
+        // place, heading, distance flown) and whether it is bending back; 0xFFFF: no Spark.
+        u16 sparkStep = 0xFFFF;
+        float sparkX = 0.0f, sparkY = 0.0f, sparkHeading = 0.0f, sparkFlown = 0.0f;
+        u8 sparkBack = 0;
         bool operator==(const DirectorSync& o) const {
             return startTick == o.startTick && trackBar == o.trackBar && changeBar == o.changeBar && track == o.track &&
                    bossSpawned == o.bossSpawned && assist == o.assist && midHold == o.midHold && midHolding == o.midHolding &&
                    miniSpawned == o.miniSpawned && lastMini == o.lastMini && outroBar == o.outroBar && crown == o.crown &&
-                   underdog == o.underdog;
+                   underdog == o.underdog && sparkStep == o.sparkStep && sparkX == o.sparkX && sparkY == o.sparkY &&
+                   sparkHeading == o.sparkHeading && sparkFlown == o.sparkFlown && sparkBack == o.sparkBack;
         }
     };
     DirectorSync directorSync() const;
@@ -1755,6 +1769,15 @@ private:
     u16 streak_[kMaxPlayers] = {}, bestStreak_[kMaxPlayers] = {};
     u32 streakDropBar_[kMaxPlayers] = {};
     u16 gatesLaid_[kMaxPlayers] = {}, gatesThreaded_[kMaxPlayers] = {}, gatesInTime_[kMaxPlayers] = {};
+    u16 songTaken_[kMaxPlayers] = {};  // versus: the gates the host gave each player (one in time counts two)
+    DirectorSync sparkSync_;           // host: the line a bar ahead, as captured on the last bar line
+    void songRemoteThread(u32 p, double born, bool inTime, double at);
+    void songDecide(SongGate& g, u32 p, bool inTime, double at);
+    void songOwner(double born, u32 p, bool inTime);
+    void songChordCheck(double born);
+    void songChord(double born);
+    void songBack(bool back, Vec2 to);
+    SongGate* gateOf(double born, u8 string);
     u32 songTrack_ = 1;  // the Track whose tune is played (1-12)
     void resetSongline();
     void updateSongline();

@@ -482,6 +482,51 @@ void testLeadHalfRateAndNovaTick() {
     freeCapture(c);
 }
 
+// M8 (design/modes/sound.md "What the band needs" 4): SONGLINE's Spark, the lead slot that is nobody's: the beat's eighths from the
+// bar's first (mode 3), quarters (4) and every sixteenth (1), each its step's arpeggio note, in its own slot; off again with 0.
+void testSparkLead() {
+    Engine e;
+    CHECK(e.init(*g_music, *g_bank, kRate));
+    e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 3, 0));
+    e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 0.0f));
+    Capture c;
+    const u64 bar = static_cast<u64>(barFrames(3));
+    c.out = static_cast<float*>(std::calloc((bar * 5 + 64) * 2, sizeof(float)));
+    c.events = static_cast<BeatEvent*>(std::calloc(20000, sizeof(BeatEvent)));
+    u64 at = 0;
+    const auto renderTo = [&](u64 to) {
+        for (; at < to; at += 64) {
+            e.render(c.out + at * 2, 64, 2);
+            BeatEvent ev;
+            while (e.popEvent(ev)) c.events[c.eventCount++] = ev;
+        }
+    };
+    renderTo(bar / 2);
+    e.post(cmd(CmdType::SetSpark, 3, 2));
+    renderTo(bar * 2);
+    e.post(cmd(CmdType::SetSpark, 4, 2));
+    renderTo(bar * 3);
+    e.post(cmd(CmdType::SetSpark, 1, 2));
+    renderTo(bar * 4);
+    e.post(cmd(CmdType::SetSpark, 0, 2));
+    renderTo(bar * 5);
+    u32 perBar[5] = {}, offGrid = 0, wrong = 0;
+    const Track& tr = g_music->tracks[3];
+    for (u32 i = 0; i < c.eventCount; ++i) {
+        const BeatEvent& ev = c.events[i];
+        if (ev.kind != BeatKind::Lead || ev.b != kSparkLeadPlayer) continue;
+        const u32 b = static_cast<u32>(ev.tick / 384.0);
+        const u32 st = static_cast<u32>(std::fmod(ev.tick, 384.0) / 24.0);
+        if (b < 5) ++perBar[b];
+        if ((b == 1 && st % 2) || (b == 2 && st % 4)) ++offGrid;
+        if (ev.a != tr.chordAtBar(b).arp[st]) ++wrong;
+    }
+    CHECK_MSG(perBar[1] == 8 && perBar[2] == 4 && perBar[3] == 16 && perBar[4] <= 1, "the Spark's notes by bar %u %u %u %u", perBar[1], perBar[2],
+              perBar[3], perBar[4]);
+    CHECK_MSG(offGrid == 0 && wrong == 0, "%u notes off its grid, %u not their step's arpeggio note", offGrid, wrong);
+    freeCapture(c);
+}
+
 // A sound variant takes hold on the next bar line.
 void testVariantOnBarLine() {
     Engine e;
@@ -2342,6 +2387,7 @@ int main() {
         {"conductor: every Track's form, grid through the Build dip", testConductorForms},
         {"lead follows fire, every Track", testLeadFollowsFire},
         {"lead at half rate, Nova on the game's beat (M3)", testLeadHalfRateAndNovaTick},
+        {"SONGLINE's Spark: its own slot on the beat's eighths, quarters, sixteenths (M8)", testSparkLead},
         {"variant on the bar line", testVariantOnBarLine},
         {"track change through the Break", testTrackChange},
         {"no allocations in any mode", testNoAllocations},

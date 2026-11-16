@@ -725,7 +725,9 @@ void PlayView::onEvents(const World& w, double tickEnd) {
             case EventType::GateThread:
             case EventType::StreakTier:
             case EventType::SparkBack:
-            case EventType::GateCount: songlineEvent(w, e, t); break;  // M8 SONGLINE (play_view_songline.cpp)
+            case EventType::GateCount:
+            case EventType::SongChord:
+            case EventType::GateOwner: songlineEvent(w, e, t); break;  // M8 SONGLINE (play_view_songline.cpp)
             default: eventB(w, e, t); break;
         }
     }

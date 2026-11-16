@@ -641,6 +641,21 @@ void Band::leadNote(u8 player, u8 degree, float gain, float pan, double tick, u8
     post(c);
 }
 
+void Band::leadNoteAt(u8 player, u8 midi, float gain, float pan, double tick, u8 timbre) {
+    Command c{.type = CmdType::LeadNoteAt, .a = player, .b = midi, .c = timbre, .x = gain, .y = pan};
+    if (tick >= 0.0) {
+        c.when = Timing::AtTick;
+        c.tick = tick;
+    }
+    post(c);
+}
+
+void Band::setSpark(u8 mode, u8 timbre) {
+    if (mode == sparkMode_) return;
+    sparkMode_ = mode;
+    post({.type = CmdType::SetSpark, .a = mode, .b = timbre});
+}
+
 void Band::setPlayers(u8 count) { post({.type = CmdType::SetPlayers, .a = count, .b = 0}); }
 
 void Band::setPlayerTimbre(u8 slot, u8 timbre) { post({.type = CmdType::SetTimbre, .a = slot, .b = timbre}); }

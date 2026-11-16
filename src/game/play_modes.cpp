@@ -5,6 +5,7 @@
 // have yet (the bed's layers by the landings, the outro's held chord and reversed cymbal) are listed in game/pending_sounds.cpp's
 // notes and PROGRESS.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -126,7 +127,15 @@ void Play::modesEvent(const Event& e) {
             break;
         case EventType::GateLay:
         case EventType::GateThread: {
-            // M8 SONGLINE: the string as it is flown (the result's bar): this player's gates by their sixteenth.
+            // M8 SONGLINE: a gate threaded is its note in the player's own lead voice on the next thirty-second, a third above in
+            // time (sound.md "A gate threaded"; co-op: the string's own harmony is already its note).
+            if (e.type == EventType::GateThread && e.a == seat_ && bandDrives_ && band_) {
+                const double t32 = kTicksPerBeat / 8.0;
+                const double at = (std::floor(music1_ / t32) + 1.0) * t32 + (coop() ? netBandOffset_ : clock_.offset());
+                const i32 note = e.c ? songStepsAbove(e.b, 2) : static_cast<i32>(e.b);
+                band_->leadNoteAt(0, static_cast<u8>(note < 0 ? 0 : (note > 127 ? 127 : note)), static_cast<u8>(e.f) == 1 ? 1.0f : 0.85f, 0.0f, at);
+            }
+            // The string as it is flown (the result's bar): this player's gates by their sixteenth.
             if (e.type == EventType::GateLay ? (e.a != 0xFF && e.a != seat_) : e.a != seat_) break;
             const double step = (e.tick - w.director().startTick) / (kTicksPerBeat / 4.0);
             const i64 k = static_cast<i64>(std::llround(step));
@@ -139,7 +148,63 @@ void Play::modesEvent(const Event& e) {
             break;
         }
         case EventType::GateCount:
-            if (e.a == seat_) songCountT_ = static_cast<float>(tickEnd_ - e.age);
+            if (e.a != seat_) break;
+            songCountT_ = static_cast<float>(tickEnd_ - e.age);
+            if (bandDrives_ && band_) {
+                // The finale's burst: Impact and Gong, eight Bells up the home chord a thirty-second apart (one a ring of the
+                // firework); then the count: a Chirp for every sixteen gates threaded, climbing, over two beats, and a Bell on top
+                // for each tier the best streak reached.
+                const double at = e.tick + (coop() ? netBandOffset_ : clock_.offset());
+                band_->playRecipe(audio::Recipe::Impact, -1, 0.9f, 0.0f, at);
+                band_->playRecipe(audio::Recipe::Gong, -1, 0.7f, 0.0f, at);
+                for (u32 j = 0; j < 8; ++j)
+                    band_->playRecipe(audio::Recipe::Bell, audio::chordNote(static_cast<i32>(j), 5, audio::NoteFrom::ChordTone), 0.55f, 0.0f,
+                                      at + static_cast<double>(j) * kTicksPerBeat / 8.0);
+                const u32 chirps = static_cast<u32>(e.f) / 16u;
+                for (u32 j = 0; j < chirps && j < 32; ++j)
+                    band_->playRecipe(audio::Recipe::Chirp, audio::chordNote(static_cast<i32>(j % 15), 5, audio::NoteFrom::ScaleSteps), 0.45f, 0.0f,
+                                      at + kTicksPerBeat + 2.0 * kTicksPerBeat * static_cast<double>(j) / static_cast<double>(chirps > 1 ? chirps : 1u));
+                const u16 best = w.bestStreak(seat_);
+                const u32 tiers = best >= 128 ? 4u : (best >= 64 ? 3u : (best >= 32 ? 2u : (best >= 16 ? 1u : 0u)));
+                for (u32 j = 0; j < tiers; ++j)
+                    band_->playRecipe(audio::Recipe::Bell, audio::chordNote(static_cast<i32>(4 + j), 5, audio::NoteFrom::ChordTone), 0.6f, 0.0f,
+                                      at + 3.0 * kTicksPerBeat + static_cast<double>(j) * kTicksPerBeat / 4.0);
+            }
+            break;
+        case EventType::StreakTier:
+            if (e.a != seat_ || !bandDrives_ || !band_) break;
+            if (e.c) {
+                // A tier: the bells, one more of the four each time (one at 16, all four at 128).
+                for (u32 j = 0; j < e.b && j < 4; ++j)
+                    band_->playRecipe(audio::Recipe::Bell, audio::chordNote(static_cast<i32>(j), 5, audio::NoteFrom::ChordTone), 0.6f, 0.0f,
+                                      (std::floor(music1_ / (kTicksPerBeat / 4.0)) + 1.0 + static_cast<double>(j)) * (kTicksPerBeat / 4.0) +
+                                          (coop() ? netBandOffset_ : clock_.offset()));
+                pulse(0);
+            } else {
+                band_->playRecipe(audio::Recipe::Glass, audio::chordNote(0, 5), 0.3f);  // (a step down: soft)
+            }
+            break;
+        case EventType::SongChord:
+            // Co-op's chord (sound.md): the band's stab on the bar's chord at 0.8.
+            if (bandDrives_ && band_) band_->playRecipe(audio::Recipe::Stab, -1, 0.8f);
+            break;
+        case EventType::SparkBack:
+            if (e.a && bandDrives_ && band_) {
+                // The line bending back to a lost player: a saw glide rising a fifth over two beats, panned to where the Spark is.
+                const float pan = clampf((e.x - w.player(seat_).pos.x) / 900.0f, -1.0f, 1.0f);
+                band_->playRecipe(audio::Recipe::SawGlide, -1, 0.5f, pan, -1.0, 7.0f, 2.0f);
+            }
+            break;
+        case EventType::Shot:
+            // The gun (sound.md): no lead notes; each volley a closed hat at 0.3, at most one a thirty-second.
+            if (w.setup().mode == Mode::Songline && e.a == seat_ && bandDrives_ && band_) {
+                const double t32 = kTicksPerBeat / 8.0;
+                const double slot = std::floor(music1_ / t32);
+                if (slot != lastHat32_) {
+                    lastHat32_ = slot;
+                    band_->playRecipe(audio::Recipe::Hat, -1, 0.3f);
+                }
+            }
             break;
         case EventType::Restart:
             std::memset(songMarks_, 0, sizeof songMarks_);
@@ -210,6 +275,63 @@ void Play::modesFrameRun() {
         view_.loadInRing(pl.pos, li.closeRingWu[1], palettes_->player[q], palettes_->playerLight[q], static_cast<float>(tickEnd_), li.closeRingBeats * beatS);
     takenT_ = static_cast<float>(tickEnd_);  // (the band row's flash)
     if (bandDrives_ && band_) band_->playSfx(audio::Sfx::Upgrade, 1.0f, 1.0f);
+}
+
+i32 Play::songStepsAbove(i32 note, u32 steps) const {
+    // `steps` scale steps above `note` in the run's Track's scale (songline.md: in time a third above; co-op's harmonies).
+    const World& w = *world_;
+    const u32 t = w.setup().track >= 1 && w.setup().track <= kModeTracks ? w.setup().track : 1u;
+    const ModesData::Tune& tn = species_->modes.tunes[t - 1u];
+    if (!tn.scaleCount) return note + (steps == 2 ? 4 : 0);
+    const i32 pc = ((note - static_cast<i32>(tn.tonic)) % 12 + 12) % 12;
+    u32 idx = 0;
+    for (u32 j = 0; j < tn.scaleCount; ++j)
+        if (tn.scale[j] <= pc) idx = j;
+    const i32 base = note - (pc - tn.scale[idx]);
+    const u32 to = idx + steps;
+    return base + tn.scale[to % tn.scaleCount] - tn.scale[idx] + 12 * static_cast<i32>(to / tn.scaleCount);
+}
+
+void Play::songlineBand() {
+    // M8 SONGLINE (sound.md): the Spark is the band's lead in its own slot, on the section's grid: the beat's eighths in a Groove
+    // and a Build, sixteenths in a Drop, quarters in a Break; the Build's last bar its slot off and the bar's top note held as a
+    // pad voice, swelling, released on the Drop's downbeat; the spiral's two bars a tom roll into the last downbeat.
+    const World& w = *world_;
+    const bool on = w.setup().mode == Mode::Songline && screen_ != Screen::Title && w.director().formCount && !w.phrase().ended && !w.runEnded();
+    const Phrase& ph = w.phrase();
+    u8 mode = 0;
+    bool pad = false;
+    if (on) {
+        if (ph.buildLastBar()) pad = true;
+        else mode = ph.section == Section::Drop ? 1 : (ph.section == Section::Break ? 4 : 3);
+    }
+    band_->setSpark(mode, 2);
+    constexpr u8 kPadSlot = 13;
+    if (pad && !sparkPad_) {
+        // (the bar's arpeggio's top note: the tune's own data, its chord where the band has it)
+        const u32 t = w.setup().track >= 1 && w.setup().track <= kModeTracks ? w.setup().track : 1u;
+        const ModesData::Tune& tn = species_->modes.tunes[t - 1u];
+        i32 top = 72;
+        if (tn.chords) {
+            const i64 shift = std::llround((coop() ? netBandOffset_ : clock_.offset()) / kTicksPerBar);
+            const u32 chord = static_cast<u32>(((static_cast<i64>(ph.bar) + ((shift % 4) + 4) % 4) % tn.chords + tn.chords) % tn.chords);
+            top = 0;
+            for (u32 j = 0; j < 16; ++j) top = std::max(top, static_cast<i32>(tn.arp[chord][j]));
+        }
+        const float barS = 240.0f / std::fmax(clock_.bpm(), 30.0f);
+        band_->startVoice(kPadSlot, audio::Recipe::PadVoice, top, 0.7f, 0.0f, 0.8f * barS);
+    } else if (!pad && sparkPad_) {
+        band_->stopVoice(kPadSlot, 0.15f);
+    }
+    sparkPad_ = pad;
+    const bool spiral = on && w.spark().spiral;
+    if (spiral && !sparkSpiral_) {
+        u32 total = 0;
+        for (u32 j = 0; j < w.director().formCount; ++j) total += w.director().formBars[j];
+        band_->playRecipe(audio::Recipe::TomRoll, -1, 0.9f, 0.0f, w.tickOfBar(total) + (coop() ? netBandOffset_ : clock_.offset()),
+                          4.0f * static_cast<float>(species_->modes.songline.finaleBars));
+    }
+    sparkSpiral_ = spiral;
 }
 
 void Play::drawSongCount(FrameDraw& d, const LookVariant& variant, float W, float H) {

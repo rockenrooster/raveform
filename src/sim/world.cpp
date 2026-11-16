@@ -1652,6 +1652,7 @@ u64 World::hash() const {
             }
         for (u32 p = 0; p < kMaxPlayers; ++p) {
             val(streak_[p]);
+            val(songTaken_[p]);
             val(players_[p].streakTier);
         }
     }

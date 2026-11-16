@@ -751,6 +751,12 @@ private:
     // outro's card, the result and its records, NEXT TRACK.
     void modesEvent(const sim::Event& e);       // (afterTick) KitLand, RunEnd, a fight's start and end
     void modesFrameRun();                       // (frame) the load-in's closing ring and chord
+    // M8 SONGLINE (design/modes/sound.md "SONGLINE"): the Spark's slot by section, the Build's last bar held as a pad voice, the
+    // finale's tom roll (frame); a scale step above a note in the run's Track's scale.
+    void songlineBand();
+    i32 songStepsAbove(i32 note, u32 steps) const;
+    bool sparkPad_ = false, sparkSpiral_ = false;
+    double lastHat32_ = -1.0;
     void modesEndRun(bool died);                // (endRun) a mode's records instead of the set's table
     void drawLoadIn(FrameDraw& d, const LookVariant& variant);  // the kit's icons spiralling in
     void nextTrack();                           // NEXT TRACK: the next Track as a new run, its own kit

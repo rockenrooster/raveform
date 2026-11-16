@@ -155,6 +155,10 @@ public:
     void leadNote(u8 player, u8 degree, float gain, float pan, double tick = -1.0, u8 timbre = 0xFF);
     // M4 co-op (GAME_DESIGN 10): the players in this device's mix. Slot 0 is this device's player (setFireMode and
     // setLoadout speak for it); the others are its teammates, quieter by distance, each in its fixed timbre.
+    // M8 (design/modes/sound.md "What the band needs" 1): a note of a player's lead at any MIDI note, now or on `tick`.
+    void leadNoteAt(u8 player, u8 midi, float gain, float pan, double tick = -1.0, u8 timbre = 0xFF);
+    // M8 (4): the lead slot that is nobody's (SONGLINE's Spark): 0 off, 1 every sixteenth, 3 the beat's eighths, 4 quarters.
+    void setSpark(u8 mode, u8 timbre = 2);
     void setPlayers(u8 count);
     void setPlayerTimbre(u8 slot, u8 timbre);
     void setPlayerFire(u8 slot, u8 mode);
@@ -304,6 +308,7 @@ private:
     audio::Mode mode_ = audio::Mode::Silent;
     bool fire_ = false;
     u8 fireMode_ = 0;
+    u8 sparkMode_ = 0;  // M8: what setSpark last sent
     bool game_ = false;
     float intensity_ = 0.6f;
     bool hold_ = false;

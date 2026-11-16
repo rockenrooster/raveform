@@ -287,6 +287,19 @@ void PlayView::songlineEvent(const World& w, const Event& e, float t) {
             }
             break;
         case EventType::SparkBack: break;
+        case EventType::SongChord:
+            // Co-op's chord: that step bursts white on every string.
+            for (u32 k = 0; k < World::kSongGates; ++k) {
+                const SongGate& g = w.songGate(k);
+                if (g.born < 0.0 || std::fabs(g.born - e.tick) > 0.01 || g.string == 0xFF) continue;
+                addShockRings(g.pos, 1, 90.0f, W1, W1, t, 0.2f);
+            }
+            if (!reduceFlashing_) push(kImpKill, at, 80.0f, 140.0f, t);
+            break;
+        case EventType::GateOwner:
+            // Versus: the host gave the gate to another: it turns that player's colour as it goes.
+            if (e.a != w.viewPlayer()) addShockRings(at, 1, 60.0f, col, light, t, 0.15f);
+            break;
         case EventType::GateCount:
             if (e.a == w.viewPlayer() || finaleT_ < t - 1.0f) {
                 // The finale's burst: eight rings in the palette's hues a thirty-second apart to 900 wu, three hundred sparks.

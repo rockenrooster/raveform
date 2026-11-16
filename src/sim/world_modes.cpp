@@ -185,6 +185,12 @@ void World::updateModes() {
         d.outroBar = phrase_.bar;
         d.outroBars = 0;
     }
+    if (d.formCount && phrase_.ended) {
+        // (and from then on nothing lives: a spawn the host sent before the last downbeat can land on a client after its pop)
+        Enemies& e = enemies_;
+        for (u32 i = 0; i < e.count; ++i)
+            if (!(e.flags[i] & kFlagDead)) e.flags[i] |= kFlagDead;
+    }
     if (d.outroBar != kNoBar && !d.runEnded && phrase_.ended) {
         d.runEnded = true;
         Event ev;

@@ -714,6 +714,12 @@ void Session::onDirector(const MsgDirector& m) {
     op.serial = m.d.outroBar;  // M8
     op.opts[3] = m.d.crown;
     op.opts[4] = m.d.underdog;
+    op.species = m.d.sparkStep;  // M8 SONGLINE: the line a bar ahead
+    op.x = m.d.sparkX;
+    op.y = m.d.sparkY;
+    op.x2 = m.d.sparkHeading;
+    op.y2 = m.d.sparkFlown;
+    op.group = m.d.sparkBack;
     pushOp(op);
 }
 
@@ -1701,6 +1707,13 @@ void Session::collectLocalEvents() {
                 continue;
             }
             case EventType::Cut: m.kind = kPeCut; break;  // M8 TRACERS versus: where its line was cut
+            case EventType::GateThread:  // M8 SONGLINE: a gate threaded (its birth; in time; the claim's tick)
+                m.kind = kPeGate;
+                m.b = e.c ? 1 : 0;
+                m.tick = e.tick;
+                m.x2 = 0.0f;
+                m.y2 = e.y2;  // (the claim: ticks after the gate's birth, within its life: a place's bounds hold it)
+                break;
             case EventType::GelTake:  // M8 TRACERS: a gel taken (its orb, as a Boost's)
                 m.kind = kPeBoostTake;
                 m.b = static_cast<u8>(sim::kPickupGel + e.b);

@@ -270,6 +270,12 @@ void World::applyNetOp(const NetOp& op) {
                 d.outroBar = op.serial;
                 d.crown = op.opts[3];
                 d.underdog = op.opts[4];
+                d.sparkStep = op.species;  // M8 SONGLINE
+                d.sparkX = op.x;
+                d.sparkY = op.y;
+                d.sparkHeading = op.x2;
+                d.sparkFlown = op.y2;
+                d.sparkBack = static_cast<u8>(op.group);
                 netDirector(d);
             }
             break;
@@ -409,6 +415,10 @@ void World::applyPlayerOp(const NetOp& op) {
         case kPeCut:
             // M8 TRACERS versus: that player's line was cut there (its own device saw the rival cross it).
             if (setup_.mode == Mode::Tracers) cutLine(p, Vec2{op.x, op.y});
+            break;
+        case kPeGate:
+            // M8 SONGLINE: that player threaded a gate (co-op: gone here too, the host looks for the chord; versus: the host decides).
+            if (setup_.mode == Mode::Songline) songRemoteThread(p, op.tick, op.b != 0, op.tick + static_cast<double>(op.y2));
             break;
         case kPeSpin:
             // ... spun out by a ring: its line out, none until the tick given (its own device pushed it; its poses carry the push).
@@ -810,6 +820,14 @@ World::DirectorSync World::directorSync() const {
     d.outroBar = director_.outroBar;
     d.crown = director_.crown;
     d.underdog = director_.underdog;
+    if (setup_.mode == Mode::Songline) {
+        d.sparkStep = sparkSync_.sparkStep;
+        d.sparkX = sparkSync_.sparkX;
+        d.sparkY = sparkSync_.sparkY;
+        d.sparkHeading = sparkSync_.sparkHeading;
+        d.sparkFlown = sparkSync_.sparkFlown;
+        d.sparkBack = sparkSync_.sparkBack;
+    }
     return d;
 }
 
@@ -835,6 +853,21 @@ void World::netDirector(const DirectorSync& d) {
     }
     s.crown = d.crown;
     s.underdog = d.underdog;
+    if (setup_.mode == Mode::Songline && d.sparkStep != 0xFFFF && d.sparkStep >= spark_.step0 && d.sparkStep <= spark_.step0 + 16u) {
+        // M8 SONGLINE (songline.md "Caps and the wire"): the line's point a bar ahead as the host has it; more than 2 wu off, the
+        // host's, and the line after it again from there.
+        const u32 k = d.sparkStep - spark_.step0;
+        const Vec2 host{d.sparkX, d.sparkY};
+        if (k >= 1 && (lengthSq(spark_.ahead[k] - host) > 4.0f || std::fabs(std::remainder(spark_.aheadHeading[k] - d.sparkHeading, kTau)) > 0.01f)) {
+            spark_.ahead[k] = host;
+            spark_.aheadHeading[k] = d.sparkHeading;
+            spark_.aheadFlown[k] = static_cast<double>(d.sparkFlown);
+            spark_.aheadWall[k] = spark_.aheadHome[k] = 0.0f;
+            for (u32 j = k + 1u; j <= 16; ++j) sparkPoint(j);
+            ++counters_.sparkSyncs;
+        }
+        if ((d.sparkBack != 0) != spark_.comeBack) songBack(d.sparkBack != 0, spark_.comeTo);
+    }
     if (s.lastBar != kNoBar) {
         // The bar being played, as the host's state places it (a boss death moved the Track's end).
         const u32 bar = barOf(m1_);

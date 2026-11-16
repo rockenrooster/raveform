@@ -364,7 +364,14 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             m.d.outroBar = r.u32v();  // M8
             m.d.crown = r.u8v();
             m.d.underdog = r.u8v();
+            m.d.sparkStep = r.u16v();  // M8 SONGLINE
+            m.d.sparkX = r.f32v();
+            m.d.sparkY = r.f32v();
+            m.d.sparkHeading = r.f32v();
+            m.d.sparkFlown = r.f32v();
+            m.d.sparkBack = r.u8v();
             if ((m.d.crown != 0xFF && m.d.crown >= kMaxPlayers) || (m.d.underdog != 0xFF && m.d.underdog >= kMaxPlayers)) return false;
+            if (!inWorld(m.d.sparkX, m.d.sparkY) || !finite(m.d.sparkHeading) || !finite(m.d.sparkFlown) || m.d.sparkBack > 1) return false;
             if (r.bad() || !finite(m.d.startTick) || m.d.track < 1 || !finite(m.d.assist) || m.d.assist < 0.1f || m.d.assist > 10.0f)
                 return false;
             if (sink) sink->onDirector(m);
@@ -395,6 +402,7 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 case kPeWell: bMax = sim::kRiffMaxLevel; break;
                 case kPeDash:
                 case kPeNova:  // (the review's fixes, H5, 2026-11-15: 1 the player pressed it, for Feedback's tape)
+                case kPeGate:  // (M8 SONGLINE: 1 in time)
                 case kPeRevive: bMax = 1; break;
                 default: bMax = 0; break;
             }
@@ -960,7 +968,7 @@ bool PacketWriter::putBoostDrop(const MsgBoostDrop& m) {
     return true;
 }
 bool PacketWriter::putDirector(const MsgDirector& m) {
-    if (!begin(Msg::Director, 34)) return false;
+    if (!begin(Msg::Director, 53)) return false;
     u16v(m.run);
     f64v(m.d.startTick);
     u32v(m.d.trackBar);
@@ -975,6 +983,12 @@ bool PacketWriter::putDirector(const MsgDirector& m) {
     u32v(m.d.outroBar);  // M8
     u8v(m.d.crown);
     u8v(m.d.underdog);
+    u16v(m.d.sparkStep);  // M8 SONGLINE: the line a bar ahead
+    f32v(m.d.sparkX);
+    f32v(m.d.sparkY);
+    f32v(m.d.sparkHeading);
+    f32v(m.d.sparkFlown);
+    u8v(m.d.sparkBack);
     return true;
 }
 bool PacketWriter::putPlayerEvent(const MsgPlayerEvent& m) {

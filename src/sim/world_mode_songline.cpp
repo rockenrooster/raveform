@@ -70,7 +70,9 @@ void World::resetSongline() {
         streak_[p] = bestStreak_[p] = 0;
         streakDropBar_[p] = ~0u;
         gatesLaid_[p] = gatesThreaded_[p] = gatesInTime_[p] = 0;
+        songTaken_[p] = 0;
     }
+    sparkSync_ = DirectorSync{};
     layGates(0, spark_.ahead[0], spark_.aheadHeading[0]);  // (the run's first note)
 }
 
@@ -304,11 +306,18 @@ void World::threadGates(u32 p) {
         if (g.string != 0xFF && g.string != p) continue;
         if ((g.threaded >> p) & 1u) continue;
         if (setup_.versus && g.owner != 0xFF) continue;
-        const float r = gateRadius(g);
+        // (versus: the underdog threads from half as far again; V-rules, README.md 8)
+        const float r = gateRadius(g) * (setup_.versus && director_.underdog == p ? 1.5f : 1.0f);
         const float u = l2 > 1e-6f ? clampf(dot(g.pos - a, ab) / l2, 0.0f, 1.0f) : 0.0f;
         if (lengthSq(a + ab * u - g.pos) > r * r) continue;
         g.threaded = static_cast<u8>(g.threaded | (1u << p));
-        if (setup_.versus) g.owner = static_cast<u8>(p);
+        if (setup_.versus) {
+            // (first come: the host gives it at once to its own player's claim; a client's is a guess until the host's word)
+            g.owner = static_cast<u8>(p);
+            g.ownerInTime = inTime;
+            g.takeTick = m1_;
+            if (role_ != NetRole::Client) songDecide(g, p, inTime, m1_);
+        }
         if (inTime) g.inTime = static_cast<u8>(g.inTime | (1u << p));
         const float pay = (g.kind == 2 ? d.goldScore : (g.kind == 1 ? d.breakScore : d.score)) * (inTime ? d.inTimeScale : 1.0f) *
                           (pl.streakTier >= 1 ? 1.5f : 1.0f);
@@ -327,9 +336,139 @@ void World::threadGates(u32 p) {
         ev.f = static_cast<float>(g.kind);
         ev.x = g.pos.x;
         ev.y = g.pos.y;
+        ev.y2 = static_cast<float>(m1_ - g.born);  // (the claim's tick after the gate's birth: the wire's)
         ev.tick = g.born;
         emit(ev);
+        if (!setup_.versus && role_ == NetRole::Host) songChordCheck(g.born);
     }
+}
+
+// ---------------------------------------------------------------------------------------------- together (songline.md "Co-op",
+// "Versus: the race", "Caps and the wire")
+
+SongGate* World::gateOf(double born, u8 string) {
+    for (SongGate& g : songGates_)
+        if (g.born >= 0.0 && std::fabs(g.born - born) < 0.01 && g.string == string) return &g;
+    return nullptr;
+}
+
+void World::songRemoteThread(u32 p, double born, bool inTime, double at) {
+    // Another device's player threaded a gate (kPeGate): co-op, its string's gate is gone here too and the host looks for the
+    // step's chord; versus, the host decides who has it (a client waits for the host's word).
+    if (p >= kMaxPlayers) return;
+    if (setup_.versus) {
+        if (role_ != NetRole::Host) return;
+        SongGate* g = gateOf(born, 0xFF);
+        if (g) songDecide(*g, p, inTime, at);
+        return;
+    }
+    SongGate* g = gateOf(born, static_cast<u8>(p));
+    if (!g) return;
+    g->threaded = static_cast<u8>(g->threaded | (1u << p));
+    if (inTime) g->inTime = static_cast<u8>(g->inTime | (1u << p));
+    if (role_ == NetRole::Host) songChordCheck(born);
+}
+
+void World::songDecide(SongGate& g, u32 p, bool inTime, double at) {
+    // Versus, the host (or a world alone): the first claim by its tick has the gate; a later one that held it gives it back.
+    if (g.decided) {
+        if (g.owner == p) return;
+        if (g.takeTick <= at) return;  // (an earlier claim stands)
+    }
+    songOwner(g.born, p, inTime);
+    g.takeTick = at;
+    if (role_ == NetRole::Host) logArena(13, static_cast<u8>(p), static_cast<u8>(inTime ? 1 : 0), g.pos, Vec2{}, g.born);
+}
+
+void World::songOwner(double born, u32 p, bool inTime) {
+    // Versus: the gate is p's (the host's word, or its own decision): it turns p's colour and is gone for the others; a player
+    // that had it (a guess here, or an earlier word) gives back its count, and this device's own player its gate.
+    SongGate* gp = gateOf(born, 0xFF);
+    if (!gp || p >= kMaxPlayers) return;
+    SongGate& g = *gp;
+    const u8 was = g.decided ? g.owner : static_cast<u8>(0xFF);
+    if (was == p && g.decided) return;
+    if (was < kMaxPlayers) {
+        const u16 back = g.ownerInTime ? 2 : 1;
+        songTaken_[was] = static_cast<u16>(songTaken_[was] > back ? songTaken_[was] - back : 0);
+    }
+    for (u32 q = 0; q < playerCount_; ++q) {
+        if (q == p || !((g.threaded >> q) & 1u) || !isLocal(q)) continue;
+        // (this device's player had it: its gate, its count and its time given back; its streak and score stay: no miss either)
+        g.threaded = static_cast<u8>(g.threaded & ~(1u << q));
+        if (gatesThreaded_[q]) --gatesThreaded_[q];
+        if (((g.inTime >> q) & 1u) && gatesInTime_[q]) --gatesInTime_[q];
+        g.inTime = static_cast<u8>(g.inTime & ~(1u << q));
+    }
+    g.owner = static_cast<u8>(p);
+    g.ownerInTime = inTime;
+    g.decided = true;
+    g.threaded = static_cast<u8>(g.threaded | (1u << p));
+    songTaken_[p] = static_cast<u16>(songTaken_[p] + (inTime ? 2u : 1u));
+    Event ev;
+    ev.type = EventType::GateOwner;
+    ev.a = static_cast<u8>(p);
+    ev.b = was;
+    ev.c = inTime ? 1 : 0;
+    ev.x = g.pos.x;
+    ev.y = g.pos.y;
+    ev.tick = g.born;
+    emit(ev);
+}
+
+void World::songChordCheck(double born) {
+    // Co-op, the host: every player present has threaded their gate of this step: a chord (each Chain one more, the step white).
+    u32 present = 0;
+    for (u32 q = 0; q < playerCount_; ++q) {
+        if (!players_[q].present) continue;
+        ++present;
+        const SongGate* g = gateOf(born, static_cast<u8>(q));
+        if (!g || g->chord || !((g->threaded >> q) & 1u)) return;
+    }
+    if (present < 2) return;
+    const SongGate* g0 = nullptr;
+    for (u32 q = 0; q < playerCount_ && !g0; ++q)
+        if (players_[q].present) g0 = gateOf(born, static_cast<u8>(q));
+    logArena(12, 0, 0, g0 ? g0->pos : Vec2{}, Vec2{}, born);
+    songChord(born);
+}
+
+void World::songChord(double born) {
+    const SongGate* at = nullptr;
+    for (SongGate& g : songGates_)
+        if (g.born >= 0.0 && std::fabs(g.born - born) < 0.01 && g.string != 0xFF) {
+            if (g.chord) return;
+            g.chord = true;
+            if (!at) at = &g;
+        }
+    ++counters_.songChords;
+    for (u32 q = 0; q < playerCount_; ++q) {
+        PlayerState& pl = players_[q];
+        if (!pl.present || !isLocal(q)) continue;
+        pl.chain += 1;
+        if (pl.chain > pl.bestChain) pl.bestChain = pl.chain;
+    }
+    Event ev;
+    ev.type = EventType::SongChord;
+    ev.x = at ? at->pos.x : spark_.pos.x;
+    ev.y = at ? at->pos.y : spark_.pos.y;
+    ev.tick = born;
+    emit(ev);
+}
+
+void World::songBack(bool back, Vec2 to) {
+    // Rule 4 as the host decided it (a client): the line bends back from here, or flies on.
+    if (back == spark_.comeBack) return;
+    spark_.comeBack = back;
+    spark_.comeTo = to;
+    spark_.aheadWall[0] = spark_.aheadHome[0] = 0.0f;
+    sparkRebuild();
+    Event ev;
+    ev.type = EventType::SparkBack;
+    ev.a = back ? 1 : 0;
+    ev.x = spark_.pos.x;
+    ev.y = spark_.pos.y;
+    emit(ev);
 }
 
 void World::updateSongline() {
@@ -358,6 +497,7 @@ void World::updateSongline() {
             spark_.comeTo = to;
             spark_.aheadWall[0] = spark_.aheadHome[0] = 0.0f;  // (the walls' way round chosen again, the homing's side first)
             sparkRebuild();
+            if (role_ == NetRole::Host) logArena(14, static_cast<u8>(lost ? 1 : 0), 0, to, Vec2{}, static_cast<double>(spark_.step0));
             Event ev;
             ev.type = EventType::SparkBack;
             ev.a = spark_.comeBack ? 1 : 0;
@@ -366,6 +506,18 @@ void World::updateSongline() {
             emit(ev);
         } else if (spark_.comeBack) {
             spark_.comeTo = to;
+        }
+    } else if (spark_.comeBack) {
+        // (a client bends toward the nearest ship as it sees them; the host's word turns it on and off, its sync puts it right)
+        float nearest = 1e30f;
+        for (u32 p = 0; p < playerCount_; ++p) {
+            const PlayerState& pl = players_[p];
+            if (!pl.present || (!pl.alive && !pl.knocked)) continue;
+            const float dd = lengthSq(pl.pos - spark_.pos);
+            if (dd < nearest) {
+                nearest = dd;
+                spark_.comeTo = pl.pos;
+            }
         }
     }
     // The line moves on a sixteenth at a time; each sixteenth passed lays its gates.
@@ -379,6 +531,15 @@ void World::updateSongline() {
         }
         ++spark_.step0;
         sparkPoint(16);
+        if (role_ == NetRole::Host && spark_.step0 % 16u == 0) {
+            // (the line a bar ahead, for the clients: the director's message carries it once a bar)
+            sparkSync_.sparkStep = static_cast<u16>(spark_.step0 + 16u < 0xFFFFu ? spark_.step0 + 16u : 0xFFFEu);
+            sparkSync_.sparkX = spark_.ahead[16].x;
+            sparkSync_.sparkY = spark_.ahead[16].y;
+            sparkSync_.sparkHeading = spark_.aheadHeading[16];
+            sparkSync_.sparkFlown = static_cast<float>(spark_.aheadFlown[16]);
+            sparkSync_.sparkBack = spark_.comeBack ? 1 : 0;
+        }
         u32 total = 0;
         for (u32 j = 0; j < director_.formCount; ++j) total += director_.formBars[j];
         spark_.spiral = total && spark_.step0 / 16u + d.finaleBars >= total;

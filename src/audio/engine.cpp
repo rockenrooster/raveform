@@ -653,6 +653,31 @@ void Engine::applyCommand(const Command& c) {
             }
             break;
         }
+        case CmdType::LeadNoteAt: {
+            // M8 (sound.md "What the band needs" 1): a player's lead at any note (SONGLINE's gate, TRACERS's duet third).
+            const u8 slot = c.a < kMaxPlayers ? c.a : 0;
+            const Timbre tb = c.c < static_cast<u8>(Timbre::Count) ? static_cast<Timbre>(c.c) : players_[slot].timbre;
+            const float note = static_cast<float>(c.b);
+            const float gain = sp_->mix.lead * c.x;
+            if (c.when == Timing::AtTick && pendingCount_ < kPendingMax) {
+                Pending& q = pending_[pendingCount_++];
+                q = Pending{};
+                q.frame = frameOf(c.tick);
+                q.tick = c.tick;
+                q.lead = static_cast<i8>(slot);
+                q.timbre = tb;
+                q.note = note;
+                q.gain = gain;
+                q.pan = c.y;
+            } else {
+                playLead(slot, tb, note, kLeadNoteVel, gain, c.y, frame_);
+            }
+            break;
+        }
+        case CmdType::SetSpark:
+            sparkFire_ = c.a == 1 || c.a == 3 || c.a == 4 ? c.a : 0;
+            if (c.b < static_cast<u8>(Timbre::Count)) sparkTimbre_ = static_cast<Timbre>(c.b);
+            break;
         case CmdType::SetBeacon:
             if (p) {
                 p->beacon = c.b != 0;
@@ -678,6 +703,7 @@ void Engine::applyCommand(const Command& c) {
             muffleStep_ = c.y > 0.0f ? 1.0f / (c.y * static_cast<float>(sr_)) : 1.0f;
             break;
         case CmdType::Reset:
+            sparkFire_ = 0;
             for (u32 i = 0; i < kLeadVoices; ++i) lead_[i].active = false;
             for (u32 i = 0; i < kBassVoices; ++i) bass_[i].active = false;
             for (u32 i = 0; i < kStabVoices; ++i) stab_[i].active = false;
@@ -1863,6 +1889,7 @@ void Engine::conductorStep(i64 tick, i64 inBar) {
     }
     if (p.upgrades) upgradeStep(tick, inBar);  // M5: Riffs 4-12, the patterned Boosts and Fusions
     leadStep(tick, inBar);
+    sparkStep(tick, inBar);  // M8 SONGLINE: the Spark's own lead
     if (stabAcc_ > 0.0f) flushStabs(f);  // M5: Accent's and Bar Line's stabs, one voice a tick
 }
 
@@ -1973,8 +2000,8 @@ void Engine::leadStep(i64 tick, i64 inBar) {
             if (pl.crit && inBar % kPpq == 0 && !playerFusion(i, Fusion::DownbeatCannon) && own)
                 bend(playLead(static_cast<u8>(i), pl.timbre, note + 12.0f, vel, gain * r.critLevel, pan, f, scale, drive), false);
             if (m5) leadUpgrades(i, tick, inBar, k, note, vel, gain, pan, scale, drive, level, glideFrom);
-        } else if (p.sparse[i] && inBar % kTicksPerStep == 0) {
-            // Break: while a player is not firing, the bed echoes their arpeggio sparsely.
+        } else if (p.sparse[i] && inBar % kTicksPerStep == 0 && !sparkFire_) {
+            // Break: while a player is not firing, the bed echoes their arpeggio sparsely (not under SONGLINE's Spark: it is the tune).
             const u32 st = static_cast<u32>(inBar / kTicksPerStep);
             bool hit = false;
             for (u8 x : r.breakSparseSteps) hit = hit || x == st;
@@ -1985,6 +2012,21 @@ void Engine::leadStep(i64 tick, i64 inBar) {
             emit(BeatKind::Lead, f, tk, note, static_cast<u8>(i), 0, kSparseVel, st, midiHz(note));
         }
     }
+}
+
+void Engine::sparkStep(i64 tick, i64 inBar) {
+    // M8 SONGLINE (sound.md "The Spark"): the band's lead, flying: the bar's arpeggio on the section's grid (every sixteenth, the
+    // beat's eighths from the bar's first, or quarters), in its own slot at the players' own level: it is the tune.
+    if (!sparkFire_ || inBar % kTicksPerStep != 0) return;
+    const BarPlan& p = *plan_;
+    const u32 k = static_cast<u32>(inBar / kTicksPerStep);
+    if ((sparkFire_ == 3 && k % 2 != 0) || (sparkFire_ == 4 && k % 4 != 0)) return;
+    const ConductorRules& r = music_->conductor;
+    const u8 note = p.chord->arp[k % 16];
+    const float accent = inBar % kPpq == 0 ? r.accentBeat : (inBar % (kPpq / 2) == 0 ? r.accentEighth : r.accentOther);
+    const i64 f = frameOf(static_cast<double>(tick));
+    playLead(kSparkLeadPlayer, sparkTimbre_, note, accent, sp_->mix.lead, 0.0f, f);
+    emit(BeatKind::Lead, f, static_cast<double>(tick), note, kSparkLeadPlayer, static_cast<u8>(kTicksPerStep), accent, k, midiHz(note));
 }
 
 void Engine::flushKills(i64 /*tick*/) {

@@ -150,12 +150,18 @@ enum class CmdType : u8 {
                    // back the note was played (Recorded, Mirror, Reverse: the player's note then); timing Now or AtTick;
                    // mods[5] = Timbre (255: the player's own), mods[6] = the octaves it moves (signed), mods[7] = a bend in
                    // semitones (signed: it glides that far over its length)
+    // M8 (design/modes/sound.md "What the band needs" 1 and 4):
+    LeadNoteAt,    // a player's lead at any note: a = player, b = MIDI note, c = Timbre (0xFF: the player's own), x = gain (x the
+                   // lead's level), y = pan; timing Now or AtTick
+    SetSpark,      // the lead slot that is nobody's (SONGLINE's Spark): a = its fire mode (0 off, 1 every sixteenth, 3 the beat's
+                   // eighths: every second step from the bar's first, 4 quarters), b = Timbre
 };
 // VoiceStart (M5): mods[5] = the voice's reverb send in percent (0: the effects' own), mods[6] = 1: its chordNote is resolved
 // again on every bar line (it follows the chord). VoiceSet (M5): mods[5] = 1: a new pan in `level`.
 // LeadEcho's modes: the note as recorded; its mirror about the chord's root (as far below it as the note is above); as recorded
 // with its envelope reversed (a swell cut off); a note given (c).
 enum class LeadEchoMode : u8 { Recorded, Mirror, Reverse, Note };
+constexpr u8 kSparkLeadPlayer = 5;   // M8: SONGLINE's Spark, the lead slot that is nobody's (sound.md "What the band needs" 4)
 constexpr u8 kFightLeadPlayer = 6;   // the lead voices a fight plays (its own cap: kFightLeadVoices); 7 is Kaleidos's bells
 constexpr u32 kFightLeadVoices = 2;  // (the lead's ruling: Feedback's echoes two at most)
 
@@ -435,6 +441,7 @@ private:
     void stagedStep(i64 tick, i64 inBar);
     void conductorStep(i64 tick, i64 inBar);
     void leadStep(i64 tick, i64 inBar);
+    void sparkStep(i64 tick, i64 inBar);  // M8 SONGLINE's Spark
     void flushKills(i64 tick);
     void firePending(i64 frameEnd);
     void addSectionGain(double frame, float gain);
@@ -553,6 +560,8 @@ private:
     Player* players_ = nullptr;
     u32 playerCount_ = 1;
     u32 localPlayer_ = 0;
+    u8 sparkFire_ = 0;                     // M8 SONGLINE: the Spark's fire mode (CmdType::SetSpark)
+    Timbre sparkTimbre_ = Timbre::P3Bell;
     u32 killCount_[3] = {};
     u32 shardRun_ = 0;
     i64 lastShardFrame_ = -1000000;

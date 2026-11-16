@@ -1000,6 +1000,20 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                         hw.ringsLocked(2), hw.ringsLocked(3), cw.tracerFloor().houses, hw.tracerFloor().houses);
         }
     }
+    if (hw.setup().mode == sim::Mode::Songline) {
+        // M8 SONGLINE (songline.md "Caps and the wire"): each device's own gates, the chords (co-op), the gates taken as every device
+        // counts them (versus: the host's word), the line's corrections from the host.
+        for (u32 k = 0; k < players; ++k) {
+            if (off(k)) continue;
+            const World& cw = peers[k].world();
+            std::printf("[net]   SONGLINE peer %u: its gates %u of %u (%u in time), best streak %u; chords %u; taken as it counts them %u %u %u %u "
+                        "(host %u %u %u %u); the host's line taken %u times\n",
+                        k, cw.gatesThreaded(k), cw.gatesLaid(k), cw.gatesInTime(k), cw.bestStreak(k), cw.counters().songChords,
+                        static_cast<unsigned>(cw.versusCount(0)), static_cast<unsigned>(cw.versusCount(1)), static_cast<unsigned>(cw.versusCount(2)),
+                        static_cast<unsigned>(cw.versusCount(3)), static_cast<unsigned>(hw.versusCount(0)), static_cast<unsigned>(hw.versusCount(1)),
+                        static_cast<unsigned>(hw.versusCount(2)), static_cast<unsigned>(hw.versusCount(3)), cw.counters().sparkSyncs);
+        }
+    }
     std::printf("[net]   disconnects %u, stalls %u; census %u checks, %u mismatches; predicted kills %u (confirmed %u, undone %u); "
                 "late spawns %u, unknown ids %u; enemies on a client's screen not on the host's %llu\n",
                 disconnects, stalls, census, mismatches, predicted, confirmed, undone, late, unknown, static_cast<unsigned long long>(missing));

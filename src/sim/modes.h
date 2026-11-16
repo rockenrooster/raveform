@@ -219,6 +219,10 @@ struct SongGate {
     u8 owner = 0xFF;         // versus: who took it
     u8 boost = 0xFF;         // gold: its Boost
     bool missed = false;     // (faded unthreaded: drawn grey)
+    // M8 net (songline.md "Caps and the wire"): versus: the owner's claim (its tick), whether the host has decided it and whether
+    // it was in time; co-op: the step's chord paid.
+    bool decided = false, ownerInTime = false, chord = false;
+    double takeTick = 0.0;
 };
 // TRACERS on the wire (tracers.md "Caps and the wire"): a ring from its owner's device (kind 0: its corners, its pop's eighth, its
 // owners; ECHO's second pop flagged), the host's house (kind 1: the chase's bar line in `tick`); the host's floor.

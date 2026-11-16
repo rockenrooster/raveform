@@ -378,6 +378,7 @@ u64 World::versusCount(u32 p) const {
         for (u8 o : floor_.owner) n += o == p ? 1u : 0u;
         return n;
     }
+    if (setup_.mode == Mode::Songline) return songTaken_[p < kMaxPlayers ? p : 0];  // (songline.md: gates taken, one in time two)
     return players_[p < kMaxPlayers ? p : 0].score;
 }
 

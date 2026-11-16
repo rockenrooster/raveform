@@ -342,7 +342,11 @@ void Play::frame(float realDt) {
     buildInput(in);
     controller_.update(in, frameDt_, clock_.heardNow(), clock_.bpm(), *world_, 0);
     // (M8 TRACERS, tracers.md rule 2: the line is the lead: the band plays it as if fire were held while the tracer is laid)
-    if (bandDrives_) band_->setFireMode(world_->setup().mode == Mode::Tracers ? (world_->tracer(world_->viewPlayer()).laying ? 1 : 0) : controller_.pose().fire);
+    // (M8 SONGLINE, sound.md: the players' slots play no lead there: the Spark is the tune, the gun a soft hat)
+    if (bandDrives_)
+        band_->setFireMode(world_->setup().mode == Mode::Tracers ? (world_->tracer(world_->viewPlayer()).laying ? 1 : 0)
+                                                                  : (world_->setup().mode == Mode::Songline ? 0 : controller_.pose().fire));
+    if (bandDrives_) songlineBand();
 
     stats_.ticksLastFrame = 0;
     // A hit-stop (a boss's death, look.md §5) holds the ticks and the view's clock while the song runs on; the
@@ -441,7 +445,7 @@ void Play::runTick(double music0, double music1, bool firstOfFrame) {
     retryRequest_ = false;
     // While the band plays, the shots are the lead rule's heard steps (TECH_SPEC 6.3), each advanced by
     // the time since its step; without it, the sim fires on its own grid.
-    in.bandShots = bandDrives_ && clock_.fromBand();
+    in.bandShots = bandDrives_ && clock_.fromBand() && world_->setup().mode != Mode::Songline;  // (SONGLINE: the sim's own grid fires)
     if (in.bandShots && firstOfFrame) {
         const BeatView& v = band_->view();
         const float tps = clock_.ticksPerSecond();
