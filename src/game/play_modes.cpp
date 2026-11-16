@@ -270,6 +270,31 @@ void Play::nextTrack() {
     RF_LOG("play: NEXT TRACK: Track %u", su.track);
 }
 
+void Play::versusLog() {
+    // (M8 part 1's device check: every device logs the ranking it shows on each bar line: the same on all of them)
+    const World& w = *world_;
+    const u32 bar = w.phrase().bar;
+    if (bar == versusLogBar_) return;
+    versusLogBar_ = bar;
+    u8 order[kMaxPlayers];
+    u32 n = 0;
+    for (u32 q = 0; q < kMaxPlayers; ++q)
+        if (w.player(q).present) {
+            u32 at = n++;
+            while (at > 0 && w.player(order[at - 1]).score < w.player(q).score) {
+                order[at] = order[at - 1];
+                --at;
+            }
+            order[at] = static_cast<u8>(q);
+        }
+    char line[64];
+    int o = 0;
+    for (u32 k = 0; k < n; ++k) o += std::snprintf(line + o, sizeof line - static_cast<size_t>(o), "P%u ", order[k] + 1u);
+    line[o < 64 ? o : 63] = 0;
+    RF_LOG("versus: run %u bar %u ranking %scrown %d underdog %d", w.runId(), bar, line, w.director().crown == 0xFF ? -1 : static_cast<int>(w.director().crown) + 1,
+           w.director().underdog == 0xFF ? -1 : static_cast<int>(w.director().underdog) + 1);
+}
+
 void Play::drawVersusWorld(FrameDraw& d, const LookVariant& variant) {
     // README.md 8, V5: the leader's ship wears a small crown (18 wu wide, 26 wu above the ship, the pickup's white-gold at 2.0) on
     // every device; README.md 7: a knocked out ship's place reads BACK IN 2, BACK IN 1 (bars; cap 22 wu, the player's colour).

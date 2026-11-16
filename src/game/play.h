@@ -745,6 +745,8 @@ private:
     char cardSmall_[24] = {}, cardName_[32] = {}, completeLine_[32] = {}, goalLine_[48] = {};
     u8 podiumWinner_ = 0xFF;                    // the winner (0xFF: a draw)
     bool podiumCounted_ = false;                // the room's crown given for this match (the host's)
+    u32 versusLogBar_ = 0xFFFFFFFFu;            // versus: the run bar last logged (the ranking on every bar line, for the device check)
+    void versusLog();
     bool modeRun() const { return world_->setup().mode != sim::Mode::Set; }
     bool runCleared_ = false;      // the run's Track was cleared (its outro over)
     bool trackComplete_ = false;   // TRACK COMPLETE's card (from the boss's death)

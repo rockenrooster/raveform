@@ -4,6 +4,27 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15/16, the two-hour stress test on five devices
+
+The owner: "stress test the game (2 hours) with connected devices". `scripts\stress-devices.ps1 -RoundMinutes 38 -Rounds 3`
+(the build of 403cd1a and c786795, as deployed), 23:32 to 01:34: three rounds of four-seat co-op with the bots playing
+(`coop-phones.ps1`: round 1 the Moto hosting, the others joining by address; round 2 a tablet hosting, joining by room code, the
+Moto sent HOME for 18 s at 604 s and back; round 3 the second Moto hosting, joining by the room list, a tablet's app killed at 1370 s),
+while the fifth device played alone with `--autoplay`; every device's PSS and battery temperature every 5 minutes
+(`captures\stress\20261115_233207\`).
+
+- No crash, no ANR, no disconnect anywhere. Each round's room played the set to SET COMPLETE (16 to 16.5 minutes, every boss and
+  mini-boss falling in order) and went on into the loop (Track 14 to 17).
+- Round 2's HOME: the room paused for the away seat (`away: seats away now 0x4`) and went on when it was back 18 s later.
+- Round 3's killed app: `seat 3 left the run` and the three others played on; all three went down at Cadence in the loop's Track
+  17 (the loop's ramps), the host's `--coop-start` started the next run and it ran to the round's end.
+- The net in the long runs: round trips 16 to 30 ms, loss 0 to 0.1%, downstream to a client 210 to 270 kbit/s, the on-screen
+  error 3.6 to 12 wu RMS at the end of a round.
+- Memory (PSS) flat across the two hours: it rises 5 to 25 MB in a round's first minutes and holds (the Motos 148 to 160 MB, the
+  tablets 204 to 247 MB), back down with each round's new process. Battery at most 33.8 C (the second Moto), the tablets 29.8 to
+  32.7 C.
+- Not covered: the OnePlus 12R (not attached); the release build (the dev build as deployed).
+
 ## M8 — the modes (docs/MODES_PLAN.md), from 2026-11-15
 
 The owner: "can you implement this ... No subagents" (the lead's line-up: THE SET and six modes). The plan's own answers to its

@@ -470,6 +470,7 @@ void Play::afterTick() {
     const World& w = *world_;
     view_.onEvents(w, tickEnd_);
     if (modeRun()) modesFrameRun();  // M8: the load-in's closing ring and chord
+    if (w.setup().versus) versusLog();  // M8: the ranking on every bar line (logs)
     holdFight();  // M5 --fight ...:hold (benchmarks)
     if (opt_.loadoutMax) maxLoadout();  // M5 --loadout max (benchmarks)
     // M5: the fights' held voices end on time, and all of them when no fight is on.
