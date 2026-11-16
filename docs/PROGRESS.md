@@ -4,6 +4,26 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, the release pipeline on GitHub (docs/RELEASE_PIPELINE.md)
+
+The owner asked for "a GitHub repo and a release pipeline that automatically builds a release apk available for download".
+The repository is `rockenrooster/raveform` (private; `origin`), and `.github/workflows/release.yml` builds the release variant
+on every push to `main` and publishes it as release `build-<commit count>` with `raveform.apk`, its SHA-256 and the symbols.
+
+- **The first build (`build-284`, ad6c6fe):** 3 min 39 s for the whole job, 2 min 56 s of it the Gradle build (NDK and CMake
+  from `sdkmanager` 11 s, the sources 6 s). The APK is 7.19 MB (libmain.so 3.07 MB), the symbols zip 14.1 MB. GitHub's free
+  2,000 minutes a month are about 500 such builds.
+- **What Linux needed:** `scripts/fetch-deps.sh` runs there too. There is no Vulkan SDK, so the headers come from Khronos's
+  Vulkan-Headers at the SDK's tag, and `vk_enum_string_helper.h`, which the SDK takes from Vulkan-Utility-Libraries, comes from
+  that repository's tag. Both commits are checked. They are the SDK's files: `vk_enum_string_helper.h` has the same blob,
+  and `vulkan_core.h` is the same after the SDK's CRLF become LF. No `#include` or CMake path differs in case from its file,
+  which a case-sensitive file system would refuse (checked with a script).
+- **Signing:** `android/app/build.gradle` signs the release with the keystore `RF_KEYSTORE` names (the workflow decodes it
+  from the `RF_KEYSTORE_BASE64` secret, with three more secrets), else the debug key as before. No secrets are set, so the
+  first builds carry a debug key made by their run. Which key to use is the owner's decision.
+- **Not verified:** the APK on a phone. It cannot install over the phones' builds, which have this PC's debug key, without an
+  uninstall that would take their settings and scores.
+
 ## 2026-11-15, the review's fixes (batch 1)
 
 The owner chose fixes from `docs/REVIEW_2026-11-15.md`; the lead's brief, item by item.

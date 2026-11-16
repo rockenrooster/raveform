@@ -76,8 +76,9 @@ it for a store release.
 
 ## Cost
 
-GitHub's free plan gives a private repository's Actions 2,000 Linux minutes a month (a release build: see PROGRESS.md,
-"Release pipeline"); release files do not count toward the storage quota. Documentation-only pushes do not build.
+GitHub's free plan gives a private repository's Actions 2,000 Linux minutes a month. A release build takes about 4 minutes
+(the first, `build-284`: 3 min 39 s), so about 500 builds a month. Release files do not count toward the storage quota.
+Documentation-only pushes do not build.
 
 ## Making the download public
 

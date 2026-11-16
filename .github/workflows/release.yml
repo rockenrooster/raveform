@@ -91,10 +91,12 @@ jobs:
           test -n "$libmain"
           zip -q -j out/raveform-symbols.zip "$(dirname "$libmain")"/*.so
           python3 -I -B scripts/apk_size.py out/raveform.apk
-          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
-          certs=$("$bt/apksigner" verify --print-certs out/raveform.apk)
-          dn=$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate DN: //p')
-          digest=$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/[0-9]* | sort -V | tail -n 1)
+          certs=$("$bt/apksigner" verify --print-certs -v out/raveform.apk 2>&1)
+          echo "apksigner $(basename "$bt"):"
+          printf '%s\n' "$certs" | grep -iE 'verified|signer|warning|error' || true
+          dn=$(printf '%s\n' "$certs" | grep -m 1 'certificate DN: ' | sed 's/.*certificate DN: //' || true)
+          digest=$(printf '%s\n' "$certs" | grep -m 1 'certificate SHA-256 digest: ' | sed 's/.*SHA-256 digest: //' || true)
           if [ "$RF_SIGNED" = secrets ]; then
             signing="Signed with the key in the repository's signing secrets."
           else
