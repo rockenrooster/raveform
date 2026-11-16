@@ -76,6 +76,7 @@ void World::jamDecide(u8 pad) {
     const double at = tickOfBar(bar);
     u8 kind = kRoomMixer, value = 0;
     if (pad < ModesData::Jam::kMixer) {
+        if (jam_.mixerLocked) return;
         kind = kRoomMixer;
         // (two asks before the bar line: the second undoes the first)
         value = static_cast<u8>(jam_.mixerNext ^ (1u << pad));

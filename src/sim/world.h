@@ -1802,12 +1802,14 @@ public:
             float orbHold[7] = {};
         } shelf[kMaxPlayers];
         u8 toysNext[kMaxPlayers] = {}, boostsNext[kMaxPlayers] = {};
+        bool mixerLocked = false;  // (the moment jam:<track>:all: every layer held on whatever the pads are flown over)
     };
     const JamState& jam() const { return jam_; }
     u32 jamLayersOn() const;
     u8 jamShelfOrb(u32 p, u32 k) const;     // the orb k (0-5, 6 a Fusion's gold) of player p's open shelf; kNoUpgrade: none
     Vec2 jamShelfOrbPos(u32 p, u32 k) const;
     void jamAsk(u32 p, u8 pad);             // (pictures, tests: as if the ship flew over it)
+    void jamLockMixer() { jam_.mixerLocked = true; }
     void jamTake(u32 p, u8 orb);
     void jamEmpty(u32 p);
 private:

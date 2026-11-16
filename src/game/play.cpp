@@ -168,6 +168,7 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
             frame(kDt);
             if (fightJump_ && fightReady()) break;  // M5 --fight: the fight is on (in its phase)
             if (dropJump_ && world_->phrase().cycle == opt.jumpCycle && world_->phrase().section == sim::Section::Drop && world_->phrase().sectionBar >= 1) break;
+            if (momentJump_ && momentReached()) break;  // M8: --mode ...:<moment>
         }
         ffRunning_ = false;
         opt_ = saved;
@@ -186,6 +187,10 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
         scriptTick_ = 0;
         captureFrom_ = -1;
         captureNow_ = pictureDone_ = false;
+        if (momentJump_)
+            RF_LOG("play: the moment (kind %u, %u%s): bar %u, %s, wave %u, bar %u of %u", momentKind_, momentN_, momentHold_ ? ", held" : "",
+                   world_->phrase().bar, sectionLabel(world_->phrase().section), world_->phrase().wave, world_->phrase().sectionBar,
+                   world_->phrase().sectionBars);
         RF_LOG("play: fast-forwarded %.1f s (%u ticks): %u enemies, %u kills, score %llu", fastForward, ticks,
                world_->enemies().count, world_->counters().kills, static_cast<unsigned long long>(world_->player(0).score));
         {
@@ -478,6 +483,7 @@ void Play::afterTick() {
     if (modeRun()) modesFrameRun();  // M8: the load-in's closing ring and chord
     if (w.setup().versus) versusLog();  // M8: the ranking on every bar line (logs)
     holdFight();  // M5 --fight ...:hold (benchmarks)
+    holdMoment();  // M8 --mode ...:act<N>:hold
     if (opt_.loadoutMax) maxLoadout();  // M5 --loadout max (benchmarks)
     // M5: the fights' held voices end on time, and all of them when no fight is on.
     if (bandDrives_)  // (M5 audio: the held voices follow the world: this device's seat, the band's offset)

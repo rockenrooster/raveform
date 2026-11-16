@@ -147,6 +147,10 @@ struct DirectorState {
     u8 jamTrack = 12, jamSong = 11, jamNext = 0, jamNextSong = 0, jamNextCrowd = 1, jamNextBonus = 0;
     float jamBpm = 120.0f, jamNextBpm = 120.0f;
     u8 jamDropBuild = 4, jamDropLen = 8;
+    // M8 moments (MODES_PLAN 2.10, `--mode <id>:<track>:<moment>:hold`, benchmarks and pictures): the form's section held (0xFF:
+    // none; it counts on past its length, as a boss's held Drop does, and the run never ends); JAM's Drop held.
+    u8 formHold = 0xFF;
+    bool jamDropHold = false;
 };
 
 // Where bar `bar` of the run sits, given what the director knows now.

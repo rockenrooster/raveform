@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "audio/band.h"
@@ -1067,6 +1068,49 @@ void Play::applyModeArgs() {
             if (species_->modes.of(su.mode).takesTrack) records_.track[static_cast<u32>(su.mode)] = su.track;
         } else if (su != RunSetup{}) {
             world_->resetRun(opt_.seed, 0.0, 1, 0xF, su);
+            if (moment[0]) {
+                // The moment (benchmarks, pictures): the run fast-forwarded to it, and held there with :hold. dropN / waveN: a timed
+                // form's Nth Drop (FULL BLAST's waves are its Drops); actN: HEADLINERS's act N, its boss's fight; JAM: drop (DROP
+                // pressed on the first bar), all (every layer on).
+                char* hold = std::strstr(moment, ":hold");
+                momentHold_ = hold != nullptr || std::strcmp(moment, "hold") == 0;
+                if (hold) *hold = 0;
+                const auto num = [&](const char* prefix) -> i32 {
+                    const size_t n = std::strlen(prefix);
+                    if (std::strncmp(moment, prefix, n) != 0) return -1;
+                    return moment[n] ? std::atoi(moment + n) : 0;
+                };
+                World& w = *world_;
+                if (su.mode == Mode::Jam && std::strcmp(moment, "drop") == 0) {
+                    momentKind_ = 3;
+                    w.jamAsk(0, ModesData::Jam::kPadDrop);
+                    w.directorMut().jamDropHold = momentHold_;
+                } else if (su.mode == Mode::Jam && std::strcmp(moment, "all") == 0) {
+                    momentKind_ = 4;
+                    for (u8 k = 0; k < ModesData::Jam::kMixer; ++k)
+                        if (!((w.jam().mixerNext >> k) & 1u)) w.jamAsk(0, k);
+                    w.jamLockMixer();
+                } else if (num("drop") > 0 || num("wave") > 0) {
+                    momentKind_ = 1;
+                    momentN_ = static_cast<u8>(num("drop") > 0 ? num("drop") : num("wave"));
+                    if (momentHold_) {
+                        u32 drops = 0;
+                        const DirectorState& d = w.director();
+                        for (u32 k = 0; k < d.formCount; ++k)
+                            if (static_cast<FormKind>(d.formKind[k]) == FormKind::Drop && ++drops == momentN_) w.directorMut().formHold = static_cast<u8>(k);
+                    }
+                } else if (num("act") > 0 && su.mode == Mode::Headliners) {
+                    momentKind_ = 2;
+                    momentN_ = static_cast<u8>(num("act"));
+                } else {
+                    RF_ERR("play: --mode %s: no moment '%s' (dropN, waveN, actN; JAM: drop, all; :hold)", opt_.mode, moment);
+                    modeArgsOk_ = false;
+                    return;
+                }
+                momentJump_ = true;
+                scriptFastForwardS_ = std::fmax(scriptFastForwardS_, momentKind_ == 2 ? 1200.0f : 600.0f);
+                w.spawner().mode = Spawner::Mode::Slice;
+            }
         }
         RF_LOG("play: --mode %s, Track %u%s%s", modeId(su.mode), su.track, moment[0] ? ", moment " : "", moment);
     }
@@ -1089,6 +1133,26 @@ void Play::applyModeArgs() {
         su.help = !opt_.noHelp;
         roomSetup_ = su;
     }
+}
+
+bool Play::momentReached() const {
+    // (the fast-forward stops at the moment: the Drop's second bar, the act's fight begun, JAM's Drop or its layers on)
+    const World& w = *world_;
+    const Phrase& ph = w.phrase();
+    switch (momentKind_) {
+        case 1: return ph.section == Section::Drop && ph.wave == momentN_ && ph.sectionBar >= 1;
+        case 2: return ph.track == momentN_ && w.boss().active && !w.boss().dying && w.music() >= w.boss().fightTick + kTicksPerBar;
+        case 3: return ph.section == Section::Drop && ph.sectionBar >= 1;
+        case 4: return w.jamLayersOn() == 8;
+        default: return true;
+    }
+}
+
+void Play::holdMoment() {
+    // HEADLINERS's act held (:hold): its boss keeps its health, as a held fight (--fight ...:hold).
+    if (momentKind_ != 2 || !momentHold_) return;
+    World& w = *world_;
+    if (w.phrase().track == momentN_ && w.boss().active && !w.boss().dying) w.bossRefill(1.0f);
 }
 
 void Play::modesPictureSetup(Mode m, bool room) {

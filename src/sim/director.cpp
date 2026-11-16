@@ -115,7 +115,7 @@ Phrase phraseAt(const DirectorState& d, u32 bar) {
             p.trackBpm = d.jamNextBpm;
             return p;
         }
-        const u32 dropLen = static_cast<u32>(d.jamDropBuild) + d.jamDropLen;
+        const u32 dropLen = d.jamDropHold ? 0xFFFFu : static_cast<u32>(d.jamDropBuild) + d.jamDropLen;
         if (d.jamDropBar != kNoBar && bar >= d.jamDropBar && bar < d.jamDropBar + dropLen) {
             const u32 in = bar - d.jamDropBar;
             if (in < d.jamDropBuild) {
@@ -143,7 +143,7 @@ Phrase phraseAt(const DirectorState& d, u32 bar) {
         u32 total = 0, from = 0, drops = 0, k = 0;
         for (u32 j = 0; j < d.formCount; ++j) total += d.formBars[j];
         for (; k < d.formCount; ++k) {
-            if (off < from + d.formBars[k]) break;
+            if (off < from + d.formBars[k] || k == d.formHold) break;  // (a held section holds every bar from its start)
             const FormKind fk = static_cast<FormKind>(d.formKind[k]);
             if (fk == FormKind::Drop || fk == FormKind::BossDrop) ++drops;
             from += d.formBars[k];
@@ -167,9 +167,14 @@ Phrase phraseAt(const DirectorState& d, u32 bar) {
         const u32 in = off - from;
         p.sectionBars = d.formBars[k];
         p.sectionBar = static_cast<u16>(p.ended ? (p.sectionBars ? p.sectionBars - 1u : 0u) : in);
+        if (k == d.formHold && in >= p.sectionBars) {
+            // (held: past its length it stays its last half, so a Drop's Surge does not come back)
+            p.held = true;
+            p.sectionBar = static_cast<u16>(p.sectionBars / 2u + (in - p.sectionBars) % (p.sectionBars - p.sectionBars / 2u ? p.sectionBars - p.sectionBars / 2u : 1u));
+        }
         p.wave = (p.section == Section::Build || p.section == Section::Drop) ? static_cast<u8>(drops + 1u) : 0u;
         p.miniDrop = p.section == Section::Drop && p.wave == 3;  // (FULL BLAST: wave 3, THE MINI)
-        p.barsLeft = static_cast<u16>(off < total ? total - off : 0u);
+        p.barsLeft = static_cast<u16>(k == d.formHold ? 99u : (off < total ? total - off : 0u));
         if (p.buildLastBar()) p.bpm = p.trackBpm * kBuildLastBarSpeed;
         return p;
     }

@@ -373,6 +373,12 @@ private:
     bool scriptInputM5(sim::StickInput& in);
     bool scriptEventsM5();
     bool fightJump_ = false, fightPhaseDone_ = false, dropJump_ = false;
+    // M8 moments (MODES_PLAN 2.10: `--mode <id>:<track>:<moment>[:hold]`): 1 a timed form's Drop (dropN, waveN), 2 HEADLINERS's act
+    // (actN), 3 JAM's DROP, 4 JAM's every layer; N; the moment held; the fast-forward running to it.
+    u8 momentKind_ = 0, momentN_ = 0;
+    bool momentHold_ = false, momentJump_ = false;
+    bool momentReached() const;
+    void holdMoment();
     sim::BossKind fightKind_ = sim::BossKind::Kaleidos;
     u8 fightPhase_ = 0;
     double fightPhaseAt_ = -1.0;
