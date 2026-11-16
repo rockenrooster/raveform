@@ -205,7 +205,7 @@ Measured:
 - **Pictures** (`review-m8.ps1`, `review-m4b.ps1`): `m8_bl_*` (part 3: the torrent, the waves, LAST CALL, the power cut and back, the
   load-out, the result), `m8_card_act3`, `m8_podium_table`, `m8_podium`, `m8_lobby_back`, `m8_race`, `m8_act_won`, `m8_modes_bonus`,
   `m8_jam_pad_states`, `m8_jam_empty`, `m8_sl_gold_gate`, `m8_sl_streak_1..4`, `m8_sl_bend_back`, `m8_sl_race_4`, `m8_tr_lights_out`,
-  `m8_tr_turf_4`, the strips onto each new card `m8_t_mode_<mode>`: no layout warning (rendered with the dev build; the Debug build's validation not rerun for these).
+  `m8_tr_turf_4`, the strips onto each new card `m8_t_mode_<mode>`, `m8_podium_4` and `m8_vs_hud` (four seats): no layout warning (rendered with the dev build; the Debug build's validation not rerun for these).
 - **Part 1's two-phone check** (`coop-phones.ps1 -Serials moto,moto2 -HostArgs '--coop-mode one:3:vs --coop-back-lobby'`, the bots
   playing both seats, `captures\m8\phones\085215_m8_part1_vs\`): ONE TRACK on Reef in VERSUS, two matches (TRACK COMPLETE at 79 and
   84 s, the podium on both phones each time), the host's REMATCH between them, LOBBY after the second: both phones back in the room's
@@ -238,7 +238,8 @@ Decided alone:
 
 Not done (what the plan still has that this pass did not reach): the pictures `m8_ring_x8`, `m8_duet`, `m8_cut`, `m8_spin` and the
 nine Boosts' moments on the Stage (the sim suite tests a duet ring, a cut and a spin-out; their pictures need a second ship flown by
-script), part 1's `m8_vs_*` and `m8_podium_2/4/draw` names (the podium's pictures here are two-seat POP-OFF), a duet ring's two leads (the pop's chord plays), the stab as a triad for a pop of
+script), part 1's `m8_vs_shove`, `m8_knock` and `m8_podium_draw` (a draw needs two counts level at the end; `m8_podium_4` and
+`m8_vs_hud` are taken: four seats, the host and three headless joiners), a duet ring's two leads (the pop's chord plays), the stab as a triad for a pop of
 x 2 (the band's stab takes the bar's chord or given notes, not its triad: it plays the chord at 0.6); the Spark's pad patch (the
 owner's fallback, by ear); `design/screens.md` taking the built parts of `design/modes/screens.md` (the lead's file). **Nobody has
 played the modes by hand**: the owner's play is the gate the plan gives each part.

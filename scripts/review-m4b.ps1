@@ -77,6 +77,10 @@ $runs = [ordered]@{
     'm8_podium'          = @{ host = "--coop host $bots --coop-mode jam:12:vs --coop-shot podium $big"; client = "--coop join:list --bot $small"; shotRole = 'host' }
     'm8_lobby_back'      = @{ host = "--coop host $bots --coop-mode jam:12:vs --coop-back-lobby $small"; shot = "--coop join:list --bot --coop-shot lobby_back $big" }
     # HEADLINERS versus between two bots: the race bar under the boss's (act 2 on), ACT 1: Pn as the first boss falls
+    # (four seats: the host and three headless joiners) the podium of four, and the versus HUD with four players (the ranking, the crown,
+    # the underdog), SONGLINE on Aurora from its first Drop
+    'm8_podium_4'        = @{ host = "--coop host --coop-name PC --coop-start 4 --bot --coop-mode jam:12:drop1:vs --coop-shot podium $big"; shotRole = 'host'; headless = @('MOTO', 'TABLET', 'OP12R'); headlessMinutes = 3 }
+    'm8_vs_hud'          = @{ host = "--coop host --coop-name PC --coop-start 4 --bot --coop-mode songline:4:drop1:vs --coop-shot hud $big"; shotRole = 'host'; headless = @('MOTO', 'TABLET', 'OP12R'); headlessMinutes = 3 }
     'm8_race'            = @{ host = "--coop host $bots --coop-mode headliners:1:vs --coop-shot race $big"; client = "--coop join:list --bot $small"; shotRole = 'host' }
     'm8_act_won'         = @{ host = "--coop host $bots --coop-mode headliners:1:vs --coop-shot act_won $big"; client = "--coop join:list --bot $small"; shotRole = 'host' }
 }
@@ -115,7 +119,8 @@ foreach ($name in $runs.Keys) {
     }
     $k = 0
     foreach ($seatName in @($r.headless | Where-Object { $_ })) {
-        $hp = Start-Process -FilePath $headless -ArgumentList @('--net', 'join', '127.0.0.1', '--bind', '127.0.0.1', '--wait', '60', '--minutes', '1', '--name', $seatName) `
+        $hm = if ($r.headlessMinutes) { "$($r.headlessMinutes)" } else { '1' }
+        $hp = Start-Process -FilePath $headless -ArgumentList @('--net', 'join', '127.0.0.1', '--bind', '127.0.0.1', '--wait', '60', '--minutes', $hm, '--name', $seatName) `
             -WorkingDirectory $RF_ROOT -RedirectStandardOutput "$OutFull\${name}_headless$k.log" -RedirectStandardError "$OutFull\${name}_headless$k.err" -PassThru -WindowStyle Hidden
         $procs += $hp
         ++$k
