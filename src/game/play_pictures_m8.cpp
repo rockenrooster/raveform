@@ -17,7 +17,8 @@ using namespace sim;
 namespace {
 enum class M8 : u8 {
     TitlePill, Modes, Lift, Back, Step, Track, Drop, LoadIn, CardOne, OneOutro, ResultOne, CardAct, ResultActs,
-    TrLine, TrLock, TrPop, TrFloor4, TrHouse, TrCount, TrResult
+    TrLine, TrLock, TrPop, TrFloor4, TrHouse, TrCount, TrResult,
+    SlGroove, SlBuild, SlDrop, SlInTime, SlBraid, SlFinale, SlCount, SlResult
 };
 struct M8Pic {
     const char* name;  // m8_<name>
@@ -47,6 +48,11 @@ const M8Pic kM8Pics[] = {
     // strip a quarter beat apart from its bar line, the count at the end (a strip), the result.
     {"tr_line", M8::TrLine, 3}, {"tr_lock", M8::TrLock, 3}, {"tr_pop", M8::TrPop, 3}, {"tr_floor4", M8::TrFloor4, 3},
     {"tr_house", M8::TrHouse, 3}, {"tr_count", M8::TrCount, 3}, {"tr_result", M8::TrResult, 3},
+    // Part 5 (SONGLINE on Aurora, the rider flying; songline.md "What to check"): a Groove's string with the guide, a Build's runway,
+    // a Drop's tube as a strip a sixteenth apart, a gate threaded in time, four players' braid (the other three seats stand), the
+    // finale as a strip a quarter beat apart from bar 47, the count, the result.
+    {"sl_groove", M8::SlGroove, 4}, {"sl_build", M8::SlBuild, 4}, {"sl_drop", M8::SlDrop, 4}, {"sl_intime", M8::SlInTime, 4},
+    {"sl_braid", M8::SlBraid, 4}, {"sl_finale", M8::SlFinale, 4}, {"sl_count", M8::SlCount, 4}, {"sl_result", M8::SlResult, 4},
 };
 constexpr u32 kM8Count = sizeof(kM8Pics) / sizeof(kM8Pics[0]);
 constexpr u32 kM8At = 300;  // (the title at rest: as screen_title's)
@@ -142,6 +148,35 @@ bool Play::scriptSetupM8() {
             if (pic.kind == M8::TrCount || pic.kind == M8::TrResult) scriptFastForwardS_ = 90.0f;  // (into the last bars)
             break;
         }
+        case M8::SlGroove:
+        case M8::SlBuild:
+        case M8::SlDrop:
+        case M8::SlInTime:
+        case M8::SlBraid:
+        case M8::SlFinale:
+        case M8::SlCount:
+        case M8::SlResult: {
+            // A SONGLINE run on Aurora from its first downbeat, the rider flying (hits cost nothing); the braid with four seats (the
+            // other three stand where they began).
+            RunSetup su;
+            su.mode = Mode::Songline;
+            su.track = pic.mode;
+            flow_ = pic.kind == M8::SlResult;
+            screen_ = Screen::Run;
+            w.resetRun(opt_.seed, 0.0, pic.kind == M8::SlBraid ? 4u : 1u, 0xF, su);
+            w.rules().godMode = true;
+            controller_.reset(w.player(0).pos);
+            // (a Groove's string and a Drop's tube are seen from a bar behind: the half-speed bot; the rest the rider)
+            bot_.reset(opt_.seed, pic.kind == M8::SlGroove || pic.kind == M8::SlDrop ? Bot::Policy::Slow : Bot::Policy::Play);
+            marks_[0] = Mark{0.0f, 0, su.track};
+            runTrackMax_ = su.track;
+            const float barS = 240.0f / std::fmax(w.tempoAt(0.0), 30.0f);
+            if (pic.kind == M8::SlDrop) stripStride_ = static_cast<u32>(std::lround(0.25 * 3600.0 / std::fmax(w.tempoAt(0.0), 30.0f)));  // (a 16th)
+            if (pic.kind == M8::SlBuild) scriptFastForwardS_ = 9.5f * barS;
+            if (pic.kind == M8::SlDrop || pic.kind == M8::SlInTime) scriptFastForwardS_ = 13.0f * barS;
+            if (pic.kind == M8::SlFinale || pic.kind == M8::SlCount || pic.kind == M8::SlResult) scriptFastForwardS_ = 45.0f * barS;
+            break;
+        }
     }
     return true;
 }
@@ -152,6 +187,24 @@ bool Play::scriptInputM8(StickInput& in) {
     const M8Pic& pic = kM8Pics[m8Pic_];
     const u32 t = scriptTick_;
     const i64 now = static_cast<i64>(frameNo_);
+    if (pic.kind >= M8::SlGroove) {
+        // SONGLINE: the rider flies (the other seats of the braid stand); each picture waits for its moment.
+        in = w.player(0).alive ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+        if (captureFrom_ >= 0 || ffRunning_) return true;
+        const double bars = (music1_ - w.director().startTick) / kTicksPerBar;
+        if (pic.kind == M8::SlGroove && bars >= 5.5) captureFrom_ = now + 1;
+        if (pic.kind == M8::SlBraid && bars >= 6.5) captureFrom_ = now + 1;
+        if (pic.kind == M8::SlBuild && bars >= 10.6) captureFrom_ = now + 1;
+        if (pic.kind == M8::SlDrop && bars >= 14.0) captureFrom_ = now + 1;
+        if (pic.kind == M8::SlInTime && bars >= 13.0 && w.gatesInTime(0) > m8Last_ && m8Last_ > 0) captureFrom_ = now + 1;
+        if (pic.kind == M8::SlInTime) m8Last_ = w.gatesInTime(0);
+        if (pic.kind == M8::SlFinale && bars >= 47.0) captureFrom_ = now + 1;
+        if (pic.kind == M8::SlCount && songCountT_ > 0.0f && static_cast<float>(tickEnd_) - songCountT_ > 1.6f * 60.0f / std::fmax(clock_.bpm(), 30.0f))
+            captureFrom_ = now + 1;
+        if (pic.kind == M8::SlResult && screen_ == Screen::GameOver && overS_ > 2.4f) captureFrom_ = now + 1;
+        if (captureFrom_ >= 0) RF_LOG("play: picture '%s' captures from frame %lld (bar %.2f)", opt_.picture, static_cast<long long>(captureFrom_), bars);
+        return true;
+    }
     if (pic.kind >= M8::TrLine) {
         // TRACERS: the ring-flier flies; each picture waits for its moment.
         in = w.player(0).alive ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};

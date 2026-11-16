@@ -124,7 +124,26 @@ void Play::modesEvent(const Event& e) {
                 retryRequest_ = true;  // (a benchmark or the bot: the same Track again)
             }
             break;
+        case EventType::GateLay:
+        case EventType::GateThread: {
+            // M8 SONGLINE: the string as it is flown (the result's bar): this player's gates by their sixteenth.
+            if (e.type == EventType::GateLay ? (e.a != 0xFF && e.a != seat_) : e.a != seat_) break;
+            const double step = (e.tick - w.director().startTick) / (kTicksPerBeat / 4.0);
+            const i64 k = static_cast<i64>(std::llround(step));
+            if (k < 0 || k >= static_cast<i64>(kSongMarks)) break;
+            if (e.type == EventType::GateLay) {
+                if (!songMarks_[k]) songMarks_[k] = 1;
+            } else {
+                songMarks_[k] = e.c ? 3 : 2;
+            }
+            break;
+        }
+        case EventType::GateCount:
+            if (e.a == seat_) songCountT_ = static_cast<float>(tickEnd_ - e.age);
+            break;
         case EventType::Restart:
+            std::memset(songMarks_, 0, sizeof songMarks_);
+            songCountT_ = -100.0f;
             for (float& a : actSecs_) a = 0.0f;
             runCleared_ = trackComplete_ = kitClosed_ = false;
             kitChirps_ = 0;
@@ -191,6 +210,43 @@ void Play::modesFrameRun() {
         view_.loadInRing(pl.pos, li.closeRingWu[1], palettes_->player[q], palettes_->playerLight[q], static_cast<float>(tickEnd_), li.closeRingBeats * beatS);
     takenT_ = static_cast<float>(tickEnd_);  // (the band row's flash)
     if (bandDrives_ && band_) band_->playSfx(audio::Sfx::Upgrade, 1.0f, 1.0f);
+}
+
+void Play::drawSongCount(FrameDraw& d, const LookVariant& variant, float W, float H) {
+    // screens.md "The count" (SONGLINE): the string as it was flown, drawn across the lower third as one line of marks (one a gate,
+    // 1,600 px wide): it lights from the left in two beats, each threaded gate a tick of the player's colour, each one in time white;
+    // GATES 446 OF 512 counts beside it. Until the result arrives on the bar line.
+    const float age = static_cast<float>(tickEnd_) - songCountT_;
+    const float beatS = 60.0f / std::fmax(clock_.bpm(), 30.0f);
+    if (age < 0.0f || age > 4.0f * beatS + 0.5f) return;
+    const float s = H / 1080.0f;
+    const float wide = std::fmin(1600.0f * s, 0.9f * W);
+    const float x0 = 0.5f * (W - wide), y = 0.74f * H;
+    const float sweep = clamp01(age / (2.0f * beatS));
+    const u32 q = seat_ < kMaxPlayers ? seat_ : 0u;
+    const Vec3 white{1.0f, 1.0f, 1.0f};
+    u32 counted = 0, laid = 0;
+    for (u32 k = 0; k < kSongMarks; ++k) {
+        const u8 m = songMarks_[k];
+        if (!m) continue;
+        ++laid;
+        const float u = (static_cast<float>(k) + 0.5f) / static_cast<float>(kSongMarks);
+        const float x = x0 + wide * u;
+        const bool lit = u <= sweep;
+        if (lit && m >= 2) ++counted;
+        const float just = lit ? clamp01(1.0f - (sweep - u) * 12.0f) : 0.0f;
+        Vec3 c;
+        if (m == 1) c = hudColour(*look_, variant, white, 0.10f);
+        else if (!lit) c = hudColour(*look_, variant, white, 0.18f);
+        else c = hudColour(*look_, variant, m == 3 ? white : palettes_->player[q], 1.3f + 0.8f * just);
+        const float h = (m >= 2 && lit ? 16.0f + 10.0f * just : 10.0f) * s;
+        d.hud.line({x, y - h}, {x, y + h}, 0.45f * s, c, c, 0);
+    }
+    char text[40];
+    std::snprintf(text, sizeof text, "GATES %u OF %u", counted, laid);
+    const float cap = 30.0f * s;
+    const Vec3 c = hudColour(*look_, variant, white, 1.5f);
+    font_->drawField(d.hud, {x0, y + 40.0f * s}, cap, 1.2f * s, c, c, c, text);
 }
 
 void Play::drawLoadIn(FrameDraw& d, const LookVariant& variant) {
@@ -285,6 +341,41 @@ void Play::modesEndRun(bool died) {
                 if (newBest_) {
                     r.score = p.score;
                     r.second = f.houses;
+                }
+            }
+            if (keep && !su.versus) saveModeRecords(records_);
+        }
+    }
+    if (su.mode == Mode::Songline) {
+        // songline.md "Numbers", `songline_<track>`: the best score and its gates threaded in a hundred (co-op: the team's,
+        // team_songline_<track>). The result's numbers as the run ended.
+        resultGates_ = w.gatesThreaded(seat_);
+        resultLaid_ = w.gatesLaid(seat_);
+        resultInTime_ = w.gatesInTime(seat_);
+        resultStreak_ = w.bestStreak(seat_);
+        const u32 pct = resultLaid_ ? static_cast<u32>(100.0 * resultGates_ / resultLaid_ + 0.5) : 0u;
+        if (su.track >= 1 && su.track <= ModeRecords::kTracks) {
+            if (coop()) {
+                ModeRecords::Team& t = records_.team[static_cast<u32>(Mode::Songline)][su.track - 1u];
+                u64 team = 0;
+                u8 players = 0;
+                for (u32 q = 0; q < kMaxPlayers; ++q)
+                    if (w.player(q).present) {
+                        team += w.player(q).score;
+                        ++players;
+                    }
+                modeBest_ = t.score;
+                if (!su.versus && team > t.score) {
+                    t.score = team;
+                    t.players = players;
+                }
+            } else {
+                ModeRecords::Timed& r = records_.songline[su.track - 1u];
+                modeBest_ = r.score;
+                newBest_ = p.score > 0 && p.score > r.score;
+                if (newBest_) {
+                    r.score = p.score;
+                    r.second = pct;
                 }
             }
             if (keep && !su.versus) saveModeRecords(records_);

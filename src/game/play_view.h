@@ -493,6 +493,18 @@ private:
     u8 houseNo_ = 0;
     Vec2 houseAt_;
     bool houseDarkNow_ = false;
+    // M8 part 5 (songline.md "Look", play_view_songline.cpp): the guide, the gates, the Spark and its tail, the streak's rings, the
+    // in-time thread, the finale.
+    void drawSongline(FrameDraw& d, const ViewInput& in);
+    void songlineEvent(const sim::World& w, const sim::Event& e, float t);
+    Vec3 gateHue(const sim::World& w, u8 note) const;
+    static constexpr u32 kSparkTail = 64;
+    Vec2 sparkTail_[kSparkTail];
+    float sparkTailT_[kSparkTail] = {};
+    u32 sparkTailHead_ = 0, sparkTailN_ = 0;
+    float sparkNoteT_ = -100.0f, finaleT_ = -100.0f, songMid_ = 72.0f;
+    float threadLineT_[4] = {-100.0f, -100.0f, -100.0f, -100.0f}, streakT_[4] = {-100.0f, -100.0f, -100.0f, -100.0f};
+    Vec2 finaleAt_;
 
     // M3 stage B.
     const IconSet* icons_ = nullptr;

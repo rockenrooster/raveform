@@ -693,8 +693,9 @@ void Play::screenGameOver(Ui& ui) {
     const bool acts = world_->setup().mode == sim::Mode::Headliners;
     const bool blast = world_->setup().mode == sim::Mode::FullBlast;
     const bool tracers = world_->setup().mode == sim::Mode::Tracers;
-    const bool won = one || acts || blast || tracers ? runCleared_ : runSetComplete_;
-    const char* topWord = blast ? "FULL BLAST" : (tracers ? "TRACERS" : (won ? (one ? "TRACK COMPLETE" : (acts ? "HEADLINERS COMPLETE" : "SET COMPLETE")) : "RUN OVER"));
+    const bool song = world_->setup().mode == sim::Mode::Songline;
+    const bool won = one || acts || blast || tracers || song ? runCleared_ : runSetComplete_;
+    const char* topWord = blast ? "FULL BLAST" : (tracers ? "TRACERS" : (song ? "SONGLINE" : (won ? (one ? "TRACK COMPLETE" : (acts ? "HEADLINERS COMPLETE" : "SET COMPLETE")) : "RUN OVER")));
     if (out > 0.0f) {
         const Vec3 c = won ? gold : palette_->accent;
         streak(topWord, 44.0f * s, 150.0f * s, std::fmax(0.045f * 44.0f * s, 0.55f * s), c, c, c, won ? 1.8f : 1.6f);
@@ -772,6 +773,19 @@ void Play::screenGameOver(Ui& ui) {
         static const char* const kActLabels[4] = {"BOSSES", "HITS TAKEN", "FASTEST", "SCORE"};
         static const char* const kBlastLabels[4] = {"BEST CHAIN", "KILLS", "BOOSTS", "HITS TAKEN"};
         static const char* const kTracersLabels[4] = {"FLOOR", "FULL HOUSES", "BEST RING", "BEST CHAIN"};
+        static const char* const kSongLabels[4] = {"GATES", "IN TIME", "BEST STREAK", "BEST CHAIN"};
+        if (song) {
+            // (M8, design/modes/songline.md "The result": GATES threaded of laid and in a hundred, IN TIME in a hundred, BEST STREAK,
+            // BEST CHAIN)
+            const double laid = resultLaid_ ? static_cast<double>(resultLaid_) : 1.0;
+            std::snprintf(v[0], sizeof v[0], "%u OF %u  %.0f%%", static_cast<unsigned>(resultGates_), static_cast<unsigned>(resultLaid_),
+                          100.0 * resultGates_ / laid);
+            std::snprintf(v[1], sizeof v[1], "%.0f%%", 100.0 * resultInTime_ / laid);
+            std::snprintf(v[2], sizeof v[2], "%u", static_cast<unsigned>(resultStreak_));
+            char chain[32];
+            groupDigits(chain, sizeof chain, p.bestChain);
+            std::snprintf(v[3], sizeof v[3], "X%s", chain);
+        }
         if (tracers) {
             // (M8, design/modes/tracers.md "The result": FLOOR (its share at the end), FULL HOUSES, BEST RING (the most caught), BEST CHAIN)
             std::snprintf(v[0], sizeof v[0], "%.0f%%", static_cast<double>(100.0f * resultFloorShare_));
@@ -815,7 +829,7 @@ void Play::screenGameOver(Ui& ui) {
         }
         for (u32 k = 0; k < 4; ++k) {
             const float x = cx + (static_cast<float>(k) - 1.5f) * 330.0f * s;
-            const char* label = tracers ? kTracersLabels[k] : (blast ? kBlastLabels[k] : (acts ? (k == 0 && !won ? "TIME" : kActLabels[k]) : (one ? kOneLabels[k] : kLabels[k])));
+            const char* label = song ? kSongLabels[k] : tracers ? kTracersLabels[k] : (blast ? kBlastLabels[k] : (acts ? (k == 0 && !won ? "TIME" : kActLabels[k]) : (one ? kOneLabels[k] : kLabels[k])));
             ui.text({x, 500.0f * s + sink}, 14.0f * s, palette_->accent, 1.3f, label);
             // (M8: a long value fits its column: HEADLINERS's score, FASTEST's boss)
             const float fit = std::fmin(1.0f, 300.0f * s / std::fmax(ui.measure(40.0f * s, v[k]), 1.0f));
@@ -831,6 +845,7 @@ void Play::screenGameOver(Ui& ui) {
         ui.text({x0 + wa + gap, 606.0f * s + sink}, cap, white, 1.5f, by, 0.0f);
     }
     drawSetList(ui, 660.0f * s + sink);
+    if (song) drawSongMarks(ui, 660.0f * s + sink);  // (over the bar: the string as it was flown)
     if (tracers) drawFloorSmall(ui, 740.0f * s + sink);  // (in place of YOUR BAND: the floor as it stood at the end)
     else drawBand(ui, 740.0f * s + sink);
     const float right = W - std::fmax(132.0f * s, ui.insetMax().x);
@@ -913,6 +928,21 @@ void Play::drawSetList(Ui& ui, float y) {
                 ui.draw().hud.line({x + 5.0f * s, y + 6.0f * s}, {x - 5.0f * s, y + 16.0f * s}, 0.9f * s, c, c, 0);
             }
         }
+    }
+}
+
+void Play::drawSongMarks(Ui& ui, float y) {
+    // M8 SONGLINE (songline.md "The result"): over the run's bar, the string as it was flown: one mark a gate, lit in the accent where
+    // it was threaded, white where in time, dark where missed.
+    const float s = ui.s(), W = ui.W();
+    const Vec3 white{1.0f, 1.0f, 1.0f};
+    const float x0 = std::fmax(132.0f * s, ui.insetMin().x), x1 = W - std::fmax(132.0f * s, ui.insetMax().x);
+    for (u32 k = 0; k < kSongMarks; ++k) {
+        const u8 m = songMarks_[k];
+        if (!m) continue;
+        const float x = x0 + (x1 - x0) * (static_cast<float>(k) + 0.5f) / static_cast<float>(kSongMarks);
+        const Vec3 c = m == 3 ? ui.col(white, 1.8f) : (m == 2 ? ui.col(palette_->accent, 1.6f) : ui.col(white, 0.12f));
+        ui.draw().hud.line({x, y - 9.0f * s}, {x, y + 9.0f * s}, 0.6f * s, c, c, 0);
     }
 }
 

@@ -214,6 +214,15 @@ private:
     u8 resultFloor_[sim::TracerFloor::kTiles] = {};
     float resultFloorShare_ = 0.0f;
     u16 resultHouses_ = 0, resultBestRing_ = 0;
+    // M8 SONGLINE (songline.md "The result"): the string as it was flown, one mark a sixteenth of the 48 bars (0 none, 1 laid and
+    // missed, 2 threaded, 3 in time), and the numbers as the run ended.
+    static constexpr u32 kSongMarks = 48 * 16;
+    u8 songMarks_[kSongMarks] = {};
+    u16 resultGates_ = 0, resultLaid_ = 0, resultInTime_ = 0, resultStreak_ = 0;
+    void drawSongMarks(Ui& ui, float y);
+    // (screens.md "The count": after the last downbeat the string drawn across the lower third, lighting from the left in two beats)
+    float songCountT_ = -100.0f;
+    void drawSongCount(FrameDraw& d, const LookVariant& variant, float W, float H);
     bool m8FloorSet_ = false;  // (the TRACERS pictures' floor, set once)     // the game over's "YOUR BAND"
     // play.cpp: the flow.
     void startRun();
@@ -380,6 +389,7 @@ private:
     bool scriptEventsM8();
     float hudBarsSince(float t) const;
     u16 m8Pic_ = 0xFFFF;
+    u32 m8Last_ = 0;  // (SONGLINE's in-time picture: the gates in time before this frame)
     u32 placedAt_ = 0;  // (the Longwave strips: when the ship was last put beside the body)
 
     PlayOptions opt_;

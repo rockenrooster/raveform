@@ -1135,6 +1135,19 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
             c.from = pl.gelUntil[g] - static_cast<double>(species_->modes.tracers.gelBars[g]) * kTicksPerBar;
         }
     }
+    if (w.setup().mode == Mode::Songline && species_) {
+        // M8 (songline.md "HUD"): the run's card (SONGLINE over the Track; FOLLOW THE SPARK); the goal line GATES 148   STREAK 32
+        // (versus: the gates taken); the Riff slots and Boost cards as in the set (the kit has Riffs).
+        const Phrase& ph = w.phrase();
+        const u32 me = w.viewPlayer();
+        std::snprintf(cardSmall_, sizeof cardSmall_, "TRACK %u  %s", w.director().bonus ? w.director().bonus : ph.track, songName(ph.song));
+        std::snprintf(cardName_, sizeof cardName_, "SONGLINE");
+        hs.cardSmall = cardSmall_;
+        hs.cardName = cardName_;
+        if (w.setup().versus) std::snprintf(goalLine_, sizeof goalLine_, "GATES %u", static_cast<unsigned>(w.gatesThreaded(me)));
+        else std::snprintf(goalLine_, sizeof goalLine_, "GATES %u   STREAK %u", static_cast<unsigned>(w.gatesThreaded(me)), static_cast<unsigned>(w.streak(me)));
+        hs.goalLine = goalLine_;
+    }
     if (w.setup().mode == Mode::Headliners) {
         // M8 (headliners.md "Look"): the act's card (ACT 3 OF 10, the boss's name, the Track and its tempo under it); the goal
         // line, the run's time running; HEADLINERS COMPLETE with the time.
@@ -1213,6 +1226,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         setHudFade(flow_ && trans_ == Trans::Arrive ? clampf(transBeats(transLine_) - 1.0f, 0.0f, 1.0f) : 1.0f);
         drawHud(d, *font_, *look_, variant, *palettes_, *palette_, hs, touch_, W, H, insetMin, insetMax);
         if (modeRun()) drawLoadIn(d, variant);  // M8: the kit's icons spiralling in
+        if (w.setup().mode == Mode::Songline) drawSongCount(d, variant, W, H);  // M8 SONGLINE: the count
         if (w.setup().versus) drawVersusWorld(d, variant);  // M8: the crown, BACK IN n
         setHudFade(1.0f);
     }
@@ -1909,14 +1923,18 @@ void Play::hintsTick(ViewInput& vi) {
     // screens.md "First-run hints (M6)": eleven lines, each once ever on a device, one at a time, at least four bars apart,
     // never in a fight, never over a Trio's words or a boss's hint line, never in co-op for a player who has played a run to
     // its end; a hint whose moment passes waits for the next such moment.
-    static const char* const kHints[11] = {"LEFT THUMB MOVES",         "WASD OR LEFT STICK MOVES",    "IT AIMS AND FIRES BY ITSELF",
-                                           "RIGHT THUMB AIMS IF YOU LIKE", "FLY INTO ONE AND STAY",   "YOUR RING IS YOUR HEALTH",
-                                           "NOVA CLEARS THE SCREEN",   "DASH GOES THROUGH BULLETS",   "GOLD ORBS ARE SHORT POWERS",
-                                           "EXTRA LIFE: ONE MORE TRY", "BREAK IT FOR A PRIZE"};
+    // (M8 SONGLINE, songline.md "HUD": three more on its first runs: FOLLOW THE SPARK, then at the first gate in view FLY THROUGH THE
+    // RINGS, then at the first tier KEEP THE STREAK: MORE POWER)
+    constexpr u32 kHintCount = 14;
+    static const char* const kHints[kHintCount] = {"LEFT THUMB MOVES",         "WASD OR LEFT STICK MOVES",    "IT AIMS AND FIRES BY ITSELF",
+                                                   "RIGHT THUMB AIMS IF YOU LIKE", "FLY INTO ONE AND STAY",   "YOUR RING IS YOUR HEALTH",
+                                                   "NOVA CLEARS THE SCREEN",   "DASH GOES THROUGH BULLETS",   "GOLD ORBS ARE SHORT POWERS",
+                                                   "EXTRA LIFE: ONE MORE TRY", "BREAK IT FOR A PRIZE",        "FOLLOW THE SPARK",
+                                                   "FLY THROUGH THE RINGS",    "KEEP THE STREAK: MORE POWER"};
     const World& w = *world_;
     const float now = static_cast<float>(vi.time);
     const float barS = 240.0f / std::fmax(vi.bpm, 30.0f);
-    if (forcedHint_ >= 0 && forcedHint_ < 11) {  // (pictures: m6_hint_<k>)
+    if (forcedHint_ >= 0 && forcedHint_ < static_cast<i32>(kHintCount)) {  // (pictures: m6_hint_<k>)
         vi.hint = kHints[forcedHint_];
         vi.hintLevel = 1.0f;
         return;
@@ -1974,6 +1992,15 @@ void Play::hintsTick(ViewInput& vi) {
                     if (!b.dead[i] && inView(Vec2{b.x[i], b.y[i]})) return true;
                 return false;
             }
+            case 11: return w.setup().mode == Mode::Songline;
+            case 12:
+                if (w.setup().mode != Mode::Songline || !(settings_.hintsSeen & (1u << 11))) return false;
+                for (u32 g = 0; g < World::kSongGates; ++g) {
+                    const SongGate& sg = w.songGate(g);
+                    if (sg.born >= 0.0 && !sg.missed && (sg.string == 0xFF || sg.string == seat_) && inView(sg.pos)) return true;
+                }
+                return false;
+            case 13: return w.setup().mode == Mode::Songline && me.streakTier >= 1;
             case 8:
             case 9: {
                 const BoostPickups& bp = w.boostPickups();
@@ -1994,8 +2021,9 @@ void Play::hintsTick(ViewInput& vi) {
             }
         }
     };
-    for (u32 k = 0; k < 11; ++k) {
+    for (u32 k = 0; k < kHintCount; ++k) {
         if (settings_.hintsSeen & (1u << k)) continue;
+        if (w.setup().mode == Mode::Songline && k == 4) continue;  // (no Trios there)
         if (!due(k)) continue;
         hintIdx_ = static_cast<i32>(k);
         hintT_ = now;

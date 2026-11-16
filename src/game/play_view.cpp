@@ -721,6 +721,11 @@ void PlayView::onEvents(const World& w, double tickEnd) {
             case EventType::TilesLost:
             case EventType::FloorCount:
             case EventType::GelTake: tracersEvent(w, e, t); break;  // M8 TRACERS (play_view_modes.cpp)
+            case EventType::GateLay:
+            case EventType::GateThread:
+            case EventType::StreakTier:
+            case EventType::SparkBack:
+            case EventType::GateCount: songlineEvent(w, e, t); break;  // M8 SONGLINE (play_view_songline.cpp)
             default: eventB(w, e, t); break;
         }
     }
@@ -921,6 +926,17 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     }
     if (w.boss().active && !w.boss().dying && w.boss().kind != sim::BossKind::Longwave) {
         const Vec2 off = lerp2(w.boss().prevPos, w.boss().pos, a) - S;
+        if (lengthSq(off) < kBossCamWu * kBossCamWu) {
+            bossNear = true;
+            leanTarget = off * kBossLeanShare;
+            const float l = length(leanTarget);
+            if (l > kBossLeanMaxWu) leanTarget = leanTarget * (kBossLeanMaxWu / l);
+        }
+    }
+    if (w.setup().mode == sim::Mode::Songline && !bossNear) {
+        // M8 SONGLINE (songline.md "Look"): the boss fight's camera with the Spark as its boss: 0.85 while it is within 1,800 wu,
+        // leaning toward it by 30% of the offset, at most 320 wu.
+        const Vec2 off = lerp2(w.spark().prevPos, w.spark().pos, a) - S;
         if (lengthSq(off) < kBossCamWu * kBossCamWu) {
             bossNear = true;
             leanTarget = off * kBossLeanShare;
@@ -1433,6 +1449,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     }
 
     if (stage) drawStageLines(d, in);  // M8: the tracers, the closing hint, the rings (over the bodies, under the ships)
+    drawSongline(d, in);               // M8 SONGLINE: the guide, the gates, the Spark (play_view_songline.cpp)
 
     // ---- The player: two-tone ship, halo (one arc per Shield cell), trail, pool, priority layer.
     const PlayerState& me = w.player(w.viewPlayer());

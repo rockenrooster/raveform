@@ -6,12 +6,13 @@
 #       m8_join_modes; strips a quarter beat apart: m8_t_lift (12 frames), m8_t_back (16), m8_t_mode (8), m8_t_track (16),
 #       m8_t_drop (16). (m8_modes_bonus waits for the bonus Tracks: part 4.)
 #   p1: ONE TRACK; p2: HEADLINERS; p4: TRACERS (m8_tr_line, m8_tr_lock, m8_tr_floor4, m8_tr_result; strips m8_tr_pop, m8_tr_house,
-#       m8_tr_count).
+#       m8_tr_count); p5: SONGLINE on Aurora (m8_sl_groove, m8_sl_build, m8_sl_intime, m8_sl_braid, m8_sl_count, m8_sl_result;
+#       strips m8_sl_drop (a sixteenth apart), m8_sl_finale (a quarter beat apart from bar 47)).
 #   scripts\review-m8.ps1 -Part p0 [-Config debug|dev] [-Only m8_modes_tracers,m8_t_lift] [-Out captures\m8\p0]
 # Debug (the default) runs with validation; exit 1 on a validation message or a layout warning (two controls, or a control and a
 # line, closer than 24 px).
 param(
-    [ValidateSet('p0', 'p1', 'p2', 'p4')][string]$Part = 'p0',
+    [ValidateSet('p0', 'p1', 'p2', 'p4', 'p5')][string]$Part = 'p0',
     [ValidateSet('debug', 'dev')][string]$Config = 'debug',
     [string[]]$Only = @(),
     [string]$Out = '',
@@ -56,6 +57,12 @@ if ($Part -eq 'p0') {
     # p2: HEADLINERS (act 1's card, the result after the ten acts)
     $singles = @('m8_card_act', 'm8_result_headliners')
     $strips = [ordered]@{}
+    $rooms = @()
+} elseif ($Part -eq 'p5') {
+    # p5: SONGLINE on Aurora (songline.md "What to check"): a Groove's string with the guide, a Build's runway, a gate threaded in
+    # time, four players' braid, the count, the result; strips: a Drop's tube a sixteenth apart (8), the finale a quarter beat apart (8)
+    $singles = @('m8_sl_groove', 'm8_sl_build', 'm8_sl_intime', 'm8_sl_braid', 'm8_sl_count', 'm8_sl_result')
+    $strips = [ordered]@{ 'm8_sl_drop' = 8; 'm8_sl_finale' = 8 }
     $rooms = @()
 } else {
     # p4: TRACERS on Reef (tracers.md "What to check"): a line half drawn with its hint, a lock, the floor at 60% in four colours,

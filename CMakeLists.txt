@@ -549,6 +549,7 @@ target_sources(raveform_core PRIVATE
   src/game/play_view_arena.cpp
   src/game/play_view_m6.cpp
   src/game/play_view_modes.cpp
+  src/game/play_view_songline.cpp
   src/game/pending_sounds.cpp
   src/game/upgrade_sounds.cpp
   src/game/play_view_upgrades.cpp
