@@ -55,6 +55,7 @@ struct PlayOptions {
     char picture[32] = {};      // --picture <name>: a scripted scene for the review strips
     float pxPerMm = 0.0f;       // touch control sizes (0: scale with the screen height)
     bool autoplay = false;      // --autoplay: the screens as in play, the bot playing each run (taps start and retry)
+    i32 uiScale = -1;           // --ui-scale (M8 part 7): the HUD's size for this run
     float recklessAfter = 0.0f; // --reckless-after S
     // M8 (docs/MODES_PLAN.md 2.10): the run's mode from the command line (sim::parseModeArg), versus, the room's mode.
     char mode[40] = {};         // --mode <id>[:<track>[:<moment>[:hold]]]

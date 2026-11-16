@@ -5,7 +5,8 @@
 #   start in Tracks 4, 7 and 10 (the careful bot to the Track, then the novice to its boss: --handover); the 3-minute
 #   loopback net soak.
 # A run fails on a non-zero exit or on any sanitizer report ("ERROR: AddressSanitizer", "runtime error:") in its log.
-#   scripts\sanitize.ps1 [-Only tests,soak,fights,net] [-NoBuild]
+#   M8 part 7: 'modes', a bot's run of each mode and four of their rooms on the loopback network.
+#   scripts\sanitize.ps1 [-Only tests,soak,fights,net,modes] [-NoBuild]
 param(
     [string[]]$Only = @(),
     [switch]$NoBuild
@@ -60,5 +61,18 @@ if ($all -or $Only -contains 'fights') {
     }
 }
 if ($all -or $Only -contains 'net') { Invoke-San 'net_soak_3min' 'raveform_headless.exe' @('--net', 'soak', '--minutes', '3') }
+if ($all -or $Only -contains 'modes') {
+    # M8 part 7 (docs/MODES_PLAN.md 8): a bot's run of each mode, and a mode's room in co-op and versus on the loopback network.
+    Invoke-San 'mode_one' 'raveform_headless.exe' @('--sim', 'mode', '--seeds', '1', '--track', '2')
+    Invoke-San 'mode_headliners' 'raveform_headless.exe' @('--sim', 'mode', '--headliners', '--seeds', '1')
+    Invoke-San 'mode_blast' 'raveform_headless.exe' @('--sim', 'mode', '--blast', '--seeds', '1', '--track', '10')
+    Invoke-San 'mode_tracers' 'raveform_headless.exe' @('--sim', 'mode', '--tracers', '--seeds', '1', '--track', '11')
+    Invoke-San 'mode_songline' 'raveform_headless.exe' @('--sim', 'mode', '--songline', '--seeds', '1', '--track', '7')
+    Invoke-San 'mode_jam' 'raveform_headless.exe' @('--sim', 'mode', '--jam', '--seeds', '1', '--minutes', '5')
+    Invoke-San 'net_songline_versus' 'raveform_headless.exe' @('--net', 'soak', '--minutes', '2', '--mode', 'songline:4', '--versus')
+    Invoke-San 'net_jam' 'raveform_headless.exe' @('--net', 'soak', '--minutes', '2', '--mode', 'jam:12')
+    Invoke-San 'net_popoff' 'raveform_headless.exe' @('--net', 'soak', '--minutes', '1', '--mode', 'jam:12', '--versus')
+    Invoke-San 'net_tracers_versus' 'raveform_headless.exe' @('--net', 'soak', '--minutes', '2', '--mode', 'tracers:3', '--versus')
+}
 if ($failed.Count) { Write-Host "[san] failed: $($failed -join ', ')"; exit 1 }
 Write-Host '[san] all clean'

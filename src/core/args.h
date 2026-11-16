@@ -72,6 +72,7 @@ struct AppArgs {
     // M3 begin: the game (game/play.h): --scenario play (the default), bench_play, bench_stress
     bool bot = false;          // --bot: the bot plays (on screen; bench_play and bench_stress always)
     bool autoplay = false;     // --autoplay (M3 stage B): the game with its screens, the bot playing each run
+    i32 uiScale = -1;          // --ui-scale 0-3 (M8 part 7): the HUD's size for this run (pictures: 90, 100, 115, 130%)
     float recklessAfter = 0;   // --reckless-after S: with --autoplay, the bot turns careless after S s of a run (tests the loop)
     u64 seed = 1;              // --seed N: the run's random seed
     float fastForward = 0.0f;  // --fast-forward S: S seconds of the game before the first frame (pictures)

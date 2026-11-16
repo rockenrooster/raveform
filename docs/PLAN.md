@@ -424,7 +424,7 @@ every device recorded in `PROGRESS.md`.
 THE SET and six new modes, co-op and versus in each: `docs/MODES_PLAN.md` (the frame, the code map, the
 wire, the order of work and each part's exit), the lead's pages in `design/modes/`. THE SET's simulation
 does not move (its determinism hash is checked at the end of every part); each part ends playable and
-is handed to the owner.
+is handed to the owner. Built 2026-11-15/16: parts 0-7 (`docs/PROGRESS.md` "M8"), every mode in release builds.
 
 ---
 

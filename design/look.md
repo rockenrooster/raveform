@@ -714,6 +714,19 @@ root then fifth, on its two beats; the octave on the close.
 
 ---
 
+### The modes' new things (M8, built 2026-11-16; `design/modes/*.md` "Look")
+
+- **The Stage** (TRACERS, JAM): a fixed camera at the zoom that fits it (0.784 on the Moto, 0.641 on a 16:10 tablet), the rig of
+  eight fixtures along its top wall, a lattice of its own every 20 wu (every other line a tile's side).
+- **The tracer**: the ship's line, `deep` at its tail running to white at the ship, its last beats dashed; **a ring's pop**: its line
+  leaving as a shock ring, a pool as wide as the ring; **lit tiles**: the lattice's lines in the owner's colour at 0.55.
+- **The Spark**: tapered arms (60 and 36 wu) in the scene's light, a dark-rimmed white heart on the priority layer, a pool of the
+  accent, its tail over the last beat; **gates**: one instanced ring glyph each, the accent turned 4 degrees a semitone; the guide's
+  dots at 1.4 falling to 0.45 (the page's 0.35 could not be seen).
+- **The rig's beams** (JAM): a 2 px line at 0.6 and a glow of 6 wu at 0.2, accent to white, ending at the walls; never danger, never a
+  player's. **Pads**: discs by their edge with their words at cap 14 wu (about 17 px on the Moto).
+- **The crown** (versus): 18 wu, 26 wu over the leader's ship, the pickup's white-gold.
+
 ## 7. Composite and post
 
 The order is fixed: distort → add bloom, afterglow and background → vignette → exposure → tone map →

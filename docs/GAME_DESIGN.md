@@ -76,6 +76,11 @@ The single musical clock is the audio engine's (TECH_SPEC §4, §6).
 
 ## 4. Run structure
 
+M8 (built 2026-11-16): this section is THE SET's. The six other modes have their own runs on their pages in `design/modes/`:
+ONE TRACK (one Track of the set and its boss, then its outro), HEADLINERS (the ten bosses back to back, against the clock), FULL BLAST
+(84 bars, every power on, four waves), TRACERS (48 bars on the Stage, rings drawn with the ship's light), SONGLINE (48 bars flying
+the tune's Spark through its gates), JAM (an endless room of pads, with POP-OFF as its 32-bar versus).
+
 ### 4.1 Phrase cycle
 
 The run is an endless DJ set built from repeating cycles of four sections. The director and the music

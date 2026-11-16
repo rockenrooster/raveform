@@ -369,6 +369,17 @@ after load.
 Caps are gameplay rules, identical on every device, and sized so the Moto's tick stays inside 2.5 ms.
 When a pool is full the director stops spawning into it; upgrade effects carry their own limits.
 
+M8 (`docs/MODES_PLAN.md`, built 2026-11-16): a run's setup (`sim::RunSetup`: the mode, its Track, versus, the underdog's help)
+goes wherever a seed goes; each mode's state lives in the world and enters its hash only when that mode runs (THE SET's hash
+does not move):
+
+| Mode | State | Caps |
+|---|---|---|
+| TRACERS (`world_mode_tracers.cpp`) | Each player's tracer, the rings alive, the floor's owner and order a tile | 160 points a player; 8 rings of 48 corners, 224 bodies caught a ring; 43 x 21 tiles |
+| SONGLINE (`world_mode_songline.cpp`) | The Spark, its line a bar ahead (a point a sixteenth, with the wall rule's and the come-back's held turns), the gates, each player's streak, versus's gates taken | 17 points; 256 gates |
+| JAM (`world_mode_jam.cpp`) | The mixer's bits and the one waiting for its bar line, the sound, DROP's rest, each player's pads (inside, held beats) and shelf | 25 pads; one shelf a player; the dancers 160 (x 1.6 in a Drop) |
+| The timed modes | The director's form (`formCount`, `formKind`, `formBars`: at most 12 sections), a bonus Track's music and tempo | 84 bars (FULL BLAST), 48 (TRACERS, SONGLINE), 32 (POP-OFF) |
+
 ### 7.2 Tick (60 Hz)
 
 1. Read player poses and triggers (local and remote).
@@ -424,6 +435,26 @@ or server-side validation — and means the local player always has zero input l
 Corrections are applied as a per-enemy error offset that decays over about 150 ms; snap when the error
 exceeds 96 wu. Enemies target each device's own view of player positions; the differences are small and
 are what corrections exist for.
+
+### 8.1.1 Who decides what in the modes (M8, built 2026-11-16)
+
+| What | Who decides | How |
+|---|---|---|
+| The run's setup | The host (the room's MODE pill) | The lobby's message and `MsgRunStart` carry it |
+| TRACERS: a ring | Its owner's device | `Msg::Ring` (its corners, its pop's eighth, its owners); the host relays it |
+| TRACERS: the house, the floor | The host | `Msg::Ring` kind 1 (the house's bar line); `Msg::Floor` every two seconds |
+| TRACERS versus: a cut, a spin-out | The cut ship's own device | `kPeCut`, `kPeSpin` |
+| SONGLINE: the line, the gates' places | Nobody (the seed and the song's clock) | Every device steps it; the director's message carries the line's point a bar ahead once a bar and a client more than 2 wu off takes it |
+| SONGLINE: the line bending back (rule 4) | The host | Arena operation 14 (from which step, toward where) |
+| SONGLINE: a gate threaded | The player's own device | `kPeGate` (the gate's birth, in time, the claim's ticks after it) |
+| SONGLINE: co-op's chord, versus's first come | The host | Arena operations 12 and 13 |
+| JAM: the mixer, DROP, a Track, SOUND | The host, on a device's ask (`kPeJamPad`) | Arena operation 10, on a bar line at least half a bar away |
+| JAM: toys, Boosts, EMPTY | The player's own device | `kPeJamTake`, `kPeJamEmpty` |
+| Versus: the crown, the underdog | The host | The director's message |
+| Versus: a knock-out | The ship's own device | `kPeKnock` |
+
+Protocol `0x52460511` (part 6). A timed run's last downbeat empties the room on every device and keeps it empty (a spawn sent just
+before it can land on a client after it).
 
 ### 8.2 Time and song sync
 

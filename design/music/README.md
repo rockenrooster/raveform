@@ -51,6 +51,14 @@ things an ear notices first: the mode, the drum pattern and what the lead does.
 | `track09.json` | Mirage | 150, B♭ lydian: B♭maj7 C/B♭ Gm7 Fadd9 | **Broken kick:** one, the and of two, the and of three | A harp: five notes up, three down | Floating; the bass holds for two bars, the fourth bar lands home |
 | `track10.json` | Last Light | 155, A minor: Am F C G | **Two-step break:** kick on one and the and of three, snare on two and four | First Light's arps, note for note | Liquid drum and bass; the first theme comes back and the loop returns to First Light in its key |
 
+**The bonus Tracks** (M8, `design/modes/README.md` 11; built 2026-11-16, in the band as Tracks 11 and 12, calibrated with the
+ten, `scripts\render-audio.ps1` matching them against the prototype like the ten: the tool's table has twelve rows):
+
+| File | Track | Tempo, key | Character |
+|---|---|---|---|
+| `design/modes/music/track11.json` | Mirrorball | 122, D major: Em9 A13 Dmaj9 Bm7 (two, five, one, six) | Disco house, the dance floor: TRACERS's home |
+| `design/modes/music/track12.json` | Toybox | 100, C major | Written so that no combination of its layers can clash: JAM's home, where a child switches the band's layers one by one (all 256 mixer settings rendered: none clips, none louder than its Drop) |
+
 A Track can carry `mix`, `send`, `duck` and `patch` overrides: that is how each gets its own
 character from the same voices. `patch.kick_hz` tunes the kick's body to the key. Every preview uses
 the same staged arrangement, so they can be compared bar for bar. Tracks 7 and 10 have no kick on

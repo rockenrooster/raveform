@@ -565,6 +565,15 @@ BACK top left. Cap 22 for headings in the accent, cap 14 for lines in white.
 The list is whatever the build really links: the build fails if a linked third-party library has no
 entry.
 
+## Modes (M8, built 2026-11-16)
+
+`design/modes/screens.md` is built (the parts as `docs/PROGRESS.md` "M8" records them, with what each left undone): the title's mode
+pill; MODES (the seven cards, the Track strip, a Track heard from the next bar line); the room's MODE pill and the join list's mode;
+the transitions (the rule's lift into MODES, BACK's fold, the drop-in from MODES); each mode's card and goal line (`WAVE 2 OF 4   BARS
+LEFT 51`, `FLOOR 62%   HOUSE 2`, `GATES 148   STREAK 32`, `POPS`, `PICK 2 OF 5`); the timed runs' count (TRACERS's sweep, SONGLINE's
+string lighting from the left); the results (TRACK COMPLETE, HEADLINERS COMPLETE, FULL BLAST, TRACERS's floor, SONGLINE's string over
+the bar); versus's crown, BACK IN, the podium and REMATCH; NEXT TRACK. JAM has no result: LEAVE goes home.
+
 ## Transitions (M6)
 
 (2026-11-14, the owner: going from the title into the first Track and from game over back to the title

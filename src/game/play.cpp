@@ -1818,6 +1818,11 @@ enum ScriptFlag : u32 { kPressed = 1, kSpawned = 2 };
 }
 
 void Play::scriptSetup() {
+    if (opt_.uiScale >= 0 && opt_.uiScale <= 3) {
+        // (M8 part 7: a picture at one of the UI scale's four sizes; pictures save nothing)
+        settings_.uiScale = static_cast<u8>(opt_.uiScale);
+        applySettings();
+    }
     if (scriptSetupM6()) return;
     if (scriptSetupM8()) return;
     if (scriptSetupM5()) return;

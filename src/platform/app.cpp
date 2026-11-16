@@ -316,6 +316,7 @@ bool App::init() {
         playPicture_ = args_.picture[0] != 0;
         po.bot = args_.bot || playBench_;
         po.autoplay = args_.autoplay;
+        po.uiScale = args_.uiScale;
         po.recklessAfter = args_.recklessAfter;
         std::snprintf(po.mode, sizeof po.mode, "%s", args_.mode);  // M8
         po.versus = args_.versus;

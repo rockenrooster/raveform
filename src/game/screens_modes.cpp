@@ -769,7 +769,7 @@ void Play::drawModeCard(Ui& ui, Mode m, float x, float near, const ModesLook& ml
     if (slideLevel <= 0.0f) {
         // (the layout rule's lines: the name, the caption, the facts, the best)
         ui.text({x, nameY}, nameCap, white, 0.0f, in.name);
-        ui.text({x, 540.0f * s + dy}, 18.0f * s, white, 0.0f, modeBuilt(m) ? in.caption : "COMING IN THIS BUILD'S NEXT PART");
+        ui.text({x, 540.0f * s + dy}, 18.0f * s, white, 0.0f, in.caption);  // (M8 part 7: every mode built; the dev-only line gone)
         ui.text({x, 580.0f * s + dy}, 13.0f * s, white, 0.0f, "1-4 PLAYERS");
         return;
     }
@@ -816,7 +816,7 @@ void Play::drawModeCard(Ui& ui, Mode m, float x, float near, const ModesLook& ml
     ui.tube({x, nameY}, nameCap, c0, white, c1, (1.0f + 0.6f * near) * light * ml.content * level, in.name);
     const float words = clamp01((near - 0.8f) / 0.2f) * ml.content * level * slideLevel;
     if (words <= 0.0f) return;
-    ui.text({x, 540.0f * s + dy}, 18.0f * s, white, 1.2f * words, modeBuilt(m) ? in.caption : "COMING IN THIS BUILD'S NEXT PART");
+    ui.text({x, 540.0f * s + dy}, 18.0f * s, white, 1.2f * words, in.caption);
     char facts[96];
     std::snprintf(facts, sizeof facts, "1-4 PLAYERS   %s   %s", m == Mode::Jam ? "TEAM OR POP-OFF" : "TEAM OR VERSUS", kModeLength[static_cast<u32>(m)]);
     ui.text({x, 580.0f * s + dy}, 13.0f * s, palette_->accent, 1.2f * words, facts);
