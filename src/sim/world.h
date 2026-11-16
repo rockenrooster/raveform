@@ -1364,6 +1364,7 @@ private:
     void longwavePartDied(u8 index, Event& ev);
     void longwaveFire(double t, i64 step);
     void updateLongwave(float dt);
+    void longwaveUnravel();  // its death: the body left shatters tail-first, then the head breaks (longwave.md "Look")
     float longwaveScale(u8 part, u8 index, double t) const;
     // world_choir.cpp
     void enterChoir(Vec2 centre);

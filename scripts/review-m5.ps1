@@ -4,8 +4,8 @@
 # The moments are scripted in src/game/play_pictures_m5.cpp: each run jumps to its fight (--fight: the fight's home
 # Track, fast-forwarded to it, its parts taken down to the phase), the careful bot plays with hits costing nothing, and
 # the picture is taken when its moment comes (at most 60 s).
-#   Part 1 (-Part part1): Longwave lw_swell, lw_jaw, lw_chop, lw_whitecap (the lunge's line), lw_bare, lw_death, strip
-#   lw_strip; the Choir ch_unison, ch_canon, ch_cage, ch_fugue, ch_solo (the held note), ch_death, strip ch_strip; the
+#   Part 1 (-Part part1): Longwave lw_swell, lw_jaw, lw_chop, lw_whitecap (the lunge's line), lw_bare, lw_death, strips
+#   lw_strip and lw_unravel (its death from the kill on, a frame a beat); the Choir ch_unison, ch_canon, ch_cage, ch_fugue, ch_solo (the held note), ch_death, strip ch_strip; the
 #   mini-bosses: alpha_tell (the howl), alpha_attack (the charge), alpha_x2 (winded), alpha_half, alpha_death, strip
 #   alpha_strip; hive_tell (x 2), hive_ring, hive_spear, hive_wall, hive_half, hive_death, strip hive_strip; ram_tell
 #   (the lock), ram_attack, ram_x2 (stunned), ram_death, strip ram_strip; carom_tell (a bounce), carom_x2, carom_split,
@@ -56,7 +56,7 @@ $sets = @{
                     'ch_death', 'alpha_tell', 'alpha_attack', 'alpha_x2', 'alpha_half', 'alpha_death', 'hive_tell', 'hive_ring', 'hive_spear',
                     'hive_wall', 'hive_half', 'hive_death', 'ram_tell', 'ram_attack', 'ram_x2', 'ram_death', 'carom_tell', 'carom_x2', 'carom_split',
                     'carom_death')
-        strips = @('lw_strip', 'ch_strip', 'alpha_strip', 'hive_strip', 'ram_strip', 'carom_strip')
+        strips = @('lw_strip', 'lw_unravel', 'ch_strip', 'alpha_strip', 'hive_strip', 'ram_strip', 'carom_strip')
     }
     'part2' = @{
         singles = @('fam_flanker', 'fam_skitter', 'fam_moth', 'fam_brood', 'fam_brood_c', 'fam_blink', 'fam_hound_c', 'fam_drifter_b', 'fam_carom_b',

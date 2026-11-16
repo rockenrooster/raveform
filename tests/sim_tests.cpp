@@ -1851,6 +1851,61 @@ void testLongwave() {
     delete w;
 }
 
+// longwave.md "Look", Death (the owner, 2026-11-15: it "dies without destroying all its tail"): the head's death leaves the body
+// where it is; what is left of it shatters tail-first, a segment (LwShatter, b its rank) on each sixteenth line from the first
+// one after the death, then the head breaks (LwBreak) on the next line, all before the boss is gone.
+void testLongwaveUnravel() {
+    g_test = "longwave_unravel";
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    const Vec2 ship{0.0f, 1500.0f};
+    stepWorld(*w, music, ship);
+    w->directorMut().track = 2;
+    w->spawnBossNow(kTicksPerBar, Vec2{}, BossKind::Longwave);
+    const BossState& s = w->boss();
+    runTo(*w, music, 3.0 * kTicksPerBar + kTicksPerBeat + 10.0, ship);
+    w->killBossNextTick(0x0F00F1u, false);  // nine segments down: fifteen left
+    stepWorld(*w, music, ship);
+    const u32 live = w->bossSegmentsAlive();
+    CHECK_MSG(live == 15, "%u left", live);
+    w->killBossNextTick(0, true);  // the head
+    stepWorld(*w, music, ship);
+    CHECK(s.dying);
+    const double first = longwaveUnravelFirst(s.deathTick);
+    CHECK(first > s.deathTick && first <= s.deathTick + kTicksPerStep);
+    // (its Shards come with the head's break, and the Track ends on a bar line after it)
+    CHECK_MSG(std::fabs(s.payoutTick - (first + static_cast<double>(live) * kTicksPerStep)) < 1e-6, "payout %.1f", s.payoutTick);
+    CHECK(static_cast<double>(w->director().changeBar) * kTicksPerBar + w->director().startTick > s.payoutTick);
+    Vec2 at[kBossBodies];
+    for (u32 k = 0; k < kBossBodies; ++k) at[k] = s.body[k];
+    u32 shatters = 0, breaks = 0, nextRank = live;
+    bool inOrder = true, placed = true;
+    while (s.active && music < s.deathTick + 3.0 * kTicksPerBar) {
+        stepWorld(*w, music, ship);
+        for (u32 i = 0; i < w->eventCount(); ++i) {
+            const Event& e = w->events()[i];
+            if (e.type != EventType::BossCue) continue;
+            if (e.a == static_cast<u8>(BossCue::LwShatter)) {
+                inOrder = inOrder && e.b == nextRank && std::fabs(e.tick - (first + static_cast<double>(shatters) * kTicksPerStep)) < 1e-6;
+                u32 rank = 0;  // (where its segment froze: the b-th live one)
+                for (u32 k = 0; k < 24; ++k)
+                    if ((s.alive & (1u << k)) && ++rank == e.b) placed = placed && length(Vec2{e.x, e.y} - at[1 + k]) < 1e-3f;
+                ++shatters;
+                --nextRank;
+            }
+            if (e.a == static_cast<u8>(BossCue::LwBreak)) {
+                ++breaks;
+                inOrder = inOrder && shatters == live && std::fabs(e.tick - (first + static_cast<double>(live) * kTicksPerStep)) < 1e-6;
+                placed = placed && length(Vec2{e.x, e.y} - at[0]) < 1e-3f;
+            }
+        }
+    }
+    CHECK_MSG(shatters == live && breaks == 1, "%u shatters, %u breaks", shatters, breaks);
+    CHECK(inOrder && placed && !s.active);
+    delete w;
+}
+
 void testChoir() {
     g_test = "choir";
     const ChoirData& d = g_species->choir;
@@ -4088,6 +4143,7 @@ int main() {
     testSetList();
     testMiddleDrop();
     testLongwave();
+    testLongwaveUnravel();
     testChoir();
     testHorizon();
     testBulletsByTrack();

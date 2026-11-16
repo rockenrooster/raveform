@@ -787,7 +787,9 @@ void World::killBoss(u8 owner) {
     DirectorState& d = director_;
     // The end: the first bar line at least half a bar away (the band, which hears of it now, can still start the
     // next section on that line): the Track-change Break after a boss, the Break after a mini-boss's held Drop.
-    const double rel = (m1_ + 0.5 * kTicksPerBar - d.startTick) / kTicksPerBar;
+    // (Longwave, 2026-11-15: and not before its head breaks, after the body left has shattered: longwaveUnravel)
+    const double lwBreak = s.kind == BossKind::Longwave ? longwaveUnravelFirst(m1_) + static_cast<double>(bossSegmentsAlive()) * kTicksPerStep : 0.0;
+    const double rel = (std::fmax(m1_ + 0.5 * kTicksPerBar, lwBreak) - d.startTick) / kTicksPerBar;
     const u32 endBar = static_cast<u32>(std::floor(rel)) + 1;
     if (mini) {
         extraLifeDrop(s.pos, true);  // GAME_DESIGN 5 (2026-11-14): in Tracks 3, 5, 7 and 9 the mini-boss drops the Track's Extra Life
@@ -796,7 +798,7 @@ void World::killBoss(u8 owner) {
         // Its bullets go with it; then the Shards (kaleidos.md: "then the Shards"): 200 per player (the Choir 220; each
         // device its own players', M4).
         for (u32 i = 0; i < bullets_.count; ++i) bullets_.dead[i] = 1;
-        s.deathBars = s.kind == BossKind::Choir ? 2.0 : (s.kind == BossKind::Longwave ? 1.75 : (s.kind == BossKind::EventHorizon ? 1.25 : 1.0));
+        s.deathBars = s.kind == BossKind::Choir ? 2.0 : (s.kind == BossKind::EventHorizon ? 1.25 : 1.0);  // (Longwave's: below)
         // Event Horizon implodes for a bar and a beat of black first; everything it ate comes back with the flash.
         if (s.kind == BossKind::EventHorizon) s.payoutTick = m1_ + kTicksPerBar + kTicksPerBeat;
         else if (s.kind == BossKind::Polyrhythm) {
@@ -825,6 +827,10 @@ void World::killBoss(u8 owner) {
             s.payoutTick = tickOfBar(endBar + 1);
             s.deathBars = (s.payoutTick - m1_) / kTicksPerBar + 0.25;
             emitCue(BossCue::FbCut, m1_, 0, 0.0f, s.pos);
+        } else if (s.kind == BossKind::Longwave) {
+            // longwave.md, Death (2026-11-15): the body left shatters tail-first, then the head breaks, then the Shards.
+            s.payoutTick = lwBreak;
+            s.deathBars = (lwBreak - m1_) / kTicksPerBar + 0.25;
         } else {
             bossPayout();
         }
@@ -1253,6 +1259,7 @@ void World::updateBoss(float dt) {
         // bursts on the last bar's beats; the run of chirps up the scale), which this return came before: neither ever played.
         if (s.kind == BossKind::Cadence) updateCadence(dt);
         else if (s.kind == BossKind::Arpeggiator) updateArpeggiator(dt);
+        else if (s.kind == BossKind::Longwave) longwaveUnravel();  // (2026-11-15: its body shatters, then the head breaks)
         if (s.payoutTick >= 0.0 && m1_ >= s.payoutTick) {
             s.payoutTick = -1.0;
             bossPayout();

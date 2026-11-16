@@ -18,6 +18,9 @@ constexpr double kTicksPerBeat = 96.0;
 inline double repriseBurstTick(double deathTick) { return std::ceil((deathTick + 0.75 * kTicksPerBeat) / kTicksPerBeat - 1e-9) * kTicksPerBeat; }
 constexpr double kTicksPerStep = 24.0;  // a sixteenth
 constexpr double kTicksPerBar = 384.0;  // 4/4
+// Longwave's death (longwave.md "Look", Death): what is left of the body shatters tail-first, a segment on each sixteenth line
+// from the first one after the death, then the head breaks on the next line (World::longwaveUnravel, PlayView::drawLongwave).
+inline double longwaveUnravelFirst(double deathTick) { return (std::floor(deathTick / kTicksPerStep) + 1.0) * kTicksPerStep; }
 // RESUME's count-in (screens.md "Pause"), solo and co-op's shared one: 3-2-1, three beats (the owner, 2026-11-15; it was four).
 constexpr double kCountInBeats = 3.0;
 

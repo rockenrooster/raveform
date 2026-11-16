@@ -167,13 +167,15 @@ void PlayView::drawLongwave(FrameDraw& d, const ViewInput& in) {
     const float hw = 0.6f * refPx_;
     const Vec2 head = lerpv(s.bodyPrev[0], s.body[0], a);
     if (!visible(head, 300.0f) && !s.dying) fightChevron(d, in, head, acc);
-    // The death unravels the body tail-first, one segment per sixteenth (each a medium kill), then the head breaks.
+    // The death unravels the body tail-first, one segment per sixteenth (each a medium kill), then the head breaks: on the
+    // sixteenth lines the simulation's cues use (longwaveUnravelFirst; the kills are LwShatter's and LwBreak's, eventFight).
     const u32 live = bitsIn(s.alive);
     u32 shown = live;
     if (s.dying) {
-        const u32 gone = static_cast<u32>(std::floor((t - s.deathTick) / kTicksPerStep));
-        shown = gone >= live ? 0u : live - gone;
-        if (gone > live + 1) return;
+        const double first = longwaveUnravelFirst(s.deathTick);
+        const u32 gone = t < first ? 0u : static_cast<u32>(std::floor((t - first) / kTicksPerStep)) + 1u;
+        if (gone > live) return;  // (the head has broken)
+        shown = live - gone;
     }
     const double wt = s.dying ? s.deathTick : t;  // the body freezes where it died
     const float total = static_cast<float>(L.segments);
@@ -256,8 +258,8 @@ void PlayView::drawLongwave(FrameDraw& d, const ViewInput& in) {
         }
         if (!s.dying && wv < -0.95f) d.pools.glow(toScene(p), 46.0f * pxPerWu_, danger * 0.32f);
     }
-    // The tail: three blades in a fan at the end of the body.
-    if (shown == live && !s.dying) {
+    // The tail: three blades in a fan at the end of the body (in death, until its segment shatters).
+    if (shown == live) {
         const Vec2 tp = lerpv(s.bodyPrev[kBossBodies - 1], s.body[kBossBodies - 1], a);
         const float ta = s.bodyAng[kBossBodies - 1];
         const float c = std::cos(ta), sn = std::sin(ta);
@@ -268,7 +270,7 @@ void PlayView::drawLongwave(FrameDraw& d, const ViewInput& in) {
         }
     }
     // The head: the jaw (open on beat 1 and after a lunge; locked open in death), the crown, the eyes, the seed.
-    if (visible(head, 160.0f) && (!s.dying || t - s.deathTick < (live + 1) * kTicksPerStep)) {
+    if (visible(head, 160.0f)) {  // (in death, until it breaks: the return above)
         const float ang = s.bodyAng[0];
         const float c = std::cos(ang), sn = std::sin(ang);
         const bool open = s.dying || w.longwaveJawOpen(t);
@@ -871,6 +873,13 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
                 shakeAmp_ = std::fmax(shakeAmp_, 4.0f);
             }
             if (cue == BossCue::LwWhip) addShockRings(at, 1, 300.0f, palette_->hue[2], whiteV(), t, 0.4f);
+            if (cue == BossCue::LwShatter) {
+                // longwave.md, Death (2026-11-15): a segment the head's death left shatters where it froze, a medium kill in its
+                // place's colour along the body (the head's hue, the middle's, the tail's).
+                const LongwaveData& L = w.species().longwave;
+                killRecipe(at, 1, static_cast<u8>(e.b * 3u / (L.segments + 1u)), e.f, -1, L.segRadius, t, -1);
+            }
+            if (cue == BossCue::LwBreak) fightBreak(at, t);  // then the head, as a boss break
             if (cue == BossCue::HvShape) push(kImpBoss, at, 200.0f, 300.0f, t);
             if (cue == BossCue::HzEat) {
                 // Event Horizon eats: the body folds into the horizon (a small white implosion), its cell flashes.
@@ -942,6 +951,13 @@ void PlayView::eventFight(const World& w, const Event& e, float t) {
                 rpBurstAt_ = at;
                 implodeRing(at, 900.0f, 0.35f, whiteV(), t);
                 addPool(at, 20.0f, 160.0f, whiteV(), reduceFlashing_ ? 0.4f : 1.0f, 0.0f, 0.15f, false, 1, false, false, t);
+                break;
+            }
+            if (static_cast<BossKind>(e.a) == BossKind::Longwave) {
+                // longwave.md, Death (2026-11-15): the jaw locks open with the clamped white flash; the body left shatters and the
+                // head breaks after it (the cues LwShatter, LwBreak), so the boss's fall comes then.
+                addPool(at, 60.0f, 420.0f, whiteV(), reduceFlashing_ ? 0.45f : 0.9f, 0.0f, 0.12f, false, 1, false, false, t);
+                shakeAmp_ = std::fmax(shakeAmp_, 4.0f);
                 break;
             }
             const bool mini = isMiniBoss(static_cast<BossKind>(e.a));

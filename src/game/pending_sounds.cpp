@@ -65,6 +65,9 @@ const FightSound kRows[] = {
      1},
     {BossCue::LwWhip, "longwave.md", "the impact a fifth up, on the whip's downbeat", nullptr, SoundPlay::Recipe, rc(Recipe::Impact), false, 0.8f, 7,
      0},
+    {BossCue::LwShatter, "longwave.md", "death: the rest of the body unravels tail-first, one segment per sixteenth, each a medium kill", nullptr,
+     SoundPlay::Sfx, sx(Sfx::KillMedium), false, 0.7f, 0, 0},
+    {BossCue::LwBreak, "longwave.md", "death: then the head as a boss break", nullptr, SoundPlay::Sfx, sx(Sfx::KillLarge), false, 1.0f, 0, 0},
     // ---- The Choir (choir.md "Sound")
     {BossCue::ChVoice, "choir.md", "pad_voice: the pad patch as a voice (attack 20 ms, release one beat, reverb send 0.5), the Voice's own note every "
                                    "time it sings",

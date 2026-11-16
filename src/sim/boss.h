@@ -51,8 +51,9 @@ inline u32 bossHomeTrack(BossKind k) {
 // musical tick it belongs to, the Voice or wave place (b) and a pitch (f: semitones above the chord root, or a MIDI note
 // where the page names notes). The game plays each through the band (game/play.cpp bossCue).
 enum class BossCue : u8 {
-    // Longwave: the run (a crest step), a trough's tick, the jaw's horn (beat 1), the lunge, the whip.
-    LwRun, LwTrough, LwJaw, LwLunge, LwWhip,
+    // Longwave: the run (a crest step), a trough's tick, the jaw's horn (beat 1), the lunge, the whip; its death: a segment
+    // left shatters (b: its rank, the tail's first; f: its heading), then the head breaks.
+    LwRun, LwTrough, LwJaw, LwLunge, LwWhip, LwShatter, LwBreak,
     // The Choir: a Voice sings (f = MIDI), a Voice dies (its note falls a fourth), the cage's tick and burn, the held note
     // (b = 0 it begins, 1 it rises as the beam fires).
     ChVoice, ChDeath, ChCageTick, ChCageBurn, ChHeld,

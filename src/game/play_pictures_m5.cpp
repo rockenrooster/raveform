@@ -56,6 +56,7 @@ const Pic kPics[] = {
     {"lw_bare", "longwave", 3, Moment::Jaw, false},
     {"lw_death", "longwave", 2, Moment::Death, false},
     {"lw_strip", "longwave", 1, Moment::Crest, true},
+    {"lw_unravel", "longwave", 0, Moment::Death, true},  // (2026-11-15: the whole body shatters, then the head breaks; frames a beat apart)
     {"ch_unison", "choir", 0, Moment::Sing, false},
     {"ch_canon", "choir", 1, Moment::Sing, false},
     {"ch_cage", "choir", 1, Moment::Cage, false},
@@ -479,6 +480,8 @@ bool Play::scriptSetupM5() {
     if (fightKind_ == BossKind::Polyrhythm || fightKind_ == BossKind::Feedback || fightKind_ == BossKind::Cadence || fightKind_ == BossKind::Arpeggiator || fightKind_ == BossKind::Morgana || fightKind_ == BossKind::Reprise || (fightKind_ >= BossKind::MothQueen && fightKind_ <= BossKind::DeepWell))
         opt_.fightHold = true;
     if (pic.strip) stripStride_ = 4;
+    // lw_unravel: a frame every beat over the death's two bars (at 126 BPM a beat is about 29 frames of 1/60 s).
+    if (std::strcmp(pic.name, "lw_unravel") == 0) stripStride_ = 29;
     return true;
 }
 
@@ -756,6 +759,15 @@ bool Play::scriptInputM5(StickInput& in) {
         if (l > 700.0f || std::fabs(ship.x) > kArenaHalfW - 700.0f || std::fabs(ship.y) > kArenaHalfH - 500.0f)
             in.move = normalizeOr(want - ship, Vec2{1.0f, 0.0f});
     }
+    if (std::strcmp(kPics[m5Pic_].name, "lw_unravel") == 0 && w.boss().active && w.boss().kind == BossKind::Longwave) {
+        // (lw_unravel: the ship holds fire and keeps 400 wu off the body's seventh segment, so the head and most of the whole body
+        // are in the frame when it dies)
+        const Vec2 ship = controller_.pose().pos, mid = w.boss().body[1 + 6];
+        const Vec2 want = mid + normalizeOr(ship - mid, Vec2{0.0f, 1.0f}) * 400.0f;
+        in.move = length(want - ship) > 120.0f ? normalizeOr(want - ship, Vec2{1.0f, 0.0f}) : Vec2{};
+        in.aimActive = false;
+        in.assist = false;
+    }
     if (fightKind_ == BossKind::DeepWell && w.boss().active && w.boss().kind == BossKind::DeepWell && !w.wellChoked(music1_)) {
         // (the Deep Well's pictures: a stream's worth fed in the middle of each bar, past its stomach for the choke's picture;
         // the bot's own stream, aimed at what it can hurt, rarely feeds it this much)
@@ -799,8 +811,12 @@ bool Play::scriptInputM5(StickInput& in) {
     if (pic.moment == Moment::Death) {
         // The death: killed on a beat after a bar of the fight, captured as it plays out.
         // (within a frame of the beat: at 144 BPM a 1/60 s frame is 3.84 ticks and lands on the same 25 places of every beat)
-        if (b.active && !b.dying && inBeat < 5.0) w.killBossNextTick(0, true);
-        const double after = b.kind == BossKind::Choir ? 0.6 : (b.kind == BossKind::Longwave ? 0.45 : (b.kind == BossKind::EventHorizon ? 0.5 : (b.kind == BossKind::Polyrhythm ? 0.4 : (b.kind == BossKind::Feedback ? 0.4 : 0.08))));
+        // (lw_unravel: once the head and the seventh segment are in the frame, or after 40 s)
+        const bool framed = std::strcmp(pic.name, "lw_unravel") != 0 || (seen(b.body[0]) && seen(b.body[1 + 6])) || t > 2400u;
+        if (b.active && !b.dying && inBeat < 5.0 && framed) w.killBossNextTick(0, true);
+        double after = b.kind == BossKind::Choir ? 0.6 : (b.kind == BossKind::Longwave ? 0.45 : (b.kind == BossKind::EventHorizon ? 0.5 : (b.kind == BossKind::Polyrhythm ? 0.4 : (b.kind == BossKind::Feedback ? 0.4 : 0.08))));
+        // (lw_unravel: the strip from the kill on, a frame a beat: 24 segments a sixteenth each, then the head, then its Shards)
+        if (std::strcmp(pic.name, "lw_unravel") == 0) after = 0.0;
         go = b.dying && music >= b.deathTick + after * kTicksPerBar;
     } else if (b.active && !b.dying) {
         switch (pic.moment) {

@@ -4,6 +4,28 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, Longwave's death shatters what is left of it
+
+The owner: "i think it dies without destroying all its tail". Measured with the novice bot (`--sim crowd --seeds 8 --minutes 12
+--policy novice --trace`, the `[boss]` lines' last `parts` before each death): of 9 fights, 8 ended with segments alive (23,
+21, 17, 12, 6, 5, 3 and 1 of 24); two ended 11 s in. That is rule 5 ("kill the head and it is over"), with the assist aiming at
+the open jaw. The death the page describes ("the rest of the body unravels tail-first, one segment per sixteenth, each a medium
+kill; then the head as a boss break ... then the Shards") was built only as segments taken off the drawing, silently, with the
+boss's fall played at the kill. The owner chose to keep the head kill and shatter the leftovers.
+
+- **Sim** (`World::longwaveUnravel`, `longwaveUnravelFirst` in `sim_types.h`): the dying boss emits `BossCue::LwShatter` for each
+  segment left, tail first, on each sixteenth line from the first one after the death (b: its rank, f: its heading, where it
+  froze), then `LwBreak` for the head on the next line. The Shards are paid then (`payoutTick`), the boss stays a quarter bar
+  more, and the Track ends on the first bar line after the break (at least half a bar after the kill, as before).
+- **View** (`play_view_m5.cpp`): the kill is the jaw locked open with the clamped white flash (0.9, 0.12 s); each `LwShatter` is
+  a medium kill (`killRecipe`) in its place's colour along the body; `LwBreak` is the boss break (`fightBreak`). The drawing
+  takes segments off on the same lines. The kill's own sound, gong, haptic pulse and 50 ms hit-stop stay at the kill.
+- **Sound** (`pending_sounds.cpp`): `LwShatter` the medium kill (0.7), `LwBreak` the large kill (1.0).
+- **Checks:** `testLongwaveUnravel` (15 segments left: 15 shatters in order on consecutive sixteenths where they froze, one
+  break, the payout at the break, the Track's end after it). The picture `m5_lw_unravel` (a strip from the kill, a frame a beat;
+  `review-m5.ps1 -Part part1`): `captures\lwfix\lw_unravel_sheet.png`. The ship holds fire there and keeps near the body, so all
+  24 segments are left.
+
 ## 2026-11-15, the review's batch 2 dropped
 
 The owner: "No need batch 2". These are not built, and their specs in `design/screens.md`, `design/arena.md` and

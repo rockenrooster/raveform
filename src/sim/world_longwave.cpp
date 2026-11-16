@@ -368,4 +368,31 @@ void World::updateLongwave(float /*dt*/) {
     placeLongwave(m1_);
 }
 
+void World::longwaveUnravel() {
+    // longwave.md "Look", Death (the owner, 2026-11-15: it "dies without destroying all its tail"; the leftover segments were only
+    // taken off the drawing, one a sixteenth, with no kill): the head's death ends the fight whatever is left of the body (rule
+    // 5). The body stays where it died (a dying boss is not moved) and shatters tail-first, a segment on each sixteenth line from
+    // the first one after the death (longwaveUnravelFirst), each a medium kill, then the head breaks as a boss break on the next.
+    // A cue each, where it is.
+    const BossState& s = boss_;
+    const LongwaveData& d = species_->longwave;
+    const u32 live = bitsIn(s.alive);
+    const double first = longwaveUnravelFirst(s.deathTick);
+    forCrossings(m0_, m1_, kTicksPerStep, [&](double t, i64) {
+        if (t < first - 1e-6) return;
+        const u32 j = static_cast<u32>(std::llround((t - first) / kTicksPerStep));  // (0: the tail's segment)
+        if (j > live) return;
+        if (j == live) {
+            emitCue(BossCue::LwBreak, t, 0, s.bodyAng[0], s.body[0]);
+            return;
+        }
+        u32 rank = 0;
+        for (u32 k = 0; k < d.segments && k < kBossParts; ++k) {
+            if (!(s.alive & (1u << k)) || ++rank != live - j) continue;
+            emitCue(BossCue::LwShatter, t, static_cast<u8>(rank), s.bodyAng[1 + k], s.body[1 + k]);
+            break;
+        }
+    });
+}
+
 }  // namespace rf::sim
