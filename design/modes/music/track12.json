@@ -1,0 +1,58 @@
+{
+  "id": "track12",
+  "name": "Toybox",
+  "bpm": 100,
+  "key": "C major",
+  "scale": [0, 2, 4, 5, 7, 9, 11],
+  "note": "Same format as track01.json. A bonus Track, outside the set list: the home of JAM (design/modes/jam.md), where a child switches the band's layers on and off one by one. So it is written for any combination of its layers: C add 9, A minor 7, F major 7 and G with its fourth instead of its third, whose upper notes are all from one five-note scale (C D E G A), and a lead, stabs and bass lines that use nothing else above the bass. No layer can clash with another, at any moment, in any order. Character: a music box over a soft four on the floor, the slowest Track in the game; bell stabs on one and three, a round bass on root, fifth and octave, a long echo.",
+  "progression": ["C", "Am", "F", "G"],
+  "chords": {
+    "C":  {"bass": 48, "pad": [55, 60, 62, 64], "stab": [67, 72, 76],
+           "arp": [72, 76, 79, 84, 81, 79, 76, 79, 72, 76, 79, 81, 84, 81, 79, 76]},
+    "Am": {"bass": 45, "pad": [55, 60, 64, 69], "stab": [69, 72, 76],
+           "arp": [69, 72, 76, 81, 79, 76, 72, 76, 69, 72, 76, 79, 81, 79, 76, 72]},
+    "F":  {"bass": 41, "pad": [53, 57, 60, 64], "stab": [69, 72, 76],
+           "arp": [69, 72, 74, 76, 79, 76, 74, 72, 69, 72, 74, 79, 81, 79, 76, 74]},
+    "G":  {"bass": 43, "pad": [55, 60, 62, 67], "stab": [67, 72, 74],
+           "arp": [67, 72, 74, 79, 81, 79, 74, 72, 67, 72, 74, 79, 84, 81, 79, 74]}
+  },
+  "patterns": {
+    "kick":    "8...7...8...7...",
+    "clap":    "....7.......7...",
+    "hat_off": "..5...5...5...5.",
+    "hat_16":  "3.4.3.4.3.4.3.44",
+    "ohat":    "..............6.",
+    "shaker":  "3434343434343434",
+    "stab":    "9.......7.....5.",
+    "pulse":   "9.......9......."
+  },
+  "bass": {
+    "groove":     [[0, 0, 0.85, 3.0], [6, 7, 0.7, 1.5], [8, 0, 0.8, 3.0], [14, 12, 0.65, 1.5]],
+    "groove_alt": [[0, 0, 0.85, 3.0], [6, 7, 0.7, 1.5], [8, 0, 0.8, 2.0], [11, 7, 0.65, 1.0], [14, 12, 0.65, 1.5]],
+    "drop":       [[0, 0, 0.9, 1.5], [3, 12, 0.7, 1.0], [4, 7, 0.75, 1.5], [8, 0, 0.9, 1.5], [11, 12, 0.7, 1.0], [12, 7, 0.75, 1.5], [14, 12, 0.7, 1.0]],
+    "format": "[step, semitone offset from the chord's bass note, velocity, length in steps]"
+  },
+  "mix": {"lead": 0.36, "pad": 0.58, "stab": 0.62, "bass": 0.6, "kick": 0.56, "clap": 0.7},
+  "send": {"lead": 0.32, "stab": 0.4, "pad": 0.38, "clap": 0.3},
+  "duck": {"pad": 0.45, "bass": 0.7},
+  "patch": {
+    "kick_hz": 49.0,
+    "kick": {"decay": 0.1, "click": 0.4, "drive": 1.3},
+    "lead": {"fc_start": 5200.0, "fc_end": 1400.0, "q": 1.2, "decay": 0.14, "length": 0.3, "detune_cents": 3.0, "sub": 0.0},
+    "bass": {"square_mix": 0.2, "sub": 0.45, "fc_start": 1300.0, "fc_end": 320.0, "decay": 0.28, "drive": 1.2},
+    "stab": {"detune_cents": 5.0, "fc_start": 4600.0, "fc_end": 1300.0, "decay": 0.2, "length": 0.45},
+    "pad": {"fc_base": 1200.0, "fc_lfo": 700.0, "lfo_hz": 0.08},
+    "delay": {"steps": 3.0, "feedback": 0.42, "mix": 0.26, "repeats": 8},
+    "reverb": {"rt60": 2.0}
+  },
+  "arrangement": [
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove"}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1}},
+    {"section": "groove", "bars": 2, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "clap": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 0.6}},
+    {"section": "build", "bars": 4, "layers": {"kick": 1, "hat_off": 1, "bass": "groove", "lead": 1, "pad": 0.8, "stab": 1}},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": "double", "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0}},
+    {"section": "drop", "bars": 4, "layers": {"kick": 1, "clap": 1, "hat_16": 1, "ohat": 1, "bass": "drop", "lead": 1, "stab": 1, "pulse": 1, "shaker": 1, "pad": 1.0}},
+    {"section": "break", "bars": 4, "layers": {"hat_off": 0.5, "lead": "sparse", "pad": 0.9}}
+  ]
+}

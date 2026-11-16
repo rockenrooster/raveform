@@ -1,0 +1,188 @@
+{
+ "note": "The modes' numbers (design/modes/*.md are the pages; docs/MODES_PLAN.md the engineer's plan). To be embedded at build time and read at start-up like every design file: numbers are never retyped into code. World units, bars, beats; colours OKLCH [L, hue] at full chroma. A number marked 'estimate' is to be measured and replaced, with the date, as its page says. Status 2026-11-15: a plan, nothing built.",
+ "version": 1,
+
+ "modes": [
+  {"id": "set", "index": 0, "name": "THE SET", "caption": "ALL TEN TRACKS, THEN THE ENCORE", "nameCard": "", "takesTrack": false, "tracks": [1, 10], "home": 1, "stage": false, "timedBars": 0, "versusCounts": "score", "colours": {"from": [0.86, 200], "to": [0.70, 300]}},
+  {"id": "one", "index": 1, "name": "ONE TRACK", "caption": "PICK A TRACK AND BEAT ITS BOSS", "nameCard": "BEAT ITS BOSS", "takesTrack": true, "tracks": [1, 10], "home": 1, "stage": false, "timedBars": 0, "versusCounts": "score", "colours": "the chosen Track's accent to its first enemy hue"},
+  {"id": "headliners", "index": 2, "name": "HEADLINERS", "caption": "THE TEN BOSSES, BACK TO BACK", "nameCard": "ACT {n} OF 10", "takesTrack": false, "tracks": [1, 10], "home": 1, "stage": false, "timedBars": 0, "versusCounts": "acts", "colours": {"from": [0.82, 70], "to": [0.72, 318]}},
+  {"id": "blast", "index": 3, "name": "FULL BLAST", "caption": "EVERY POWER ON. THREE MINUTES", "nameCard": "EVERY POWER IS ON", "takesTrack": true, "tracks": [1, 12], "home": 10, "stage": false, "timedBars": 84, "versusCounts": "score", "colours": {"from": [0.85, 230], "to": [0.72, 295]}},
+  {"id": "tracers", "index": 4, "name": "TRACERS", "caption": "DRAW RINGS OF LIGHT. NO AIMING", "nameCard": "RING THEM. LIGHT THE FLOOR", "takesTrack": true, "tracks": [1, 12], "home": 11, "stage": true, "timedBars": 48, "versusCounts": "tiles", "colours": {"from": [0.90, 140], "to": [0.86, 190]}},
+  {"id": "songline", "index": 5, "name": "SONGLINE", "caption": "FLY ALONG THE TUNE", "nameCard": "FOLLOW THE SPARK", "takesTrack": true, "tracks": [1, 12], "home": 4, "stage": false, "timedBars": 48, "versusCounts": "gates", "colours": {"from": [0.86, 150], "to": [0.70, 295]}},
+  {"id": "jam", "index": 6, "name": "JAM", "caption": "NOTHING HURTS. EVERY TOY IS YOURS", "nameCard": "PLAY", "takesTrack": true, "tracks": [1, 12], "home": 12, "stage": true, "timedBars": 0, "versusCounts": "pops", "colours": {"from": [0.80, 55], "to": [0.82, 245]}}
+ ],
+
+ "bonusTracks": [
+  {"track": 11, "id": "track11", "name": "MIRRORBALL", "file": "design/modes/music/track11.json", "bpm": 122, "palette": "mirrorball", "crowdOf": 3, "homeOf": "tracers"},
+  {"track": 12, "id": "track12", "name": "TOYBOX", "file": "design/modes/music/track12.json", "bpm": 100, "palette": "toybox", "crowdOf": 1, "homeOf": "jam"}
+ ],
+
+ "forms": {
+  "note": "Sections in order, [section, bars]. 'track': the Track's own two Short cycles with its mini-boss and its boss, as the set plays it. The 48-bar form ends at the peak: its last Drop is twelve bars and there is no last Break.",
+  "one": "track",
+  "headlinersFirstAct": [["groove", 4], ["build", 4], ["bossDrop", 0]],
+  "headlinersAct": [["trackChange", 8], ["build", 4], ["bossDrop", 0]],
+  "blast": [["groove", 4], ["build", 4], ["drop", 16], ["build", 4], ["drop", 16], ["build", 4], ["drop", 16], ["build", 4], ["drop", 16]],
+  "timed48": [["groove", 8], ["build", 4], ["drop", 8], ["break", 4], ["groove", 8], ["build", 4], ["drop", 12]],
+  "jam": [["groove", 0]],
+  "jamDrop": [["build", 4], ["drop", 8]],
+  "popOff": [["groove", 2], ["break", 10], ["build", 4], ["drop", 16]]
+ },
+
+ "stage": {
+  "widthWu": 1720, "heightWu": 840,
+  "fitMarginWu": 40, "minZoom": 0.75,
+  "tileWu": 40, "tilesX": 43, "tilesY": 21,
+  "spawnClearWu": 260,
+  "rig": {"fixtures": 8, "spacingWu": 190, "yFromTopWu": 14, "level": 0.8}
+ },
+
+ "kit": {
+  "note": "ESTIMATES, from GAME_DESIGN 6.1's level pace (a level every 28 s in Track 1, 16 s in Track 2, 31 s in Track 3, then four upgrades a Track). Replace both rows by the assist bot's median upgrades held (Trios taken) at each Track's first bar and as its boss enters, over 20 runs of THE SET (--sim crowd --policy assist), and write the date here.",
+  "atTrackStart": [0, 6, 14, 19, 23, 27, 31, 35, 39, 43],
+  "atBoss": [4, 12, 17, 22, 26, 30, 34, 38, 42, 46],
+  "measured": false
+ },
+ "loadIn": {"bars": 2, "ringWu": 300, "spiralTurns": 0.25, "iconScale": 0.5, "perSixteenth": 1, "perSixteenthPast32": 2, "graceWu": 600, "closeRingWu": [90, 400], "closeRingBeats": 0.5, "bedLayerEvery": 4},
+
+ "timedEnd": {"lastCallBars": 8, "lastCallShowBars": 2, "dipBeats": 1, "dipSpeed": 0.5, "countBars": 1},
+ "knockOut": {"backOnBarLine": 2, "cells": 2, "invulnerableBars": 1, "chainKept": 0.5},
+
+ "versus": {
+  "shoveWu": 200, "shoveSeconds": 0.25,
+  "crown": {"widthWu": 18, "aboveWu": 26, "level": 2.0, "sparks": 8},
+  "underdogShare": 0.7,
+  "underdog": {
+   "set": "Shards count double for the Chain", "one": "Shards count double for the Chain",
+   "headliners": {"damagePerActBehind": 0.2, "max": 1.0},
+   "blast": "a hit does not halve the Chain",
+   "tracers": {"tracerBeats": 4},
+   "songline": {"catchRadiusScale": 1.5},
+   "jam": "none"
+  }
+ },
+
+ "oneTrack": {
+  "outroBars": 4,
+  "firstBossFactorOnlyOnTrack": 1,
+  "extraLife": "as the set: one in the Track, for a player holding fewer than two"
+ },
+
+ "headliners": {
+  "acts": 10,
+  "buildCrowdScale": 0.5,
+  "extraLifeAtStart": 1,
+  "extraLifeFromActs": [2, 4, 6, 8],
+  "refillEachAct": {"cells": 1, "novas": 1},
+  "topUpBars": 2,
+  "versus": {"actTo": "the most damage after armour and the pace", "tieBreak": "total damage"}
+ },
+
+ "fullBlast": {
+  "riffs": 4, "riffLevel": 5,
+  "waves": [
+   {"name": "FLOOD", "crowdScale": [1.6, 1.2], "elitesAtStart": 0, "eliteEveryBars": 0, "miniBoss": false, "boostEveryBars": 4},
+   {"name": "ELITES", "crowdScale": [1.6, 1.2], "elitesAtStart": 4, "eliteEveryBars": 4, "miniBoss": false, "boostEveryBars": 3},
+   {"name": "THE MINI", "crowdScale": [1.2, 1.2], "elitesAtStart": 0, "eliteEveryBars": 0, "miniBoss": true, "boostEveryBars": 2},
+   {"name": "EVERYTHING", "crowdScale": [2.0, 1.6], "elitesAtStart": 2, "eliteEveryBars": 2, "miniBoss": false, "boostEveryBars": 1}
+  ],
+  "crowdCycle": 2,
+  "miniOfTrack1AndBonus": "Track 2's pair"
+ },
+
+ "tracers": {
+  "tracer": {
+   "lifeBeats": 8, "lifeBeatsPerLevel": 1, "lifeBeatsMax": 16,
+   "minSpeedWu": 120, "pointEveryWu": 16, "maxPoints": 160,
+   "skipNewestPoints": 6, "closeSnapWu": 36, "hintWu": 120,
+   "width": 2.2, "level": 2.6, "nodeSparklePx": 9, "expiringBeats": 2
+  },
+  "ring": {
+   "minTiles": 4, "popOn": "the next eighth line", "maxVertices": 48, "maxAlive": 8,
+   "bonusFrom": [1, 5, 10, 20, 40], "bonus": [1, 2, 3, 5, 8],
+   "heavyShare": 0.25, "duetBonus": 2
+  },
+  "floor": {
+   "fullHouseShare": 0.9, "fullHousePayout": 5000, "endBonusPerTile": 10,
+   "litLevel": 0.55, "restLevel": 0.30, "edgeWidth": 1.5, "edgeLevel": 1.4, "edgeGlowWu": 10, "edgeGlow": 0.2,
+   "houseCrowdStep": 0.15
+  },
+  "crowd": {"stageScale": 0.5, "max": 200, "threatScale": 0.5, "variants": "A only", "without": ["sentry", "tether", "weaver"], "eliteEveryBars": 8, "eliteTraitsWithout": ["volatile", "cloaked"]},
+  "boosts": ["timeStretch", "freezeFrame", "halo", "magnetStorm", "blackHole", "colossus", "confetti", "long", "echo"],
+  "gels": {"long": {"icon": "encore", "tracerScale": 2.0, "bars": 4, "words": "TRACER TWICE AS LONG"}, "echo": {"icon": "echo", "secondRingBeats": 1, "secondRingScale": 1.5, "bars": 4, "words": "EVERY RING POPS TWICE"}},
+  "boostEveryBars": 6,
+  "knockOutCost": {"litShare": 0.25, "which": "the oldest lit"},
+  "versus": {"spinOutWu": 300, "dazzledBeats": 2, "cut": "the part from the cut back to the tail goes dark"}
+ },
+
+ "songline": {
+  "spark": {"speedOfShip": {"groove": 0.80, "build": 0.90, "drop": 0.95, "break": 0.58}, "startAheadWu": 300},
+  "path": {
+   "curve": [{"amplitude": 0.0018, "periodWu": 1400}, {"amplitude": 0.0011, "periodWu": 3700}],
+   "sectionScale": {"groove": 1.0, "build": 0.3, "drop": 1.0, "break": 0.6},
+   "wallLookAheadWu": 600, "wallNearWu": 700, "wallTurn": 0.003, "maxCurvature": 0.004,
+   "comeBackWu": 1400, "comeBackTurn": 0.002, "comeBackSpeed": 0.8, "comeBackUntilWu": 600
+  },
+  "gates": {
+   "every": {"groove": "eighth", "build": "eighth", "drop": "sixteenth", "break": "quarter"},
+   "radiusWu": 34, "breakRadiusWu": 60, "weaveWuPerSemitone": 7, "weaveMaxWu": 56,
+   "lifeBars": 2, "fadeBeats": 1, "maxAlive": 256,
+   "score": 10, "breakScore": 30, "inTimeWu": 80, "inTimeScale": 2,
+   "goldEveryBars": 8, "goldRadiusWu": 60, "goldScore": 100
+  },
+  "streak": {
+   "tiers": [16, 32, 64, 128],
+   "gives": ["Shard pull x 2 and score x 1.5", "the fire grid one step faster", "Prism", "the fire grid two steps faster and Chorus"],
+   "missStep": "to the start of the tier below, at most once a bar"
+  },
+  "crowd": {"scale": 0.7, "threatScale": 0.7, "aheadWu": [600, 1200]},
+  "camera": {"leanShare": 0.3, "leanMaxWu": 320, "zoom": 0.85, "withinWu": 1800},
+  "finale": {"bars": 2, "gates": 32, "rings": 8, "sparks": 300},
+  "coop": {"offsetsWu": {"2": [-50, 50], "3": [-100, 0, 100], "4": [-150, -50, 50, 150]}, "braidEveryBars": 4, "harmonyScaleSteps": [0, 2, 4, 7]},
+  "knockOutCost": "the streak"
+ },
+
+ "jam": {
+  "pads": {
+   "mixer": {"y": -340, "x0": -665, "stepX": 190, "radiusWu": 44, "layers": ["KICK", "HATS", "BASS", "CLAP", "OPEN HAT", "SHAKER", "CHORDS", "STABS"], "onAtStart": [true, false, false, false, false, false, false, false], "trigger": "entering it; it changes on the next bar line"},
+   "drop": {"x": 0, "y": 200, "radiusWu": 70, "holdBeats": 2, "restBars": 8},
+   "toys": {"x": -560, "y": 60, "radiusWu": 56, "holdBeats": 2},
+   "boosts": {"x": 560, "y": 60, "radiusWu": 56, "holdBeats": 2},
+   "empty": {"x": -760, "y": 300, "radiusWu": 36, "holdBeats": 2},
+   "sound": {"x": 760, "y": 300, "radiusWu": 36, "holdBeats": 2},
+   "tracks": {"y": 350, "x0": -605, "stepX": 110, "radiusWu": 30, "holdBeats": 2}
+  },
+  "shelf": {"orbs": 6, "ringWu": 170, "takeBeats": 1, "staysWithinWu": 300, "closesAfterBars": 2, "boostBars": 8, "riffSlots": 4},
+  "shelves": {
+   "toys": [
+    ["split", "doubleTime", "pierce", "ricochet", "fork", "seeker"],
+    ["heavyStep", "accent", "echo", "wave", "overcharge", "rearGuard"],
+    ["arc", "burn", "shatter", "gravityRounds", "onBeatCrit", "syncopation"],
+    ["barLine", "crescendo", "kickPulse", "afterparty", "aegis", "lastLight"],
+    ["slipstream", "magnet", "prospector", "novaStock", "encore", "collector"],
+    ["orbitals", "pulseRing", "sentinel", "lancer", "minelayer", "stormCoil"],
+    ["swarm", "singularity", "mirror", "comet", "sweeper", "flak"]
+   ],
+   "boosts": [
+    ["prism", "hyper", "supernovaRounds", "colossus", "timeStretch", "freezeFrame"],
+    ["magnetStorm", "blackHole", "chainStorm", "chorus", "beam", "ricochetFever"],
+    ["confetti", "fractal", "carousel"]
+   ],
+   "leftOut": ["extraCell", "regen", "luckyBreak", "halo"]
+  },
+  "crowd": {"perLayer": 20, "max": 160, "dropScale": 1.6, "tiers": [1, 2], "variants": "A only", "eliteEveryBars": 8, "eliteFromLayers": 5},
+  "lights": {
+   "KICK": "a ring through the lattice from the Stage's centre on every kick, and the walls swell",
+   "HATS": "star dust twinkling along the top wall",
+   "BASS": "the background's glow breathing with the bass, and a low pool at each end of the floor",
+   "CLAP": "the walls flash; two fixtures throw a short beam each",
+   "OPEN HAT": "two long beams from the rig sweeping the floor on the off-beats",
+   "SHAKER": "the lattice shimmering",
+   "CHORDS": "a mirror ball: 24 glints circling the floor, one turn in four bars",
+   "STABS": "a fan of five beams from the bottom wall's centre on every stab"
+  },
+  "mirrorBall": {"glints": 24, "radiusWu": 26, "turnBars": 4, "level": 0.22},
+  "beam": {"corePx": 2, "glowWu": 6, "glow": 0.2, "level": 0.6},
+  "popOff": {"picks": 5, "pickBars": 2, "buildBars": 4, "dropBars": 16, "crowdTarget": 200, "eliteWorth": 5}
+ }
+}
