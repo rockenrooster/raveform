@@ -670,9 +670,12 @@ private:
     void leavePause();
     void homeLeaveCoop(const char* note);
     // The updater (the owner, 2026-11-15; screens.md "Title", Update): the newer GitHub release's build number, else 0 (asked of
-    // GitHub once, on the title, by a build that has a number; a local build never asks). Pictures set fakeUpdateBuild_.
+    // GitHub by a build that has a number; a local build never asks). Pictures set fakeUpdateBuild_. 2026-11-16 (the owner: "updates
+    // should check every time the main menu is entered, even if resumed from homescreen"): asked again each time the title is
+    // entered and when the app comes back to the foreground (RaveformActivity keeps one request at a time, one a minute at most).
     u32 updateBuild();
-    bool updateAsked_ = false;
+    bool updateWanted_ = true;          // ask on the title's next frame
+    Screen updateSeen_ = Screen::Notice;  // the screen the last frame showed (the title entered: asked again)
     u32 fakeUpdateBuild_ = 0;
     char titleNote_[48] = {};
     double titleNoteAt_ = -1.0;  // run ticks: the line stands under PLAY from here for two bars

@@ -247,6 +247,7 @@ void Play::appBackground() {
 }
 
 void Play::appForeground() {
+    updateWanted_ = true;  // (2026-11-16, the owner: the updater asks again when the app comes back; on the title's next frame)
     if (!session_ || !session_->goneAway()) return;
     session_->comeBack(net::wireNowUs());
     netServoFromUs_ = net::wireNowUs() + 1000000;  // (the band's heard clock settles on the reopened stream's timestamps first)

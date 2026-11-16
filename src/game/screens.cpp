@@ -28,12 +28,13 @@ using namespace sim;
 u32 Play::updateBuild() {
     // The updater (the owner, 2026-11-15: "a small button in the main menu that shows if an update is available, and tapping it goes
     // to the github"): the latest GitHub release's build number when it is newer than this build's. Only a build from the release
-    // workflow has a number; it asks once, on its first title (RaveformActivity.checkForUpdate, a thread of its own).
+    // workflow has a number; it asks on the title's first frame each time the title is entered or the app comes back to it
+    // (renderScreens, appForeground; RaveformActivity.checkForUpdate: a thread of its own, one request at a time, a minute apart).
     u32 latest = fakeUpdateBuild_;
 #if defined(__ANDROID__)
     if (!latest && buildNumber() > 0) {
-        if (!updateAsked_) {
-            updateAsked_ = true;
+        if (updateWanted_) {
+            updateWanted_ = false;
             android::checkForUpdate();
         }
         const int got = android::latestBuild();
@@ -366,6 +367,8 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
     // (M4: the primary controls carry this device's player colour, P1's in solo.) M6 (screens.md "Transitions"): while a screen
     // is on its way out, or not yet in, it takes no taps (Back still cancels the drop-in's wait on the title).
     UiPointer ptr = uiPtr_;
+    if (screen_ == Screen::Title && updateSeen_ != Screen::Title) updateWanted_ = true;  // (the title entered: the updater asks again)
+    updateSeen_ = screen_;
     titleIdleFrame(ptr);  // screens.md "Title": the quiet title leaves; the input that brings it back is eaten here
     if (trans_ == Trans::Lift && (ptr.pressed || keyPrimary_ || keyBack_ || keyNav_)) {
         // M8 (design/modes/screens.md "Transitions": any input in the rule's lift skips it). The owner (2026-11-16, the title's

@@ -282,16 +282,23 @@ public class RaveformActivity extends SDLActivity {
     // M4 stage B end
 
     // The updater (the owner, 2026-11-15: "a small button in the main menu that shows if an update is available, and tapping it
-    // goes to the github"): the latest release's build number, asked of GitHub's API once a launch on a thread of its own. Native
-    // code asks only for a build that has a number (the release workflow's; a local build never asks) and shows the button.
+    // goes to the github"): the latest release's build number, asked of GitHub's API on a thread of its own. Native code asks only
+    // for a build that has a number (the release workflow's; a local build never asks) and shows the button. The owner, 2026-11-16:
+    // "updates should check every time the main menu is entered, even if resumed from homescreen": native code asks each time the
+    // title is entered and when the app comes back to it; one request at a time, at most one a minute (GitHub's API allows an
+    // address 60 an hour without a token).
     private static final String LATEST_RELEASE = "https://api.github.com/repos/rockenrooster/raveform/releases/latest";
-    private static volatile boolean sUpdateAsked;
+    private static final long UPDATE_GAP_MS = 60000;
+    private static volatile boolean sUpdateBusy;
+    private static volatile long sUpdateAskedAt;
 
     static void checkForUpdate() {
-        if (sUpdateAsked) {
+        final long now = android.os.SystemClock.elapsedRealtime();
+        if (sUpdateBusy || (sUpdateAskedAt != 0 && now - sUpdateAskedAt < UPDATE_GAP_MS)) {
             return;
         }
-        sUpdateAsked = true;
+        sUpdateBusy = true;
+        sUpdateAskedAt = now;
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -331,6 +338,7 @@ public class RaveformActivity extends SDLActivity {
                         Log.w(TAG, "update: " + t);
                     }
                 }
+                sUpdateBusy = false;
             }
         }, "raveform-update").start();
     }
