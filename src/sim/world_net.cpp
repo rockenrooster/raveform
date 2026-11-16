@@ -161,6 +161,9 @@ void World::applyNetOp(const NetOp& op) {
                 e.group[i] = op.group;
                 e.flags[i] = static_cast<u8>(e.flags[i] | (op.a & (kFlagArriving | kFlagCalled)));
                 horizonNetSpawn(static_cast<u32>(i));  // M4 net: Event Horizon's lane walkers
+                // A Hive dart has no slot until the next bar line, as the host's hatch left it (hiveHatch): it flies to its
+                // hive's Queen meanwhile, not to the first slot of the shape.
+                if ((e.flags[i] & kFlagCalled) && boss_.active && boss_.kind == BossKind::Hive) e.a[i] = -1.0f;
             }
             break;
         }

@@ -4,6 +4,29 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, the Hive's darts on co-op clients
+
+The default seed's clean loopback soak had failed by a hair (on-screen enemy error 12.10 wu RMS against 12), nearly all of it the
+Hive's darts on the clients (376 wu RMS). Two causes, both fixed (`world_miniboss.cpp`, `world_net.cpp`):
+
+- After the half a dart's hive was its rank among the live darts (alternately), so one death a client had not heard of yet, or had
+  predicted, moved every later dart into the other hive, hundreds of wu away, for the whole bar; on the host too, a kill sent half
+  the cloud across to the other hive at the next bar line. Now a dart's hive is its spawn number's parity (`World::hiveOf`): the
+  same on every device, for life. Each batch hatches its spawn numbers in a row, so the two hives still split it evenly. Within a
+  hive the slots are still ranked by spawn number among the live darts, so a death not yet heard moves the later darts of that
+  hive by one slot (a few wu) until the host's correction.
+- A dart the host spawned reached a client with slot 0 (spawnEnemy's), so it flew to the first slot of hive 0's shape until the
+  next bar line, where the host's flies to its Queen (slot -1, `hiveHatch`); a client's spawn of a Hive dart now has -1 too.
+
+| Clean loopback soak, 4 players, 10 min | Before | After |
+|---|---|---|
+| Default seed: on-screen enemy error | 12.10 wu (fail) | **3.61** |
+| Its Hive's darts (the called bodies) | 376 wu | **5.67** |
+| Seeds 2, 3, 4 (other runs: the change moves the host's fight too) | 2.1, 3.1, 4.7 | 3.16, 6.06, 3.10 (darts 6.7, 6.4, 8.3) |
+
+Seed 3's 6.06 is knocked-back bodies (78% of its error²), not the darts. `scripts\test.ps1` passes (its clean 6-minute soak 1.73 wu,
+the impaired one 4.59).
+
 ## 2026-11-15, balance for young players (2): fewer enemies in Tracks 3-5, slower Caroms
 
 The owner: "tone down the number of enemies 10% in tracks 3-5 and slower Caroms". `tuning::kTrackEnemyScale` (0.9 for the
@@ -23,8 +46,8 @@ last correction 1,116 wu). It is not this change: this run's timing now meets th
 at 2.1, 3.1 and 4.7 wu, two of them with the Hive). The cause: `World::hiveReslot` runs on every device at each bar line and
 ranks the live darts by spawn number; a dart's slot (`e.a`, `e.b`) comes with the host's corrections, but the count each hive's
 spacing uses (`MiniState::slots`) is each device's own, so when a client's live darts differ from the host's at the bar line (a
-kill predicted here, or one the host has not told yet) every dart of that hive stands somewhere else for the whole bar. To fix:
-the host owns the slots (sends the count with its shape decisions, or slots that do not shift when a dart dies).
+kill predicted here, or one the host has not told yet) every dart of that hive stands somewhere else for the whole bar. Fixed the
+same day (the entry above).
 
 ## 2026-11-15, balance for young players: an Extra Life every Track; Cadence, Fata Morgana and Event Horizon x 0.9
 

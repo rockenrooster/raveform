@@ -671,9 +671,18 @@ void World::hiveHatch(u32 n, double land) {
     }
 }
 
+u32 World::hiveOf(u32 i) const {
+    // After the half a dart belongs to the hive its spawn number's parity names, for life. The spawn numbers are the host's on
+    // every device, so a dart is in the same hive everywhere whatever each device has seen die; it was the dart's rank among
+    // the live ones, so one death a client had not heard of yet (or had predicted) moved every later dart into the other hive,
+    // hundreds of wu away, for the whole bar (the default seed's clean soak: 376 wu RMS on the darts). Each batch hatches its
+    // spawn numbers in a row, so the two hives still split it evenly.
+    return boss_.mini.hives > 1 ? (enemies_.serial[i] & 1u) : 0u;
+}
+
 void World::hiveReslot() {
-    // Each live dart's place in its hive's shape: by spawn number (the same order on every device), alternately into
-    // the two hives after the half.
+    // Each live dart's place in its hive's shape: by spawn number (the same order on every device), in the hive its spawn
+    // number names (hiveOf).
     BossState& s = boss_;
     MiniState& m = s.mini;
     Enemies& e = enemies_;
@@ -691,7 +700,7 @@ void World::hiveReslot() {
     }
     m.slots[0] = m.slots[1] = 0;
     for (u32 r = 0; r < n; ++r) {
-        const u32 h = m.hives > 1 ? r % 2u : 0u;
+        const u32 h = hiveOf(idx[r]);
         e.a[idx[r]] = static_cast<float>(m.slots[h]++);
         e.b[idx[r]] = static_cast<float>(h);
     }
@@ -1073,7 +1082,7 @@ bool World::minionMotion(u32 i, float dt) {
                 e.state[i] = kMoving;
                 return false;
             }
-            const u32 h = e.b[i] > 0.5f && s.mini.hives > 1 ? 1u : 0u;
+            const u32 h = hiveOf(i);
             const Vec2 want = e.a[i] >= 0.0f && m1_ >= s.fightTick ? hiveSlot(h, e.a[i], m1_, false) : s.body[h];
             const Vec2 to = want - Vec2{e.x[i], e.y[i]};
             const float l = length(to);

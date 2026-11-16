@@ -1428,6 +1428,7 @@ private:
     u8 fenceKeep(Vec2 from, Vec2& to, float r) const;
     void fenceShots();
     void hiveHatch(u32 n, double land);
+    u32 hiveOf(u32 i) const;  // a dart's hive: its spawn number's parity once there are two (the same on every device)
     void hiveReslot();
     void hiveShapeStart(double t);
     void updateHive(float dt);
