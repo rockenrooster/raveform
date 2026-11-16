@@ -131,6 +131,80 @@ Measured: the 5-minute four-bot net soak, versus against team: both pass, census
 error RMS 1.70 wu (team 1.56), p95 2.0 (2.25), max 165 wu (85: a shoved or knocked-out ship's moment); downstream 268 kbps at most
 (264). The set's determinism hashes are unchanged.
 
+### Part 5: SONGLINE (2026-11-16)
+
+Built (`design/modes/songline.md`, `sound.md` "SONGLINE" and "What the band needs" 1 and 4; `world_mode_songline.cpp`, the view
+`play_view_songline.cpp`): **the line** a bar ahead of the Spark, a point a sixteenth (`SongSpark::ahead`), turned every 8 wu by the
+two slow waves (by distance flown, scaled by the section), by the walls and by rule 4, never tighter than `maxCurvature` (250 wu);
+the finale's two bars a closing spiral (280 to 40 wu). **The gates** from each bar's arpeggio (7 wu a semitone about the bar's
+middle, at most 56; a Build's wave shrinking to nothing by its last bar; a gate an eighth in a Groove and a Build, a sixteenth in a
+Drop, a quarter in a Break (60 wu, worth three), a gold gate every 8 bars with its Boost; at most 256), threading (the ship's path
+through the ring), in time (the Spark within 80 wu), a miss (the streak to the tier below, once a bar), the streak's tiers (16 score
+x 1.5 and the Shard pull doubled, 32 a grid step, 64 Prism, 128 two steps and Chorus), the knock-out costing the streak and putting
+the ship back beside the Spark, a Shard level giving a cell back (no Trios); **the crowd** at 0.7 of the set's along the line
+(formations 600 to 1,200 wu ahead: rings round coming gates, walls across it, escorts beside it), counted whole, and every body
+2,000 wu behind every ship and the Spark dissolving once a beat (the host's). **The view**: the dotted guide, the gates as one
+instanced ring glyph each (the accent turned 4 degrees a semitone, snapping open in a sixteenth, a missed one fading grey, another
+player's at a third, gold with its flares), the Spark (tapered arms in the scene's light, a rimmed white heart on the priority layer,
+its pool, its tail over the last beat, the boss's double chevron off screen), the streak's rings, the in-time thread, the bursts,
+the finale's eight rings and flash; the boss camera with the Spark as its boss. **The HUD** (`GATES n   STREAK n`, three first-run
+hints), **the count** (the string lighting from the left over two beats, `GATES n OF m` counting), **the result** (`GATES 446 OF 512
+87%`, `IN TIME`, `BEST STREAK`, `BEST CHAIN`; the string over the run's bar: lit, white in time, dark missed) and `songline_<track>`.
+**The band**: the Spark in a slot that is nobody's (`Band::setSpark`: the beat's eighths, quarters or sixteenths of the bar's
+arpeggio, the bell, the players' own level), a player's lead at any note (`Band::leadNoteAt`: each gate its note on the next
+thirty-second, a third above in time), the players' slots silent and the gun a soft hat, the Build's top note held as a pad voice,
+the streak's bells and glass, the come-back's saw glide, the finale's tom roll, impact, gong and bells, the count's chirps.
+**Together**: a gate threaded travels as `kPeGate` (its birth, in time, the claim's ticks after it); co-op's four strings side by side
+with the braid every four bars and each seat's harmony (0, 2, 4, 7 scale steps), the chord (every player's gate of a step: each Chain
+one more, the step white, the stab); versus's one string, first come by the claim's tick, the host's word (arena operations 12-14:
+the chord, the owner, the come-back), the underdog threading from 51 wu; the director's message carries the line a bar ahead once a
+bar (a client more than 2 wu off takes it): protocol `0x52460510`. The rider (`Bot::thinkSongline`: the string pulled tight through
+the next three rings, never back for a gate behind it, turning only for a body in its way). Tools: `raveform_headless --sim mode
+--songline [--track N] [--policy play|slow|child] [--trace]`, `--net soak --mode songline:4 [--versus]` (each peer's gates, chords,
+counts), `scripts\review-m8.ps1 -Part p5`. SONGLINE is built and in release builds.
+
+Measured:
+- **The line** (the sim suite, 12 Tracks x 10 seeds): at least 589 wu inside the walls, its tightest turn 331 wu, two worlds (the
+  second ship 300 wu off the line) agree on every gate, every repeated bar of the progression the same shape (193,920 gates), 512
+  gates a run at every tempo.
+- **The rider** (20 seeds a Track): 91.4% (Afterglow, min 85.4) to 98.3% (Track 12) of its gates; no knock-outs. **The half-speed
+  bot** is found again within 2 to 3 bars every time (the bar is 4). **The child-like bot** threads 97.2% of Aurora's gates, no
+  knock-out (the bar: half, at most 2).
+- **Co-op and versus** (`--net soak --minutes 2 --players 4 --mode songline:4`, and `--versus`): pass, census 0 mismatches; co-op
+  159 chords on every peer, each seat's own gates 73-81%; versus: every peer counts every seat's gates as the host does; the
+  clients' lines never 2 wu off the host's. TRACERS's soaks pass again (below).
+- **The Moto** (shared; `bench_play`, Track 10's last Drop, four players: hosting three loopback bots, tier low; 15 s from 57 s):
+  899 frames, 0 missed, the panel's P95 one period: the contract holds; GPU 13.3 / 14.3 / 14.8 ms, 139 bodies in view (282 at most),
+  846 glyphs a frame (1,421 at most: the gates one instanced draw per shape). **The band with the fifth slot** (`--band full`: four
+  players on the 1/16-triplet grid with Split, every Riff at 2, the Spark on every sixteenth; Track 10's first Drop): callback p50 /
+  p95 / p99 / max 0.74 / 0.87 / 0.92 / 1.09 ms of the 5 ms burst (load 0.18 at p95), 56 voices at most, no steal, no underrun.
+- Tests: the sim suite's line test; the audio suite's Spark (its own slot on the beat's eighths, quarters and sixteenths, each its
+  step's arpeggio note); the net suite as before; the review pictures (Debug: 0 validation messages). **The set's determinism hashes
+  are unchanged.**
+
+Decided alone:
+- **The wall rule picks its way round once** (the turn whose circle stays furthest inside the walls) and holds it until the line is
+  clear: "toward the centre" taken afresh each step swept the line through a wall when the centre lay behind it, and in a corner
+  flipped between the two walls and drove straight on (the line test found both). The waves may turn it harder that way, never
+  against it.
+- **Rule 4 holds one way round** while the lost ship is behind the line (a sign taken afresh flips about the ship's bearing and flies
+  the Spark straight on), prefers the homing's side at a wall while that circle keeps 400 wu of room, and comes before the finale's
+  spiral (a ship lost in the last Drop was never fetched); the spiral curls to the open side.
+- **The guide's light** is 1.4 at the Spark falling to 0.45 a bar ahead, not the page's 0.35: drawn at 0.35 it could not be seen
+  at all (screenshots brightened three times showed nothing).
+- The Spark's arms stay in the scene's light; only its heart is on the priority layer (rimmed arms read as a gun sight).
+- **After a timed run's last downbeat nothing lives on any device**: a spawn the host sent just before the pop could land on a client
+  after it and live on (the census found 6 such in TRACERS's soak and 112 in SONGLINE's; both pass now).
+- The crowd's count is every body alive (the line moves on faster than its hunters follow; the frame's count let 900 pile up).
+- The versus claim's tick travels as ticks after the gate's birth (an absolute tick broke the player event's place bounds and took
+  its packet with it).
+- The count is drawn by the HUD (`Play::drawSongCount`), the finale's flash a white pool clamped at 0.35.
+
+Not done in part 5: the moments (`--mode songline:10:drop2:hold`: the benchmark ran on a warm-up), the pictures the plan names beyond
+these eight (`m8_streak_<1..4>`, `m8_gold_gate`, `m8_race_4`, `m8_bend_back`), the streak's ring shattering outward on a miss (a
+spark burst stands in), the gold gate's Boost icon (a glow stands in), the underdog's wider ring drawn round the ship, the versus
+count side by side, a remote player's gate notes in its voice on this device, the Spark's pad patch as the owner's fallback.
+
 ### Part 4: the Stage, TRACERS and the two bonus Tracks (2026-11-16)
 
 Built (`design/modes/tracers.md`, `README.md` 4 and 11): **the Stage** (the walls as the world's state, `World::halfW/halfH`: ships,

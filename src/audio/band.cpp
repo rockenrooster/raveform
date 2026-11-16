@@ -186,6 +186,10 @@ bool Band::init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice
             m.mods[1] = 1;               // Double-Time
             post(m);
         }
+        // (M8, sound.md "What the band needs" 4: and the fifth slot, SONGLINE's Spark, on every sixteenth: its budget is measured
+        // with the fullest arrangement)
+        post({.type = CmdType::SetSpark, .a = 1, .b = 2});
+        sparkMode_ = 1;
         fire_ = true;
         intensity_ = 1.0f;
         post({.type = CmdType::SetIntensity, .x = 1.0f});
