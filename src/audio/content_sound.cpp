@@ -577,6 +577,11 @@ void Engine::playRecipeAt(Recipe r, i32 midi, float gain, float pan, i64 frame, 
             // (Its notes reach here in stabNotes_: resolveNote can say one note only.)
             if (stabNotesN_) {
                 playStabNotes(stabNotes_, stabNotesN_, gain, pan, frame, p1 > 0.0f ? p1 : 1.0f);
+            } else if (p2 >= 1.0f) {
+                // (M8 TRACERS, sound.md "A pop" of x 2: the chord's triad alone: its root, third and fifth in the stab's octave)
+                const Chord& ch = chordAtTick(tick);
+                const u8 tri[3] = {static_cast<u8>(chordTone(ch, 0, 4)), static_cast<u8>(chordTone(ch, 1, 4)), static_cast<u8>(chordTone(ch, 2, 4))};
+                playStabNotes(tri, 3, gain, pan, frame, p1 > 0.0f ? p1 : 1.0f);
             } else {
                 const Chord& ch = chordAtTick(tick);
                 playStab(ch, gain, pan, frame, p1 > 0.0f ? p1 : 1.0f);

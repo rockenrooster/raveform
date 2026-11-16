@@ -23,7 +23,7 @@ enum class M8 : u8 {
     BlTorrent, BlWave, BlLastCall, BlCut, BlBack, BlCount, BlResult,
     // (M8 part 7: the plan's pictures that were missing)
     JamPads, JamEmpty, SlGold, SlStreak1, SlStreak2, SlStreak3, SlStreak4, SlBend, SlRace4, TrLightsOut, TrTurf4, ModesBonus,
-    TrCut, TrSpin, TrDuet, TrRingBig, TrBoost, IntroTap
+    TrCut, TrSpin, TrDuet, TrRingBig, TrBoost, IntroTap, VsShove, VsKnock
 };
 struct M8Pic {
     const char* name;  // m8_<name>
@@ -94,6 +94,9 @@ const M8Pic kM8Pics[] = {
     // The owner (2026-11-16: "the menu buttons are locked until the full ... intro plays"): the title's intro, a tap where PLAY
     // stands at rest half way through the word: the intro ends at once and the tap plays (a strip an eighth apart from the tap).
     {"intro_tap", M8::IntroTap, 0},
+    // Part 1's versus moments (ONE TRACK on First Light, two seats, the first ship standing): the shove (the second ship's Dash ends
+    // beside it: a strip four frames apart from the Dash) and the knock-out (the first ship's last cell lost: a strip an eighth apart).
+    {"vs_shove", M8::VsShove, 1}, {"vs_knock", M8::VsKnock, 1},
 };
 constexpr u32 kM8Count = sizeof(kM8Pics) / sizeof(kM8Pics[0]);
 constexpr u32 kM8At = 300;  // (the title at rest: as screen_title's)
@@ -275,6 +278,23 @@ bool Play::scriptSetupM8() {
             if (pic.kind == M8::SlBend || pic.kind == M8::SlRace4) scriptFastForwardS_ = 5.0f * barS;
             break;
         }
+        case M8::VsShove:
+        case M8::VsKnock: {
+            RunSetup su;
+            su.mode = Mode::OneTrack;
+            su.track = pic.mode;
+            su.versus = true;
+            screen_ = Screen::Run;
+            w.resetRun(opt_.seed, 0.0, 2u, 0xF, su);
+            w.rules().godMode = true;
+            controller_.reset(w.player(0).pos);
+            marks_[0] = Mark{0.0f, 0, su.track};
+            runTrackMax_ = su.track;
+            scriptFastForwardS_ = 12.0f;  // (the kit landed, a crowd in)
+            scriptPose1On_ = true;  // (the second ship flown by script: still, apart from the first, or dashing at it)
+            stripStride_ = pic.kind == M8::VsShove ? 4u : static_cast<u32>(std::lround(1800.0 / std::fmax(w.tempoAt(0.0), 30.0f)));
+            break;
+        }
         case M8::TrCut:
         case M8::TrSpin:
         case M8::TrDuet:
@@ -407,6 +427,50 @@ bool Play::scriptInputM8(StickInput& in) {
         if (captureFrom_ < 0 && t >= 120) captureFrom_ = now + 1;
         return true;
     }
+    if (pic.kind == M8::VsShove || pic.kind == M8::VsKnock) {
+        in = StickInput{};  // (the first ship stands)
+        const Vec2 p0 = w.player(0).pos;
+        if (pic.kind == M8::VsShove) {
+            // The second ship 260 wu to the left of the first, still; on frame 60 its Dash, ending 40 wu short of the first ship: the
+            // Dash's shock ring shoves the rival (V3), which rides the push away while the second ship stays where its Dash ended.
+            if (ffRunning_ || t < 60) {
+                scriptPose1_ = PlayerPose{};
+                scriptPose1_.present = true;
+                scriptPose1_.pos = p0 + Vec2{-260.0f, 0.0f};
+                scriptPose1_.heading = 0.0f;
+            } else if (t == 60) {
+                scriptPose1_.dashing = true;
+                scriptPose1_.dashStarted = true;
+                scriptPose1_.dashFrom = scriptPose1_.pos;
+                scriptPose1_.dashTo = p0 + Vec2{-40.0f, 0.0f};
+                scriptPose1_.pos = scriptPose1_.dashTo;
+                captureFrom_ = now;
+            } else {
+                scriptPose1_.dashing = scriptPose1_.dashStarted = false;
+            }
+            return true;
+        }
+        // (the rival still, up and to the right of the first ship: the knocked ship's place shows only BACK IN n)
+        scriptPose1_ = PlayerPose{};
+        scriptPose1_.present = true;
+        scriptPose1_.pos = p0 + Vec2{320.0f, -140.0f};
+        scriptPose1_.heading = 3.1415927f;
+        if (!ffRunning_ && t == 60) {
+            // (a hit with no cell left inside the next tick: the versus knock-out)
+            w.rules().godMode = false;
+            w.playerMut(0).cells = 0;
+            w.playerMut(0).invulS = 0.0f;
+            w.playerMut(0).extraLives = 0;
+            w.hitNextTick(0);
+            m8Last_ = 1;
+        }
+        if (m8Last_ == 1 && w.player(0).knocked) {
+            w.rules().godMode = true;
+            m8Last_ = 2;
+            captureFrom_ = now;
+        }
+        return true;
+    }
     if (pic.kind == M8::JamPads || pic.kind == M8::JamEmpty) {
         // JAM: the ship flies to TOYS and stays (the pad states: a fourth layer asked for on bar 3, waiting for its bar line); EMPTY: a
         // few toys taken, then EMPTY on bar 2.
@@ -512,7 +576,7 @@ bool Play::scriptInputM8(StickInput& in) {
             const Vec2 r = w.player(0).pos;
             const float l = std::fmax(length(r), 1.0f);
             const Vec2 tangent{-r.y / l, r.x / l};
-            in.move = normalizeOr(tangent + r * ((380.0f - l) / (l * 120.0f)), tangent);
+            in.move = l < 120.0f ? Vec2{1.0f, 0.0f} : normalizeOr(tangent + r * ((320.0f - l) / (l * 120.0f)), tangent);  // (out first)
         }
         if (captureFrom_ >= 0 || ffRunning_) return true;
         if (pic.kind == M8::TrBoost && t == 30) {

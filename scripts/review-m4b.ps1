@@ -74,6 +74,7 @@ $runs = [ordered]@{
     # M8 (design/modes/screens.md "The podium"): POP-OFF on Toybox between two bots; the podium's table counting (half way through its
     # bar), the podium at rest (the winner named, the controls up), and the lobby after the host's LOBBY (the room standing)
     'm8_podium_table'    = @{ host = "--coop host $bots --coop-mode jam:12:vs --coop-shot podium_table $big"; client = "--coop join:list --bot $small"; shotRole = 'host' }
+    'm8_podium_draw'     = @{ host = "--coop host $bots --coop-mode jam:12:vs --coop-shot podium_draw $big"; client = "--coop join:list --bot $small"; shotRole = 'host' }
     'm8_podium'          = @{ host = "--coop host $bots --coop-mode jam:12:vs --coop-shot podium $big"; client = "--coop join:list --bot $small"; shotRole = 'host' }
     'm8_lobby_back'      = @{ host = "--coop host $bots --coop-mode jam:12:vs --coop-back-lobby $small"; shot = "--coop join:list --bot --coop-shot lobby_back $big" }
     # HEADLINERS versus between two bots: the race bar under the boss's (act 2 on), ACT 1: Pn as the first boss falls

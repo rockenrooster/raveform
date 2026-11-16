@@ -192,7 +192,9 @@ Measured:
   the row stepped to the mode and a Track chosen, the pause's RESTART and QUIT RUN (JAM's LEAVE), the result's RETRY, ONE TRACK's NEXT
   TRACK, the result's HOME; HEADLINERS's runs played to the tenth act's fall, 456 and 542 s); the rooms, two processes each, every one
   passing: TRACERS, SONGLINE, FULL BLAST and POP-OFF in VERSUS (START, the match to its podium, REMATCH, the second podium, LOBBY: both
-  peers back in the lobby), TRACERS and FULL BLAST in TEAM (START, the run's end, the host's RETRY, the second end).
+  peers back in the lobby), TRACERS and FULL BLAST in TEAM (START, the run's end, the host's RETRY, the second end). On a tablet (a
+  Galaxy Tab A11+, shared, over wireless debugging; the dev APK with `--flow-test`, the FLOW lines read from its log): the same 52
+  checks through the game's own screens, no failure, in 5 min 40 s (the Motos were not attached that day).
 - **MODES_PLAN 7's benchmark matrix with the moments held** (the Moto, shared, tier low, 60 s; the panel's grade, Swappy's statistics):
 
   | Moment | Frames, missed | GPU p50 / p95 / max (ms) | Notes |
@@ -248,13 +250,17 @@ Decided alone:
 - The flow test runs the screens on the simulated clock (a step a frame) and saves nothing; its runs are fast-forwarded to their
   ends with hits costing nothing (the ends are the screens' business here, not the fights').
 
-Not done (what the plan still has that this pass did not reach): `m8_ring_x8` (`m8_tr_ring_big`, the ship circling under LONG, is scripted but closed no ring of x 5 in its 30 s) and the nine
-Boosts' pictures (`m8_tr_boost_*`, scripted, not yet rendered); `m8_tr_cut`, `m8_tr_spin` and `m8_tr_duet` are taken (a second ship
-flown by script, `review-m8.ps1 -Part p4`), part 1's `m8_vs_shove`, `m8_knock` and `m8_podium_draw` (a draw needs two counts level at the end; `m8_podium_4` and
-`m8_vs_hud` are taken: four seats, the host and three headless joiners), a duet ring's two leads (the pop's chord plays), the stab as a triad for a pop of
-x 2 (the band's stab takes the bar's chord or given notes, not its triad: it plays the chord at 0.6); the Spark's pad patch (the
-owner's fallback, by ear); `design/screens.md` taking the built parts of `design/modes/screens.md` (the lead's file). **Nobody has
-played the modes by hand**: the owner's play is the gate the plan gives each part.
+Since taken (the same day): the TRACERS pictures with a second ship flown by script (`m8_tr_cut`, `m8_tr_spin`, `m8_tr_duet`), a
+ring of x 5 and up (`m8_tr_ring_big`: the ship circling 320 wu under LONG in a Drop) and each of the nine Boosts of the mode's
+list on the Stage (`m8_tr_boost_<name>`); part 1's versus moments (`m8_vs_shove`, a Dash's ring shoving the rival, and
+`m8_vs_knock`, strips) and the podium of a draw (`m8_podium_draw`: two rings, no crown; the draw forced for the picture, as two
+counts level at the end cannot be scripted between two processes), `m8_podium_4`, `m8_vs_hud`; a duet ring's two leads (its
+owner's on the chord's root, its partner's on the third, from the mode's tune data: `Play::barChordNotes`); a pop of x 2 as the
+chord's triad alone (`Recipe::Stab` with p2 = 1, the engine's chord tones). The flow test also ran on a tablet (below).
+
+Not done: the Spark's pad patch (the owner's fallback if the bell is not enough, by ear); `design/screens.md` taking the built
+parts of `design/modes/screens.md` (the lead's file). **Nobody has played the modes by hand**: the owner's play is the gate the
+plan gives each part.
 
 ### Part 7: the whole (2026-11-16)
 
@@ -504,7 +510,7 @@ beyond these (`m8_ring_x8`, `m8_lights_out`, `m8_duet`, `m8_turf_4`, `m8_cut`, `
 stagger over a thirty-second, the edges' glow pools, the rig's beams (x 5 and FULL HOUSE), FULL HOUSE's flash and confetti, the
 sounds' exact notes (the pop's chord by its note count, the count's chirp a column, the gels' own), the HUD's first-run hints, the
 versus count at the end (the sweep's tally side by side), the tablet's and the four-player benchmarks beyond the one above.
-Since done (part 7's open items): the moments (held, four players, the Moto and a tablet), `m8_lights_out`, `m8_turf_4`, the pop's stagger, the edges' glow, the rig's beams, FULL HOUSE's flash and confetti, the sounds by the bonus, ECHO, the lights, the cut and the spin, the count's chirps, the three hints, the versus count. Still: `m8_ring_x8`, `m8_duet`, `m8_cut`, `m8_spin` and the nine Boosts' pictures (the sim suite tests a duet, a cut and a spin-out), the duet ring's two leads.
+Since done (part 7's open items): the moments (held, four players, the Moto and a tablet), `m8_lights_out`, `m8_turf_4`, `m8_ring_x8` (as `m8_tr_ring_big`), `m8_duet`, `m8_cut`, `m8_spin` and the nine Boosts' pictures (as `m8_tr_*`), the pop's stagger, the edges' glow, the rig's beams, FULL HOUSE's flash and confetti, the sounds by the bonus (x 2 the chord's triad), ECHO, a duet's two leads, the lights, the cut and the spin, the count's chirps, the three hints, the versus count: all of it.
 
 ### Part 3: FULL BLAST (2026-11-16)
 

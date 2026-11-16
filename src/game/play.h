@@ -787,6 +787,7 @@ private:
     // finale's tom roll (frame); a scale step above a note in the run's Track's scale.
     void songlineBand();
     i32 songStepsAbove(i32 note, u32 steps) const;
+    void barChordNotes(u32 bar, i32& root, i32& third) const;  // a run's bar's chord: its root and third (the mode's tune data)
     bool sparkPad_ = false, sparkSpiral_ = false;
     double lastHat32_ = -1.0;
     void modesEndRun(bool died);                // (endRun) a mode's records instead of the set's table

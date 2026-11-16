@@ -121,7 +121,8 @@ enum class Recipe : u8 {
     Clap,          // the band's clap (the Moth Queen's burst on the downbeat)
     Snare,         // the band's snare; at a low gain a ghost note (a mirage's blink, "a soft tick on the snare")
     Stab,          // the band's stab synth on the music's stab bus: the chord at the tick (midi -1), or up to five notes given
-                   // with stabNotes(); gain = its velocity (1.2 allowed); p1 = its length x (default 1)
+                   // with stabNotes(); gain = its velocity (1.2 allowed); p1 = its length x (default 1); p2 = 1: the chord's triad
+                   // alone (root, third, fifth; M8 TRACERS's pop of x 2)
     Crack,         // a glass crack: a 3 ms burst of 3-9 kHz noise into the glass's three sines (a note's pitch class, octave 7)
     CrackleShot,   // the crackle as a one-shot (baked): p1 = beats long (default 1); p2 = 1: swelling (density and level rising
                    // to its end, which lands on the tick given: the Weaver's cage "swelling into the chord's stab")

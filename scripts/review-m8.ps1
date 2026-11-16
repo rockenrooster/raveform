@@ -54,7 +54,7 @@ if ($Part -eq 'p0') {
 } elseif ($Part -eq 'p1') {
     # p1: ONE TRACK (the load-in a strip two sixteenths apart, the name card, the outro's card, the result)
     $singles = @('m8_card_one', 'm8_one_outro', 'm8_result_one')
-    $strips = [ordered]@{ 'm8_loadin' = 16 }
+    $strips = [ordered]@{ 'm8_loadin' = 16; 'm8_vs_shove' = 8; 'm8_vs_knock' = 8 }
     $rooms = @()
 } elseif ($Part -eq 'p2') {
     # p2: HEADLINERS (act 1's card, the result after the ten acts)

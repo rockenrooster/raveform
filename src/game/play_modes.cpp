@@ -356,7 +356,17 @@ void Play::modesEvent(const Event& e) {
                     band_->playRecipe(audio::Recipe::Tom, audio::chordNote(0, 3, audio::NoteFrom::ChordTone), 0.7f * mine, 0.0f, at);
                 } else {
                     const float gain = bonus >= 8 ? 1.2f : (bonus >= 5 ? 1.0f : (bonus >= 3 ? 0.8f : 0.6f));
-                    band_->playRecipe(audio::Recipe::Stab, -1, gain * mine, 0.0f, at, bonus >= 5 ? 1.5f : 1.0f);
+                    band_->playRecipe(audio::Recipe::Stab, -1, gain * mine, 0.0f, at, bonus >= 5 ? 1.5f : 1.0f, bonus == 2 ? 1.0f : 0.0f);
+                }
+                // A duet ring (sound.md "TRACERS"): both players' leads, its owner's on the chord's root and its partner's on the third,
+                // over the ring's chord (one step larger already: a duet's bonus is doubled).
+                for (u32 k = 0; k < World::kRings; ++k) {
+                    const TracerRing& r = w.ring(k);
+                    if (!r.active || r.owner2 == 0xFF || r.owner != e.a || std::fabs(r.popTick - e.tick) > 1.0) continue;
+                    i32 root = 60, third = 64;
+                    barChordNotes(w.barOf(e.tick + 1.0), root, third);                    band_->leadNoteAt(bandSlot(r.owner), static_cast<u8>(root), 0.9f, 0.0f, at);
+                    band_->leadNoteAt(bandSlot(r.owner2), static_cast<u8>(third), 0.9f, 0.0f, at);
+                    break;
                 }
                 if (bonus >= 5) band_->playRecipe(audio::Recipe::Tom, audio::chordNote(0, 2, audio::NoteFrom::ChordTone), 0.8f * mine, 0.0f, at);
                 if (bonus >= 8) {
@@ -491,6 +501,30 @@ void Play::modesFrameRun() {
                          static_cast<float>(tickEnd_), li.closeRingBeats * beatS);
     takenT_ = static_cast<float>(tickEnd_);  // (the band row's flash)
     if (bandDrives_ && band_) band_->playSfx(audio::Sfx::Upgrade, 1.0f, 1.0f);
+}
+
+void Play::barChordNotes(u32 bar, i32& root, i32& third) const {
+    // The chord a run's bar plays, from the mode's tune data (the progression's arpeggio, as songlineBand reads it): its root (the
+    // arpeggio's lowest note) and its third (the first of its notes three or four semitones over the root's pitch class).
+    const World& w = *world_;
+    const u32 t = w.setup().track >= 1 && w.setup().track <= kModeTracks ? w.setup().track : 1u;
+    const ModesData::Tune& tn = species_->modes.tunes[t - 1u];
+    if (!tn.chords) return;
+    const i64 shift = std::llround((coop() ? netBandOffset_ : clock_.offset()) / kTicksPerBar);
+    const u32 chord = static_cast<u32>(((static_cast<i64>(bar) + ((shift % 4) + 4) % 4) % tn.chords + tn.chords) % tn.chords);
+    i32 low = 127;
+    for (u32 j = 0; j < 16; ++j)
+        if (tn.arp[chord][j] && tn.arp[chord][j] < low) low = tn.arp[chord][j];
+    if (low == 127) return;
+    root = low;
+    third = low + 4;
+    for (u32 j = 0; j < 16; ++j) {
+        const i32 iv = ((static_cast<i32>(tn.arp[chord][j]) - low) % 12 + 12) % 12;
+        if (iv == 3 || iv == 4) {
+            third = low + iv;
+            break;
+        }
+    }
 }
 
 i32 Play::songStepsAbove(i32 note, u32 steps) const {
@@ -789,6 +823,7 @@ void Play::modesResult() {
             }
         }
         if (at != 1) podiumWinner_ = 0xFF;
+        if (opt_.coopShot[0] && std::strcmp(opt_.coopShot, "podium_draw") == 0) podiumWinner_ = 0xFF;  // (the draw's picture: two rings)
         if (at > 1 && w.setup().mode == Mode::Headliners && w.billLeader() < kMaxPlayers && w.versusCount(w.billLeader()) == best)
             podiumWinner_ = w.billLeader();  // (headliners.md: level on acts, the most damage over the whole bill)
         if (session_ && session_->host() && podiumWinner_ != 0xFF) {

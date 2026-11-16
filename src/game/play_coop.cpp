@@ -559,7 +559,7 @@ void Play::coopTestStep() {
         const float barS = 240.0f / std::fmax(static_cast<float>(w.bpm()), 30.0f);
         const bool podium = screen_ == Screen::GameOver && w.setup().versus && runCleared_;
         if (is("podium_table") && podium && podiumS_ > 0.55f * barS) coopShotReady_ = true;
-        if (is("podium") && podium && podiumS_ > 1.6f * barS) coopShotReady_ = true;
+        if ((is("podium") || is("podium_draw")) && podium && podiumS_ > 1.6f * barS) coopShotReady_ = true;
         if (is("lobby_back") && backFromRun_ && screen_ == Screen::CoopLobby && coopAutoT_ > 1.5f) coopShotReady_ = true;
         // HEADLINERS versus: the race bar eight seconds into a fight from act 2 on; ACT n: Pn half a bar after it came.
         const sim::BossState& b = w.boss();
