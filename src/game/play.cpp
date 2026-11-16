@@ -469,6 +469,7 @@ void Play::runTick(double music0, double music1, bool firstOfFrame) {
 void Play::afterTick() {
     const World& w = *world_;
     view_.onEvents(w, tickEnd_);
+    if (modeRun()) modesFrameRun();  // M8: the load-in's closing ring and chord
     holdFight();  // M5 --fight ...:hold (benchmarks)
     if (opt_.loadoutMax) maxLoadout();  // M5 --loadout max (benchmarks)
     // M5: the fights' held voices end on time, and all of them when no fight is on.
@@ -478,6 +479,7 @@ void Play::afterTick() {
     bossHintTick(w);
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
+        modesEvent(e);  // M8 (game/play_modes.cpp): the kit's landings, the run's end, a fight's seconds
         switch (e.type) {
             case EventType::Impact:
                 // M5 (screens.md "Boss hint"): this player's shots on the boss, armour (below x 1, or a plate) or not.
@@ -525,13 +527,13 @@ void Play::afterTick() {
                     if (screen_ == Screen::GameOver) screen_ = Screen::Run;
                     applySettings();
                 }
-                // A new run: its record starts (the set list's first Track).
+                // A new run: its record starts (the set list's first Track; M8: a mode's own Track).
                 runSeconds_ = 0.0f;
-                runTrackMax_ = 1;
+                runTrackMax_ = w.phrase().track;
                 runSetComplete_ = false;  // M6
                 runEndedBy_[0] = 0;
                 markCount_ = 0;
-                marks_[markCount_++] = Mark{0.0f, 0, 1};
+                marks_[markCount_++] = Mark{0.0f, 0, w.phrase().track};
                 loadoutSig_ = ~0u;
                 upgradeCues_.reset();
                 break;
@@ -720,7 +722,7 @@ void Play::afterTick() {
                 if (!finale) hitStopUntil_ = clock_.simTime() + static_cast<double>(look_->boom.bossHitStopMs) * 0.001;
                 // M6 (screens.md "A finished run"): the set list's last boss has fallen: the run is won (SET COMPLETE for two bars,
                 // then the loop's own card).
-                if (w.phrase().track == w.setList() && !runSetComplete_) {
+                if (w.setup().mode == Mode::Set && w.phrase().track == w.setList() && !runSetComplete_) {
                     runSetComplete_ = true;
                     setCompleteT_ = static_cast<float>(tickEnd_ - e.age);
                     setCompleteScore_ = w.player(seat_).score;
@@ -857,17 +859,19 @@ void Play::conductBand() {
         bossPosted_ = false;
     };
     if (restartHere) {
-        // A new run on that line: Track 1 at its tempo, Short form, its first Groove.
+        // A new run on that line: Track 1 at its tempo, Short form, its first Groove (M8: ONE TRACK's Track, at its own tempo).
+        const RunSetup& su = w.nextSetup();
+        const u32 track = su.mode == Mode::OneTrack ? su.track : 1u;
         band_->setHold(false);
-        band_->changeTrack(0, bpmOfTrack(1, w.setList()), true);
-        postedBpm_ = bpmOfTrack(1, w.setList());
+        band_->changeTrack(track - 1u, bpmOfTrack(track, w.setList()), true);
+        postedBpm_ = bpmOfTrack(track, w.setList());
         band_->setForm(audio::Form::Short);
         band_->setPhrase(audio::Section::Groove, 0, kSectionBars[0][0]);
         off();
         overHeld_ = false;
         return;
     }
-    if (!pl.alive && !coop()) {
+    if ((!pl.alive && !coop()) || w.runEnded()) {
         // The run is over: the band holds a Break under the game-over screen until the next run (co-op: the run goes
         // on while anyone stands; the host starts the next one).
         if (!overHeld_) {
@@ -1064,10 +1068,15 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     }
     hs.extraLives = p.extraLives;  // play test 3 (up to two since 2026-11-14)
     hs.reduceFlashing = settings_.reduceFlashing || forcedReduceFlashing_;  // M6
-    if (runSetComplete_) {  // M6: SET COMPLETE's card
+    if (runSetComplete_ || trackComplete_) {  // M6: SET COMPLETE's card (M8: TRACK COMPLETE through ONE TRACK's outro)
         hs.setCompleteBars = static_cast<float>((vi.time - setCompleteT_) * static_cast<double>(vi.bpm) / 240.0);
         hs.setCompleteScore = setCompleteScore_;
+        if (trackComplete_) {
+            hs.completeWords = "TRACK COMPLETE";
+            hs.completeBars = static_cast<float>(w.director().outroBars) + 1.0f;  // (from the boss's death: its bar, then the outro's)
+        }
     }
+    if (modeRun()) hs.modeWords = species_->modes.of(w.setup().mode).nameCard;  // M8: BEAT ITS BOSS under the name card
     hs.dashCharge = controller_.dashCharge(coop() ? netHeard_ : clock_.heardNow());
     hs.alive = p.alive;
     hs.retryPending = w.restartPending();
@@ -1124,6 +1133,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         // always).
         setHudFade(flow_ && trans_ == Trans::Arrive ? clampf(transBeats(transLine_) - 1.0f, 0.0f, 1.0f) : 1.0f);
         drawHud(d, *font_, *look_, variant, *palettes_, *palette_, hs, touch_, W, H, insetMin, insetMax);
+        if (modeRun()) drawLoadIn(d, variant);  // M8: the kit's icons spiralling in
         setHudFade(1.0f);
     }
     if (flow_) renderScreens(d, params, variant, W, H, insetMin, insetMax);
@@ -1392,6 +1402,13 @@ void Play::beginCountIn() {
 }
 
 void Play::endRun(bool died) {
+    if (modeRun()) {
+        // M8 (design/modes/README.md 9): a mode's run keeps its own records, never the set's table.
+        modesEndRun(died);
+        if (settings_.runsEnded < 0xFFFFFFFFu) ++settings_.runsEnded;
+        if (!opt_.picture[0] && !opt_.fixedStep) saveSettings(settings_);
+        return;
+    }
     // The run's numbers go to the high scores (a quit run counts as well; it was played). M4: this device's player's.
     const PlayerState& p = world_->player(seat_);
     HighScore h;

@@ -84,6 +84,7 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask, co
     director_.lastBar = kNoBar;
     director_.boostTicks = static_cast<i32>(rng_.range(kBoostEveryLoS, kBoostEveryHiS) / kDt);
     phrase_ = phraseAt(director_, 0);
+    for (KitState& k : kit_) k = KitState{};
     for (TrioState& t : trio_) t = TrioState{};
     boostPickups_.count = 0;
     cellPickups_.count = 0;
@@ -111,6 +112,16 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask, co
             viewPlayer_ = p;
             break;
         }
+    if (setup.mode == Mode::OneTrack && species_) {
+        // M8 (one_track.md): the chosen Track of the set from its first Groove, the set list at ten (nothing of the loop), with
+        // each player's kit; its boss's death schedules the outro and the run's end.
+        const u32 track = setup.track < 1 ? 1u : (setup.track > kMaxSongs ? kMaxSongs : setup.track);
+        director_.track = static_cast<u8>(track);
+        director_.outroBars = species_->modes.oneTrack.outroBars;
+        phrase_ = phraseAt(director_, 0);
+        for (u32 p = 0; p < playerCount_; ++p)
+            if (players_[p].present) dealKit(p, species_->modes.kit.atTrackStart[track - 1u], 0);
+    }
 }
 
 // ---------------------------------------------------------------------------------------------- tick
@@ -147,6 +158,7 @@ void World::tick(const TickInput& in) {
     applyPlayers(in);
     if (role_ != NetRole::Solo) updateDowned();
     runSpawner();  // the director first: the phrase this tick plays in (Surge, the Build's last bar)
+    if (setup_.mode != Mode::Set) updateModes();  // M8: the kit landing, the outro, the run's end
     // The loop's ramps this tick (GAME_DESIGN 8, "The loop is where a run ends"): 1 through Track 3.
     loopSpeed_ = std::fmin(loopRamp(kLoopEnemySpeedRamp, phrase_.track, director_.songs), kLoopEnemySpeedMax);
     loopBulletSpeed_ = std::fmin(loopRamp(kLoopBulletSpeedRamp, phrase_.track, director_.songs), kLoopBulletSpeedMax);
@@ -1500,6 +1512,17 @@ u64 World::hash() const {
         val(setup_.versus);
         val(setup_.help);
     }
+    if (director_.outroBar != kNoBar) {
+        val(director_.outroBar);
+        val(director_.runEnded);
+    }
+    for (const KitState& k : kit_)
+        if (k.count) {
+            val(k.count);
+            val(k.landed);
+            val(k.from);
+            for (u32 n = 0; n < k.count; ++n) val(k.orb[n]);
+        }
     if (role_ != NetRole::Solo) {
         // M4: what co-op adds (solo hashes stay what M3's were).
         mix(e.target, n);

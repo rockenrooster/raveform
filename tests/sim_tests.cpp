@@ -4320,6 +4320,64 @@ void testModes() {
     delete a;
 }
 
+// M8 part 1 (design/modes/one_track.md): a ONE TRACK run: the chosen Track from its first Groove, each player's kit dealt as
+// modes.json says and landed over the first two bars, the boss's death bringing the outro (no Track change) and the run's end;
+// two worlds with the same seed and setup alike; a co-op world deals every player's kit the same on every device.
+void testOneTrack() {
+    g_test = "one track";
+    RunSetup su;
+    su.mode = Mode::OneTrack;
+    su.track = 4;
+    World* a = new (std::nothrow) World;
+    World* b = new (std::nothrow) World;
+    a->init(g_species);
+    b->init(g_species);
+    SimRunner ra, rb;
+    ra.autoRetry = rb.autoRetry = false;
+    ra.start(a, 3, Spawner::Mode::Slice, Bot::Policy::Play, kBpm, true, su);
+    rb.start(b, 3, Spawner::Mode::Slice, Bot::Policy::Play, kBpm, true, su);
+    const u32 want = g_species->modes.kit.atTrackStart[3];
+    CHECK(a->phrase().track == 4 && a->director().track == 4 && a->setup() == su);
+    CHECK(a->kit(0).count == want && a->kit(0).landed == 0 && a->player(0).loadout.taken == 0);
+    bool landedInTime = false, sawOutro = false, sawEnd = false, trackStayed = true, sameHash = true;
+    u32 kitEvents = 0;
+    for (u32 t = 0; t < 8u * 3600u && !sawEnd; ++t) {
+        ra.step();
+        rb.step();
+        const World& w = *a;
+        for (u32 k = 0; k < w.eventCount(); ++k) {
+            const Event& e = w.events()[k];
+            if (e.type == EventType::KitLand) ++kitEvents;
+            if (e.type == EventType::RunEnd) sawEnd = true;
+        }
+        if (!landedInTime && ra.music() >= 2.0 * kTicksPerBar)
+            landedInTime = w.kit(0).landed == w.kit(0).count && w.player(0).loadout.taken >= w.kit(0).count;
+        sawOutro = sawOutro || w.phrase().outro;
+        trackStayed = trackStayed && w.phrase().track == 4 && !w.phrase().trackChange;
+        if (t % 600 == 599) sameHash = sameHash && a->hash() == b->hash();
+    }
+    CHECK(landedInTime && kitEvents == want);
+    CHECK_MSG(sawOutro && sawEnd && a->runEnded(), "outro %d end %d", sawOutro, sawEnd);
+    CHECK(trackStayed && sameHash);
+    // The kit of every seat, drawn alike on every device (the seed and the seat): a four-player world dealt twice.
+    a->resetRun(9, 0.0, 4, 0xF, su);
+    World::KitState k1[4];
+    for (u32 p = 0; p < 4; ++p) k1[p] = a->kit(p);
+    b->resetRun(9, 0.0, 4, 0xF, su);
+    bool alike = true, differ = false;
+    for (u32 p = 0; p < 4; ++p) {
+        alike = alike && b->kit(p).count == k1[p].count && std::memcmp(b->kit(p).orb, k1[p].orb, k1[p].count) == 0;
+        if (p) differ = differ || std::memcmp(k1[p].orb, k1[0].orb, k1[0].count) != 0;
+    }
+    CHECK(alike && differ);
+    // Track 1 has no kit (and no load-in).
+    su.track = 1;
+    a->resetRun(9, 0.0, 1, 0xF, su);
+    CHECK(a->kit(0).count == 0 && a->phrase().track == 1);
+    delete a;
+    delete b;
+}
+
 int main() {
     g_species = new (std::nothrow) SpeciesTable;
     if (!g_species || !g_species->load()) {
@@ -4368,6 +4426,7 @@ int main() {
     testPlayTest3();
     testFamiliesM5b();
     testModes();
+    testOneTrack();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;
     return g_failures;

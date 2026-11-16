@@ -77,6 +77,14 @@ struct ModesData {
         u8 atTrackStart[10] = {}, atBoss[10] = {};
         bool measured = false;
     } kit;
+    struct OneTrack {
+        u8 outroBars = 4;
+    } oneTrack;
+    struct LoadIn {  // README.md 5
+        u32 bars = 2, perSixteenth = 1, perSixteenthPast32 = 2, bedLayerEvery = 4;
+        float ringWu = 300.0f, spiralTurns = 0.25f, iconScale = 0.5f, graceWu = 600.0f, closeRingBeats = 0.5f;
+        float closeRingWu[2] = {90.0f, 400.0f};
+    } loadIn;
     struct Versus {
         float shoveWu = 0, shoveSeconds = 0, underdogShare = 0;
         float crownWidthWu = 0, crownAboveWu = 0, crownLevel = 0;

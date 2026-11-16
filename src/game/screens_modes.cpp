@@ -125,7 +125,7 @@ u32 Play::tracksAvailable() const {
 
 bool Play::modeBuilt(Mode m) const {
     // (each part of M8 adds its modes)
-    return m == Mode::Set;
+    return m == Mode::Set || m == Mode::OneTrack;
 }
 
 bool Play::modeShown(Mode m) const { return !kReleaseBuild || modeBuilt(m); }

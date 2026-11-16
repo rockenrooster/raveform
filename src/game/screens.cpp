@@ -686,15 +686,18 @@ void Play::screenGameOver(Ui& ui) {
         }
     };
     if (out > 0.0f) ui.setQuiet(true);
-    // M6 (screens.md "A finished run"): a run that finished the set reads SET COMPLETE in gold where RUN OVER stands.
+    // M6 (screens.md "A finished run"): a run that finished the set reads SET COMPLETE in gold where RUN OVER stands. M8
+    // (design/modes/screens.md "Results"): ONE TRACK reads TRACK COMPLETE in gold when its boss fell.
+    const bool one = world_->setup().mode == sim::Mode::OneTrack;
+    const bool won = one ? runCleared_ : runSetComplete_;
+    const char* topWord = won ? (one ? "TRACK COMPLETE" : "SET COMPLETE") : "RUN OVER";
     if (out > 0.0f) {
-        const Vec3 c = runSetComplete_ ? gold : palette_->accent;
-        streak(runSetComplete_ ? "SET COMPLETE" : "RUN OVER", 44.0f * s, 150.0f * s, std::fmax(0.045f * 44.0f * s, 0.55f * s), c, c, c,
-               runSetComplete_ ? 1.8f : 1.6f);
-    } else if (runSetComplete_) {
-        ui.text({cx, 150.0f * s}, 44.0f * s, gold, 1.8f, "SET COMPLETE");
+        const Vec3 c = won ? gold : palette_->accent;
+        streak(topWord, 44.0f * s, 150.0f * s, std::fmax(0.045f * 44.0f * s, 0.55f * s), c, c, c, won ? 1.8f : 1.6f);
+    } else if (won) {
+        ui.text({cx, 150.0f * s}, 44.0f * s, gold, 1.8f, topWord);
     } else {
-        ui.text({cx, 150.0f * s}, 44.0f * s, palette_->accent, 1.6f, "RUN OVER");
+        ui.text({cx, 150.0f * s}, 44.0f * s, palette_->accent, 1.6f, topWord);
     }
     // The score counts up over one bar.
     {
@@ -723,6 +726,12 @@ void Play::screenGameOver(Ui& ui) {
                 ui.draw().hud.line(f, f + dv, 0.9f * s, c, Vec3{}, 0);
             }
             ui.text({cx, 410.0f * s}, 22.0f * s, gold, 1.8f, "NEW BEST");
+        } else if (one && modeBest_ > 0 && u >= 1.0f) {
+            // (M8: otherwise the Track's own best, one line under the headline)
+            char best[48], nb[32];
+            groupDigits(nb, sizeof nb, modeBest_);
+            std::snprintf(best, sizeof best, "TRACK BEST %s", nb);
+            ui.text({cx, 410.0f * s}, 14.0f * s, gold, 1.4f, best);
         }
     }
     // Four numbers: TIME, TRACK, BEST CHAIN, KILLS.
@@ -739,9 +748,17 @@ void Play::screenGameOver(Ui& ui) {
         }
         std::snprintf(v[3], sizeof v[3], "%u", p.kills);
         static const char* const kLabels[4] = {"TIME", "TRACK", "BEST CHAIN", "KILLS"};
+        static const char* const kOneLabels[4] = {"TIME", "BEST CHAIN", "KILLS", "BOSS"};
+        if (one) {
+            // (M8, design/modes/screens.md "Results": TIME, BEST CHAIN, KILLS, BOSS: its seconds, or a dash)
+            std::snprintf(v[1], sizeof v[1], "%s", v[2]);
+            std::snprintf(v[2], sizeof v[2], "%u", p.kills);
+            if (bossSecs_ >= 0.0f) std::snprintf(v[3], sizeof v[3], "%.0f S", static_cast<double>(bossSecs_));
+            else std::snprintf(v[3], sizeof v[3], "-");
+        }
         for (u32 k = 0; k < 4; ++k) {
             const float x = cx + (static_cast<float>(k) - 1.5f) * 330.0f * s;
-            ui.text({x, 500.0f * s + sink}, 14.0f * s, palette_->accent, 1.3f, kLabels[k]);
+            ui.text({x, 500.0f * s + sink}, 14.0f * s, palette_->accent, 1.3f, one ? kOneLabels[k] : kLabels[k]);
             ui.text({x, 556.0f * s + sink}, 40.0f * s, white, 1.5f, v[k]);
         }
     }
@@ -766,6 +783,12 @@ void Play::screenGameOver(Ui& ui) {
     if ((ui.pill(41, {right - 165.0f * s, H - 96.0f * s}, {330.0f * s, 90.0f * s}, "HOME", 28.0f * s, false, true, homing) || keyBack_) &&
         trans_ == Trans::None)
         toTitle();
+    // M8 (design/modes/screens.md "Results"): NEXT TRACK, ONE TRACK's, when its boss fell and it is not the tenth: a white pill
+    // 460 x 110, 48 px left of RETRY.
+    if (one && runCleared_ && world_->setup().track < 10 && !homing &&
+        ui.pill(42, {right - 600.0f * s - 48.0f * s - 230.0f * s, H - 200.0f * s}, {460.0f * s, 110.0f * s}, "NEXT TRACK", 32.0f * s, false, !retrying) &&
+        trans_ == Trans::None)
+        nextTrack();
     setHudFade(1.0f);
     keyPrimary_ = keyBack_ = false;
 }

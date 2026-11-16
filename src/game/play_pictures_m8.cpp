@@ -15,7 +15,7 @@ namespace rf {
 using namespace sim;
 
 namespace {
-enum class M8 : u8 { TitlePill, Modes, Lift, Back, Step, Track, Drop };
+enum class M8 : u8 { TitlePill, Modes, Lift, Back, Step, Track, Drop, LoadIn, CardOne, OneOutro, ResultOne };
 struct M8Pic {
     const char* name;  // m8_<name>
     M8 kind;
@@ -33,6 +33,10 @@ const M8Pic kM8Pics[] = {
     // sinking, the title building); the row stepped on from THE SET (8); a Track tapped with ONE TRACK at the centre (16: NEXT
     // BAR counting out, the bar line, the palette's cross-fade); PLAY with THE SET at the centre (16: the wait, the downbeat).
     {"t_lift", M8::Lift, 0}, {"t_back", M8::Back, 4}, {"t_mode", M8::Step, 0}, {"t_track", M8::Track, 1}, {"t_drop", M8::Drop, 0},
+    // Part 1 (ONE TRACK; the run's Track in `mode`'s place): the load-in on Track 6 (a strip two sixteenths apart from the run's
+    // first downbeat: 27 upgrades spiralling in), the name card on Track 4 (TRACK 4, AURORA, BEAT ITS BOSS), TRACK COMPLETE in
+    // Track 1's outro and the result after it (the bot plays to the boss, hits costing nothing).
+    {"loadin", M8::LoadIn, 6}, {"card_one", M8::CardOne, 4}, {"one_outro", M8::OneOutro, 1}, {"result_one", M8::ResultOne, 1},
 };
 constexpr u32 kM8Count = sizeof(kM8Pics) / sizeof(kM8Pics[0]);
 constexpr u32 kM8At = 300;  // (the title at rest: as screen_title's)
@@ -78,6 +82,25 @@ bool Play::scriptSetupM8() {
             }
             break;
         case M8::Lift: break;
+        case M8::LoadIn:
+        case M8::CardOne:
+        case M8::OneOutro:
+        case M8::ResultOne: {
+            // A ONE TRACK run from its first downbeat (hits cost nothing; the result's picture has the game's screens).
+            RunSetup su;
+            su.mode = Mode::OneTrack;
+            su.track = pic.mode;
+            flow_ = pic.kind == M8::ResultOne;
+            screen_ = Screen::Run;
+            w.resetRun(opt_.seed, 0.0, 1, 0xF, su);
+            w.rules().godMode = true;
+            controller_.reset(w.player(0).pos);
+            marks_[0] = Mark{0.0f, 0, su.track};
+            runTrackMax_ = su.track;
+            if (pic.kind == M8::LoadIn) stripStride_ = static_cast<u32>(std::lround(2.0 * 900.0 / std::fmax(w.tempoAt(0.0), 30.0f)));
+            if (pic.kind == M8::OneOutro || pic.kind == M8::ResultOne) scriptFastForwardS_ = 112.0f;  // (into the boss's fight)
+            break;
+        }
     }
     return true;
 }
@@ -88,6 +111,18 @@ bool Play::scriptInputM8(StickInput& in) {
     const M8Pic& pic = kM8Pics[m8Pic_];
     const u32 t = scriptTick_;
     const i64 now = static_cast<i64>(frameNo_);
+    if (pic.kind == M8::LoadIn || pic.kind == M8::CardOne || pic.kind == M8::OneOutro || pic.kind == M8::ResultOne) {
+        // A ONE TRACK run: the bot plays it.
+        in = w.player(0).alive ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+        if (captureFrom_ >= 0 || ffRunning_) return true;
+        const double bars = music1_ / kTicksPerBar;
+        if (pic.kind == M8::LoadIn && t >= 1) captureFrom_ = now + 1;
+        if (pic.kind == M8::CardOne && bars >= 1.25) captureFrom_ = now + 1;
+        if (pic.kind == M8::OneOutro && trackComplete_ && hudBarsSince(setCompleteT_) >= 2.0f) captureFrom_ = now + 1;
+        if (pic.kind == M8::ResultOne && screen_ == Screen::GameOver && runCleared_ && overS_ > 2.4f) captureFrom_ = now + 1;
+        if (captureFrom_ >= 0) RF_LOG("play: picture '%s' captures from frame %lld (bar %.2f)", opt_.picture, static_cast<long long>(captureFrom_), bars);
+        return true;
+    }
     // The title's demo plays behind (as in the game) until a transition takes the screen.
     in = trans_ == Trans::None || trans_ == Trans::Lift || trans_ == Trans::Fold ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
     if (trans_ == Trans::None || trans_ == Trans::Lift || trans_ == Trans::Fold) attractInput(in);
@@ -123,6 +158,7 @@ bool Play::scriptInputM8(StickInput& in) {
                 captureFrom_ = now + 1;
             }
             break;
+        default: break;
         case M8::Drop:
             if (secondBeat) {
                 // (MODES's PLAY with THE SET at the centre)
@@ -138,5 +174,11 @@ bool Play::scriptInputM8(StickInput& in) {
 }
 
 bool Play::scriptEventsM8() { return m8Pic_ != 0xFFFF; }
+
+float Play::hudBarsSince(float t) const {
+    // (the HUD's own clock: view seconds as the run's cards count them)
+    const double bpm = clock_.bpm() > 1.0f ? static_cast<double>(clock_.bpm()) : 120.0;
+    return static_cast<float>((tickEnd_ - static_cast<double>(t)) * bpm / 240.0);
+}
 
 }  // namespace rf

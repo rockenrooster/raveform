@@ -709,6 +709,7 @@ void Session::onDirector(const MsgDirector& m) {
     op.opts[0] = m.d.midHolding ? 1 : 0;
     op.opts[1] = m.d.miniSpawned ? 1 : 0;
     op.opts[2] = m.d.lastMini;
+    op.serial = m.d.outroBar;  // M8
     pushOp(op);
 }
 

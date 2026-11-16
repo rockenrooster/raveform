@@ -67,6 +67,8 @@ struct Phrase {
     bool bossDrop = false;     // the Track's last Drop: the boss enters on its downbeat and holds it
     bool miniDrop = false;     // M5: the first cycle's Drop from Track 2 on (c2f113a; it was the middle one's): a mini-boss enters on its downbeat
     bool held = false;         // M5: a bar of the middle Drop past its length, held for the mini-boss
+    bool outro = false;        // M8: ONE TRACK's outro after its boss (a Break; no Trio opens, the Shards fly in)
+    bool ended = false;        // M8: past the outro's last bar line: the run is over
     float bpm = 120.0f;        // this bar's tempo (the Build's last bar at 85%; the Track change ramps)
     float trackBpm = 120.0f;   // the Track's own tempo
 
@@ -115,6 +117,11 @@ struct DirectorState {
     u8 lastMini = 0xFF;        // the mini-boss met in the Track before (BossKind; 0xFF none)
     u16 minisMet = 0;          // M5 part 6: the mini-bosses met this run (a bit each from Alpha Hound; Tracks 8 to 10 draw by it)
     u8 extraLifeTrack = 0;     // play test 3 (GAME_DESIGN 5): the last Track whose Extra Life has dropped (the host's)
+    // M8 (design/modes/one_track.md): a run that ends with its Track: the boss's death schedules this outro (a Break of
+    // outroBars, no Trio) instead of the Track change, and the run ends on its last bar line. (In the hash only once set.)
+    u32 outroBar = kNoBar;
+    u8 outroBars = 4;
+    bool runEnded = false;
 };
 
 // Where bar `bar` of the run sits, given what the director knows now.

@@ -18,7 +18,8 @@ public:
     SimRunner& operator=(const SimRunner&) = delete;
 
     // `world` is owned by the caller (it is large) and must outlive the runner.
-    void start(World* world, u64 seed, Spawner::Mode mode, Bot::Policy policy, float bpm, bool godMode = false);
+    void start(World* world, u64 seed, Spawner::Mode mode, Bot::Policy policy, float bpm, bool godMode = false,
+               const RunSetup& setup = RunSetup{});  // (M8: a mode's run)
     // One tick with the bot's input. Returns the input the world read (for recording).
     const TickInput& step();
     // One tick with a recorded input (no bot, no controller).

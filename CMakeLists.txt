@@ -359,6 +359,7 @@ add_library(raveform_sim STATIC
   src/sim/world_upgrades_m5.cpp
   src/sim/world_elites.cpp
   src/sim/modes_data.cpp
+  src/sim/world_modes.cpp
   ${RF_GEN}/modes.json.inc
   ${RF_GEN}/modes_track11.json.inc
   ${RF_GEN}/modes_track12.json.inc
@@ -516,6 +517,7 @@ target_sources(raveform_core PRIVATE
   src/game/play_pictures_m5.cpp
   src/game/play_pictures_m6.cpp
   src/game/play_pictures_m8.cpp
+  src/game/play_modes.cpp
   src/game/play_transitions.cpp
   src/game/play_view.cpp
   src/game/play_view_b.cpp

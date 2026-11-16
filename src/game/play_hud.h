@@ -70,6 +70,9 @@ struct HudState {
     bool reduceFlashing = false;    // M6: the HUD's own flashes (a boss hit's bar segment) at half
     float setCompleteBars = -1.0f;  // M6: bars since the set's last boss fell (SET COMPLETE for two; < 0: none)
     u64 setCompleteScore = 0;
+    const char* completeWords = "SET COMPLETE";  // M8: TRACK COMPLETE for ONE TRACK's outro
+    float completeBars = 2.0f;                   // ... standing this many bars
+    const char* modeWords = nullptr;             // M8: the mode's words under the name card's name (BEAT ITS BOSS)
     u8 bossFlashPart = 0xFF;    // ... the part (Kaleidos's pair, a Longwave segment, a Voice; 0xFF the whole bar)
     float dashCharge = 1.0f;
     bool alive = true;

@@ -1377,6 +1377,134 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
 
 }  // namespace
 
+// M8 part 1 (docs/MODES_PLAN.md 8, its exit; design/modes/one_track.md "What to check"): ONE TRACK over seeds, each Track (or the
+// one asked): the first run only, cleared (the outro over) or not, its minutes, its boss's fight in seconds, the kit it began
+// with. One RFSIM line.
+int runModeOne(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Policy policy, u32 onlyTrack) {
+    auto* world = new (std::nothrow) World;
+    if (!world) return 2;
+    if (seeds > 256) seeds = 256;
+    const char* policyName = policy == Bot::Policy::Novice ? "novice" : (policy == Bot::Policy::Assist ? "assist" : (policy == Bot::Policy::Reckless ? "reckless" : "careful"));
+    std::printf("[mode] ONE TRACK, the %s bot, %u seeds a Track, the first run of each\n", policyName, seeds);
+    std::printf("[mode] track  cleared  kit  minutes  boss_s(median)  boss_s(min-max)  deaths_in_fight\n");
+    u32 worstCleared = seeds;
+    char json[2048];
+    int jl = std::snprintf(json, sizeof json, "RFSIM {\"test\":\"mode_one\",\"policy\":\"%s\",\"seeds\":%u,\"tracks\":[", policyName, seeds);
+    bool firstRow = true;
+    for (u32 track = 1; track <= kMaxSongs; ++track) {
+        if (onlyTrack && track != onlyTrack) continue;
+        static float fight[256];
+        u32 fights = 0, cleared = 0, inFight = 0, kit = 0;
+        double minutes = 0.0;
+        for (u32 s = 0; s < seeds; ++s) {
+            world->init(&species);
+            SimRunner runner;
+            runner.autoRetry = false;
+            RunSetup su;
+            su.mode = Mode::OneTrack;
+            su.track = static_cast<u8>(track);
+            runner.start(world, seed0 + s, Spawner::Mode::Slice, policy, 120.0f, false, su);
+            applyLevers(*world);
+            World& w = *world;
+            kit = w.kit(0).count;
+            const u32 maxTicks = 15u * 3600u;
+            u32 t = 0, from = 0;
+            bool on = false, won = false, dead = false;
+            for (; t < maxTicks; ++t) {
+                const u32 d0 = runner.deaths();
+                runner.step();
+                const BossState& b = w.boss();
+                const bool fightNow = b.active && !b.dying && !isMiniBoss(b.kind);
+                if (fightNow && !on) from = t;
+                if (!fightNow && on && b.dying && !isMiniBoss(b.kind)) {
+                    fight[fights++] = static_cast<float>(t - from) / 60.0f;
+                }
+                on = fightNow;
+                if (runner.deaths() > d0) {
+                    dead = true;
+                    if (on) ++inFight;
+                    break;
+                }
+                if (w.runEnded()) {
+                    won = true;
+                    break;
+                }
+            }
+            (void)dead;
+            cleared += won ? 1u : 0u;
+            minutes += static_cast<double>(t) / 3600.0;
+        }
+        std::sort(fight, fight + fights);
+        const float median = fights ? (fights % 2 ? fight[fights / 2] : 0.5f * (fight[fights / 2 - 1] + fight[fights / 2])) : 0.0f;
+        std::printf("[mode] %5u  %4u/%-3u %4u  %7.2f  %14.1f  %6.1f-%-6.1f  %u\n", track, cleared, seeds, kit, minutes / (seeds ? seeds : 1u), median,
+                    fights ? fight[0] : 0.0f, fights ? fight[fights - 1] : 0.0f, inFight);
+        if (cleared < worstCleared) worstCleared = cleared;
+        jl += std::snprintf(json + jl, sizeof json - static_cast<size_t>(jl), "%s{\"track\":%u,\"cleared\":%u,\"kit\":%u,\"boss_median_s\":%.1f}", firstRow ? "" : ",", track, cleared,
+                            kit, median);
+        firstRow = false;
+    }
+    std::snprintf(json + jl, sizeof json - static_cast<size_t>(jl), "],\"worst_cleared\":%u}", worstCleared);
+    std::printf("%s\n", json);
+    delete world;
+    return 0;
+}
+
+// M8 part 1 (design/modes/README.md 5): the kit's numbers measured: the upgrades (Trios taken) the bot holds as each Track's first
+// bar begins and as its boss enters, the median over the seeds of THE SET's runs (one run each, to its first death or 60
+// minutes). The numbers modes.json's kit.atTrackStart and kit.atBoss take.
+int runKitMeasure(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Policy policy) {
+    auto* world = new (std::nothrow) World;
+    if (!world) return 2;
+    if (seeds > 64) seeds = 64;
+    static u8 atStart[kMaxSongs][64], atBoss[kMaxSongs][64];
+    u32 nStart[kMaxSongs] = {}, nBoss[kMaxSongs] = {};
+    for (u32 s = 0; s < seeds; ++s) {
+        world->init(&species);
+        SimRunner runner;
+        runner.autoRetry = false;
+        runner.start(world, seed0 + s, Spawner::Mode::Slice, policy, 120.0f, false);
+        applyLevers(*world);
+        World& w = *world;
+        u32 seenTrack = 0, bossTrack = 0;
+        for (u32 t = 0; t < 60u * 3600u; ++t) {
+            const u32 d0 = runner.deaths();
+            runner.step();
+            if (runner.deaths() > d0) break;
+            const Phrase& ph = w.phrase();
+            if (ph.track > kMaxSongs) break;
+            if (!ph.trackChange && ph.track > seenTrack) {
+                seenTrack = ph.track;
+                atStart[ph.track - 1][nStart[ph.track - 1]++] = w.player(0).loadout.taken;
+            }
+            const BossState& b = w.boss();
+            if (b.active && !isMiniBoss(b.kind) && ph.track > bossTrack && !ph.trackChange) {
+                bossTrack = ph.track;
+                atBoss[ph.track - 1][nBoss[ph.track - 1]++] = w.player(0).loadout.taken;
+            }
+        }
+    }
+    const auto median = [](u8* v, u32 n) {
+        if (!n) return -1;
+        std::sort(v, v + n);
+        return n % 2 ? static_cast<int>(v[n / 2]) : static_cast<int>((v[n / 2 - 1] + v[n / 2] + 1) / 2);
+    };
+    std::printf("[kit] THE SET, %u seeds: the upgrades held (median) as each Track's first bar begins and as its boss enters\n", seeds);
+    std::printf("[kit] track  runs  atTrackStart  runsToBoss  atBoss\n");
+    char line[512];
+    int l1 = std::snprintf(line, sizeof line, "[kit] atTrackStart [");
+    char line2[512];
+    int l2 = std::snprintf(line2, sizeof line2, "[kit] atBoss [");
+    for (u32 t = 0; t < kMaxSongs; ++t) {
+        const int a = median(atStart[t], nStart[t]), b = median(atBoss[t], nBoss[t]);
+        std::printf("[kit] %5u  %4u  %12d  %10u  %6d\n", t + 1, nStart[t], a, nBoss[t], b);
+        l1 += std::snprintf(line + l1, sizeof line - static_cast<size_t>(l1), "%s%d", t ? ", " : "", a);
+        l2 += std::snprintf(line2 + l2, sizeof line2 - static_cast<size_t>(l2), "%s%d", t ? ", " : "", b);
+    }
+    std::printf("%s]\n%s]\n", line, line2);
+    delete world;
+    return 0;
+}
+
 int simHeadlessMain(int argc, char** argv) {
     const char* mode = argc > 2 ? argv[2] : "";
     float minutes = -1.0f, seconds = -1.0f;
@@ -1386,6 +1514,8 @@ int simHeadlessMain(int argc, char** argv) {
     bool policyGiven = false;
     bool god = false, trace = false;
     u32 isoRank = 0, isoPart = 0, isoParts = 1;  // --sim isolate
+    u32 modeTrack = 0;                              // --sim mode --track N (M8)
+    float kitScale = -1.0f;                         // --kit-scale F (M8: the kit's numbers x F, tuning)
     const char* isoOnly = nullptr;
     for (int i = 3; i < argc; ++i) {
         const char* a = argv[i];
@@ -1457,6 +1587,12 @@ int simHeadlessMain(int argc, char** argv) {
         } else if (std::strcmp(a, "--parts") == 0 && next) {
             isoParts = static_cast<u32>(std::strtoul(next, nullptr, 10));
             ++i;
+        } else if (std::strcmp(a, "--kit-scale") == 0 && next) {
+            kitScale = static_cast<float>(std::atof(next));
+            ++i;
+        } else if (std::strcmp(a, "--track") == 0 && next) {
+            modeTrack = static_cast<u32>(std::strtoul(next, nullptr, 10));
+            ++i;
         } else {
             std::printf("[sim] unknown argument %s\n", a);
             return 2;
@@ -1464,6 +1600,14 @@ int simHeadlessMain(int argc, char** argv) {
     }
     auto* species = new (std::nothrow) SpeciesTable;
     if (!species || !species->load()) return 2;
+    if (kitScale >= 0.0f) {
+        // (M8 tuning: the kit's numbers scaled, ONE TRACK's fights measured against them)
+        for (u32 t = 0; t < 10; ++t) {
+            species->modes.kit.atTrackStart[t] = static_cast<u8>(std::lround(species->modes.kit.atTrackStart[t] * kitScale));
+            species->modes.kit.atBoss[t] = static_cast<u8>(std::lround(species->modes.kit.atBoss[t] * kitScale));
+        }
+        std::printf("[sim] the kit's numbers x %.2f\n", static_cast<double>(kitScale));
+    }
     const float bpm = trackBpm();
     int code = 2;
     if (std::strcmp(mode, "determinism") == 0) {
@@ -1483,10 +1627,16 @@ int simHeadlessMain(int argc, char** argv) {
         // 2026-11-15: each pick alone over whole runs (the novice unless --policy says otherwise).
         code = runIsolate(*species, seeds, minutes > 0.0f ? minutes : 40.0f, seed, policyGiven ? policy : Bot::Policy::Novice, isoRank, isoOnly,
                           isoPart, isoParts ? isoParts : 1u);
+    } else if (std::strcmp(mode, "mode") == 0) {
+        // M8 part 1: ONE TRACK, each Track over seeds (the assist bot unless --policy says otherwise).
+        code = runModeOne(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist, modeTrack);
+    } else if (std::strcmp(mode, "kit") == 0) {
+        // M8 part 1: the kit's numbers (the assist bot's upgrades by Track in THE SET).
+        code = runKitMeasure(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist);
     } else if (std::strcmp(mode, "stress") == 0) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes * 60.0f : 120.0f), seed, bpm, true, policy);
     } else {
-        std::printf("usage: raveform_headless --sim determinism|soak|crowd|picks|isolate|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless|novice|assist] [--god] [--trace] [--armour0] [--nopace] [--health id=x,...] [--handover N] [--rank cap|N] [--only id,...] [--base id,...] [--part k --parts n]\n");
+        std::printf("usage: raveform_headless --sim determinism|soak|crowd|picks|isolate|mode|kit|stress [--track N] [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless|novice|assist] [--god] [--trace] [--armour0] [--nopace] [--health id=x,...] [--handover N] [--rank cap|N] [--only id,...] [--base id,...] [--part k --parts n]\n");
     }
     delete species;
     return code;

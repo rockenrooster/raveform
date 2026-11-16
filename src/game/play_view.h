@@ -108,6 +108,8 @@ public:
     float snare() const { return snare_; }
     // M6 (screens.md "Transitions"): the drop-in's downbeat: one lattice impulse of 140 at the ship (reduce flashing: none).
     void dropRing(Vec2 at, double t);
+    // M8 (design/modes/README.md 5): the load-in's closing ring (a shock ring in the player's colours).
+    void loadInRing(Vec2 at, float toWu, Vec3 a, Vec3 b, float t, float lifeS) { addShockRings(at, 1, toWu, a, b, t, lifeS); }
 
 private:
     HudKeepOut keepOut_;

@@ -682,6 +682,14 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             float tops[5] = {nameTop - caps[0] - 26.0f * s, nameTop, 0.0f, 0.0f, 0.0f};
             u32 count = 2;
             float below = nameTop + caps[1] + 26.0f * s;
+            if (st.modeWords && *st.modeWords) {
+                // M8 (design/modes/screens.md "The name card"): the mode's words under the name, cap 22 (drawn in the accent below).
+                lines[count] = st.modeWords;
+                caps[count] = 22.0f * s;
+                tubes[count] = 1.0f * s;
+                tops[count++] = below;
+                below += 22.0f * s + 26.0f * s;
+            }
             if (encore) {
                 lines[count] = "ENCORE";
                 tops[count++] = nameTop - 2.0f * under;
@@ -711,7 +719,9 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
                         const float dx = side * 0.75f * W * out * out * lag;
                         const float k = level * on * (1.0f - out) * (g == 0 ? 1.0f : 0.45f / static_cast<float>(g));
                         if (k <= 0.01f) continue;
-                        if (l != 1)
+                        if (l != 1 && st.modeWords && lines[l] == st.modeWords)
+                            font.drawField(d.hud, {x + dx, tops[l]}, cap, tubes[l], col(accent, 1.6f * k), col(accent, 1.6f * k), col(accent, 1.6f * k), one);
+                        else if (l != 1)
                             font.drawField(d.hud, {x + dx, tops[l]}, cap, tubes[l], col(white, 1.4f * k), col(white, 1.4f * k), col(white, 1.4f * k), one);
                         else
                             font.drawField(d.hud, {x + dx, tops[l]}, cap, tubes[l], col(palette.hue[0], 1.7f * k), col(palette.hue[1], 1.7f * k),
@@ -733,11 +743,12 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
     }
     // M6 (screens.md "A finished run"): the set list's last boss has fallen: in the Track name card's place SET COMPLETE (cap
     // 44, gold) with the score so far under it, for two bars (in over a beat, out over the last quarter bar).
-    if (st.setCompleteBars >= 0.0f && st.setCompleteBars < 2.0f) {
+    if (st.setCompleteBars >= 0.0f && st.setCompleteBars < st.completeBars) {
+        // (M8, one_track.md: TRACK COMPLETE for the outro's four bars, in the same place)
         const float u = st.setCompleteBars;
-        const float k = clampf(u * 4.0f, 0.0f, 1.0f) * clampf((2.0f - u) * 4.0f, 0.0f, 1.0f);
+        const float k = clampf(u * 4.0f, 0.0f, 1.0f) * clampf((st.completeBars - u) * 4.0f, 0.0f, 1.0f);
         const float cap = 44.0f * s, top = 0.62f * H;
-        const char* words = "SET COMPLETE";
+        const char* words = st.completeWords;
         font.drawField(d.hud, {cx - 0.5f * textW(font, cap, words), top}, cap, 1.6f * s, col(gold, 2.0f * k), col(gold, 2.0f * k), col(palettes.playerDeep[3], 2.0f * k),
                        words);
         char num[32];

@@ -47,6 +47,29 @@ constexpr i32 kBotBoostScore[kBoostCount] = {
     8, 9, 6, 7, 6, 6, 8, 2, 4, 5, 8, 7, 5, 3, 6, 4};
 }  // namespace
 
+u32 botPickOrb(const Loadout& l, const u8* orbs, u32 n) {
+    u32 pick = 0;
+    i32 bestScore = -1;
+    for (u32 k = 0; k < n; ++k) {
+        const u8 u = orbs[k];
+        // M5 part 3: with the whole pool (36 Mods, 12 Riffs) the bot picks as a player who knows them: a Fusion's gold orb first,
+        // then by what each does for the fights (the stream's strength, a Riff that reaches the boss, cells), a new Riff a little
+        // above its level-ups. Boosts in the orbs by the same idea.
+        i32 score = isFusionOrb(u) ? 100 : (isBoostOrb(u) ? kBotBoostScore[boostOfOrb(u)] : kBotUpgradeScore[u]);
+        // (GAME_DESIGN 6.1: the careful bot takes a Fusion's ingredient when the other is held)
+        if (u < kUpgradeCount)
+            for (u8 f = 0; f < kFusionCount; ++f) {
+                const FusionInfo& fi = fusionInfo(f);
+                if (!l.fused(f) && ((u == fi.a && l.level(fi.b) > 0) || (u == fi.b && l.level(fi.a) > 0))) score += 6;
+            }
+        if (score > bestScore) {
+            bestScore = score;
+            pick = k;
+        }
+    }
+    return pick;
+}
+
 void Bot::reset(u64 seed, Policy policy) {
     rng_.reseed(seed ^ 0xB07B07B07ull);
     policy_ = policy;
@@ -722,23 +745,8 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
             novTrio_ = tr.openTick;
             novPick_ = rng_.uniform() < tuning::kNoviceFirstOrbShare ? 0u : rng_.below(tr.orbs);
         }
-        for (u32 k = 0; k < tr.orbs && !novice; ++k) {
-            const u8 u = tr.upgrade[k];
-            // M5 part 3: with the whole pool (36 Mods, 12 Riffs) the bot picks as a player who knows them: a Fusion's gold
-            // orb first, then by what each does for the fights (the stream's strength, a Riff that reaches the boss,
-            // cells), a new Riff a little above its level-ups. Boosts in the orbs by the same idea.
-            i32 score = isFusionOrb(u) ? 100 : (isBoostOrb(u) ? kBotBoostScore[boostOfOrb(u)] : kBotUpgradeScore[u]);
-            // (GAME_DESIGN 6.1: the careful bot takes a Fusion's ingredient when the other is held)
-            if (u < kUpgradeCount)
-                for (u8 f = 0; f < kFusionCount; ++f) {
-                    const FusionInfo& fi = fusionInfo(f);
-                    if (!me.loadout.fused(f) && ((u == fi.a && me.loadout.level(fi.b) > 0) || (u == fi.b && me.loadout.level(fi.a) > 0))) score += 6;
-                }
-            if (score > bestScore) {
-                bestScore = score;
-                pick = k;
-            }
-        }
+        if (!novice) pick = botPickOrb(me.loadout, tr.upgrade, tr.orbs);
+        (void)bestScore;
         if (novice) pick = novPick_ < tr.orbs ? novPick_ : 0u;
         const Vec2 d = tr.orbPos[pick] - pos;
         const float dist = length(d);

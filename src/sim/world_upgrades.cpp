@@ -969,7 +969,7 @@ void World::openLevelTrios(u32 bar) {
     for (u32 p = 0; p < playerCount_; ++p) {
         PlayerState& pl = players_[p];
         TrioState& tr = trio_[p];
-        if (!pl.levelsBanked || !pl.present || !pl.alive || !isLocal(p) || tr.open) continue;
+        if (!pl.levelsBanked || !pl.present || !pl.alive || !isLocal(p) || tr.open || phrase_.outro) continue;  // (M8: no Trio in an outro)
         bool breakSoon = false;
         for (u32 k = 1; k <= kLevelTrioClearBars && !breakSoon; ++k) {
             const Phrase ph = phraseAt(director_, bar + k);

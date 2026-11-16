@@ -2,7 +2,7 @@
 
 namespace rf::sim {
 
-void SimRunner::start(World* world, u64 seed, Spawner::Mode mode, Bot::Policy policy, float bpm, bool godMode) {
+void SimRunner::start(World* world, u64 seed, Spawner::Mode mode, Bot::Policy policy, float bpm, bool godMode, const RunSetup& setup) {
     world_ = world;
     bpm_ = bpm;
     music_ = 0.0;
@@ -12,7 +12,7 @@ void SimRunner::start(World* world, u64 seed, Spawner::Mode mode, Bot::Policy po
     world_->rules() = Rules{};
     world_->rules().godMode = godMode;
     world_->rules().novas = policy != Bot::Policy::Stress;
-    world_->resetRun(seed, music_, 1);
+    world_->resetRun(seed, music_, 1, 0xF, setup);
     controller_.reset(world_->player(0).pos);
     bot_.reset(seed, policy);
 }

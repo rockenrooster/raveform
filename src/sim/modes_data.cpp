@@ -272,6 +272,22 @@ bool ModesData::load() {
         kit.atBoss[t] = static_cast<u8>(r.num(p));
     }
     kit.measured = r.flag("kit.measured");
+    oneTrack.outroBars = static_cast<u8>(r.num("oneTrack.outroBars"));
+    loadIn.bars = static_cast<u32>(r.num("loadIn.bars"));
+    loadIn.ringWu = static_cast<float>(r.num("loadIn.ringWu"));
+    loadIn.spiralTurns = static_cast<float>(r.num("loadIn.spiralTurns"));
+    loadIn.iconScale = static_cast<float>(r.num("loadIn.iconScale"));
+    loadIn.perSixteenth = static_cast<u32>(r.num("loadIn.perSixteenth"));
+    loadIn.perSixteenthPast32 = static_cast<u32>(r.num("loadIn.perSixteenthPast32"));
+    loadIn.graceWu = static_cast<float>(r.num("loadIn.graceWu"));
+    loadIn.closeRingWu[0] = static_cast<float>(r.num("loadIn.closeRingWu.0"));
+    loadIn.closeRingWu[1] = static_cast<float>(r.num("loadIn.closeRingWu.1"));
+    loadIn.closeRingBeats = static_cast<float>(r.num("loadIn.closeRingBeats"));
+    loadIn.bedLayerEvery = static_cast<u32>(r.num("loadIn.bedLayerEvery"));
+    if (oneTrack.outroBars < 1 || oneTrack.outroBars > 16 || loadIn.bars < 1 || loadIn.perSixteenth < 1) {
+        RF_ERR("modes.json: oneTrack.outroBars or loadIn out of range");
+        r.ok = false;
+    }
     versus.shoveWu = static_cast<float>(r.num("versus.shoveWu"));
     versus.shoveSeconds = static_cast<float>(r.num("versus.shoveSeconds"));
     versus.underdogShare = static_cast<float>(r.num("versus.underdogShare"));

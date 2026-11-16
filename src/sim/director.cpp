@@ -37,6 +37,21 @@ const char* songName(u32 song) {
 Phrase phraseAt(const DirectorState& d, u32 bar) {
     Phrase p;
     p.bar = bar;
+    if (d.outroBar != kNoBar && bar >= d.outroBar) {
+        // M8 (one_track.md): the outro, a Break on the Track's own tempo after its boss; past its last bar the run is over.
+        const u32 in = bar - d.outroBar;
+        p.track = d.track;
+        p.song = songOfTrack(d.track, d.songs);
+        p.cycle = 0;
+        p.cycles = static_cast<u8>(cyclesOfTrack(d.track));
+        p.section = Section::Break;
+        p.sectionBar = static_cast<u16>(in < 0xFFFFu ? in : 0xFFFFu);
+        p.sectionBars = d.outroBars;
+        p.outro = true;
+        p.ended = in >= d.outroBars;
+        p.trackBpm = p.bpm = bpmOfTrack(d.track, d.songs);
+        return p;
+    }
     if (d.changeBar != kNoBar && bar >= d.changeBar) {
         // The Track-change Break: eight bars into the next Track; the tempo ramps linearly bar by bar
         // (as the band's engine does), from the old Track's tempo on its first bar to the new one's on

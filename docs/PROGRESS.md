@@ -61,6 +61,40 @@ mode, the refusals). **The set's determinism hashes are unchanged**: careful `f8
 The p0 pictures (`captures\m8\p0\`): no validation message, no layout warning, the title with the pill keeps its 24 px. PLAY on the
 title takes the same path as before (`dropInTap`, the run on the first bar line at least two beats away).
 
+### Part 1, first half: ONE TRACK (2026-11-16)
+
+Built: the run's setup for ONE TRACK in the world (`resetRun`: the chosen Track of the set from its first Groove, the set list at
+ten, nothing of the loop); the kit (`World::dealKit`, `src/sim/world_modes.cpp`: the Trio's own dealing and the careful bot's pick,
+`botPickOrb`, from a stream of the seed, the seat and the act; every device deals every seat's alike; each pick applied as it lands,
+one a sixteenth after the first downbeat over two bars, the last ones doubled up; `EventType::KitLand`); the boss's death brings
+the outro (`DirectorState::outroBar`, four bars of Break from `modes.json` `oneTrack.outroBars`; no Trio opens; every Shard flies
+in) and the run's end on its last bar line (`EventType::RunEnd`); co-op carries the outro's bar (`MsgDirector`, protocol
+`0x5246050D`). In the game (`src/game/play_modes.cpp`): the name card's words (`BEAT ITS BOSS`), the load-in (the kit's icons
+spiralling in a quarter turn from 300 wu with a trail, a chirp a landing climbing a minor pentatonic over two octaves, the closing
+ring and chord on bar 3's downbeat, the HUD's band row flashing), `TRACK COMPLETE` with the score through the outro, the result
+(`TRACK COMPLETE` in gold or `RUN OVER`, TIME, BEST CHAIN, KILLS, BOSS seconds, `TRACK BEST` or `NEW BEST`), NEXT TRACK (the next
+Track as a new run with its own kit), `one_<track>` and `team_one_<track>` (never the set's table); the band starts a run on its
+Track (`conductBand`) and holds a Break under the result. Headless: `raveform_headless --sim mode [--track N] [--seeds 20] [--policy
+assist|novice]` (ONE TRACK's first runs by Track: cleared, kit, minutes, the boss's seconds) and `--sim kit` (the kit measured);
+`--kit-scale F` (tuning). Pictures: `scripts\review-m8.ps1 -Part p1` (`m8_loadin`, `m8_card_one`, `m8_one_outro`, `m8_result_one`).
+
+**The kit, measured** (`--sim kit --seeds 20`, the assist bot in THE SET, every run reaching Track 10) and written into
+`design/modes/modes.json` as its page asks (the lead's file; `measured: true`, the date and the estimates in its note):
+atTrackStart 0, 4, 12, 18, 23, 27, 31, 34, 37, 38 (estimated 0, 6, 14, 19, 23, 27, 31, 35, 39, 43); atBoss 1, 8, 16, 22, 26, 30,
+32, 35, 37, 39 (estimated 4, 12, ..., 46): the later Tracks hold fewer than the estimate (the pool caps).
+
+**The exit's first line** (`--sim mode --seeds 20`): the assist bot clears every Track 20 of 20, and so does the novice. The novice's
+boss fights (median seconds, Tracks 1 to 10): 39, 27, 11, 19, 6.5, 17, 13, 17, 15, 28; the assist bot's 25, 11, 10, 15, 6.8, 7.8,
+11, 18, 12, 35. **Short of the 30 to 60 second line on Tracks 3 to 9**: the kit is the careful bot's picks and count, stronger than a
+novice's own build in THE SET. With half the kit (`--kit-scale 0.5`) the novice's fights are 40, 35, 18, 33, 10, 27, 19, 29, 37, 49
+and it clears 11 or 12 of 12; with a quarter, longer still but Track 9 cleared 3 of 12. Left at the measured kit (the page's
+definition, and the owner's rule that the game is easy and beatable with the auto-aim alone): **for the owner** whether ONE TRACK's
+fights should be longer (a smaller kit) at the cost of some clears.
+
+Not done in part 1 yet: versus (counts, crown, shove, shared Boosts, the underdog, the knock-out, the podium, REMATCH, crowns), the
+two-phone check, the versus net soak; the load-in's bed layers (the engine has no bed mask yet: `sound.md`'s `setBedMask`) and the
+outro's held chord and reversed cymbal (the band plays a Break under it).
+
 Not done in part 0: `m8_modes_bonus` (the bonus Tracks come with part 4: the strips stop at ten chips; TRACERS's and JAM's homes
 fall back to Zenith and Arcadia); the crowns' picture (nobody wins a match until versus, part 1); the built parts of
 `design/modes/screens.md` are not moved into `design/screens.md` (`design/` is the lead's).

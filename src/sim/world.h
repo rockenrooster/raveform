@@ -211,6 +211,11 @@ enum class EventType : u8 {
     // Play test 3 (GAME_DESIGN 5): an Extra Life: a = player, b = 0 picked up, 1 spent (the ship back with two cells); x, y.
     // (A Hit's c: 1 the Orbitals' guard ring broke instead of a cell; 2 an Extra Life was spent.)
     ExtraLife,
+    // M8 (design/modes/README.md 5): a kit's upgrade landed on its ship: a = player, b = the orb (an upgrade, a Fusion's orb), c = its
+    // place in the kit (0..), f = how many the kit holds; x, y = the ship; tick = its sixteenth. The run's end (ONE TRACK's
+    // outro over): a = 0 the Track cleared; tick = the bar line.
+    KitLand,
+    RunEnd,
 };
 enum UpgradeFx : u8 {
     kFxFork,          // a shot forked: x, y
@@ -1045,6 +1050,18 @@ public:
     u32 viewPlayer() const { return viewPlayer_; }  // the first local player: the camera's ship, the band's intensity
     u16 runId() const { return runId_; }
     const RunSetup& setup() const { return setup_; }  // M8: this run's mode, Track and versus (kept by RETRY)
+    // M8 (design/modes/README.md 5): a run that starts in the middle of the set starts with the kit, the build a run of THE SET would
+    // have by then: dealt at the run's start by the Trio's own rules and the careful bot's pick, from a stream of the run's seed, the
+    // seat and the act, and landed on the ship one a sixteenth over the run's first two bars (each applied as it lands).
+    static constexpr u32 kKitMax = 64;
+    struct KitState {
+        u8 orb[kKitMax] = {};
+        u8 count = 0, landed = 0;
+        double from = 0.0;  // the load-in's first downbeat (musical ticks)
+    };
+    const KitState& kit(u32 p) const { return kit_[p < kMaxPlayers ? p : 0]; }
+    double kitLandTick(u32 p, u32 k) const;
+    bool runEnded() const { return director_.runEnded; }  // M8: ONE TRACK's outro is over
     // A run on the bar line `bar` (musical ticks) with this seed, these seats and this id: every device resets
     // at the same musical position (the co-op start; a RETRY when every player is down).
     void scheduleRun(double bar, u64 seed, u32 players, u16 runId, u8 presentMask = 0xF);
@@ -1075,10 +1092,11 @@ public:
         u8 midHold = 0;
         bool midHolding = false, miniSpawned = false;
         u8 lastMini = 0xFF;
+        u32 outroBar = kNoBar;  // M8: ONE TRACK's outro
         bool operator==(const DirectorSync& o) const {
             return startTick == o.startTick && trackBar == o.trackBar && changeBar == o.changeBar && track == o.track &&
                    bossSpawned == o.bossSpawned && assist == o.assist && midHold == o.midHold && midHolding == o.midHolding &&
-                   miniSpawned == o.miniSpawned && lastMini == o.lastMini;
+                   miniSpawned == o.miniSpawned && lastMini == o.lastMini && outroBar == o.outroBar;
         }
     };
     DirectorSync directorSync() const;
@@ -1610,6 +1628,9 @@ private:
     Rng upgradeRng_{2};  // Trios and Boost types (their own stream, so a pick never moves a spawn)
     u64 seed_ = 1;
     RunSetup setup_;  // M8 (in the hash only when it is not THE SET's, so the set's hash stays as it was)
+    KitState kit_[kMaxPlayers];  // M8: each player's kit (world_modes.cpp)
+    void dealKit(u32 p, u32 count, u32 act);
+    void updateModes();  // M8: the kit landing, the outro's Shards, the run's end
     RunSetup restartSetup_;  // M8: the next run's (setNextSetup)
     u64 tick_ = 0;
     u64 runTicks_ = 0;  // ticks since this run began (M4: the same on every device)

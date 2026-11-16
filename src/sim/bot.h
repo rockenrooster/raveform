@@ -15,6 +15,10 @@
 
 namespace rf::sim {
 
+// The careful bot's choice among a Trio's orbs (M5 part 3; M8: the kit's dealing, design/modes/README.md 5): a Fusion first,
+// then by kBotUpgradeScore / kBotBoostScore, a Fusion's other ingredient raised; the first of the best.
+u32 botPickOrb(const Loadout& l, const u8* orbs, u32 n);
+
 class Bot {
 public:
     enum class Policy : u8 { Play, Stress, Reckless, Novice, Assist };

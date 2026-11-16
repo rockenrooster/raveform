@@ -38,10 +38,10 @@
  },
 
  "kit": {
-  "note": "ESTIMATES, from GAME_DESIGN 6.1's level pace (a level every 28 s in Track 1, 16 s in Track 2, 31 s in Track 3, then four upgrades a Track). Replace both rows by the assist bot's median upgrades held (Trios taken) at each Track's first bar and as its boss enters, over 20 runs of THE SET (--sim crowd --policy assist), and write the date here.",
-  "atTrackStart": [0, 6, 14, 19, 23, 27, 31, 35, 39, 43],
-  "atBoss": [4, 12, 17, 22, 26, 30, 34, 38, 42, 46],
-  "measured": false
+  "note": "MEASURED 2026-11-16 (M8 part 1): the assist bot's median upgrades held (Trios taken) at each Track's first bar and as its boss enters, over 20 runs of THE SET (raveform_headless --sim kit --seeds 20; every run reached Track 10). The estimates were [0, 6, 14, 19, 23, 27, 31, 35, 39, 43] and [4, 12, 17, 22, 26, 30, 34, 38, 42, 46].",
+  "atTrackStart": [0, 4, 12, 18, 23, 27, 31, 34, 37, 38],
+  "atBoss": [1, 8, 16, 22, 26, 30, 32, 35, 37, 39],
+  "measured": true
  },
  "loadIn": {"bars": 2, "ringWu": 300, "spiralTurns": 0.25, "iconScale": 0.5, "perSixteenth": 1, "perSixteenthPast32": 2, "graceWu": 600, "closeRingWu": [90, 400], "closeRingBeats": 0.5, "bedLayerEvery": 4},
 

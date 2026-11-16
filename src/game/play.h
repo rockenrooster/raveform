@@ -372,6 +372,7 @@ private:
     bool scriptSetupM8();
     bool scriptInputM8(sim::StickInput& in);
     bool scriptEventsM8();
+    float hudBarsSince(float t) const;
     u16 m8Pic_ = 0xFFFF;
     u32 placedAt_ = 0;  // (the Longwave strips: when the ship was last put beside the body)
 
@@ -730,6 +731,21 @@ private:
     float liftSkipB_ = 0.0f;
     TitleLook liftFrom_;                 // the title as the lift's tap found it
     float liftBeats() const;             // b now (the skip's quickening included)
+    // M8 part 1 (design/modes/one_track.md; game/play_modes.cpp): ONE TRACK's run in the game: the load-in's show and sound, the
+    // outro's card, the result and its records, NEXT TRACK.
+    void modesEvent(const sim::Event& e);       // (afterTick) KitLand, RunEnd, a fight's start and end
+    void modesFrameRun();                       // (frame) the load-in's closing ring and chord
+    void modesEndRun(bool died);                // (endRun) a mode's records instead of the set's table
+    void drawLoadIn(FrameDraw& d, const LookVariant& variant);  // the kit's icons spiralling in
+    void nextTrack();                           // NEXT TRACK: the next Track as a new run, its own kit
+    bool modeRun() const { return world_->setup().mode != sim::Mode::Set; }
+    bool runCleared_ = false;      // the run's Track was cleared (its outro over)
+    bool trackComplete_ = false;   // TRACK COMPLETE's card (from the boss's death)
+    bool kitClosed_ = false;       // the load-in's closing ring and chord have played
+    u32 kitChirps_ = 0;            // the landings heard so far (the climbing run)
+    float bossFromS_ = -1.0f;      // the run's seconds as its boss's fight began, and the fight's seconds (-1: none)
+    float bossSecs_ = -1.0f;
+    u64 modeBest_ = 0;             // the best before this run (the result's TRACK BEST line)
     static constexpr float kFoldRuleFrom = 0.5f;  // BACK: the rule sinks from half a beat after the tap, over a beat ...
     static constexpr float kFoldTitleAt = 1.5f;   // ... and the title builds from its rule from there (from the build's half beat)
 };

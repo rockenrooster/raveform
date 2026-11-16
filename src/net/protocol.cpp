@@ -360,6 +360,7 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             m.d.midHolding = r.u8v() != 0;
             m.d.miniSpawned = r.u8v() != 0;
             m.d.lastMini = r.u8v();
+            m.d.outroBar = r.u32v();  // M8
             if (r.bad() || !finite(m.d.startTick) || m.d.track < 1 || !finite(m.d.assist) || m.d.assist < 0.1f || m.d.assist > 10.0f)
                 return false;
             if (sink) sink->onDirector(m);
@@ -917,7 +918,7 @@ bool PacketWriter::putBoostDrop(const MsgBoostDrop& m) {
     return true;
 }
 bool PacketWriter::putDirector(const MsgDirector& m) {
-    if (!begin(Msg::Director, 28)) return false;
+    if (!begin(Msg::Director, 32)) return false;
     u16v(m.run);
     f64v(m.d.startTick);
     u32v(m.d.trackBar);
@@ -929,6 +930,7 @@ bool PacketWriter::putDirector(const MsgDirector& m) {
     u8v(m.d.midHolding ? 1 : 0);
     u8v(m.d.miniSpawned ? 1 : 0);
     u8v(m.d.lastMini);
+    u32v(m.d.outroBar);  // M8
     return true;
 }
 bool PacketWriter::putPlayerEvent(const MsgPlayerEvent& m) {

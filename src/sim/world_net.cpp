@@ -232,7 +232,8 @@ void World::applyNetOp(const NetOp& op) {
                 killBoss(op.b);
                 // The host's bar line, not this device's reading of it.
                 if (!mini) {
-                    director_.changeBar = op.u;
+                    if (setup_.mode == Mode::OneTrack) director_.outroBar = op.u;  // (M8: the outro)
+                    else director_.changeBar = op.u;
                 } else {
                     const u32 natural = miniNaturalEnd();
                     const u32 hold = op.u > natural ? op.u - natural : 0u;
@@ -261,6 +262,7 @@ void World::applyNetOp(const NetOp& op) {
                 d.midHolding = op.opts[0] != 0;
                 d.miniSpawned = op.opts[1] != 0;
                 d.lastMini = op.opts[2];
+                d.outroBar = op.serial;
                 netDirector(d);
             }
             break;
@@ -768,6 +770,7 @@ World::DirectorSync World::directorSync() const {
     d.midHolding = director_.midHolding;
     d.miniSpawned = director_.miniSpawned;
     d.lastMini = director_.lastMini;
+    d.outroBar = director_.outroBar;
     return d;
 }
 
@@ -783,6 +786,7 @@ void World::netDirector(const DirectorSync& d) {
     s.midHolding = d.midHolding;
     s.miniSpawned = d.miniSpawned;
     s.lastMini = d.lastMini;
+    s.outroBar = d.outroBar;
     if (s.lastBar != kNoBar) {
         // The bar being played, as the host's state places it (a boss death moved the Track's end).
         const u32 bar = barOf(m1_);
