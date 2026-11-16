@@ -4,6 +4,29 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-16, the owner's first play of the modes: the title's controls and MODES's swipe
+
+The owner, playing build-334: "mode selection is still unresponsive for a while once main menu is loaded, all buttons should be
+pressable once drawn, decoupled from intro animations. also mode selection UX is very twitchy and sensitive when swiping to choose a
+mode. should be 1:1 when swiping left/right."
+- **The mode pill waited for the title's transition to end.** `Play::openModes` returned while any transition ran, and the intro's
+  runs four beats past the title's build (the run behind coming up), home's after a run and the build back from MODES as long: a
+  drawn, lit pill did nothing for two seconds or more (the earlier fix, 99567e7, ended the build on an input but not that tail). Now
+  a tap on it ends the title's transition where it stands (`Play::settleTitle`: the band's filter opened) and MODES lifts in.
+- **Every title control takes a tap from its first light**: CO-OP, SETTINGS and the pill took taps only once fully faded in
+  (`TitleLook::sideTaps` at 1); PLAY and they now from above 0. The quiet title (it leaves after eight bars without an input):
+  while PLAY or the side controls are still, or again, on screen they take a tap; only the input that wakes a title whose controls
+  have all gone is eaten (a tap where PLAY was would press it as it came back).
+- **MODES's row follows the finger 1:1**: it stepped a whole card at every 80 px of a drag, so a swipe skipped cards. Now, pressed on
+  the cards' band, past 12 px of slop the row moves with the finger (a card's step of travel is a card, the slop's distance
+  included), the centre changing as a card passes half way (its tick, its note and the pulse, as a step); let go, it settles on the
+  nearest card over half a beat; a press on a row still settling catches it where it stands; a drag never taps a side card (a tap,
+  under the slop, still brings it to the centre).
+Pictures (`captures\menus\`): `m8_intro_pill` (a tap on the pill at intro beat 3.4, as it fades in: MODES lifts in at once) and
+`m8_modes_drag` (TRACERS at the centre, a finger drawn 1.3 cards to the left over 24 frames and let go; the log's lines give the
+finger and the row each frame: the row is the finger's, re-centred on SONGLINE at half a card, settling from -0.3 to 0). The
+solo flow test passes (52 checks). Not yet seen under a finger on a phone.
+
 ## 2026-11-16, the pause's controls stand out mid and late game
 
 The owner: "pause menu buttons need more visibility and visual/audio interaction, sometimes they are hard to see when pausing

@@ -23,7 +23,7 @@ enum class M8 : u8 {
     BlTorrent, BlWave, BlLastCall, BlCut, BlBack, BlCount, BlResult,
     // (M8 part 7: the plan's pictures that were missing)
     JamPads, JamEmpty, SlGold, SlStreak1, SlStreak2, SlStreak3, SlStreak4, SlBend, SlRace4, TrLightsOut, TrTurf4, ModesBonus,
-    TrCut, TrSpin, TrDuet, TrRingBig, TrBoost, IntroTap, VsShove, VsKnock
+    TrCut, TrSpin, TrDuet, TrRingBig, TrBoost, IntroTap, VsShove, VsKnock, ModesDrag, IntroPill
 };
 struct M8Pic {
     const char* name;  // m8_<name>
@@ -97,6 +97,12 @@ const M8Pic kM8Pics[] = {
     // Part 1's versus moments (ONE TRACK on First Light, two seats, the first ship standing): the shove (the second ship's Dash ends
     // beside it: a strip four frames apart from the Dash) and the knock-out (the first ship's last cell lost: a strip an eighth apart).
     {"vs_shove", M8::VsShove, 1}, {"vs_knock", M8::VsKnock, 1},
+    // (2026-11-16, the owner: MODES's swipe 1:1): TRACERS at the centre, a finger pressed on it and drawn 1.3 cards to the left over
+    // 24 frames, let go: a strip five frames apart from the press, the finger and the row's offset logged each frame.
+    {"modes_drag", M8::ModesDrag, 4},
+    // (2026-11-16, the owner: "mode selection is still unresponsive for a while once main menu is loaded"): the intro, a tap on the
+    // mode pill as it fades in (intro beat 3.4): MODES's lift from it at once (it waited for the intro's last beats).
+    {"intro_pill", M8::IntroPill, 0},
 };
 constexpr u32 kM8Count = sizeof(kM8Pics) / sizeof(kM8Pics[0]);
 constexpr u32 kM8At = 300;  // (the title at rest: as screen_title's)
@@ -129,6 +135,8 @@ bool Play::scriptSetupM8() {
         case M8::Step:
         case M8::Track:
         case M8::Drop:
+        case M8::ModesDrag:
+            if (pic.kind == M8::ModesDrag) stripStride_ = 5;
             modesPictureSetup(m, false);
             modesPreview();
             if (previewWant_ >= 0) {
@@ -143,6 +151,7 @@ bool Play::scriptSetupM8() {
             break;
         case M8::Lift: break;
         case M8::IntroTap:
+        case M8::IntroPill:
             introPending_ = false;  // (started by the script)
             stripStride_ = static_cast<u32>(std::lround(1800.0 / std::fmax(w.tempoAt(0.0), 30.0f)));  // (an eighth)
             break;
@@ -405,14 +414,15 @@ bool Play::scriptInputM8(StickInput& in) {
     const M8Pic& pic = kM8Pics[m8Pic_];
     const u32 t = scriptTick_;
     const i64 now = static_cast<i64>(frameNo_);
-    if (pic.kind == M8::IntroTap) {
+    if (pic.kind == M8::IntroTap || pic.kind == M8::IntroPill) {
         in = trans_ == Trans::None || trans_ == Trans::Intro ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
         if (t == kM8At) {
             startIntro();
             m8Last_ = 1;
         }
-        const Vec2 play{0.5f * ui_.W(), 800.0f * ui_.H() / 1080.0f};  // (PLAY's place at rest)
-        if (m8Last_ == 1 && trans_ == Trans::Intro && introBeats() >= 1.5f) {
+        // (PLAY's place at rest; the mode pill's, (1200, 600))
+        const Vec2 play = pic.kind == M8::IntroPill ? Vec2{0.5f * ui_.W(), 600.0f * ui_.H() / 1080.0f} : Vec2{0.5f * ui_.W(), 800.0f * ui_.H() / 1080.0f};
+        if (m8Last_ == 1 && trans_ == Trans::Intro && introBeats() >= (pic.kind == M8::IntroPill ? 3.4f : 1.5f)) {
             uiPointer(play, true);
             m8Last_ = 2;
             captureFrom_ = now;
@@ -425,6 +435,28 @@ bool Play::scriptInputM8(StickInput& in) {
     }
     if (pic.kind == M8::ModesBonus) {
         if (captureFrom_ < 0 && t >= 120) captureFrom_ = now + 1;
+        return true;
+    }
+    if (pic.kind == M8::ModesDrag) {
+        // (the card band's y and a card's step: screens_modes.cpp's kCardY 440 and kCardStep 700, px at 1080 lines)
+        in = bot_.think(w, 0, controller_, clock_.heardNow());
+        attractInput(in);
+        const float s = ui_.s(), step = 700.0f * s;
+        const Vec2 at{0.5f * ui_.W(), 440.0f * s};
+        if (t >= kM8At && t <= kM8At + 24u) {
+            const float u = static_cast<float>(t - kM8At) / 24.0f;
+            uiPointer(at - Vec2{1.3f * step * u, 0.0f}, true);
+            if (t == kM8At) captureFrom_ = now;
+        } else if (t == kM8At + 25u) {
+            uiPointer(at - Vec2{1.3f * step, 0.0f}, false);
+        }
+        if (t >= kM8At && t <= kM8At + 45u) {
+            const float finger = t <= kM8At + 24u ? -1.3f * static_cast<float>(t - kM8At) / 24.0f : -1.3f;
+            RF_LOG("play: picture '%s': frame %u: finger %+.3f cards, row %s %+.3f (slide from %+.3f, %.2f beats), centre %s", opt_.picture,
+                   t - kM8At, static_cast<double>(finger), modesDragging_ ? "held" : "free", static_cast<double>(modesDragOff_),
+                   static_cast<double>(modesSlideFrom_), modesSlideAt_ >= 0.0 ? static_cast<double>(transBeats(modesSlideAt_)) : -1.0,
+                   modeId(static_cast<Mode>(modesCentre_)));
+        }
         return true;
     }
     if (pic.kind == M8::VsShove || pic.kind == M8::VsKnock) {

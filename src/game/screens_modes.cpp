@@ -431,7 +431,9 @@ void Play::drawModePill(Ui& ui, float sink, bool taps, bool pressedHeld) {
 // ---------------------------------------------------------------------------------------------- MODES: the flow
 
 void Play::openModes(Screen back) {
-    // From the title's pill (the rule's lift) or the lobby's MODE pill (the room's way in).
+    // From the title's pill (the rule's lift) or the lobby's MODE pill (the room's way in). (2026-11-16: the title's build, still
+    // running its last beats behind a drawn pill, ends here rather than eating the tap.)
+    if (back == Screen::Title) settleTitle();
     if (trans_ != Trans::None) return;
     modesBack_ = back;
     liftRoom_ = back == Screen::CoopLobby;
@@ -450,6 +452,8 @@ void Play::openModes(Screen back) {
     modesSlideFrom_ = 0.0f;
     modesSlideAt_ = modesStrikeAt_ = modesFadeAt_ = modesBackAt_ = -1.0;
     modesDragFrom_ = -1.0f;
+    modesDragging_ = false;
+    modesDragOff_ = 0.0f;
     modesPrevMode_ = modesCentre_;
     modesPrevTrack_ = static_cast<u8>(modeTrack(centre));
     keyNav_ = 0;
@@ -912,16 +916,72 @@ void Play::screenModes(Ui& ui, const ModesLook& ml) {
     const bool host = !room || (session_ && session_->host());
     Mode row[kModeCount];
     const u32 n = modesRow(row);
+    const bool resting = trans_ == Trans::None && modesBackAt_ < 0.0;
+    if (!ml.taps) ui.setQuiet(true);
+    drawModesWord(ui, ml);
+    // The row under a finger (2026-11-16, the owner: "mode selection UX is very twitchy and sensitive when swiping to choose a mode.
+    // should be 1:1 when swiping left/right"; it stepped a whole card at every 80 px of a drag): pressed on the cards' band, past
+    // 12 px of slop the row follows the finger 1:1 (a card's step of travel is a card), the centre changing as a card passes half
+    // way (its tick, its note and the pulse, as a step); let go, it settles on the nearest card over half a beat. A press while the
+    // row still settles takes it from where it stands. A drag never taps a side card.
+    const float settling = modesSlideAt_ >= 0.0 ? modesSlideFrom_ * (1.0f - smooth01(transBeats(modesSlideAt_) / 0.5f)) : 0.0f;
+    bool dragTapsOff = modesDragging_;
+    if (ml.taps && n >= 2) {
+        const float stepPx = kCardStep * s;
+        if (uiPtr_.pressed && uiPtr_.pos.y > 200.0f * s && uiPtr_.pos.y < 680.0f * s) {
+            modesDragFrom_ = uiPtr_.pos.x;
+            modesDragBase_ = settling;
+            modesDragOff_ = settling;
+            // (a row still settling is caught where it stands: the finger has it at once)
+            modesDragging_ = std::fabs(settling) > 0.02f;
+            if (modesDragging_) modesSlideAt_ = -1.0;
+        }
+        if (modesDragFrom_ >= 0.0f && uiPtr_.down) {
+            if (!modesDragging_ && std::fabs(uiPtr_.pos.x - modesDragFrom_) > 12.0f * s) {
+                modesDragging_ = true;
+                modesSlideAt_ = -1.0;  // (the finger has the row now)
+            }
+            if (modesDragging_) {
+                float off = modesDragBase_ + (uiPtr_.pos.x - modesDragFrom_) / stepPx;
+                // (a card past half way: it is the centre; the row stays where the finger has it)
+                while (off > 0.5f) {
+                    modesStep(-1);
+                    modesDragBase_ -= 1.0f;
+                    off -= 1.0f;
+                }
+                while (off < -0.5f) {
+                    modesStep(1);
+                    modesDragBase_ += 1.0f;
+                    off += 1.0f;
+                }
+                modesSlideAt_ = -1.0;
+                modesDragOff_ = off;
+                dragTapsOff = true;
+            }
+        }
+        if (!uiPtr_.down && modesDragFrom_ >= 0.0f) {
+            if (modesDragging_) {
+                modesSlideFrom_ = modesDragOff_;  // (it settles on the nearest card: the centre, from where it stands)
+                modesSlideAt_ = transNow();
+            }
+            modesDragFrom_ = -1.0f;
+            modesDragging_ = false;
+            modesDragOff_ = 0.0f;
+        }
+    } else {
+        modesDragFrom_ = -1.0f;
+        modesDragging_ = false;
+        modesDragOff_ = 0.0f;
+    }
+    // (the centre as the drag left it this frame)
     u32 at = 0;
     for (u32 k = 0; k < n; ++k)
         if (row[k] == static_cast<Mode>(modesCentre_)) at = k;
     const Mode centre = row[at];
     const u32 track = modeTrack(centre);
-    const bool resting = trans_ == Trans::None && modesBackAt_ < 0.0;
-    if (!ml.taps) ui.setQuiet(true);
-    drawModesWord(ui, ml);
     // The row: three cards in view (five drawn while it slides), wrapping round.
-    const float slide = modesSlideAt_ >= 0.0 ? modesSlideFrom_ * (1.0f - smooth01(transBeats(modesSlideAt_) / 0.5f)) : 0.0f;
+    const float slide = modesDragging_ ? modesDragOff_
+                                       : (modesSlideAt_ >= 0.0 ? modesSlideFrom_ * (1.0f - smooth01(transBeats(modesSlideAt_) / 0.5f)) : 0.0f);
     const i32 reach = n >= 5 ? 2 : (n >= 2 ? 1 : 0);
     for (i32 k = -reach; k <= reach; ++k) {
         if (n == 2 && k < 0 && std::fabs(slide) < 0.02f) continue;  // (two modes, a release build's: the other on the right)
@@ -932,7 +992,7 @@ void Play::screenModes(Ui& ui, const ModesLook& ml) {
         const float near = clamp01(1.0f - std::fabs(pos));
         const float edgeFade = clamp01((1.6f - std::fabs(pos)) / 0.6f);
         const u32 mt = modeTrack(m);
-        if (k != 0 && ml.taps && std::fabs(pos) > 0.5f && std::fabs(slide) < 0.02f) {
+        if (k != 0 && ml.taps && !dragTapsOff && std::fabs(pos) > 0.5f && std::fabs(slide) < 0.02f) {
             // A side card is a control: tap it and it comes to the centre.
             bool pressed = false;
             const Vec2 h{0.5f * kSideW * s, 0.5f * kSideH * s};
@@ -944,18 +1004,6 @@ void Play::screenModes(Ui& ui, const ModesLook& ml) {
         if (k == 0 && ml.taps && resting && std::fabs(slide) < 0.02f) drawModeCard(ui, m, x, 1.0f, ml, mt, true, 0.0f);
     }
     if (!ml.taps) ui.setQuiet(true);
-    // The row dragged more than 80 px brings the next card in.
-    if (ml.taps) {
-        if (uiPtr_.pressed && uiPtr_.pos.y > 200.0f * s && uiPtr_.pos.y < 680.0f * s) modesDragFrom_ = uiPtr_.pos.x;
-        if (modesDragFrom_ >= 0.0f && uiPtr_.down) {
-            const float dx = uiPtr_.pos.x - modesDragFrom_;
-            if (std::fabs(dx) > 80.0f * s) {
-                modesStep(dx < 0.0f ? 1 : -1);
-                modesDragFrom_ = uiPtr_.pos.x;
-            }
-        }
-        if (!uiPtr_.down) modesDragFrom_ = -1.0f;
-    }
     const float lv = ml.controls;
     const float dy = 14.0f * s * ml.rise + 30.0f * s * ml.sink;
     // The dots: which card is at the centre.

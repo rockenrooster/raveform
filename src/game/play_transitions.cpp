@@ -400,9 +400,11 @@ Play::TitleLook Play::buildLook(float b, bool intro) const {
     t.gap = t.tag = smooth01((b - kControlsFrom) / 0.5f);
     t.play = smooth01(b - kControlsFrom);
     t.playLift = 1.0f - t.play;
-    t.playTaps = b >= kControlsFrom;
+    // (2026-11-16, the owner: "all buttons should be pressable once drawn"): each control takes a tap from its first light, not
+    // once it has fully arrived
+    t.playTaps = t.play > 0.0f;
     t.side = smooth01((b - kControlsFrom - 0.25f) * 2.0f);
-    t.sideTaps = t.side >= 1.0f;
+    t.sideTaps = t.side > 0.0f;
     t.best = smooth01((b - kControlsFrom - 0.5f) * 2.0f);
     t.motes = smooth01(b - kControlsFrom);
     return t;
@@ -436,6 +438,25 @@ void Play::startIntro() {
         band_->playRecipe(audio::Recipe::Impact, -1, 1.0f, 0.0f, introAt_ + offset);
     }
     RF_LOG("play: the intro: the rule's throw on %.0f (now %.0f)", introAt_, now);
+}
+
+void Play::settleTitle() {
+    // The owner (2026-11-16: "mode selection is still unresponsive for a while once main menu is loaded, all buttons should be
+    // pressable once drawn, decoupled from intro animations"): a title's control that leaves the title (the mode pill into MODES)
+    // waited for the title's transition to end, and the intro's lasts four beats past the build (the run behind coming up), home's
+    // and BACK's from MODES as long. A tap on it ends the transition where it stands: the title is all there, the band's filter
+    // open; home's palette cross-fade finishes its bar by itself.
+    if (screen_ != Screen::Title) return;
+    if (trans_ == Trans::Intro) {
+        introAt_ = transNow() - 2.0 * static_cast<double>(kBuildDone) * kTicksPerBeat;
+        introSkipAt_ = -1.0;
+        notesBase_ = -1.0;
+        if (transFilter_) bandFilter(0.0f, 0.1f);
+        trans_ = Trans::None;
+    } else if (trans_ == Trans::Home || (trans_ == Trans::Fold && !liftRoom_)) {
+        notesBase_ = -1.0;
+        trans_ = Trans::None;
+    }
 }
 
 void Play::wordNotes(double firstTick, double stepTicks) {
@@ -580,8 +601,9 @@ Play::TitleLook Play::titleLook() const {
             if (titleHideLine_ >= 0.0 && (titleWakeAt_ >= 0.0 || transBeats(titleHideLine_) > 0.0f)) {
                 // screens.md "Transitions", the quiet title leaving over its bar: beat 1 the best, the note, CO-OP and SETTINGS; beat 2
                 // PLAY; half a beat later the tagline, the rule's gap and the motes; beat 3 the fan folding flat and the word fading;
-                // beat 4 the rule drawing back into its centre. Nothing takes a tap until it is all back (the input that wakes it
-                // presses nothing).
+                // beat 4 the rule drawing back into its centre. (2026-11-16, the owner: "all buttons should be pressable once
+                // drawn": a control still or again on screen takes a tap; titleIdleFrame eats only the input that wakes a title
+                // whose controls have all gone.)
                 const float g0 = titleGone(0.0f), g1 = titleGone(1.0f), g15 = titleGone(1.5f), g2 = titleGone(2.0f), g3 = titleGone(3.0f);
                 t.best *= 1.0f - g0;
                 t.side *= 1.0f - g0;
@@ -595,7 +617,8 @@ Play::TitleLook Play::titleLook() const {
                 t.ruleLen *= 1.0f - g3;
                 t.rule *= 1.0f - g3;
                 t.ends *= 1.0f - g3;
-                t.playTaps = t.sideTaps = false;
+                t.playTaps = t.play > 0.0f;
+                t.sideTaps = t.side > 0.0f;
             }
             return t;
     }
@@ -650,11 +673,16 @@ void Play::titleIdleFrame(UiPointer& ptr) {
         } else if (input && transBeats(titleHideLine_) <= 0.0f) {
             titleHideLine_ = -1.0;  // an input before the bar line it would leave on: it stays (and the input is the screen's)
         } else if (input) {
-            // The input that wakes it: everything comes back over a beat from where it stood, and the input does nothing else.
+            // The input that wakes it: everything comes back over a beat from where it stood. (2026-11-16, the owner: "all buttons
+            // should be pressable once drawn"): while PLAY or the side controls are still on screen the input is theirs; once they
+            // have all gone it only wakes the title (a tap where PLAY was would otherwise press it as it came back).
+            const bool drawn = titleGone(0.0f) < 1.0f || titleGone(1.0f) < 1.0f;
             titleWakeFrom_ = std::fmin(transBeats(titleHideLine_), 5.0f);
             titleWakeAt_ = now;
-            ptr.pressed = ptr.released = ptr.down = false;
-            keyPrimary_ = keyBack_ = false;
+            if (!drawn) {
+                ptr.pressed = ptr.released = ptr.down = false;
+                keyPrimary_ = keyBack_ = false;
+            }
         } else if (now < titleHideLine_ - kTicksPerBar) {
             titleHideLine_ = now - 5.0 * kTicksPerBeat;  // (the clock ran back under it: it stays gone)
         }

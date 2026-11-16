@@ -763,6 +763,11 @@ private:
     u8 modesPrevMode_ = 0;
     u8 modesPrevTrack_ = 1;
     float modesDragFrom_ = -1.0f;        // the pointer's x where the row's drag began (-1: none)
+    // The row under a finger (2026-11-16, the owner: "very twitchy ... should be 1:1 when swiping"): past a few px of slop it
+    // follows the finger, its offset in cards from where the press found it (base), the centre changing as a card passes half way.
+    bool modesDragging_ = false;
+    float modesDragBase_ = 0.0f;         // cards: the row's offset as the press found it (a settling row is taken where it stands)
+    float modesDragOff_ = 0.0f;          // cards: the row's offset now (|x| <= 0.5 once re-centred)
     double modesBackAt_ = -1.0;          // run ticks: Back cancelled MODES's drop-in here (the screen comes back over a beat)
     // The Track heard on MODES (screens.md "MODES", rules): the song wanted from the next bar line, and the one the band holds now
     // (-1: the run's own). The palette cross-fades over the bar from the line it changes on.
@@ -781,6 +786,7 @@ private:
     TitleLook liftFrom_;                 // the title as the lift's tap found it
     float liftBeats() const;             // b now (the skip's quickening included)
     void liftComplete();                 // an input in the lift: MODES at rest at once (the input is MODES's)
+    void settleTitle();                  // a tap that leaves the title: the title's build (intro, home, back from MODES) ends now
     // M8 part 1 (design/modes/one_track.md; game/play_modes.cpp): ONE TRACK's run in the game: the load-in's show and sound, the
     // outro's card, the result and its records, NEXT TRACK.
     void modesEvent(const sim::Event& e);       // (afterTick) KitLand, RunEnd, a fight's start and end
