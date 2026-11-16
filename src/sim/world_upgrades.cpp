@@ -749,6 +749,7 @@ void World::dropBoost(Vec2 pos, u8 type) {
     const float x = clampf(pos.x, -kArenaHalfW + 40.0f, kArenaHalfW - 40.0f);
     const float y = clampf(pos.y, -kArenaHalfH + 40.0f, kArenaHalfH - 40.0f);
     if (isExtraLifeDrop(type)) {
+        if (director_.formCount) return;  // (M8: no Extra Lives fall in a timed mode; nothing ends its run)
         // Play test 3 (GAME_DESIGN 5): an Extra Life, one orb for its owner (kPickupExtraLife + the owner).
         const u32 owner = static_cast<u32>(type - kPickupExtraLife);
         if (b.count >= BoostPickups::kCap || owner >= playerCount_) return;

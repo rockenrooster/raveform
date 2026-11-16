@@ -680,7 +680,11 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
     // white above the name at cap 110 in the palette's hues, 8 px tubes; drawn at 0.8 over the fight.
     {
         const DirectorState& dir = w.director();
-        const float u = dir.trackBar == kNoBar ? -1.0f : static_cast<float>((st.music - w.tickOfBar(dir.trackBar)) / kTicksPerBar);
+        float u = dir.trackBar == kNoBar ? -1.0f : static_cast<float>((st.music - w.tickOfBar(dir.trackBar)) / kTicksPerBar);
+        if (dir.formCount && ph.wave && ph.section == Section::Drop && ph.sectionBar < 2u) {
+            // M8 FULL BLAST: the wave's name on its Drop's downbeat, for one bar (its letters streak out on the next downbeat).
+            u = static_cast<float>((st.music - w.tickOfBar(ph.bar - ph.sectionBar)) / kTicksPerBar) + 1.0f;
+        }
         // (M6, screens.md "Transitions": the card writes itself as always while the drop-in brings the rest of the HUD in)
         const float hudLevel = g_hudFade;
         g_hudFade = 1.0f;

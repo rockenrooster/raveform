@@ -80,6 +80,15 @@ struct ModesData {
     struct OneTrack {
         u8 outroBars = 4;
     } oneTrack;
+    struct Blast {  // full_blast.md (modes.json fullBlast)
+        u8 riffs = 4, riffLevel = 5;
+        struct Wave {
+            char name[16] = {};
+            float crowd[2] = {1.0f, 1.0f};
+            u8 elitesAtStart = 0, eliteEvery = 0, boostEvery = 4;
+            bool mini = false;
+        } wave[4];
+    } blast;
     struct LoadIn {  // README.md 5
         u32 bars = 2, perSixteenth = 1, perSixteenthPast32 = 2, bedLayerEvery = 4;
         float ringWu = 300.0f, spiralTurns = 0.25f, iconScale = 0.5f, graceWu = 600.0f, closeRingBeats = 0.5f;

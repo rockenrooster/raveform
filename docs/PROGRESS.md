@@ -110,6 +110,26 @@ Measured: the 5-minute four-bot net soak, versus against team: both pass, census
 error RMS 1.70 wu (team 1.56), p95 2.0 (2.25), max 165 wu (85: a shoved or knocked-out ship's moment); downstream 268 kbps at most
 (264). The set's determinism hashes are unchanged.
 
+### Part 3: FULL BLAST (2026-11-16)
+
+Built (`design/modes/full_blast.md`): a timed mode's fixed form in the director (`DirectorState::formCount`, `formKind`, `formBars`
+from `modes.json` `forms.blast`: the opening and four waves, each a Build 4 and a Drop 16, at the Track's second cycle; `Phrase::wave`,
+`barsLeft`; past the last bar the run is over: every body alive pops, no score, no Shards, and `RunEnd`); every power on from the first
+bar as a kit (`World::dealFullBlast`: every Mod's stacks in the table's order, four Riffs to level 5 drawn by the seed (each seat the
+next four of one shuffle), their Fusions: 109 landings over two bars, three and four a sixteenth); the waves (`fullBlast.waves`: the
+crowd from its first scale to its last over the Drop of the Track's cycle-2 target, at most 400; elites in waves 2 and 4 on any Track,
+not waiting for the bank; wave 3's mini-boss (Track 1 borrows Track 2's pair); a Boost orb every 4, 3, 2, then 1 bars); nothing ends
+the run (the knock-out, the power cut, in the timed modes too); no Extra Lives fall. The game: the run's card (`FULL BLAST`, the Track,
+`EVERY POWER IS ON`), each Drop's wave name on its downbeat, the goal line (`WAVE 2 OF 4   BARS LEFT 51`, `LAST CALL`), the result
+(BEST CHAIN, KILLS, BOOSTS, HITS TAKEN), the `blast_<track>` record. `raveform_headless --sim mode --blast [--track N]`.
+
+Measured (`--sim mode --blast --seeds 3`, the assist bot): every Track's run ends on its 84th bar (3:05 on Track 1, 2:11 on Track
+10), no pool refused anything, the most shots alive 651 to 756, no knock-outs.
+
+Not done in part 3: the torrent's look beyond the load-in (the Riffs drawn larger, the 700 wu ring), the power cut's look and sound,
+the wave names' sound, LAST CALL's run bar, the count (the load-out), the result's nine-section bar and TONIGHT'S BAND, the Moto
+benchmarks (wave 4 held, solo and hosting three bots), versus's underdog rule (a hit does not halve its Chain).
+
 ### Part 2: HEADLINERS (2026-11-16)
 
 Built (`design/modes/headliners.md`): the acts' form in the director (`DirectorState::actForm`: act 1 a Groove 4 and a Build 4 before

@@ -80,6 +80,43 @@ Phrase phraseAt(const DirectorState& d, u32 bar) {
         p.trackBpm = to;
         return p;
     }
+    if (d.formCount) {
+        // M8 (README.md 6): a timed mode's fixed form, the Track at its second cycle (its budget and crowd), each Build and Drop a
+        // wave; past the last bar the run is over (the last section's last bar, `ended`).
+        const u32 off = bar >= d.trackBar ? bar - d.trackBar : 0u;
+        u32 total = 0, from = 0, drops = 0, k = 0;
+        for (u32 j = 0; j < d.formCount; ++j) total += d.formBars[j];
+        for (; k < d.formCount; ++k) {
+            if (off < from + d.formBars[k]) break;
+            const FormKind fk = static_cast<FormKind>(d.formKind[k]);
+            if (fk == FormKind::Drop || fk == FormKind::BossDrop) ++drops;
+            from += d.formBars[k];
+        }
+        if (k >= d.formCount) {
+            k = d.formCount - 1u;
+            from = total - d.formBars[k];
+            p.ended = true;
+            const FormKind last = static_cast<FormKind>(d.formKind[k]);
+            if (drops && (last == FormKind::Drop || last == FormKind::BossDrop)) --drops;
+        }
+        const FormKind fk = static_cast<FormKind>(d.formKind[k]);
+        p.track = d.track;
+        p.song = songOfTrack(d.track, d.songs);
+        p.cycle = p.cycles = 2;
+        p.trackBpm = p.bpm = bpmOfTrack(d.track, d.songs);
+        p.section = fk == FormKind::Build ? Section::Build
+                    : (fk == FormKind::Drop || fk == FormKind::BossDrop) ? Section::Drop
+                    : (fk == FormKind::Break || fk == FormKind::TrackChange) ? Section::Break
+                                                                               : Section::Groove;
+        const u32 in = off - from;
+        p.sectionBars = d.formBars[k];
+        p.sectionBar = static_cast<u16>(p.ended ? (p.sectionBars ? p.sectionBars - 1u : 0u) : in);
+        p.wave = (p.section == Section::Build || p.section == Section::Drop) ? static_cast<u8>(drops + 1u) : 0u;
+        p.miniDrop = p.section == Section::Drop && p.wave == 3;  // (FULL BLAST: wave 3, THE MINI)
+        p.barsLeft = static_cast<u16>(off < total ? total - off : 0u);
+        if (p.buildLastBar()) p.bpm = p.trackBpm * kBuildLastBarSpeed;
+        return p;
+    }
     if (d.actForm) {
         // M8 HEADLINERS (headliners.md "The run"): an act: act 1's Groove, the Build, the boss's Drop held while it lives.
         const u32 off = bar >= d.trackBar ? bar - d.trackBar : 0u;

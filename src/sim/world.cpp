@@ -112,6 +112,21 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask, co
             viewPlayer_ = p;
             break;
         }
+    if (setup.mode == Mode::FullBlast && species_) {
+        // M8 (full_blast.md): 84 bars on the chosen Track, one opening and four waves (modes.json forms.blast), every power on from
+        // the first bar (the torrent), nothing ending the run (the power cut).
+        const Form& f = species_->modes.forms.blast;
+        const u32 track = setup.track < 1 ? 1u : (setup.track > kMaxSongs ? kMaxSongs : setup.track);
+        director_.track = static_cast<u8>(track);
+        director_.formCount = static_cast<u8>(f.count < 12 ? f.count : 12u);
+        for (u32 k = 0; k < director_.formCount; ++k) {
+            director_.formKind[k] = static_cast<u8>(f.s[k].kind);
+            director_.formBars[k] = static_cast<u8>(f.s[k].bars);
+        }
+        phrase_ = phraseAt(director_, 0);
+        for (u32 p = 0; p < playerCount_; ++p)
+            if (players_[p].present) dealFullBlast(p);
+    }
     if (setup.mode == Mode::Headliners && species_) {
         // M8 (headliners.md): the ten bosses back to back from First Light, the acts' form; the kit a run holds as Kaleidos enters;
         // one Extra Life held at the start.
@@ -836,7 +851,7 @@ void World::hitPlayer(u32 p, Vec2 from, u16 cause, bool bullet) {
         return;
     }
     ++pl.hitsTaken;
-    if (pl.cells == 0 && setup_.versus) {
+    if (pl.cells == 0 && (setup_.versus || director_.formCount)) {  // (M8: and the timed modes: FULL BLAST's power cut)
         // M8 (design/modes/README.md 7, V6): nobody is out in versus: the ship is knocked out and back on the second bar line after.
         knockOut(p, tickOfBar(barOf(m1_) + 2u));
         return;
@@ -1539,6 +1554,13 @@ u64 World::hash() const {
         val(director_.runEnded);
     }
     if (director_.actForm) val(director_.actForm);
+    if (director_.formCount) {
+        val(director_.formCount);
+        for (const PlayerState& pl : players_) {
+            val(pl.knocked);
+            val(pl.backTick);
+        }
+    }
     if (setup_.versus) {
         val(director_.crown);
         val(director_.underdog);

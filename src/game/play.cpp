@@ -1085,6 +1085,20 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         }
     }
     if (modeRun()) hs.modeWords = species_->modes.of(w.setup().mode).nameCard;  // M8: BEAT ITS BOSS under the name card
+    if (w.setup().mode == Mode::FullBlast) {
+        // M8 (full_blast.md "Look", "HUD"): the run's card is the mode's (FULL BLAST over the Track, EVERY POWER IS ON); each Drop's
+        // downbeat writes the wave's name where a name card stands; the goal line WAVE 2 OF 4   BARS LEFT 51, LAST CALL in the last
+        // eight bars.
+        const Phrase& ph = w.phrase();
+        std::snprintf(cardSmall_, sizeof cardSmall_, "TRACK %u  %s", ph.track, songName(ph.song));
+        std::snprintf(cardName_, sizeof cardName_, "%s", ph.wave && ph.section == Section::Drop ? species_->modes.blast.wave[(ph.wave - 1u) % 4u].name : "FULL BLAST");
+        hs.cardSmall = cardSmall_;
+        hs.cardName = cardName_;
+        if (ph.wave && ph.section == Section::Drop) hs.modeWords = nullptr;
+        if (ph.barsLeft <= 8 && ph.barsLeft > 6) std::snprintf(goalLine_, sizeof goalLine_, "LAST CALL");
+        else std::snprintf(goalLine_, sizeof goalLine_, "WAVE %u OF 4   BARS LEFT %u", ph.wave ? ph.wave : 1u, ph.barsLeft);
+        hs.goalLine = goalLine_;
+    }
     if (w.setup().mode == Mode::Headliners) {
         // M8 (headliners.md "Look"): the act's card (ACT 3 OF 10, the boss's name, the Track and its tempo under it); the goal
         // line, the run's time running; HEADLINERS COMPLETE with the time.

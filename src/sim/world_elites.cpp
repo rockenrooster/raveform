@@ -60,10 +60,21 @@ void World::eliteBar(const Phrase& ph, double land) {
     // traits.md "How often" (d59062f): from Track 3's first cycle, never in a Break, a boss fight or a mini-boss fight; about once
     // in 16 bars in Track 3 falling evenly to once in 8 by Track 6 (and so on). The budget pays x 4 the species' threat.
     DirectorState& d = director_;
-    if (ph.track < kElFromTrack || ph.section == Section::Break || ph.trackChange || ph.bossDrop || boss_.active || d.actForm) return;  // (M8: none in HEADLINERS)
+    const bool blast = d.formCount && setup_.mode == Mode::FullBlast && species_;
+    if (blast) {
+        // M8 FULL BLAST (full_blast.md "Numbers"): wave 2 four elites on its Drop's downbeat and one every 4 bars, wave 4 two and one
+        // every 2 bars; on any Track; none in the other waves.
+        const ModesData::Blast::Wave& wv = species_->modes.blast.wave[ph.wave ? (ph.wave - 1u) % 4u : 0u];
+        if (!ph.wave || ph.section != Section::Drop || !wv.eliteEvery || boss_.active) return;
+        if (ph.sectionBar == 0) eliteClock_ += static_cast<float>(wv.elitesAtStart);
+        else if (ph.sectionBar % wv.eliteEvery == 0) eliteClock_ += 1.0f;
+        if (eliteClock_ < 1.0f) return;
+    } else {
+    if (ph.track < kElFromTrack || ph.section == Section::Break || ph.trackChange || ph.bossDrop || boss_.active || d.actForm || d.formCount) return;  // (M8: none in HEADLINERS)
     const float t = static_cast<float>(ph.track < 6 ? ph.track : 6u);
     const float every = kElPaceBarsT3 + (kElPaceBarsT6 - kElPaceBarsT3) * (t - 3.0f) / 3.0f;
     eliteClock_ += 1.0f / every;
+    }
     if (eliteClock_ < 1.0f) return;
     const TraitData& td = species_->traits;
     const u32 cap = (ph.track >= 7 || inLoop(ph.track, d.songs)) ? td.alive[1] : td.alive[0];
@@ -79,13 +90,13 @@ void World::eliteBar(const Phrase& ph, double land) {
         if ((f == Family::Wyrm || f == Family::Tether) && enemies_.count + species_->family(f).segmentsMax + 4 >= aliveCap()) continue;
         if (static_cast<float>(bullets_.count) > kBulletPoolShooters * static_cast<float>(Bullets::kCap) && species_->get(r.species).shoots())
             continue;  // M5 part 7 (GAME_DESIGN 6.6): no shooters while the pool is above 70%
-        const bool debuted = inLoop(ph.track, d.songs) ? r.track <= d.songs : (r.track < ph.track || (r.track == ph.track && r.cycle <= ph.cycle));
+        const bool debuted = inLoop(ph.track, d.songs) ? r.track <= d.songs : (r.track < ph.track || (r.track == ph.track && r.cycle <= ph.cycle) || (blast && r.track <= 2u));
         if (debuted) cand[n++] = r.species;
     }
     if (!n) return;
     const u16 sp = cand[static_cast<u32>(rand01(arenaRng_) * static_cast<float>(n)) % n];
     const float cost = species_->get(sp).threat * td.threat;
-    if (d.bank + 1e-4f < cost && cost <= d.budgetPerBar * kBankBars) return;  // it waits for the bank
+    if (!blast && d.bank + 1e-4f < cost && cost <= d.budgetPerBar * kBankBars) return;  // it waits for the bank (FULL BLAST's do not)
     d.bank = std::fmax(d.bank - cost, 0.0f);
     eliteClock_ -= 1.0f;
     // Where a threat formation lands: round the formation's player, outside the central third of its view.

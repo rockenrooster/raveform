@@ -415,6 +415,14 @@ void World::spendCrowd(double landTick, const Phrase& ph) {
     director_.crowdLost = 0;
     float target = crowdTarget(c, ph.track, ph.cycle ? ph.cycle : 1u, director_.songs) * crowdScale(c, ph);
     if (director_.actForm) target *= 0.5f;  // M8 HEADLINERS: the Build's fodder at half the Track's crowd (modes.json headliners)
+    if (director_.formCount && ph.wave && ph.section == Section::Drop && setup_.mode == Mode::FullBlast && species_) {
+        // M8 FULL BLAST (full_blast.md "Numbers"): the wave's crowd, from its first scale to its last over the Drop, of the Track's
+        // cycle-2 target (the Drop's own section scale left out), never above 400.
+        const ModesData::Blast::Wave& wv = species_->modes.blast.wave[(ph.wave - 1u) % 4u];
+        const float u = ph.sectionBars ? static_cast<float>(ph.sectionBar) / static_cast<float>(ph.sectionBars) : 0.0f;
+        const float base = crowdTarget(c, ph.track, 2u, director_.songs);
+        target = std::fmin(base * (wv.crowd[0] + (wv.crowd[1] - wv.crowd[0]) * u), 400.0f);
+    }
     if (pen_.up && boss_.active && isMiniBoss(boss_.kind) && c.miniDrop > 0.0f) {
         // minibosses.json common.crowd (the lead, 2026-11-13): in a Pen fight the crowd is penScale of the Drop's (not
         // sectionScale's), never more than penMax bodies, so the lock line and the bounces can be followed.
@@ -603,6 +611,12 @@ void World::directorBar(double barTick, u32 bar) {
     }
     phrase_ = phraseAt(d, bar);
     if (setup_.versus && role_ != NetRole::Client) versusBar(bar);  // M8: the crown and the underdog
+    if (d.formCount && setup_.mode == Mode::FullBlast && phrase_.wave && species_ && !phrase_.ended) {
+        // M8 FULL BLAST: a Boost orb every 4, 3, 2, then 1 bars of a wave (the next kill drops it).
+        const u32 every = species_->modes.blast.wave[(phrase_.wave - 1u) % 4u].boostEvery;
+        const u32 inWave = phrase_.section == Section::Drop ? phrase_.sectionBar + 4u : phrase_.sectionBar;
+        if (every && inWave % every == 0) d.boostDue = true;
+    }
     if (d.actForm && phrase_.trackChange && phrase_.sectionBar == 0 && species_) {
         // M8 HEADLINERS (headliners.md rule 1): the top-up: whatever a player is short of the kit the next act's boss was tuned
         // against, landed over the Break's first two bars (the act's own stream).
@@ -677,7 +691,7 @@ void World::directorBar(double barTick, u32 bar) {
                     const i32 fp = coop() ? firstAlive() : 0;
                     const Vec2 pl = players_[fp >= 0 ? fp : 0].pos;
                     const Vec2 toCentre = normalizeOr(Vec2{} - pl, Vec2{1.0f, 0.0f});
-                    spawnBossNow(barTick, pl + toCentre * kBossEnterWu, pickMini(ph.track), playersCentre());
+                    spawnBossNow(barTick, pl + toCentre * kBossEnterWu, pickMini(d.formCount && ph.track < 2 ? 2u : ph.track), playersCentre());
                 }
                 break;
             case Section::Break:
@@ -824,8 +838,8 @@ void World::runDirector() {
     if (client) return;
     if (ph.section == Section::Break && ph.sectionBar == 0)
         dissolveFodder(static_cast<float>((m1_ - tickOfBar(ph.bar)) / kTicksPerBar));
-    // Boosts: one is due every 20-30 s of play outside the Breaks; the next kill drops it.
-    if (spawner_.mode == Spawner::Mode::Slice && ph.section != Section::Break && !d.boostDue && --d.boostTicks <= 0)
+    // Boosts: one is due every 20-30 s of play outside the Breaks; the next kill drops it. (M8 FULL BLAST: on the waves' bar lines.)
+    if (spawner_.mode == Spawner::Mode::Slice && ph.section != Section::Break && !d.boostDue && !d.formCount && --d.boostTicks <= 0)
         d.boostDue = true;
 }
 

@@ -202,6 +202,17 @@ void Play::modesEndRun(bool died) {
     finalScore_ = p.score;
     newBest_ = false;
     modeBest_ = 0;
+    if (su.mode == Mode::FullBlast && !coop() && su.track >= 1 && su.track <= ModeRecords::kTracks) {
+        // README.md 9, `blast_<track>`: the best score and its best Chain.
+        ModeRecords::Timed& r = records_.blast[su.track - 1u];
+        modeBest_ = r.score;
+        newBest_ = p.score > 0 && p.score > r.score;
+        if (newBest_) {
+            r.score = p.score;
+            r.second = p.bestChain;
+        }
+        if (keep && !su.versus) saveModeRecords(records_);
+    }
     if (su.mode == Mode::Headliners && !coop()) {
         // README.md 9, `headliners`: the acts cleared, then the time (ten in 9:42 beats ten in 10:05, and both beat nine).
         u32 acts = 0;

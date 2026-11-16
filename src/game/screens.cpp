@@ -691,8 +691,9 @@ void Play::screenGameOver(Ui& ui) {
     // (design/modes/screens.md "Results"): ONE TRACK reads TRACK COMPLETE in gold when its boss fell.
     const bool one = world_->setup().mode == sim::Mode::OneTrack;
     const bool acts = world_->setup().mode == sim::Mode::Headliners;
-    const bool won = one || acts ? runCleared_ : runSetComplete_;
-    const char* topWord = won ? (one ? "TRACK COMPLETE" : (acts ? "HEADLINERS COMPLETE" : "SET COMPLETE")) : "RUN OVER";
+    const bool blast = world_->setup().mode == sim::Mode::FullBlast;
+    const bool won = one || acts || blast ? runCleared_ : runSetComplete_;
+    const char* topWord = blast ? "FULL BLAST" : (won ? (one ? "TRACK COMPLETE" : (acts ? "HEADLINERS COMPLETE" : "SET COMPLETE")) : "RUN OVER");
     if (out > 0.0f) {
         const Vec3 c = won ? gold : palette_->accent;
         streak(topWord, 44.0f * s, 150.0f * s, std::fmax(0.045f * 44.0f * s, 0.55f * s), c, c, c, won ? 1.8f : 1.6f);
@@ -768,6 +769,16 @@ void Play::screenGameOver(Ui& ui) {
         static const char* const kLabels[4] = {"TIME", "TRACK", "BEST CHAIN", "KILLS"};
         static const char* const kOneLabels[4] = {"TIME", "BEST CHAIN", "KILLS", "BOSS"};
         static const char* const kActLabels[4] = {"BOSSES", "HITS TAKEN", "FASTEST", "SCORE"};
+        static const char* const kBlastLabels[4] = {"BEST CHAIN", "KILLS", "BOOSTS", "HITS TAKEN"};
+        if (blast) {
+            // (M8, design/modes/screens.md "Results": FULL BLAST's BEST CHAIN, KILLS, BOOSTS, HITS TAKEN)
+            char chain[32];
+            groupDigits(chain, sizeof chain, p.bestChain);
+            std::snprintf(v[0], sizeof v[0], "X%s", chain);
+            std::snprintf(v[1], sizeof v[1], "%u", p.kills);
+            std::snprintf(v[2], sizeof v[2], "%u", static_cast<u32>(p.boostsTaken));
+            std::snprintf(v[3], sizeof v[3], "%u", p.hitsTaken);
+        }
         if (acts) {
             // (M8: BOSSES (or TIME when not all fell), HITS TAKEN, FASTEST (a boss's name and its seconds), SCORE)
             u32 fell = 0, fastest = 10;
@@ -793,7 +804,7 @@ void Play::screenGameOver(Ui& ui) {
         }
         for (u32 k = 0; k < 4; ++k) {
             const float x = cx + (static_cast<float>(k) - 1.5f) * 330.0f * s;
-            const char* label = acts ? (k == 0 && !won ? "TIME" : kActLabels[k]) : (one ? kOneLabels[k] : kLabels[k]);
+            const char* label = blast ? kBlastLabels[k] : (acts ? (k == 0 && !won ? "TIME" : kActLabels[k]) : (one ? kOneLabels[k] : kLabels[k]));
             ui.text({x, 500.0f * s + sink}, 14.0f * s, palette_->accent, 1.3f, label);
             // (M8: a long value fits its column: HEADLINERS's score, FASTEST's boss)
             const float fit = std::fmin(1.0f, 300.0f * s / std::fmax(ui.measure(40.0f * s, v[k]), 1.0f));

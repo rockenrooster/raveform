@@ -1060,7 +1060,7 @@ public:
     // M8 (design/modes/README.md 5): a run that starts in the middle of the set starts with the kit, the build a run of THE SET would
     // have by then: dealt at the run's start by the Trio's own rules and the careful bot's pick, from a stream of the run's seed, the
     // seat and the act, and landed on the ship one a sixteenth over the run's first two bars (each applied as it lands).
-    static constexpr u32 kKitMax = 64;
+    static constexpr u32 kKitMax = 160;  // (FULL BLAST's torrent: every Mod's stacks, four Riffs to level 5, their Fusions)
     struct KitState {
         u8 orb[kKitMax] = {};
         u8 count = 0, landed = 0;
@@ -1640,6 +1640,7 @@ private:
     RunSetup setup_;  // M8 (in the hash only when it is not THE SET's, so the set's hash stays as it was)
     KitState kit_[kMaxPlayers];  // M8: each player's kit (world_modes.cpp)
     void dealKit(u32 p, u32 count, u32 act);
+    void dealFullBlast(u32 p);  // M8 FULL BLAST: every power on, as a kit (README.md 5's torrent)
     void updateModes();  // M8: the kit landing, the outro's Shards, the run's end, the knocked out coming back
     void versusBar(u32 bar);              // M8 versus: the crown and the underdog on a bar line (the host's, or solo's)
     void rivalShove(u32 q, Vec2 dashEnd);  // M8 versus (V3): a Dash's ring pushes this device's rivals in it

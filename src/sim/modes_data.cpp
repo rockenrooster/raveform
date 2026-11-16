@@ -273,6 +273,25 @@ bool ModesData::load() {
     }
     kit.measured = r.flag("kit.measured");
     oneTrack.outroBars = static_cast<u8>(r.num("oneTrack.outroBars"));
+    blast.riffs = static_cast<u8>(r.num("fullBlast.riffs"));
+    blast.riffLevel = static_cast<u8>(r.num("fullBlast.riffLevel"));
+    for (u32 w = 0; w < 4; ++w) {
+        Blast::Wave& wv = blast.wave[w];
+        std::snprintf(p, sizeof p, "fullBlast.waves.%u.name", w);
+        r.text(p, wv.name, sizeof wv.name);
+        std::snprintf(p, sizeof p, "fullBlast.waves.%u.crowdScale.0", w);
+        wv.crowd[0] = static_cast<float>(r.num(p));
+        std::snprintf(p, sizeof p, "fullBlast.waves.%u.crowdScale.1", w);
+        wv.crowd[1] = static_cast<float>(r.num(p));
+        std::snprintf(p, sizeof p, "fullBlast.waves.%u.elitesAtStart", w);
+        wv.elitesAtStart = static_cast<u8>(r.num(p));
+        std::snprintf(p, sizeof p, "fullBlast.waves.%u.eliteEveryBars", w);
+        wv.eliteEvery = static_cast<u8>(r.num(p));
+        std::snprintf(p, sizeof p, "fullBlast.waves.%u.boostEveryBars", w);
+        wv.boostEvery = static_cast<u8>(r.num(p));
+        std::snprintf(p, sizeof p, "fullBlast.waves.%u.miniBoss", w);
+        wv.mini = r.flag(p);
+    }
     loadIn.bars = static_cast<u32>(r.num("loadIn.bars"));
     loadIn.ringWu = static_cast<float>(r.num("loadIn.ringWu"));
     loadIn.spiralTurns = static_cast<float>(r.num("loadIn.spiralTurns"));

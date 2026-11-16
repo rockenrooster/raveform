@@ -55,6 +55,45 @@ void World::dealKit(u32 p, u32 count, u32 act) {
     trio_[p].sinceRiff = sinceRiff;
 }
 
+void World::dealFullBlast(u32 p) {
+    // full_blast.md rule 1: every Mod that can be dealt at its cap (each stack a landing, in the table's order), four Riffs at level
+    // 5 drawn from the twelve by the seed and the seat (in co-op no Riff twice until all twelve are out), then every Fusion whose
+    // halves are held; eight cells, Regen's second rank, seven Novas come with them.
+    if (p >= kMaxPlayers) return;
+    KitState& k = kit_[p];
+    k = KitState{};
+    k.from = director_.startTick;
+    Loadout l = players_[p].loadout;
+    for (u8 u = 0; u < kModCount && k.count < kKitMax; ++u)
+        while (l.canTake(u) && k.count < kKitMax) {
+            takeInto(l, u);
+            k.orb[k.count++] = u;
+        }
+    // The Riffs: a shuffle of the twelve by the seed (one for the room), each seat taking the next four (p * 4 on).
+    u8 riffs[kRiffCount];
+    for (u32 r = 0; r < kRiffCount; ++r) riffs[r] = static_cast<u8>(kModCount + r);
+    Rng rng(seed_ * 0x94D049BB133111EBull + 0xB1A57ull);
+    for (u32 r = kRiffCount - 1u; r > 0; --r) {
+        const u32 j = rng.below(r + 1u);
+        const u8 t = riffs[r];
+        riffs[r] = riffs[j];
+        riffs[j] = t;
+    }
+    for (u32 n = 0; n < 4; ++n) {
+        const u8 r = riffs[(p * 4u + n) % kRiffCount];
+        while (l.canTake(r) && k.count < kKitMax) {
+            takeInto(l, r);
+            k.orb[k.count++] = r;
+        }
+    }
+    for (u8 f = 0; f < kFusionCount && k.count < kKitMax; ++f)
+        if (l.fusionDue(f)) {
+            takeInto(l, static_cast<u8>(kFusionOrb + f));
+            k.orb[k.count++] = static_cast<u8>(kFusionOrb + f);
+        }
+    trio_[p].opened += k.count;
+}
+
 double World::kitLandTick(u32 p, u32 i) const {
     // README.md 5: over the run's first two bars, one landing on each sixteenth after the first downbeat (more than fit: two to a
     // sixteenth); the closing chord and ring on bar 3's downbeat.
@@ -118,8 +157,17 @@ void World::updateModes() {
     // ONE TRACK's outro (one_track.md): every Shard on the field flies to its player, as under Magnet Storm.
     if (phrase_.outro)
         for (u32 i = 0; i < shards_.count; ++i) shards_.homing[i] = 1;
-    // The run's end: the outro's last bar line.
+    // The run's end: the outro's last bar line (a timed mode's: the form's last; README.md 6, the last downbeat: every body alive
+    // pops in one ring from the ship outward, with no score and no Shards).
     DirectorState& d = director_;
+    if (d.formCount && !d.runEnded && phrase_.ended) {
+        Enemies& e = enemies_;
+        for (u32 i = 0; i < e.count; ++i)
+            if (!(e.flags[i] & kFlagDead)) e.flags[i] |= kFlagDead;
+        if (boss_.active && isMiniBoss(boss_.kind)) boss_.active = false;
+        d.outroBar = phrase_.bar;
+        d.outroBars = 0;
+    }
     if (d.outroBar != kNoBar && !d.runEnded && phrase_.ended) {
         d.runEnded = true;
         Event ev;

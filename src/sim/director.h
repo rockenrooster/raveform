@@ -69,6 +69,8 @@ struct Phrase {
     bool held = false;         // M5: a bar of the middle Drop past its length, held for the mini-boss
     bool outro = false;        // M8: ONE TRACK's outro after its boss (a Break; no Trio opens, the Shards fly in)
     bool ended = false;        // M8: past the outro's last bar line: the run is over
+    u8 wave = 0;               // M8 FULL BLAST: the wave (1-4) of this Build or Drop (0: the opening)
+    u16 barsLeft = 0;          // M8 timed modes: bars to the run's last bar line
     float bpm = 120.0f;        // this bar's tempo (the Build's last bar at 85%; the Track change ramps)
     float trackBpm = 120.0f;   // the Track's own tempo
 
@@ -129,6 +131,11 @@ struct DirectorState {
     // Drop, every later act the set's Track-change Break into its Track, a Build and the Drop (modes.json forms). 0: the set's.
     u8 actForm = 0;
     u8 actGroove = 4, actBuild = 4;
+    // M8 timed modes (design/modes/README.md 6; FULL BLAST, TRACERS, SONGLINE): a fixed form (modes.json forms) on the run's Track at
+    // its second cycle's numbers; past its last bar the run is over. formCount 0: none.
+    u8 formCount = 0;
+    u8 formKind[12] = {};  // sim::FormKind
+    u8 formBars[12] = {};
 };
 
 // Where bar `bar` of the run sits, given what the director knows now.
