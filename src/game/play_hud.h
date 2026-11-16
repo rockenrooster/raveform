@@ -172,6 +172,9 @@ Vec3 hudColour(const Look& look, const LookVariant& variant, Vec3 c, float inten
 // screen's pieces fade in and out (the HUD batch is additive); 1 is the normal.
 void setHudFade(float level);
 float hudFade();
+// 2026-11-16 (the owner: the pause's controls hard to see mid/late game): the level of the run's HUD under a screen (the pause:
+// 0.3), under every setHudFade and the Track card; 1 again before the screen's own controls are drawn. Sets the fade to it.
+void setHudUnder(float level);
 
 void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookVariant& variant, const Palettes& palettes,
              const Palette& palette,

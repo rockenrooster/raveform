@@ -19,8 +19,19 @@ layout(push_constant) uniform Push {
     vec4 xform;   // logical px per world unit, offset x, offset y, logical px per ref px (x line width)
     vec4 misc;    // ornament and core half width (ref px), ornament and core intensity (of the hull)
     vec4 extra0;  // palette accent (linear), enemy kick swell (scale multiplier)
-    vec4 extra1;
+    vec4 extra1;  // w: the layer's level (0 = as drawn; see levelled)
 } pc;
+
+// A layer's level (pc.extra1.w in (0, 1)): every segment's opacity scaled by it (capsule.vert's levelled: the threat layer
+// faded with the run behind the pause, 2026-11-16).
+float levelled(float flags) {
+    float level = pc.extra1.w;
+    if (level <= 0.0 || level >= 0.999) return flags;
+    float a8 = floor(flags / 8.0 + 0.001);
+    float base = flags - 8.0 * a8;
+    float op = (a8 < 0.5 ? 255.0 : a8) * level;
+    return base + 8.0 * max(1.0, floor(op + 0.5));
+}
 
 layout(location = 0) flat out vec3 vC0;
 layout(location = 1) flat out vec3 vC1;
@@ -94,7 +105,7 @@ void main() {
     vec2 pos = p0 + dir * along + nrm * across;
 
     vLocal = vec2(along, across);
-    vShape = vec3(len, r, flags);
+    vShape = vec3(len, r, levelled(flags));
     vC0 = colourAt(a0, layer, mode) * intensity;
     vC1 = colourAt(a1, layer, mode) * intensity;
 

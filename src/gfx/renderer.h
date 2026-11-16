@@ -151,6 +151,7 @@ struct FrameDraw {
     GlyphBatch threatGlyphRims;   // priority layer (look.md §9): every rim, ships' and threats' (kGlyphFlat)
     GlyphBatch priorityShipCores; // then the ships' cores
     GlyphBatch threatGlyphCores;  // then the threats' cores
+    CapsuleBatch under;        // after the threat layer, premultiplied over: dark backings under the screens' controls
     CapsuleBatch hud;          // after tone mapping, additive (dev overlay)
 };
 
@@ -193,6 +194,7 @@ struct FrameParams {
     bool bloom = true;                  // false: no bloom passes, strength 0 (acceptance "bloom off")
     float bloomPump = 1.0f;             // beat and event multipliers on the bloom strength
     float exposurePump = 1.0f;
+    float threatLevel = 1.0f;           // the threat layer's opacity (after the tone map, so exposure never reaches it): under a screen
     bool vignette = false;              // time-driven effects are off in stills
     float vignetteAmount = -1.0f;       // < 0: the look's amount; the Build bar tightens it
     bool dither = true;
@@ -458,8 +460,9 @@ private:
 
     GpuBuffer dynamic_;   // every frame's batches, one slice per frame in flight
     VkDeviceSize frameBytes_ = 0;
-    Region regScene_, regSparkles_, regPools_, regTris_, regRims_, regCores_, regHud_, regGlyphs_, regThreatGlyphRims_,
+    Region regScene_, regSparkles_, regPools_, regTris_, regRims_, regCores_, regHud_, regUnder_, regGlyphs_, regThreatGlyphRims_,
         regThreatGlyphCores_, regPriorityShips_;
+    static constexpr u32 kUnderCap = 512;  // the screens' dark backings (FrameDraw::under)
     GpuBuffer uniforms_;  // composite constants, one slot per frame in flight
     VkDeviceSize uniformStride_ = 0;
     GpuBuffer static_;    // the replayed scene file

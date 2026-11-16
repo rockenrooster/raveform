@@ -498,6 +498,9 @@ void Play::screenPauseCoop(Ui& ui) {
     const float s = ui.s(), W = ui.W(), cx = 0.5f * W;
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const Vec3 gold = palettes_->player[3];
+    ui.scrim(kPauseScrim * (1.0f - pauseCountU()));  // (2026-11-16: as the solo pause's, screenPause)
+    ui.setBacking(kPauseBacking);
+    ui.setPressFx(true);
     ui.tube({cx, 300.0f * s}, 96.0f * s, white, palette_->accent, palette_->hue[2], 1.5f, "PAUSED");
     ui.text({cx, 344.0f * s}, 16.0f * s, palette_->accent, 1.1f, "FOR EVERYONE IN THE ROOM");
     {
@@ -539,10 +542,14 @@ void Play::screenPauseCoop(Ui& ui) {
         if (ui.pill(30, {cx - 200.0f * s, 700.0f * s}, {320.0f * s, 100.0f * s}, "YES", 30.0f * s, false)) {
             askQuit_ = false;
             keyPrimary_ = keyBack_ = false;
+            if (band_) band_->playSfx(audio::Sfx::UiConfirm);
             homeTap();  // c9218dc (screens.md "Every other way in or out of a run"): LEAVE RUN takes home's way
             return;
         }
-        if (ui.pill(31, {cx + 200.0f * s, 700.0f * s}, {320.0f * s, 100.0f * s}, "NO", 30.0f * s, true) || keyBack_) askQuit_ = false;
+        if (ui.pill(31, {cx + 200.0f * s, 700.0f * s}, {320.0f * s, 100.0f * s}, "NO", 30.0f * s, true) || keyBack_) {
+            askQuit_ = false;
+            if (band_) band_->playSfx(audio::Sfx::UiBack);
+        }
         keyPrimary_ = keyBack_ = false;
         return;
     }

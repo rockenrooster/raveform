@@ -87,8 +87,13 @@ void groupDigits(char* out, size_t cap, u64 v) {
 namespace {
 float g_hudScale = 1.0f;  // M6 (SETTINGS, LOOK): HUD text and touch controls at 90 / 100 / 115 / 130%
 float g_hudFade = 1.0f;   // M6 (screens.md "Transitions"): the level everything on the HUD batch is drawn at
+float g_hudUnder = 1.0f;  // 2026-11-16: the run's HUD under a screen (setHudUnder)
 }  // namespace
-void setHudFade(float level) { g_hudFade = level < 0.0f ? 0.0f : (level > 1.0f ? 1.0f : level); }
+void setHudFade(float level) { g_hudFade = (level < 0.0f ? 0.0f : (level > 1.0f ? 1.0f : level)) * g_hudUnder; }
+void setHudUnder(float level) {
+    g_hudUnder = level < 0.0f ? 0.0f : (level > 1.0f ? 1.0f : level);
+    g_hudFade = g_hudUnder;
+}
 float hudFade() { return g_hudFade; }
 void setHudScale(float scale) { g_hudScale = scale > 0.5f && scale < 2.0f ? scale : 1.0f; }
 float hudScale() { return g_hudScale; }
@@ -776,7 +781,10 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         }
         // (M6, screens.md "Transitions": the card writes itself as always while the drop-in brings the rest of the HUD in)
         const float hudLevel = g_hudFade;
-        g_hudFade = 1.0f;
+        g_hudFade = g_hudUnder;  // (under a screen, the card too: setHudUnder)
+        // (2026-11-16: under the pause the card, frozen mid-flight across its controls, is not drawn; it comes back in the count-in's
+        // second half, with the HUD's level)
+        if (g_hudUnder < 0.5f) u = -1.0f;
         if (u >= 0.0f && u < kCardOut + kCardStreak) {
             const float level = kCardLevel;
             const float write = clampf(u / kCardWrite, 0.0f, 1.0f);

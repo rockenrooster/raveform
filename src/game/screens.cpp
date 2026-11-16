@@ -95,6 +95,9 @@ void Ui::begin(FrameDraw& d, const VectorFont& font, const Look& look, const Loo
     boxCount_ = 0;
     quiet_ = 0;
     screen_ = "";
+    backing_ = 0.0f;
+    pressFx_ = pressBegan_ = false;
+    tappedPill_ = 0;
 }
 
 void Ui::end() {
@@ -102,7 +105,30 @@ void Ui::end() {
         active_ = 0;
         dragging_ = 0;
     }
+    drawEcho();
     checkLayout();
+}
+
+void Ui::scrim(float alpha) {
+    // One capsule wider and taller than the screen, black at `alpha`, on the layer over the run's priority layer (FrameDraw::under).
+    if (alpha <= 0.0f) return;
+    d_->under.line({-0.5f * W_, 0.5f * H_}, {1.5f * W_, 0.5f * H_}, H_, Vec3{}, Vec3{}, capsuleOpacity(alpha * hudFade()));
+}
+
+void Ui::drawEcho() {
+    // A tapped pill's echo (setPressFx): a white flash inside it over the first 0.12 s, its outline swelling 22 px out and fading
+    // over 0.35 s, on whatever screen the tap led to.
+    constexpr float kEchoS = 0.35f, kFlashS = 0.12f;
+    if (echoT_ >= kEchoS) return;
+    const float u = echoT_ / kEchoS;
+    const float r = 0.5f * (echoB_.y - echoA_.y);
+    const Vec2 c = (echoA_ + echoB_) * 0.5f;
+    if (echoT_ < kFlashS) {
+        const Vec3 g = col(Vec3{1.0f, 1.0f, 1.0f}, 0.35f * (1.0f - echoT_ / kFlashS));
+        d_->hud.line({echoA_.x + r, c.y}, {echoB_.x - r, c.y}, r, g, g, 0);
+    }
+    const float grow = 22.0f * s_ * (1.0f - (1.0f - u) * (1.0f - u));
+    roundRect(echoA_ - Vec2{grow, grow}, echoB_ + Vec2{grow, grow}, r + grow, 1.5f * s_, echoTone_, 1.8f * (1.0f - u));
 }
 
 bool Ui::findControl(const char* label, Vec2& centre) const {
@@ -240,12 +266,27 @@ bool Ui::pill(u32 id, Vec2 c, Vec2 size, const char* label, float cap, bool prim
     const Vec2 a = c - size * 0.5f, b = c + size * 0.5f;
     bool pressed = false;
     keep(a, b, true, label);
+    if (enabled && p_.pressed && inside(a, b)) pressBegan_ = true;
     const bool tapped = enabled && hit(id, a, b, pressed);
     // screens.md "Title" (2026-11-14, the folder's rule: clear, high-contrast hover and pressed states): with a mouse over it, a white
     // fill at 0.10, the outline 3 px at 1.6 and the label at 1.5.
     const bool over = enabled && !pressed && hover(a, b);
     const Vec3 tone = primary ? player_ : (colour.x + colour.y + colour.z > 0.0f ? colour : Vec3{1.0f, 1.0f, 1.0f});
     const float r = 0.5f * size.y;
+    if (backing_ > 0.0f) {
+        // (setBacking: a dark pill 6 px larger all round, over the run's priority layer, so the control reads on any frame behind)
+        const float m = 6.0f * s_;
+        d_->under.line({a.x + r, c.y}, {b.x - r, c.y}, r + m, Vec3{}, Vec3{}, capsuleOpacity(backing_ * hudFade()));
+    }
+    if (tapped) {
+        tappedPill_ = id;
+        if (pressFx_) {
+            echoA_ = a;
+            echoB_ = b;
+            echoTone_ = tone;
+            echoT_ = 0.0f;
+        }
+    }
     // screens.md: a control that cannot be used yet is drawn disabled (outline at 0.3, label at 0.4), unfilled.
     if (enabled && (pressed || selected || primary)) {
         // Glass: a capsule as tall as the pill (primary controls are always filled in their colour).
@@ -338,7 +379,14 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
         keyNav_ = 0;
         if (!(trans_ == Trans::Wait && (transFrom_ == Screen::Title || transFrom_ == Screen::Modes))) keyBack_ = false;
     }
+    ui_.tick(frameDt_);
     ui_.begin(d, *font_, *look_, variant, W, H, insetMin, insetMax, ptr, palettes_->player[seat_ < kMaxPlayers ? seat_ : 0], palette_->accent);
+    // (2026-11-16: SETTINGS opened from the pause keeps its backing and press effects)
+    if (screen_ == Screen::Settings && settingsBack_ == Screen::Paused) {
+        ui_.scrim(kPauseScrim);
+        ui_.setBacking(kPauseBacking);
+        ui_.setPressFx(true);
+    }
     if (trans_ != Trans::None) ui_.setQuiet(true);  // (the layout rule is for screens at rest)
     static const char* const kNames[] = {"notice", "title", "run", "pause", "game over", "settings", "co-op join", "co-op lobby", "local network", "credits", "modes"};
     ui_.setScreenName(static_cast<u32>(screen_) < 11 ? kNames[static_cast<u32>(screen_)] : "screen");
@@ -453,6 +501,11 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
         default: break;
     }
     drawDropGather(ui_);  // (screens.md "Transitions": RETRY, RESTART and START shrink into the point in the wait's last half beat)
+    if (ui_.pressFx() && ui_.pressBegan()) {
+        // (2026-11-16, the pause's controls: a finger landing on one is heard and felt at once, before the tap's own sound)
+        if (band_) band_->playSfx(audio::Sfx::UiTick);
+        pulse(0, true);
+    }
     ui_.end();
     uiPtr_.pressed = uiPtr_.released = false;
 }
@@ -586,6 +639,12 @@ void Play::screenPause(Ui& ui) {
     const float s = ui.s(), W = ui.W(), cx = 0.5f * W;
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const Vec3 gold = palettes_->player[3];
+    // 2026-11-16 (the owner: "pause menu buttons need more visibility and visual/audio interaction, sometimes they are hard to see
+    // when pausing mid/late game"): a dark backing under each control and the press effects (renderScreens: a tick and a light
+    // pulse as a finger lands on one); under all of it a scrim over the run, lifting over the count-in.
+    ui.scrim(kPauseScrim * (1.0f - pauseCountU()));
+    ui.setBacking(kPauseBacking);
+    ui.setPressFx(true);
     ui.tube({cx, 300.0f * s}, 96.0f * s, white, palette_->accent, palette_->hue[2], 1.5f, "PAUSED");
     // The run line, in gold.
     {
@@ -627,6 +686,7 @@ void Play::screenPause(Ui& ui) {
         if (ui.pill(30, {cx - 200.0f * s, 700.0f * s}, {320.0f * s, 100.0f * s}, "YES", 30.0f * s, false)) {
             const bool quit = askQuit_;
             askQuit_ = askRestart_ = false;
+            if (band_) band_->playSfx(audio::Sfx::UiConfirm);
             if (quit) {
                 endRun(false);
                 toTitle();
@@ -635,7 +695,10 @@ void Play::screenPause(Ui& ui) {
                 dropInTap(Screen::Paused);  // c9218dc: the pause's RESTART is RETRY's drop-in
             }
         }
-        if (ui.pill(31, {cx + 200.0f * s, 700.0f * s}, {320.0f * s, 100.0f * s}, "NO", 30.0f * s, true) || keyBack_) askQuit_ = askRestart_ = false;
+        if (ui.pill(31, {cx + 200.0f * s, 700.0f * s}, {320.0f * s, 100.0f * s}, "NO", 30.0f * s, true) || keyBack_) {
+            askQuit_ = askRestart_ = false;
+            if (band_) band_->playSfx(audio::Sfx::UiBack);
+        }
         keyPrimary_ = keyBack_ = false;
         return;
     }

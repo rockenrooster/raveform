@@ -1341,9 +1341,13 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
             hs.bossFlashPart = bossHitPart_;
         }
     }
+    // 2026-11-16 (the owner: "pause menu buttons need more visibility ... hard to see when pausing mid/late game"): under a screen the
+    // run's own HUD and its priority layer fade with the run behind (runUnderLevel).
+    params.threatLevel = runUnderLevel(false);
     if (runHud) {
         // M6 (screens.md "Transitions"): the drop-in brings the HUD in over its second beat (the Track name card writes itself as
         // always).
+        setHudUnder(runUnderLevel(true));
         setHudFade(flow_ && trans_ == Trans::Arrive ? clampf(transBeats(transLine_) - 1.0f, 0.0f, 1.0f) : 1.0f);
         drawHud(d, *font_, *look_, variant, *palettes_, *palette_, hs, touch_, W, H, insetMin, insetMax);
         if (modeRun()) drawLoadIn(d, variant);  // M8: the kit's icons spiralling in
@@ -1352,9 +1356,36 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         if (w.setup().versus) drawVersusCount(d, variant, W, H);  // M8: a versus match's count, side by side
         if (w.setup().mode == Mode::Songline) drawSongCount(d, variant, W, H);  // M8 SONGLINE: the count
         if (w.setup().versus || w.director().formCount) drawVersusWorld(d, variant);  // M8: the crown, BACK IN n (README.md 7: timed modes too)
+        setHudUnder(1.0f);
         setHudFade(1.0f);
     }
     if (flow_) renderScreens(d, params, variant, W, H, insetMin, insetMax);
+}
+
+float Play::runUnderLevel(bool hud) const {
+    // The run's HUD (the Track card, a boss's lines, the rows; `hud`) and its priority layer (every bullet's rim and core, drawn
+    // after the tone map, which the screens' dimming of the run never reached) under a screen over the run: under the pause the HUD
+    // is gone (it is drawn after the controls' backings: a card or a Boost's words frozen across them would read through; the
+    // pause's own line names the score, the Track, the time and the Chain) and the bullets at 0.3, back to full over the count-in's
+    // three beats (the player sees the threats as the run goes on); under SETTINGS from the pause the same; under the run's end 0.4.
+    if (!flow_) return 1.0f;
+    const float kUnder = hud ? 0.0f : 0.3f;
+    if (screen_ == Screen::Paused) return kUnder + (1.0f - kUnder) * pauseCountU();
+    if (screen_ == Screen::Settings && settingsBack_ == Screen::Paused) return kUnder;
+    if (screen_ == Screen::GameOver) return 0.4f;
+    return 1.0f;
+}
+
+float Play::pauseCountU() const {
+    // The pause's count-in so far, 0 (at rest, or not counting) to 1 (the run goes on): solo, or the room's shared one.
+    float u = 0.0f;
+    if (coop()) {
+        if (session_ && session_->resuming())
+            u = static_cast<float>(1.0 - (session_->resumeSong() - session_->songAt(session_->hostNow())) / (kCountInBeats * kTicksPerBeat));
+    } else if (countIn_) {
+        u = static_cast<float>(1.0 - (countInEnd_ - countInNow()) / (kCountInBeats * kTicksPerBeat));
+    }
+    return clampf(u, 0.0f, 1.0f);
 }
 
 void Play::renderProbeTitle(FrameDraw& d, FrameParams& params, const LookVariant& variant, float W, float H, Vec2 insetMin, Vec2 insetMax) {

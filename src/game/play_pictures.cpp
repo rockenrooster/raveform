@@ -48,6 +48,14 @@ bool Play::scriptSetupB() {
             settingsTab_ = is(p, "screen_settings_controls") ? 1 : (is(p, "screen_settings_look") ? 2 : 0);
         } else {
             screen_ = Screen::Run;  // pause and game over start from a run
+            if (starts(p, "screen_pause_tap")) stripStride_ = 4;  // (a strip of the tap's echo and the count-in's first beats)
+            if (std::strstr(p, "_late")) {
+                // (2026-11-16, the pause's controls mid game: ten minutes of the bot's run first, hits costing nothing; the screens
+                // come on with the first drawn frame, as under them the fast-forward's run would wait for a drop-in)
+                scriptFastForwardS_ = 600.0f;
+                w.rules().godMode = true;
+                flow_ = false;
+            }
         }
         return true;
     }
@@ -176,11 +184,21 @@ bool Play::scriptInputB(StickInput& in) {
     if (starts(p, "screen_")) {
         // The attract run (bot); the scripted screens.
         in = bot_.think(w, 0, controller_, clock_.heardNow());
-        if (is(p, "screen_pause")) {
+        if (is(p, "screen_pause") || starts(p, "screen_pause_rest") || starts(p, "screen_pause_press") || starts(p, "screen_pause_tap")) {
+            // screen_pause: two beats into the count-in; _rest: the menu at rest; _press (2026-11-16, the owner: "pause menu buttons
+            // need more visibility and visual/audio interaction"): a finger held on RESTART; _late: ten minutes into the run
+            const bool count = is(p, "screen_pause");
+            if (!ffRunning_ && !flow_) flow_ = true;  // (_late: the screens from the first drawn frame)
             if (t == 240) pauseRun();
-            if (t == 300) beginCountIn();
+            if (t == 300 && count) beginCountIn();
             if (t >= 240) in = StickInput{};
-            if (t == 300 + 96 && captureFrom_ < 0) captureFrom_ = now;  // two beats into the count-in
+            Vec2 c;
+            if (t == 264 && starts(p, "screen_pause_press") && ui_.findControl("RESTART", c)) uiPointer(c, true);
+            const bool tap = starts(p, "screen_pause_tap");  // (RESUME tapped: down on 264, up on 268; the strip from the tap)
+            if (tap && (t == 264 || t == 268) && ui_.findControl("RESUME", c)) uiPointer(c, t == 264);
+            if (tap && t == 268 && captureFrom_ < 0) captureFrom_ = now + 1;
+            if (count && t == 300 + 96 && captureFrom_ < 0) captureFrom_ = now;  // two beats into the count-in
+            if (!count && !tap && t == 270 && captureFrom_ < 0) captureFrom_ = now;
         } else if (is(p, "screen_game_over")) {
             if (t == 300) {
                 PlayerState& pl = w.playerMut(0);

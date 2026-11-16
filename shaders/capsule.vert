@@ -9,11 +9,26 @@ layout(location = 1) in vec4 inC0;     // colour at p0 (linear HDR), half width 
 layout(location = 2) in vec4 inC1;     // colour at p1, flags (1 flat start, 2 flat end, 4 disc, 8 x opacity)
 
 layout(push_constant) uniform Push {
-    vec4 view;   // logical width, height, 2/width, 2/height
-    vec4 rot;    // pre-rotation rows (r00, r01, r10, r11)
-    vec4 xform;  // content scale, offset x, offset y, line width factor (look variant)
+    vec4 view;    // logical width, height, 2/width, 2/height
+    vec4 rot;     // pre-rotation rows (r00, r01, r10, r11)
+    vec4 xform;   // content scale, offset x, offset y, line width factor (look variant)
     vec4 misc;
+    vec4 extra0;
+    vec4 extra1;  // w: the layer's level (0 = as drawn; see levelled)
 } pc;
+
+// A layer's level (pc.extra1.w in (0, 1)): every segment's opacity scaled by it, so a premultiplied layer blended over the
+// tone-mapped image fades as a whole (2026-11-16, the owner: the pause's controls hard to see mid game: the threat layer is drawn
+// after the tone map, so the pause's dimming of the run never reached the bullets). capsule.frag reads the opacity from the flags
+// (8 x alpha in 1/255 above the ends and disc bits; 0 = opaque).
+float levelled(float flags) {
+    float level = pc.extra1.w;
+    if (level <= 0.0 || level >= 0.999) return flags;
+    float a8 = floor(flags / 8.0 + 0.001);
+    float base = flags - 8.0 * a8;
+    float op = (a8 < 0.5 ? 255.0 : a8) * level;
+    return base + 8.0 * max(1.0, floor(op + 0.5));
+}
 
 layout(location = 0) flat out vec3 vC0;
 layout(location = 1) flat out vec3 vC1;
@@ -39,7 +54,7 @@ void main() {
     vec2 pos = p0 + dir * along + nrm * across;
 
     vLocal = vec2(along, across);
-    vShape = vec3(len, r, flags);
+    vShape = vec3(len, r, levelled(flags));
     vC0 = inC0.rgb;
     vC1 = inC1.rgb;
 

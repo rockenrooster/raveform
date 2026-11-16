@@ -357,6 +357,7 @@ bool Renderer::init(SDL_Window* window, const RendererDesc& desc, const Look& lo
     region(regRims_, desc.maxThreat, sizeof(CapsuleGpu));
     region(regCores_, desc.maxThreat, sizeof(CapsuleGpu));
     region(regHud_, desc.maxHud, sizeof(CapsuleGpu));
+    region(regUnder_, kUnderCap, sizeof(CapsuleGpu));
     region(regGlyphs_, desc.maxGlyphs, sizeof(GlyphInstanceGpu));
     region(regThreatGlyphRims_, desc.maxThreatGlyphs, sizeof(GlyphInstanceGpu));
     region(regThreatGlyphCores_, desc.maxThreatGlyphs, sizeof(GlyphInstanceGpu));
@@ -1243,6 +1244,7 @@ bool Renderer::beginFrame(FrameDraw& draw) {
     draw.threatRims.begin(reinterpret_cast<CapsuleGpu*>(base + regRims_.offset), regRims_.capacity);
     draw.threatCores.begin(reinterpret_cast<CapsuleGpu*>(base + regCores_.offset), regCores_.capacity);
     draw.hud.begin(reinterpret_cast<CapsuleGpu*>(base + regHud_.offset), regHud_.capacity);
+    draw.under.begin(reinterpret_cast<CapsuleGpu*>(base + regUnder_.offset), regUnder_.capacity);
     draw.glyphs.begin(glyphStaging_[0], glyphKeys_[0], regGlyphs_.capacity);
     draw.threatGlyphRims.begin(glyphStaging_[1], glyphKeys_[1], regThreatGlyphRims_.capacity);
     draw.threatGlyphCores.begin(glyphStaging_[2], glyphKeys_[2], regThreatGlyphCores_.capacity);
@@ -1691,8 +1693,10 @@ bool Renderer::endFrame(const FrameDraw& draw, const FrameParams& params, bool c
         vkCmdPushConstants(cmd, postLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof post, &post);
         vkCmdDraw(cmd, 3, 1, 0, 0);
 
-        // Threat layer: every rim (capsules, then glyphs), then every core; never shaken (look.md §7).
+        // Threat layer: every rim (capsules, then glyphs), then every core; never shaken (look.md §7). Under a screen it fades with
+        // the run behind (params.threatLevel: every segment's opacity scaled in capsule.vert / glyph.vert; 0 = as drawn).
         rotationMatrix(swapchain_.rotationDeg, geo.rot);
+        geo.extra1[3] = params.threatLevel < 0.999f ? std::fmax(params.threatLevel, 0.01f) : 0.0f;
         const auto threatGlyphs = [&](u32 batch, VkDeviceSize offset) {
             if (!glyphRunCount_[batch]) return;
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, glyphThreat_);
@@ -1713,6 +1717,13 @@ bool Renderer::endFrame(const FrameDraw& draw, const FrameParams& params, bool c
         pushGeo(false, 1.0f);
         bindAndDraw(dynamic_, frameBase + regCores_.offset, 4, draw.threatCores.count());
         threatGlyphs(2, regThreatGlyphCores_.offset);
+        geo.extra1[3] = 0.0f;
+        // The screens' dark backings (2026-11-16, the owner: the pause's controls hard to see mid game), over the threat layer.
+        if (draw.under.count()) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, threat_);
+            pushGeo(false, 1.0f);
+            bindAndDraw(dynamic_, frameBase + regUnder_.offset, 4, draw.under.count());
+        }
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, hudAdd_);
         pushGeo(false, 1.0f);
         bindAndDraw(dynamic_, frameBase + regHud_.offset, 4, draw.hud.count());

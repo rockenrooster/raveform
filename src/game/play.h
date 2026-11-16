@@ -234,6 +234,8 @@ private:
     void pauseRun();
     void beginCountIn();
     double countInNow() const;
+    float runUnderLevel(bool hud) const;  // 2026-11-16: the run's HUD / priority layer under a screen (the pause: 0 / 0.3, up over the count-in)
+    float pauseCountU() const;            // the pause's count-in so far (0 at rest .. 1)
     void endRun(bool died);
     void openSettings(Screen back);
     void applySettings();

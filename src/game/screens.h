@@ -13,6 +13,10 @@ namespace rf {
 
 // GAME_DESIGN 11.4: the photosensitivity notice's three lines (the first launch; M7: the credits' PLAY SAFE).
 extern const char* const kNoticeLines[3];
+// 2026-11-16: the dark backing under the pause's controls (Ui::setBacking): the run behind kept out to this share under each; and the
+// scrim over the whole run behind the pause (Ui::scrim: the exposure's dimming cannot dim a late run's saturated light).
+constexpr float kPauseBacking = 0.75f;
+constexpr float kPauseScrim = 0.8f;  // (blended in linear light: 0.8 leaves a saturated white at about half its brightness)
 
 struct UiPointer {
     Vec2 pos;
@@ -63,6 +67,19 @@ public:
     // M8 part 7 (--flow-test): the centre of the control drawn last frame with this label (false: none was).
     bool findControl(const char* label, Vec2& centre) const;
 
+    // 2026-11-16 (the owner: "pause menu buttons need more visibility and visual/audio interaction, sometimes they are hard to see
+    // when pausing mid/late game"): a screen over a live run asks, each frame, for a dark backing under each pill (the image
+    // behind kept out to `alpha`, drawn over the run's priority layer) and for the press effects (a tapped pill's echo: a white
+    // flash in it and its outline swelling out and fading over 0.35 s, drawn on whatever screen follows). pressBegan / tappedPill:
+    // this frame's, for the screen's sound and haptics. Both settings last one frame (begin clears them).
+    void setBacking(float alpha) { backing_ = alpha; }
+    void scrim(float alpha);  // a dark veil over the whole image behind the screen (before any backing: call it first)
+    void setPressFx(bool on) { pressFx_ = on; }
+    void tick(float dt) { echoT_ += dt; }
+    bool pressBegan() const { return pressBegan_; }
+    bool pressFx() const { return pressFx_; }
+    u32 tappedPill() const { return tappedPill_; }
+
     // M4 stage B (screens.md, "Rules for every screen"): controls never touch: at least 24 px between any two, and
     // between a control and a line of text. Every control and every line drawn between begin() and end() is kept
     // (a control's own label and the lines inside a control are not lines of their own); end() reports a pair that
@@ -103,6 +120,14 @@ private:
     Vec3 player_, accent_;
     u32 active_ = 0;     // the control the pointer went down on
     u32 dragging_ = 0;   // a fader being dragged
+    // (the press effects: see setBacking)
+    void drawEcho();
+    float backing_ = 0.0f;
+    bool pressFx_ = false, pressBegan_ = false;
+    u32 tappedPill_ = 0;
+    Vec2 echoA_, echoB_;
+    Vec3 echoTone_;
+    float echoT_ = 1e9f;
 };
 
 }  // namespace rf

@@ -4,6 +4,28 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-16, the pause's controls stand out mid and late game
+
+The owner: "pause menu buttons need more visibility and visual/audio interaction, sometimes they are hard to see when pausing
+mid/late game." Three causes, seen in pictures ten minutes into a run: the pause dims the run by its exposure (x 0.2), which cannot
+dim a late run's saturated light (hundreds of overlapping lines stay white after the tone map); the priority layer (every bullet's
+rim and core, the ships' cores) is drawn after the tone map, so the dimming never reached it; and the run's own HUD went on at full
+level under the controls (a frozen Track card across RESUME, RESTART and SETTINGS, a Boost's words across QUIT RUN). Now:
+- A scrim over the run behind the pause (`Ui::scrim`, black at 0.8 on a new layer `FrameDraw::under`, drawn after the priority
+  layer and before the HUD), lifting over the count-in's three beats; under SETTINGS opened from the pause too.
+- A dark backing under each of the pause's controls (`Ui::setBacking`, 0.75, 6 px larger than the pill).
+- The priority layer fades with the run (`FrameParams::threatLevel`: each segment's opacity scaled in `capsule.vert` and
+  `glyph.vert`): 0.3 under the pause and SETTINGS from it, 0.4 under a run's end, back to full over the count-in.
+- The run's HUD is gone under the pause (`setHudUnder`; the pause's own line names the score, the Track, the time and the Chain) and
+  returns over the count-in (the Track card from its second half).
+- Interaction: a finger landing on a control is heard (the interface tick) and felt (a light pulse) at once; a tapped control
+  leaves an echo (a white flash in it, its outline swelling 22 px out and fading over 0.35 s, on whatever screen follows); YES is
+  the confirm sound, NO the back sound (solo and co-op pause).
+
+Pictures (`--picture screen_pause_rest`, `screen_pause_press`, `screen_pause_tap` with `--strip 8`; `_late`: ten minutes of the
+bot's run first): `captures\pause\`, and on a Galaxy Tab A11+ (Mali-G615) the same. Debug: no validation message; the flow test's
+solo ways in and out pass. Not played by hand yet; `design/screens.md` "Pause" (the lead's file) does not have it.
+
 ## 2026-11-16, a tap during the title's intro works at once
 
 The owner: "It seems the menu buttons are locked until the full Raveform intro plays." As built (`design/screens.md` "Title"), an
