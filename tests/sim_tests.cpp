@@ -556,9 +556,11 @@ void testDirectorCycle() {
     const SpeciesTable& b = *g_species;
     CHECK(baseBudget(b, 1, 1, 3) == 2.0f && baseBudget(b, 1, 2, 3) == 3.5f && baseBudget(b, 1, 3, 3) == 6.0f);
     CHECK(baseBudget(b, 2, 3, 3) == 12.0f);
-    CHECK(baseBudget(b, 3, 1, 3) == 14.0f && baseBudget(b, 3, 3, 3) == 18.0f);
-    // Past a set list of three: Track 3's last plus a step a cycle (the first slice's rule); with ten, the data (M5).
-    CHECK(baseBudget(b, 4, 1, 3) == 18.0f + tuning::kEndlessBudgetStep && baseBudget(b, 4, 1, 10) == 20.0f && baseBudget(b, 10, 3, 10) == 60.0f);
+    // (2026-11-15, the owner: the set list's Tracks 3-5 at 90%: tuning::kTrackEnemyScale)
+    CHECK(baseBudget(b, 3, 1, 3) == 14.0f * tuning::kTrackEnemyScale[3] && baseBudget(b, 3, 3, 3) == 18.0f * tuning::kTrackEnemyScale[3]);
+    // Past a set list of three: Track 3's last (as written) plus a step a cycle (the first slice's rule); with ten, the data (M5).
+    CHECK(baseBudget(b, 4, 1, 3) == 18.0f + tuning::kEndlessBudgetStep && baseBudget(b, 4, 1, 10) == 20.0f * tuning::kTrackEnemyScale[4] &&
+          baseBudget(b, 10, 3, 10) == 60.0f);
     Phrase s;
     s.section = Section::Build;
     s.sectionBars = 4;
@@ -608,10 +610,12 @@ void testCrowd() {
     // Targets (species.json firstSlice.crowd): by Track and cycle, then rising a step a Track up to the max.
     const SpeciesTable::Crowd& c = g_species->crowd;
     CHECK(crowdTarget(c, 1, 1, 3) == 20.0f && crowdTarget(c, 1, 2, 3) == 60.0f && crowdTarget(c, 1, 3, 3) == 120.0f);
-    CHECK(crowdTarget(c, 2, 1, 3) == 150.0f && crowdTarget(c, 3, 3, 3) == 300.0f);
+    // (2026-11-15, the owner: the set list's Tracks 3-5 at 90%: tuning::kTrackEnemyScale; the loop goes on from the data as written)
+    CHECK(crowdTarget(c, 2, 1, 3) == 150.0f && crowdTarget(c, 3, 3, 3) == 300.0f * tuning::kTrackEnemyScale[3]);
     CHECK(crowdTarget(c, 4, 1, 3) == 320.0f && crowdTarget(c, 30, 1, 3) == 400.0f);
     // M5: with ten Tracks in the set list their own targets (species.json Tracks 4 to 10), the max from Track 8.
-    CHECK(crowdTarget(c, 4, 1, 10) == 310.0f && crowdTarget(c, 7, 3, 10) == 390.0f && crowdTarget(c, 8, 2, 10) == 400.0f && crowdTarget(c, 11, 1, 10) == 400.0f);
+    CHECK(crowdTarget(c, 4, 1, 10) == 310.0f * tuning::kTrackEnemyScale[4] && crowdTarget(c, 7, 3, 10) == 390.0f && crowdTarget(c, 8, 2, 10) == 400.0f &&
+          crowdTarget(c, 11, 1, 10) == 400.0f);
     Phrase p;
     p.section = Section::Groove;
     CHECK(crowdScale(c, p) == 1.0f);

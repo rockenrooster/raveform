@@ -4,6 +4,28 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, balance for young players (2): fewer enemies in Tracks 3-5, slower Caroms
+
+The owner: "tone down the number of enemies 10% in tracks 3-5 and slower Caroms". `tuning::kTrackEnemyScale` (0.9 for the
+set list's Tracks 3-5, in `baseBudget` and `crowdTarget`: the threat budget, the crowd target, and so the Drop's mega-wave and
+the elites the budget buys; the loop as written); Caroms (species.json) speed 180 to 150 and the bounces' cap x 2.0 to x 1.5
+(their top speed at tier 5 from 504 to 315 wu/s). The child-like bot over 20 runs of 60 minutes:
+
+| | Before today | An Extra Life a Track, three bosses x 0.9 | And these |
+|---|---|---|---|
+| The first run finished the ten Tracks | 3 of 20 | 2 of 20 | **9 of 20** |
+| First death (median) | 6.0 min | 5.8 min | **17.2 min** |
+| First deaths before minute 10 | 12 of 20 | 14 of 20 | 9 of 20 |
+
+The default seed's clean loopback soak (`test.ps1`) now fails by a hair: on-screen enemy error RMS 12.10 wu against its limit of
+12, nearly all of it the Hive's darts on the clients (its "called bodies": RMS 376 wu over 96 samples; Shoals 1-2 s after their
+last correction 1,116 wu). It is not this change: this run's timing now meets the Hive at a bad moment (seeds 2, 3 and 4 pass,
+at 2.1, 3.1 and 4.7 wu, two of them with the Hive). The cause: `World::hiveReslot` runs on every device at each bar line and
+ranks the live darts by spawn number; a dart's slot (`e.a`, `e.b`) comes with the host's corrections, but the count each hive's
+spacing uses (`MiniState::slots`) is each device's own, so when a client's live darts differ from the host's at the bar line (a
+kill predicted here, or one the host has not told yet) every dart of that hive stands somewhere else for the whole bar. To fix:
+the host owns the slots (sends the count with its shape decisions, or slots that do not shift when a dart dies).
+
 ## 2026-11-15, balance for young players: an Extra Life every Track; Cadence, Fata Morgana and Event Horizon x 0.9
 
 The owner: "This game should be 'easy' and beatable most of the time. (playable by 5-6 year olds)". Measured over 20 runs of

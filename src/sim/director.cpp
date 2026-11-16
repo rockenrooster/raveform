@@ -130,7 +130,7 @@ float baseBudget(const SpeciesTable& s, u32 track, u32 cycle, u32 songs) {
         const u32 t = track - 1;
         const u32 n = s.budgetCycles[t];
         if (n == 0) return 1.0f;
-        return s.budget[t][(cycle <= n ? cycle : n) - 1];
+        return s.budget[t][(cycle <= n ? cycle : n) - 1] * kTrackEnemyScale[track < 11 ? track : 0];
     }
     const u32 nl = s.budgetCycles[data - 1];
     const float last = nl ? s.budget[data - 1][nl - 1] : 1.0f;
@@ -149,7 +149,7 @@ float crowdTarget(const SpeciesTable::Crowd& c, u32 track, u32 cycle, u32 songs)
     if (track >= 1 && track <= data) {
         const u32 t = track - 1;
         const u32 n = c.targetCycles[t];
-        v = n ? c.target[t][(cycle <= n ? cycle : n) - 1] : 0.0f;
+        v = n ? c.target[t][(cycle <= n ? cycle : n) - 1] * kTrackEnemyScale[track < 11 ? track : 0] : 0.0f;
     } else {
         const u32 nl = c.targetCycles[data - 1];
         v = (nl ? c.target[data - 1][nl - 1] : 0.0f) + c.loopStep * static_cast<float>(track - data);

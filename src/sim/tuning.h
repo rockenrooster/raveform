@@ -99,6 +99,10 @@ constexpr float kDropScaleEnd = 1.2f;
 constexpr float kBossBudgetScale = 0.3f;     // kaleidos.md (quoted): 30%, fodder families only
 constexpr float kMegaWaveBars = 3.0f;        // the Drop's mega-wave spends 3 bars of Drop budget at once
 constexpr float kEndlessBudgetStep = 2.0f;   // per cycle past species.json's last budget (12/bar)
+// The owner, 2026-11-15 ("tone down the number of enemies 10% in tracks 3-5", for players of five or six): the set list's
+// Tracks 3-5 keep 90% of their threat budget and crowd target (and so of the Drop's mega-wave and the elites the budget buys);
+// the loop is as it was. Indexed by Track (0 unused).
+constexpr float kTrackEnemyScale[11] = {1.0f, 1.0f, 1.0f, 0.9f, 0.9f, 0.9f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
 constexpr u32 kDirectorAliveCap = 900;       // no new bodies while this many enemies live (perf contract; play test 1,
                                              // second pass: 600 -> 900, measured on the Moto's densest part)
 // A player's camera frame in the simulation (M3 stage C2: the crowd is counted in it, species.json
