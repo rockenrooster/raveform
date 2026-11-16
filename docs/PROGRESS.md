@@ -4,6 +4,30 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, each upgrade alone over whole runs (the owner: "measure each upgrade in isolation")
+
+`scripts\isolate-upgrades.ps1` (`raveform_headless --sim isolate`, 16 processes at once): every Mod and Riff that can be dealt,
+at its cap from the first tick, the loadout frozen (no Trio, no Boost), the novice bot from Track 1 to its first death (at most
+40 minutes), 40 seeds, the same for every row; `-Base split,double_time` puts the first Trio's build under every row. Noise
+(the bare ship on four seed sets): Track +-0.1, bosses won +-4, minutes +-0.5.
+
+- **A wall at Track 4**: with the bare ship or the base build and one pick, every row but Pulse Ring stops at Event Horizon (the
+  base build alone: Track 3.9, 117 of the first three bosses won in 40 runs, its runs ending at 10.2 minutes). The bosses' health
+  is tuned for a real build (about 15 upgrades by Track 4), so past Track 3 these tables measure survival, not progress; the
+  first three bosses' seconds measure damage.
+- **Strongest**: Pulse Ring (the only row past Event Horizon: alone Track 4.9 against 2.8; on the base build 5.6 and 182 bosses
+  against 117, the Choir in 48 s against 88). **Orbitals and Regen** at their caps keep the novice alive: alone 35 and 36 of 40
+  runs alive at 40 minutes (the bare ship: none, 10.4 minutes), on the base build +12.5 and +14.3 minutes, but they kill nothing
+  (stuck in Track 4's fight). Damage on the bosses (the Choir on the base build): Overcharge 30 s, On-Beat Crit 36, Heavy Step 37,
+  Split 41, Swarm 50, Flak 54, Sentinel 55, Echo 57, Lancer 57. Survival through the crowd: Sweeper, Storm Coil, Ricochet, Extra
+  Cell, Magnet, Aegis, Arc, Kick Pulse (+1.6 to +2.9 minutes on the base build).
+- **Little or nothing**: Seeker (alone 2.8 Tracks, the bare ship's; on the base build 3 bosses fewer and the Choir slower: the
+  assist already aims), Fork, Pierce, Burn, Last Light, Rear Guard, Nova Stock, Prospector, Afterparty, Crescendo, Comet,
+  Minelayer, Singularity (alone). Not measurable here (they act on Trios and Boosts): Lucky Break, Collector, Encore.
+- **Worse than nothing**: Wave (alone Track 2.5 and 60 bosses against 2.8 and 73; on the base build 104 against 117, the Choir
+  won in 24 runs of 40 against 37, in 118 s against 88: the wave carries the assist's aimed shots off the boss), Slipstream (106
+  against 117, the Choir won in 26: the novice runs into more, 4.06 hits a minute against 3.82), Gravity Rounds (111, -1.3 min).
+
 ## 2026-11-15, the upgrades for a young player (2): what the owner chose
 
 - **The assist on the fast grids** (`core/lead_rule.h`, one rule for `World::spawnShots`, `Band::computeShots` and the engine's

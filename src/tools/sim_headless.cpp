@@ -524,6 +524,136 @@ int runPicks(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Policy poli
     return 0;
 }
 
+// 2026-11-15 (the owner: "measure each upgrade in isolation ... see how it affects runs ... see if any upgrades don't really
+// help"): every Mod and Riff that can be dealt, alone, held from the run's first tick at its cap (--rank N: at most N), the
+// loadout frozen (no Trio, no Boost), the bot asked for (the novice by default: a young player's first week) playing the run
+// from Track 1 until its first death or the minutes run out, on the same seeds as the bare ship (the first row). Per pick: the
+// minutes survived (median, mean: an alive run counts its minutes), the runs alive at the end, the Track reached, the hits
+// taken and the kills a minute alive, the Tracks' bosses won, and the seconds to kill the first three where won.
+// --part k --parts n: every n-th pick from the k-th (scripts\isolate-upgrades.ps1 runs four at once); --only id,id: those.
+bool listedIn(const char* list, const char* id) {
+    if (!list || !*list) return true;
+    const size_t n = std::strlen(id);
+    for (const char* p = list; *p;) {
+        const char* end = std::strchr(p, ',');
+        const size_t len = end ? static_cast<size_t>(end - p) : std::strlen(p);
+        if (len == n && std::strncmp(p, id, n) == 0) return true;
+        if (!end) break;
+        p = end + 1;
+    }
+    return false;
+}
+
+// --base id,id: those first, one rank each, under every row (the bare ship's row is the base alone): what a pick adds to a
+// build (the first Trio's Split and Double-Time: --base split,double_time), where the alone figure undersells what multiplies.
+const char* gIsoBase = nullptr;
+
+int runIsolate(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, Bot::Policy policy, u32 rank, const char* only, u32 part,
+               u32 parts) {
+    auto* world = new (std::nothrow) World;
+    if (!world) return 2;
+    const u32 ticks = static_cast<u32>(minutes * 3600.0f);
+    if (seeds > 256) seeds = 256;
+    u8 picks[kUpgradeCount + 1];
+    u32 n = 0;
+    picks[n++] = kNoUpgrade;
+    for (u8 u = 0; u < kUpgradeCount; ++u)
+        if (upgradeInfo(u).cap) picks[n++] = u;  // (a retired Mod's cap is 0)
+    const char* policyName = policy == Bot::Policy::Novice ? "novice" : (policy == Bot::Policy::Assist ? "assist" : (policy == Bot::Policy::Reckless ? "reckless" : "careful"));
+    std::printf("[iso] each pick %s at %s, the loadout frozen; the %s bot, %u seeds, at most %.0f minutes, the first run\n",
+                gIsoBase && *gIsoBase ? "on the base build" : "alone", rank ? "the rank asked (or its cap)" : "its cap", policyName, seeds, minutes);
+    if (gIsoBase && *gIsoBase) std::printf("[iso] the base build: %s, one rank each\n", gIsoBase);
+    static const BossKind kFirst[3] = {BossKind::Kaleidos, BossKind::Longwave, BossKind::Choir};
+    for (u32 c = 0; c < n; ++c) {
+        if (parts > 1 && c % parts != part) continue;
+        const u8 u = picks[c];
+        const char* id = u == kNoUpgrade ? "none" : upgradeInfo(u).icon;
+        if (!listedIn(only, id) && u != kNoUpgrade) continue;  // (the bare ship always runs: every row is read against it)
+        const u32 target = u == kNoUpgrade ? 0u : (rank && rank < upgradeInfo(u).cap ? rank : upgradeInfo(u).cap);
+        static float survived[256];
+        double trackSum = 0.0, aliveMin = 0.0, hits = 0.0, kills = 0.0, bossSecs[3] = {};
+        u32 alive = 0, bossesWon = 0, won[3] = {}, met[3] = {};
+        for (u32 s = 0; s < seeds; ++s) {
+            world->init(&species);
+            SimRunner runner;
+            runner.start(world, seed0 + s, Spawner::Mode::Slice, policy, 120.0f, false);
+            applyLevers(*world);
+            World& w = *world;
+            w.rules().frozenLoadout = true;
+            if (gIsoBase && *gIsoBase)
+                for (u8 b = 0; b < kUpgradeCount; ++b)
+                    if (upgradeInfo(b).cap && listedIn(gIsoBase, upgradeInfo(b).icon) && w.player(0).loadout.canTake(b)) w.grantUpgrade(0, b);
+            for (u32 k = 0; k < target; ++k)
+                if (w.player(0).loadout.canTake(u)) w.grantUpgrade(0, u);
+            const u32 hits0 = w.player(0).hitsTaken, kills0 = w.player(0).kills;
+            u32 t = 0, trackMax = 1, bossFrom = 0;
+            bool died = false, bossOn = false, wonHere[3] = {};
+            BossKind kind = BossKind::Kaleidos;
+            u32 hitsNow = 0, killsNow = 0;
+            for (; t < ticks; ++t) {
+                const u32 d0 = runner.deaths();
+                runner.step();
+                const PlayerState& p = w.player(0);
+                hitsNow = p.hitsTaken - hits0;  // (the hit that ended the run counted)
+                killsNow = p.kills - kills0;
+                if (runner.deaths() > d0) {
+                    died = true;
+                    break;
+                }
+                if (w.phrase().track > trackMax && !w.phrase().trackChange) trackMax = w.phrase().track;
+                const bool on = w.boss().active && !w.boss().dying;
+                if (on && !bossOn) {
+                    bossFrom = t;
+                    kind = w.boss().kind;
+                }
+                if (!on && bossOn && w.boss().dying && !isMiniBoss(kind)) {
+                    ++bossesWon;
+                    for (u32 k = 0; k < 3; ++k)
+                        if (kind == kFirst[k] && !wonHere[k]) {  // (the first meeting's: the loop's second is a harder fight)
+                            bossSecs[k] += static_cast<double>(t - bossFrom) / 60.0;
+                            ++won[k];
+                            wonHere[k] = true;
+                        }
+                }
+                bossOn = on;
+            }
+            // (a boss being fought as the run ended was met and not won)
+            for (u32 k = 0; k < 3; ++k) met[k] += (bossOn && kind == kFirst[k]) ? 1u : 0u;
+            const float mins = static_cast<float>(t) / 3600.0f;
+            survived[s] = mins;
+            alive += died ? 0u : 1u;
+            trackSum += trackMax;
+            aliveMin += mins;
+            hits += hitsNow;
+            kills += killsNow;
+        }
+        float sorted[256];
+        for (u32 s = 0; s < seeds; ++s) sorted[s] = survived[s];
+        std::sort(sorted, sorted + seeds);
+        const float median = seeds ? (seeds % 2 ? sorted[seeds / 2] : 0.5f * (sorted[seeds / 2 - 1] + sorted[seeds / 2])) : 0.0f;
+        double mean = 0.0;
+        for (u32 s = 0; s < seeds; ++s) mean += survived[s];
+        mean /= seeds ? seeds : 1u;
+        const double am = aliveMin > 0.0 ? aliveMin : 1.0;
+        double secs[3];
+        for (u32 k = 0; k < 3; ++k) secs[k] = won[k] ? bossSecs[k] / won[k] : 0.0;
+        const char* name = u == kNoUpgrade ? "(bare ship)" : upgradeInfo(u).name;
+        std::printf("[iso] %-16s %u  %5.1f min median  %5.1f mean  %2u/%u alive  Track %4.1f  hits/min %5.2f  kills/min %5.0f  bosses %3u  "
+                    "Kaleidos %5.1f s (%u)  Longwave %5.1f s (%u)  Choir %5.1f s (%u)\n",
+                    name, target, median, mean, alive, seeds, trackSum / (seeds ? seeds : 1u), hits / am, kills / am, bossesWon, secs[0], won[0],
+                    secs[1], won[1], secs[2], won[2]);
+        std::fflush(stdout);
+        logTagged("RFSIM",
+                  "{\"test\":\"isolate\",\"pick\":\"%s\",\"id\":\"%s\",\"rank\":%u,\"base\":\"%s\",\"policy\":\"%s\",\"seeds\":%u,\"minutes\":%.0f,\"median\":%.2f,"
+                  "\"mean\":%.2f,\"alive\":%u,\"track\":%.2f,\"hits_min\":%.3f,\"kills_min\":%.1f,\"bosses\":%u,\"kaleidos_s\":%.1f,\"kaleidos_won\":%u,"
+                  "\"longwave_s\":%.1f,\"longwave_won\":%u,\"choir_s\":%.1f,\"choir_won\":%u,\"lost_in\":[%u,%u,%u]}",
+                  name, id, target, gIsoBase ? gIsoBase : "", policyName, seeds, minutes, median, mean, alive, trackSum / (seeds ? seeds : 1u), hits / am, kills / am, bossesWon,
+                  secs[0], won[0], secs[1], won[1], secs[2], won[2], met[0], met[1], met[2]);
+    }
+    delete world;
+    return 0;
+}
+
 int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, Bot::Policy policy, bool god, bool trace) {
     const u32 ticks = static_cast<u32>(minutes * 3600.0f);
     auto* world = new (std::nothrow) World;
@@ -1253,7 +1383,10 @@ int simHeadlessMain(int argc, char** argv) {
     u64 seed = 1;
     u32 seeds = 20;
     Bot::Policy policy = Bot::Policy::Play;
+    bool policyGiven = false;
     bool god = false, trace = false;
+    u32 isoRank = 0, isoPart = 0, isoParts = 1;  // --sim isolate
+    const char* isoOnly = nullptr;
     for (int i = 3; i < argc; ++i) {
         const char* a = argv[i];
         const char* next = i + 1 < argc ? argv[i + 1] : nullptr;
@@ -1268,6 +1401,7 @@ int simHeadlessMain(int argc, char** argv) {
                      : std::strcmp(next, "novice") == 0 ? Bot::Policy::Novice
                      : std::strcmp(next, "assist") == 0 ? Bot::Policy::Assist
                                                         : Bot::Policy::Play;
+            policyGiven = true;
             ++i;
         } else if (std::strcmp(a, "--seed") == 0 && next) {
             seed = std::strtoull(next, nullptr, 10);
@@ -1308,6 +1442,21 @@ int simHeadlessMain(int argc, char** argv) {
         } else if (std::strcmp(a, "--seeds") == 0 && next) {
             seeds = static_cast<u32>(std::strtoul(next, nullptr, 10));
             ++i;
+        } else if (std::strcmp(a, "--rank") == 0 && next) {
+            isoRank = std::strcmp(next, "cap") == 0 ? 0u : static_cast<u32>(std::strtoul(next, nullptr, 10));
+            ++i;
+        } else if (std::strcmp(a, "--only") == 0 && next) {
+            isoOnly = next;
+            ++i;
+        } else if (std::strcmp(a, "--base") == 0 && next) {
+            gIsoBase = next;
+            ++i;
+        } else if (std::strcmp(a, "--part") == 0 && next) {
+            isoPart = static_cast<u32>(std::strtoul(next, nullptr, 10));
+            ++i;
+        } else if (std::strcmp(a, "--parts") == 0 && next) {
+            isoParts = static_cast<u32>(std::strtoul(next, nullptr, 10));
+            ++i;
         } else {
             std::printf("[sim] unknown argument %s\n", a);
             return 2;
@@ -1330,10 +1479,14 @@ int simHeadlessMain(int argc, char** argv) {
         printWellProbe();
     } else if (std::strcmp(mode, "picks") == 0) {
         code = runPicks(*species, seeds, seed, policy);  // M5 part 7: the no-trap table (--policy assist: auto-aim only)
+    } else if (std::strcmp(mode, "isolate") == 0) {
+        // 2026-11-15: each pick alone over whole runs (the novice unless --policy says otherwise).
+        code = runIsolate(*species, seeds, minutes > 0.0f ? minutes : 40.0f, seed, policyGiven ? policy : Bot::Policy::Novice, isoRank, isoOnly,
+                          isoPart, isoParts ? isoParts : 1u);
     } else if (std::strcmp(mode, "stress") == 0) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes * 60.0f : 120.0f), seed, bpm, true, policy);
     } else {
-        std::printf("usage: raveform_headless --sim determinism|soak|crowd|picks|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless|novice|assist] [--god] [--trace] [--armour0] [--nopace] [--health id=x,...] [--handover N]\n");
+        std::printf("usage: raveform_headless --sim determinism|soak|crowd|picks|isolate|stress [--minutes M] [--seconds S] [--seed N] [--seeds K] [--policy play|reckless|novice|assist] [--god] [--trace] [--armour0] [--nopace] [--health id=x,...] [--handover N] [--rank cap|N] [--only id,...] [--base id,...] [--part k --parts n]\n");
     }
     delete species;
     return code;
