@@ -15,6 +15,7 @@
 #include "core/log.h"
 #include "core/platform.h"
 #include "core/time.h"
+#include "game/oklch.h"
 #include "net/bots.h"
 #include "net/lobby.h"
 #include "sim/boss_prose.h"
@@ -917,6 +918,18 @@ void Play::conductBand() {
         holdPosted_ = false;
     }
     band_->setPhrase(static_cast<audio::Section>(next.section), next.sectionBar, next.sectionBars);
+    if (w.setup().mode == Mode::Jam) {
+        // M8 JAM (jam.md rule 2; sound.md "What the band needs" 5): the bed is the mixer's from this bar line (a change waiting for
+        // it already), and SOUND's choice the whole band's on its bar line.
+        const World::JamState& js = w.jam();
+        const double simLine = nextLine - offset;
+        band_->setBedMask(js.mixerAt >= 0.0 && js.mixerAt <= simLine + 1.0 ? js.mixerNext : js.mixer);
+        const u8 step = js.soundAt >= 0.0 && js.soundAt <= simLine + 1.0 ? js.soundNext : js.sound;
+        const u32 sound = (static_cast<u32>(settings_.variant) + step) % 3u;  // (SOUND steps on from the player's own sound)
+        if (band_->variant() != sound) band_->setVariant(sound);
+    } else {
+        band_->setBedMask(-1);
+    }
     if (next.sectionBar == 0)
         RF_LOG("play: band told: run bar %u (band tick %.0f) %s, %u bars, Track %u cycle %u%s", next.bar, nextLine, sectionLabel(next.section),
                next.sectionBars, next.track, next.cycle, next.trackChange ? " (Track change)" : (next.bossDrop ? " (boss)" : ""));
@@ -1138,6 +1151,34 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
             c.until = pl.gelUntil[g];
             c.from = pl.gelUntil[g] - static_cast<double>(species_->modes.tracers.gelBars[g]) * kTicksPerBar;
         }
+    }
+    if (w.setup().mode == Mode::Jam && species_) {
+        // M8 (jam.md "HUD"): POPS in the mode's colours where the score stands, no Chain; the card JAM over the room's Track (PLAY);
+        // POP-OFF: its card (FIVE PICKS, THEN POP THE MOST) and the goal line by its part.
+        const ModesData::Info& in = species_->modes.of(Mode::Jam);
+        hs.scorePrefix = "POPS";
+        hs.scoreFrom = oklchFull(in.from[0], in.from[1]);
+        hs.scoreTo = oklchFull(in.to[0], in.to[1]);
+        hs.chain = 0;
+        const Phrase& ph = w.phrase();
+        const u32 room = w.director().jamTrack;
+        std::snprintf(cardSmall_, sizeof cardSmall_, "TRACK %u  %s", room ? room : ph.track, songName(ph.song));
+        if (w.setup().versus) {
+            std::snprintf(cardName_, sizeof cardName_, "POP-OFF");
+            hs.modeWords = "FIVE PICKS, THEN POP THE MOST";
+            const ModesData::Jam& jd = species_->modes.jam;
+            const u32 bar = ph.bar;
+            if (ph.section == Section::Drop) std::snprintf(goalLine_, sizeof goalLine_, "POP!   BARS LEFT %u", static_cast<unsigned>(ph.barsLeft));
+            else if (ph.section == Section::Build) std::snprintf(goalLine_, sizeof goalLine_, "GET READY");
+            else if (bar >= 2u && bar < 2u + jd.picks * jd.pickBars)
+                std::snprintf(goalLine_, sizeof goalLine_, "PICK %u OF %u", static_cast<unsigned>((bar - 2u) / jd.pickBars + 1u), static_cast<unsigned>(jd.picks));
+            else std::snprintf(goalLine_, sizeof goalLine_, "POP-OFF");
+            hs.goalLine = goalLine_;
+        } else {
+            std::snprintf(cardName_, sizeof cardName_, "JAM");
+        }
+        hs.cardSmall = cardSmall_;
+        hs.cardName = cardName_;
     }
     if (w.setup().mode == Mode::Songline && species_) {
         // M8 (songline.md "HUD"): the run's card (SONGLINE over the Track; FOLLOW THE SPARK); the goal line GATES 148   STREAK 32
@@ -1366,7 +1407,7 @@ void Play::applySettings() {
     }
     world_->rules().autoNova = settings_.autoNova;  // play test 1, second pass: this device's ship
     if (band_ && band_->active()) {
-        if (band_->variant() != settings_.variant) band_->setVariant(settings_.variant);
+        if (band_->variant() != settings_.variant && world_->setup().mode != Mode::Jam) band_->setVariant(settings_.variant);
         applyPauseMix();
         band_->setHaptics(settings_.haptics > 0);
         band_->setHapticStrong(settings_.haptics == 2);  // M3 stage C: SOFT and STRONG differ
@@ -1929,12 +1970,13 @@ void Play::hintsTick(ViewInput& vi) {
     // its end; a hint whose moment passes waits for the next such moment.
     // (M8 SONGLINE, songline.md "HUD": three more on its first runs: FOLLOW THE SPARK, then at the first gate in view FLY THROUGH THE
     // RINGS, then at the first tier KEEP THE STREAK: MORE POWER)
-    constexpr u32 kHintCount = 14;
+    constexpr u32 kHintCount = 17;
     static const char* const kHints[kHintCount] = {"LEFT THUMB MOVES",         "WASD OR LEFT STICK MOVES",    "IT AIMS AND FIRES BY ITSELF",
                                                    "RIGHT THUMB AIMS IF YOU LIKE", "FLY INTO ONE AND STAY",   "YOUR RING IS YOUR HEALTH",
                                                    "NOVA CLEARS THE SCREEN",   "DASH GOES THROUGH BULLETS",   "GOLD ORBS ARE SHORT POWERS",
                                                    "EXTRA LIFE: ONE MORE TRY", "BREAK IT FOR A PRIZE",        "FOLLOW THE SPARK",
-                                                   "FLY THROUGH THE RINGS",    "KEEP THE STREAK: MORE POWER"};
+                                                   "FLY THROUGH THE RINGS",    "KEEP THE STREAK: MORE POWER", "FLY OVER A PAD",
+                                                   "STAY ON THE BIG ONE",      "STAY ON A TOY TO TAKE IT"};
     const World& w = *world_;
     const float now = static_cast<float>(vi.time);
     const float barS = 240.0f / std::fmax(vi.bpm, 30.0f);
@@ -2005,6 +2047,10 @@ void Play::hintsTick(ViewInput& vi) {
                 }
                 return false;
             case 13: return w.setup().mode == Mode::Songline && me.streakTier >= 1;
+            // (M8 JAM, jam.md "HUD": FLY OVER A PAD, then STAY ON THE BIG ONE, then at a shelf STAY ON A TOY TO TAKE IT)
+            case 14: return w.setup().mode == Mode::Jam && !w.setup().versus;
+            case 15: return w.setup().mode == Mode::Jam && !w.setup().versus && (settings_.hintsSeen & (1u << 14)) && bar >= 6;
+            case 16: return w.setup().mode == Mode::Jam && w.jam().shelf[seat_ < kMaxPlayers ? seat_ : 0].pad != 0xFF;
             case 8:
             case 9: {
                 const BoostPickups& bp = w.boostPickups();
@@ -2027,7 +2073,7 @@ void Play::hintsTick(ViewInput& vi) {
     };
     for (u32 k = 0; k < kHintCount; ++k) {
         if (settings_.hintsSeen & (1u << k)) continue;
-        if (w.setup().mode == Mode::Songline && k == 4) continue;  // (no Trios there)
+        if ((w.setup().mode == Mode::Songline || (w.setup().mode == Mode::Jam && !w.setup().versus)) && (k == 4 || k == 5)) continue;  // (no Trios; nothing hurts)
         if (!due(k)) continue;
         hintIdx_ = static_cast<i32>(k);
         hintT_ = now;

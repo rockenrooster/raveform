@@ -660,6 +660,12 @@ void Band::setSpark(u8 mode, u8 timbre) {
     post({.type = CmdType::SetSpark, .a = mode, .b = timbre});
 }
 
+void Band::setBedMask(i32 bits) {
+    if (bits == bedMask_) return;
+    bedMask_ = bits;
+    post({.type = CmdType::SetBedMask, .a = static_cast<u8>(bits < 0 ? 0 : bits), .b = static_cast<u8>(bits < 0 ? 0 : 1)});
+}
+
 void Band::setPlayers(u8 count) { post({.type = CmdType::SetPlayers, .a = count, .b = 0}); }
 
 void Band::setPlayerTimbre(u8 slot, u8 timbre) { post({.type = CmdType::SetTimbre, .a = slot, .b = timbre}); }

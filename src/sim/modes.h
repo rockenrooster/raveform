@@ -132,6 +132,28 @@ struct ModesData {
         i8 scale[12] = {};
         u8 scaleCount = 0, tonic = 0;
     } tunes[kModeTracks];
+    struct Jam {  // jam.md (modes.json jam): the room's 25 pads, the shelves, the dancers, POP-OFF
+        static constexpr u32 kPads = 25, kMixer = 8, kTrackPads = 12;
+        // (the pads in order: 0-7 the mixer, 8 DROP, 9 TOYS, 10 BOOSTS, 11 EMPTY, 12 SOUND, 13-24 the Tracks 1-12)
+        static constexpr u8 kPadDrop = 8, kPadToys = 9, kPadBoosts = 10, kPadEmpty = 11, kPadSound = 12, kPadTrack0 = 13;
+        struct Pad {
+            Vec2 at;
+            float radiusWu = 30.0f, holdBeats = 0.0f;  // holdBeats 0: a fly-over (the mixer)
+        } pad[kPads];
+        char layer[kMixer][12] = {};
+        u8 onAtStart = 1;  // a bit a layer
+        u32 dropRestBars = 8, dropBuildBars = 4, dropBars = 8;
+        u32 orbs = 6, closesAfterBars = 2, boostBars = 8, riffSlots = 4;
+        float ringWu = 170.0f, takeBeats = 1.0f, staysWithinWu = 300.0f;
+        u8 toy[7][6] = {}, toyShelves = 0;
+        u8 boostShelf[3][6] = {}, boostShelfSize[3] = {}, boostShelves = 0;
+        u32 perLayer = 20, crowdMax = 160, eliteEveryBars = 8, eliteFromLayers = 5;
+        float dropScale = 1.6f;
+        u32 glints = 24;
+        float glintWu = 26.0f, turnBars = 4.0f, glintLevel = 0.22f;
+        float beamCorePx = 2.0f, beamGlowWu = 6.0f, beamGlow = 0.2f, beamLevel = 0.6f;
+        u32 picks = 5, pickBars = 2, popBuildBars = 4, popDropBars = 16, popCrowd = 200, eliteWorth = 5;
+    } jam;
     struct Tracers {  // tracers.md (modes.json tracers)
         float lifeBeats = 8.0f, lifeBeatsPerLevel = 1.0f, lifeBeatsMax = 16.0f, minSpeedWu = 120.0f, pointEveryWu = 16.0f;
         u32 maxPoints = 160, skipNewest = 6;

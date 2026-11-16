@@ -404,6 +404,8 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 case kPeNova:  // (the review's fixes, H5, 2026-11-15: 1 the player pressed it, for Feedback's tape)
                 case kPeGate:  // (M8 SONGLINE: 1 in time)
                 case kPeRevive: bMax = 1; break;
+                case kPeJamPad: bMax = sim::ModesData::Jam::kPads - 1u; break;  // (M8 JAM: a pad)
+                case kPeJamTake: bMax = 255; break;                             // (... an upgrade, a Boost's or a Fusion's orb)
                 default: bMax = 0; break;
             }
             if (m.b > bMax) return false;

@@ -416,6 +416,16 @@ void World::applyPlayerOp(const NetOp& op) {
             // M8 TRACERS versus: that player's line was cut there (its own device saw the rival cross it).
             if (setup_.mode == Mode::Tracers) cutLine(p, Vec2{op.x, op.y});
             break;
+        case kPeJamPad:
+            // M8 JAM: a player asked for a room pad (the host decides and tells everyone).
+            if (setup_.mode == Mode::Jam && role_ == NetRole::Host && op.b < ModesData::Jam::kPads) jamDecide(op.b);
+            break;
+        case kPeJamTake:
+            if (setup_.mode == Mode::Jam) jamTake(p, op.b);
+            break;
+        case kPeJamEmpty:
+            if (setup_.mode == Mode::Jam) jamEmpty(p);
+            break;
         case kPeGate:
             // M8 SONGLINE: that player threaded a gate (co-op: gone here too, the host looks for the chord; versus: the host decides).
             if (setup_.mode == Mode::Songline) songRemoteThread(p, op.tick, op.b != 0, op.tick + static_cast<double>(op.y2));
@@ -612,7 +622,8 @@ void World::finishKill(u32 i, u8 killer, u8 kind) {
                         if (r.handle[k] == e.handle[i]) bonus = static_cast<double>(r.bonus);
                 }
             if (pl.streakTier >= 1) bonus *= 1.5;  // (M8 SONGLINE: the streak's first tier)
-            pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * elite * static_cast<double>(pl.chain) * rules_.scoreMultiplier * bonus));
+            if (setup_.mode == Mode::Jam) pl.score += elite > 1.0 ? species_->modes.jam.eliteWorth : 1u;  // (M8 JAM: pops)
+            else pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * elite * static_cast<double>(pl.chain) * rules_.scoreMultiplier * bonus));
         }
     }
     if (kind != kDeathDissolve && e.state[i] != kWarping) dropShards(i, killer);

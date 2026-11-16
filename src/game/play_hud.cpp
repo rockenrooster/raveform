@@ -272,7 +272,15 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
     // Score: top left, cap height 34, white running to the accent at the baseline, 1.6.
     char text[48];
     groupDigits(text, sizeof text, st.score);
-    font.drawField(d.hud, {m, top + 44.0f * s}, 34.0f * s, 1.55f * s, col(white, 1.6f), col(white, 1.6f), col(accent, 1.6f), text);
+    if (st.scorePrefix) {
+        char digits[32];
+        std::snprintf(digits, sizeof digits, "%s", text);
+        std::snprintf(text, sizeof text, "%s %s", st.scorePrefix, digits);
+        font.drawField(d.hud, {m, top + 44.0f * s}, 34.0f * s, 1.55f * s, col(st.scoreFrom, 1.6f), col(mix(st.scoreFrom, st.scoreTo, 0.5f), 1.6f),
+                       col(st.scoreTo, 1.6f), text);
+    } else {
+        font.drawField(d.hud, {m, top + 44.0f * s}, 34.0f * s, 1.55f * s, col(white, 1.6f), col(white, 1.6f), col(accent, 1.6f), text);
+    }
     // Chain: under it, cap height 22, white -> gold -> amber, pulsing on pickup. A multiplier from x1;
     // shown from x2 up and hidden at x1 (lead, M3 stage B).
     if (st.chain >= 2) {

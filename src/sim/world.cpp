@@ -180,6 +180,43 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask, co
         for (u32 p = 0; p < playerCount_; ++p)
             if (players_[p].present) dealKit(p, species_->modes.kit.atTrackStart[track - 1u], 0);
     }
+    if (setup.mode == Mode::Jam && species_) {
+        // M8 (jam.md): the room on the Stage on the chosen Track (home: Toybox), nothing hurting, KICK alone on; POP-OFF (versus): its
+        // 32 bars (modes.json forms.popOff), every layer on.
+        u32 track = setup.track < 1 ? 12u : (setup.track > kModeTracks ? kModeTracks : setup.track);
+        director_.jamTrack = static_cast<u8>(track);
+        if (track > kMaxSongs) {
+            const ModesData::Bonus& b = species_->modes.bonus[track - kMaxSongs - 1u];
+            director_.bonus = static_cast<u8>(track);
+            director_.bonusBpm = static_cast<float>(b.bpm);
+            director_.jamSong = static_cast<u8>(track - 1u);
+            director_.jamBpm = static_cast<float>(b.bpm);
+            track = b.crowdOf;
+        } else {
+            director_.jamSong = static_cast<u8>(songOfTrack(track, director_.songs));
+            director_.jamBpm = bpmOfTrack(track, director_.songs);
+        }
+        director_.track = static_cast<u8>(track);
+        director_.jamDropBuild = static_cast<u8>(species_->modes.jam.dropBuildBars);
+        director_.jamDropLen = static_cast<u8>(species_->modes.jam.dropBars);
+        if (setup.versus) {
+            const Form& f = species_->modes.forms.popOff;
+            director_.formCount = static_cast<u8>(f.count < 12 ? f.count : 12u);
+            for (u32 k = 0; k < director_.formCount; ++k) {
+                director_.formKind[k] = static_cast<u8>(f.s[k].kind);
+                director_.formBars[k] = static_cast<u8>(f.s[k].bars);
+            }
+            if (director_.bonus) director_.bonusBpm = director_.jamBpm;
+        } else {
+            director_.jam = true;
+        }
+        phrase_ = phraseAt(director_, 0);
+        stage_ = true;
+        stageHalf_ = Vec2{0.5f * species_->modes.stage.widthWu, 0.5f * species_->modes.stage.heightWu};
+        rules_.godMode = true;  // (rule 1: nothing hurts)
+        resetJam();
+        if (setup.versus) jam_.mixer = jam_.mixerNext = 0xFF;  // (POP-OFF: every layer on)
+    }
     if (setup.mode == Mode::Headliners && species_) {
         // M8 (headliners.md): the ten bosses back to back from First Light, the acts' form; the kit a run holds as Kaleidos enters;
         // one Extra Life held at the start.
@@ -244,6 +281,7 @@ void World::tick(const TickInput& in) {
     if (setup_ != RunSetup{}) updateModes();  // M8: the kit landing, the outro, the run's end, versus
     if (setup_.mode == Mode::Tracers) updateTracers();  // M8: the tracers, the rings, the floor (tracers.md)
     if (setup_.mode == Mode::Songline) updateSongline();  // M8: the Spark, its line and gates, the streaks (songline.md)
+    if (setup_.mode == Mode::Jam) updateJam();            // M8: the room's pads, the mixer, the shelves (jam.md)
     // The loop's ramps this tick (GAME_DESIGN 8, "The loop is where a run ends"): 1 through Track 3.
     loopSpeed_ = std::fmin(loopRamp(kLoopEnemySpeedRamp, phrase_.track, director_.songs), kLoopEnemySpeedMax);
     loopBulletSpeed_ = std::fmin(loopRamp(kLoopBulletSpeedRamp, phrase_.track, director_.songs), kLoopBulletSpeedMax);
@@ -1004,7 +1042,8 @@ void World::killEnemy(u32 i, u8 killer) {
             const float chain = static_cast<float>(pl.chain);
             const float surge = (afterparty(killer) && !phrase_.surge()) ? 2.0f : 1.0f;  // M5: Afterparty's longer Surge
             const float streak = pl.streakTier >= 1 ? 1.5f : 1.0f;  // (M8 SONGLINE: the streak's first tier)
-            pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * (elite ? species_->traits.score : 1.0f) * chain * rules_.scoreMultiplier * surge * streak));
+            if (setup_.mode == Mode::Jam) pl.score += elite ? species_->modes.jam.eliteWorth : 1u;  // (M8 JAM: pops; POP-OFF: an elite five)
+            else pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * (elite ? species_->traits.score : 1.0f) * chain * rules_.scoreMultiplier * surge * streak));
         }
         // A Boost is due (GAME_DESIGN 6.1, director controlled): this kill drops it.
         if (director_.boostDue && spawner_.mode == Spawner::Mode::Slice) {
@@ -1629,6 +1668,22 @@ u64 World::hash() const {
         for (const PlayerState& pl : players_) {
             val(pl.knocked);
             val(pl.backTick);
+        }
+    }
+    if (setup_.mode == Mode::Jam) {
+        // M8 JAM: the mixer, DROP, the room's Track, each player's shelf (jam.md "Caps and the wire").
+        val(jam_.mixer);
+        val(jam_.mixerNext);
+        val(jam_.sound);
+        val(jam_.dropReadyBar);
+        val(director_.jamDropBar);
+        val(director_.jamChangeBar);
+        val(director_.jamTrack);
+        val(director_.jamNext);
+        for (u32 p = 0; p < kMaxPlayers; ++p) {
+            val(jam_.shelf[p].pad);
+            val(jam_.shelf[p].index);
+            val(jam_.inside[p]);
         }
     }
     if (setup_.mode == Mode::Songline) {

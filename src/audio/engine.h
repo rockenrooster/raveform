@@ -155,6 +155,8 @@ enum class CmdType : u8 {
                    // lead's level), y = pan; timing Now or AtTick
     SetSpark,      // the lead slot that is nobody's (SONGLINE's Spark): a = its fire mode (0 off, 1 every sixteenth, 3 the beat's
                    // eighths: every second step from the bar's first, 4 quarters), b = Timbre
+    SetBedMask,    // (5) the bed's layers by a mask instead of the intensity, from the next bar line: a = the bits (KICK, HATS, BASS,
+                   // CLAP, OPEN HAT, SHAKER, CHORDS, STABS: JAM's mixer), b = 1 the mask holds, 0 the intensity again
 };
 // VoiceStart (M5): mods[5] = the voice's reverb send in percent (0: the effects' own), mods[6] = 1: its chordNote is resolved
 // again on every bar line (it follows the chord). VoiceSet (M5): mods[5] = 1: a new pan in `level`.
@@ -561,6 +563,7 @@ private:
     u32 playerCount_ = 1;
     u32 localPlayer_ = 0;
     u8 sparkFire_ = 0;                     // M8 SONGLINE: the Spark's fire mode (CmdType::SetSpark)
+    i16 bedMask_ = -1;                     // M8 JAM: the bed's layers by this mask (-1: by the intensity)
     Timbre sparkTimbre_ = Timbre::P3Bell;
     u32 killCount_[3] = {};
     u32 shardRun_ = 0;

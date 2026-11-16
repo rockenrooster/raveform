@@ -83,6 +83,59 @@ Phrase phraseAt(const DirectorState& d, u32 bar) {
         p.trackBpm = to;
         return p;
     }
+    if (d.jam) {
+        // M8 JAM: the room's Groove in eight-bar phrases, the pressed DROP's Build and Drop, a Track pad's Break into the new Track.
+        if (d.jamChangeBar != kNoBar && bar >= d.jamChangeBar + kTrackChangeBars) {
+            DirectorState n = d;
+            n.track = d.jamNextCrowd;
+            n.bonus = d.jamNextBonus;
+            n.bonusBpm = d.jamNextBonus ? d.jamNextBpm : 0.0f;
+            n.jamTrack = d.jamNext;
+            n.jamSong = d.jamNextSong;
+            n.jamBpm = d.jamNextBpm;
+            n.trackBar = d.jamChangeBar + kTrackChangeBars;
+            n.jamChangeBar = kNoBar;
+            return phraseAt(n, bar);
+        }
+        p.track = d.track;
+        p.song = d.jamSong;
+        p.cycle = p.cycles = 1;
+        p.trackBpm = p.bpm = d.jamBpm;
+        if (d.jamChangeBar != kNoBar && bar >= d.jamChangeBar) {
+            const u32 in = bar - d.jamChangeBar;
+            p.track = d.jamNextCrowd;
+            p.song = d.jamNextSong;
+            p.cycle = 0;
+            p.section = Section::Break;
+            p.sectionBar = static_cast<u16>(in);
+            p.sectionBars = kTrackChangeBars;
+            p.trackChange = true;
+            const float u = static_cast<float>(in < kTrackChangeBars ? in : kTrackChangeBars - 1) / static_cast<float>(kTrackChangeBars - 1);
+            p.bpm = d.jamBpm + (d.jamNextBpm - d.jamBpm) * u;
+            p.trackBpm = d.jamNextBpm;
+            return p;
+        }
+        const u32 dropLen = static_cast<u32>(d.jamDropBuild) + d.jamDropLen;
+        if (d.jamDropBar != kNoBar && bar >= d.jamDropBar && bar < d.jamDropBar + dropLen) {
+            const u32 in = bar - d.jamDropBar;
+            if (in < d.jamDropBuild) {
+                p.section = Section::Build;
+                p.sectionBar = static_cast<u16>(in);
+                p.sectionBars = d.jamDropBuild;
+            } else {
+                p.section = Section::Drop;
+                p.sectionBar = static_cast<u16>(in - d.jamDropBuild);
+                p.sectionBars = d.jamDropLen;
+            }
+        } else {
+            const u32 from = d.jamDropBar != kNoBar && bar >= d.jamDropBar + dropLen ? d.jamDropBar + dropLen : d.trackBar;
+            p.section = Section::Groove;
+            p.sectionBar = static_cast<u16>((bar >= from ? bar - from : 0u) % 8u);
+            p.sectionBars = 8;
+        }
+        if (p.buildLastBar()) p.bpm = p.trackBpm * kBuildLastBarSpeed;
+        return p;
+    }
     if (d.formCount) {
         // M8 (README.md 6): a timed mode's fixed form, the Track at its second cycle (its budget and crowd), each Build and Drop a
         // wave; past the last bar the run is over (the last section's last bar, `ended`).

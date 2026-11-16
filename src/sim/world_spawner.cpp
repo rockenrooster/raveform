@@ -455,6 +455,7 @@ void World::spendCrowd(double landTick, const Phrase& ph) {
         target = std::fmin(target / c.miniDrop * md.penCrowdScale, md.penCrowdMax);
     }
     if (setup_.mode == Mode::Songline) target *= species_->modes.songline.crowdScale;  // (M8 songline.md rule 14: 0.7)
+    if (setup_.mode == Mode::Jam) target = jamCrowdTarget(ph);  // (M8 jam.md rule 4: twenty dancers a layer on)
     if (setup_.mode == Mode::Tracers) {
         // M8 (tracers.md rule 13, rule 11): half the Track's crowd, 15% more a house, scaled by the players as the set's budget is,
         // never above crowd.max on the Stage.
@@ -780,7 +781,8 @@ void World::directorBar(double barTick, u32 bar) {
     // Play test 2 (GAME_DESIGN 6.1): Regen counts the bar; a banked Shard level opens its Trio on this bar line. Each device
     // its own players'.
     regenBar();
-    if (anyAlive && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios) && setup_.mode != Mode::Tracers && setup_.mode != Mode::Songline)
+    if (anyAlive && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios) && setup_.mode != Mode::Tracers && setup_.mode != Mode::Songline &&
+        setup_.mode != Mode::Jam)
         openLevelTrios(bar);  // (M8 TRACERS: no Trio, a level lengthens the tracer; SONGLINE: a level gives a Nova and a cell)
     // M5 part 5: the arena's structures and events (the host places and starts them; every device keeps them).
     if (anyAlive) arenaBar(ph, bar, barTick);
@@ -803,6 +805,7 @@ void World::directorBar(double barTick, u32 bar) {
                                  : base * sectionScale(ph) * d.assist * coopBudgetScale() * kThreatBudgetScale * loopRamp(kLoopThreatRamp, ph.track, d.songs);
     if (setup_.mode == Mode::Tracers) d.budgetPerBar *= species_->modes.tracers.threatScale * tracersCrowdScale() / species_->modes.tracers.crowdScale;  // (M8: half the hunters', 15% more a house)
     if (setup_.mode == Mode::Songline) d.budgetPerBar *= species_->modes.songline.threatScale;  // (M8 SONGLINE: 0.7)
+    if (setup_.mode == Mode::Jam) d.budgetPerBar = 0.0f;  // (M8 JAM: dancers only; their elites are the room's)
     if (d.budgetPerBar <= 0.0f) return;
     d.bank = std::fmin(d.bank + d.budgetPerBar, d.budgetPerBar * kBankBars);
     eliteBar(ph, land);  // M5 part 5: an elite first, when one is due (traits.md)

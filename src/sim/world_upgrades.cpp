@@ -956,6 +956,8 @@ void World::collectShard(u32 p) {
     const bool nova = pl.novas < pl.novaCap && (kLoopBreakRefills || !inLoop(phrase_.track, director_.songs));
     if (nova) ++pl.novas;
     if (setup_.mode == Mode::Songline && pl.cells < pl.cellCap) ++pl.cells;  // (M8 songline.md rule 13: no Trio; a level gives a cell back too)
+    if (setup_.mode == Mode::Jam && !setup_.versus && isLocal(p) && role_ != NetRole::Client)
+        dropBoost(pl.pos + Vec2{60.0f, -40.0f}, static_cast<u8>(upgradeRng_.below(kBoostCount)));  // (M8 jam.md rule 7: a present)
     Event ev;
     ev.type = EventType::LevelUp;
     ev.a = static_cast<u8>(p);

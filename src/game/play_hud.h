@@ -80,6 +80,9 @@ struct HudState {
     // M8 TRACERS (tracers.md "HUD"): the Shard level's bar labelled TRACER 9 BEATS; no Riff slots (the Boost cards a row lower);
     // the gels' cards beside the Boosts' (an upgrade's icon, its name and words, the bars it has left).
     const char* levelLabel = nullptr;
+    // M8 JAM (jam.md "HUD"): POPS where the score stands, in the mode's two colours
+    const char* scorePrefix = nullptr;
+    Vec3 scoreFrom, scoreTo;
     bool noRiffs = false;
     bool turf = false;  // TRACERS versus: the floor's shares as a bar across the top
     struct GelCard {

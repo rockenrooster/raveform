@@ -140,6 +140,13 @@ struct DirectorState {
     // bonus - 1) at its tempo over the crowd of the set Track it borrows (`track`, modes.json bonusTracks[].crowdOf).
     u8 bonus = 0;
     float bonusBpm = 0.0f;
+    // M8 JAM (jam.md rules 6 and 8): the room's endless Groove (eight-bar phrases); DROP's Build and Drop from jamDropBar; a Track pad's
+    // Track-change Break from jamChangeBar into jamNext (1-12: its music, tempo and the crowd it borrows), the room's Track playing.
+    bool jam = false;
+    u32 jamDropBar = kNoBar, jamChangeBar = kNoBar;
+    u8 jamTrack = 12, jamSong = 11, jamNext = 0, jamNextSong = 0, jamNextCrowd = 1, jamNextBonus = 0;
+    float jamBpm = 120.0f, jamNextBpm = 120.0f;
+    u8 jamDropBuild = 4, jamDropLen = 8;
 };
 
 // Where bar `bar` of the run sits, given what the director knows now.

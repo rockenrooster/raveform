@@ -674,6 +674,7 @@ void Engine::applyCommand(const Command& c) {
             }
             break;
         }
+        case CmdType::SetBedMask: bedMask_ = c.b ? static_cast<i16>(c.a) : static_cast<i16>(-1); break;
         case CmdType::SetSpark:
             sparkFire_ = c.a == 1 || c.a == 3 || c.a == 4 ? c.a : 0;
             if (c.b < static_cast<u8>(Timbre::Count)) sparkTimbre_ = static_cast<Timbre>(c.b);
@@ -704,6 +705,7 @@ void Engine::applyCommand(const Command& c) {
             break;
         case CmdType::Reset:
             sparkFire_ = 0;
+            bedMask_ = -1;
             for (u32 i = 0; i < kLeadVoices; ++i) lead_[i].active = false;
             for (u32 i = 0; i < kBassVoices; ++i) bass_[i].active = false;
             for (u32 i = 0; i < kStabVoices; ++i) stab_[i].active = false;
@@ -1579,7 +1581,20 @@ void Engine::planConductorBar(i64 barTick) {
     float bedPat[kPatCount] = {};
     bool bedBass = false;
     float bedPad = 0.0f;
-    for (u32 i = 0; i < r.bedCount && i < countOf(bedOn_); ++i) {
+    if (bedMask_ >= 0) {
+        // M8 JAM (sound.md "What the band needs" 5): the mixer holds each layer on or off (KICK, HATS, BASS, CLAP, OPEN HAT, SHAKER,
+        // CHORDS, STABS), whatever the intensity.
+        const u32 m = static_cast<u32>(bedMask_);
+        bedPat[static_cast<u32>(Pat::Kick)] = (m & 1u) ? 1.0f : 0.0f;
+        bedPat[static_cast<u32>(Pat::HatOff)] = (m & 2u) ? 1.0f : 0.0f;
+        bedBass = (m & 4u) != 0;
+        bedPat[static_cast<u32>(Pat::Clap)] = (m & 8u) ? 1.0f : 0.0f;
+        bedPat[static_cast<u32>(Pat::Ohat)] = (m & 16u) ? 1.0f : 0.0f;
+        bedPat[static_cast<u32>(Pat::Shaker)] = (m & 32u) ? 1.0f : 0.0f;
+        bedPad = (m & 64u) ? r.padLevelHi : 0.0f;
+        bedPat[static_cast<u32>(Pat::Stab)] = (m & 128u) ? 1.0f : 0.0f;
+    }
+    for (u32 i = 0; i < r.bedCount && i < countOf(bedOn_) && bedMask_ < 0; ++i) {
         const ConductorRules::BedLayer& L = r.bed[i];
         if (intensity_ >= L.from) bedOn_[i] = true;
         else if (intensity_ < L.from - r.hysteresis) bedOn_[i] = false;
@@ -1636,6 +1651,7 @@ void Engine::planConductorBar(i64 barTick) {
         }
         case Section::Drop:
             p.pat[kick] = p.pat[clap] = p.pat[hat16] = p.pat[ohat] = p.pat[shaker] = 1.0f;
+            if (bedMask_ >= 0) p.pat[stab] = p.pat[hatOff] = 1.0f;  // (M8 JAM: every bed layer on for the Drop, whatever the mixer)
             p.bass = BassKey::Drop;
             p.pad = 1.0f;
             p.padBright = r.dropPadBright;

@@ -1771,6 +1771,93 @@ int runModeSongline(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Poli
     return 0;
 }
 
+// M8 part 6 (jam.md "What to check"): the wanderer in the room for `minutes` (ten by default) on each of `seeds` seeds: the pads it
+// crossed and held, the mixer's changes, the DROPs, the Track changes, the shelves, the toys taken, the EMPTYs and what was left after
+// each (nothing), the pops, the most bodies alive (the dancers' cap), every pool's refusals (none). POP-OFF (--versus): the runs' pops.
+int runModeJam(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Policy policy, u32 onlyTrack, float minutes, bool trace) {
+    auto* world = new (std::nothrow) World;
+    if (!world) return 2;
+    if (minutes <= 0.0f) minutes = 10.0f;
+    const u32 track = onlyTrack ? onlyTrack : 12u;
+    std::printf("[mode] JAM, the wanderer, %u seeds of %.1f minutes, Track %u\n", seeds, static_cast<double>(minutes), track);
+    std::printf("[mode] seed  holds  mixer  drops  tracks  sounds  shelves  takes  empties  left_after_empty  pops  enemies_max  "
+                "layers_max  refused\n");
+    u32 worstLeft = 0, worstRefused = 0, worstEnemies = 0, totalDrops = 0, totalTracks = 0, totalTakes = 0;
+    for (u32 s = 0; s < seeds; ++s) {
+        world->init(&species);
+        SimRunner runner;
+        runner.autoRetry = false;
+        RunSetup su;
+        su.mode = Mode::Jam;
+        su.track = static_cast<u8>(track);
+        runner.start(world, seed0 + s, Spawner::Mode::Slice, policy, 120.0f, false, su);
+        World& w = *world;
+        u32 holds = 0, mixer = 0, drops = 0, tracks = 0, sounds = 0, shelves = 0, takes = 0, empties = 0, leftAfter = 0, enemiesMax = 0,
+            layersMax = 0;
+        const u32 ticks = static_cast<u32>(minutes * 3600.0f);
+        for (u32 t = 0; t < ticks; ++t) {
+            runner.step();
+            for (u32 k = 0; k < w.eventCount(); ++k) {
+                const Event& ev = w.events()[k];
+                switch (ev.type) {
+                    case EventType::JamHold: ++holds; break;
+                    case EventType::JamMixer: ++mixer; break;
+                    case EventType::JamRoom:
+                        if (ev.a == 1) ++drops;
+                        if (ev.a == 2) ++tracks;
+                        if (ev.a == 3) ++sounds;
+                        break;
+                    case EventType::JamShelf: ++shelves; break;
+                    case EventType::JamTake: ++takes; break;
+                    case EventType::JamEmpty: {
+                        ++empties;
+                        // (nothing held after it: no Mod, Riff, Fusion or Boost)
+                        const PlayerState& pl = w.player(ev.a);
+                        u32 left = 0;
+                        for (u8 m : pl.loadout.mods) left += m;
+                        for (u8 r : pl.loadout.riffs) left += r;
+                        left += pl.loadout.fusions ? 1u : 0u;
+                        for (const ActiveBoost& b : pl.boosts) left += b.type != kNoBoost ? 1u : 0u;
+                        leftAfter += left;
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            u32 alive = 0;
+            for (u32 i = 0; i < w.enemies().count; ++i) alive += (w.enemies().flags[i] & kFlagDead) ? 0u : 1u;
+            if (alive > enemiesMax) enemiesMax = alive;
+            if (w.jamLayersOn() > layersMax) layersMax = w.jamLayersOn();
+            if (trace && s == 0 && t % 1800 == 0)
+                std::printf("[trace] %4.0f s bar %u %s: layers %u, alive %u, mods %u riffs %u, pops %llu\n", t / 60.0, w.phrase().bar,
+                            w.phrase().section == Section::Drop ? "DROP" : (w.phrase().trackChange ? "BREAK" : "groove"), w.jamLayersOn(), alive,
+                            [&] {
+                                u32 n = 0;
+                                for (u8 m : w.player(0).loadout.mods) n += m;
+                                return n;
+                            }(),
+                            w.player(0).loadout.riffsOwned(), static_cast<unsigned long long>(w.player(0).score));
+        }
+        const WorldCounters& c = w.counters();
+        const u32 refused = c.enemiesDropped + c.bulletsDropped + c.shotsDropped + c.shardsDropped + c.eventsDropped + c.netOpsDropped;
+        std::printf("[mode] %4llu  %5u  %5u  %5u  %6u  %6u  %7u  %5u  %7u  %16u  %4llu  %11u  %10u  %7u\n", static_cast<unsigned long long>(seed0 + s), holds,
+                    mixer, drops, tracks, sounds, shelves, takes, empties, leftAfter, static_cast<unsigned long long>(w.player(0).score), enemiesMax,
+                    layersMax, refused);
+        worstLeft = std::max(worstLeft, leftAfter);
+        worstRefused = std::max(worstRefused, refused);
+        worstEnemies = std::max(worstEnemies, enemiesMax);
+        totalDrops += drops;
+        totalTracks += tracks;
+        totalTakes += takes;
+    }
+    const bool pass = worstLeft == 0 && worstRefused == 0 && totalDrops > 0 && totalTracks > 0 && totalTakes > 0;
+    std::printf("RFSIM {\"test\":\"mode_jam\",\"seeds\":%u,\"minutes\":%.1f,\"left_after_empty\":%u,\"refused\":%u,\"enemies_max\":%u,\"drops\":%u,"
+                "\"tracks\":%u,\"takes\":%u,\"pass\":%s}\n",
+                seeds, static_cast<double>(minutes), worstLeft, worstRefused, worstEnemies, totalDrops, totalTracks, totalTakes, pass ? "true" : "false");
+    delete world;
+    return pass ? 0 : 1;
+}
+
 // M8 part 1 (design/modes/README.md 5): the kit's numbers measured: the upgrades (Trios taken) the bot holds as each Track's first
 // bar begins and as its boss enters, the median over the seeds of THE SET's runs (one run each, to its first death or 60
 // minutes). The numbers modes.json's kit.atTrackStart and kit.atBoss take.
@@ -1842,12 +1929,15 @@ int simHeadlessMain(int argc, char** argv) {
     bool modeBlast = false;                         // --sim mode --blast (M8 part 3)
     bool modeTracers = false;                       // --sim mode --tracers (M8 part 4)
     bool modeSongline = false;                      // --sim mode --songline (M8 part 5)
+    bool modeJam = false;                           // --sim mode --jam (M8 part 6)
+    bool minutesGiven = false;
     const char* isoOnly = nullptr;
     for (int i = 3; i < argc; ++i) {
         const char* a = argv[i];
         const char* next = i + 1 < argc ? argv[i + 1] : nullptr;
         if (std::strcmp(a, "--minutes") == 0 && next) {
             minutes = static_cast<float>(std::atof(next));
+            minutesGiven = true;
             ++i;
         } else if (std::strcmp(a, "--seconds") == 0 && next) {
             seconds = static_cast<float>(std::atof(next));
@@ -1923,6 +2013,8 @@ int simHeadlessMain(int argc, char** argv) {
             modeTracers = true;
         } else if (std::strcmp(a, "--songline") == 0) {
             modeSongline = true;
+        } else if (std::strcmp(a, "--jam") == 0) {
+            modeJam = true;
         } else if (std::strcmp(a, "--kit-scale") == 0 && next) {
             kitScale = static_cast<float>(std::atof(next));
             ++i;
@@ -1969,6 +2061,7 @@ int simHeadlessMain(int argc, char** argv) {
         else if (modeBlast) code = runModeBlast(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist, modeTrack);
         else if (modeTracers) code = runModeTracers(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Play, modeTrack, trace);
         else if (modeSongline) code = runModeSongline(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Play, modeTrack, trace);
+        else if (modeJam) code = runModeJam(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Play, modeTrack, minutesGiven ? minutes : 10.0f, trace);
         else code = runModeOne(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist, modeTrack);
     } else if (std::strcmp(mode, "kit") == 0) {
         // M8 part 1: the kit's numbers (the assist bot's upgrades by Track in THE SET).

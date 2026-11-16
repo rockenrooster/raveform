@@ -1707,6 +1707,16 @@ void Session::collectLocalEvents() {
                 continue;
             }
             case EventType::Cut: m.kind = kPeCut; break;  // M8 TRACERS versus: where its line was cut
+            case EventType::JamAsk:  // M8 JAM: a room pad asked for (the host decides)
+                if (host()) continue;
+                m.kind = kPeJamPad;
+                m.b = e.b;
+                break;
+            case EventType::JamTake:  // ... a toy or a Boost taken from the shelf
+                m.kind = kPeJamTake;
+                m.b = e.b;
+                break;
+            case EventType::JamEmpty: m.kind = kPeJamEmpty; break;
             case EventType::GateThread:  // M8 SONGLINE: a gate threaded (its birth; in time; the claim's tick)
                 m.kind = kPeGate;
                 m.b = e.c ? 1 : 0;

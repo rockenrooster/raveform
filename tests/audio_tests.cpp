@@ -527,6 +527,73 @@ void testSparkLead() {
     freeCapture(c);
 }
 
+// M8 part 6 (jam.md "What to check"): every one of the 256 mixer settings on Toybox, a bar each in the Groove with the bed held by the
+// mask: no bar clips, none is louder (RMS) than the Track's own Drop.
+void testJamMixer() {
+    const u32 track = g_music->trackCount >= 12 ? 11u : g_music->trackCount - 1u;
+    const u64 bar = static_cast<u64>(barFrames(track));
+    float* buf = static_cast<float*>(std::calloc((bar + 64) * 2, sizeof(float)));
+    const auto barLevel = [&](Engine& e, float& peak) {
+        double sum = 0.0;
+        peak = 0.0f;
+        for (u64 at = 0; at < bar; at += 64) {
+            e.render(buf + at * 2, 64, 2);
+            BeatEvent ev;
+            while (e.popEvent(ev)) {
+            }
+        }
+        for (u64 i = 0; i < bar * 2; ++i) {
+            sum += static_cast<double>(buf[i]) * buf[i];
+            peak = std::fmax(peak, std::fabs(buf[i]));
+        }
+        return std::sqrt(sum / static_cast<double>(bar * 2));
+    };
+    // The Track's own Drop (every layer, the conductor's), its second bar.
+    double dropRms = 0.0;
+    float dropPeak = 0.0f;
+    {
+        Engine e;
+        CHECK(e.init(*g_music, *g_bank, kRate));
+        e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(track), 0));
+        e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 1.0f));
+        e.post(cmd(CmdType::SetSection, static_cast<u8>(Section::Drop)));
+        e.post(cmd(CmdType::HoldSection, 1));
+        float pk = 0.0f;
+        barLevel(e, pk);
+        barLevel(e, pk);
+        dropRms = barLevel(e, dropPeak);
+    }
+    Engine e;
+    CHECK(e.init(*g_music, *g_bank, kRate));
+    e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), static_cast<u8>(track), 0));
+    e.post(cmd(CmdType::SetSection, static_cast<u8>(Section::Groove)));
+    e.post(cmd(CmdType::HoldSection, 1));
+    e.post(cmd(CmdType::SetBedMask, 0, 1));
+    float pk = 0.0f;
+    barLevel(e, pk);
+    u32 clipped = 0, louder = 0;
+    double loudest = 0.0;
+    u32 loudestMask = 0;
+    for (u32 m = 0; m < 256; ++m) {
+        e.post(cmd(CmdType::SetBedMask, static_cast<u8>(m), 1));
+        barLevel(e, pk);  // (the bar the mask waits for its bar line)
+        float peak = 0.0f;
+        const double rms = barLevel(e, peak);
+        if (peak >= 1.0f) ++clipped;
+        if (rms > dropRms * 1.06) ++louder;  // (within half a dB)
+        if (rms > loudest) {
+            loudest = rms;
+            loudestMask = m;
+        }
+    }
+    std::printf("  mixer: 256 settings on %s: the loudest (mask 0x%02x) %.1f dB against the Drop's %.1f dB (its peak %.3f); %u clip, %u louder\n",
+                g_music->tracks[track].id, loudestMask, 20.0 * std::log10(loudest > 1e-9 ? loudest : 1e-9),
+                20.0 * std::log10(dropRms > 1e-9 ? dropRms : 1e-9), static_cast<double>(dropPeak), clipped, louder);
+    CHECK_MSG(clipped == 0, "%u of 256 mixer settings clip", clipped);
+    CHECK_MSG(louder == 0, "%u of 256 mixer settings are louder than the Drop", louder);
+    std::free(buf);
+}
+
 // A sound variant takes hold on the next bar line.
 void testVariantOnBarLine() {
     Engine e;
@@ -2388,6 +2455,7 @@ int main() {
         {"lead follows fire, every Track", testLeadFollowsFire},
         {"lead at half rate, Nova on the game's beat (M3)", testLeadHalfRateAndNovaTick},
         {"SONGLINE's Spark: its own slot on the beat's eighths, quarters, sixteenths (M8)", testSparkLead},
+        {"JAM's mixer: 256 settings on Toybox, none clips, none louder than its Drop (M8)", testJamMixer},
         {"variant on the bar line", testVariantOnBarLine},
         {"track change through the Break", testTrackChange},
         {"no allocations in any mode", testNoAllocations},

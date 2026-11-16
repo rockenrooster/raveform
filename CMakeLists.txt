@@ -374,6 +374,7 @@ add_library(raveform_sim STATIC
   src/sim/world_modes.cpp
   src/sim/world_mode_tracers.cpp
   src/sim/world_mode_songline.cpp
+  src/sim/world_mode_jam.cpp
   ${RF_GEN}/modes.json.inc
   ${RF_GEN}/modes_track11.json.inc
   ${RF_GEN}/modes_track12.json.inc
@@ -550,6 +551,7 @@ target_sources(raveform_core PRIVATE
   src/game/play_view_m6.cpp
   src/game/play_view_modes.cpp
   src/game/play_view_songline.cpp
+  src/game/play_view_jam.cpp
   src/game/pending_sounds.cpp
   src/game/upgrade_sounds.cpp
   src/game/play_view_upgrades.cpp

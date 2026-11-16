@@ -184,6 +184,40 @@ void Play::modesEvent(const Event& e) {
                 band_->playRecipe(audio::Recipe::Glass, audio::chordNote(0, 5), 0.3f);  // (a step down: soft)
             }
             break;
+        case EventType::JamRoom:
+            // M8 JAM (sound.md "JAM"): a mixer pad: the interface tick at once and a sweep over the beat that ends on the bar line
+            // (opening for a layer on, closing for off); DROP, a Track, SOUND: the confirm chord.
+            if (!bandDrives_ || !band_) break;
+            if (e.a == 0) {
+                u32 now = 0, then = 0;
+                for (u32 k = 0; k < 8; ++k) {
+                    now += (e.b >> k) & 1u;
+                    then += (w.jam().mixer >> k) & 1u;
+                }
+                band_->playSfx(audio::Sfx::UiTick, 0.8f);
+                band_->playRecipe(audio::Recipe::Sweep, -1, 0.45f, 0.0f, e.tick - kTicksPerBeat + (coop() ? netBandOffset_ : clock_.offset()),
+                                  now >= then ? 1.0f : -1.0f, 1.0f);
+            } else {
+                band_->playSfx(audio::Sfx::UiConfirm, 0.8f);
+            }
+            break;
+        case EventType::JamTake:
+            // A toy taken: the "upgrade taken" chord; each further stack a bell a scale step up.
+            if (e.a != seat_ || !bandDrives_ || !band_) break;
+            if (e.c <= 1) band_->playSfx(audio::Sfx::Upgrade, 0.9f);
+            else band_->playRecipe(audio::Recipe::Bell, audio::chordNote(static_cast<i32>(e.c), 5, audio::NoteFrom::ScaleSteps), 0.6f);
+            break;
+        case EventType::JamEmpty:
+            // EMPTY: the back chord and a closing sweep.
+            if (e.a != seat_ || !bandDrives_ || !band_) break;
+            band_->playSfx(audio::Sfx::UiBack, 0.9f);
+            band_->playRecipe(audio::Recipe::Sweep, -1, 0.5f, 0.0f, -1.0, -1.0f, 1.0f);
+            break;
+        case EventType::JamHold:
+        case EventType::JamShelf:
+            if (e.a == seat_) pulse(0);
+            if (e.type == EventType::JamShelf && e.a == seat_ && bandDrives_ && band_) band_->playSfx(audio::Sfx::UiConfirm, 0.6f);
+            break;
         case EventType::SongChord:
             // Co-op's chord (sound.md): the band's stab on the bar's chord at 0.8.
             if (bandDrives_ && band_) band_->playRecipe(audio::Recipe::Stab, -1, 0.8f);

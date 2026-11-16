@@ -55,6 +55,11 @@ private:
     // ring locks; the child does the same half a second late and never dashes.
     StickInput thinkTracers(const World& w, u32 player, const PlayerController& controller, StickInput in);
     StickInput thinkSongline(const World& w, u32 player, const PlayerController& controller, StickInput in);
+    // M8 JAM's wanderer (jam.md "What to check"): crosses the room's pads at random, holds a hold pad its beats, takes from a shelf.
+    StickInput thinkJam(const World& w, u32 player, const PlayerController& controller, StickInput in);
+    i32 jamTarget_ = -1;     // a pad, or 100 + an orb of the open shelf
+    u32 jamSince_ = 0;       // ticks at the target
+    u32 jamStay_ = 0;        // ticks to stay there
     void pickCircle(const World& w, u32 player, Vec2 pos);
     Vec2 ringC_;
     float ringR_ = 0.0f, ringDir_ = 1.0f;

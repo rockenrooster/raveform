@@ -18,7 +18,8 @@ namespace {
 enum class M8 : u8 {
     TitlePill, Modes, Lift, Back, Step, Track, Drop, LoadIn, CardOne, OneOutro, ResultOne, CardAct, ResultActs,
     TrLine, TrLock, TrPop, TrFloor4, TrHouse, TrCount, TrResult,
-    SlGroove, SlBuild, SlDrop, SlInTime, SlBraid, SlFinale, SlCount, SlResult
+    SlGroove, SlBuild, SlDrop, SlInTime, SlBraid, SlFinale, SlCount, SlResult,
+    JamRoom1, JamRoom4, JamRoom8, JamShelf, JamDropReady, JamDropResting, JamRoomDrop, PopDraft, PopDrop
 };
 struct M8Pic {
     const char* name;  // m8_<name>
@@ -53,6 +54,11 @@ const M8Pic kM8Pics[] = {
     // finale as a strip a quarter beat apart from bar 47, the count, the result.
     {"sl_groove", M8::SlGroove, 4}, {"sl_build", M8::SlBuild, 4}, {"sl_drop", M8::SlDrop, 4}, {"sl_intime", M8::SlInTime, 4},
     {"sl_braid", M8::SlBraid, 4}, {"sl_finale", M8::SlFinale, 4}, {"sl_count", M8::SlCount, 4}, {"sl_result", M8::SlResult, 4},
+    // Part 6 (JAM on Toybox; jam.md "What to check"): the room with one layer on, with four, with all eight (the mirror ball, the fan,
+    // the beams), a shelf open, DROP ready and resting, the room's Drop; POP-OFF's draft (two seats) and its Drop.
+    {"jam_room1", M8::JamRoom1, 12}, {"jam_room4", M8::JamRoom4, 12}, {"jam_room8", M8::JamRoom8, 12}, {"jam_shelf", M8::JamShelf, 12},
+    {"jam_drop_ready", M8::JamDropReady, 12}, {"jam_drop_resting", M8::JamDropResting, 12}, {"jam_room_drop", M8::JamRoomDrop, 12},
+    {"popoff_draft", M8::PopDraft, 12}, {"popoff_drop", M8::PopDrop, 12},
 };
 constexpr u32 kM8Count = sizeof(kM8Pics) / sizeof(kM8Pics[0]);
 constexpr u32 kM8At = 300;  // (the title at rest: as screen_title's)
@@ -148,6 +154,37 @@ bool Play::scriptSetupM8() {
             if (pic.kind == M8::TrCount || pic.kind == M8::TrResult) scriptFastForwardS_ = 90.0f;  // (into the last bars)
             break;
         }
+        case M8::JamRoom1:
+        case M8::JamRoom4:
+        case M8::JamRoom8:
+        case M8::JamShelf:
+        case M8::JamDropReady:
+        case M8::JamDropResting:
+        case M8::JamRoomDrop:
+        case M8::PopDraft:
+        case M8::PopDrop: {
+            // JAM on Toybox (the room: the layers asked for on its first bar, so they come on with the second), or POP-OFF with two seats.
+            const bool pop = pic.kind == M8::PopDraft || pic.kind == M8::PopDrop;
+            RunSetup su;
+            su.mode = Mode::Jam;
+            su.track = pic.mode;
+            su.versus = pop;
+            screen_ = Screen::Run;
+            w.resetRun(opt_.seed, 0.0, pop ? 2u : 1u, 0xF, su);
+            w.rules().godMode = true;
+            controller_.reset(w.player(0).pos);
+            bot_.reset(opt_.seed, Bot::Policy::Play);
+            marks_[0] = Mark{0.0f, 0, su.track};
+            runTrackMax_ = su.track;
+            const u32 layers = pic.kind == M8::JamRoom1 ? 1u : (pic.kind == M8::JamRoom4 ? 4u : (pic.kind == M8::JamShelf ? 3u : (pop ? 0u : 8u)));
+            for (u32 k = 1; k < layers; ++k) w.jamAsk(0, static_cast<u8>(k));
+            if (pic.kind == M8::JamDropResting || pic.kind == M8::JamRoomDrop) w.jamAsk(0, ModesData::Jam::kPadDrop);
+            const float barS = 240.0f / std::fmax(w.tempoAt(0.0), 30.0f);
+            if (pic.kind == M8::JamDropResting) scriptFastForwardS_ = 14.5f * barS;
+            if (pic.kind == M8::JamRoomDrop) scriptFastForwardS_ = 6.5f * barS;
+            if (pic.kind == M8::PopDrop) scriptFastForwardS_ = 20.0f * barS;
+            break;
+        }
         case M8::SlGroove:
         case M8::SlBuild:
         case M8::SlDrop:
@@ -187,6 +224,32 @@ bool Play::scriptInputM8(StickInput& in) {
     const M8Pic& pic = kM8Pics[m8Pic_];
     const u32 t = scriptTick_;
     const i64 now = static_cast<i64>(frameNo_);
+    if (pic.kind >= M8::JamRoom1) {
+        // JAM: the ship stands in the room (the shelf's picture: it holds TOYS, then rests by the shelf); POP-OFF: the bot plays.
+        const bool pop = pic.kind == M8::PopDraft || pic.kind == M8::PopDrop;
+        in = pop && w.player(0).alive ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+        if (pic.kind == M8::JamShelf && w.jam().shelf[0].pad == 0xFF) {
+            const Vec2 to = w.species().modes.jam.pad[ModesData::Jam::kPadToys].at - w.player(0).pos;
+            const float l = length(to);
+            if (l > 8.0f) in.move = to * (1.0f / l) * (l < 60.0f ? 0.5f : 1.0f);
+        }
+        if (pic.kind == M8::JamDropReady) {
+            const Vec2 to = w.species().modes.jam.pad[ModesData::Jam::kPadDrop].at + Vec2{-150.0f, 0.0f} - w.player(0).pos;
+            const float l = length(to);
+            if (l > 8.0f) in.move = to * (1.0f / l) * (l < 60.0f ? 0.5f : 1.0f);
+        }
+        if (captureFrom_ >= 0 || ffRunning_) return true;
+        const double bars = (music1_ - w.director().startTick) / kTicksPerBar;
+        if ((pic.kind == M8::JamRoom1 || pic.kind == M8::JamRoom4 || pic.kind == M8::JamRoom8) && bars >= 3.25) captureFrom_ = now + 1;
+        if (pic.kind == M8::JamShelf && w.jam().shelf[0].pad != 0xFF && bars >= 4.0) captureFrom_ = now + 1;
+        if (pic.kind == M8::JamDropReady && bars >= 3.5) captureFrom_ = now + 1;
+        if (pic.kind == M8::JamDropResting && bars >= 15.5) captureFrom_ = now + 1;
+        if (pic.kind == M8::JamRoomDrop && w.phrase().section == Section::Drop && w.phrase().sectionBar >= 1) captureFrom_ = now + 1;
+        if (pic.kind == M8::PopDraft && w.trio(0).open && bars >= 3.3) captureFrom_ = now + 1;
+        if (pic.kind == M8::PopDrop && w.phrase().section == Section::Drop && w.phrase().sectionBar >= 2) captureFrom_ = now + 1;
+        if (captureFrom_ >= 0) RF_LOG("play: picture '%s' captures from frame %lld (bar %.2f)", opt_.picture, static_cast<long long>(captureFrom_), bars);
+        return true;
+    }
     if (pic.kind >= M8::SlGroove) {
         // SONGLINE: the rider flies (the other seats of the braid stand); each picture waits for its moment.
         in = w.player(0).alive ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};

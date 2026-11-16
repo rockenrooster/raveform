@@ -86,6 +86,9 @@ enum NetPlayerEventKind : u8 {
     kPeNova, kPeDash, kPeHit, kPeDown, kPeRevive, kPeTrioOpen, kPeTrioTake, kPeBoostTake, kPeHalo, kPeLeave, kPeWell, kPeKnock,
     kPeCut, kPeSpin,  // M8 TRACERS versus: this player's tracer cut (x, y), spun out (x, y the push; tick: no line until then)
     kPeGate,          // M8 SONGLINE: this player threaded a gate (tick = the gate's birth, b = 1 in time, y2 = the ticks after it was threaded)
+    kPeJamPad,        // M8 JAM: this player asks for a room pad (b = the pad: the host decides)
+    kPeJamTake,       // ... took a toy or a Boost from its shelf (b = the orb)
+    kPeJamEmpty,      // ... emptied its ship
     kPeCount
 };
 // One operation from the network, applied inside the next tick (so its events land in the tick's buffer
@@ -257,6 +260,19 @@ enum class EventType : u8 {
     // or 0xFF; x, y the gate).
     SongChord,
     GateOwner,
+    // M8 JAM (design/modes/jam.md): a player asks for a room pad (a = player, b = the pad: the host decides); the room changes on its
+    // bar line (a = 0 the mixer, 1 DROP, 2 a Track, 3 SOUND; b = the mask, the Track or the sound; tick = the bar line); the mixer took
+    // its mask (a = now, b = before); the sound (a); a pad held its beats (a = player, b = the pad; x, y); a shelf opened (a = player,
+    // b = 0 the toys, 1 the Boosts, c = which; x, y its centre); a toy or a Boost taken (a = player, b = the orb, c = its level; x, y);
+    // EMPTY (a = player; x, y).
+    JamAsk,
+    JamRoom,
+    JamMixer,
+    JamSound,
+    JamHold,
+    JamShelf,
+    JamTake,
+    JamEmpty,
 };
 enum UpgradeFx : u8 {
     kFxFork,          // a shot forked: x, y
@@ -1770,6 +1786,37 @@ private:
     u32 streakDropBar_[kMaxPlayers] = {};
     u16 gatesLaid_[kMaxPlayers] = {}, gatesThreaded_[kMaxPlayers] = {}, gatesInTime_[kMaxPlayers] = {};
     u16 songTaken_[kMaxPlayers] = {};  // versus: the gates the host gave each player (one in time counts two)
+public:
+    // M8 JAM (design/modes/jam.md; world_mode_jam.cpp): the room's mixer and sound, DROP's rest, each player's pads and shelf.
+    struct JamState {
+        u8 mixer = 1, mixerNext = 1, sound = 0, soundNext = 0;
+        double mixerAt = -1.0, soundAt = -1.0;  // the bar line a change waits for (< 0: none)
+        u32 dropReadyBar = 0;                   // DROP may be pressed again from this bar
+        u32 inside[kMaxPlayers] = {};           // a bit a pad the ship is in
+        float hold[kMaxPlayers][25] = {};       // beats held in a hold pad (-1: done until it leaves)
+        struct Shelf {
+            u8 pad = 0xFF;                      // 0 the toys, 1 the Boosts (0xFF: closed)
+            u8 index = 0;
+            Vec2 centre;
+            double closeAt = -1.0;
+            float orbHold[7] = {};
+        } shelf[kMaxPlayers];
+        u8 toysNext[kMaxPlayers] = {}, boostsNext[kMaxPlayers] = {};
+    };
+    const JamState& jam() const { return jam_; }
+    u32 jamLayersOn() const;
+    u8 jamShelfOrb(u32 p, u32 k) const;     // the orb k (0-5, 6 a Fusion's gold) of player p's open shelf; kNoUpgrade: none
+    Vec2 jamShelfOrbPos(u32 p, u32 k) const;
+    void jamAsk(u32 p, u8 pad);             // (pictures, tests: as if the ship flew over it)
+    void jamTake(u32 p, u8 orb);
+    void jamEmpty(u32 p);
+private:
+    JamState jam_;
+    void resetJam();
+    void updateJam();
+    void jamDecide(u8 pad);
+    void jamRoomOp(u8 kind, u8 value, double at);
+    float jamCrowdTarget(const Phrase& ph) const;
     DirectorSync sparkSync_;           // host: the line a bar ahead, as captured on the last bar line
     void songRemoteThread(u32 p, double born, bool inTime, double at);
     void songDecide(SongGate& g, u32 p, bool inTime, double at);

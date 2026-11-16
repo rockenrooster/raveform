@@ -1272,6 +1272,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
 
     drawArena(d, in);  // M5 part 5: the structures and the event, under the bodies
     if (stage) drawStageFloor(d, in);  // M8: the rig and the floor's edges, under the bodies
+    drawJam(d, in);                    // M8 JAM: the room's lights and pads (play_view_jam.cpp)
 
     // ---- Enemies.
     const Enemies& e = w.enemies();
@@ -1452,6 +1453,7 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
 
     if (stage) drawStageLines(d, in);  // M8: the tracers, the closing hint, the rings (over the bodies, under the ships)
     drawSongline(d, in);               // M8 SONGLINE: the guide, the gates, the Spark (play_view_songline.cpp)
+    drawJamShelves(d, in);             // M8 JAM: the shelves of toys round the ship
 
     // ---- The player: two-tone ship, halo (one arc per Shield cell), trail, pool, priority layer.
     const PlayerState& me = w.player(w.viewPlayer());

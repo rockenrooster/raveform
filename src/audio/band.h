@@ -159,6 +159,9 @@ public:
     void leadNoteAt(u8 player, u8 midi, float gain, float pan, double tick = -1.0, u8 timbre = 0xFF);
     // M8 (4): the lead slot that is nobody's (SONGLINE's Spark): 0 off, 1 every sixteenth, 3 the beat's eighths, 4 quarters.
     void setSpark(u8 mode, u8 timbre = 2);
+    // M8 (5): the bed's layers by JAM's mixer (a bit a layer: KICK, HATS, BASS, CLAP, OPEN HAT, SHAKER, CHORDS, STABS), from the next
+    // bar line; -1: by the intensity again.
+    void setBedMask(i32 bits);
     void setPlayers(u8 count);
     void setPlayerTimbre(u8 slot, u8 timbre);
     void setPlayerFire(u8 slot, u8 mode);
@@ -309,6 +312,7 @@ private:
     bool fire_ = false;
     u8 fireMode_ = 0;
     u8 sparkMode_ = 0;  // M8: what setSpark last sent
+    i32 bedMask_ = -1;  // M8: what setBedMask last sent
     bool game_ = false;
     float intensity_ = 0.6f;
     bool hold_ = false;

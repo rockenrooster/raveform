@@ -12,7 +12,7 @@
 # Debug (the default) runs with validation; exit 1 on a validation message or a layout warning (two controls, or a control and a
 # line, closer than 24 px).
 param(
-    [ValidateSet('p0', 'p1', 'p2', 'p4', 'p5')][string]$Part = 'p0',
+    [ValidateSet('p0', 'p1', 'p2', 'p4', 'p5', 'p6')][string]$Part = 'p0',
     [ValidateSet('debug', 'dev')][string]$Config = 'debug',
     [string[]]$Only = @(),
     [string]$Out = '',
@@ -56,6 +56,13 @@ if ($Part -eq 'p0') {
 } elseif ($Part -eq 'p2') {
     # p2: HEADLINERS (act 1's card, the result after the ten acts)
     $singles = @('m8_card_act', 'm8_result_headliners')
+    $strips = [ordered]@{}
+    $rooms = @()
+} elseif ($Part -eq 'p6') {
+    # p6: JAM on Toybox (jam.md "What to check"): the room with one layer, four, all eight; a shelf open; DROP ready and resting; the
+    # room's Drop; POP-OFF's draft and its Drop
+    $singles = @('m8_jam_room1', 'm8_jam_room4', 'm8_jam_room8', 'm8_jam_shelf', 'm8_jam_drop_ready', 'm8_jam_drop_resting',
+                 'm8_jam_room_drop', 'm8_popoff_draft', 'm8_popoff_drop')
     $strips = [ordered]@{}
     $rooms = @()
 } elseif ($Part -eq 'p5') {

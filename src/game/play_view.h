@@ -498,6 +498,13 @@ private:
     void drawSongline(FrameDraw& d, const ViewInput& in);
     void songlineEvent(const sim::World& w, const sim::Event& e, float t);
     Vec3 gateHue(const sim::World& w, u8 note) const;
+    // M8 part 6 (jam.md "Look", play_view_jam.cpp): the room's lights and pads (under the bodies), the shelves (over them).
+    void drawJam(FrameDraw& d, const ViewInput& in);
+    void drawJamShelves(FrameDraw& d, const ViewInput& in);
+    void jamBeam(FrameDraw& d, Vec2 from, Vec2 to, float level);
+    const sim::ModesData::Jam* jamData_ = nullptr;
+    u32 jamBeatSeen_ = ~0u;
+    Vec2 jamHalf_{860.0f, 420.0f};
     static constexpr u32 kSparkTail = 64;
     Vec2 sparkTail_[kSparkTail];
     float sparkTailT_[kSparkTail] = {};

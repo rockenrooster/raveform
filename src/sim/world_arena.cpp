@@ -1001,6 +1001,7 @@ void World::applyArenaOp(const NetOp& op) {
     const u8 code = static_cast<u8>(op.a - kArenaOpBase);
     const u8 a = op.c, b = op.b;
     switch (code) {
+        case 10: jamRoomOp(a, b, op.tick); break;                     // M8 JAM: the room's change on its bar line
         case 12: songChord(op.tick); break;                           // M8 SONGLINE: a step's chord (co-op)
         case 13: songOwner(op.tick, a, b != 0); break;               // ... a gate given (versus)
         case 14: songBack(a != 0, Vec2{op.x, op.y}); break;          // ... the line bending back, or flying on

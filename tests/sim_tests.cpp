@@ -4792,6 +4792,105 @@ void testSongline() {
     delete b;
 }
 
+// M8 part 6 (jam.md "What to check"): every toy to its cap and emptied again; a fifth Riff sends the oldest home; a mixer pad flown
+// over switches its layer on the next bar line; DROP held two beats brings the room's Build and Drop; a Track pad its Track-change Break.
+void jamStep(World& w, double& music, Vec2 pos) {
+    TickInput in;
+    const float bpm = w.tempoAt(music);
+    in.music0 = music;
+    in.music1 = music + static_cast<double>(bpm) * kTicksPerBeat / 60.0 * static_cast<double>(kDt);
+    in.bpm = bpm;
+    in.players[0].present = true;
+    in.players[0].pos = pos;
+    in.players[0].aim = Vec2{1.0f, 0.0f};
+    w.tick(in);
+    music = in.music1;
+}
+
+void testJam() {
+    g_test = "jam";
+    const ModesData::Jam& jd = g_species->modes.jam;
+    CHECK(jd.toyShelves == 7 && jd.boostShelves == 3 && jd.pad[ModesData::Jam::kPadDrop].radiusWu == 70.0f && jd.onAtStart == 1);
+    auto* w = new (std::nothrow) World;
+    if (!w) return;
+    w->init(g_species);
+    w->spawner().mode = Spawner::Mode::Off;
+    RunSetup su;
+    su.mode = Mode::Jam;
+    su.track = 12;
+    w->resetRun(3, 0.0, 1, 0x1, su);
+    CHECK(w->onStage() && w->jam().mixer == 1 && w->director().jamTrack == 12);
+    // Every toy to its cap (a Riff to its level 5) and emptied.
+    u32 notCapped = 0;
+    for (u32 sh = 0; sh < jd.toyShelves; ++sh)
+        for (u32 k = 0; k < 6; ++k) {
+            const u8 u = jd.toy[sh][k];
+            for (u32 n = 0; n < 8u; ++n) w->jamTake(0, u);
+            if (w->player(0).loadout.level(u) != upgradeInfo(u).cap) ++notCapped;
+            if (isRiff(u)) {
+                w->jamEmpty(0);  // (one Riff at a time here; the fifth's rule below)
+            }
+        }
+    CHECK_MSG(notCapped == 0, "%u toys short of their cap", notCapped);
+    w->jamEmpty(0);
+    u32 left = 0;
+    for (u8 m : w->player(0).loadout.mods) left += m;
+    for (u8 r : w->player(0).loadout.riffs) left += r;
+    CHECK_MSG(left == 0 && w->player(0).loadout.fusions == 0, "after EMPTY %u stacks and fusions 0x%x", left, w->player(0).loadout.fusions);
+    // A fifth Riff sends the oldest home.
+    const u8 riffs[5] = {kOrbitals, kPulseRing, kSentinel, kLancer, kSwarm};
+    for (u8 r : riffs) w->jamTake(0, r);
+    CHECK_MSG(w->player(0).loadout.riffsOwned() == 4 && w->player(0).loadout.level(kOrbitals) == 0 && w->player(0).loadout.level(kSwarm) == 1,
+              "riffs %u, Orbitals %u, Swarm %u", w->player(0).loadout.riffsOwned(), w->player(0).loadout.level(kOrbitals), w->player(0).loadout.level(kSwarm));
+    // A Boost from the shelf lasts eight bars.
+    w->jamTake(0, static_cast<u8>(kBoostOrb + kPrism));
+    bool eight = false;
+    for (const ActiveBoost& b : w->player(0).boosts)
+        if (b.type == kPrism) eight = std::fabs((b.until - w->music()) - 8.0 * kTicksPerBar) < 2.0;
+    CHECK(eight);
+    w->jamEmpty(0);
+    // A mixer pad flown over: HATS on from the next bar line, not before.
+    double music = 0.0;
+    const Vec2 rest{0.0f, 0.0f};
+    for (u32 t = 0; t < 30; ++t) jamStep(*w, music, rest);
+    jamStep(*w, music, jd.pad[1].at);
+    CHECK(w->jam().mixer == 1 && (w->jam().mixerNext & 2u));
+    const u32 askedBar = w->barOf(music);
+    while (w->barOf(music) <= askedBar + 1u) jamStep(*w, music, rest);
+    CHECK_MSG(w->jam().mixer == 3, "the mixer after the bar line: 0x%x", w->jam().mixer);
+    // DROP held two beats: the room's Build of four bars from the next bar line, then its Drop of eight, then the Groove.
+    {
+        const double until = music + 2.2 * kTicksPerBeat;
+        while (music < until) jamStep(*w, music, jd.pad[ModesData::Jam::kPadDrop].at);
+        const u32 dropBar = w->director().jamDropBar;
+        CHECK_MSG(dropBar != kNoBar, "DROP not pressed");
+        if (dropBar != kNoBar) {
+            CHECK(w->phraseOfBar(dropBar).section == Section::Build && w->phraseOfBar(dropBar + 3u).buildLastBar());
+            CHECK(w->phraseOfBar(dropBar + 4u).section == Section::Drop && w->phraseOfBar(dropBar + 11u).section == Section::Drop);
+            CHECK(w->phraseOfBar(dropBar + 12u).section == Section::Groove);
+        }
+    }
+    // A Track pad held: the Track-change Break of eight bars into Track 3 (after the Drop), then Track 3's music and tempo.
+    {
+        for (u32 t = 0; t < 30; ++t) jamStep(*w, music, rest);
+        const u32 after = w->director().jamDropBar + jd.dropBuildBars + jd.dropBars;
+        while (w->barOf(music) < after) jamStep(*w, music, rest);
+        const double until = music + 2.2 * kTicksPerBeat;
+        while (music < until) jamStep(*w, music, jd.pad[ModesData::Jam::kPadTrack0 + 2u].at);
+        const u32 change = w->director().jamChangeBar;
+        CHECK_MSG(change != kNoBar && w->director().jamNext == 3, "the Track pad: change bar %u next %u", change, w->director().jamNext);
+        if (change != kNoBar) {
+            const Phrase br = w->phraseOfBar(change);
+            CHECK(br.trackChange && br.section == Section::Break && br.sectionBars == kTrackChangeBars);
+            const Phrase after8 = w->phraseOfBar(change + kTrackChangeBars);
+            CHECK_MSG(after8.section == Section::Groove && after8.song == songOfTrack(3, w->director().songs) && std::fabs(after8.trackBpm - bpmOfTrack(3, w->director().songs)) < 0.01f,
+                      "after the Break: section %u song %u bpm %.1f", static_cast<unsigned>(after8.section), after8.song, static_cast<double>(after8.trackBpm));
+        }
+    }
+    std::printf("[sim tests] jam: %u toys to their caps, the fifth Riff, the mixer on its bar line, DROP, a Track pad" "\n", jd.toyShelves * 6u);
+    delete w;
+}
+
 int main() {
     g_species = new (std::nothrow) SpeciesTable;
     if (!g_species || !g_species->load()) {
@@ -4844,6 +4943,7 @@ int main() {
     testTracers();
     testTracersTogether();
     testSongline();
+    testJam();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;
     return g_failures;

@@ -75,6 +75,8 @@ void Bot::reset(u64 seed, Policy policy) {
     policy_ = policy;
     wander_ = rng_.range(0.0f, kTau);
     ticks_ = 0;
+    jamTarget_ = -1;
+    jamSince_ = jamStay_ = 0;
     dashLast_ = novaLast_ = false;
     anchor_ = Vec2{};
     novContact_ = novDash_ = false;
@@ -353,6 +355,59 @@ StickInput Bot::thinkSongline(const World& w, u32 player, const PlayerController
     return in;
 }
 
+StickInput Bot::thinkJam(const World& w, u32 player, const PlayerController& controller, StickInput in) {
+    // The wanderer: a pad at random (the mixer's eight most often), flown to and held its beats and half a beat more; with a shelf
+    // open, an orb of it held one to four beats (one to four stacks); EMPTY now and then. The gun fires by itself.
+    const ModesData::Jam& d = w.species().modes.jam;
+    const Vec2 pos = controller.pose().pos;
+    in.aimActive = false;
+    in.assist = true;
+    const double beatTicks = 60.0 / static_cast<double>(w.bpm() > 1.0f ? w.bpm() : 120.0f) * 60.0;  // (ticks of 1/60 s in a beat)
+    const World::JamState::Shelf& sh = w.jam().shelf[player < kMaxPlayers ? player : 0];
+    const auto pick = [&]() {
+        jamSince_ = 0;
+        if (sh.pad != 0xFF && rng_.below(3) != 0) {
+            u32 k = rng_.below(7);
+            for (u32 t = 0; t < 7 && w.jamShelfOrb(player, k) == kNoUpgrade; ++t) k = (k + 1u) % 7u;
+            if (w.jamShelfOrb(player, k) != kNoUpgrade) {
+                jamTarget_ = static_cast<i32>(100u + k);
+                jamStay_ = static_cast<u32>(beatTicks * (1.2 + static_cast<double>(rng_.below(4))));
+                return;
+            }
+        }
+        const u32 r = rng_.below(20);
+        jamTarget_ = r < 9 ? static_cast<i32>(rng_.below(ModesData::Jam::kMixer))
+                           : (r < 17 ? static_cast<i32>(ModesData::Jam::kPadDrop + rng_.below(5)) : static_cast<i32>(ModesData::Jam::kPadTrack0 + rng_.below(12)));
+        const float hold = d.pad[jamTarget_].holdBeats;
+        jamStay_ = static_cast<u32>(beatTicks * (hold > 0.0f ? static_cast<double>(hold) + 0.5 : 0.2));
+    };
+    if (jamTarget_ < 0) pick();
+    Vec2 goal = pos;
+    float reach = 20.0f;
+    if (jamTarget_ >= 100) {
+        const u32 k = static_cast<u32>(jamTarget_ - 100);
+        if (sh.pad == 0xFF || w.jamShelfOrb(player, k) == kNoUpgrade) {
+            pick();
+        } else {
+            goal = w.jamShelfOrbPos(player, k);
+            reach = 12.0f;
+        }
+    }
+    if (jamTarget_ >= 0 && jamTarget_ < 100) {
+        goal = d.pad[jamTarget_].at;
+        reach = 0.4f * d.pad[jamTarget_].radiusWu;
+    }
+    const Vec2 to = goal - pos;
+    const float dist = length(to);
+    if (dist <= reach) {
+        in.move = Vec2{};
+        if (++jamSince_ >= jamStay_) pick();
+    } else {
+        in.move = normalizeOr(to, Vec2{1.0f, 0.0f}) * (dist < 60.0f ? 0.5f : 1.0f);
+    }
+    return in;
+}
+
 StickInput Bot::think(const World& w, u32 player, const PlayerController& controller, double musicTick) {
     ++ticks_;
     precise_ = false;
@@ -363,6 +418,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     if (!me.alive) return in;
     if (w.setup().mode == Mode::Tracers && policy_ != Policy::Stress) return thinkTracers(w, player, controller, in);  // (M8)
     if (w.setup().mode == Mode::Songline && policy_ != Policy::Stress) return thinkSongline(w, player, controller, in);
+    if (w.setup().mode == Mode::Jam && !w.setup().versus && policy_ != Policy::Stress) return thinkJam(w, player, controller, in);
     const Vec2 pos = pose.pos;
     const Enemies& e = w.enemies();
     const Bullets& b = w.bullets();

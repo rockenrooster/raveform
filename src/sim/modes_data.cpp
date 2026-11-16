@@ -439,6 +439,132 @@ bool ModesData::load() {
         }
     }
     {
+        // JAM (jam.md; modes.json jam): the pads, the shelves by name, the dancers, the lights, POP-OFF.
+        Jam& j = jam;
+        static const char* const kHold[5] = {"drop", "toys", "boosts", "empty", "sound"};
+        const float mx0 = static_cast<float>(r.num("jam.pads.mixer.x0")), mstep = static_cast<float>(r.num("jam.pads.mixer.stepX"));
+        const float my = static_cast<float>(r.num("jam.pads.mixer.y")), mr = static_cast<float>(r.num("jam.pads.mixer.radiusWu"));
+        for (u32 k = 0; k < Jam::kMixer; ++k) {
+            j.pad[k].at = Vec2{mx0 + mstep * static_cast<float>(k), my};
+            j.pad[k].radiusWu = mr;
+            j.pad[k].holdBeats = 0.0f;
+            std::snprintf(p, sizeof p, "jam.pads.mixer.layers.%u", k);
+            r.text(p, j.layer[k], sizeof j.layer[k]);
+            std::snprintf(p, sizeof p, "jam.pads.mixer.onAtStart.%u", k);
+            if (r.flag(p)) j.onAtStart = static_cast<u8>(j.onAtStart | (1u << k));
+            else j.onAtStart = static_cast<u8>(j.onAtStart & ~(1u << k));
+        }
+        for (u32 k = 0; k < 5; ++k) {
+            Jam::Pad& q = j.pad[Jam::kPadDrop + k];
+            std::snprintf(p, sizeof p, "jam.pads.%s.x", kHold[k]);
+            q.at.x = static_cast<float>(r.num(p));
+            std::snprintf(p, sizeof p, "jam.pads.%s.y", kHold[k]);
+            q.at.y = static_cast<float>(r.num(p));
+            std::snprintf(p, sizeof p, "jam.pads.%s.radiusWu", kHold[k]);
+            q.radiusWu = static_cast<float>(r.num(p));
+            std::snprintf(p, sizeof p, "jam.pads.%s.holdBeats", kHold[k]);
+            q.holdBeats = static_cast<float>(r.num(p));
+        }
+        j.dropRestBars = static_cast<u32>(r.num("jam.pads.drop.restBars"));
+        {
+            const float tx0 = static_cast<float>(r.num("jam.pads.tracks.x0")), tstep = static_cast<float>(r.num("jam.pads.tracks.stepX"));
+            const float ty = static_cast<float>(r.num("jam.pads.tracks.y")), tr = static_cast<float>(r.num("jam.pads.tracks.radiusWu"));
+            const float th = static_cast<float>(r.num("jam.pads.tracks.holdBeats"));
+            for (u32 k = 0; k < Jam::kTrackPads; ++k) {
+                Jam::Pad& q = j.pad[Jam::kPadTrack0 + k];
+                q.at = Vec2{tx0 + tstep * static_cast<float>(k), ty};
+                q.radiusWu = tr;
+                q.holdBeats = th;
+            }
+        }
+        if (forms.jamDrop.count >= 2) {
+            j.dropBuildBars = forms.jamDrop.s[0].bars;
+            j.dropBars = forms.jamDrop.s[1].bars;
+        }
+        j.orbs = static_cast<u32>(r.num("jam.shelf.orbs"));
+        j.ringWu = static_cast<float>(r.num("jam.shelf.ringWu"));
+        j.takeBeats = static_cast<float>(r.num("jam.shelf.takeBeats"));
+        j.staysWithinWu = static_cast<float>(r.num("jam.shelf.staysWithinWu"));
+        j.closesAfterBars = static_cast<u32>(r.num("jam.shelf.closesAfterBars"));
+        j.boostBars = static_cast<u32>(r.num("jam.shelf.boostBars"));
+        j.riffSlots = static_cast<u32>(r.num("jam.shelf.riffSlots"));
+        // The shelves by name: the toys (GAME_DESIGN 6.2's Mods and 6.3's Riffs), the Boosts (6.4).
+        static const char* const kUp[kUpgradeCount] = {
+            "split", "doubleTime", "pierce", "ricochet", "fork", "seeker", "heavyStep", "accent", "echo", "wave", "overcharge", "rearGuard",
+            "arc", "burn", "shatter", "gravityRounds", "extraCell", "regen", "afterimage", "reserve", "shockstep", "aegis", "lastLight",
+            "slipstream", "magnet", "prospector", "novaStock", "encore", "luckyBreak", "collector", "onBeatCrit", "syncopation", "barLine",
+            "crescendo", "kickPulse", "afterparty", "orbitals", "pulseRing", "sentinel", "lancer", "minelayer", "stormCoil", "swarm",
+            "singularity", "mirror", "comet", "sweeper", "flak"};
+        static const char* const kBo[kBoostCount] = {"prism", "hyper", "supernovaRounds", "colossus", "timeStretch", "freezeFrame", "halo",
+                                                      "magnetStorm", "blackHole", "chainStorm", "chorus", "beam", "ricochetFever", "confetti",
+                                                      "fractal", "carousel"};
+        const auto lookup = [&](const char* name, const char* const* list, u32 n) -> i32 {
+            for (u32 k = 0; k < n; ++k)
+                if (std::strcmp(list[k], name) == 0) return static_cast<i32>(k);
+            return -1;
+        };
+        j.toyShelves = 0;
+        for (u32 sh = 0; sh < 7; ++sh) {
+            u32 got = 0;
+            for (u32 k = 0; k < 6; ++k) {
+                char name[24] = {};
+                std::snprintf(p, sizeof p, "jam.shelves.toys.%u.%u", sh, k);
+                if (!doc.text(p, name, sizeof name)) break;
+                const i32 u = lookup(name, kUp, kUpgradeCount);
+                if (u < 0) {
+                    RF_ERR("modes.json: jam.shelves.toys names '%s', which the game does not have", name);
+                    r.ok = false;
+                    continue;
+                }
+                j.toy[sh][got++] = static_cast<u8>(u);
+            }
+            if (got == 6) j.toyShelves = static_cast<u8>(sh + 1u);
+            else break;
+        }
+        j.boostShelves = 0;
+        for (u32 sh = 0; sh < 3; ++sh) {
+            u32 got = 0;
+            for (u32 k = 0; k < 6; ++k) {
+                char name[24] = {};
+                std::snprintf(p, sizeof p, "jam.shelves.boosts.%u.%u", sh, k);
+                if (!doc.text(p, name, sizeof name)) break;
+                const i32 b = lookup(name, kBo, kBoostCount);
+                if (b < 0) {
+                    RF_ERR("modes.json: jam.shelves.boosts names '%s', which the game does not have", name);
+                    r.ok = false;
+                    continue;
+                }
+                j.boostShelf[sh][got++] = static_cast<u8>(b);
+            }
+            if (!got) break;
+            j.boostShelfSize[sh] = static_cast<u8>(got);
+            j.boostShelves = static_cast<u8>(sh + 1u);
+        }
+        j.perLayer = static_cast<u32>(r.num("jam.crowd.perLayer"));
+        j.crowdMax = static_cast<u32>(r.num("jam.crowd.max"));
+        j.dropScale = static_cast<float>(r.num("jam.crowd.dropScale"));
+        j.eliteEveryBars = static_cast<u32>(r.num("jam.crowd.eliteEveryBars"));
+        j.eliteFromLayers = static_cast<u32>(r.num("jam.crowd.eliteFromLayers"));
+        j.glints = static_cast<u32>(r.num("jam.mirrorBall.glints"));
+        j.glintWu = static_cast<float>(r.num("jam.mirrorBall.radiusWu"));
+        j.turnBars = static_cast<float>(r.num("jam.mirrorBall.turnBars"));
+        j.glintLevel = static_cast<float>(r.num("jam.mirrorBall.level"));
+        j.beamCorePx = static_cast<float>(r.num("jam.beam.corePx"));
+        j.beamGlowWu = static_cast<float>(r.num("jam.beam.glowWu"));
+        j.beamGlow = static_cast<float>(r.num("jam.beam.glow"));
+        j.beamLevel = static_cast<float>(r.num("jam.beam.level"));
+        j.picks = static_cast<u32>(r.num("jam.popOff.picks"));
+        j.pickBars = static_cast<u32>(r.num("jam.popOff.pickBars"));
+        j.popBuildBars = static_cast<u32>(r.num("jam.popOff.buildBars"));
+        j.popDropBars = static_cast<u32>(r.num("jam.popOff.dropBars"));
+        j.popCrowd = static_cast<u32>(r.num("jam.popOff.crowdTarget"));
+        j.eliteWorth = static_cast<u32>(r.num("jam.popOff.eliteWorth"));
+        if (j.toyShelves != 7 || !j.boostShelves || j.orbs != 6 || j.riffSlots != kRiffSlots || j.crowdMax > 400 || !j.pickBars) {
+            RF_ERR("modes.json: jam's shelves (%u toys, %u Boosts, %u orbs) or caps are outside the game's", j.toyShelves, j.boostShelves, j.orbs);
+            r.ok = false;
+        }
+    }
+    {
         // SONGLINE (songline.md; modes.json songline).
         Songline& g = songline;
         static const char* const kSec[4] = {"groove", "build", "drop", "break"};
