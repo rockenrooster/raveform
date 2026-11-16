@@ -131,6 +131,46 @@ Measured: the 5-minute four-bot net soak, versus against team: both pass, census
 error RMS 1.70 wu (team 1.56), p95 2.0 (2.25), max 165 wu (85: a shoved or knocked-out ship's moment); downstream 268 kbps at most
 (264). The set's determinism hashes are unchanged.
 
+### Part 7: the whole (2026-11-16)
+
+Done: the cards' dev-only line gone (every mode built: the release build shows all seven, TEAM / VERSUS in the room's MODES);
+`scripts\sanitize.ps1 -Only modes` (a bot's run of each mode, and SONGLINE versus, JAM, POP-OFF and TRACERS versus rooms on the
+loopback network, under ASan + UBSan); `--ui-scale 0-3` for pictures at the UI scale's four sizes; the documents of MODES_PLAN 9
+(`PLAN.md` M8 built; `GAME_DESIGN.md` 4's pointer to the modes' runs; `TECH_SPEC.md` 7.1's modes' state and caps and 8.1.1's table of
+who decides what; `design/screens.md`'s built modes; `design/look.md`'s modes' new things; `design/music/README.md`'s bonus Tracks;
+CLAUDE.md's file map and commands).
+
+Measured:
+- **The sanitizers** (`sanitize.ps1 -Only tests,modes`): the four unit suites, determinism, a bot's run of ONE TRACK, HEADLINERS (all
+  ten), FULL BLAST, TRACERS, SONGLINE and JAM, and the four rooms: no report, every run its full result.
+- **The UI scale at 130%** (`m8_sl_groove`, `m8_jam_room4`, `m8_popoff_draft`, `m8_tr_line` with `--ui-scale 3`): every new HUD line
+  fits, no layout warning.
+- **Four devices, one room, each mode in TEAM and in VERSUS** (`coop-phones.ps1`, the Moto hosting, the second Moto and two tablets
+  joining by address, every seat's bot playing, 1.6 minutes a room; each device woken and its lock screen dismissed first, as
+  `stress-devices.ps1` does: the first try lost its rooms to three sleeping devices, "renderer: no window surface"): all fourteen
+  rooms started; 138 census checks a room, 0 mismatches in every one; no crash, no error of ours in any log; 0 to 8 predicted kills
+  undone a room (FULL BLAST's 8); the bands within 2 ms of the room's song.
+- **The benchmark matrix of section 7** (the Moto, shared, tier low; the panel's grade):
+
+  | Moment | Frames, missed | GPU p50 / p95 / max (ms) | Notes |
+  |---|---|---|---|
+  | FULL BLAST, wave 4 (`--mode blast:10`, 20 s from 107 s) | 1,198, 0 | 13.4 / 14.7 / 16.0 | 37,936 sparks a frame (68,886 at most) |
+  | The same hosting three bots | 1,196, 2 | 12.4 / 14.4 / 16.2 | main thread p99 12.9 ms (the bots run in-process) |
+  | TRACERS, the last Drop, four players (part 4) | 899, 0 | 12.8 / 13.8 / 14.6 | |
+  | SONGLINE, the last Drop, four players (part 5) | 899, 0 | 13.3 / 14.3 / 14.8 | the gates one instanced draw |
+  | JAM, every toy (part 6) | 3,594, 0 | 13.1 / 14.2 / 15.9 | |
+  | The Stage at its zoom (TRACERS) against the set's | | 13.8 against 13.5 | the lattice over more of the screen: within 3% |
+  | The band with the Spark's slot (part 5) | | | callback p95 0.87 ms of the 5 ms burst |
+
+  **The set's own** (`--drop 10.1 --nohits --tier low`, today): 0 missed, GPU p95 13.5 ms (recorded at M5's end: 14.3; earlier 12.95),
+  main thread p99 4.5 ms (4.9): within 10%.
+- **THE SET's determinism hashes are unchanged** (seed 1, two minutes: careful `f8d9e8972c671db2`, careless `6d9e281fa6d95425`).
+
+Not done in part 7: every way into and out of each mode driven by hand on a device (the paths are the set's own: the title's PLAY,
+MODES, RETRY, REMATCH, NEXT TRACK, the room, the pause's RESTART; the four-phone rooms and the pictures cover the room's and the
+result's), the transitions' strips for the new modes' cards (part 0's strips cover the frame), a haptics pass beyond the pulses each
+part added. **M8 is built: the line-up's seven modes, co-op and versus in each, in release builds.**
+
 ### Part 6: JAM and POP-OFF (2026-11-16)
 
 Built (`design/modes/jam.md`, `sound.md` "JAM" and "What the band needs" 5; `world_mode_jam.cpp`, the view `play_view_jam.cpp`):
