@@ -274,7 +274,7 @@ Effect words (final, 2026-11-12; plain words, no music terms, so a first-time pl
 | Ricochet | `SHOTS BOUNCE +2` |
 | Overcharge | `+50% SHOT DAMAGE` |
 | Extra Cell | `+1 CELL, ALL REFILLED` |
-| Regen | `CELL REGROWS: 16 BARS`, then `8 BARS`, `4 BARS` |
+| Regen | `CELL REGROWS: 8 BARS`, then `4 BARS` (the owner, 2026-11-15: the first rank's 16 bars removed) |
 | Magnet | `SHARD PULL X2`, then `X3`, `X4`, `X5` |
 | On-Beat Crit | `BEAT SHOTS X3`, `X5`, `X8` |
 | Orbitals | `NEW RIFF: A GUARD RING`, `LEVEL 2: FIVE SHARDS`, `LEVEL 3: RELIGHTS FASTER`, `LEVEL 4: NINE SHARDS`, `LEVEL 5: RELIGHTS FASTER` |
@@ -301,9 +301,6 @@ name (`ARC` for Aegis, `SINGULARITY` for the Black Hole). At most 26 characters.
 | Burn | `HITS IGNITE`, `HOTTER FIRE`, `FIERCE FIRE` |
 | Shatter | `KILLS THROW SHRAPNEL`, `MORE SHRAPNEL` |
 | Gravity Rounds | `HITS PULL ENEMIES IN`, `A STRONGER PULL` |
-| Afterimage | `DASH LEAVES A DECOY`, `DECOY LASTS LONGER` |
-| Reserve | `+1 DASH CHARGE` |
-| Shockstep | `DASH: A DAMAGING RING`, `A BIGGER RING` |
 | Aegis | `A SHIELD BLOCKS BULLETS`, `A WIDER SHIELD` |
 | Last Light | `WHEN HIT: A FREE NOVA` |
 | Slipstream | `+15% SPEED` |

@@ -33,8 +33,9 @@ constexpr float kReviveReachWu = 1600.0f;
 constexpr i32 kBotUpgradeScore[kUpgradeCount] = {
     // Split, Double-Time, Pierce, Ricochet, Fork, Seeker, Heavy Step, Accent, Echo, Wave, Overcharge, Rear Guard
     10, 10, 6, 5, 6, 3, 5, 8, 8, 3, 9, 2,
-    // Arc, Burn, Shatter, Gravity Rounds, Extra Cell, Regen, Afterimage, Reserve, Shockstep, Aegis, Last Light, Slipstream
-    5, 5, 4, 3, 9, 10, 3, 4, 3, 6, 6, 3,
+    // Arc, Burn, Shatter, Gravity Rounds, Extra Cell, Regen, Afterimage, Reserve, Shockstep (the three retired: never dealt),
+    // Aegis, Last Light, Slipstream
+    5, 5, 4, 3, 9, 10, 0, 0, 0, 6, 6, 3,
     // Magnet, Prospector, Nova Stock, Encore, Lucky Break, Collector, On-Beat Crit, Syncopation, Bar Line, Crescendo,
     // Kick Pulse, Afterparty
     4, 2, 6, 2, 3, 3, 9, 7, 4, 7, 4, 3,

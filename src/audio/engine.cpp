@@ -1,6 +1,7 @@
 #include "audio/engine.h"
 
 #include "audio/engine_parts.h"
+#include "core/lead_rule.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -1903,9 +1904,9 @@ void Engine::leadStep(i64 tick, i64 inBar) {
                 rearGuardStep(i, tick, inBar, s.mix.lead * level * std::pow(10.0f, r.overchargeDb * pl.overcharge / 20.0f), level);
             if (inBar % grid != 0 || (p.leadStopsHalf && inBar >= kTicksPerBar / 2)) continue;
             const u32 k = static_cast<u32>(inBar / grid);
-            // M3: the assist fires on every other step, and always on the off-beat's (the review's fixes, H3, 2026-11-15: the
-            // "and" of the beat is an odd step on Double-Time 1's grid; Band::computeShots and the sim skip the same steps).
-            if (pl.fire == 2 && (k & 1u) != 0 && inBar % kPpq != kPpq / 2) continue;
+            // M3: the assist's steps (core/lead_rule.h: every other one and the off-beat's, one in four skipped on the 1/32 grid
+            // and faster; Band::computeShots and the sim skip the same steps).
+            if (pl.fire == 2 && assistSkipsStep(grid, k)) continue;
             const u8 note = p.chord->arp[k % 16];
             const float accent = inBar % kPpq == 0 ? r.accentBeat : (inBar % (kPpq / 2) == 0 ? r.accentEighth : r.accentOther);
             const float pan = r.panDepth * std::sin(k * r.panRate + static_cast<float>(p.index));

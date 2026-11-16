@@ -178,7 +178,7 @@ pooled glow (`PlayView::drawBeam`). Every fight's sound goes through `src/game/p
 listed there and in PROGRESS). `--fight <id>[:<phase>[:hold]]` jumps a run to a fight (pictures, benchmarks). Species (M5 part 2):
 `design/species.json` (was `species_m5.json`) holds all sixteen families, 240 species (+ the broodling) and the ten Tracks'
 rosters, budgets and crowd targets; families with behaviour so far: the slice's six and Flanker, Skitter, Moth, Brood, Blink
-(`src/sim/world_families.cpp`, `familyBuilt`). Upgrades (M5 part 3): all 36 Mods, 12 Riffs, 16 Boosts and 8 Fusions of GAME_DESIGN 6.2-6.5
+(`src/sim/world_families.cpp`, `familyBuilt`). Upgrades (M5 part 3): all 36 Mods (33 dealt: Afterimage, Reserve and Shockstep removed 2026-11-15, cap 0, their numbers kept; the base Dash has two charges and their ring), 12 Riffs, 16 Boosts and 8 Fusions of GAME_DESIGN 6.2-6.5
 (`src/sim/world_upgrades_m5.cpp`, the view `play_view_upgrades.cpp`, the band's loadout and cues `game/upgrade_sounds.cpp`); a Trio is
 dealt (6.1: the first orb firepower, the others by `tuning::kDeal*` weights; up to six orbs with Lucky Break and a Fusion's gold
 orb); the bot picks by `kBotUpgradeScore` (`sim/bot.cpp`). Co-op: what moves or stops enemies because of one player's upgrade is

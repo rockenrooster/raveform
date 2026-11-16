@@ -14,7 +14,7 @@ enum Upgrade : u8 {
     // Weapon
     kSplit, kDoubleTime, kPierce, kRicochet, kFork, kSeeker, kHeavyStep, kAccent, kEcho, kWave, kOvercharge, kRearGuard,
     kArc, kBurn, kShatter, kGravityRounds,
-    // Defence and movement
+    // Defence and movement (Afterimage, Reserve and Shockstep retired 2026-11-15: never dealt, their numbers kept)
     kExtraCell, kRegen, kAfterimage, kReserve, kShockstep, kAegis, kLastLight, kSlipstream,
     // Economy
     kMagnet, kProspector, kNovaStock, kEncore, kLuckyBreak, kCollector,
@@ -93,9 +93,9 @@ inline u32 sentinelDrones(u32 level) {                               // a second
     return k[level < 5 ? level : 5];
 }
 constexpr u32 kMaxDrones = 3;
-inline u32 regenEveryBars(u32 stacks) {                              // Regen (play test 2): a cell grows back every
-    constexpr u32 k[4] = {0, 16, 8, 4};                              // 16, 8, then 4 bars
-    return k[stacks < 3 ? stacks : 3];
+inline u32 regenEveryBars(u32 stacks) {                              // Regen (play test 2): a cell grows back every 8, then 4
+    constexpr u32 k[3] = {0, 8, 4};                                  // bars (the owner, 2026-11-15: "remove the lowest rank", 16)
+    return k[stacks < 2 ? stacks : 2];
 }
 
 struct BoostInfo {

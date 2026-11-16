@@ -678,7 +678,7 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
             if (ph.track > maxTrack[s] && runner.deaths() == 0 && p.alive) {
                 if (ph.track == 4) {
                     u32 capped = 0;
-                    for (u8 u = 0; u < kModCount; ++u) capped += p.loadout.mods[u] >= upgradeInfo(u).cap ? 1u : 0u;
+                    for (u8 u = 0; u < kModCount; ++u) capped += upgradeInfo(u).cap && p.loadout.mods[u] >= upgradeInfo(u).cap ? 1u : 0u;  // (a retired Mod's cap is 0)
                     ++t3Runs;
                     t3Capped += capped;
                     t3Capped2 += capped >= 2 ? 1u : 0u;

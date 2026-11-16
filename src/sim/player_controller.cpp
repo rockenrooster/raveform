@@ -18,7 +18,7 @@ void PlayerController::reset(Vec2 pos) {
     novaHeld_ = dashHeld_ = false;
     dashLeftS_ = 0.0f;
     dashReadyAt_ = -1e18;
-    charges_ = 1;
+    charges_ = static_cast<u8>(kDashCharges);
     shoveKnown_ = false;
     targetHandle_ = 0;
 }
@@ -74,11 +74,11 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
     if (in.nova && !novaHeld_) p.novaPressed = true;
     novaHeld_ = in.nova;
 
-    // ---- Dash (GAME_DESIGN 5): 220 wu in 0.12 s, invulnerable throughout; recharges in four beats; a
+    // ---- Dash (GAME_DESIGN 5): 220 wu in 0.12 s, invulnerable throughout; recharges in two beats; a
     // Dash within +-60 ms of a beat is Perfect (R7) and refunds half the recharge.
     const float ticksPerS = bpm * static_cast<float>(kTicksPerBeat) / 60.0f;
-    // M5: Reserve (GAME_DESIGN 6.2) holds one more charge a stack; a charge comes back each recharge, one at a time.
-    const u32 maxCharges = 1u + static_cast<u32>(state.loadout.mods[kReserve]);
+    // Two charges (the owner, 2026-11-15: Reserve's, now the Dash's own); a charge comes back each recharge, one at a time.
+    const u32 maxCharges = kDashCharges;
     if (musicTick >= dashReadyAt_ && charges_ < maxCharges) {
         ++charges_;
         if (charges_ < maxCharges) {

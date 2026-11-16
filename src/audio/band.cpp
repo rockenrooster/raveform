@@ -17,6 +17,7 @@
 
 #include "audio/platform_audio.h"
 #include "core/alloc_counter.h"
+#include "core/lead_rule.h"
 #include "core/log.h"
 #include "core/save_file.h"
 
@@ -425,9 +426,8 @@ void Band::computeShots(i64 nowNs, i64 displayLeadNs) {
         const i64 heardAt = nowNs + displayLeadNs - static_cast<i64>(age * 1e9);
         const u8 held = fireAt(heardAt - static_cast<i64>(capNs));
         if (!held) continue;
-        // M3: the assist's half-rate grid (as the lead); never the off-beat's step (the review's fixes, H3, 2026-11-15: the sim's
-        // World::spawnShots and the engine's lead skip the same steps).
-        if (held == 2 && ((s * grid % kTicksPerBar) / grid) % 2 != 0 && (s * grid) % kPpq != kPpq / 2) continue;
+        // M3: the assist's grid (as the lead; core/lead_rule.h: the sim's World::spawnShots and the engine's lead skip the same steps).
+        if (held == 2 && assistSkipsStep(static_cast<u32>(grid), static_cast<u32>((s * grid % kTicksPerBar) / grid))) continue;
         if (view_.shotCount >= countOf(shots_)) break;
         LeadShot& shot = shots_[view_.shotCount++];
         shot.player = 0;

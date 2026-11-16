@@ -49,7 +49,7 @@ private:
     Vec2 dashDir_;
     double dashReadyAt_ = -1e18;  // musical tick at which the Dash has recharged
     double dashStartedAt_ = 0.0;
-    u8 charges_ = 1;              // M5: Dash charges ready (Reserve holds more)
+    u8 charges_ = kDashCharges;   // Dash charges ready (two since 2026-11-15)
     // 3283249 (horizon.md rule 7): how far through each of the world's shoves (PlayerState::Shove: Event Horizon's wave and
     // throw) the ship has been carried, as of that shove's serial (a new serial: a new push, from nothing).
     float shoveTaken_[PlayerState::kShoves] = {};

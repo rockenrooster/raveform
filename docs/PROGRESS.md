@@ -4,6 +4,28 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, the upgrades for a young player (2): what the owner chose
+
+- **The assist on the fast grids** (`core/lead_rule.h`, one rule for `World::spawnShots`, `Band::computeShots` and the engine's
+  lead): on the 1/32 grid and faster it skips one step in four instead of every other one, so 2, 4 and 6 shots a beat as
+  Double-Time grows (Hyper 9 and 12). Double-Time's second rank for the assist on the Choir: **0.06 -> 0.96** of an Overcharge
+  stack. The reference itself got quicker (29.2 -> 26.5 s): the boss's held Drop starts with the Surge, which the assist now
+  feels too.
+- **Seeker on a boss** (`steerShots`): a seeking shot bends only toward a part within 35 degrees of its heading
+  (`kSeekerBossConeCos`), the weak point first (the part a hit multiplies most, then a full hit, then armour). Steering to the
+  weak point alone was not enough (-0.61, as before): a shot turned across the Choir toward the singing Voice met a silent hood
+  on the way. With the cone: assist **-0.61 -> 0.00**, careful **-0.38 -> +0.03** (no gain on a boss the aim already finds; no
+  loss).
+- **The Dash Mods removed** ("just remove the dash mods entirely and buff the base dash"): Afterimage, Reserve and Shockstep
+  have a cap of 0, so they are never dealt (their numbers kept: the wire, the band's Mods and the icons are indexed by them);
+  the decoy is gone (`chaseTarget`, its fields, its picture and sound). **The base Dash**: two charges (Reserve's) and a shock
+  ring where every Dash ends, 140 wu, 3 damage, x 2 on a Perfect Dash (Shockstep's first rank; `kDashCharges`, `kDashRingWu`,
+  `kDashRingDamage` in `sim_types.h`; `kFxDashRing`). Test `dash`: two Dashes in half a second, the third refused, the ring's
+  kill.
+- **Regen** ("buff the regen upgrade, like remove the lowest rank"): a cell every 8 bars, then every 4; cap 2 (16, 8, 4 before).
+- Not measured: what the stronger Dash and Regen do to the bots' runs (the novice dashes out of half the hits it sees; the
+  child-like bot never dashes, so only Regen reaches it).
+
 ## 2026-11-15, the upgrades for a young player (the owner: "lets look at the upgrades next")
 
 `--sim picks --policy assist` (new): the no-trap table for a player who lets the auto-aim fire (the careful bot's feet). Both

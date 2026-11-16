@@ -29,10 +29,13 @@ const UpgradeInfo kInfo[kUpgradeCount] = {
     {"SHATTER", "shatter", 3, true},
     {"GRAVITY ROUNDS", "gravity_rounds", 2, true},
     {"EXTRA CELL", "extra_cell", 4, false},
-    {"REGEN", "regen", 3, false},
-    {"AFTERIMAGE", "afterimage", 2, false},
-    {"RESERVE", "reserve", 2, false},
-    {"SHOCKSTEP", "shockstep", 3, false},
+    {"REGEN", "regen", 2, false},  // (the owner, 2026-11-15: "buff the regen upgrade, like remove the lowest rank": 8, then 4 bars)
+    // Retired (the owner, 2026-11-15: "just remove the dash mods entirely and buff the base dash"): a cap of 0 is never dealt;
+    // the slots keep the numbers of the upgrades after them (the wire, the band's Mods, the icons). Reserve's charge and
+    // Shockstep's ring are the Dash's own now (sim_types.h kDashCharges, kDashRingWu).
+    {"AFTERIMAGE", "afterimage", 0, false},
+    {"RESERVE", "reserve", 0, false},
+    {"SHOCKSTEP", "shockstep", 0, false},
     {"AEGIS", "aegis", 3, false},
     {"LAST LIGHT", "last_light", 1, false},
     {"SLIPSTREAM", "slipstream", 2, false},  // M5 (GAME_DESIGN 6.2, the lead's ruling): +15%, cap 2
@@ -144,12 +147,9 @@ const char* upgradeWords(u8 u, u32 level) {
         case kShatter: return lv <= 1 ? "KILLS THROW SHRAPNEL" : "MORE SHRAPNEL";
         case kGravityRounds: return lv <= 1 ? "HITS PULL ENEMIES IN" : "A STRONGER PULL";
         case kExtraCell: return "+1 CELL, ALL REFILLED";
-        case kRegen:  // play test 2 (screens.md): CELL REGROWS: 16 BARS, then 8 BARS, 4 BARS
+        case kRegen:  // play test 2 (screens.md): CELL REGROWS: 8 BARS, then 4 BARS (16 BARS was the first rank until 2026-11-15)
             std::snprintf(buf, sizeof buf, "CELL REGROWS: %u BARS", regenEveryBars(lv));
             return buf;
-        case kAfterimage: return lv <= 1 ? "DASH LEAVES A DECOY" : "DECOY LASTS LONGER";
-        case kReserve: return "+1 DASH CHARGE";
-        case kShockstep: return lv <= 1 ? "DASH: A DAMAGING RING" : "A BIGGER RING";
         case kAegis: return lv <= 1 ? "A SHIELD BLOCKS BULLETS" : "A WIDER SHIELD";
         case kLastLight: return "WHEN HIT: A FREE NOVA";
         case kSlipstream: return "+15% SPEED";

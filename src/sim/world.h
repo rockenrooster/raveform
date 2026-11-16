@@ -220,8 +220,7 @@ enum UpgradeFx : u8 {
                       // f = 0 Arc, 1 Tesla Bloom, 2 Chain Storm, 3 Storm Coil
     kFxShatter,       // Shatter's shrapnel: x, y; c = pieces
     kFxGravity,       // Gravity Rounds' tug: x, y; f = reach
-    kFxDecoy,         // Afterimage: a decoy at x, y until tick
-    kFxShockstep,     // x, y; f = radius; c = 1 Perfect
+    kFxDashRing,      // the Dash's shock ring (Shockstep's until 2026-11-15): x, y; f = radius; c = 1 Perfect
     kFxAegis,         // the arc stopped a bullet: x, y
     kFxLastLight,     // the free mini-Nova: x, y; f = radius
     kFxCollector,     // a Boost spawned: c = the Boost
@@ -604,8 +603,6 @@ struct PlayerState {
     static constexpr u32 kEchoes = 32;
     Echo echoes[kEchoes];
     u32 volleys = 0;             // volleys fired (Heavy Step's every fourth)
-    Vec2 decoyAt;                // Afterimage
-    double decoyUntil = -1.0;
     u32 lastLightCycle = 0xFFFFFFFFu;  // Last Light: the cycle it fired in
     u16 cleanBars = 0;           // Crescendo: bars in a row without a hit
     u32 collectorShards = 0;     // Collector
@@ -652,7 +649,7 @@ struct PlayerState {
     Shove shoves[kShoves];
     Vec2 lastDashFrom, lastDashTo;  // M5 part 4 (Mimic C copies it): the last Dash, and when it began
     double lastDashTick = -1e9;
-    Vec2 shockAt;                // Shockstep's ring: where, when, how far
+    Vec2 shockAt;                // the Dash's shock ring: where, when, how far
     double shockTick = -1e9;
     float shockR = 0.0f, shockDamage = 0.0f;  // (damage > 0: its ring hurts this tick, once the grid is built)
     double kickTick = -1e9;      // the last Kick Pulse ring
@@ -1233,7 +1230,6 @@ private:
     void spendExtraLife(u32 p, Vec2 from);
     void demoRevive(u32 p, Vec2 from);
     // world_upgrades_m5.cpp (M5 part 3): the rest of the Mods, Riffs, Boosts and the Fusions.
-    Vec2 chaseTarget(u32 p) const;  // where the enemies chasing player p go (Afterimage's decoy)
     void emitFx(u32 p, u8 fx, Vec2 at, Vec2 to, u8 c, float f, double tick);
     void addLance(u32 p, Vec2 from, Vec2 dir, float len, float half, u8 kind, bool standing, double tick);
     i32 nearestEnemy(Vec2 at, float r, i32 skip) const;

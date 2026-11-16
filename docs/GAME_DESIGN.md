@@ -42,7 +42,10 @@ Rules:
 - **Auto-aim assist (on by default):** while the aim stick is idle the ship fires at the nearest threat
   at **half rate**: every second step of the fire grid, half of whatever the build's rate is (the
   owner, 2026-11-14: "Auto aim needs to shoot half speed like before"; play test 3 had put it on the
-  full grid for a day). A thumb on the aim stick fires at the full rate; Riffs, Novas and everything
+  full grid for a day), always the off-beat's step; on the 1/32 grid and faster it skips one step in four
+  instead (2026-11-15: every other step of 1/32 was 4 shots a beat, the same as the triplet grid's, so
+  Double-Time's second rank, the Drop's second Surge gear and Afterparty gave the assist nothing). So 2,
+  4 and 6 shots a beat as Double-Time grows (`core/lead_rule.h`). A thumb on the aim stick fires at the full rate; Riffs, Novas and everything
   that fires by itself are not the assist and keep their own rate. In a boss or mini-boss fight
   the assist aims at the boss: its open weak point when it has one, else its nearest part; an
   ordinary enemy within 250 wu of the ship comes first. One thumb is enough to play **and to finish
@@ -155,7 +158,7 @@ and a single RETRY button.
 | Extra Life | (Play test 3: "a revive powerup to grant a 1x revive to continue without starting over".) A gold ship-shaped orb, a pickup of its own kind and not a Boost: it takes no Boost slot and is never offered in a Trio. Since 2026-11-15 (the owner: "An Extra Life every Track instead of every other"; from 2026-11-14 it was every other Track, 1, 3, 5, 7 and 9) one drops in every Track, for each player holding fewer than two: in Track 1 from a kill during the first cycle's
 Drop, from Track 2 from the mini-boss as it dies or warps out (it shares that Drop since every Track is two cycles); it lies for 8 bars with a gold edge chevron while off screen. A player holds at most two, each a small gold ship beside the Nova stock. (Until then one dropped in every Track but only for a player holding none, and a mini-boss that warped out dropped none, so one kept unspent stopped every later drop.) It is spent on the hit that would end the run (after Auto Nova): the ship comes back at once with two cells, a free Nova blast, one bar of invulnerability and half its Chain, under the words `EXTRA LIFE`. Co-op: each player their own; it is spent instead of going down. None drop in the loop; one held is carried in |
 | Nova | Start with 3, capacity 4 (up to 7 with Nova Stock's three ranks); one comes back at every Break and with every Shard level (the owner, 2026-11-15: "leveling up via shards should also give a nova"), up to the capacity. Rule R6. Clears bullets and non-boss enemies in view; heavy damage to bosses. **Auto Nova** (on by default, a switch under CONTROLS): a hit that would take the last Shield cell fires a Nova from the stock instead and costs no cell |
-| Dash | One charge, recharges in 2 beats. 220 wu in 0.12 s, invulnerable throughout. Perfect Dash refunds half the recharge and emits a small shock ring |
+| Dash | **Two charges** (the owner, 2026-11-15: "just remove the dash mods entirely and buff the base dash"; one until then), each coming back 2 beats after the last. 220 wu in 0.12 s, invulnerable throughout. **Every Dash ends in a shock ring** that hurts what it reaches (140 wu, 3 damage: Shockstep's first rank, the Dash's own now; a Perfect Dash doubles the damage). Perfect Dash refunds half the recharge |
 
 **Scoring.** Score = enemy value × Chain. The Chain is a multiplier: it starts at ×1 and never goes
 below it. Every enemy death drops **Shards** for each player separately
@@ -239,7 +242,7 @@ except settings, local high scores and lifetime stats.
 - Limits: 4 Riff slots, Riff levels 1–5, Mod caps per the table, 3 Boosts active at once (6.4: the
   same one again refreshes itself, a fourth replaces the oldest). Boost durations are in bars, so they are musically exact.
 
-### 6.2 Mods (36) — permanent for the run, stackable
+### 6.2 Mods (33; 36 until the three Dash Mods were removed, 2026-11-15) — permanent for the run, stackable
 
 Weapon
 
@@ -250,7 +253,7 @@ Weapon
 | 3 | Pierce | Shots pass through +2 enemies | 3 | Longer shots, longer note release |
 | 4 | Ricochet | +2 bounces: off walls and structures, and from each enemy hit to the nearest other enemy within 300 wu | 3 | Pitch-up blip per bounce |
 | 5 | Fork | On first hit, split into 2 half-damage shots (play test 3: one rank; forking again is Fractal's) | 1 | Y-shaped flash |
-| 6 | Seeker | Shots curve toward targets | 3 | Slight portamento on the lead |
+| 6 | Seeker | Shots curve toward targets. On a boss only toward a part the shot already flies at (within 35°), its weak point first (2026-11-15: curving to the nearest part, most often armour, made the fights a fifth longer) | 3 | Slight portamento on the lead |
 | 7 | Heavy Step | Every 4th shot is a slow orb that explodes | 3 | Low octave thump |
 | 8 | Accent | The shot on beat 1 is a full-length piercing lance; then beats 1+3; then every beat | 3 | Accented note, white flash line |
 | 9 | Echo | Each shot repeats as a ghost one beat later at half damage; then two echoes | 2 | Delay line on the lead |
@@ -267,10 +270,8 @@ Defence and movement
 | # | Mod | Effect per stack | Cap |
 |---|---|---|---|
 | 17 | Extra Cell | +1 Shield cell capacity and refill every cell (up to 8 cells) | 4 |
-| 18 | Regen | A cell grows back by itself every 16 bars; then every 8; then every 4. The halo's next arc draws itself as it grows | 3 |
-| 19 | Afterimage | Dash leaves a decoy enemies chase for 2 beats | 2 |
-| 20 | Reserve | +1 Dash charge | 2 |
-| 21 | Shockstep | Dash emits a damaging ring; a Perfect Dash doubles it | 3 |
+| 18 | Regen | A cell grows back by itself every 8 bars; then every 4 (the owner, 2026-11-15: "remove the lowest rank", 16 bars). The halo's next arc draws itself as it grows | 2 |
+| 19-21 | ~~Afterimage, Reserve, Shockstep~~ | **Removed** (the owner, 2026-11-15: "just remove the dash mods entirely and buff the base dash"): a player who never dashes, a young one above all, got nothing from them. Reserve's charge and Shockstep's ring are the base Dash's now (section 5); Afterimage's decoy is gone. Never dealt (their numbers are kept so the ones after them do not move) | 0 |
 | 22 | Aegis | A rotating arc blocks bullets from one side; wider per stack | 3 |
 | 23 | Last Light | Taking a hit fires a free mini-Nova, once per cycle | 1 |
 | 24 | Slipstream | +15% speed (M5: +8% four times over was a pick nobody feels, rule 6.6) | 2 |

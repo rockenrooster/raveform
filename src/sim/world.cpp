@@ -4,6 +4,8 @@
 #include <cstring>
 #include <initializer_list>
 
+#include "core/lead_rule.h"
+
 #include "sim/tuning.h"
 
 namespace rf::sim {
@@ -337,12 +339,13 @@ void World::spawnShots(const TickInput& in) {
                 if (in.shots[k].player == p) fireShot(p, in.shots[k].advanceS < 0.0f ? 0.0f : in.shots[k].advanceS, in.shots[k].tick);
         } else if (pl.fire) {
             // The same rule on the sim's own clock: a volley on every grid step crossed while fire is held
-            // (1/16, moved along by Double-Time, the Surge's gear and Hyper), every other step on the
-            // assist's half-rate grid; each advanced by the time since its step. The review's fixes (H3, 2026-11-15): the
-            // assist never skips the step on the off-beat (the "and" of the beat, Syncopation's and Rear Guard's), an odd step
-            // on Double-Time 1's 16-tick grid; the band (Band::computeShots) and the engine's lead keep the same rule.
-            forCrossings(m0_, m1_, leadGrid(p), [&](double t, i64 k) {
-                if (pl.fire == 2 && (k & 1) != 0 && std::fmod(t, kTicksPerBeat) != 0.5 * kTicksPerBeat) return;
+            // (1/16, moved along by Double-Time, the Surge's gear and Hyper), fewer on the assist's
+            // (core/lead_rule.h: every other step and the off-beat's, one in four skipped on the 1/32 grid and faster); each
+            // advanced by the time since its step. The band (Band::computeShots) and the engine's lead keep the same rule.
+            const double grid = leadGrid(p);
+            const i64 perBar = static_cast<i64>(kTicksPerBar / grid + 0.5);
+            forCrossings(m0_, m1_, grid, [&](double t, i64 k) {
+                if (pl.fire == 2 && assistSkipsStep(static_cast<u32>(grid + 0.5), static_cast<u32>(((k % perBar) + perBar) % perBar))) return;
                 fireShot(p, tickAgeOf(t), t);
             });
         }
@@ -1424,7 +1427,6 @@ u64 World::hash() const {
         val(pl.volleys);
         val(pl.cleanBars);
         val(pl.collectorShards);
-        val(pl.decoyUntil);
         val(pl.wellFrom);
         val(pl.holeFrom);
         val(pl.ringBroke);    // play test 3

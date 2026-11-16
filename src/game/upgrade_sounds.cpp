@@ -80,8 +80,7 @@ void UpgradeCues::add(const Event& e, float p, double songOffset) {
             break;
         case kFxShatter: c = Cue::ShatterBurst; break;
         case kFxGravity: c = Cue::GravityHit; break;
-        case kFxDecoy: c = Cue::AfterimageDecoy; break;
-        case kFxShockstep:
+        case kFxDashRing:  // (Shockstep's sound, the Dash's own ring since 2026-11-15)
             c = Cue::ShockstepDash;
             v = static_cast<float>(e.c);
             break;

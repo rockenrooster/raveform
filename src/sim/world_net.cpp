@@ -314,7 +314,7 @@ void World::applyPlayerOp(const NetOp& op) {
         }
         case kPeDash: {
             ++pl.dashes;
-            dashExtras(p, Vec2{op.x, op.y}, Vec2{op.x2, op.y2}, op.b != 0);  // M5: Afterimage's decoy here too (Shockstep: its owner's)
+            dashExtras(p, Vec2{op.x, op.y}, Vec2{op.x2, op.y2}, op.b != 0);  // the Dash's shock ring drawn here (its hits: its owner's)
             pl.lastDashFrom = Vec2{op.x, op.y};  // M5 part 4: Mimic C
             pl.lastDashTo = Vec2{op.x2, op.y2};
             pl.lastDashTick = m1_;

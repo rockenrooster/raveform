@@ -336,6 +336,21 @@ void testLeadRule() {
             }
         }
         CHECK_MSG(d->leadGrid(0) == 16.0 && all == 16 && off == 4, "assist at Double-Time 1: %u shots in a bar, %u on the off-beat", all, off);
+        // The owner, 2026-11-15 (core/lead_rule.h): on the 1/32 grid the assist skips one step in four, so Double-Time's second
+        // rank gives it 6 shots a beat (every other step would have been 4, the same as the first rank's).
+        d->grantUpgrade(0, kDoubleTime);
+        all = off = 0;
+        for (u32 t = 0; t < 120; ++t) {
+            stepWorld(*d, m, Vec2{}, 2);
+            for (u32 i = 0; i < d->eventCount(); ++i) {
+                const Event& e = d->events()[i];
+                if (e.type != EventType::Shot) continue;
+                ++all;
+                const double step = std::floor((m - static_cast<double>(e.age) * 192.0) / 12.0 + 0.5) * 12.0;
+                off += std::fabs(std::fmod(step, 96.0) - 48.0) < 0.5 ? 1u : 0u;
+            }
+        }
+        CHECK_MSG(d->leadGrid(0) == 12.0 && all == 24 && off == 4, "assist at Double-Time 2: %u shots in a bar, %u on the off-beat", all, off);
         delete d;
     }
     // Each shot is advanced by the time since its step: positions differ from the muzzle by speed x age.
@@ -880,6 +895,44 @@ void testUpgradeStacking() {
     delete p;
     delete q;
     delete o;
+}
+
+void testDash() {
+    g_test = "dash";
+    // The owner, 2026-11-15 ("just remove the dash mods entirely and buff the base dash"): Afterimage, Reserve and Shockstep are
+    // never dealt; the Dash holds two charges and every Dash ends in a shock ring that hurts.
+    CHECK(upgradeInfo(kAfterimage).cap == 0 && upgradeInfo(kReserve).cap == 0 && upgradeInfo(kShockstep).cap == 0);
+    Loadout none;
+    CHECK(!none.canTake(kAfterimage) && !none.canTake(kReserve) && !none.canTake(kShockstep) && dealWeight(none, kShockstep) == 0.0f);
+    World* d = quietWorld();
+    double m = 0.0;
+    stepWorld(*d, m, Vec2{});
+    // A Drifter beside where the first Dash ends (220 wu along +x): the ring takes it.
+    const u16 drifter = SpeciesTable::index(Family::Drifter, 1, kVariantA);
+    d->spawnEnemy(drifter, Vec2{kDashWu + 70.0f, 0.0f}, 0.0f, 0.0);
+    PlayerController c;
+    c.reset(Vec2{});
+    StickInput in;
+    in.assist = false;
+    in.move = Vec2{1.0f, 0.0f};
+    u32 dashes = 0, kills = 0;
+    for (u32 t = 0; t < 30; ++t) {  // half a second, less than a recharge (two beats: a second at 120 BPM); three presses
+        in.dash = (t % 10) < 5;
+        c.update(in, kDt, m, kBpm, *d, 0);
+        dashes += c.pose().dashStarted ? 1u : 0u;
+        TickInput ti;
+        ti.music0 = m;
+        ti.music1 = m + kTicksPerSimTick;
+        ti.bpm = kBpm;
+        ti.players[0] = c.pose();
+        d->tick(ti);
+        m = ti.music1;
+        c.clearEdges();
+        kills += countEvents(*d, EventType::Kill);
+    }
+    CHECK_MSG(dashes == 2 && kDashCharges == 2, "%u Dashes in half a second", dashes);
+    CHECK_MSG(kills == 1, "the Dash's ring killed %u", kills);
+    delete d;
 }
 
 void testAutoNova() {
@@ -1586,15 +1639,15 @@ void testPlayTest2() {
         delete w;
     }
     {
-        // Regen (Mod 18): a missing cell grows back every 16 bars, then 8, then 4; nothing while full.
-        CHECK(regenEveryBars(1) == 16 && regenEveryBars(2) == 8 && regenEveryBars(3) == 4 && upgradeInfo(kRegen).cap == 3);
-        CHECK(std::strcmp(upgradeWords(kRegen, 1), "CELL REGROWS: 16 BARS") == 0 && std::strcmp(upgradeWords(kRegen, 2), "CELL REGROWS: 8 BARS") == 0 &&
-              std::strcmp(upgradeWords(kRegen, 3), "CELL REGROWS: 4 BARS") == 0);
+        // Regen (Mod 18): a missing cell grows back every 8 bars, then 4 (the owner, 2026-11-15: the first rank's 16 removed);
+        // nothing while full.
+        CHECK(regenEveryBars(1) == 8 && regenEveryBars(2) == 4 && upgradeInfo(kRegen).cap == 2);
+        CHECK(std::strcmp(upgradeWords(kRegen, 1), "CELL REGROWS: 8 BARS") == 0 && std::strcmp(upgradeWords(kRegen, 2), "CELL REGROWS: 4 BARS") == 0);
         World* w = quietWorld();
         heldDrop(*w);
         double music = 0.0;
         stepWorld(*w, music, Vec2{});
-        for (u32 stacks = 1; stacks <= 3; ++stacks) {
+        for (u32 stacks = 1; stacks <= 2; ++stacks) {
             w->grantUpgrade(0, kRegen);
             w->playerMut(0).cells = w->player(0).cellCap;
             const double full0 = music;
@@ -4169,6 +4222,7 @@ int main() {
     testCrowd();
     testTrioRules();
     testUpgradeStacking();
+    testDash();
     testPlayTest1();
     testAutoNova();
     testBoss();

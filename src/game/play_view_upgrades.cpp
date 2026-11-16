@@ -133,7 +133,7 @@ void PlayView::eventUpgrade(const World& w, const Event& e, float t) {
             break;
         case kFxMineBlow:
         case kFxWellBlow:
-        case kFxShockstep:
+        case kFxDashRing:
         case kFxLastLight:
         case kFxHoleBlow: {
             const bool big = e.b == kFxHoleBlow || e.b == kFxLastLight;
@@ -294,14 +294,6 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
             }
         }
 
-        // Afterimage's decoy: a flickering ghost of the ship where the Dash began.
-        if (pq.decoyUntil > in.music) {
-            const float left = clampU(static_cast<float>((pq.decoyUntil - in.music) / kTicksPerBeat));
-            const float flick = 0.6f + 0.4f * std::sin(t * 30.0f);
-            glyph(d.glyphs, gShip_, false, pq.decoyAt, pq.heading, pq.heading, shipScale, 1.2f * flick * (0.4f + 0.6f * left) * lvl, 0.5f,
-                  kGlyphFlat, light, player);
-        }
-
         // Minelayer's mines: a small ring with a cross, blinking faster toward the bar line.
         for (const PlayerState::Mine& m : pq.mines) {
             if (m.blowTick < 0.0) continue;
@@ -356,7 +348,7 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
             d.pools.glow(toScene(ship), 60.0f * pxPerWu_, gold * 0.25f);
         }
 
-        // Kick Pulse's ring and Shockstep's.
+        // Kick Pulse's ring and the Dash's shock ring.
         const auto ring = [&](double when, Vec2 at, float r, float lifeS, Vec3 c) {
             const float age = static_cast<float>((in.music - when) / tps);
             if (age < 0.0f || age > lifeS || r <= 0.0f) return;

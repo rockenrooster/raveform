@@ -334,6 +334,7 @@ constexpr float kSlipstreamPerStack = 0.15f;                // 6.2 (quoted; the 
 constexpr float kForkDeg = 20.0f, kForkDamage = 0.5f;       // Fork: two half-damage shots (quoted) this far apart
 constexpr float kSeekerTurn[4] = {0.0f, 3.0f, 6.0f, 10.0f}; // rad/s by stack
 constexpr float kSeekerReachWu = 320.0f;
+constexpr float kSeekerBossConeCos = 0.819f;  // 2026-11-15: a seeking shot bends only toward a boss part within 35 degrees of its heading
 constexpr float kHeavyOrbSpeed = 0.45f, kHeavyOrbRadius = 3.0f, kHeavyOrbLifeS = 1.6f;  // x the shot's speed, radius
 constexpr float kHeavyBlastWu[4] = {0.0f, 90.0f, 120.0f, 150.0f}, kHeavyBlastDamage[4] = {0.0f, 4.0f, 6.0f, 8.0f};
 constexpr float kAccentDamage = 3.0f, kAccentLengthWu = 1500.0f, kAccentHalfWu = 14.0f;  // x the shot's damage
@@ -350,9 +351,6 @@ constexpr double kBurnBeats = 2.0;                          // quoted
 constexpr u32 kShatterShards[4] = {0, 2, 3, 4};             // play test 3 (quoted): 2, 3, 4 pieces; a piece's kill throws none
 constexpr float kPelletSpeed = 700.0f, kPelletLifeS = 0.3f;
 constexpr float kGravityReachWu[3] = {0.0f, 110.0f, 150.0f}, kGravityPull[3] = {0.0f, 70.0f, 110.0f};  // wu, wu/s
-constexpr double kDecoyBeats[3] = {0.0, 2.0, 4.0};          // Afterimage (quoted 2 beats)
-constexpr float kDecoyReachWu = 600.0f;
-constexpr float kShockRingWu[4] = {0.0f, 140.0f, 180.0f, 220.0f}, kShockDamage[4] = {0.0f, 3.0f, 5.0f, 8.0f};
 constexpr float kAegisArcDeg[4] = {0.0f, 60.0f, 90.0f, 120.0f}, kAegisInWu = 30.0f, kAegisOutWu = 60.0f;
 constexpr float kLastLightWu = 420.0f;                      // Last Light: the mini-Nova's reach (the Nova's front: 1,400)
 constexpr float kProspectorChance = 0.25f;                  // quoted

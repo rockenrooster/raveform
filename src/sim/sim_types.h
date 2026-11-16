@@ -54,6 +54,11 @@ constexpr float kInvulnerableS = 2.5f;  // play test 1, second pass (GAME_DESIGN
 constexpr float kPanicRadiusWu = 220.0f;
 constexpr float kDashWu = 220.0f, kDashS = 0.12f;
 constexpr double kDashRechargeBeats = 2.0;
+// The owner, 2026-11-15 ("just remove the dash mods entirely and buff the base dash"): two charges (Reserve's), each coming back
+// a recharge after the last, and a shock ring where every Dash ends (Shockstep's first rank: 140 wu, 3 damage; a Perfect Dash
+// doubles the damage).
+constexpr u32 kDashCharges = 2;
+constexpr float kDashRingWu = 140.0f, kDashRingDamage = 3.0f;
 constexpr float kPerfectDashS = 0.060f;  // R7: within +-60 ms of a beat
 constexpr float kFireContinueS = 0.400f;  // GAME_DESIGN 2: the right thumb leaves the stick for a button
 constexpr float kShardMagnetWu = 90.0f;

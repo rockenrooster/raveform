@@ -133,12 +133,6 @@ Vec2 World::carouselBomb(u32 p, u32 k) const {
     return pl.pos + dirOf(a) * kCarouselWu;
 }
 
-Vec2 World::chaseTarget(u32 p) const {
-    // Afterimage: the decoy draws the enemies chasing this player for its beats.
-    const PlayerState& pl = players_[p];
-    return pl.decoyUntil > m1_ ? pl.decoyAt : pl.pos;
-}
-
 // ---------------------------------------------------------------------------------------------- helpers
 
 void World::emitFx(u32 p, u8 fx, Vec2 at, Vec2 to, u8 c, float f, double tick) {
@@ -562,6 +556,7 @@ void World::steerShots(float dt) {
     // M5 part 7: a fight's bodies are targets too: its parts that can be hurt (the Choir's centre, Cadence's or Polyrhythm's,
     // has nothing in it: the shots steered there never hit).
     BossPart parts[kBossBodies + 4];
+    float worth[kMaxPlayers][kBossBodies + 4];
     u32 partCount = 0;
     if (boss_.active && !boss_.dying && m1_ >= boss_.fightTick && boss_.kind != BossKind::Kaleidos) {
         partCount = bossParts(parts, kBossBodies + 4);
@@ -569,6 +564,12 @@ void World::steerShots(float dt) {
         for (u32 k = 0; k < partCount; ++k)
             if (parts[k].part != 1) parts[keep++] = parts[k];
         partCount = keep;
+        // The owner, 2026-11-15 ("curve to the weak point first"): what a hit on each part is worth this tick to each player's
+        // shots, as the assist judges it (along the line from the player). The nearest part was most often a silent hood or a
+        // closed pillar (a quarter), so Seeker made the fights slower.
+        for (u32 p = 0; p < playerCount_ && p < kMaxPlayers; ++p)
+            for (u32 k = 0; k < partCount; ++k)
+                worth[p][k] = bossDamageScale(parts[k].part, parts[k].index, m1_, normalizeOr(parts[k].pos - players_[p].pos, Vec2{1.0f, 0.0f}));
     }
     for (u32 i = 0; i < s.count; ++i) {
         if (s.dead[i] || !(s.mods[i] & kShotSeek) || ((tick_ + i) % 3u) != 0) continue;
@@ -586,15 +587,31 @@ void World::steerShots(float dt) {
         const i32 t = nearestEnemy(at, reach, -1);
         Vec2 goal = t >= 0 ? Vec2{e.x[t], e.y[t]} : at;
         if (boss_.active && !boss_.dying && m1_ >= boss_.fightTick) {
-            // The fight's body is a target too, when it is the nearer (Kaleidos: the wheel; the others: their nearest part
-            // that can be hurt).
+            // The fight's body is a target too, when it is the nearer: its weak point first (the owner, 2026-11-15), and only a
+            // part the shot is already flying at (within kSeekerBossConeCos of its heading): the aim, the assist's or the player's,
+            // has chosen the part, and a shot turned across a boss toward another flies into its armour on the way (the nearest
+            // part was the target before: the Choir's silent hoods cost Seeker a fifth of the fight). Kaleidos: where the assist
+            // would aim from here (an open sector's core, a resting arm). The others: the part a hit multiplies most, else one a
+            // hit takes in full, else armour's share, the one nearest the heading within each; a part that takes nothing is none.
+            const Vec2 head{s.dx[i], s.dy[i]};
+            const auto ahead = [&](Vec2 q, float d2) { return d2 > 1e-6f && dot(q - at, head) >= kSeekerBossConeCos * std::sqrt(d2); };
             Vec2 bp = boss_.pos;
-            float bd = lengthSq(boss_.pos - at);
-            if (boss_.kind != BossKind::Kaleidos) {
-                bd = 1e30f;
+            float bd = 1e30f;
+            if (boss_.kind == BossKind::Kaleidos) {
+                if (assistBossAim(at, m1_, bp) && ahead(bp, lengthSq(bp - at))) bd = lengthSq(bp - at);
+            } else {
+                const u32 o = s.owner[i] < kMaxPlayers ? s.owner[i] : 0u;
+                double best = -1e300;
                 for (u32 k = 0; k < partCount; ++k) {
+                    const float w = worth[o][k];
+                    if (w <= 0.0f) continue;
                     const float d2 = lengthSq(parts[k].pos - at);
-                    if (d2 < bd) {
+                    if (!ahead(parts[k].pos, d2)) continue;
+                    const double c = static_cast<double>(dot(parts[k].pos - at, head) / std::sqrt(d2));  // the cosine off the heading
+                    const double tier = w > 1.0f + 1e-3f ? 3.0 : (w >= 1.0f - 1e-3f ? 2.0 : 1.0);
+                    const double score = tier * 1e15 + (tier == 3.0 ? static_cast<double>(w) * 1e10 : 0.0) + c * 1e6;
+                    if (score > best) {
+                        best = score;
                         bd = d2;
                         bp = parts[k].pos;
                     }
@@ -822,23 +839,17 @@ void World::freezeShatter(u32 i, u8 owner) {
 // ---------------------------------------------------------------------------------------------- the player
 
 void World::dashExtras(u32 p, Vec2 from, Vec2 to, bool perfect) {
-    // Afterimage: a decoy where the Dash began; Shockstep: a damaging ring where it ends (a Perfect Dash doubles it).
+    // Every Dash ends in a damaging shock ring (GAME_DESIGN 5; a Perfect Dash doubles it). The owner, 2026-11-15: "just remove
+    // the dash mods entirely and buff the base dash": Shockstep's first rank is the Dash's own now, Reserve's charge too
+    // (PlayerController), and Afterimage's decoy is gone.
+    (void)from;
     PlayerState& pl = players_[p];
-    const Loadout& l = pl.loadout;
-    if (const u8 st = l.mods[kAfterimage]) {
-        pl.decoyAt = from;
-        pl.decoyUntil = m1_ + kDecoyBeats[st < 2 ? st : 2] * kTicksPerBeat;
-        emitFx(p, kFxDecoy, from, from, st, 0.0f, pl.decoyUntil);
-    }
-    if (const u8 st = l.mods[kShockstep]) {
-        // (its damage waits for this tick's grid: updateUpgradesM5)
-        const float r = kShockRingWu[st < 3 ? st : 3];
-        pl.shockDamage = isLocal(p) ? kShockDamage[st < 3 ? st : 3] * (perfect ? 2.0f : 1.0f) : 0.0f;
-        pl.shockAt = to;
-        pl.shockTick = m1_;
-        pl.shockR = r;
-        emitFx(p, kFxShockstep, to, to, perfect ? 1 : 0, r, m1_);
-    }
+    // (its damage waits for this tick's grid: updateUpgradesM5; a teammate's ring is drawn here, its hits are its own device's)
+    pl.shockDamage = isLocal(p) ? kDashRingDamage * (perfect ? 2.0f : 1.0f) : 0.0f;
+    pl.shockAt = to;
+    pl.shockTick = m1_;
+    pl.shockR = kDashRingWu;
+    emitFx(p, kFxDashRing, to, to, perfect ? 1 : 0, kDashRingWu, m1_);
 }
 
 void World::hitExtras(u32 p) {
@@ -956,7 +967,7 @@ void World::updateUpgradesM5(float dt) {
         const bool local = isLocal(p);
         if (!pl.present) continue;
         if (pl.shockDamage > 0.0f) {
-            // Shockstep's ring, as the Dash began this tick.
+            // The Dash's shock ring, as the Dash began this tick.
             areaHit(owner, pl.shockAt, pl.shockR, pl.shockDamage, -1, true);
             pl.shockDamage = 0.0f;
         }
