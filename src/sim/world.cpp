@@ -216,6 +216,23 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask, co
         rules_.godMode = true;  // (rule 1: nothing hurts)
         resetJam();
         if (setup.versus) jam_.mixer = jam_.mixerNext = 0xFF;  // (POP-OFF: every layer on)
+        if (!setup.versus && setup.moment == 1) {
+            // (a networked benchmark's moment: DROP pressed on the first bar, held with momentHold)
+            director_.jamDropBar = 0;
+            director_.jamDropHold = setup.momentHold;
+        }
+        if (!setup.versus && setup.moment == 2) {
+            jam_.mixer = jam_.mixerNext = 0xFF;  // (every layer on, held)
+            jam_.mixerLocked = true;
+        }
+    }
+    if (setup.moment && director_.formCount) {
+        // A networked benchmark's moment (RunSetup::moment): the form starts at that section, the ones before it skipped (no bars),
+        // held there with momentHold. The same on every device: it comes with the run's setup.
+        const u32 at = setup.moment - 1u;
+        for (u32 k = 0; k < at && k < director_.formCount; ++k) director_.formBars[k] = 0;
+        if (setup.momentHold && at < director_.formCount) director_.formHold = static_cast<u8>(at);
+        phrase_ = phraseAt(director_, 0);
     }
     if (setup.mode == Mode::Headliners && species_) {
         // M8 (headliners.md): the ten bosses back to back from First Light, the acts' form; the kit a run holds as Kaleidos enters;
@@ -321,6 +338,15 @@ void World::tick(const TickInput& in) {
 
     updateElites(dt * stretch_);  // M5 part 5: shields, Regenerating, Twins, the Commanders' reach (before the motion)
     updateEnemies(dt * stretch_);
+    if (setup_.mode == Mode::Jam && !(jam_.mixer & 1u)) {
+        // M8 JAM (jam.md "The dancers"): they move with the kick; with the kick switched off they stand still.
+        Enemies& e = enemies_;
+        for (u32 i = 0; i < e.count; ++i)
+            if (!(e.flags[i] & kFlagDead) && e.state[i] != kWarping) {
+                e.x[i] = e.px[i];
+                e.y[i] = e.py[i];
+            }
+    }
     bulletSrc_ = kCauseNone;  // (M6: what fires outside an enemy's own update names nothing)
     updateTrails();  // M5 part 4: Weaver trails, Ram B's wake
     inBossUpdate_ = true;

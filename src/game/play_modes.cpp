@@ -158,6 +158,16 @@ void Play::modesEvent(const Event& e) {
                 countTick_ = e.tick;
                 if (bandDrives_ && band_) {
                     band_->lowPassBed(600.0f, 60.0f / std::fmax(clock_.bpm(), 30.0f));
+                    if (w.setup().mode == Mode::Jam && w.setup().versus) {
+                        const double off = coop() ? netBandOffset_ : clock_.offset();
+                        for (u32 q = 0; q < kMaxPlayers; ++q) {
+                            if (!w.player(q).present) continue;
+                            const u32 n = static_cast<u32>(std::min<u64>(w.versusCount(q) / 10u, 24u));
+                            for (u32 j = 0; j < n; ++j)
+                                band_->playRecipe(audio::Recipe::Chirp, audio::chordNote(static_cast<i32>(j % 12u), 4 + static_cast<i32>(q % 3u)), 0.3f,
+                                                  (static_cast<float>(q) - 1.5f) * 0.4f, e.tick + off + 2.0 * kTicksPerBeat * static_cast<double>(j) / static_cast<double>(n));
+                        }
+                    }
                     if (w.setup().mode == Mode::FullBlast) {
                         const double off = coop() ? netBandOffset_ : clock_.offset();
                         for (u32 j = 0; j < 12; ++j)
@@ -189,6 +199,14 @@ void Play::modesEvent(const Event& e) {
                 const double at = (std::floor(music1_ / t32) + 1.0) * t32 + (coop() ? netBandOffset_ : clock_.offset());
                 const i32 note = e.c ? songStepsAbove(e.b, 2) : static_cast<i32>(e.b);
                 band_->leadNoteAt(0, static_cast<u8>(note < 0 ? 0 : (note > 127 ? 127 : note)), static_cast<u8>(e.f) == 1 ? 1.0f : 0.85f, 0.0f, at);
+                pulse(0);  // (sound.md's haptics: a light tick for a gate threaded)
+            } else if (e.type == EventType::GateThread && e.a < kMaxPlayers && e.a != seat_ && bandDrives_ && band_) {
+                // Another player's gate in that player's own voice (its string's harmony is its note), quieter, panned to it.
+                const double t32 = kTicksPerBeat / 8.0;
+                const double at = (std::floor(music1_ / t32) + 1.0) * t32 + (coop() ? netBandOffset_ : clock_.offset());
+                const i32 note = e.c ? songStepsAbove(e.b, 2) : static_cast<i32>(e.b);
+                const float pan = clampf((e.x - w.player(seat_).pos.x) / 900.0f, -1.0f, 1.0f) * 0.6f;
+                band_->leadNoteAt(bandSlot(e.a), static_cast<u8>(note < 0 ? 0 : (note > 127 ? 127 : note)), 0.55f, pan, at);
             }
             // The string as it is flown (the result's bar): this player's gates by their sixteenth.
             if (e.type == EventType::GateLay ? (e.a != 0xFF && e.a != seat_) : e.a != seat_) break;
@@ -205,6 +223,7 @@ void Play::modesEvent(const Event& e) {
         case EventType::GateCount:
             if (e.a != seat_) break;
             songCountT_ = static_cast<float>(tickEnd_ - e.age);
+            pulse(2);  // (the finale's burst: heavy)
             if (bandDrives_ && band_) {
                 // The finale's burst: Impact and Gong, eight Bells up the home chord a thirty-second apart (one a ring of the
                 // firework); then the count: a Chirp for every sixteen gates threaded, climbing, over two beats, and a Bell on top
@@ -258,19 +277,28 @@ void Play::modesEvent(const Event& e) {
             break;
         case EventType::JamTake:
             // A toy taken: the "upgrade taken" chord; each further stack a bell a scale step up.
+            if (e.a == seat_) pulse(1);  // (a toy taken: medium)
             if (e.a != seat_ || !bandDrives_ || !band_) break;
             if (e.c <= 1) band_->playSfx(audio::Sfx::Upgrade, 0.9f);
             else band_->playRecipe(audio::Recipe::Bell, audio::chordNote(static_cast<i32>(e.c), 5, audio::NoteFrom::ScaleSteps), 0.6f);
             break;
         case EventType::JamEmpty:
-            // EMPTY: the back chord and a closing sweep.
+            // EMPTY: the back chord and a closing sweep; everything the ship held flies back to the TOYS and BOOSTS pads.
+            if (e.a == seat_) {
+                std::memcpy(emptyItems_, jamItems_, sizeof emptyItems_);
+                emptyItemCount_ = jamItemCount_;
+                std::memcpy(emptyBoosts_, jamBoosts_, sizeof emptyBoosts_);
+                emptyBoostCount_ = jamBoostCount_;
+                emptyT_ = static_cast<float>(tickEnd_ - e.age);
+                emptyFrom_ = Vec2{e.x, e.y};
+            }
             if (e.a != seat_ || !bandDrives_ || !band_) break;
             band_->playSfx(audio::Sfx::UiBack, 0.9f);
             band_->playRecipe(audio::Recipe::Sweep, -1, 0.5f, 0.0f, -1.0, -1.0f, 1.0f);
             break;
         case EventType::JamHold:
         case EventType::JamShelf:
-            if (e.a == seat_) pulse(0);
+            if (e.a == seat_) pulse(e.type == EventType::JamHold ? 1 : 0);  // (a pad's hold closing: medium)
             if (e.type == EventType::JamShelf && e.a == seat_ && bandDrives_ && band_) band_->playSfx(audio::Sfx::UiConfirm, 0.6f);
             break;
         case EventType::SongChord:
@@ -320,16 +348,28 @@ void Play::modesEvent(const Event& e) {
             } else {
                 band_->playRecipe(audio::Recipe::Glass, -1, e.a == seat_ ? 0.9f : 0.5f);
                 const double at = e.tick + (coop() ? netBandOffset_ : clock_.offset());
+                // sound.md "A pop": x 1 a tom on the chord's root; x 2 the stab at 0.6, x 3 at 0.8; x 5 at 1.0 with a tom an octave down;
+                // x 8 at 1.2 with the sub drop and a crack (another player's ring at 0.6 of it).
                 const u32 bonus = w.species().modes.tracers.bonusFor(e.b);
-                const float gain = bonus >= 8 ? 1.2f : (bonus >= 5 ? 1.0f : (bonus >= 3 ? 0.85f : (bonus >= 2 ? 0.7f : 0.55f)));
-                band_->playRecipe(audio::Recipe::Stab, -1, e.a == seat_ ? gain : 0.6f * gain, 0.0f, at, bonus >= 5 ? 1.5f : 1.0f);
-                if (bonus >= 5) band_->playRecipe(audio::Recipe::Tom, -1, 0.8f, 0.0f, at);
-                if (bonus >= 8) band_->playRecipe(audio::Recipe::SubDrop, -1, 0.9f, 0.0f, at);
+                const float mine = e.a == seat_ ? 1.0f : 0.6f;
+                if (bonus <= 1) {
+                    band_->playRecipe(audio::Recipe::Tom, audio::chordNote(0, 3, audio::NoteFrom::ChordTone), 0.7f * mine, 0.0f, at);
+                } else {
+                    const float gain = bonus >= 8 ? 1.2f : (bonus >= 5 ? 1.0f : (bonus >= 3 ? 0.8f : 0.6f));
+                    band_->playRecipe(audio::Recipe::Stab, -1, gain * mine, 0.0f, at, bonus >= 5 ? 1.5f : 1.0f);
+                }
+                if (bonus >= 5) band_->playRecipe(audio::Recipe::Tom, audio::chordNote(0, 2, audio::NoteFrom::ChordTone), 0.8f * mine, 0.0f, at);
+                if (bonus >= 8) {
+                    band_->playRecipe(audio::Recipe::SubDrop, -1, 0.9f * mine, 0.0f, at);
+                    band_->playRecipe(audio::Recipe::Crack, -1, 0.7f * mine, 0.0f, at);
+                }
+                pulse(bonus >= 5 && e.a == seat_ ? 2 : 1);  // (sound.md's haptics: medium for a lock, heavy for x 5 and up)
             }
             break;
         case EventType::House:
             if (e.b == 1 && markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 5, 0};  // (the result's gold star)
             if (!bandDrives_ || !band_) break;
+            if (e.b == 2) band_->playRecipe(audio::Recipe::Sweep, -1, 0.5f, 0.0f, -1.0, -1.0f, 4.0f);  // (the floor going dark: closing)
             if (e.b == 0) {
                 const double pop = e.tick + 2.0 * kTicksPerBeat + (coop() ? netBandOffset_ : clock_.offset());
                 band_->playRecipe(audio::Recipe::TomRoll, -1, 0.9f, 0.0f, pop, 2.0f);
@@ -341,11 +381,46 @@ void Play::modesEvent(const Event& e) {
             break;
         case EventType::RingPop:
             if (e.c >= 5 && e.a == seat_ && markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 6, e.a};  // (the result's white tick)
+            // ECHO (the gel): the ring's chord again, at half its level.
+            if (e.x2 > 0.5f && bandDrives_ && band_) band_->playRecipe(audio::Recipe::Stab, -1, e.a == seat_ ? 0.5f : 0.3f, 0.0f, -1.0, 0.5f);
+            break;
+        case EventType::TilesLost:
+            // The lights go out (a knock-out): two glass ticks falling a fifth, on the eighths the tiles blink on.
+            if (bandDrives_ && band_ && e.a == seat_) {
+                const double t8 = kTicksPerBeat / 2.0;
+                const double at = (std::floor(music1_ / t8) + 1.0) * t8 + (coop() ? netBandOffset_ : clock_.offset());
+                band_->playRecipe(audio::Recipe::Glass, audio::chordNote(4, 7, audio::NoteFrom::ChordTone), 0.6f, 0.0f, at);
+                band_->playRecipe(audio::Recipe::Glass, audio::chordNote(0, 7, audio::NoteFrom::ChordTone), 0.6f, 0.0f, at + t8);
+            }
+            break;
+        case EventType::Cut:
+            // A cut (versus): a crack at the cut, panned to it.
+            if (bandDrives_ && band_ && (e.a == seat_ || e.b == seat_))
+                band_->playRecipe(audio::Recipe::Crack, -1, 0.8f, clampf((e.x - w.player(seat_).pos.x) / 900.0f, -1.0f, 1.0f));
+            break;
+        case EventType::SpinOut:
+            // Spun out (versus): the Dash's sweep reversed.
+            if (bandDrives_ && band_ && e.a == seat_) band_->playRecipe(audio::Recipe::DashReverse, -1, 0.9f);
+            if (e.a == seat_) pulse(2);
             break;
         case EventType::FloorCount:
-            // The count: the "upgrade taken" chord as the sweep reaches the far wall (the chirps a column are the engine's part to
-            // come: pending_sounds.cpp).
-            if (bandDrives_ && band_ && e.a == seat_) band_->sfxAt(audio::Sfx::Upgrade, e.tick + 2.0 * kTicksPerBeat + (coop() ? netBandOffset_ : clock_.offset()));
+            // The count (sound.md): a chirp for each column of tiles the line passes that holds a lit tile of this player's,
+            // chordNote(c / 3, 5) climbing, over the sweep's two beats; then the "upgrade taken" chord on the bar line. (Versus: each
+            // player's in their own octave.)
+            if (bandDrives_ && band_ && e.a == seat_) {
+                const double off = coop() ? netBandOffset_ : clock_.offset();
+                const TracerFloor& fl = w.tracerFloor();
+                u32 c = 0;
+                for (u32 x = 0; x < TracerFloor::kTilesX; ++x) {
+                    bool lit = false;
+                    for (u32 y = 0; y < TracerFloor::kTilesY && !lit; ++y) lit = fl.owner[y * TracerFloor::kTilesX + x] == seat_;
+                    if (!lit) continue;
+                    band_->playRecipe(audio::Recipe::Chirp, audio::chordNote(static_cast<i32>(c / 3u), w.setup().versus ? 4 + static_cast<i32>(seat_ % 2u) : 5),
+                                      0.35f, 0.0f, e.tick + off + 2.0 * kTicksPerBeat * static_cast<double>(x) / static_cast<double>(TracerFloor::kTilesX));
+                    ++c;
+                }
+                band_->sfxAt(audio::Sfx::Upgrade, e.tick + kTicksPerBar + off);
+            }
             break;
         case EventType::GelTake:
             if (bandDrives_ && band_ && e.a == seat_) band_->playSfx(audio::Sfx::Upgrade, 0.8f);
@@ -356,6 +431,30 @@ void Play::modesEvent(const Event& e) {
 
 void Play::modesFrameRun() {
     const World& w = *world_;
+    if (w.setup().mode == Mode::Jam && !w.setup().versus) {
+        // JAM: the band row as it stands (EMPTY's flight takes it from here), the hold's two rising notes (the Trio's hold: the
+        // player's lead on the root as a hold begins, the fifth half way; the confirm chord is the pad's own on its closing).
+        jamItemCount_ = bandRowItems(w.player(seat_), jamItems_, 64);
+        jamBoostCount_ = 0;
+        for (u32 k = 0; k < kBoostSlots && jamBoostCount_ < 4; ++k)
+            if (w.player(seat_).boosts[k].type != kNoBoost) jamBoosts_[jamBoostCount_++] = w.player(seat_).boosts[k].type;
+        const World::JamState& js = w.jam();
+        const ModesData::Jam& jd = species_->modes.jam;
+        float u = 0.0f;
+        for (u32 k = ModesData::Jam::kMixer; k < ModesData::Jam::kPads; ++k)
+            if (jd.pad[k].holdBeats > 0.0f) u = std::fmax(u, js.hold[seat_ < kMaxPlayers ? seat_ : 0][k] / jd.pad[k].holdBeats);
+        const u32 want = u <= 0.0f ? 0u : (u < 0.5f ? 1u : 2u);
+        if (want > holdNotes_ && bandDrives_ && band_) band_->leadNote(0, want == 1 ? 0 : 1, 0.8f, 0.0f);
+        holdNotes_ = want;
+    }
+    if (w.setup().mode == Mode::Tracers && w.tracer(seat_).laying) {
+        // TRACERS (sound.md's haptics): a light tick for each node's note, at most one in 80 ms (pulse's own limit).
+        const double s16 = std::floor(music1_ / (kTicksPerBeat / 4.0));
+        if (s16 != lastNode16_) {
+            lastNode16_ = s16;
+            pulse(0);
+        }
+    }
     if (resultPending_ && music1_ >= resultAt_ && (screen_ == Screen::Run || (coop() && (screen_ == Screen::Paused || screen_ == Screen::Settings)))) {
         resultPending_ = false;
         modesResult();
@@ -867,6 +966,75 @@ void Play::drawLoadOut(FrameDraw& d, const LookVariant& variant, float W, float 
             d.hud.line(prev, q, 1.4f, col, col, 0);
             prev = q;
         }
+    }
+}
+
+void Play::drawJamEmpty(FrameDraw& d, const LookVariant& variant) {
+    // jam.md "Look": EMPTY: everything the ship held flies out of it as the load-in flies in, backwards, in a beat: the upgrades to
+    // the TOYS pad, the Boosts to the BOOSTS pad.
+    const World& w = *world_;
+    const float beatS = 60.0f / std::fmax(clock_.bpm(), 30.0f);
+    const float age = static_cast<float>(tickEnd_) - emptyT_;
+    if (w.setup().mode != Mode::Jam || age < 0.0f || age > 1.6f * beatS || (!emptyItemCount_ && !emptyBoostCount_)) return;
+    const LookCtx ctx{look_, &variant};
+    const ModesData::Jam& jd = species_->modes.jam;
+    const Vec2 toysPad = jd.pad[ModesData::Jam::kPadToys].at, boostsPad = jd.pad[ModesData::Jam::kPadBoosts].at;
+    const float px = view_.pxPerWu();
+    const u32 total = emptyItemCount_ + emptyBoostCount_;
+    for (u32 i = 0; i < total; ++i) {
+        const bool boost = i >= emptyItemCount_;
+        const Vec2 toys = boost ? boostsPad : toysPad;
+        const float start = 0.6f * beatS * static_cast<float>(i) / static_cast<float>(total);
+        const float u = clamp01((age - start) / beatS);
+        if (u <= 0.0f || u >= 1.0f) continue;
+        const float e = u * u * (3.0f - 2.0f * u);
+        // (a quarter turn of spiral outward on the way, as the load-in's backwards)
+        const Vec2 mid = emptyFrom_ + (toys - emptyFrom_) * e;
+        const Vec2 side{-(toys.y - emptyFrom_.y), toys.x - emptyFrom_.x};
+        const Vec2 at = mid + side * (0.25f * std::sin(e * 3.1415927f) * (i & 1u ? 1.0f : -1.0f));
+        const u8 orb = boost ? emptyBoosts_[i - emptyItemCount_] : emptyItems_[i];
+        const i32 icon = boost ? boostIcons_[orb < kBoostCount ? orb : 0]
+                               : (isFusionOrb(orb) ? fusionIcons_[fusionOfOrb(orb)] : upgradeIcons_[orb < kUpgradeCount ? orb : 0]);
+        icons_.drawHud(d.hud, icon, view_.toScreen(at), 34.0f * px * species_->modes.loadIn.iconScale, 1.3f * (1.0f - 0.5f * u), lookColour, &ctx);
+    }
+}
+
+void Play::drawVersusCount(FrameDraw& d, const LookVariant& variant, float W, float H) {
+    // design/modes/screens.md "The count", a versus match: the mode's count with every player's colour side by side: each climbing to
+    // its number over the bar's first two beats, the mode's word after it (TILES, GATES, POPS; a score none).
+    const World& w = *world_;
+    if (!w.setup().versus || countTick_ < 0.0 || !species_) return;
+    const double now = musicPrev_ + (music1_ - musicPrev_) * static_cast<double>(alpha_);
+    const float u = static_cast<float>((now - countTick_) / (2.0 * kTicksPerBeat));
+    if (u < 0.0f || now > countTick_ + kTicksPerBar + kTicksPerBeat) return;
+    const float s = H / 1080.0f;
+    char word[12] = {};
+    {
+        const char* c = species_->modes.of(w.setup().mode).counts;
+        u32 k = 0;
+        if (std::strcmp(c, "score") != 0)
+            for (; c[k] && k + 1 < sizeof word; ++k) word[k] = static_cast<char>(c[k] >= 'a' && c[k] <= 'z' ? c[k] - 32 : c[k]);
+        word[k] = 0;
+    }
+    u32 n = 0;
+    for (u32 q = 0; q < kMaxPlayers; ++q) n += w.player(q).present ? 1u : 0u;
+    u32 slot = 0;
+    for (u32 q = 0; q < kMaxPlayers; ++q) {
+        if (!w.player(q).present) continue;
+        const float x = 0.5f * W + (static_cast<float>(slot++) - 0.5f * static_cast<float>(n - 1u)) * 440.0f * s;
+        const u64 shown = static_cast<u64>(static_cast<double>(w.versusCount(q)) * static_cast<double>(clamp01(u)));
+        char num[32], line[48];
+        groupDigits(num, sizeof num, shown);
+        std::snprintf(line, sizeof line, "%s%s%s", num, word[0] ? " " : "", word);
+        const float cap = 40.0f * s;
+        const Vec3 c = hudColour(*look_, variant, palettes_->player[q], 1.7f);
+        const Vec3 white = hudColour(*look_, variant, Vec3{1.0f, 1.0f, 1.0f}, 1.6f);
+        const float wdt = font_->measure(TextStyle{cap}, line);
+        font_->drawField(d.hud, {x - 0.5f * wdt, 0.80f * H}, cap, 1.6f * s, white, c, c, line);
+        char who[8];
+        std::snprintf(who, sizeof who, "P%u", q + 1u);
+        const float c2 = 18.0f * s;
+        font_->drawField(d.hud, {x - 0.5f * font_->measure(TextStyle{c2}, who), 0.80f * H - 30.0f * s}, c2, 0.8f * s, c, c, c, who);
     }
 }
 

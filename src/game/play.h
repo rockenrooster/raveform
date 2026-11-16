@@ -787,6 +787,18 @@ private:
     // at 0.3; back: a ring and the row flashing in turn over a beat), and the load-out (the count: the band row's icons out of the
     // ship a sixteenth at a time, the halo's arcs last, the score's digits rolling to their value).
     bool powerCutMuffled_ = false;
+    // M8 JAM (jam.md "Look", sound.md "JAM"): EMPTY's flight (everything the ship held flying back to the TOYS and BOOSTS pads in a
+    // beat: the band row as it stood the frame before, the Boosts held), the hold's two rising notes, the node's haptic tick.
+    u8 jamItems_[64] = {}, emptyItems_[64] = {};
+    u32 jamItemCount_ = 0, emptyItemCount_ = 0;
+    u8 jamBoosts_[4] = {}, emptyBoosts_[4] = {};
+    u32 jamBoostCount_ = 0, emptyBoostCount_ = 0;
+    float emptyT_ = -100.0f;
+    Vec2 emptyFrom_;
+    u32 holdNotes_ = 0;        // the hold's notes played (0, 1 the root, 2 the fifth too)
+    double lastNode16_ = -1.0; // TRACERS: the sixteenth of the last node's haptic tick
+    void drawJamEmpty(FrameDraw& d, const LookVariant& variant);
+    void drawVersusCount(FrameDraw& d, const LookVariant& variant, float W, float H);
     float powerBackT_ = -100.0f;                // view seconds the power came back
     u32 bandRowItems(const sim::PlayerState& p, u8* out, u32 cap) const;  // the HUD band row's icons in its order (Riffs, Fusions, Mods)
     void drawLoadOut(FrameDraw& d, const LookVariant& variant, float W, float H);

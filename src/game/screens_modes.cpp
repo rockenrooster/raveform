@@ -1107,6 +1107,25 @@ void Play::applyModeArgs() {
                     modeArgsOk_ = false;
                     return;
                 }
+                if (opt_.net == 1 && (momentKind_ == 1 || momentKind_ == 3 || momentKind_ == 4)) {
+                    // A networked host (--host, --loopback-bots): the room's worlds start at the moment from the run's setup
+                    // (RunSetup::moment), as every device takes it; no fast-forward (the crowd fills in the warm-up).
+                    if (momentKind_ == 1) {
+                        u32 drops = 0;
+                        const DirectorState& d = w.director();
+                        for (u32 k = 0; k < d.formCount; ++k)
+                            if (static_cast<FormKind>(d.formKind[k]) == FormKind::Drop && ++drops == momentN_) su.moment = static_cast<u8>(k + 1u);
+                    } else {
+                        su.moment = momentKind_ == 3 ? 1u : 2u;
+                    }
+                    su.momentHold = momentHold_ || momentKind_ == 4;
+                    w.directorMut().formHold = 0xFF;
+                    w.directorMut().jamDropHold = false;
+                    momentKind_ = 0;
+                    world_->resetRun(opt_.seed, 0.0, 1, 0xF, su);
+                    RF_LOG("play: --mode %s: the moment travels in the room's setup (section %u%s)", opt_.mode, su.moment, su.momentHold ? ", held" : "");
+                    return;
+                }
                 momentJump_ = true;
                 scriptFastForwardS_ = std::fmax(scriptFastForwardS_, momentKind_ == 2 ? 1200.0f : 600.0f);
                 w.spawner().mode = Spawner::Mode::Slice;

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 
+#include "content/icons.h"
 #include "core/args.h"
 #include "game/oklch.h"
 #include "game/play_view.h"
@@ -146,8 +147,10 @@ void PlayView::drawSongline(FrameDraw& d, const ViewInput& in) {
             d.scene.line(toScene(g.pos + Vec2{-70.0f, 0.0f}), toScene(g.pos + Vec2{70.0f, 0.0f}), 0.6f * refPx_, gc, gc, 0);
             d.scene.line(toScene(g.pos + Vec2{0.0f, -70.0f}), toScene(g.pos + Vec2{0.0f, 70.0f}), 0.6f * refPx_, gc, gc, 0);
             d.scene.line(toScene(g.pos) + Vec2{0.0f, -60.0f * refPx_}, toScene(g.pos) + Vec2{0.0f, 60.0f * refPx_}, 0.5f * refPx_, gc * 0.6f, gc * 0.6f, 0);
-            if (g.boost < kBoostCount && boostIcon_[g.boost] >= 0 && icons_)
-                d.sparkles.glow(toScene(g.pos), 0.5f * r * pxPerWu_, palettes_->player[3] * (0.5f * s));
+            if (g.boost < kBoostCount && boostIcon_[g.boost] >= 0 && icons_) {
+                const i32 icon = boostIcon_[g.boost];
+                icons_->draw(d, icon, toScene(g.pos), 0.5f * r * pxPerWu_ / icons_->size(icon), 1.3f * s);  // (the Boost's icon, half size)
+            }
         }
     }
 
@@ -161,6 +164,21 @@ void PlayView::drawSongline(FrameDraw& d, const ViewInput& in) {
         const float k = 1.0f - age / sixteenthS;
         const Vec3 c = W1 * (1.6f * k), pc = palettes_->playerLight[p] * (1.6f * k);
         d.scene.line(toScene(ship), toScene(spark), 0.5f * refPx_, pc, c, 0);
+    }
+
+    // ---- Versus with the help (songline.md "Versus"): the underdog threads from a wider ring: drawn round its ship, dashed, its colour.
+    if (w.setup().versus && w.setup().help && w.director().underdog < kMaxPlayers) {
+        const u32 q = w.director().underdog;
+        const PlayerState& pl = w.player(q);
+        if (pl.present && pl.alive) {
+            const Vec2 ship = lerp2(pl.prevPos, pl.pos, in.alpha);
+            const float r = 1.5f * w.species().modes.songline.radiusWu;  // (the underdog's gates are threaded from 1.5 times the ring: 51 wu)
+            const Vec3 c = palettes_->player[q] * (q == me ? 0.9f : 0.5f);
+            for (u32 j = 0; j < 24; j += 2) {
+                const float a0 = kTau * static_cast<float>(j) / 24.0f + 0.4f * t, a1 = kTau * static_cast<float>(j + 1u) / 24.0f + 0.4f * t;
+                d.scene.line(toScene(ship + dir(a0) * r), toScene(ship + dir(a1) * r), 0.5f * refPx_, c, c, 0);
+            }
+        }
     }
 
     // ---- The streak's rings (rule 9): one to four thin rings round the ship outside the halo, 1 px at 1.2, the mode's two colours
@@ -273,7 +291,8 @@ void PlayView::songlineEvent(const World& w, const Event& e, float t) {
                 if (e.c) {
                     addShockRings(pl.pos, 1, r * 3.0f, songColour(w, false), songColour(w, true), t, 0.3f);  // (a ring leaving the ship)
                 } else {
-                    // (a step down: the outermost ring shatters outward)
+                    // (a step down: the outermost ring shatters outward: its arcs fly apart, with a few sparks)
+                    shatterArcs(pl.pos, 8, 0, 8, mix(songColour(w, false), songColour(w, true), 0.5f) * 1.6f, t);
                     SparkReq q{};
                     q.at = pl.pos;
                     q.dir = Vec2{1.0f, 0.0f};

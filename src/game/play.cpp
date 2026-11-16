@@ -1069,6 +1069,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     }
     updatePalette(vi.music);
     view_.setHaloGone(loadOutHaloGone(vi.music));  // M8 FULL BLAST's load-out: the halo's arcs fly last
+    view_.setJamBaseSound(static_cast<u8>(settings_.variant % 3u));  // (M8 JAM: SOUND's pad names the next sound from the player's own)
     view_.render(d, params, bg, W, H, vi);
 
     HudState hs;
@@ -1335,6 +1336,8 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         drawHud(d, *font_, *look_, variant, *palettes_, *palette_, hs, touch_, W, H, insetMin, insetMax);
         if (modeRun()) drawLoadIn(d, variant);  // M8: the kit's icons spiralling in
         if (modeRun()) drawLoadOut(d, variant, W, H);  // M8 FULL BLAST: the load-out, the count's bar
+        if (modeRun()) drawJamEmpty(d, variant);        // M8 JAM: EMPTY's flight back to the pads
+        if (w.setup().versus) drawVersusCount(d, variant, W, H);  // M8: a versus match's count, side by side
         if (w.setup().mode == Mode::Songline) drawSongCount(d, variant, W, H);  // M8 SONGLINE: the count
         if (w.setup().versus || w.director().formCount) drawVersusWorld(d, variant);  // M8: the crown, BACK IN n (README.md 7: timed modes too)
         setHudFade(1.0f);
@@ -2045,13 +2048,14 @@ void Play::hintsTick(ViewInput& vi) {
     // its end; a hint whose moment passes waits for the next such moment.
     // (M8 SONGLINE, songline.md "HUD": three more on its first runs: FOLLOW THE SPARK, then at the first gate in view FLY THROUGH THE
     // RINGS, then at the first tier KEEP THE STREAK: MORE POWER)
-    constexpr u32 kHintCount = 17;
+    constexpr u32 kHintCount = 20;
     static const char* const kHints[kHintCount] = {"LEFT THUMB MOVES",         "WASD OR LEFT STICK MOVES",    "IT AIMS AND FIRES BY ITSELF",
                                                    "RIGHT THUMB AIMS IF YOU LIKE", "FLY INTO ONE AND STAY",   "YOUR RING IS YOUR HEALTH",
                                                    "NOVA CLEARS THE SCREEN",   "DASH GOES THROUGH BULLETS",   "GOLD ORBS ARE SHORT POWERS",
                                                    "EXTRA LIFE: ONE MORE TRY", "BREAK IT FOR A PRIZE",        "FOLLOW THE SPARK",
                                                    "FLY THROUGH THE RINGS",    "KEEP THE STREAK: MORE POWER", "FLY OVER A PAD",
-                                                   "STAY ON THE BIG ONE",      "STAY ON A TOY TO TAKE IT"};
+                                                   "STAY ON THE BIG ONE",      "STAY ON A TOY TO TAKE IT",    "MOVE TO DRAW A LINE",
+                                                   "CLOSE A RING ROUND THEM",  "LIGHT THE WHOLE FLOOR"};
     const World& w = *world_;
     const float now = static_cast<float>(vi.time);
     const float barS = 240.0f / std::fmax(vi.bpm, 30.0f);
@@ -2126,6 +2130,15 @@ void Play::hintsTick(ViewInput& vi) {
             case 14: return w.setup().mode == Mode::Jam && !w.setup().versus;
             case 15: return w.setup().mode == Mode::Jam && !w.setup().versus && (settings_.hintsSeen & (1u << 14)) && bar >= 6;
             case 16: return w.setup().mode == Mode::Jam && w.jam().shelf[seat_ < kMaxPlayers ? seat_ : 0].pad != 0xFF;
+            // (M8 TRACERS, tracers.md "HUD": MOVE TO DRAW A LINE, then with a body within 300 wu CLOSE A RING ROUND THEM, then on the
+            // first lit tiles LIGHT THE WHOLE FLOOR)
+            case 17: return w.setup().mode == Mode::Tracers;
+            case 18:
+                if (w.setup().mode != Mode::Tracers || !(settings_.hintsSeen & (1u << 17))) return false;
+                for (u32 i = 0; i < e.count; ++i)
+                    if (!(e.flags[i] & kFlagDead) && e.state[i] != kWarping && lengthSq(Vec2{e.x[i], e.y[i]} - me.pos) < 300.0f * 300.0f) return true;
+                return false;
+            case 19: return w.setup().mode == Mode::Tracers && (settings_.hintsSeen & (1u << 18)) && w.versusCount(seat_) > 0;
             case 8:
             case 9: {
                 const BoostPickups& bp = w.boostPickups();
@@ -2149,6 +2162,7 @@ void Play::hintsTick(ViewInput& vi) {
     for (u32 k = 0; k < kHintCount; ++k) {
         if (settings_.hintsSeen & (1u << k)) continue;
         if ((w.setup().mode == Mode::Songline || (w.setup().mode == Mode::Jam && !w.setup().versus)) && (k == 4 || k == 5)) continue;  // (no Trios; nothing hurts)
+        if (w.setup().mode == Mode::Tracers && (k == 2 || k == 3 || k == 4)) continue;  // (TRACERS: no gun, no Trios)
         if (!due(k)) continue;
         hintIdx_ = static_cast<i32>(k);
         hintT_ = now;

@@ -481,6 +481,13 @@ void PlayView::onEvents(const World& w, double tickEnd) {
     const u32 me = w.viewPlayer();
     if (!buildReady_) buildColours(palettes_->player[me]);
     lat_ = w.onStage() ? &stageLattice_ : &lattice_;  // (M8: the Stage's lattice takes its impulses)
+    // M8 TRACERS: the rings popped in this tick (their kills are staggered from the line inward over a thirty-second).
+    popsNowCount_ = 0;
+    for (u32 k = 0; k < w.eventCount() && w.setup().mode == Mode::Tracers; ++k) {
+        const Event& e = w.events()[k];
+        if (e.type == EventType::RingPop && popsNowCount_ < 8) popsNow_[popsNowCount_++] = PopRing{Vec2{e.x, e.y}, std::fmax(e.f, 1.0f)};
+    }
+    flushLateKills(static_cast<float>(tickEnd));
     for (u32 k = 0; k < w.eventCount(); ++k) {
         const Event& e = w.events()[k];
         const float t = static_cast<float>(tickEnd - e.age);
@@ -499,8 +506,23 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                     break;
                 }
                 // Co-op: the kill pool in the killer's colour (look.md 6); solo keeps the enemy's hue.
-                killRecipe(at, e.a, s.hue, e.f, speciesGlyph_[e.species], s.radius, t,
-                           w.playerCount() > 1 && e.b < kMaxPlayers ? static_cast<i32>(e.b) : -1);
+                {
+                    const i32 killer = w.playerCount() > 1 && e.b < kMaxPlayers ? static_cast<i32>(e.b) : -1;
+                    float delay = 0.0f;
+                    for (u32 r = 0; r < popsNowCount_; ++r) {
+                        const float dist = length(at - popsNow_[r].at);
+                        if (dist > popsNow_[r].r + 30.0f) continue;
+                        // (from the ring's line inward: the outermost first, the centre a thirty-second later)
+                        delay = (1.0f - clampf(dist / popsNow_[r].r, 0.0f, 1.0f)) * static_cast<float>(kTicksPerBeat / 8.0 / w.ticksPerSecond());
+                        break;
+                    }
+                    if (delay > 0.004f && lateKillCount_ < kLateKills) {
+                        LateKill& lk = lateKills_[lateKillCount_++];
+                        lk = LateKill{at, e.f, s.radius, t + delay, speciesGlyph_[e.species], killer, e.a, s.hue};
+                    } else {
+                        killRecipe(at, e.a, s.hue, e.f, speciesGlyph_[e.species], s.radius, t, killer);
+                    }
+                }
                 break;
             }
             case EventType::Impact: {
@@ -1099,7 +1121,9 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     // ---- Background (look.md §7).
     const Vec3 bgEdge = palette_->bg0 * look_->bgLevel;
     const Vec3 bgCentre = palette_->bg1 * look_->bgLevel;
-    const float bassLift = 1.0f + look_->backgroundBass * beatAmt * bass_;
+    // (M8 JAM, jam.md "BASS": the background's centre glow breathes with the bass, up to 40% over its rest, only while BASS plays)
+    const bool jamRoom = in.world && in.world->setup().mode == Mode::Jam && !in.world->setup().versus;
+    const float bassLift = jamRoom ? ((in.world->jam().mixer & 4u) ? 1.0f + 0.4f * bass_ : 1.0f) : 1.0f + look_->backgroundBass * beatAmt * bass_;
     const float drift = look_->backgroundHueDriftDegrees * beatAmt / 60.0f * bass_;
     bg.edge = mix(bgEdge, accent * (bgEdge.x + bgEdge.y + bgEdge.z) * (1.0f / 3.0f), drift) * bassLift;
     bg.centre = mix(bgCentre, accent * (bgCentre.x + bgCentre.y + bgCentre.z) * (1.0f / 3.0f), drift) * bassLift;
@@ -1243,8 +1267,10 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     // ---- Arena walls (GAME_DESIGN 9): glowing lines in the accent; the snare flashes them, the bass
     // breathes their width (GAME_DESIGN 11.1).
     {
-        const float i = kWallIntensity * (1.0f + kWallSnare * beatAmt * snare_);
-        const float hw = 0.5f * kWallWidth * (1.0f + kWallBass * beatAmt * bass_) * refPx_;
+        // (M8 JAM, jam.md "KICK": the walls swell on every kick while the kick plays)
+        const float jamKick = w.setup().mode == Mode::Jam && (w.jam().mixer & 1u) ? kick_ : 0.0f;
+        const float i = kWallIntensity * (1.0f + kWallSnare * beatAmt * snare_) * (1.0f + 0.9f * jamKick);
+        const float hw = 0.5f * kWallWidth * (1.0f + kWallBass * beatAmt * bass_) * (1.0f + 0.5f * jamKick) * refPx_;
         const Vec3 c = accent * i;
         const float hwx = w.halfW(), hwy = w.halfH();  // (M8: the Stage's walls on the Stage)
         const Vec2 corners[4] = {{-hwx, -hwy}, {hwx, -hwy}, {hwx, hwy}, {-hwx, hwy}};

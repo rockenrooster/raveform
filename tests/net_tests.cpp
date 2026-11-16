@@ -840,8 +840,14 @@ void testLobby() {
         p[at + 1] = 13;  // no Track 13
         CHECK(!parsePacket(p, w.size(), sink));
         std::memcpy(p, w.data(), w.size());
-        p[at + 2] = 4;  // flags: versus and help only
+        p[at + 2] = static_cast<u8>(14u << 2);  // flags: a benchmark's moment above 13
         CHECK(!parsePacket(p, w.size(), sink));
+        // (M8 part 7: a benchmark's moment, held, travels in the flags)
+        vm.setup.moment = 9;
+        vm.setup.momentHold = true;
+        w.reset();
+        CHECK(w.putLobby(vm) && parsePacket(w.data(), w.size(), sink));
+        CHECK(sink.lastLobby.setup == vm.setup && sink.lastLobby.setup.moment == 9 && sink.lastLobby.setup.momentHold);
     }
     lm.ready = 0x8;  // ready but not seated
     w.reset();

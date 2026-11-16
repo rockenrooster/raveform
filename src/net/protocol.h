@@ -11,7 +11,7 @@
 
 namespace rf::net {
 
-constexpr u32 kProtocolVersion = 0x52460511u;  // 'R' 'F', M8 part 6 JAM (kPeJamPad, kPeJamTake, kPeJamEmpty; the room's changes as arena operation 10); 0x...510 M8 part 5 SONGLINE (kPeGate; the Spark's line a bar ahead in MsgDirector); 0x...50F M8 part 4 TRACERS (Msg::Ring, Msg::Floor, kPeCut, kPeSpin); 0x...50E M8 part 1 versus (the crown and the underdog in MsgDirector, kPeKnock); 0x...50D ONE TRACK's outro bar in MsgDirector; 0x...50C M8 part 0 (the room's setup in MsgLobby and MsgRunStart, the crowns, the beacon's mode); 0x...50B pause-on-leave (2026-11-14: kAwayAsk, kBackAsk, kAwayMask; MsgPause::away); 0x...50A play test 3 (the Extra Life's drop and take, a Hit's ring and Extra Life flags in opts[0]); 0x...509 M5 part 7 (a boss's pace: kGeomBossPace); 0x...508 M5 part 6 (the bosses of Tracks 8 to 10 and mini-bosses batch 3: new kinds, two new decisions) with M4 net's 0x...507 (Event Horizon's phase and its drift's point decided by the host: kGeomHorizonPhase, kGeomHorizonDrift); 0x...506 M5 part 5 (the arena's operations and claims on its bodies); 0x...505 M5 part 4 (the enemy states kLane, kCourt, kEgg; the fights' new decisions) and M4 net's follow-up (motion corrections, 0x...504 on its branch); 0x...503 M5 part 3
+constexpr u32 kProtocolVersion = 0x52460512u;  // 'R' 'F', M8 part 7 (a benchmark's moment in the run's setup flags; HEADLINERS's race as arena operations 11 and 15); 0x...511 M8 part 6 JAM (kPeJamPad, kPeJamTake, kPeJamEmpty; the room's changes as arena operation 10); 0x...510 M8 part 5 SONGLINE (kPeGate; the Spark's line a bar ahead in MsgDirector); 0x...50F M8 part 4 TRACERS (Msg::Ring, Msg::Floor, kPeCut, kPeSpin); 0x...50E M8 part 1 versus (the crown and the underdog in MsgDirector, kPeKnock); 0x...50D ONE TRACK's outro bar in MsgDirector; 0x...50C M8 part 0 (the room's setup in MsgLobby and MsgRunStart, the crowns, the beacon's mode); 0x...50B pause-on-leave (2026-11-14: kAwayAsk, kBackAsk, kAwayMask; MsgPause::away); 0x...50A play test 3 (the Extra Life's drop and take, a Hit's ring and Extra Life flags in opts[0]); 0x...509 M5 part 7 (a boss's pace: kGeomBossPace); 0x...508 M5 part 6 (the bosses of Tracks 8 to 10 and mini-bosses batch 3: new kinds, two new decisions) with M4 net's 0x...507 (Event Horizon's phase and its drift's point decided by the host: kGeomHorizonPhase, kGeomHorizonDrift); 0x...506 M5 part 5 (the arena's operations and claims on its bodies); 0x...505 M5 part 4 (the enemy states kLane, kCourt, kEgg; the fights' new decisions) and M4 net's follow-up (motion corrections, 0x...504 on its branch); 0x...503 M5 part 3
 constexpr u32 kMaxPacketBytes = 1200;
 
 enum class Msg : u8 {
@@ -67,14 +67,20 @@ struct MsgLobby {
     sim::RunSetup setup;  // M8: the room's mode, Track and game (the host's choice; design/modes/screens.md "The lobby")
     u8 crowns[4] = {};    // M8: the versus matches each seat has won in this room
 };
-// M8: a run's setup on the wire: its mode, its Track, and a byte of flags (bit 0 versus, bit 1 the underdog's help).
-inline u8 setupFlags(const sim::RunSetup& s) { return static_cast<u8>((s.versus ? 1u : 0u) | (s.help ? 2u : 0u)); }
+// M8: a run's setup on the wire: its mode, its Track, and a byte of flags (bit 0 versus, bit 1 the underdog's help, bits 2-6 a
+// benchmark's moment (0: none; up to 13), bit 7 the moment held).
+inline u8 setupFlags(const sim::RunSetup& s) {
+    return static_cast<u8>((s.versus ? 1u : 0u) | (s.help ? 2u : 0u) | ((s.moment & 31u) << 2) | (s.momentHold ? 0x80u : 0u));
+}
 inline bool setupFromWire(u8 mode, u8 track, u8 flags, sim::RunSetup& out) {
-    if (mode >= sim::kModeCount || track < 1 || track > sim::kModeTracks || flags > 3u) return false;
+    const u8 moment = static_cast<u8>((flags >> 2) & 31u);
+    if (mode >= sim::kModeCount || track < 1 || track > sim::kModeTracks || moment > 13u) return false;
     out.mode = static_cast<sim::Mode>(mode);
     out.track = track;
     out.versus = (flags & 1u) != 0;
     out.help = (flags & 2u) != 0;
+    out.moment = moment;
+    out.momentHold = (flags & 0x80u) != 0;
     return true;
 }
 // The bed's intensity for a bar (M4 stage B, GAME_DESIGN 10: the shared bed is identical on every device): the host

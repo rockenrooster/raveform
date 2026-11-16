@@ -177,6 +177,35 @@ void PlayView::drawJam(FrameDraw& d, const ViewInput& in) {
             if (waiting && blinkOn) col = mix(modeA, modeB, 0.5f) * 1.9f;
             ring(c, pad.radiusWu, 0.75f * refPx_, col);
             words(c, cap14, col, jd.layer[k]);
+            {
+                // (jam.md "A pad": its layer's live signal as a short line across it under the word, the layer's own rhythm: KICK a
+                // bump on every beat, HATS ticks on the eighths, BASS a slow swell, CLAP two and four, OPEN HAT the off-beats, SHAKER
+                // the sixteenths, CHORDS a smooth wave, STABS one and three; flat when the layer is off)
+                const double b = beats;
+                const float b1 = frac01(b), b2 = frac01(b * 2.0), b4 = frac01(b * 4.0);
+                float amp = 0.0f;
+                switch (k) {
+                    case 0: amp = std::exp(-b1 * 6.0f); break;
+                    case 1: amp = std::exp(-b2 * 9.0f); break;
+                    case 2: amp = 0.5f + 0.5f * std::sin(static_cast<float>(b) * kPi); break;
+                    case 3: amp = (beatNo % 2u) == 1u ? std::exp(-b1 * 6.0f) : 0.0f; break;
+                    case 4: amp = b2 >= 0.0f && std::fmod(b * 2.0, 2.0) >= 1.0 ? std::exp(-b2 * 6.0f) : 0.0f; break;
+                    case 5: amp = 0.4f + 0.6f * std::exp(-b4 * 8.0f); break;
+                    case 6: amp = 0.6f + 0.4f * std::sin(static_cast<float>(b) * 0.5f * kPi); break;
+                    default: amp = (beatNo % 2u) == 0u ? std::exp(-b1 * 5.0f) : 0.0f; break;
+                }
+                if (!on) amp = 0.0f;
+                const float half = 0.55f * pad.radiusWu, y0 = c.y + 0.42f * pad.radiusWu, h = 0.18f * pad.radiusWu * amp;
+                Vec2 prev{c.x - half, y0};
+                const Vec3 sc = on ? col * 0.9f : W1 * 0.3f;
+                for (u32 j = 1; j <= 10; ++j) {
+                    const float u = static_cast<float>(j) / 10.0f;
+                    const float wave = std::sin(u * kTau * (k == 2 || k == 6 ? 1.0f : 2.5f + static_cast<float>(k)) + static_cast<float>(k)) * std::sin(u * kPi);
+                    const Vec2 q{c.x - half + 2.0f * half * u, y0 - h * wave};
+                    d.scene.line(toScene(prev), toScene(q), 0.35f * refPx_, sc, sc, 0);
+                    prev = q;
+                }
+            }
             if (waiting) words(c, 0.7f * cap14, W1 * 0.9f, "NEXT BAR", pad.radiusWu + 14.0f);
             if (on) {
                 d.pools.glow(toScene(c), 1.6f * pad.radiusWu * pxPerWu_, mix(modeA, modeB, 0.5f) * 0.18f);
@@ -221,7 +250,15 @@ void PlayView::drawJam(FrameDraw& d, const ViewInput& in) {
             const bool toys = k == ModesData::Jam::kPadToys;
             std::snprintf(label, sizeof label, toys ? "TOYS" : "BOOSTS");
             const u8 next = toys ? js.toysNext[me < kMaxPlayers ? me : 0] : js.boostsNext[me < kMaxPlayers ? me : 0];
-            std::snprintf(sub, sizeof sub, "SHELF %u OF %u", static_cast<unsigned>(next + 1u), static_cast<unsigned>(toys ? jd.toyShelves : jd.boostShelves));
+            // (jam.md rule 5: the label names the shelf the next visit opens: WEAPONS 1 OF 3, RHYTHM, UTILITY, RIFFS 2 OF 2, BOOSTS n OF 3)
+            if (toys) {
+                static const char* const kGroup[7] = {"WEAPONS", "WEAPONS", "WEAPONS", "RHYTHM", "UTILITY", "RIFFS", "RIFFS"};
+                static const u8 kFirst[7] = {0, 0, 0, 3, 4, 5, 5}, kCount[7] = {3, 3, 3, 1, 1, 2, 2};
+                const u32 n = next < 7u ? next : 0u;
+                std::snprintf(sub, sizeof sub, "%s %u OF %u", kGroup[n], static_cast<unsigned>(n - kFirst[n] + 1u), static_cast<unsigned>(kCount[n]));
+            } else {
+                std::snprintf(sub, sizeof sub, "BOOSTS %u OF %u", static_cast<unsigned>(next + 1u), static_cast<unsigned>(jd.boostShelves));
+            }
             col = toys ? modeA * 1.4f : palettes_->player[3] * 1.4f;
             ring(c, pad.radiusWu, 0.8f * refPx_, col);
         } else if (k == ModesData::Jam::kPadEmpty) {
@@ -229,6 +266,9 @@ void PlayView::drawJam(FrameDraw& d, const ViewInput& in) {
             ring(c, pad.radiusWu, 0.75f * refPx_, col);
         } else if (k == ModesData::Jam::kPadSound) {
             std::snprintf(label, sizeof label, "SOUND");
+            // (its next sound named under it: the band's whole sound steps on from the player's own)
+            static const char* const kSounds[3] = {"NEXT: CLUB", "NEXT: ARCADE", "NEXT: VELVET"};
+            std::snprintf(sub, sizeof sub, "%s", kSounds[(jamBaseSound_ + js.soundNext + 1u) % 3u]);
             ring(c, pad.radiusWu, 0.75f * refPx_, col);
         } else {
             // A Track pad: in its Track's accent with its number inside; the one playing a white ring and its name over it.

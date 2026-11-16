@@ -17,7 +17,14 @@ struct RunSetup {
     u8 track = 1;         // 1..12 for a mode that takes one; else 1
     bool versus = false;  // each player for themselves (design/modes/README.md 8)
     bool help = true;     // versus: the underdog's help (V7), on unless the host switches it off
-    bool operator==(const RunSetup& o) const { return mode == o.mode && track == o.track && versus == o.versus && help == o.help; }
+    // A moment for a networked benchmark (docs/MODES_PLAN.md 7: `--mode <id>:<track>:<moment>:hold` with `--host --loopback-bots`):
+    // a timed form starts at its section moment - 1 (the ones before it skipped), held there with momentHold; JAM: 1 its DROP from the
+    // first bar, 2 every layer on. Every device takes it from the run's setup, so the room's worlds agree. 0 in play.
+    u8 moment = 0;
+    bool momentHold = false;
+    bool operator==(const RunSetup& o) const {
+        return mode == o.mode && track == o.track && versus == o.versus && help == o.help && moment == o.moment && momentHold == o.momentHold;
+    }
     bool operator!=(const RunSetup& o) const { return !(*this == o); }
 };
 

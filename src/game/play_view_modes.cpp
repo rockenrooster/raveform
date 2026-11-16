@@ -103,6 +103,17 @@ void PlayView::tracersFloor(const World& w, float t) {
     }
 }
 
+void PlayView::flushLateKills(float now) {
+    // (the staggered pops' kills, each drawn at its own moment)
+    u32 keep = 0;
+    for (u32 k = 0; k < lateKillCount_; ++k) {
+        const LateKill& lk = lateKills_[k];
+        if (lk.due <= now) killRecipe(lk.at, lk.size, lk.hue, lk.heading, lk.glyph, lk.radius, lk.due, lk.owner);
+        else lateKills_[keep++] = lk;
+    }
+    lateKillCount_ = keep;
+}
+
 void PlayView::drawStageFloor(FrameDraw& d, const ViewInput& in) {
     const World& w = *in.world;
     const ModesData::Stage& st = w.species().modes.stage;
@@ -119,8 +130,38 @@ void PlayView::drawStageFloor(FrameDraw& d, const ViewInput& in) {
         }
     }
     if (w.setup().mode != Mode::Tracers || !shown(kMuteGrid)) return;
+    flushLateKills(static_cast<float>(in.time));
+    {
+        // The rig's beams (tracers.md "A pop", "FULL HOUSE"; the Stage's beam of jam.md): from x 5 up two fixtures flash a beam each onto
+        // the ring's centre for a beat; through FULL HOUSE's chase every fixture's beam sweeps the floor (reduce flashing: none).
+        jamData_ = &w.species().modes.jam;
+        jamHalf_ = Vec2{w.halfW(), w.halfH()};
+        const float t = static_cast<float>(in.time);
+        const float beatS = static_cast<float>(kTicksPerBeat / w.ticksPerSecond());
+        const float ry = -w.halfH() + st.rigYFromTopWu;
+        const auto fixture = [&](u32 k) { return Vec2{(static_cast<float>(k) - 0.5f * static_cast<float>(st.rigFixtures - 1u)) * st.rigSpacingWu, ry}; };
+        for (const RingWords& rw : ringWords_) {
+            const float age = t - rw.t;
+            if (rw.bonus < 5 || age < 0.0f || age > beatS || st.rigFixtures < 2) continue;
+            // (the two fixtures nearest above it)
+            u32 a = 0;
+            for (u32 k = 1; k < st.rigFixtures; ++k)
+                if (std::fabs(fixture(k).x - rw.at.x) < std::fabs(fixture(a).x - rw.at.x)) a = k;
+            const u32 b = a + 1 < st.rigFixtures && (a == 0 || std::fabs(fixture(a + 1).x - rw.at.x) < std::fabs(fixture(a - 1).x - rw.at.x)) ? a + 1 : (a ? a - 1 : 1);
+            const float lv = (1.0f - age / beatS) * (reduceFlashing_ ? 0.5f : 1.0f);
+            jamBeam(d, fixture(a), rw.at, lv);
+            jamBeam(d, fixture(b), rw.at, lv);
+        }
+        const float chase = (t - houseT_) / (2.0f * beatS);
+        if (!reduceFlashing_ && chase >= 0.0f && chase < 1.0f)
+            for (u32 k = 0; k < st.rigFixtures; ++k) {
+                const float u = chase + 0.13f * static_cast<float>(k);
+                const float x = -w.halfW() + 2.0f * w.halfW() * (u - std::floor(u));
+                jamBeam(d, fixture(k), Vec2{x, w.halfH()}, 0.8f);
+            }
+    }
     // A lit region's edge (tracers.md "Look"): where a lit tile meets dark or another colour, a line along its side in its owner's
-    // colour at edgeLevel (inset a little, so two colours meeting both show).
+    // colour at edgeLevel (inset a little, so two colours meeting both show), with a soft glow (10 wu at 0.2, a pool).
     const ModesData::Tracers& tr = w.species().modes.tracers;
     const float tw = st.tileWu, in2 = 2.5f;
     const float hw = 0.5f * tr.edgeWidth * refPx_;
@@ -129,6 +170,7 @@ void PlayView::drawStageFloor(FrameDraw& d, const ViewInput& in) {
         if (x < 0 || y < 0 || x >= static_cast<i32>(TracerFloor::kTilesX) || y >= static_cast<i32>(TracerFloor::kTilesY)) return true;
         return floorDraw_[static_cast<u32>(y) * TracerFloor::kTilesX + static_cast<u32>(x)] != c;
     };
+    u32 glows = 0;
     for (u32 tl = 0; tl < TracerFloor::kTiles; ++tl) {
         const u8 c = floorDraw_[tl];
         if (c == 0xFF) continue;
@@ -136,10 +178,16 @@ void PlayView::drawStageFloor(FrameDraw& d, const ViewInput& in) {
         const Vec3 col = tileColour_[c] * (tr.edgeLevel * tileLight_[tl]);
         const Vec2 a = o + Vec2{static_cast<float>(x) * tw + in2, static_cast<float>(y) * tw + in2};
         const Vec2 b = a + Vec2{tw - 2.0f * in2, tw - 2.0f * in2};
-        if (other(x - 1, y, c)) d.scene.line(toScene(Vec2{a.x, a.y}), toScene(Vec2{a.x, b.y}), hw, col, col, 0);
-        if (other(x + 1, y, c)) d.scene.line(toScene(Vec2{b.x, a.y}), toScene(Vec2{b.x, b.y}), hw, col, col, 0);
-        if (other(x, y - 1, c)) d.scene.line(toScene(Vec2{a.x, a.y}), toScene(Vec2{b.x, a.y}), hw, col, col, 0);
-        if (other(x, y + 1, c)) d.scene.line(toScene(Vec2{a.x, b.y}), toScene(Vec2{b.x, b.y}), hw, col, col, 0);
+        const bool l = other(x - 1, y, c), r = other(x + 1, y, c), u = other(x, y - 1, c), dn = other(x, y + 1, c);
+        if (l) d.scene.line(toScene(Vec2{a.x, a.y}), toScene(Vec2{a.x, b.y}), hw, col, col, 0);
+        if (r) d.scene.line(toScene(Vec2{b.x, a.y}), toScene(Vec2{b.x, b.y}), hw, col, col, 0);
+        if (u) d.scene.line(toScene(Vec2{a.x, a.y}), toScene(Vec2{b.x, a.y}), hw, col, col, 0);
+        if (dn) d.scene.line(toScene(Vec2{a.x, b.y}), toScene(Vec2{b.x, b.y}), hw, col, col, 0);
+        if ((l || r || u || dn) && glows < 600) {
+            ++glows;
+            d.pools.glow(toScene(o + Vec2{(static_cast<float>(x) + 0.5f) * tw, (static_cast<float>(y) + 0.5f) * tw}), 10.0f * pxPerWu_,
+                         tileColour_[c] * (0.2f * tileLight_[tl]));
+        }
     }
 }
 
@@ -294,10 +342,26 @@ void PlayView::tracersEvent(const World& w, const Event& e, float t) {
                 houseNo_ = e.a;
                 houseAt_ = at;
             } else if (e.b == 1) {
-                // The crowd's pop and the house's pay: the lattice rings from the centre.
+                // The crowd's pop and the house's pay: the lattice rings from the centre; a clamped white flash (reduce flashing:
+                // none) and a shower of confetti in the players' colours (the Drop's sparks).
                 if (!reduceFlashing_) push(kImpDropWave, Vec2{}, 300.0f, 900.0f, t);
                 shakeAmp_ = std::fmax(shakeAmp_, 6.0f);
                 addShockRings(Vec2{}, 2, 1000.0f, tracersColour(w, false), tracersColour(w, true), t, 0.5f);
+                if (!reduceFlashing_) addPool(Vec2{}, 1000.0f, 1000.0f, whiteC(), 0.3f, 0.0f, 0.12f, false, 1, false, false, t);
+                for (u32 q = 0; q < kMaxPlayers; ++q) {
+                    if (!w.player(q).present) continue;
+                    for (u32 j = 0; j < 4; ++j) {
+                        SparkReq r{};
+                        r.at = Vec2{(static_cast<float>(j) - 1.5f) * 300.0f, (static_cast<float>(q) - 1.5f) * 120.0f};
+                        r.dir = Vec2{0.0f, -1.0f};
+                        r.count = 24;
+                        r.kind = 1;
+                        r.a = palettes_->player[q];
+                        r.b = palettes_->playerLight[q];
+                        r.t0 = t;
+                        sparkRequest(r);
+                    }
+                }
             } else {
                 houseDarkNow_ = true;
             }

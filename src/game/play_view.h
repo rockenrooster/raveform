@@ -115,6 +115,10 @@ public:
 
 private:
     u32 haloGone_ = 0;
+    u8 jamBaseSound_ = 0;  // M8 JAM: the player's own sound (SOUND steps on from it; its pad names the next)
+public:
+    void setJamBaseSound(u8 v) { jamBaseSound_ = v; }
+private:
     HudKeepOut keepOut_;
     struct Pool;
     struct Ember;
@@ -485,6 +489,24 @@ private:
     bool floorReady_ = false;
     Vec3 tileColour_[6];
     u8 caughtBy_[sim::kMaxEnemies] = {};
+    // M8 TRACERS (tracers.md "A pop"): the caught bodies die staggered from the ring's line inward over a thirty-second: a kill inside
+    // a ring popped this tick waits its turn here (its recipe's arguments and the moment it is drawn).
+    struct LateKill {
+        Vec2 at;
+        float heading = 0.0f, radius = 0.0f, due = -1.0f;
+        i32 glyph = -1, owner = -1;
+        u8 size = 0, hue = 0;
+    };
+    static constexpr u32 kLateKills = 256;
+    LateKill lateKills_[kLateKills];
+    u32 lateKillCount_ = 0;
+    struct PopRing {
+        Vec2 at;
+        float r = 0.0f;
+    };
+    PopRing popsNow_[8];
+    u32 popsNowCount_ = 0;
+    void flushLateKills(float now);
     struct RingWords {
         Vec2 at;
         float t = -100.0f;
