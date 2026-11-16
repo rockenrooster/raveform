@@ -41,6 +41,9 @@ const M8Pic kM8Pics[] = {
     // sinking, the title building); the row stepped on from THE SET (8); a Track tapped with ONE TRACK at the centre (16: NEXT
     // BAR counting out, the bar line, the palette's cross-fade); PLAY with THE SET at the centre (16: the wait, the downbeat).
     {"t_lift", M8::Lift, 0}, {"t_back", M8::Back, 4}, {"t_mode", M8::Step, 0}, {"t_track", M8::Track, 1}, {"t_drop", M8::Drop, 0},
+    // (part 7: the row stepped onto each new mode's card, from the one before it: the card struck as it reaches the centre)
+    {"t_mode_one", M8::Step, 0}, {"t_mode_headliners", M8::Step, 1}, {"t_mode_blast", M8::Step, 2}, {"t_mode_tracers", M8::Step, 3},
+    {"t_mode_songline", M8::Step, 4}, {"t_mode_jam", M8::Step, 5},
     // Part 1 (ONE TRACK; the run's Track in `mode`'s place): the load-in on Track 6 (a strip two sixteenths apart from the run's
     // first downbeat: 27 upgrades spiralling in), the name card on Track 4 (TRACK 4, AURORA, BEAT ITS BOSS), TRACK COMPLETE in
     // Track 1's outro and the result after it (the bot plays to the boss, hits costing nothing).
