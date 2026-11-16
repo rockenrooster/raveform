@@ -116,6 +116,9 @@ bool Play::hostRoom() {
         return false;
     }
     session_->setClock([](void*) { return net::wireNowUs(); }, nullptr);
+    if (!opt_.coopMode[0]) roomSetup_ = sim::RunSetup{};  // M8: a room opens in THE SET, TEAM (--coop-mode: as it says)
+    session_->setRoomSetup(roomSetup_);
+    roomSeen_ = roomSetup_;
     coopFlowActive_ = true;
     coopRunShown_ = coopOver_ = false;
     netRunStarted_ = netSongStarted_ = false;
@@ -484,6 +487,12 @@ void Play::coopTestStep() {
         coopAutoT_ += frameDt_;
         const u32 want = is("lobby") ? 1u : (is("lobby2") ? 2u : (is("lobby3") ? 3u : (is("lobby4") ? 4u : 99u)));
         if (want <= 4 && ready >= want && seated >= want && coopAutoT_ > 2.0f) coopShotReady_ = true;
+        // M8: the room's MODES (the host's MODE pill) once two are seated and ready; the picture when it is at rest.
+        if (is("modes") && s.host() && ready >= 2 && seated >= 2 && coopAutoT_ > 2.0f && trans_ == Trans::None) openModes(Screen::CoopLobby);
+    }
+    if (is("modes") && screen_ == Screen::Modes && trans_ == Trans::None) {
+        shotWaitS_ += frameDt_;
+        if (shotWaitS_ > 1.0f) coopShotReady_ = true;
     }
     if (is("beacon") || is("revive")) {
         // The beacon: a teammate's, on this screen (well inside the frame around this ship) once the shatter of its ship

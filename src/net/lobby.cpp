@@ -76,6 +76,8 @@ bool beaconWrite(const BeaconInfo& b, u8* out, u32 capacity) {
     out[15] = 0;  // reserved
     std::memset(out + 16, 0, 16);
     for (u32 k = 0; k < 15 && b.name[k]; ++k) out[16 + k] = static_cast<u8>(b.name[k]);
+    out[32] = b.mode;
+    out[33] = b.versus ? 1u : 0u;
     return true;
 }
 
@@ -100,6 +102,9 @@ bool beaconParse(const u8* data, u32 size, BeaconInfo& out) {
         b.name[k] = static_cast<char>(c);
     }
     if (!ended) return false;
+    b.mode = data[32];
+    if (b.mode >= 7u || data[33] > 1u) return false;  // (sim::kModeCount; a versus bit)
+    b.versus = data[33] != 0;
     b.compatible = b.version == kProtocolVersion;
     out = b;
     return true;

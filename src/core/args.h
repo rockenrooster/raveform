@@ -85,6 +85,11 @@ struct AppArgs {
     u8 jumpTrack = 0, jumpCycle = 0;  // --drop <track>.<cycle> (M5): the run starts in that Track, fast-forwarded to that cycle's Drop
     bool holdDrop = false;             // --drop-hold (M7, the thermal check): that Drop is held for the whole run
     bool paletteSet = false;   // --palette given (else the game uses its Track's palette)
+    // M8 (docs/MODES_PLAN.md 2.10): the run's mode; parsed into sim::RunSetup by the game (sim::parseModeArg).
+    char mode[40] = {};        // --mode <id>[:<track>[:<moment>[:hold]]] (set, one, headliners, blast, tracers, songline, jam)
+    bool versus = false;       // --versus: a versus run (with --host, --coop host or the headless tools)
+    bool noHelp = false;       // --no-help: the underdog's help off
+    char coopMode[40] = {};    // --coop-mode <id>[:<track>][:vs]: the room's mode, as the host's MODE pill would set it
     // M3 end
     // M4 begin: co-op from the command line (stage A: no lobby screens)
     u8 net = 0;                // 0 solo, 1 --host, 2 --join <ip>

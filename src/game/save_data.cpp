@@ -56,7 +56,7 @@ bool loadSettingsFile(const char* path, Settings& s) {
         if (is("probed_tier")) s.probedTier = static_cast<u32>(n >= 0 && n < 5 ? n : 0);
         if (is("ui_scale")) s.uiScale = static_cast<u8>(n >= 0 && n < 4 ? n : 1);
         if (is("vivid")) s.vivid = n != 0;
-        if (is("hints_seen")) s.hintsSeen = static_cast<u32>(std::strtoul(v, nullptr, 10)) & 0x7FFu;  // (eleven hints)
+        if (is("hints_seen")) s.hintsSeen = static_cast<u32>(std::strtoul(v, nullptr, 10)) & 0xFFFFFu;  // (twenty hints since M8)
         if (is("runs_ended")) s.runsEnded = static_cast<u32>(std::strtoul(v, nullptr, 10));
     });
 }
@@ -113,6 +113,63 @@ bool saveHighScoresFile(const char* path, const HighScores& h) {
                            static_cast<unsigned long long>(e.score), e.track, e.bestChain, e.seconds, e.kills, e.setComplete ? 1u : 0u);
     }
     return n >= 0 && saveFileAtomic(path, text, static_cast<size_t>(n));
+}
+
+// M8 (design/modes/README.md 9): modes.txt. Keys: mode, track_<mode>, one_<track> (score cleared seconds), headliners (acts
+// seconds), blast_<track> / tracers_<track> / songline_<track> (score second), team_<mode>_<track> (score players). Every number
+// is checked; a line out of range is skipped.
+bool loadModeRecordsFile(const char* path, ModeRecords& r) {
+    return readKeys(path, [&](const char* k, const char* v) {
+        unsigned long long score = 0;
+        unsigned a = 0, b = 0;
+        unsigned m = 0, t = 0;
+        if (std::strcmp(k, "mode") == 0) {
+            const unsigned long x = std::strtoul(v, nullptr, 10);
+            if (x < ModeRecords::kModes) r.mode = static_cast<u8>(x);
+        } else if (std::sscanf(k, "track_%u", &m) == 1) {
+            const unsigned long x = std::strtoul(v, nullptr, 10);
+            if (m < ModeRecords::kModes && x <= ModeRecords::kTracks) r.track[m] = static_cast<u8>(x);
+        } else if (std::sscanf(k, "one_%u", &t) == 1) {
+            if (t >= 1 && t <= 10 && std::sscanf(v, "%llu %u %u", &score, &a, &b) == 3) r.one[t - 1] = ModeRecords::One{score, a != 0, b};
+        } else if (std::strcmp(k, "headliners") == 0) {
+            if (std::sscanf(v, "%u %u", &a, &b) == 2 && a <= 10) {
+                r.headlinersActs = a;
+                r.headlinersSeconds = b;
+            }
+        } else if (std::sscanf(k, "team_%u_%u", &m, &t) == 2) {
+            if (m < ModeRecords::kModes && t >= 1 && t <= ModeRecords::kTracks && std::sscanf(v, "%llu %u", &score, &a) == 2 && a >= 2 && a <= 4)
+                r.team[m][t - 1] = ModeRecords::Team{score, static_cast<u8>(a)};
+        } else {
+            ModeRecords::Timed* table = nullptr;
+            if (std::sscanf(k, "blast_%u", &t) == 1) table = r.blast;
+            else if (std::sscanf(k, "tracers_%u", &t) == 1) table = r.tracers;
+            else if (std::sscanf(k, "songline_%u", &t) == 1) table = r.songline;
+            if (table && t >= 1 && t <= ModeRecords::kTracks && std::sscanf(v, "%llu %u", &score, &a) == 2) table[t - 1] = ModeRecords::Timed{score, a};
+        }
+    });
+}
+
+bool saveModeRecordsFile(const char* path, const ModeRecords& r) {
+    static char text[8192];  // (a run's end, the main thread only)
+    int n = std::snprintf(text, sizeof text, "mode=%u\n", r.mode);
+    const auto put = [&](const char* fmt, auto... args) {
+        if (n >= 0 && n < static_cast<int>(sizeof text)) n += std::snprintf(text + n, sizeof text - static_cast<size_t>(n), fmt, args...);
+    };
+    for (u32 m = 0; m < ModeRecords::kModes; ++m)
+        if (r.track[m]) put("track_%u=%u\n", m, r.track[m]);
+    for (u32 t = 0; t < 10; ++t)
+        if (r.one[t].score || r.one[t].cleared)
+            put("one_%u=%llu %u %u\n", t + 1, static_cast<unsigned long long>(r.one[t].score), r.one[t].cleared ? 1u : 0u, r.one[t].seconds);
+    if (r.headlinersActs) put("headliners=%u %u\n", r.headlinersActs, r.headlinersSeconds);
+    const char* names[3] = {"blast", "tracers", "songline"};
+    const ModeRecords::Timed* tables[3] = {r.blast, r.tracers, r.songline};
+    for (u32 k = 0; k < 3; ++k)
+        for (u32 t = 0; t < ModeRecords::kTracks; ++t)
+            if (tables[k][t].score) put("%s_%u=%llu %u\n", names[k], t + 1, static_cast<unsigned long long>(tables[k][t].score), tables[k][t].second);
+    for (u32 m = 0; m < ModeRecords::kModes; ++m)
+        for (u32 t = 0; t < ModeRecords::kTracks; ++t)
+            if (r.team[m][t].score) put("team_%u_%u=%llu %u\n", m, t + 1, static_cast<unsigned long long>(r.team[m][t].score), r.team[m][t].players);
+    return n > 0 && n < static_cast<int>(sizeof text) && saveFileAtomic(path, text, static_cast<size_t>(n));
 }
 
 }  // namespace rf

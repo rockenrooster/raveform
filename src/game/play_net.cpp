@@ -79,6 +79,7 @@ bool Play::netInit() {
         return false;
     }
     session_->setClock([](void*) { return net::wireNowUs(); }, nullptr);
+    if (host) session_->setRoomSetup(opt_.coopMode[0] ? roomSetup_ : world_->setup());  // M8: the run's mode (--mode, --coop-mode)
     if (host && opt_.loopbackBots) {
         bots_ = new (std::nothrow) net::LoopbackBots;
         if (!bots_ || !bots_->start(opt_.loopbackBots, opt_.port, species_, opt_.seed)) {

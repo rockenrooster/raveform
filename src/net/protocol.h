@@ -6,11 +6,12 @@
 // on, message by message; a malformed packet is dropped whole.
 
 #include "core/types.h"
+#include "sim/modes.h"
 #include "sim/world.h"
 
 namespace rf::net {
 
-constexpr u32 kProtocolVersion = 0x5246050Bu;  // 'R' 'F', pause-on-leave (2026-11-14: kAwayAsk, kBackAsk, kAwayMask; MsgPause::away); 0x...50A play test 3 (the Extra Life's drop and take, a Hit's ring and Extra Life flags in opts[0]); 0x...509 M5 part 7 (a boss's pace: kGeomBossPace); 0x...508 M5 part 6 (the bosses of Tracks 8 to 10 and mini-bosses batch 3: new kinds, two new decisions) with M4 net's 0x...507 (Event Horizon's phase and its drift's point decided by the host: kGeomHorizonPhase, kGeomHorizonDrift); 0x...506 M5 part 5 (the arena's operations and claims on its bodies); 0x...505 M5 part 4 (the enemy states kLane, kCourt, kEgg; the fights' new decisions) and M4 net's follow-up (motion corrections, 0x...504 on its branch); 0x...503 M5 part 3
+constexpr u32 kProtocolVersion = 0x5246050Cu;  // 'R' 'F', M8 part 0 (the room's setup in MsgLobby and MsgRunStart, the crowns, the beacon's mode); 0x...50B pause-on-leave (2026-11-14: kAwayAsk, kBackAsk, kAwayMask; MsgPause::away); 0x...50A play test 3 (the Extra Life's drop and take, a Hit's ring and Extra Life flags in opts[0]); 0x...509 M5 part 7 (a boss's pace: kGeomBossPace); 0x...508 M5 part 6 (the bosses of Tracks 8 to 10 and mini-bosses batch 3: new kinds, two new decisions) with M4 net's 0x...507 (Event Horizon's phase and its drift's point decided by the host: kGeomHorizonPhase, kGeomHorizonDrift); 0x...506 M5 part 5 (the arena's operations and claims on its bodies); 0x...505 M5 part 4 (the enemy states kLane, kCourt, kEgg; the fights' new decisions) and M4 net's follow-up (motion corrections, 0x...504 on its branch); 0x...503 M5 part 3
 constexpr u32 kMaxPacketBytes = 1200;
 
 enum class Msg : u8 {
@@ -53,6 +54,7 @@ struct MsgRunStart {
     u8 players = 1;
     double runOffset = 0.0;  // song ticks minus run ticks (whole bars)
     u8 mask = 0xF;           // the seats in the run (a seat left open in the lobby is not)
+    sim::RunSetup setup;     // M8: the run's mode, Track and game (docs/MODES_PLAN.md 4)
 };
 // The host's lobby, to every client on each change (M4 stage B; design/screens.md "Co-op lobby").
 struct MsgLobby {
@@ -61,7 +63,19 @@ struct MsgLobby {
     u16 code = 0;     // the room code's 16 bits
     u8 state = 0;     // 0 lobby, 1 a run is going
     char names[4][16] = {};
+    sim::RunSetup setup;  // M8: the room's mode, Track and game (the host's choice; design/modes/screens.md "The lobby")
+    u8 crowns[4] = {};    // M8: the versus matches each seat has won in this room
 };
+// M8: a run's setup on the wire: its mode, its Track, and a byte of flags (bit 0 versus, bit 1 the underdog's help).
+inline u8 setupFlags(const sim::RunSetup& s) { return static_cast<u8>((s.versus ? 1u : 0u) | (s.help ? 2u : 0u)); }
+inline bool setupFromWire(u8 mode, u8 track, u8 flags, sim::RunSetup& out) {
+    if (mode >= sim::kModeCount || track < 1 || track > sim::kModeTracks || flags > 3u) return false;
+    out.mode = static_cast<sim::Mode>(mode);
+    out.track = track;
+    out.versus = (flags & 1u) != 0;
+    out.help = (flags & 2u) != 0;
+    return true;
+}
 // The bed's intensity for a bar (M4 stage B, GAME_DESIGN 10: the shared bed is identical on every device): the host
 // decides it half a bar ahead; every device posts it to its band for that bar.
 struct MsgBed {

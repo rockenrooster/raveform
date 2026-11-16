@@ -151,13 +151,17 @@ void Play::dropInTap(Screen from) {
                 dropCtlC_ = Vec2{0.5f * W, 970.0f * s};
                 dropCtlHalf_ = Vec2{300.0f * s, 65.0f * s};
                 break;
+            case Screen::Modes:  // M8: MODES's PLAY
+                dropCtlC_ = Vec2{0.5f * W, 968.0f * s};
+                dropCtlHalf_ = Vec2{300.0f * s, 65.0f * s};
+                break;
             default:
                 dropCtlC_ = Vec2{0.5f * W, 800.0f * s};
                 dropCtlHalf_ = Vec2{320.0f * s, 75.0f * s};
                 break;
         }
     }
-    if ((from == Screen::Title || from == Screen::Paused) && !coop()) transGod(true);
+    if ((from == Screen::Title || from == Screen::Paused || from == Screen::Modes) && !coop()) transGod(true);
     if (band_) band_->playSfx(audio::Sfx::UiConfirm);
     pulse(0, true);
     transitionAudio();
@@ -168,12 +172,18 @@ void Play::dropInTap(Screen from) {
 void Play::dropInCancel() {
     // Back in the wait: PLAY lets go, everything fades back in over a beat, the filter opens (the riser is a one-shot sample,
     // which the band cannot stop: it ends under the open filter).
-    if (trans_ != Trans::Wait || transFrom_ != Screen::Title || coop()) return;
-    backFrom_ = titleLook();
+    if (trans_ != Trans::Wait || (transFrom_ != Screen::Title && transFrom_ != Screen::Modes) || coop()) return;
+    if (transFrom_ == Screen::Title) backFrom_ = titleLook();
     backRun_ = transRunLight();
     world_->cancelRestart();
+    world_->setNextSetup(RunSetup{});  // (M8: the title's demo is the set's run, whatever PLAY would have started)
     trans_ = Trans::None;
-    backAt_ = transNow();
+    if (transFrom_ == Screen::Modes) {
+        modesBackAt_ = transNow();  // (MODES comes back over a beat; its Track is heard again)
+        modesPreview();
+    } else {
+        backAt_ = transNow();
+    }
     transGod(false);
     const double bpm = band_ && band_->view().bpm > 1.0 ? static_cast<double>(band_->view().bpm) : 120.0;
     bandFilter(0.0f, static_cast<float>(60.0 / bpm));
@@ -231,6 +241,7 @@ void Play::homeTap() {
     transBeat_ = (std::floor(transTap_ / kTicksPerBeat) + 1.0) * kTicksPerBeat;
     transLine_ = std::ceil((transBeat_ + kTicksPerBeat) / kTicksPerBar - 1e-9) * kTicksPerBar;
     homeFrom_ = *palette_;
+    world_->setNextSetup(RunSetup{});  // (M8: the title's demo is the set's run)
     world_->requestRestartAt(transLine_);
     applySettings();
     if (band_) band_->playSfx(audio::Sfx::UiBack);
@@ -273,6 +284,7 @@ void Play::homeLeaveCoop(const char* note) {
     coopMessage_[0] = 0;
     musicPrev_ = music1_ = now;
     transLine_ = (std::floor(now / kTicksPerBar) + 1.0) * kTicksPerBar;
+    world_->setNextSetup(RunSetup{});  // (M8: the title's demo is the set's run)
     world_->requestRestartAt(transLine_);
     trans_ = Trans::Home;
     transFrom_ = Screen::GameOver;
@@ -314,6 +326,7 @@ void Play::transitionFrame() {
     if (!flow_) return;
     const double now = transNow();
     wordNotesFrame();
+    modesFrame();  // M8: the lift and the fold, the room's setup
     if (introPending_ && trans_ == Trans::None && screen_ == Screen::Title) {
         // A cold start: the intro begins as soon as the band runs (its music is the clock), or after a second without it.
         introWaitS_ += frameDt_;
@@ -357,6 +370,8 @@ void Play::transitionFrame() {
                 homeFadeLine_ = -1.0;
             }
             break;
+        case Trans::Lift:
+        case Trans::Fold: break;  // (M8: modesFrame keeps their clocks)
     }
 }
 
@@ -498,6 +513,44 @@ Play::TitleLook Play::titleLook() const {
             return t;
         }
         case Trans::Arrive: return TitleLook::none();
+        case Trans::Lift: {
+            // M8 (design/modes/screens.md "Transitions", title to MODES): from the title as the tap found it, the mode pill held
+            // pressed; over the lift's first beat PLAY, CO-OP, SETTINGS, the pill, their captions and the best fade and sink 30 px,
+            // the fan folds flat, the word fades, the tagline goes and the rule closes its gap; over the second the rule rises to
+            // MODES's height (y 150), easing out, its ends to half their swing.
+            if (liftRoom_) return TitleLook::none();
+            t = liftFrom_;
+            const float b = liftBeats();
+            const float u = smooth01(b);
+            t.play = liftFrom_.play * (1.0f - u);
+            t.side = liftFrom_.side * (1.0f - u);
+            t.best = liftFrom_.best * (1.0f - u);
+            t.sideSink = u;
+            t.playLift = liftFrom_.playLift + u * (30.0f / 14.0f);
+            t.fan = liftFrom_.fan * (1.0f - u);
+            t.fanLevel = liftFrom_.fanLevel * (1.0f - u);
+            t.word = liftFrom_.word * (1.0f - u);
+            t.tag = liftFrom_.tag * (1.0f - u);
+            t.gap = liftFrom_.gap * (1.0f - u);
+            t.motes = liftFrom_.motes * (1.0f - u);
+            t.playTaps = t.sideTaps = false;
+            t.pillPressed = true;
+            t.rule = 1.0f;
+            t.ruleLen = 1.0f;
+            const float r = clamp01(b - 1.0f);
+            const float e = 1.0f - (1.0f - r) * (1.0f - r) * (1.0f - r);
+            t.ruleAt = 432.0f + (150.0f - 432.0f) * e;
+            t.endsAmp = 1.0f - 0.5f * e;
+            return t;
+        }
+        case Trans::Fold: {
+            // M8: BACK from MODES: once its rule has sunk to the title's place, the title builds from it as home builds it (the fan
+            // opens and the word is played, then the tagline, PLAY, the pill, CO-OP and SETTINGS), from the build's half beat.
+            if (screen_ != Screen::Title || liftRoom_) return TitleLook::none();
+            t = buildLook(transBeats(transTap_) - kFoldTitleAt + 0.5f, false);
+            t.rule = t.ruleLen = t.ends = 1.0f;
+            return t;
+        }
         case Trans::None:
             if (backAt_ >= 0.0) {
                 // Back in the wait: everything returns over a beat from where it stood (the fan reopens, the tubes cool).
@@ -633,13 +686,16 @@ float Play::transExposure(float screenLevel) const {
     // the background and its stars coming up over its beat.
     if (introPending_) return 0.0f;
     if (trans_ == Trans::Intro) return screenLevel * smooth01(introBeats());
+    // M8: the demo behind dims from the title's third to MODES's fifth over the lift's first beat, and back over BACK's fold.
+    if (trans_ == Trans::Lift) return liftRoom_ ? screenLevel : 0.33f + (0.2f - 0.33f) * smooth01(liftBeats());
+    if (trans_ == Trans::Fold) return liftRoom_ ? screenLevel : 0.2f + (0.33f - 0.2f) * smooth01(transBeats(transTap_) - kFoldRuleFrom);
     if (trans_ == Trans::Wait && transFrom_ == Screen::Paused) {
         const double span = transLine_ - transTap_;
         const float p = span > 1.0 ? clamp01(static_cast<float>((transNow() - transTap_) / span)) : 1.0f;
         return 0.2f + 0.8f * smooth01(p);  // (c9218dc: the pause's dim lifts over RESTART's wait)
     }
     if (trans_ == Trans::Arrive) {
-        const float from = transFrom_ == Screen::Paused ? 1.0f : (transFrom_ == Screen::GameOver ? (coop() ? 0.2f : 0.45f) : 0.33f);
+        const float from = transFrom_ == Screen::Paused ? 1.0f : (transFrom_ == Screen::GameOver ? (coop() ? 0.2f : 0.45f) : (transFrom_ == Screen::Modes ? 0.2f : 0.33f));
         return from + (1.0f - from) * smooth01(transBeats(transLine_));
     }
     if (trans_ == Trans::Home) {
@@ -656,6 +712,8 @@ bool Play::transInputLocked() const {
         case Trans::Wait:
         case Trans::Arrive: return true;
         case Trans::Home: return !(screen_ == Screen::Title && transBeats(transLine_) >= 3.0f);
+        case Trans::Lift: return liftBeats() < 2.0f;  // (M8: MODES's PLAY takes a tap from the lift's third beat)
+        case Trans::Fold: return liftRoom_ ? transBeats(transTap_) < 1.5f : !(screen_ == Screen::Title && transBeats(transTap_) >= kFoldTitleAt + 2.5f);
         default: return false;
     }
 }
@@ -701,10 +759,14 @@ void Play::drawArrive(Ui& ui) {
         const float r = a / 0.5f;
         if (r < 1.0f) {
             const Vec3 c1 = palettes_->player[0], c3 = palette_->hue[0], c4 = palette_->hue[2];
+            const RunSetup& su = world_->setup();
+            const Vec3 m0 = modeColour(su.mode, su.track, false), m1 = modeColour(su.mode, su.track, true);
             for (u32 j = 0; j < 8; ++j) {
-                // (the letter's colour in the word's field: P1 cyan, white, the first enemy hue, the third)
+                // (the letter's colour in the word's field: P1 cyan, white, the first enemy hue, the third; M8: from MODES, the mode's
+                // two colours)
                 const float f = (static_cast<float>(j) + 0.5f) / 8.0f;
-                const Vec3 c = f < 1.0f / 3.0f ? c1 + (white - c1) * (f * 3.0f) : (f < 2.0f / 3.0f ? white + (c3 - white) * (f * 3.0f - 1.0f) : c3 + (c4 - c3) * (f * 3.0f - 2.0f));
+                const Vec3 c = transFrom_ == Screen::Modes ? mix(m0, m1, f)
+                                                           : (f < 1.0f / 3.0f ? c1 + (white - c1) * (f * 3.0f) : (f < 2.0f / 3.0f ? white + (c3 - white) * (f * 3.0f - 1.0f) : c3 + (c4 - c3) * (f * 3.0f - 2.0f)));
                 const float ang = -0.25f * kTwoPi + kTwoPi * (static_cast<float>(j) + 0.5f) / 8.0f;
                 const float head = kRayFrom + (kRayTo - kRayFrom) * (1.0f - (1.0f - r) * (1.0f - r));
                 const float tail = kRayFrom + (kRayTo - kRayFrom) * smooth01(r - 0.25f);

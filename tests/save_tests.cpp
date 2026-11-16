@@ -102,7 +102,7 @@ bool sameSettings(const Settings& a, const Settings& b) {
 
 bool settingsInRange(const Settings& s) {
     return s.variant < 3 && s.master >= 0.0f && s.master <= 1.0f && s.music >= 0.0f && s.music <= 1.0f && s.effects >= 0.0f &&
-           s.effects <= 1.0f && s.haptics < 3 && s.effectsTier < 5 && s.frameRate < 4 && s.uiScale < 4 && s.probedTier < 5 && s.hintsSeen < (1u << 11);
+           s.effects <= 1.0f && s.haptics < 3 && s.effectsTier < 5 && s.frameRate < 4 && s.uiScale < 4 && s.probedTier < 5 && s.hintsSeen < (1u << 20);
 }
 
 void testSettings() {
@@ -134,12 +134,12 @@ void testSettings() {
     Settings t;
     CHECK(loadSettingsFile(p, t) && t.variant == 2 && t.hintsSeen == defaults.hintsSeen && t.uiScale == defaults.uiScale && settingsInRange(t));
     CHECK(full > 30);
-    // Damaged values: every one held to its range (the hints to eleven bits).
+    // Damaged values: every one held to its range (the hints to twenty bits, M8: the modes' nine after the set's eleven).
     const char* bad = "variant=99\nmaster=nan\nmusic=-4\neffects=1e30\nhaptics=-1\neffects_tier=12\nframe_rate=40\nui_scale=9\nprobed_tier=77\n"
                       "hints_seen=4294967295\nruns_ended=x\nno equals sign here\n=\n\n";
     writeRaw(p, bad, std::strlen(bad));
     Settings d;
-    CHECK(loadSettingsFile(p, d) && settingsInRange(d) && d.hintsSeen == 0x7FFu && d.master == 0.0f && d.music == 0.0f && d.effects == 1.0f);
+    CHECK(loadSettingsFile(p, d) && settingsInRange(d) && d.hintsSeen == 0xFFFFFu && d.master == 0.0f && d.music == 0.0f && d.effects == 1.0f);
     // Garbage: no crash, everything in range.
     for (unsigned k = 0; k < 8; ++k) {
         garbage(p, 1234u + k, 64u + 400u * k);
@@ -262,6 +262,52 @@ void testBakedAudio() {
 }
 }  // namespace
 
+// M8 (design/modes/README.md 9): modes.txt: a round trip of every record, a missing file, garbage, and values out of range.
+void testModeRecords() {
+    std::printf("[save tests] modes.txt\n");
+    char p[512];
+    pathOf(p, sizeof p, "modes.txt");
+    std::remove(p);
+    ModeRecords none;
+    CHECK(!loadModeRecordsFile(p, none) && none.mode == 0 && none.track[4] == 0 && none.one[3].score == 0);
+    ModeRecords w;
+    w.mode = 4;
+    for (u32 m = 0; m < ModeRecords::kModes; ++m) w.track[m] = static_cast<u8>(1 + (m * 5) % 12);
+    w.one[3] = ModeRecords::One{412300, true, 151};
+    w.one[9] = ModeRecords::One{9000000000ull, false, 3};
+    w.headlinersActs = 10;
+    w.headlinersSeconds = 582;
+    w.blast[9] = ModeRecords::Timed{1204880, 4};
+    w.tracers[10] = ModeRecords::Timed{88800, 3};
+    w.songline[3] = ModeRecords::Timed{55500, 97};
+    w.team[4][10] = ModeRecords::Team{777000, 4};
+    w.team[1][0] = ModeRecords::Team{1234, 2};
+    CHECK(saveModeRecordsFile(p, w));
+    ModeRecords r;
+    CHECK(loadModeRecordsFile(p, r));
+    bool same = r.mode == w.mode && r.headlinersActs == 10 && r.headlinersSeconds == 582;
+    for (u32 m = 0; m < ModeRecords::kModes; ++m) same = same && r.track[m] == w.track[m];
+    for (u32 t = 0; t < 10; ++t) same = same && r.one[t].score == w.one[t].score && r.one[t].cleared == w.one[t].cleared && r.one[t].seconds == w.one[t].seconds;
+    for (u32 t = 0; t < ModeRecords::kTracks; ++t)
+        same = same && r.blast[t].score == w.blast[t].score && r.blast[t].second == w.blast[t].second && r.tracers[t].score == w.tracers[t].score &&
+               r.tracers[t].second == w.tracers[t].second && r.songline[t].score == w.songline[t].score && r.songline[t].second == w.songline[t].second;
+    for (u32 m = 0; m < ModeRecords::kModes; ++m)
+        for (u32 t = 0; t < ModeRecords::kTracks; ++t) same = same && r.team[m][t].score == w.team[m][t].score && r.team[m][t].players == w.team[m][t].players;
+    CHECK(same);
+    // Damaged files load nothing out of range.
+    for (unsigned k = 0; k < 20; ++k) {
+        garbage(p, 7u + k, 40u + 300u * k);
+        ModeRecords g;
+        loadModeRecordsFile(p, g);
+        bool inRange = g.mode < ModeRecords::kModes;
+        for (u32 m = 0; m < ModeRecords::kModes; ++m) inRange = inRange && g.track[m] <= ModeRecords::kTracks;
+        for (u32 m = 0; m < ModeRecords::kModes; ++m)
+            for (u32 t = 0; t < ModeRecords::kTracks; ++t) inRange = inRange && g.team[m][t].players <= 4;
+        CHECK(inRange);
+    }
+    std::remove(p);
+}
+
 int main() {
     const char* t = std::getenv("TEMP");
     if (!t || !*t) t = std::getenv("TMPDIR");
@@ -271,6 +317,7 @@ int main() {
     testHighScores();
     testTierCache();
     testBakedAudio();
+    testModeRecords();
     std::printf("[save tests] %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

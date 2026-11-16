@@ -317,6 +317,10 @@ bool App::init() {
         po.bot = args_.bot || playBench_;
         po.autoplay = args_.autoplay;
         po.recklessAfter = args_.recklessAfter;
+        std::snprintf(po.mode, sizeof po.mode, "%s", args_.mode);  // M8
+        po.versus = args_.versus;
+        po.noHelp = args_.noHelp;
+        std::snprintf(po.coopMode, sizeof po.coopMode, "%s", args_.coopMode);
         po.fixedStep = pictureRun;
         po.seed = args_.seed;
         po.fastForwardS = args_.fastForward;

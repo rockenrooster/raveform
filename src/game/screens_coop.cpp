@@ -145,6 +145,7 @@ void Play::screenCoopJoin(Ui& ui) {
         static const u16 kCodes[3] = {0x4A3C, 0x9D17, 0xC205};
         static const u8 kPlayers[3] = {2, 4, 3};
         static const u8 kStates[3] = {net::kBeaconLobby, net::kBeaconLobby, net::kBeaconRunning};
+        static const sim::Mode kModes[3] = {sim::Mode::Tracers, sim::Mode::Set, sim::Mode::OneTrack};  // (M8: three modes, one versus)
         for (u32 k = 0; k < 3 && rooms < 4; ++k) {
             net::BeaconInfo& b = shown[rooms++];
             b = net::BeaconInfo{};
@@ -154,6 +155,8 @@ void Play::screenCoopJoin(Ui& ui) {
             b.state = kStates[k];
             b.compatible = true;
             b.port = net::kGamePort;
+            b.mode = static_cast<u8>(kModes[k]);
+            b.versus = k == 0;
             std::snprintf(b.name, sizeof b.name, "%s", kNames[k]);
         }
     }
@@ -182,9 +185,14 @@ void Play::screenCoopJoin(Ui& ui) {
         std::snprintf(seats, sizeof seats, "%u/%u", b.players, b.seats);
         const char* tag = !b.compatible ? "OTHER VERSION" : (running ? "PLAYING" : (full ? "FULL" : ""));
         const float sw = ui.measure(26.0f * s, seats);
+        // M8 (design/modes/screens.md "The lobby and the join screen"): the room's mode, and VS in a versus room, at the row's right
+        // end (cap 14, white at 0.7).
+        char modeLabel[32];
+        std::snprintf(modeLabel, sizeof modeLabel, "%s%s", species_->modes.mode[b.mode < sim::kModeCount ? b.mode : 0].name, b.versus ? "  VS" : "");
+        const float modeW = ui.text({bb.x - 40.0f * s, base - 2.0f * s}, 14.0f * s, white, 0.7f * (can ? 1.0f : 0.6f), modeLabel, 1.0f) + 36.0f * s;
         float tagW = 0.0f;
-        if (tag[0]) tagW = ui.text({bb.x - 40.0f * s, base}, 20.0f * s, white, 0.6f, tag, 1.0f) + 36.0f * s;
-        const float seatsX = bb.x - 40.0f * s - tagW - sw;
+        if (tag[0]) tagW = ui.text({bb.x - 40.0f * s - modeW, base}, 20.0f * s, white, 0.6f, tag, 1.0f) + 36.0f * s;
+        const float seatsX = bb.x - 40.0f * s - modeW - tagW - sw;
         ui.text({seatsX, base}, 26.0f * s, white, li, seats, 0.0f);
         // The review's fixes (H2, 2026-11-15): a long room name never runs into the seat count: it is cut short with "..." to end
         // 36 px before it.
@@ -396,7 +404,30 @@ void Play::screenCoopLobby(Ui& ui) {
             std::snprintf(name, sizeof name, "P%u%s", k + 1, k == 0 ? "  HOST" : "");
         ui.text({c.x, c.y + 174.0f * s}, 18.0f * s, colour, 1.4f, name);
         ui.text({c.x, c.y + 203.0f * s}, 13.0f * s, ready ? white : palette_->accent, ready ? 1.0f : 0.6f, ready ? "READY" : "JOINING");
-        if (mine) ui.text({c.x, c.y + 228.0f * s}, 12.0f * s, white, 0.6f, "TAP TO HEAR YOUR LEAD");
+        const u8 crowns = se.crowns(k);
+        if (roomSetup_.versus && crowns) {
+            // M8 (design/modes/screens.md "The lobby"): in VERSUS, a small crown for each match this seat has won in the room; past
+            // five, a crown and X7 (cap 12, the pickup's white-gold), under its state.
+            const Vec3 wg = mix(palettes_->pickup, Vec3{1.0f, 1.0f, 1.0f}, 0.35f);
+            const u32 shownCrowns = crowns > 5 ? 1u : crowns;
+            char times[8] = {};
+            if (crowns > 5) std::snprintf(times, sizeof times, "X%u", crowns);
+            const float tw = times[0] ? ui.measure(12.0f * s, times) + 8.0f * s : 0.0f;
+            const float cwid = 22.0f * s * static_cast<float>(shownCrowns) + tw;
+            float x = c.x - 0.5f * cwid + 9.0f * s;
+            const float y = c.y + 228.0f * s;
+            const Vec3 k2 = ui.col(wg, 1.6f);
+            for (u32 q = 0; q < shownCrowns; ++q, x += 22.0f * s) {
+                const Vec2 p0{x - 8.0f * s, y}, p1{x - 8.0f * s, y - 7.0f * s}, p2{x - 4.0f * s, y - 3.0f * s}, p3{x, y - 10.0f * s},
+                    p4{x + 4.0f * s, y - 3.0f * s}, p5{x + 8.0f * s, y - 7.0f * s}, p6{x + 8.0f * s, y};
+                const Vec2 pts[7] = {p0, p1, p2, p3, p4, p5, p6};
+                for (u32 j = 0; j + 1 < 7; ++j) ui.draw().hud.line(pts[j], pts[j + 1], 0.8f * s, k2, k2, 0);
+                ui.draw().hud.line(p6, p0, 0.8f * s, k2, k2, 0);
+            }
+            if (times[0]) ui.text({x - 9.0f * s, y}, 12.0f * s, wg, 1.4f, times, 0.0f);
+        } else if (mine) {
+            ui.text({c.x, c.y + 228.0f * s}, 12.0f * s, white, 0.6f, "TAP TO HEAR YOUR LEAD");
+        }
         if (tapped && band_) {
             // Your own lead (its fixed timbre): root, fifth, octave on the next sixteenths.
             const double heard = band_->view().heardTick;
@@ -405,7 +436,35 @@ void Play::screenCoopLobby(Ui& ui) {
             seatTapT_[k] = 0.0f;
         }
     }
-    ui.text({cx, 880.0f * s}, 12.0f * s, palette_->accent, 0.9f, "EACH PHONE IS AN INSTRUMENT: SET THEM DOWN TOGETHER AND THE ROOM IS THE BAND");
+    ui.text({cx, 880.0f * s}, 12.0f * s, palette_->accent, 0.9f,
+            roomSetup_.versus ? "EVERY PHONE FOR ITSELF. NOBODY CAN HURT A FRIEND" : "EACH PHONE IS AN INSTRUMENT: SET THEM DOWN TOGETHER AND THE ROOM IS THE BAND");
+    {
+        // M8 (design/modes/screens.md "The lobby"): the room's mode. The host's MODE pill (560 x 90, the lobby's bottom right as LEAVE
+        // is its bottom left; narrower where the screen is) opens MODES for the room, the room's line 28 px over it; the others read
+        // it as text at the right margin. A change is struck white-hot for 60 ms on every device.
+        const sim::ModesData::Info& in = species_->modes.of(roomSetup_.mode);
+        char roomLine[64];
+        int at = 0;
+        if (in.takesTrack) at += std::snprintf(roomLine + at, sizeof roomLine - static_cast<size_t>(at), "%s   ", trackName(roomSetup_.track));
+        at += std::snprintf(roomLine + at, sizeof roomLine - static_cast<size_t>(at), "%s", roomSetup_.versus ? "VERSUS" : "TEAM");
+        if (roomSetup_.versus && !roomSetup_.help) std::snprintf(roomLine + at, sizeof roomLine - static_cast<size_t>(at), "   HELP OFF");
+        const double bpm = band_ && band_->view().bpm > 1.0 ? static_cast<double>(band_->view().bpm) : 120.0;
+        const float struckS = roomStruckAt_ >= 0.0 ? static_cast<float>((transNow() - roomStruckAt_) / kTicksPerBeat * 60.0 / bpm) : 1.0f;
+        const bool hot = struckS >= 0.0f && struckS < 0.06f && !(settings_.reduceFlashing || forcedReduceFlashing_);
+        const float right = W - m;
+        if (se.host() && !connecting) {
+            const float pw = std::fmin(560.0f * s, right - (cx + 300.0f * s + 24.0f * s));
+            const Vec2 pc{right - 0.5f * pw, 968.0f * s};
+            ui.text({right, pc.y - 45.0f * s - 28.0f * s}, 13.0f * s, palette_->accent, 1.2f, roomLine, 1.0f);
+            if (ui.pill(222, pc, {pw, 90.0f * s}, in.name, 28.0f * s, false, se.state() == net::SessionState::Lobby && trans_ == Trans::None, hot) &&
+                trans_ == Trans::None && se.state() == net::SessionState::Lobby)
+                openModes(Screen::CoopLobby);
+        } else if (!connecting) {
+            ui.text({right, 930.0f * s}, 12.0f * s, white, 0.5f, "MODE", 1.0f);
+            ui.text({right, 972.0f * s}, 28.0f * s, hot ? white : Vec3{1.0f, 1.0f, 1.0f}, hot ? 3.0f : 1.1f, in.name, 1.0f);
+            ui.text({right, 1004.0f * s}, 13.0f * s, palette_->accent, 1.2f, roomLine, 1.0f);
+        }
+    }
 
     // START (the host; disabled until every seated player is ready and at least two are seated); the others see
     // WAITING FOR HOST in its place.
@@ -417,8 +476,9 @@ void Play::screenCoopLobby(Ui& ui) {
         if (!can) {
             u32 seated = 0;
             for (u32 k = 0; k < kMaxPlayers; ++k) seated += (seats >> k) & 1u;
-            ui.text({cx + 330.0f * s, 976.0f * s}, 13.0f * s, white, 0.5f, seated < 2 ? "WAITING FOR A SECOND PLAYER" : "WAITING FOR EVERYONE TO BE READY",
-                    0.0f);
+            // (M8: left of START, its right end 24 px from START's: MODE has START's right)
+            ui.text({cx - 324.0f * s, 976.0f * s}, 12.0f * s, white, 0.5f, seated < 2 ? "WAITING FOR A SECOND PLAYER" : "WAITING FOR EVERYONE TO BE READY",
+                    1.0f);
         }
     } else {
         ui.text({cx, 985.0f * s}, 24.0f * s, white, 0.8f, connecting ? "CONNECTING" : "WAITING FOR HOST");

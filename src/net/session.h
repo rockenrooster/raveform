@@ -242,6 +242,18 @@ public:
     u8 lobbyReady() const { return lobbyReady_; }
     const char* seatName(u32 s) const { return s < sim::kMaxPlayers ? names_[s] : ""; }
     u16 roomCode() const { return roomCode_; }
+    // M8 (design/modes/screens.md "The lobby"): the room's setup (the host's choice, to every seat on each change) and each seat's
+    // crowns (versus matches won in this room).
+    void setRoomSetup(const sim::RunSetup& s) {
+        roomSetup_ = s;
+        lobbyDirty_ = true;
+    }
+    const sim::RunSetup& roomSetup() const { return roomSetup_; }
+    u8 crowns(u32 s) const { return s < sim::kMaxPlayers ? crowns_[s] : 0; }
+    void setCrowns(u32 s, u8 n) {
+        if (s < sim::kMaxPlayers) crowns_[s] = n;
+        lobbyDirty_ = true;
+    }
     bool canStart() const;
     bool requestStart();  // host: the run starts on a bar line for everyone
     void requestRetry();  // host: after all were down, a new run for everyone on the next bar line
@@ -444,6 +456,8 @@ private:
     char names_[sim::kMaxPlayers][16] = {};
     u8 lobbySeats_ = 0, lobbyReady_ = 0;
     u16 roomCode_ = 0;
+    sim::RunSetup roomSetup_;
+    u8 crowns_[sim::kMaxPlayers] = {};
     bool lobbyDirty_ = false, readySent_ = false;
     BeaconSender beacon_;
     struct BedEntry {

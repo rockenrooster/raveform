@@ -26,7 +26,8 @@ struct Settings {
     // First launch.
     bool noticeSeen = false;     // the photosensitivity notice was acknowledged
     u32 probedTier = 0;          // the tier probe's pick (0: not probed yet), 1 Low .. 4 Ultra
-    // M6 (screens.md "First-run hints"): the hints shown on this device (a bit each), and runs played to their end.
+    // M6 (screens.md "First-run hints"): the hints shown on this device (a bit each), and runs played to their end. M8: twenty
+    // bits (the modes' nine hints after the set's eleven: design/modes/screens.md "First-run hints").
     u32 hintsSeen = 0;
     u32 runsEnded = 0;
 };
@@ -56,6 +57,30 @@ struct HighScores {
 bool loadHighScores(HighScores& h);
 bool saveHighScores(const HighScores& h);
 
+// M8 (design/modes/README.md 9): modes.txt: the mode last played, each mode's last Track, and the modes' records. A solo run's
+// only; versus keeps none (the room's crowns), JAM keeps none. A missing or damaged file is no records.
+struct ModeRecords {
+    static constexpr u32 kModes = 7, kTracks = 12;
+    u8 mode = 0;                // the mode last played (0-6): the title's pill
+    u8 track[kModes] = {};      // the Track last chosen for each mode (0: none yet, its home)
+    struct One {
+        u64 score = 0;
+        bool cleared = false;
+        u32 seconds = 0;
+    } one[10];                  // ONE TRACK, Tracks 1-10
+    u32 headlinersActs = 0, headlinersSeconds = 0;
+    struct Timed {
+        u64 score = 0;
+        u32 second = 0;         // the mode's second number: the best wave, full houses, gates in a hundred
+    } blast[kTracks], tracers[kTracks], songline[kTracks];
+    struct Team {
+        u64 score = 0;
+        u8 players = 0;
+    } team[kModes][kTracks];    // a co-op run's best team score and its player count, by mode and Track
+};
+bool loadModeRecords(ModeRecords& r);
+bool saveModeRecords(const ModeRecords& r);
+
 // The app's private file `name` (SDL_GetPrefPath); allocates (load and save time only).
 void appFilePath(char* out, size_t capacity, const char* name);
 // Write `text` to `name` through a temporary file and a rename (core/save_file: flushed, then renamed over the old file).
@@ -67,5 +92,7 @@ bool loadSettingsFile(const char* path, Settings& s);
 bool saveSettingsFile(const char* path, const Settings& s);
 bool loadHighScoresFile(const char* path, HighScores& h);
 bool saveHighScoresFile(const char* path, const HighScores& h);
+bool loadModeRecordsFile(const char* path, ModeRecords& r);
+bool saveModeRecordsFile(const char* path, const ModeRecords& r);
 
 }  // namespace rf

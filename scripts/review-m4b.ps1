@@ -63,6 +63,14 @@ $runs = [ordered]@{
     'over'               = @{ host = "--coop host $bots --coop-down-at 20 --coop-shot over $big"; client = "--coop join:list --bot --coop-down-at 21 $small"; shotRole = 'host' }
     'over_client'        = @{ host = "--coop host $bots --coop-down-at 20 $small"; shot = "--coop join:list --bot --coop-down-at 21 --coop-shot over_client $big" }
     'host_left'          = @{ host = "--coop host $bots --coop-quit-at 25 $small"; shot = "--coop join:list --bot --coop-shot message $big" }
+    # M8 part 0 (design/modes/screens.md "The lobby and the join screen"; scripts\review-m8.ps1 -Part p0): the room's mode in the
+    # lobby (the host's MODE pill, a joiner's text), a versus room, the room's MODES (VERSUS chosen), and the join list's rows with
+    # the rooms' modes (only THE SET is built in part 0: the rooms are THE SET, the made-up ones in three modes).
+    'm8_lobby_host'      = @{ host = "--coop host --coop-name PC --coop-mode set --coop-shot lobby2 $big"; client = "--coop join:list --coop-name TABLET $small"; shotRole = 'host' }
+    'm8_lobby_join'      = @{ host = "--coop host --coop-name PC --coop-mode set $small"; shot = "--coop join:list --coop-name TABLET --coop-shot lobby2 $big" }
+    'm8_lobby_versus'    = @{ host = "--coop host --coop-name PC --coop-mode set:vs --coop-shot lobby2 $big"; client = "--coop join:list --coop-name TABLET $small"; shotRole = 'host' }
+    'm8_modes_room'      = @{ host = "--coop host --coop-name PC --coop-mode set:vs --coop-shot modes $big"; client = "--coop join:list --coop-name TABLET $small"; shotRole = 'host' }
+    'm8_join_modes'      = @{ host = "--coop host --coop-name PC --coop-mode set:vs $small"; shot = "--coop join --coop-demo-rooms --coop-shot join $big" }
 }
 
 function Start-Game([string]$Name, [string]$Role, [string]$AppArgs) {

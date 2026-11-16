@@ -1,0 +1,142 @@
+// M8 part 0 (docs/MODES_PLAN.md 7): the m8_ review pictures (scripts/review-m8.ps1 -Part p0; captures\m8\p0\): the title with each
+// mode on its pill, MODES with each mode at the centre, and the transitions as strips a quarter beat apart (the rule's lift, BACK,
+// another mode, another Track heard on the bar line, PLAY's drop-in). The room's pictures are co-op shots (review-m4b.ps1's m8_
+// entries: --coop-shot lobby2 / modes / join with --coop-mode). Fixed 1/60 s steps and no band, like the other pictures: a Track
+// chosen on MODES changes on the clock's next bar line.
+
+#include <cmath>
+#include <cstring>
+
+#include "core/log.h"
+#include "game/play.h"
+
+namespace rf {
+
+using namespace sim;
+
+namespace {
+enum class M8 : u8 { TitlePill, Modes, Lift, Back, Step, Track, Drop };
+struct M8Pic {
+    const char* name;  // m8_<name>
+    M8 kind;
+    u8 mode;           // sim::Mode
+};
+const M8Pic kM8Pics[] = {
+    {"title_pill_set", M8::TitlePill, 0}, {"title_pill_one", M8::TitlePill, 1},     {"title_pill_headliners", M8::TitlePill, 2},
+    {"title_pill_blast", M8::TitlePill, 3}, {"title_pill_tracers", M8::TitlePill, 4}, {"title_pill_songline", M8::TitlePill, 5},
+    {"title_pill_jam", M8::TitlePill, 6},
+    {"modes_set", M8::Modes, 0},          {"modes_one", M8::Modes, 1},              {"modes_headliners", M8::Modes, 2},
+    {"modes_blast", M8::Modes, 3},        {"modes_tracers", M8::Modes, 4},          {"modes_songline", M8::Modes, 5},
+    {"modes_jam", M8::Modes, 6},
+    // Strips a quarter beat apart: the pill tapped on a bar's second beat (20 frames from the tap: the title leaving, the rule
+    // rising, MODES struck, the cards thrown, the controls rising); BACK with TRACERS at the centre (24: the fold, the rule
+    // sinking, the title building); the row stepped on from THE SET (8); a Track tapped with ONE TRACK at the centre (16: NEXT
+    // BAR counting out, the bar line, the palette's cross-fade); PLAY with THE SET at the centre (16: the wait, the downbeat).
+    {"t_lift", M8::Lift, 0}, {"t_back", M8::Back, 4}, {"t_mode", M8::Step, 0}, {"t_track", M8::Track, 1}, {"t_drop", M8::Drop, 0},
+};
+constexpr u32 kM8Count = sizeof(kM8Pics) / sizeof(kM8Pics[0]);
+constexpr u32 kM8At = 300;  // (the title at rest: as screen_title's)
+}  // namespace
+
+bool Play::scriptSetupM8() {
+    const char* p = opt_.picture;
+    if (std::strncmp(p, "m8_", 3) != 0) return false;
+    for (u32 k = 0; k < kM8Count; ++k)
+        if (std::strcmp(p + 3, kM8Pics[k].name) == 0) m8Pic_ = static_cast<u16>(k);
+    if (m8Pic_ == 0xFFFF) {
+        RF_ERR("play: no picture '%s'", p);
+        return true;
+    }
+    World& w = *world_;
+    const M8Pic& pic = kM8Pics[m8Pic_];
+    const Mode m = static_cast<Mode>(pic.mode);
+    flow_ = true;
+    screen_ = Screen::Title;
+    w.spawner().mode = Spawner::Mode::Slice;  // (the title's demo run behind)
+    w.rules().godMode = true;
+    // (the strips' frames a quarter beat apart)
+    stripStride_ = static_cast<u32>(std::lround(900.0 / std::fmax(w.tempoAt(0.0), 30.0f)));
+    switch (pic.kind) {
+        case M8::TitlePill:
+            records_.mode = pic.mode;  // (in memory only: pictures save nothing)
+            break;
+        case M8::Modes:
+        case M8::Back:
+        case M8::Step:
+        case M8::Track:
+        case M8::Drop:
+            modesPictureSetup(m, false);
+            modesPreview();
+            if (previewWant_ >= 0) {
+                // (at rest: the centre's Track heard and its palette on the screen since long ago)
+                previewSong_ = previewWant_;
+                if (const Palette* tp = trackPalette(static_cast<u32>(previewWant_) + 1u)) {
+                    palFrom_ = *tp;
+                    palTo_ = tp;
+                    palFadeLine_ = 0.0;
+                }
+            }
+            break;
+        case M8::Lift: break;
+    }
+    return true;
+}
+
+bool Play::scriptInputM8(StickInput& in) {
+    if (m8Pic_ == 0xFFFF) return false;
+    World& w = *world_;
+    const M8Pic& pic = kM8Pics[m8Pic_];
+    const u32 t = scriptTick_;
+    const i64 now = static_cast<i64>(frameNo_);
+    // The title's demo plays behind (as in the game) until a transition takes the screen.
+    in = trans_ == Trans::None || trans_ == Trans::Lift || trans_ == Trans::Fold ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+    if (trans_ == Trans::None || trans_ == Trans::Lift || trans_ == Trans::Fold) attractInput(in);
+    if (captureFrom_ >= 0 || t < kM8At) return true;
+    const double inBar = std::fmod(music1_, kTicksPerBar);
+    const bool secondBeat = inBar >= kTicksPerBeat && inBar < kTicksPerBeat + 4.0;  // (a bar's second beat, as m6_drop_title's)
+    switch (pic.kind) {
+        case M8::TitlePill:
+        case M8::Modes:
+            captureFrom_ = now + 1;
+            break;
+        case M8::Lift:
+            if (secondBeat) {
+                openModes(Screen::Title);
+                captureFrom_ = now + 1;
+            }
+            break;
+        case M8::Back:
+            if (secondBeat) {
+                modesBackTap();
+                captureFrom_ = now + 1;
+            }
+            break;
+        case M8::Step:
+            if (secondBeat) {
+                modesStep(1);
+                captureFrom_ = now + 1;
+            }
+            break;
+        case M8::Track:
+            if (secondBeat) {
+                modesChooseTrack(7);
+                captureFrom_ = now + 1;
+            }
+            break;
+        case M8::Drop:
+            if (secondBeat) {
+                // (MODES's PLAY with THE SET at the centre)
+                world_->setNextSetup(RunSetup{});
+                previewWant_ = -1;
+                dropInTap(Screen::Modes);
+                captureFrom_ = now + 1;
+            }
+            break;
+    }
+    if (captureFrom_ >= 0) RF_LOG("play: picture '%s' captures from frame %lld", opt_.picture, static_cast<long long>(captureFrom_));
+    return true;
+}
+
+bool Play::scriptEventsM8() { return m8Pic_ != 0xFFFF; }
+
+}  // namespace rf

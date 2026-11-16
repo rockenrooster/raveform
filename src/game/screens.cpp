@@ -46,12 +46,16 @@ namespace {
 constexpr float kTwoPi = 6.28318530718f;
 Vec2 polarV(float a, float r) { return Vec2{std::cos(a) * r, std::sin(a) * r}; }
 float clamp01(float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
+float smooth01(float x) {
+    x = clamp01(x);
+    return x * x * (3.0f - 2.0f * x);
+}
 
 struct UiColour {
     const Ui* ui;
 };
 Vec3 uiColourFn(const void* user, Vec3 c, float i) { return static_cast<const UiColour*>(user)->ui->col(c, i); }
-Vec3 trackAccent(const Palettes& p, u32 track, u32 songs) {
+Vec3 setListAccent(const Palettes& p, u32 track, u32 songs) {
     const u32 want = sim::songOfTrack(track, songs) + 1u;  // the Track's song's palette (ultraviolet, solar, reef, ...)
     for (u32 i = 0; i < p.count; ++i)
         if (p.list[i].track == want) return p.list[i].accent;
@@ -312,15 +316,22 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
     // is on its way out, or not yet in, it takes no taps (Back still cancels the drop-in's wait on the title).
     UiPointer ptr = uiPtr_;
     titleIdleFrame(ptr);  // screens.md "Title": the quiet title leaves; the input that brings it back is eaten here
+    if (trans_ == Trans::Lift && liftBeats() < 2.0f && liftSkipAt_ < 0.0 && (ptr.pressed || keyPrimary_ || keyBack_ || keyNav_)) {
+        // M8 (design/modes/screens.md "Transitions"): any input in the rule's lift skips it to its end within a beat (it is eaten).
+        liftSkipB_ = std::fmax(liftBeats(), 0.0f);
+        liftSkipAt_ = transNow();
+        liftNotes_ = 0xFF;
+    }
     if (transInputLocked()) {
         ptr.pressed = ptr.released = ptr.down = false;
         keyPrimary_ = false;
-        if (!(trans_ == Trans::Wait && transFrom_ == Screen::Title)) keyBack_ = false;
+        keyNav_ = 0;
+        if (!(trans_ == Trans::Wait && (transFrom_ == Screen::Title || transFrom_ == Screen::Modes))) keyBack_ = false;
     }
     ui_.begin(d, *font_, *look_, variant, W, H, insetMin, insetMax, ptr, palettes_->player[seat_ < kMaxPlayers ? seat_ : 0], palette_->accent);
     if (trans_ != Trans::None) ui_.setQuiet(true);  // (the layout rule is for screens at rest)
-    static const char* const kNames[] = {"notice", "title", "run", "pause", "game over", "settings", "co-op join", "co-op lobby", "local network", "credits"};
-    ui_.setScreenName(static_cast<u32>(screen_) < 10 ? kNames[static_cast<u32>(screen_)] : "screen");
+    static const char* const kNames[] = {"notice", "title", "run", "pause", "game over", "settings", "co-op join", "co-op lobby", "local network", "credits", "modes"};
+    ui_.setScreenName(static_cast<u32>(screen_) < 11 ? kNames[static_cast<u32>(screen_)] : "screen");
     if (screen_ == Screen::Settings) ui_.setScreenName(settingsTab_ == 0 ? "settings: sound" : (settingsTab_ == 1 ? "settings: controls" : "settings: look"));
     switch (screen_) {
         case Screen::Notice:
@@ -380,6 +391,13 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
             break;
         case Screen::CoopLobby:
             params.exposurePump *= 0.33f;
+            if (trans_ == Trans::Fold) {
+                // M8: back from the room's MODES: the lobby fades in over a beat (its mode name struck as it returns).
+                setHudFade(smooth01(transBeats(transTap_) - 1.0f));
+                screenCoopLobby(ui_);
+                setHudFade(1.0f);
+                break;
+            }
             // M6 (screens.md "Transitions"): the host's START landed: the lobby fades out over the drop-in's wait.
             if (trans_ == Trans::Wait) {
                 // (c9218dc: its screen leaves as the title's controls do, over the wait's first beat)
@@ -397,6 +415,30 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
             params.exposurePump *= 0.33f;
             screenCredits(ui_);
             break;
+        case Screen::Modes: {
+            // M8 (design/modes/screens.md "MODES"): the demo run behind at a fifth of its light (as behind SETTINGS; in a room, the
+            // room's empty world). In the lift from the title the title leaves and its rule rises to MODES's height; from the lobby,
+            // the lobby fades out over the wait for the lift's beat line.
+            params.exposurePump *= transExposure(0.2f);
+            const ModesLook ml = modesLook();
+            if (trans_ == Trans::Lift && !liftRoom_) {
+                const TitleLook tl = titleLook();
+                drawTitle(ui_, tl);
+                drawTitleControls(ui_, tl, false);
+            } else {
+                drawTitle(ui_, modesRuleLook(ml));
+            }
+            if (trans_ == Trans::Lift && liftRoom_) {
+                const float u = smooth01(transBeats(transTap_) / std::fmax(0.5f, static_cast<float>((liftLine_ - transTap_) / kTicksPerBeat) + 1.0f));
+                if (u < 1.0f) {
+                    setHudFade(1.0f - u);
+                    screenCoopLobby(ui_);
+                    setHudFade(1.0f);
+                }
+            }
+            screenModes(ui_, ml);
+            break;
+        }
         default: break;
     }
     drawDropGather(ui_);  // (screens.md "Transitions": RETRY, RESTART and START shrink into the point in the wait's last half beat)
@@ -436,45 +478,69 @@ void Play::screenNotice(Ui& ui) {
 
 void Play::screenTitle(Ui& ui) {
     // Title v2 (screens.md "Title"; game/title_v2.cpp): the fan, the word, the rule with its tagline and the motes, PLAY with its beat
-    // dots, CO-OP and SETTINGS with their captions, the best, the note and the version. M6 (screens.md "Transitions"): each piece
-    // at the level the drop-in's wait, home's building, the intro or the quiet title gives it.
+    // dots, the mode pill (M8), CO-OP and SETTINGS with their captions, the best, the note and the version. M6 (screens.md
+    // "Transitions"): each piece at the level the drop-in's wait, home's building, the intro or the quiet title gives it.
+    const float s = ui.s(), cx = 0.5f * ui.W();
+    const TitleLook tl = titleLook();
+    const bool waiting = trans_ == Trans::Wait && transFrom_ == Screen::Title;
+    drawTitle(ui, tl);
+    drawTitleControls(ui, tl, true);
+    // M4 stage B: why a co-op session ended (the host left, the connection was lost), for a few seconds (screens.md "Title": y 940).
+    coopMessageT_ += frameDt_;
+    if (coopMessage_[0] && coopMessageT_ < 10.0f && trans_ == Trans::None) ui.text({cx, 940.0f * s}, 18.0f * s, palettes_->danger, 1.5f, coopMessage_);
+    // c9218dc (screens.md "Every other way in or out of a run"): a peer whose host has left came home; the line stands under
+    // PLAY for two bars.
+    if (titleNote_[0] && titleNoteAt_ >= 0.0) {
+        const float b = static_cast<float>((transNow() - titleNoteAt_) / kTicksPerBeat);
+        if (b >= 8.0f) {
+            titleNote_[0] = 0;
+        } else if (b >= 0.0f) {
+            const float level = clamp01(b * 2.0f) * clamp01((8.0f - b) * 2.0f);
+            ui.text({cx, 940.0f * s}, 18.0f * s, palettes_->danger, 1.5f * level, titleNote_);
+        }
+    }
+    // Back in the drop-in's wait cancels it, until its last beat (screens.md "Transitions": from there the drop is committed).
+    if (waiting && keyBack_ && transNow() < transLine_ - kTicksPerBeat) dropInCancel();
+    keyPrimary_ = keyBack_ = false;
+}
+
+void Play::drawTitleControls(Ui& ui, const TitleLook& tl, bool taps) {
+    // PLAY, the mode pill and its caption (M8), CO-OP and SETTINGS with their captions, the best (of the pill's mode), the note, the
+    // version and the updater: the title's controls at the levels tl gives them (the lift into MODES draws them leaving, no taps).
     const float s = ui.s(), W = ui.W(), H = ui.H(), cx = 0.5f * W;
     const Vec3 white{1.0f, 1.0f, 1.0f};
-    const TitleLook tl = titleLook();
-    drawTitle(ui, tl);
-    const bool waiting = trans_ == Trans::Wait && transFrom_ == Screen::Title;
     if (tl.play > 0.0f) {
         setHudFade(tl.play);
-        if ((titlePlay(ui, tl) || keyPrimary_) && tl.playTaps) dropInTap(Screen::Title);
+        if ((titlePlay(ui, tl) || (keyPrimary_ && taps)) && tl.playTaps && taps) {
+            // PLAY starts the mode on the pill, on its remembered Track (M8; the title's demo stays the set's run).
+            world_->setNextSetup(chosenSetup());
+            dropInTap(Screen::Title);
+        }
     }
     const float sink = 30.0f * s * tl.sideSink;
     if (tl.side > 0.0f) {
-        // CO-OP (M4 stage B: the join screen) and SETTINGS, each with its caption 28 px under it.
+        // The mode pill (design/modes/screens.md: it goes with CO-OP and SETTINGS), then CO-OP (M4 stage B: the join screen) and
+        // SETTINGS, each with its caption 28 px under it. (A release build with only THE SET built shows no pill.)
         setHudFade(tl.side);
+        if (modeShown(sim::Mode::OneTrack)) drawModePill(ui, sink, tl.sideTaps && taps, tl.pillPressed);
         const float y = 800.0f * s + sink, capY = y + (52.0f + 28.0f + 12.0f) * s;
-        if (ui.pill(11, {cx - 560.0f * s, y}, {340.0f * s, 104.0f * s}, "CO-OP", 30.0f * s, false) && tl.sideTaps) {
+        if (ui.pill(11, {cx - 560.0f * s, y}, {340.0f * s, 104.0f * s}, "CO-OP", 30.0f * s, false) && tl.sideTaps && taps) {
             if (band_) band_->playSfx(audio::Sfx::UiConfirm);
             openCoop();
         }
-        if (ui.pill(12, {cx + 560.0f * s, y}, {340.0f * s, 104.0f * s}, "SETTINGS", 30.0f * s, false) && tl.sideTaps) openSettings(Screen::Title);
+        if (ui.pill(12, {cx + 560.0f * s, y}, {340.0f * s, 104.0f * s}, "SETTINGS", 30.0f * s, false) && tl.sideTaps && taps) openSettings(Screen::Title);
         ui.text({cx - 560.0f * s, capY}, 12.0f * s, white, 0.5f, "2-4 PLAYERS   ONE WI-FI");
         ui.text({cx + 560.0f * s, capY}, 12.0f * s, white, 0.5f, "SOUND   CONTROLS   LOOK");
     }
-    // Best, bottom left in gold; the note, bottom right.
+    // Best, bottom left in gold (M8: the best of the mode on the pill); the note, bottom right.
     if (tl.best > 0.0f) {
         setHudFade(tl.best);
-        char line[96], num[32];
-        if (scores_.count) {
-            groupDigits(num, sizeof num, scores_.entry[0].score);
-            char chain[32];
-            groupDigits(chain, sizeof chain, scores_.entry[0].bestChain);
-            std::snprintf(line, sizeof line, "BEST %s   TRACK %02u   X%s", num, scores_.entry[0].track, chain);
-        } else {
-            std::snprintf(line, sizeof line, "BEST -");
-        }
+        char line[96];
+        bool star = false;
+        modeBestLine(chosenSetup().mode, line, sizeof line, star);
         const float m = std::fmax(132.0f * s, ui.insetMin().x);
-        ui.text({m, H - 54.0f * s + sink}, 14.0f * s, palettes_->player[3], 1.4f, line, 0.0f);
-        if (scores_.count && scores_.entry[0].setComplete) {
+        if (line[0]) ui.text({m, H - 54.0f * s + sink}, 14.0f * s, palettes_->player[3], 1.4f, line, 0.0f);
+        if (line[0] && star) {
             // M6 (screens.md "A finished run"): a run that finished the set has a gold star in the table.
             const Vec2 c{m + ui.measure(14.0f * s, line) + 24.0f * s, H - 54.0f * s - 7.0f * s + sink};
             const Vec3 g = ui.col(palettes_->player[3], 2.0f);
@@ -495,7 +561,7 @@ void Play::screenTitle(Ui& ui) {
             const float uw = std::fmax(340.0f * s, ui.measure(22.0f * s, label) + 80.0f * s), uh = 72.0f * s;
             const float right = W - std::fmax(132.0f * s, ui.insetMax().x);
             if (ui.pill(13, {right - 0.5f * uw, H - 128.0f * s + sink}, {uw, uh}, label, 22.0f * s, false, true, false, palettes_->player[3]) &&
-                tl.sideTaps) {
+                tl.sideTaps && taps) {
                 if (band_) band_->playSfx(audio::Sfx::UiConfirm);
                 RF_LOG("title: update to build %u: opening the release page", newer);
                 SDL_OpenURL("https://github.com/rockenrooster/raveform/releases/latest");
@@ -503,24 +569,8 @@ void Play::screenTitle(Ui& ui) {
         }
     }
     setHudFade(1.0f);
-    // M4 stage B: why a co-op session ended (the host left, the connection was lost), for a few seconds (screens.md "Title": y 940).
-    coopMessageT_ += frameDt_;
-    if (coopMessage_[0] && coopMessageT_ < 10.0f && trans_ == Trans::None) ui.text({cx, 940.0f * s}, 18.0f * s, palettes_->danger, 1.5f, coopMessage_);
-    // c9218dc (screens.md "Every other way in or out of a run"): a peer whose host has left came home; the line stands under
-    // PLAY for two bars.
-    if (titleNote_[0] && titleNoteAt_ >= 0.0) {
-        const float b = static_cast<float>((transNow() - titleNoteAt_) / kTicksPerBeat);
-        if (b >= 8.0f) {
-            titleNote_[0] = 0;
-        } else if (b >= 0.0f) {
-            const float level = clamp01(b * 2.0f) * clamp01((8.0f - b) * 2.0f);
-            ui.text({cx, 940.0f * s}, 18.0f * s, palettes_->danger, 1.5f * level, titleNote_);
-        }
-    }
-    // Back in the drop-in's wait cancels it, until its last beat (screens.md "Transitions": from there the drop is committed).
-    if (waiting && keyBack_ && transNow() < transLine_ - kTicksPerBeat) dropInCancel();
-    keyPrimary_ = keyBack_ = false;
 }
+
 void Play::screenPause(Ui& ui) {
     const float s = ui.s(), W = ui.W(), cx = 0.5f * W;
     const Vec3 white{1.0f, 1.0f, 1.0f};
@@ -742,7 +792,7 @@ void Play::drawSetList(Ui& ui, float y) {
                 const float ta = segStart < markCount_ ? marks_[segStart].t : 0.0f;
                 const float tb = end ? total : marks_[k].t;
                 const u8 track = segStart < markCount_ ? marks_[segStart].a : 1;
-                const Vec3 c = trackAccent(*palettes_, track, world_->setList());
+                const Vec3 c = setListAccent(*palettes_, track, world_->setList());
                 const float xa = xAt(ta), xb = xAt(tb);
                 if (xb > xa + 2.0f) {
                     ui.draw().hud.line({xa + 2.0f * s, y}, {xb - 2.0f * s, y}, 5.0f * s, ui.col(c, 1.3f), ui.col(c, 1.3f), 0);

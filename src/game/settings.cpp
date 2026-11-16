@@ -52,4 +52,16 @@ bool saveHighScores(const HighScores& h) {
     return saveHighScoresFile(path, h);
 }
 
+bool loadModeRecords(ModeRecords& r) {
+    char path[512];
+    appFilePath(path, sizeof path, "modes.txt");
+    return loadModeRecordsFile(path, r);
+}
+
+bool saveModeRecords(const ModeRecords& r) {
+    char path[512];
+    appFilePath(path, sizeof path, "modes.txt");
+    return saveModeRecordsFile(path, r);
+}
+
 }  // namespace rf

@@ -14,6 +14,7 @@
 #include "game/rng.h"
 #include "sim/boss_prose.h"
 #include "sim/grid.h"
+#include "sim/modes.h"
 #include "sim/sim_runner.h"
 #include "sim/species.h"
 #include "sim/tuning.h"
@@ -4256,6 +4257,69 @@ void testPlayTest3() {
     }
 }
 
+// M8 part 0 (docs/MODES_PLAN.md 2.1, 2.2, 2.10): modes.json as read, the forms walked (the timed ones and a test form with a held
+// section), --mode's grammar, and the run's setup in the world's state (the set's own state and hash untouched).
+void testModes() {
+    g_test = "modes";
+    const ModesData& md = g_species->modes;
+    CHECK(std::strcmp(md.of(Mode::Set).name, "THE SET") == 0 && !md.of(Mode::Set).takesTrack);
+    CHECK(md.of(Mode::Tracers).takesTrack && md.of(Mode::Tracers).home == 11 && md.of(Mode::Tracers).timedBars == 48);
+    CHECK(md.forms.timed48.bars() == 48 && md.forms.blast.bars() == md.of(Mode::FullBlast).timedBars);
+    CHECK(md.bonus[0].track == 11 && md.bonus[1].track == 12);
+    // A test form: Groove 4, Build 4, the boss's Drop held.
+    Form f;
+    f.s[0] = FormSection{FormKind::Groove, 4};
+    f.s[1] = FormSection{FormKind::Build, 4};
+    f.s[2] = FormSection{FormKind::BossDrop, 0};
+    f.count = 3;
+    FormPlace p = formPlace(f, 0);
+    CHECK(p.section == 0 && p.kind == FormKind::Groove && p.sectionBar == 0 && p.sectionBars == 4 && !p.held && !p.ended);
+    p = formPlace(f, 5);
+    CHECK(p.section == 1 && p.kind == FormKind::Build && p.sectionBar == 1 && p.barsLeft == 3);
+    p = formPlace(f, 40);
+    CHECK(p.section == 2 && p.kind == FormKind::BossDrop && p.held && p.sectionBar == 32 && !p.ended);
+    // The timed forms: every bar in one section, in order, the bars left counting down to the last bar line; past it, ended.
+    for (const Form* t : {&md.forms.timed48, &md.forms.blast}) {
+        const u32 n = t->bars();
+        u32 prev = 0, inSection = 0;
+        bool ok = true;
+        for (u32 b = 0; b < n; ++b) {
+            p = formPlace(*t, b);
+            ok = ok && !p.ended && !p.held && p.barsLeft == n - b && p.section >= prev && p.sectionBar < p.sectionBars;
+            if (p.section != prev) inSection = 0;
+            ok = ok && p.sectionBar == inSection;
+            ++inSection;
+            prev = p.section;
+        }
+        CHECK(ok && prev == t->count - 1u);
+        p = formPlace(*t, n);
+        CHECK(p.ended && p.barsLeft == 0 && p.section == t->count - 1u);
+    }
+    // --mode <id>[:<track>[:<moment>[:hold]]]
+    RunSetup su;
+    char moment[24] = {};
+    CHECK(parseModeArg("set", su) && su.mode == Mode::Set && su.track == 1);
+    CHECK(parseModeArg("one:4", su) && su.mode == Mode::OneTrack && su.track == 4);
+    CHECK(parseModeArg("tracers:11:drop2:hold", su, moment, sizeof moment) && su.mode == Mode::Tracers && su.track == 11 &&
+          std::strcmp(moment, "drop2:hold") == 0);
+    CHECK(!parseModeArg("nope", su) && !parseModeArg("one:13", su) && !parseModeArg("one:0", su));
+    // The world: a run's setup is its state's; the set's hash is the set's; a restart keeps the setup unless told another.
+    World* a = new (std::nothrow) World;
+    a->init(g_species);
+    a->resetRun(5, 0.0, 1);
+    const u64 h0 = a->hash();
+    a->resetRun(5, 0.0, 1, 0xF, RunSetup{});
+    CHECK(a->hash() == h0 && a->setup() == RunSetup{} && a->nextSetup() == RunSetup{});
+    RunSetup one;
+    one.mode = Mode::OneTrack;
+    one.track = 4;
+    a->resetRun(5, 0.0, 1, 0xF, one);
+    CHECK(a->hash() != h0 && a->setup() == one && a->nextSetup() == one);
+    a->setNextSetup(RunSetup{});
+    CHECK(a->nextSetup() == RunSetup{} && a->setup() == one);
+    delete a;
+}
+
 int main() {
     g_species = new (std::nothrow) SpeciesTable;
     if (!g_species || !g_species->load()) {
@@ -4303,6 +4367,7 @@ int main() {
     testUpgradesM5();
     testPlayTest3();
     testFamiliesM5b();
+    testModes();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;
     return g_failures;

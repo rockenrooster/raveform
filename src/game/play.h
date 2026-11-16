@@ -26,6 +26,7 @@
 #include "gfx/vector_font.h"
 #include "net/session.h"
 #include "sim/bot.h"
+#include "sim/modes.h"
 #include "sim/player_controller.h"
 #include "sim/species.h"
 #include "sim/world.h"
@@ -55,6 +56,11 @@ struct PlayOptions {
     float pxPerMm = 0.0f;       // touch control sizes (0: scale with the screen height)
     bool autoplay = false;      // --autoplay: the screens as in play, the bot playing each run (taps start and retry)
     float recklessAfter = 0.0f; // --reckless-after S
+    // M8 (docs/MODES_PLAN.md 2.10): the run's mode from the command line (sim::parseModeArg), versus, the room's mode.
+    char mode[40] = {};         // --mode <id>[:<track>[:<moment>[:hold]]]
+    bool versus = false;        // --versus
+    bool noHelp = false;        // --no-help
+    char coopMode[40] = {};     // --coop-mode <id>[:<track>][:vs]
     // M4 stage A: co-op from the command line (no lobby screens; game/play_net.cpp).
     u8 net = 0;                 // 0 solo, 1 host (--host), 2 client (--join <ip>)
     char joinIp[48] = {};
@@ -164,7 +170,7 @@ public:
 
     // M3 stage B: the game's screens (design/screens.md) around the run. Interactive play only; benchmarks,
     // pictures and --bot runs are the run alone.
-    enum class Screen : u8 { Notice, Title, Run, Paused, GameOver, Settings, CoopJoin, CoopLobby, NetPermission, Credits };
+    enum class Screen : u8 { Notice, Title, Run, Paused, GameOver, Settings, CoopJoin, CoopLobby, NetPermission, Credits, Modes };
     Screen screen() const { return screen_; }
     bool flows() const { return flow_; }
     bool runStarted() const { return !flow_ || (!attract() && screen_ != Screen::CoopLobby); }
@@ -217,7 +223,7 @@ private:
     // join and local network screens.
     bool attract() const {
         return flow_ && (screen_ == Screen::Notice || screen_ == Screen::Title || ((screen_ == Screen::Settings || screen_ == Screen::Credits) && settingsBack_ == Screen::Title) ||
-                         screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission);
+                         screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission || (screen_ == Screen::Modes && modesBack_ == Screen::Title));
     }
     // The pause or a screen opened from it (SETTINGS, and CREDITS from there: audit 2026-11-15, the run went on behind the
     // credits and a death there left a dead ship with no game over).
@@ -362,6 +368,11 @@ private:
     bool scriptInputM6(sim::StickInput& in);
     bool scriptEventsM6();
     u16 m6Pic_ = 0xFFFF;
+    // play_pictures_m8.cpp (M8): the m8_ review pictures (the title's pill, MODES, the transitions as strips).
+    bool scriptSetupM8();
+    bool scriptInputM8(sim::StickInput& in);
+    bool scriptEventsM8();
+    u16 m8Pic_ = 0xFFFF;
     u32 placedAt_ = 0;  // (the Longwave strips: when the ship was last put beside the body)
 
     PlayOptions opt_;
@@ -523,7 +534,7 @@ private:
     // M6 (screens.md "Transitions", game/play_transitions.cpp): the drop-in (PLAY, RETRY, a co-op START or RETRY: the screen
     // leaves over the wait to the run's first bar line and the run arrives on it) and home (game over to the title).
     // Title v2 (screens.md "Title", 2026-11-14): Intro, the title building itself on a cold start.
-    enum class Trans : u8 { None, Wait, Arrive, Home, Intro };
+    enum class Trans : u8 { None, Wait, Arrive, Home, Intro, Lift, Fold };  // M8: Lift into MODES (the rule rises), Fold out of it
     Trans trans_ = Trans::None;
     Screen transFrom_ = Screen::Title;  // the screen a drop-in leaves (Title, GameOver, CoopLobby) or home leaves (GameOver, Paused)
     double transTap_ = 0.0;   // run ticks: the tap
@@ -547,6 +558,10 @@ private:
         float motes = 1.0f, moteFall = 0.0f;
         float playLift = 0.0f, playGather = 0.0f, sideSink = 0.0f;
         bool pressed = false;  // PLAY held pressed (the drop's wait)
+        // M8 (design/modes/screens.md "Transitions"): the rule's height (reference px; < 0 the title's own), its ends' swing (MODES:
+        // half), the mode pill held pressed (the lift's tap).
+        float ruleAt = -1.0f, endsAmp = 1.0f;
+        bool pillPressed = false;
         static TitleLook none() {
             TitleLook t;
             t.tag = t.play = t.side = t.best = 0.0f;
@@ -628,6 +643,95 @@ private:
     void drawArrive(Ui& ui);  // the drop-in's downbeat beat: the point bursts (flash, eight rays), the ship draws itself there
     void drawTitleShip(Ui& ui, Vec2 c, float angle, float scale, float level, bool ring);
     float gameOverOut() const;  // how far the game-over screen has left (0..1: home, RETRY's wait)
+
+    // ---- M8 (docs/MODES_PLAN.md, design/modes/screens.md; game/screens_modes.cpp): the title's mode pill, MODES, the room's mode,
+    // and their transitions.
+public:
+    // --mode, --coop-mode (core/args): false when an argument does not parse or names a mode not built yet.
+    bool modeArgsOk() const { return modeArgsOk_; }
+private:
+    // What MODES draws at this moment (levels 0..1; the rule as TitleLook draws it).
+    struct ModesLook {
+        float rule = 1.0f, ruleLen = 1.0f, ruleAt = 150.0f, ruleY = 0.0f, ruleHeat = 0.0f, ends = 1.0f;
+        float struck = 1.0e3f;      // beats since MODES's first letter was struck (a sixteenth a letter)
+        float word = 1.0f, streak = 0.0f, heat = 0.0f;
+        float cardCentre = 1.0f, cardSides = 1.0f;          // each card's outline drawn from the rule down (0..1)
+        float centreClosed = 1.0e3f, sidesClosed = 1.0e3f;  // beats since it closed (its strike)
+        float content = 1.0f;       // the cards' emblems and words
+        float controls = 1.0f, rise = 0.0f, sink = 0.0f;  // the dots, the Track line and strip, BACK, PLAY: level, 14 px under, 30 px sunk
+        bool taps = true;
+        float point = 0.0f, gather = 0.0f;  // the drop-in's last beat: the point at the frame's centre, PLAY shrinking into it
+        bool pressed = false;       // PLAY held (the drop-in's wait)
+    };
+    ModesLook modesLook() const;
+    TitleLook modesRuleLook(const ModesLook& ml) const;  // the rule alone, as drawTitle draws it
+    void screenModes(Ui& ui, const ModesLook& ml);
+    void drawTitleControls(Ui& ui, const TitleLook& tl, bool taps);  // the title's PLAY, pill, CO-OP, SETTINGS, best and note
+    void drawModePill(Ui& ui, float sink, bool taps, bool pressed);
+    void drawModeEmblem(Ui& ui, sim::Mode m, Vec2 c, Vec2 half, bool live, float level, u32 track);
+    void drawModesWord(Ui& ui, const ModesLook& ml);
+    void drawModeCard(Ui& ui, sim::Mode m, float x, float near, const ModesLook& ml, u32 track, bool centre, float slideLevel);
+    void drawTrackStrip(Ui& ui, sim::Mode m, u32 track, float level, float dy, bool taps);
+    void modeBestLine(sim::Mode m, char* out, size_t cap, bool& star) const;
+    bool modeBuilt(sim::Mode m) const;
+    bool modeShown(sim::Mode m) const;   // (a release build shows no card that does nothing: docs/MODES_PLAN.md part 0)
+    u32 modesRow(sim::Mode* out) const;  // the cards in the line-up's order
+    u32 tracksAvailable() const;
+    u32 modeTrack(sim::Mode m) const;    // the mode's remembered Track (its home until one is chosen)
+    sim::RunSetup chosenSetup() const;   // the title's pill: the mode last played, on its Track
+    const Palette* trackPalette(u32 track) const;
+    Vec3 trackAccent(u32 track) const;
+    const char* trackName(u32 track) const;
+    float trackBpm(u32 track) const;
+    Vec3 modeColour(sim::Mode m, u32 track, bool to) const;
+    void openModes(Screen back);
+    void modesStep(i32 step);            // another mode to the centre (the row slides)
+    void modesChooseTrack(u32 track);    // a chip tapped (heard on the next bar line)
+    void modesBackTap();                 // BACK (DONE in a room)
+    void modesPreview();                 // the band's Track for the centre's mode (from the next bar line)
+    void roomChanged();                  // the host changed the room's setup
+    void modesFrame();                   // the transitions' clocks; the room's setup as it arrives
+    void modesNote(u32 index, double tick);  // one of the title's eight notes (A3 ... A5) on its tick
+    void applyModeArgs();                // --mode, --coop-mode
+    void modesPictureSetup(sim::Mode m, bool room);  // pictures: MODES at rest with that mode at the centre
+    ModeRecords records_;
+    bool modeArgsOk_ = true;
+    sim::RunSetup roomSetup_;            // the room's setup (the host's choice; a client's copy from the lobby)
+    sim::RunSetup roomSeen_;             // ... as last drawn (a change is struck)
+    sim::RunSetup roomEdit_;             // the room's game being chosen on MODES (TEAM / VERSUS, HELP): DONE takes it
+    u8 liftNotes_ = 0;                   // the lift's notes placed (a bit each)
+    double roomStruckAt_ = -1.0;         // run ticks: the room's mode name struck white-hot (60 ms) from here
+    Screen modesBack_ = Screen::Title;   // where MODES goes back to (the title, or the lobby)
+    u8 modesCentre_ = 0;                 // the mode at the centre
+    u8 modesFocus_ = 0;                  // keys and pad: 0 the cards, 1 the strip
+    u8 keyNav_ = 0;                      // this frame's arrows: 1 left, 2 right, 4 up, 8 down
+    u8 padNavLatch_ = 0;                 // the left stick's steps on MODES (1 across, 2 up and down held past 60%)
+    float modesSlideFrom_ = 0.0f;        // the row's slide: where it stood (cards; signed) ...
+    double modesSlideAt_ = -1.0;         // ... when it began (run ticks)
+    double modesStrikeAt_ = -1.0;        // run ticks: the arriving centre card struck (its note) on this sixteenth
+    double modesFadeAt_ = -1.0;          // run ticks: the Track line and strip cross-fade from the last mode's from here
+    u8 modesPrevMode_ = 0;
+    u8 modesPrevTrack_ = 1;
+    float modesDragFrom_ = -1.0f;        // the pointer's x where the row's drag began (-1: none)
+    double modesBackAt_ = -1.0;          // run ticks: Back cancelled MODES's drop-in here (the screen comes back over a beat)
+    // The Track heard on MODES (screens.md "MODES", rules): the song wanted from the next bar line, and the one the band holds now
+    // (-1: the run's own). The palette cross-fades over the bar from the line it changes on.
+    i32 previewWant_ = -1, previewSong_ = -1;
+    double previewLine_ = -1.0;          // (no band to follow, pictures: the bar line the wanted Track takes over on, by the clock)
+    Palette palFrom_;
+    const Palette* palTo_ = nullptr;     // (nullptr: back to the run's)
+    double palFadeLine_ = -1.0;          // run ticks: the cross-fade's bar line (-1: none)
+    double palNextLine_ = -1.0;          // ... one waiting for its line
+    const Palette* palNextTo_ = nullptr;
+    // The modes' transitions (Trans::Lift into MODES, Trans::Fold out of it): from the title, or from the room.
+    bool liftRoom_ = false;              // the lift came from the lobby (the rule thrown out at its height); the fold goes back to it
+    double liftLine_ = 0.0;              // run ticks: the beat line after the tap (the lift's beat 0)
+    double liftSkipAt_ = -1.0;           // run ticks: an input skipped the lift here (it ends within a beat)
+    float liftSkipB_ = 0.0f;
+    TitleLook liftFrom_;                 // the title as the lift's tap found it
+    float liftBeats() const;             // b now (the skip's quickening included)
+    static constexpr float kFoldRuleFrom = 0.5f;  // BACK: the rule sinks from half a beat after the tap, over a beat ...
+    static constexpr float kFoldTitleAt = 1.5f;   // ... and the title builds from its rule from there (from the build's half beat)
 };
 
 }  // namespace rf

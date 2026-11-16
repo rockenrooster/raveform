@@ -93,7 +93,9 @@ void Play::drawTitle(Ui& ui, const TitleLook& tl) {
     const u32 beatInBar = static_cast<u32>(std::fmod(beats, 4.0f)) % 4u;
     const float k = view_.kick();
     const float meter = band_ ? band_->meter() : 0.5f;
-    const float Y = kRuleY * s + (0.5f * H - kRuleY * s) * tl.ruleY;
+    // (M8: MODES's rule stands at its own height, and rises there from the title's in the lift: tl.ruleAt)
+    const float ruleBase = (tl.ruleAt >= 0.0f ? tl.ruleAt : kRuleY) * s;
+    const float Y = ruleBase + (0.5f * H - ruleBase) * tl.ruleY;
 
     // The word's strokes (font units: x 0..6 across an advance, y 0..6 up from the baseline), set at the font's own advance
     // (the owner, 2026-11-14: "closer letter spacing: font's own"), centred on its ink and fitted between the side margins.
@@ -352,7 +354,7 @@ void Play::drawTitle(Ui& ui, const TitleLook& tl) {
                 const float rise = clampT((adx - straightHalf) / (kEndsRise * s));
                 const float bd = (adx - bumpAt) / (kBumpWin * s);
                 const float bump = 1.0f + kBump * std::exp(-bd * bd);
-                off = -v * kEndsAmp * s * tl.ends * rise * bump;
+                off = -v * kEndsAmp * s * tl.endsAmp * tl.ends * rise * bump;
             } else {
                 for (u32 j = 0; j < 8; ++j) {
                     const float ageS = (tl.struck - tl.strikeStep * static_cast<float>(j)) * beatS;

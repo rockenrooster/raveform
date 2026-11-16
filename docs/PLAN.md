@@ -40,8 +40,9 @@ executor (Claude Opus 5.5). Nothing is built yet — only the three documents in
 
 ## 1. What we are building
 
-RAVEFORM is a neon vector twin-stick shooter for Android in which **sound becomes light**. One Endless
-mode, solo or LAN co-op for 2–4 players. The music is generated live by the game and by each player's
+RAVEFORM is a neon vector twin-stick shooter for Android in which **sound becomes light**. THE SET (the
+Endless mode) and, since M8, six more modes (`docs/MODES_PLAN.md`, `design/modes/`), solo, LAN co-op or
+LAN versus for 2–4 players. The music is generated live by the game and by each player's
 loadout; every shot, spawn, explosion and screen pulse lands on the beat. Runs start sparse and readable
 and escalate into a screen-filling light storm with thousands of enemies — at 60+ FPS P95 at the
 device's native resolution.
@@ -65,9 +66,10 @@ Pillars, in priority order:
 | Targets | Android arm64 (minSdk 29) plus a Windows dev build that is also a full LAN peer | Fast desktop iteration; PC can host or join for multiplayer tests |
 | Performance | 60+ FPS P95 at native resolution on the floor device (Motorola One 5G Ace); stronger devices get more effects and higher refresh. Effects scale, resolution never does | User requirement (P95 since 2026-11-10; originally P99) |
 | Music | Generative and build-driven: in-engine sequencer, synth and sampler; weapons and upgrades add layers | User choice; matches the Pulsebound-style feel they asked for |
-| Permanence | Run-only. Upgrades last until the run ends. No cross-run power and no unlock gating. Only settings, high scores and stats persist | User choice |
+| Permanence | Run-only. Upgrades last until the run ends. No cross-run power and no unlock gating. Only settings, high scores and stats persist (M8: and the modes' records and the mode last played, `modes.txt`) | User choice |
 | Name | RAVEFORM | User choice. A quick web search found no game or app with this name (not a trademark clearance) |
-| Multiplayer | LAN co-op, 2–4 players, inside the single Endless mode | User choice |
+| Modes | THE SET (the Endless mode, unchanged) and six more: ONE TRACK, HEADLINERS, FULL BLAST, TRACERS, SONGLINE, JAM (M8, 2026-11-15; `docs/MODES_PLAN.md` 1). Was: one Endless mode | The owner, on the lead's line-up |
+| Multiplayer | LAN co-op **and versus**, 2–4 players, in every mode (M8). Was: LAN co-op inside the single Endless mode | User choice; the owner on M8 |
 | Assets | Procedural first; AI-generated assets allowed; CC0/permissively licensed free assets allowed. Everything non-procedural is logged with provenance | User direction |
 
 ---
@@ -416,6 +418,13 @@ screen. Exit: user sign-off on feel, plus the contract on all three devices.
 credits/licences screen, release build variant, and the Play-readiness checklist (target API, 16 KB
 pages, no data collection, content rating, photosensitivity notice). Exit: final benchmark matrix on
 every device recorded in `PROGRESS.md`.
+
+### M8 — The modes (L, eight parts)
+
+THE SET and six new modes, co-op and versus in each: `docs/MODES_PLAN.md` (the frame, the code map, the
+wire, the order of work and each part's exit), the lead's pages in `design/modes/`. THE SET's simulation
+does not move (its determinism hash is checked at the end of every part); each part ends playable and
+is handed to the owner.
 
 ---
 

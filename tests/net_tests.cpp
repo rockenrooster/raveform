@@ -672,6 +672,12 @@ struct LobbySink : PacketSink {
     u8 lastRefuse = 0;
     MsgLobby lastLobby;
     MsgBed lastBed;
+    u32 runStarts = 0;
+    MsgRunStart lastRunStart;
+    void onRunStart(const MsgRunStart& m) override {
+        ++runStarts;
+        lastRunStart = m;
+    }
     void onLobby(const MsgLobby& m) override {
         ++lobbies;
         lastLobby = m;
@@ -705,6 +711,21 @@ void testLobby() {
     CHECK(beaconParse(buf, kBeaconBytes, r));
     CHECK(r.version == kProtocolVersion && r.port == kGamePort && r.code == 0xC0DE && r.players == 2 && r.seats == 4 && r.compatible);
     CHECK(std::strcmp(r.name, "MOTO") == 0);
+    CHECK(r.mode == 0 && !r.versus);
+    {
+        // M8: the room's mode and a versus bit; a mode out of range or another bit is refused.
+        BeaconInfo bm = b;
+        bm.mode = 4;
+        bm.versus = true;
+        u8 mb[64];
+        BeaconInfo rm;
+        CHECK(beaconWrite(bm, mb, sizeof mb) && beaconParse(mb, kBeaconBytes, rm) && rm.mode == 4 && rm.versus);
+        mb[32] = 7;
+        CHECK(!beaconParse(mb, kBeaconBytes, rm));
+        mb[32] = 4;
+        mb[33] = 2;
+        CHECK(!beaconParse(mb, kBeaconBytes, rm));
+    }
     CHECK(!beaconWrite(b, buf, kBeaconBytes - 1));
     // Exact length, magic, players <= seats <= 4, a known state, reserved zero, a printable name then zeros.
     u8 bad[64];
@@ -779,6 +800,49 @@ void testLobby() {
     CHECK(sink.lobbies == 1 && sink.lastLobby.seats == 0x7 && sink.lastLobby.ready == 0x5 && sink.lastLobby.code == 0x1234);
     CHECK(std::strcmp(sink.lastLobby.names[1], "PLAYER TWO") == 0 && sink.lastLobby.names[2][0] == 0);
     CHECK(sink.beds == 1 && sink.lastBed.bar == 140 && sink.lastBed.level == 200 && sink.lastBed.run == 3);
+    CHECK(sink.lastLobby.setup == sim::RunSetup{});
+    {
+        // M8: the run's setup in its start; a mode out of range is refused.
+        MsgRunStart rs;
+        rs.run = 4;
+        rs.bar = 7680.0;
+        rs.seed = 5;
+        rs.players = 2;
+        rs.mask = 0x3;
+        rs.setup.mode = sim::Mode::OneTrack;
+        rs.setup.track = 4;
+        w.reset();
+        CHECK(w.putRunStart(rs) && parsePacket(w.data(), w.size(), sink));
+        CHECK(sink.runStarts == 1 && sink.lastRunStart.setup == rs.setup && sink.lastRunStart.mask == 0x3 && sink.lastRunStart.bar == 7680.0);
+        u8 p[kMaxPacketBytes];
+        std::memcpy(p, w.data(), w.size());
+        p[3 + 30] = 9;
+        CHECK(!parsePacket(p, w.size(), sink));
+    }
+    {
+        // M8: the room's setup and the seats' crowns; a mode, a Track or a flag out of range is refused.
+        MsgLobby vm = lm;
+        vm.setup.mode = sim::Mode::Tracers;
+        vm.setup.track = 11;
+        vm.setup.versus = true;
+        vm.setup.help = false;
+        vm.crowns[0] = 2;
+        vm.crowns[2] = 7;
+        w.reset();
+        CHECK(w.putLobby(vm) && parsePacket(w.data(), w.size(), sink));
+        CHECK(sink.lastLobby.setup == vm.setup && sink.lastLobby.crowns[0] == 2 && sink.lastLobby.crowns[2] == 7 && sink.lastLobby.crowns[1] == 0);
+        u8 p[kMaxPacketBytes];
+        const u32 at = 3 + 6 + 64;  // (the setup after the names)
+        std::memcpy(p, w.data(), w.size());
+        p[at] = 7;  // no mode 7
+        CHECK(!parsePacket(p, w.size(), sink));
+        std::memcpy(p, w.data(), w.size());
+        p[at + 1] = 13;  // no Track 13
+        CHECK(!parsePacket(p, w.size(), sink));
+        std::memcpy(p, w.data(), w.size());
+        p[at + 2] = 4;  // flags: versus and help only
+        CHECK(!parsePacket(p, w.size(), sink));
+    }
     lm.ready = 0x8;  // ready but not seated
     w.reset();
     w.putLobby(lm);

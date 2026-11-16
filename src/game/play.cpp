@@ -132,7 +132,10 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
         // screens.md "Title" (the owner, 2026-11-14: "every cold start but make it much faster"): the title builds itself (after the
         // notice on a first launch); not in --autoplay runs.
         introPending_ = !opt.autoplay && screen_ == Screen::Title;
+        loadModeRecords(records_);  // M8: the pill's mode, each mode's Track, the records (design/modes/README.md 9)
     }
+    applyModeArgs();  // M8: --mode, --coop-mode
+    if (!modeArgsOk_) return false;
     lowTier_ = tier.tier == Tier::Low;
     markCount_ = 0;
     marks_[markCount_++] = Mark{0.0f, 0, 1};
@@ -839,11 +842,21 @@ void Play::conductBand() {
     const double nextLine = line + kTicksPerBar;
     if (nextLine <= plannedLine_ + 1.0) return;
     plannedLine_ = nextLine;
+    const bool restartHere = w.restartPending() && std::fabs(w.restartTick() + offset - nextLine) < 1.0;
+    if (previewWant_ != previewSong_) {
+        // M8 (design/modes/screens.md "MODES"): the Track chosen on MODES is heard from this bar line with a crash (a run starting
+        // here has its own), and the palette cross-fades to that Track's over the bar (updatePalette); back to the run's the same way.
+        previewSong_ = previewWant_;
+        palNextLine_ = nextLine - offset;
+        palNextTo_ = previewSong_ >= 0 ? trackPalette(static_cast<u32>(previewSong_) + 1u) : nullptr;
+        if (!restartHere) band_->playRecipe(audio::Recipe::Impact, -1, 0.8f, 0.0f, nextLine);
+        RF_LOG("play: MODES: the band plays %s from band tick %.0f", previewSong_ >= 0 ? songName(static_cast<u32>(previewSong_)) : "the run's Track", nextLine);
+    }
     const auto off = [&] {
         if (bossPosted_) band_->setBoss(0, false, 0, 0);
         bossPosted_ = false;
     };
-    if (w.restartPending() && std::fabs(w.restartTick() + offset - nextLine) < 1.0) {
+    if (restartHere) {
         // A new run on that line: Track 1 at its tempo, Short form, its first Groove.
         band_->setHold(false);
         band_->changeTrack(0, bpmOfTrack(1, w.setList()), true);
@@ -867,7 +880,13 @@ void Play::conductBand() {
     }
     if (overHeld_ || paused_) return;
     const u32 bar = w.barOf(nextLine - offset + 1.0);
-    const Phrase next = w.phraseOfBar(bar);
+    Phrase next = w.phraseOfBar(bar);
+    if (previewSong_ >= 0) {
+        // (MODES: the chosen Track at its own tempo, over the demo run's sections)
+        next.song = static_cast<u32>(previewSong_);
+        next.trackBpm = trackBpm(static_cast<u32>(previewSong_) + 1u);
+        next.trackChange = false;
+    }
     if (next.trackChange && next.sectionBar == 0) {
         // The boss is dead: the Track-change Break (tempo ramp, key on its fifth bar) into the next Track.
         band_->setHold(false);
@@ -951,7 +970,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     }
     // M4 stage B (screens.md "Co-op (M4)"): nothing of a run behind the co-op setup screens (the world there is
     // empty and still), and no beacon behind the co-op game over.
-    vi.noShips = flow_ && (screen_ == Screen::CoopLobby || screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission);
+    vi.noShips = flow_ && (screen_ == Screen::CoopLobby || screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission || (screen_ == Screen::Modes && liftRoom_));
     vi.noBeacons = coop() && coopOver_;
     vi.backgroundOnly = flow_ && !coop() && (screen_ == Screen::CoopJoin || screen_ == Screen::NetPermission);
     // M6 (screens.md "Transitions"): the run's own light as the transitions have it; its ship goes with it, and on the drop-in's
@@ -1128,6 +1147,35 @@ void Play::updatePalette(double music) {
     };
     const Phrase& ph = world_->phrase();
     const Palette* to = forSong(ph.song);
+    // M8 (design/modes/screens.md "MODES"): the Track heard on MODES has its palette, cross-faded over the bar from the bar line the
+    // band changed on (and back to the run's the same way).
+    if (palNextLine_ >= 0.0 && music >= palNextLine_) {
+        palFrom_ = *palette_;
+        palFadeLine_ = palNextLine_;
+        palTo_ = palNextTo_;
+        palNextLine_ = -1.0;
+    }
+    if (palFadeLine_ >= 0.0) {
+        const Palette* target = palTo_ ? palTo_ : to;
+        float u = clampf(static_cast<float>((music - palFadeLine_) / kTicksPerBar), 0.0f, 1.0f);
+        u = u * u * (3.0f - 2.0f * u);
+        const auto mixp = [&](Vec3 a, Vec3 b) { return a + (b - a) * u; };
+        const Palette from = palFrom_;
+        mixed_ = *target;
+        mixed_.bg0 = mixp(from.bg0, target->bg0);
+        mixed_.bg1 = mixp(from.bg1, target->bg1);
+        mixed_.grid = mixp(from.grid, target->grid);
+        mixed_.gridHot = mixp(from.gridHot, target->gridHot);
+        mixed_.accent = mixp(from.accent, target->accent);
+        for (u32 k = 0; k < 3; ++k) {
+            mixed_.hue[k] = mixp(from.hue[k], target->hue[k]);
+            mixed_.partner[k] = mixp(from.partner[k], target->partner[k]);
+        }
+        palette_ = &mixed_;
+        view_.setPalette(mixed_);
+        if (u >= 1.0f && !palTo_) palFadeLine_ = -1.0;  // (back on the run's: it follows the Track again)
+        return;
+    }
     if (homeFadeLine_ >= 0.0 && music >= homeFadeLine_ && music < homeFadeLine_ + kTicksPerBar) {
         // M6 (screens.md "Transitions", home): the palette the run ended in cross-fades to Track 1's over the title's bar.
         float u = clampf(static_cast<float>((music - homeFadeLine_) / kTicksPerBar), 0.0f, 1.0f);
@@ -1441,6 +1489,17 @@ bool Play::key(int k, bool down) {
             if (down && primary) keyPrimary_ = true;
             if (down && back) keyBack_ = true;
             if (primary || back) return true;
+            if (screen_ == Screen::Modes) {
+                // M8 (design/modes/screens.md "MODES"): left / right change the mode (or the Track on the strip), up / down move between
+                // the cards and the strip.
+                if (down) {
+                    if (k == SDLK_LEFT || k == SDLK_A) keyNav_ = static_cast<u8>(keyNav_ | 1u);
+                    if (k == SDLK_RIGHT || k == SDLK_D) keyNav_ = static_cast<u8>(keyNav_ | 2u);
+                    if (k == SDLK_UP || k == SDLK_W) keyNav_ = static_cast<u8>(keyNav_ | 4u);
+                    if (k == SDLK_DOWN || k == SDLK_S) keyNav_ = static_cast<u8>(keyNav_ | 8u);
+                }
+                return k != SDLK_F1;
+            }
             if (screen_ != Screen::Paused || countIn_) return k != SDLK_F1;
         }
         if (dead) return true;  // the game-over screen takes over
@@ -1537,6 +1596,16 @@ void Play::touchUp(u64 id) {
 
 void Play::padAxis(int axis, float v) {
     if (std::fabs(v) > 0.5f) uiActivity_ = true;  // (screens.md "Title": a stick or trigger pushed wakes the quiet title)
+    if (flow_ && screen_ == Screen::Modes && (axis == SDL_GAMEPAD_AXIS_LEFTX || axis == SDL_GAMEPAD_AXIS_LEFTY)) {
+        // M8: the left stick steps on MODES as the D-pad does (once a push, past 60%; back under 30% before the next).
+        const u8 bit = axis == SDL_GAMEPAD_AXIS_LEFTX ? 1u : 2u;
+        if (std::fabs(v) > 0.6f && !(padNavLatch_ & bit)) {
+            padNavLatch_ = static_cast<u8>(padNavLatch_ | bit);
+            keyNav_ = static_cast<u8>(keyNav_ | (axis == SDL_GAMEPAD_AXIS_LEFTX ? (v < 0.0f ? 1u : 2u) : (v < 0.0f ? 4u : 8u)));
+        } else if (std::fabs(v) < 0.3f) {
+            padNavLatch_ = static_cast<u8>(padNavLatch_ & ~bit);
+        }
+    }
     switch (axis) {
         case SDL_GAMEPAD_AXIS_LEFTX: padMove_.x = v; break;
         case SDL_GAMEPAD_AXIS_LEFTY: padMove_.y = v; break;
@@ -1566,6 +1635,14 @@ void Play::padButton(int button, bool down) {
         case SDL_GAMEPAD_BUTTON_EAST:  // B: back, as Escape
             if (down && flow_ && screen_ != Screen::Run) keyBack_ = true;
             break;
+        case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
+        case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
+        case SDL_GAMEPAD_BUTTON_DPAD_UP:
+        case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
+            // M8: the D-pad moves on MODES (as the arrows do).
+            if (down && flow_ && screen_ == Screen::Modes)
+                keyNav_ = static_cast<u8>(keyNav_ | (button == SDL_GAMEPAD_BUTTON_DPAD_LEFT ? 1u : (button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT ? 2u : (button == SDL_GAMEPAD_BUTTON_DPAD_UP ? 4u : 8u))));
+            break;
         default: break;
     }
 }
@@ -1585,6 +1662,7 @@ enum ScriptFlag : u32 { kPressed = 1, kSpawned = 2 };
 
 void Play::scriptSetup() {
     if (scriptSetupM6()) return;
+    if (scriptSetupM8()) return;
     if (scriptSetupM5()) return;
     if (scriptSetupB()) return;
     World& w = *world_;
@@ -1634,6 +1712,7 @@ void Play::scriptInput(StickInput& in) {
     const float tpt = clock_.ticksPerSecond() * kDt;  // musical ticks per sim tick
     in.assist = false;
     if (scriptInputM6(in)) return;
+    if (scriptInputM8(in)) return;
     if (scriptInputM5(in)) return;
     if (scriptInputB(in)) return;
     if (is(p, "fire")) {
@@ -1693,6 +1772,7 @@ void Play::scriptInput(StickInput& in) {
 
 void Play::scriptEvents() {
     if (scriptEventsM6()) return;
+    if (scriptEventsM8()) return;
     if (scriptEventsM5()) return;
     if (scriptEventsB()) return;
     if (captureFrom_ >= 0) return;

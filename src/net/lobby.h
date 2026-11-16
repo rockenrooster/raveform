@@ -17,7 +17,7 @@ namespace rf::net {
 constexpr u16 kBeaconUdpPort = 47777;          // TECH_SPEC 8.3
 constexpr i64 kBeaconEveryUs = 500000;         // twice a second
 constexpr i64 kBeaconForgetUs = 3000000;       // a host not heard for 3 s leaves the list
-constexpr u32 kBeaconBytes = 32;
+constexpr u32 kBeaconBytes = 34;  // (M8: + the room's mode and a versus bit)
 constexpr const char* kRoomAlphabet = "34679ACDFHJKMPQR";
 
 // Four characters (and a terminating zero) for the low 16 bits of an IPv4 address.
@@ -37,6 +37,8 @@ struct BeaconInfo {
     u8 seats = 0;          // the room's seats (4)
     u8 state = kBeaconLobby;
     char name[16] = {};    // printable, zero-terminated
+    u8 mode = 0;           // M8: the room's mode (sim::Mode) ...
+    bool versus = false;   // ... and whether it is a versus room (the join list shows them)
     // Filled in by the browser:
     u32 address = 0;       // where it came from (host byte order)
     i64 seenUs = 0;

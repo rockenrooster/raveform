@@ -307,6 +307,24 @@ add_custom_command(OUTPUT ${RF_GEN}/traits.json.inc
   COMMENT "embed traits.json"
   JOB_POOL rf_jobs
   VERBATIM)
+# M8 (docs/MODES_PLAN.md 2.9): the modes' numbers, and the two bonus Tracks for the content hash (the band embeds them from
+# design/music/ once they move there, in part 4).
+add_custom_command(OUTPUT ${RF_GEN}/modes.json.inc
+  COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/modes/modes.json -DOUT=${RF_GEN}/modes.json.inc
+          -P ${RF_ROOT}/cmake/EmbedText.cmake
+  DEPENDS ${RF_ROOT}/design/modes/modes.json ${RF_ROOT}/cmake/EmbedText.cmake
+  COMMENT "embed modes/modes.json"
+  JOB_POOL rf_jobs
+  VERBATIM)
+foreach(data track11 track12)
+  add_custom_command(OUTPUT ${RF_GEN}/modes_${data}.json.inc
+    COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/modes/music/${data}.json -DOUT=${RF_GEN}/modes_${data}.json.inc
+            -P ${RF_ROOT}/cmake/EmbedText.cmake
+    DEPENDS ${RF_ROOT}/design/modes/music/${data}.json ${RF_ROOT}/cmake/EmbedText.cmake
+    COMMENT "embed modes/music/${data}.json"
+    JOB_POOL rf_jobs
+    VERBATIM)
+endforeach()
 add_library(raveform_sim STATIC
   src/sim/arena.cpp
   src/sim/boss.cpp
@@ -340,6 +358,10 @@ add_library(raveform_sim STATIC
   src/sim/world_upgrades.cpp
   src/sim/world_upgrades_m5.cpp
   src/sim/world_elites.cpp
+  src/sim/modes_data.cpp
+  ${RF_GEN}/modes.json.inc
+  ${RF_GEN}/modes_track11.json.inc
+  ${RF_GEN}/modes_track12.json.inc
   ${RF_GEN}/arena.json.inc
   ${RF_GEN}/traits.json.inc
   ${RF_GEN}/cadence.json.inc
@@ -493,6 +515,7 @@ target_sources(raveform_core PRIVATE
   src/game/play_pictures.cpp
   src/game/play_pictures_m5.cpp
   src/game/play_pictures_m6.cpp
+  src/game/play_pictures_m8.cpp
   src/game/play_transitions.cpp
   src/game/play_view.cpp
   src/game/play_view_b.cpp
@@ -508,6 +531,7 @@ target_sources(raveform_core PRIVATE
   src/game/title_v2.cpp
   src/game/screens.cpp
   src/game/screens_credits.cpp
+  src/game/screens_modes.cpp
   src/game/settings.cpp
   src/game/save_data.cpp)
 # M4: co-op in the game (the network library; the game hosts or joins from the command line).

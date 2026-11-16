@@ -9,6 +9,7 @@
 #include "core/types.h"
 #include "sim/arena.h"
 #include "sim/boss.h"
+#include "sim/modes.h"
 
 namespace rf::sim {
 
@@ -190,6 +191,7 @@ public:
     RepriseData reprise;
     ArenaData arena;    // M5 part 5: design/arena.json
     TraitData traits;   // M5 part 5: design/traits.json
+    ModesData modes;    // M8: design/modes/modes.json
 
 private:
     FamilyData families_[kFamilyCount];

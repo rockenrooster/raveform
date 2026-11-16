@@ -81,6 +81,7 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | Sanitizers (M7): the unit tests (audio, sim, net, save), determinism, a 3-minute bot run, a fight start in Tracks 4, 7 and 10, the 3-minute net soak under ASan + UBSan (llvm-mingw; `build\desktop-asan`, logs in `captures\asan\`; exit 0 = no report) | `scripts\sanitize.ps1 [-Only tests,soak,fights,net] [-NoBuild]` |
 | The thermal check (M7, Moto): Track 10's first Drop held for 5 minutes | `scripts\bench-android.ps1 -Serial moto -Scenario bench_play -Seconds 300 -Warmup 5 -AppArgs '--drop 10.1 --drop-hold --nohits --tier low' -Deploy` |
 | The app icon (screens.md "App icon and name (M6)") | `python -I -B scripts\make_icon.py` (reads `design/glyphs.json`, `look.json`, `palettes.json`; writes the adaptive icon's layers into `android/app/src/main/res/mipmap-*` and `captures\m6\icon_512*.png`; a few minutes) |
+| M8 review pictures (`docs/MODES_PLAN.md` 7; `src/game/play_pictures_m8.cpp`; `captures\m8\<part>\`) | `scripts\review-m8.ps1 -Part p0 [-Config debug\|dev] [-Only m8_modes_tracers,m8_t_lift]` (p0: the title with each mode on its pill `m8_title_pill_<mode>`, MODES with each at the centre `m8_modes_<mode>`, strips a quarter beat apart `m8_t_lift`, `m8_t_back`, `m8_t_mode`, `m8_t_track`, `m8_t_drop` with contact sheets; the room's through `review-m4b.ps1`'s `m8_lobby_host`, `m8_lobby_join`, `m8_lobby_versus`, `m8_modes_room`, `m8_join_modes` (a host and a joiner on this PC: they broadcast a beacon on the network); exit 1 on a validation message or a layout warning) |
 
 The version is `CMakeLists.txt`'s project VERSION (and `android/app/build.gradle`'s versionName, kept the same); every build writes
 `generated/build_stamp.h` (`cmake/build_stamp.cmake`: version, commit, date) and the title screen shows it bottom right.
@@ -210,6 +211,23 @@ controls; the sync calibration screen of `design/screens.md`), `--band off|play|
 off; `full` = the load test, every layer playing: Drop held, four players firing on the 1/16-triplet grid with
 one Split harmony, every Riff at level 2, kills every frame; `stress` = Split ×2), `--silent` (everything plays and is measured, the output is zeroed at the device: PC runs), `--no-audio` (no band in
 any scenario: M0's silent stream, as M1 measured; for comparison), `--track 1..10` (default 1; `bench_*`:
+M8, the modes (`docs/MODES_PLAN.md`, `design/modes/`; part 0, the frame and the menus): `sim::RunSetup` (`src/sim/modes.h`: the
+mode, its Track, versus, the underdog's help) goes wherever a seed goes: `World::resetRun(..., setup)`, `setNextSetup` (a restart
+keeps the run's), `MsgRunStart` and the lobby's message (the room's, with each seat's crowns), the beacon (mode and a versus bit,
+34 bytes); the set's setup stays out of `World::hash()`. `design/modes/modes.json` and the bonus Tracks' music are embedded and
+read into `ModesData` (`SpeciesTable::modes`; in the co-op content hash); `formPlace` walks a mode's form. The game
+(`src/game/screens_modes.cpp`): the title's mode pill (PLAY starts the pill's mode on its remembered Track; the demo behind is
+always the set's), MODES (the seven cards, the Track strip, a chosen Track heard from the next bar line with its palette over the
+bar, `Play::conductBand` / `updatePalette`), the room's MODE pill in the lobby (the host's; DONE sends it), the transitions
+(`Trans::Lift` the rule rising into MODES, `Trans::Fold` BACK, the drop-in from MODES). A mode not built yet: its card drawn, PLAY
+disabled and `COMING IN THIS BUILD'S NEXT PART` in dev builds; a release build shows only built modes (no pill while THE SET is the
+only one) and no TEAM / VERSUS until versus is built (`Play::modeBuilt`). `modes.txt` beside `settings.txt`: the mode last
+played, each mode's Track, the records (`ModeRecords`). Arguments: `--mode <id>[:<track>[:<moment>[:hold]]]` (`set`, `one`,
+`headliners`, `blast`, `tracers`, `songline`, `jam`; the pill's mode in the game's screens, the run's in a benchmark; a mode not
+built yet fails the start), `--versus`, `--no-help`, `--coop-mode <id>[:<track>][:vs]` (the room's, with `--coop host`),
+`--coop-shot modes` (the room's MODES at rest), `--picture m8_*`. MODES's keys: left / right the mode (or the Track on the strip),
+up / down the cards or the strip, Enter PLAY, Esc BACK; the pad's D-pad and left stick the same.
+
 the palette's Track, Reef = 3 at the stage's 132 BPM), `--sound club|arcade|velvet`, `--intensity X`,
 `--section groove|build|drop|break`, `--hold`, `--fire`, `--haptics on|off` (default on in the audio scenes),
 `--sync-offset MS` (this run only). In real time the stages run on the band's heard clock and heard beat

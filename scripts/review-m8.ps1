@@ -1,0 +1,77 @@
+# M8's review pictures (docs/MODES_PLAN.md 7), desktop, Signal look, 2400x1080, fixed 1/60 s steps, written to captures\m8\<part>\
+# with review copies (*.small.png, at most 1600 px wide) and contact sheets for the strips (*_sheet.png, four frames a row at half
+# size). The solo pictures are scripted in src/game/play_pictures_m8.cpp; the room's are co-op shots on this PC (review-m4b.ps1's
+# m8_ entries: a host and a joiner over the real lobby on 127.0.0.1).
+#   p0: m8_title_pill_<mode> (seven), m8_modes_<mode> (seven), m8_modes_room, m8_lobby_host, m8_lobby_join, m8_lobby_versus,
+#       m8_join_modes; strips a quarter beat apart: m8_t_lift (12 frames), m8_t_back (16), m8_t_mode (8), m8_t_track (16),
+#       m8_t_drop (16). (m8_modes_bonus waits for the bonus Tracks: part 4.)
+#   scripts\review-m8.ps1 -Part p0 [-Config debug|dev] [-Only m8_modes_tracers,m8_t_lift] [-Out captures\m8\p0]
+# Debug (the default) runs with validation; exit 1 on a validation message or a layout warning (two controls, or a control and a
+# line, closer than 24 px).
+param(
+    [ValidateSet('p0')][string]$Part = 'p0',
+    [ValidateSet('debug', 'dev')][string]$Config = 'debug',
+    [string[]]$Only = @(),
+    [string]$Out = '',
+    [string]$Res = '2400x1080',
+    [switch]$Sound,  # let the app be heard (default: --silent, the PC's runs are silent)
+    [switch]$Watch   # show the windows (default: --offscreen, the PC's test runs stay off screen)
+)
+. "$PSScriptRoot\env.ps1"
+if (-not $Out) { $Out = "captures\m8\$Part" }
+New-Item -ItemType Directory -Force $Out | Out-Null
+$exe = Join-Path $RF_ROOT "build\desktop-$Config\raveform.exe"
+if (-not (Test-Path $exe)) { throw "missing $exe - build first" }
+$script:problems = 0
+
+function Invoke-Shot([string]$Png, [string]$AppArgs) {
+    $log = [IO.Path]::ChangeExtension($Png, '.log')
+    $full = [IO.Path]::GetFullPath($Png)
+    $argv = @($AppArgs -split '\s+' | Where-Object { $_ }) + @('--res', $Res, '--no-overlay', '--screenshot', $full) +
+            @(if ($Sound) { @() } else { @('--silent') }) + @(if ($Watch) { @() } else { @('--offscreen') })
+    & $exe @argv *> $log
+    if ($LASTEXITCODE -ne 0) { throw "run failed ($LASTEXITCODE) for $Png; see $log" }
+    $v = Select-String -Path $log -Pattern 'validation messages: (\d+)' | Select-Object -Last 1
+    if ($v -and $v.Matches[0].Groups[1].Value -ne '0') { Write-Host "  [validation] $($v.Line.Trim())"; $script:problems++ }
+    Select-String -Path $log -Pattern 'ui: ' | ForEach-Object { Write-Host "  [layout] $($_.Line.Trim())"; $script:problems++ }
+}
+
+# A contact sheet: the frames at half size, four a row.
+$sheet = 'import sys; from PIL import Image; fs=[Image.open(p).convert("RGB") for p in sys.argv[2:]]; w,h=fs[0].width//2,fs[0].height//2; ' +
+         'rows=(len(fs)+3)//4; s=Image.new("RGB",(4*w,rows*h)); [s.paste(f.resize((w,h),Image.LANCZOS),((i%4)*w,(i//4)*h)) for i,f in enumerate(fs)]; s.save(sys.argv[1])'
+
+$modes = @('set', 'one', 'headliners', 'blast', 'tracers', 'songline', 'jam')
+$singles = @($modes | ForEach-Object { "m8_title_pill_$_" }) + @($modes | ForEach-Object { "m8_modes_$_" })
+$strips = [ordered]@{ 'm8_t_lift' = 20; 'm8_t_back' = 24; 'm8_t_mode' = 8; 'm8_t_track' = 16; 'm8_t_drop' = 16 }
+$rooms = @('m8_modes_room', 'm8_lobby_host', 'm8_lobby_join', 'm8_lobby_versus', 'm8_join_modes')
+if ($Only.Count) {
+    $singles = @($singles | Where-Object { $Only -contains $_ })
+    $keep = [ordered]@{}
+    foreach ($k in $strips.Keys) { if ($Only -contains $k) { $keep[$k] = $strips[$k] } }
+    $strips = $keep
+    $rooms = @($rooms | Where-Object { $Only -contains $_ })
+}
+foreach ($s in $singles) {
+    $png = Join-Path $Out "$s.png"
+    Invoke-Shot $png "--scenario play --picture $s --strip 1"
+    python "$PSScriptRoot\shrink_png.py" $png | Out-Null
+    Write-Host "[review] $s"
+}
+foreach ($s in $strips.Keys) {
+    $n = $strips[$s]
+    $png = Join-Path $Out "$s.png"
+    Invoke-Shot $png "--scenario play --picture $s --strip $n"
+    $frames = 0..($n - 1) | ForEach-Object { Join-Path $Out "${s}_$_.png" }
+    foreach ($f in $frames) { if (-not (Test-Path $f)) { throw "missing $f (the script's moment never came?)" } }
+    python -I -c $sheet (Join-Path $Out "${s}_sheet.png") @frames
+    python "$PSScriptRoot\shrink_png.py" (Join-Path $Out "${s}_sheet.png") | Out-Null
+    Write-Host "[review] strip $s ($n frames)"
+}
+if ($rooms.Count) {
+    $m4b = @{ Out = $Out; Config = $Config; Only = $rooms; Res = $Res }
+    if ($Watch) { $m4b.Watch = $true }
+    & "$PSScriptRoot\review-m4b.ps1" @m4b
+    if ($LASTEXITCODE -ne 0) { $script:problems++ }
+}
+if ($script:problems) { Write-Host "[review] $script:problems problem(s): see above"; exit 1 }
+Write-Host "[review] $Out"

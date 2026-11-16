@@ -190,7 +190,9 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
             m.players = r.u8v();
             m.runOffset = r.f64v();
             m.mask = r.u8v();
-            if (r.bad() || !finite(m.bar) || !finite(m.runOffset) || m.players < 1 || m.players > kMaxPlayers || m.mask == 0 || m.mask > 0xF)
+            const u8 mode = r.u8v(), track = r.u8v(), flags = r.u8v();
+            if (r.bad() || !finite(m.bar) || !finite(m.runOffset) || m.players < 1 || m.players > kMaxPlayers || m.mask == 0 || m.mask > 0xF ||
+                !setupFromWire(mode, track, flags, m.setup))
                 return false;
             if (sink) sink->onRunStart(m);
             return true;
@@ -451,7 +453,10 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 }
                 if (!ended) return false;
             }
-            if (r.bad() || reserved != 0 || m.seats > 0xF || (m.ready & ~m.seats) != 0 || m.state > 1) return false;
+            const u8 mode = r.u8v(), track = r.u8v(), flags = r.u8v();
+            for (u32 s = 0; s < 4; ++s) m.crowns[s] = r.u8v();
+            if (r.bad() || reserved != 0 || m.seats > 0xF || (m.ready & ~m.seats) != 0 || m.state > 1 || !setupFromWire(mode, track, flags, m.setup))
+                return false;
             if (sink) sink->onLobby(m);
             return true;
         }
@@ -726,7 +731,7 @@ bool PacketWriter::putPong(i64 t0, i64 t1, i64 t2) {
     return true;
 }
 bool PacketWriter::putRunStart(const MsgRunStart& m) {
-    if (!begin(Msg::RunStart, 30)) return false;
+    if (!begin(Msg::RunStart, 33)) return false;
     u16v(m.within);
     u16v(m.run);
     f64v(m.bar);
@@ -734,6 +739,9 @@ bool PacketWriter::putRunStart(const MsgRunStart& m) {
     u8v(m.players);
     f64v(m.runOffset);
     u8v(m.mask);
+    u8v(static_cast<u8>(m.setup.mode));
+    u8v(m.setup.track);
+    u8v(setupFlags(m.setup));
     return true;
 }
 u32 PacketWriter::putSpawns(u16 run, double base, const NetSpawn* items, u32 n) {
@@ -964,7 +972,7 @@ bool PacketWriter::putReady(u8 ready) {
     return true;
 }
 bool PacketWriter::putLobby(const MsgLobby& m) {
-    if (!begin(Msg::Lobby, 6 + 64)) return false;
+    if (!begin(Msg::Lobby, 6 + 64 + 7)) return false;
     u8v(m.seats);
     u8v(m.ready);
     u16v(m.code);
@@ -981,6 +989,10 @@ bool PacketWriter::putLobby(const MsgLobby& m) {
             u8v(static_cast<u8>(c));
         }
     }
+    u8v(static_cast<u8>(m.setup.mode));
+    u8v(m.setup.track);
+    u8v(setupFlags(m.setup));
+    for (u32 s = 0; s < 4; ++s) u8v(m.crowns[s]);
     return true;
 }
 bool PacketWriter::putBed(const MsgBed& m) {

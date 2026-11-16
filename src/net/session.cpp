@@ -602,6 +602,7 @@ void Session::onPong(i64 t0, i64 t1, i64 t2) {
 void Session::onRunStart(const MsgRunStart& m) {
     if (host()) return;
     // Applied now: the run's bar line is at least half a bar away, after everything sent before this.
+    world_->setNextSetup(m.setup);  // M8: the run's mode
     world_->scheduleRun(m.bar, m.seed, m.players, m.run, m.mask);
     runOffset_ = m.runOffset;
     if (state_ == SessionState::Lobby) clock_.snap();  // the run starts on the best estimate; from now on it slews
@@ -1097,7 +1098,9 @@ void Session::startRun(double bar, u64 seed, u16 run) {
     m.players = static_cast<u8>(players);
     m.runOffset = runOffset_;
     m.mask = seatMask_ ? seatMask_ : 1;
+    m.setup = roomSetup_;  // M8: the room's mode
     reliable([&](PacketWriter& w) { return w.putRunStart(m); });
+    world_->setNextSetup(roomSetup_);
     world_->scheduleRun(bar, seed, players, run, m.mask);
     announcedRun_ = run;
     state_ = SessionState::Running;
@@ -1162,6 +1165,8 @@ void Session::onLobby(const MsgLobby& m) {
     lobbyReady_ = m.ready;
     roomCode_ = m.code;
     for (u32 s = 0; s < kMaxPlayers; ++s) std::memcpy(names_[s], m.names[s], sizeof names_[s]);
+    roomSetup_ = m.setup;  // M8
+    for (u32 s = 0; s < kMaxPlayers; ++s) crowns_[s] = m.crowns[s];
 }
 
 void Session::requestPause(bool on) {
@@ -1569,6 +1574,7 @@ void Session::afterTick() {
             m.players = static_cast<u8>(w.restartPlayers());
             m.runOffset = runOffset_;
             m.mask = w.restartMask() ? w.restartMask() : 1;  // the seats still taken (one left during the run: not in it)
+            m.setup = w.nextSetup();                         // M8: a restart keeps the run's mode
             reliable([&](PacketWriter& pw) { return pw.putRunStart(m); });
             announcedRun_ = m.run;
         }
@@ -1986,6 +1992,8 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
             m.code = roomCode_;
             m.state = state_ == SessionState::Running ? 1 : 0;
             for (u32 s = 0; s < kMaxPlayers; ++s) std::memcpy(m.names[s], names_[s], sizeof m.names[s]);
+            m.setup = roomSetup_;  // M8
+            for (u32 s = 0; s < kMaxPlayers; ++s) m.crowns[s] = crowns_[s];
             reliable([&](PacketWriter& pw) { return pw.putLobby(m); });
             lobbyDirty_ = false;
         }
@@ -1998,6 +2006,8 @@ void Session::send(i64 localUs, const PlayerPose& pose) {
             b.seats = static_cast<u8>(seats_);
             b.state = state_ == SessionState::Running ? kBeaconRunning : kBeaconLobby;
             std::snprintf(b.name, sizeof b.name, "%s", cfg_.name);
+            b.mode = static_cast<u8>(roomSetup_.mode);  // M8: the join list shows the room's mode
+            b.versus = roomSetup_.versus;
             beacon_.update(localUs, b);
         }
     }

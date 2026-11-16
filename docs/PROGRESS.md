@@ -4,6 +4,67 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## M8 — the modes (docs/MODES_PLAN.md), from 2026-11-15
+
+The owner: "can you implement this ... No subagents" (the lead's line-up: THE SET and six modes). The plan's own answers to its
+section 11 are taken (the owner gave no others): all six, the cheap three first, TRACERS with no gun and no Trios, the underdog's
+help on by default, HEADLINERS by the clock, THE SET in versus ending at the tenth boss. The lead's files were committed as
+written (1a3276b) on the owner's word.
+
+**The set's determinism hashes before part 0** (`raveform_headless --sim determinism`, c786795; they must not move): seed 1, two
+minutes: careful `f8d9e8972c671db2` (other seed `06b4a9490bb9f158`), careless `6d9e281fa6d95425` (`29b1864dde16a0dd`); seed 7,
+four minutes (`--seed 7 --minutes 4`): careful `037b1a9f3492c90a` (`ed4d283029a634b0`), careless `3d1a03187dfbc288`
+(`1db80cb7a2516f3a`). The run's setup enters the hash only when it is not the set's (so the set's stays as it was).
+
+### Part 0, the frame and the menus (2026-11-16)
+
+Built (`docs/MODES_PLAN.md` 8, part 0): the setup through the world (`World::resetRun(..., setup)`, `setNextSetup`, restarts keep
+it), the game (PLAY on the title starts the pill's mode; the title's demo, home and a cancelled drop-in are always the set's), the
+lobby and the run's start (`MsgLobby` + the room's setup and each seat's crowns, `MsgRunStart` + the setup, the beacon + the mode
+and a versus bit: protocol `0x5246050C`, `kBeaconBytes` 34); the forms (`sim::formPlace`; tested on the timed forms and a test
+form with a held section; no mode uses them until part 1); `modes.json` and the bonus Tracks embedded (`ModesData`, in the content
+hash); `modes.txt` (`ModeRecords`: the mode last played, each mode's Track, every record; the hints' bits to twenty); the title's
+mode pill (its emblem moving on the beat, its caption, the best line of the pill's mode); MODES (the seven cards in the line-up's
+order wrapping round, the seven emblems of README 10, the dots, the Track line, the strip of ten chips, the set list for THE SET
+and HEADLINERS; a side card tapped, the row dragged 80 px, arrows, D-pad or stick; a chosen Track heard from the next bar line with
+a crash, NEXT BAR counting the bar out, the palette cross-fading over the bar); the room's mode in the lobby (the host's MODE pill
+opens MODES for the room: DONE sends the mode, its Track and TEAM / VERSUS / HELP to every seat, BACK changes nothing; the
+others read it at the right margin; a change struck white-hot for 60 ms with a glass tick; the versus band line; crowns under the
+seats), the join list's rows (the room's mode and VS); the transitions (`Trans::Lift`: the pill held pressed with its ring, the
+title leaving over the next beat, the rule rising from y 432 to 150 over the beat after while MODES is struck onto it a letter a
+sixteenth, the cards thrown down from the rule in its second half, the controls rising on the third, any input skipping it to its
+end; `Trans::Fold`: BACK folds the cards up into the rule (sides first) and streaks MODES out over half a beat, the rule sinks to
+the title's place over a beat and the title builds from it as home builds it; the room's way in and out: the lobby fading, the
+rule thrown out at y 150; the drop-in from MODES: the cards, strip and BACK fade and sink, the tubes run hot, the rule draws in to
+the frame's centre, PLAY shrinks into the point, the burst's rays in the mode's two colours); `--mode`, `--versus`, `--no-help`,
+`--coop-mode`; the pictures (`scripts\review-m8.ps1 -Part p0`).
+
+Decided alone:
+- **A release build shows no card that does nothing** (the plan): it lists only the built modes, so while THE SET is the only one
+  it has no pill at all (the title as before) and no TEAM / VERSUS in the room's MODES. Dev builds show all seven, the unbuilt ones
+  with PLAY disabled and `COMING IN THIS BUILD'S NEXT PART`. The owner sees MODES on a dev build (`scripts\deploy-android.ps1`).
+- The pill's caption sits 28 px under the pill as CO-OP's does (its top; baseline 682): the page's "55 px over PLAY" put it 16 px
+  from the pill, inside the 24 px rule.
+- The lobby's `WAITING FOR ...` line moved from right of START to its left (the MODE pill has START's right); the MODE pill
+  narrows where the screen is narrower than 2400 x 1080 (a tablet's 16:10) so it never reaches START.
+- The room's choice is taken on DONE (one change, one strike for everyone), not as the host browses the cards.
+- The lift's notes: the letters A3 C4 E4 A4 C5 a sixteenth apart from its second beat, the centre card's E5 as it closes (with the
+  fourth letter), the sides' G5 and A5 with the fifth. Stepping along the row plays the first seven, a card each.
+- BACK's fold: about five beats from the tap to the title's controls taking taps (half a beat of folding, a beat of the rule
+  sinking, then home's build from its half beat); Back during MODES's drop-in cancels it as on the title.
+- A Track chosen in a room's MODES is heard on that device only; the others hear the room's choice when the run starts.
+- `--mode` and `--coop-mode` refuse a mode not built yet (the start fails: exit 1).
+
+Measured: `scripts\test.ps1` passes (the sim suite's new `modes` test: modes.json, the forms walked, `--mode`'s grammar, the setup
+in the world's state; the save suite's `modes.txt`; the net suite's setup in the lobby's message and the run's start, the beacon's
+mode, the refusals). **The set's determinism hashes are unchanged**: careful `f8d9e8972c671db2`, careless `6d9e281fa6d95425`.
+The p0 pictures (`captures\m8\p0\`): no validation message, no layout warning, the title with the pill keeps its 24 px. PLAY on the
+title takes the same path as before (`dropInTap`, the run on the first bar line at least two beats away).
+
+Not done in part 0: `m8_modes_bonus` (the bonus Tracks come with part 4: the strips stop at ten chips; TRACERS's and JAM's homes
+fall back to Zenith and Arcadia); the crowns' picture (nobody wins a match until versus, part 1); the built parts of
+`design/modes/screens.md` are not moved into `design/screens.md` (`design/` is the lead's).
+
 ## 2026-11-15, a crowded Shard field merges (no free Magnet Storm)
 
 The owner: "Shards come to me even without a magnet storm power up ... That's a free magnet storm can we fix that?" Above

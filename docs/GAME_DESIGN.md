@@ -724,6 +724,9 @@ lightning field).
 
 ## 10. Co-op (2–4 players, LAN)
 
+M8 (`docs/MODES_PLAN.md`, `design/modes/README.md` 8): every mode is played solo, in co-op or in **versus** (each player for
+themselves, nobody can hurt a friend); the room's mode and game are the host's choice, on MODES from the lobby.
+
 - One shared arena, swarm and musical clock. Each device shows its own player's view.
 - **Loot is instanced.** Every death drops Shards for every player; Boost orbs and Trios exist once per
   player. Nobody can steal anything. Chains are individual; the team score is the sum, and the game-over
@@ -794,6 +797,10 @@ per event at most, rate-limited, off when the system setting says so, strength a
 ---
 
 ## 12. UX flow and settings
+
+M8 (`design/modes/screens.md`): the title's mode pill over PLAY says what PLAY starts (THE SET until another mode is played); it
+opens MODES (the seven modes as cards, a mode's Track heard as it is chosen, PLAY); PLAY on the title starts the pill's mode on
+its remembered Track. Modes: `design/modes/` (README.md 1 for the line-up).
 
 Flow: logo sting (≤ 2 s, skippable) → title with the bot playing in the background → **PLAY** /
 **CO-OP** / settings → run → game over → **RETRY**. Co-op: HOST or JOIN → lobby (players, colours,

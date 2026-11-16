@@ -445,6 +445,7 @@ bool SpeciesTable::load() {
     crowd.miniDrop = minis.crowdScale;
     if (!arena.load()) ok = false;   // M5 part 5
     if (!traits.load()) ok = false;
+    if (!modes.load()) ok = false;   // M8
     return ok;
 }
 

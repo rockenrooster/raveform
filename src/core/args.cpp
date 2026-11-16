@@ -174,6 +174,17 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
         } else if (is("--picture") && next) {
             ok = copyString(a.picture, sizeof a.picture, next);
             usedNext = true;
+        } else if (is("--mode") && next) {
+            // M8 (MODES_PLAN 2.10): checked against the modes by the game (sim::parseModeArg), which refuses an unknown one.
+            ok = copyString(a.mode, sizeof a.mode, next);
+            usedNext = true;
+        } else if (is("--versus")) {
+            a.versus = true;
+        } else if (is("--no-help")) {
+            a.noHelp = true;
+        } else if (is("--coop-mode") && next) {
+            ok = copyString(a.coopMode, sizeof a.coopMode, next);
+            usedNext = true;
         // M3 end
         // M4 begin
         } else if (is("--host")) {

@@ -742,7 +742,8 @@ public:
     // `species` must outlive the world. No allocation afterwards.
     void init(const SpeciesTable* species);
     // A fresh run on the bar line `startTick`: empty pools, players at the start, the spawner reset.
-    void resetRun(u64 seed, double startTick, u32 players = 1, u8 presentMask = 0xF);
+    // M8: `setup` is the run's mode, Track and versus (sim/modes.h); the default is THE SET, so every older call is the set's run.
+    void resetRun(u64 seed, double startTick, u32 players = 1, u8 presentMask = 0xF, const RunSetup& setup = RunSetup{});
     void tick(const TickInput& in);
     // RETRY (GAME_DESIGN 4.3): the run starts again on the first bar line at least half a bar away (so the
     // band, told now, can start its Groove on the same line).
@@ -753,6 +754,10 @@ public:
     void cancelRestart() { restartPending_ = false; }
     bool restartPending() const { return restartPending_; }
     double restartTick() const { return restartAt_; }
+    // M8: the setup the next run (RETRY, the title's PLAY, MODES, a room's START) starts with; a run keeps its own unless told
+    // (resetRun sets it to the run's). Co-op: the host's MsgRunStart carries it to every device before scheduleRun.
+    void setNextSetup(const RunSetup& s) { restartSetup_ = s; }
+    const RunSetup& nextSetup() const { return restartSetup_; }
 
     // M5 (GAME_DESIGN 4.2, the lead's decision): the set list's length, the Tracks a run plays before the loop begins
     // (data: the music's Tracks the simulation has content for). Kept across runs; from the next run on, 1..kMaxSongs.
@@ -1039,6 +1044,7 @@ public:
     bool isLocal(u32 p) const { return ((localMask_ >> p) & 1u) != 0; }
     u32 viewPlayer() const { return viewPlayer_; }  // the first local player: the camera's ship, the band's intensity
     u16 runId() const { return runId_; }
+    const RunSetup& setup() const { return setup_; }  // M8: this run's mode, Track and versus (kept by RETRY)
     // A run on the bar line `bar` (musical ticks) with this seed, these seats and this id: every device resets
     // at the same musical position (the co-op start; a RETRY when every player is down).
     void scheduleRun(double bar, u64 seed, u32 players, u16 runId, u8 presentMask = 0xF);
@@ -1603,6 +1609,8 @@ private:
     Rng rng_{1};         // the director's stream
     Rng upgradeRng_{2};  // Trios and Boost types (their own stream, so a pick never moves a spawn)
     u64 seed_ = 1;
+    RunSetup setup_;  // M8 (in the hash only when it is not THE SET's, so the set's hash stays as it was)
+    RunSetup restartSetup_;  // M8: the next run's (setNextSetup)
     u64 tick_ = 0;
     u64 runTicks_ = 0;  // ticks since this run began (M4: the same on every device)
     double m0_ = 0.0, m1_ = 0.0;

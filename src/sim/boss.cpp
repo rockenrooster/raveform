@@ -9,6 +9,7 @@
 #include "core/json_doc.h"
 #include "core/log.h"
 #include "sim/arena.h"
+#include "sim/modes.h"
 
 namespace rf::sim {
 
@@ -119,6 +120,7 @@ u64 bossDataDigest() {
     h = fnv(h, kRepriseJson);
     h = fnv(h, kFirstLightJson);
     h ^= arenaDataDigest() * 31u;  // M5 part 5: the arena and the traits
+    h ^= modesDataDigest() * 37u;  // M8: the modes and the bonus Tracks
     return h;
 }
 

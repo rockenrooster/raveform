@@ -37,8 +37,9 @@ void World::init(const SpeciesTable* species) {
     resetRun(1, 0.0, 1);
 }
 
-void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask) {
+void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask, const RunSetup& setup) {
     seed_ = seed;
+    setup_ = restartSetup_ = setup;  // M8 (MODES_PLAN 2.1): THE SET by default; RETRY keeps it unless told otherwise
     rng_.reseed(seed * 0x9E3779B97F4A7C15ull + 0x632BE59BD9B4E019ull);
     Enemies& e = enemies_;
     // Free every slot; generations keep counting, so a handle from the last run stays stale.
@@ -127,7 +128,8 @@ void World::tick(const TickInput& in) {
         // they are not applied; the controllers restart from the world's start positions). Solo: the seed
         // after this one; co-op: the host's seed and seats (scheduleRun).
         const double bar = restartAt_;
-        resetRun(restartSeed_, bar, restartPlayers_, restartMask_);
+        const RunSetup next = restartSetup_;  // (M8: RETRY and REMATCH keep the run's setup; the title, MODES and START set it)
+        resetRun(restartSeed_, bar, restartPlayers_, restartMask_, next);
         runId_ = nextRunId_;
         restarted_ = true;
         ++counters_.restarts;
@@ -1490,6 +1492,13 @@ u64 World::hash() const {
         mix(c.y, c.count * sizeof(float));
         mix(c.born, c.count * sizeof(double));
         mix(c.owner, c.count);
+    }
+    if (setup_ != RunSetup{}) {
+        // M8: a mode's run (THE SET's hash stays what it was: MODES_PLAN briefing 4).
+        val(setup_.mode);
+        val(setup_.track);
+        val(setup_.versus);
+        val(setup_.help);
     }
     if (role_ != NetRole::Solo) {
         // M4: what co-op adds (solo hashes stay what M3's were).

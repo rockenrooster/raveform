@@ -446,8 +446,11 @@ are what corrections exist for.
 ### 8.3 Lobby and discovery
 
 - Host broadcasts a beacon on UDP **47777** twice a second (magic, protocol version, host name, player
-  count, state); the game runs on UDP **47778** (ENet: channel 0 reliable ordered, 1 unreliable
-  sequenced, 2 lobby/control).
+  count, state; M8: the room's mode and a versus bit, 34 bytes); the game runs on UDP **47778** (ENet:
+  channel 0 reliable ordered, 1 unreliable sequenced, 2 lobby/control).
+- M8 (`docs/MODES_PLAN.md` 4): the lobby's message carries the room's setup (mode, Track, versus, the
+  underdog's help) and each seat's crowns; a run's start carries its setup. The host chooses the room's
+  mode; every seat sees it, and the join list shows it.
 - Join by list (beacons seen in the last 3 s), by **room code** (four characters encoding the low 16
   bits of the host's IPv4 address — works within one /16) or by typing an IP address.
 - Android: hold a `WifiManager.MulticastLock` while browsing. Works through a router or with one phone
