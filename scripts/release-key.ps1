@@ -1,10 +1,10 @@
-# The release key (docs/RELEASE_PIPELINE.md; the owner's choice of 2026-11-15: a new key). Creates it outside the repository,
-# gives it to the GitHub release workflow as its four secrets, and starts a release build. The owner runs it at this PC:
+# The release key (docs/RELEASE_PIPELINE.md; the owner's choice of 2026-11-15: a new key). Creates it in the project's keys\
+# (gitignored: never committed), gives it to the GitHub release workflow as its four secrets, and starts a release build. The owner runs it at this PC:
 # keytool asks for a new password (twice) and this script once more; nothing writes the password down or passes it on a
 # command line. Back the keystore and its password up: a build signed with another key cannot update an installed copy.
 #   scripts\release-key.ps1 [-Keystore <path>] [-SecretsOnly] [-NoBuild]
 param(
-    [string]$Keystore = (Join-Path $env:USERPROFILE '.raveform\raveform-release.keystore'),
+    [string]$Keystore = (Join-Path (Split-Path $PSScriptRoot) 'keys\raveform-release.keystore'),
     [string]$Alias = 'raveform',
     [string]$Repo = 'rockenrooster/raveform',
     [switch]$SecretsOnly,  # the keystore exists: only set the secrets again

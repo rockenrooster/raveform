@@ -8,9 +8,10 @@ do. The long soak of PLAN M7 is replaced by the owner's short-runs rule. Nothing
 ### Only the owner can do these
 
 1. **The signing key.** The `release` variant is signed with the debug key only (no keystore was created). Create the upload
-   key, keep it outside the repository, enrol in Play App Signing, and sign the App Bundle with it. Never upload a
+   key, keep it out of git, enrol in Play App Signing, and sign the App Bundle with it. Never upload a
    debug-signed build. The GitHub release workflow signs with whatever key its four secrets hold (docs/RELEASE_PIPELINE.md);
-   the owner chose a new key on 2026-11-15, and `scripts\release-key.ps1` creates it and sets those secrets.
+   the owner chose a new key on 2026-11-15, made it with `scripts\release-key.ps1`, and keeps it in the project's `keys\`
+   (gitignored).
 2. **The Play Console**: the developer account, the app (package `dev.raveform.game`), its countries and price (free; no
    in-app purchases, no ads).
 3. **The store listing**: the title (`RAVEFORM`), the short and full descriptions, the screenshots (phone and 7"/10" tablet),

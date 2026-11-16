@@ -50,13 +50,15 @@ environment variables `RF_KEYSTORE`, `RF_KEYSTORE_PASSWORD`, `RF_KEY_ALIAS`, `RF
 | `RF_KEY_ALIAS` | the key's alias |
 | `RF_KEY_PASSWORD` | the key's password |
 
-**The owner chose a new release key (2026-11-15).** The owner makes it at this PC with `scripts\release-key.ps1`: keytool
-creates `%USERPROFILE%\.raveform\raveform-release.keystore` (outside the repository; PKCS12, RSA 4096, alias `raveform`, valid
-10,000 days) and asks for its password; the script asks for the password once more, checks that it opens the keystore, sets
-the four secrets through gh's standard input (never on a command line), prints the certificate's SHA-256 (the release notes
-print the same) and starts a release build. `-SecretsOnly` uploads an existing keystore again; `-NoBuild` starts no build.
-Back the keystore and its password up outside this PC: a build signed with any other key cannot update an installed copy,
-and only Play App Signing (once enrolled) can replace a lost upload key.
+**The owner chose a new release key (2026-11-15)** and made it that day with `scripts\release-key.ps1` (certificate SHA-256
+`dc52de684584b98f11864631b89b7cd84b708e42e08bbe7e0b3f1db79066b605`). The keystore is `keys\raveform-release.keystore` in the
+project folder (the owner's choice; PKCS12, RSA 4096, alias `raveform`, valid 10,000 days), ignored by git (`/keys/`,
+`*.keystore`, `*.jks`, `*.p12`, `*.pfx`): never commit it, the repository is public. It was first made at
+`%USERPROFILE%\.raveform\`, where a copy stays. The script: keytool asks for a new password; the script asks for it once
+more, checks that it opens the keystore, sets the four secrets through gh's standard input (never on a command line),
+prints the certificate's SHA-256 (the release notes print the same) and starts a release build. `-SecretsOnly` uploads the
+existing keystore again; `-NoBuild` starts no build. Back the keystore and its password up off this PC: a build signed with
+any other key cannot update an installed copy, and only Play App Signing (once enrolled) can replace a lost upload key.
 
 By hand instead: `gh secret set <NAME> -R rockenrooster/raveform` asks for each value.
 

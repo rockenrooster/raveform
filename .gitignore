@@ -14,6 +14,13 @@
 /third_party/vulkan-headers/
 /third_party/enet/
 
+# The release key (scripts/release-key.ps1, docs/RELEASE_PIPELINE.md): never committed, the repository is public
+/keys/
+*.keystore
+*.jks
+*.p12
+*.pfx
+
 # Local tooling
 /.vscode/
 /.idea/
