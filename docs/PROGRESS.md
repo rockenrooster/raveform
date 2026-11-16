@@ -20,12 +20,14 @@ Left as found: with the maximum loadout, a Trio orb's words can run off the scre
 ## 2026-11-15, the release pipeline on GitHub (docs/RELEASE_PIPELINE.md)
 
 The owner asked for "a GitHub repo and a release pipeline that automatically builds a release apk available for download".
-The repository is `rockenrooster/raveform` (private; `origin`), and `.github/workflows/release.yml` builds the release variant
-on every push to `main` and publishes it as release `build-<commit count>` with `raveform.apk`, its SHA-256 and the symbols.
+The repository is `rockenrooster/raveform` (`origin`; created private, public the same day at the owner's "Make it public",
+after a scan of the whole history found no key, token, password or keystore), and `.github/workflows/release.yml` builds the
+release variant on every push to `main` and publishes it as release `build-<commit count>` with `raveform.apk`, its SHA-256
+and the symbols. Anyone can download the APK without a GitHub account (checked: the latest-download link answers 200).
 
 - **The first build (`build-284`, ad6c6fe):** 3 min 39 s for the whole job, 2 min 56 s of it the Gradle build (NDK and CMake
-  from `sdkmanager` 11 s, the sources 6 s). The APK is 7.19 MB (libmain.so 3.07 MB), the symbols zip 14.1 MB. GitHub's free
-  2,000 minutes a month are about 500 such builds.
+  from `sdkmanager` 11 s, the sources 6 s). The APK is 7.19 MB (libmain.so 3.07 MB), the symbols zip 14.1 MB. Builds cost nothing on
+  a public repository (while private: about 500 a month in GitHub's free 2,000 minutes).
 - **What Linux needed:** `scripts/fetch-deps.sh` runs there too. There is no Vulkan SDK, so the headers come from Khronos's
   Vulkan-Headers at the SDK's tag, and `vk_enum_string_helper.h`, which the SDK takes from Vulkan-Utility-Libraries, comes from
   that repository's tag. Both commits are checked. They are the SDK's files: `vk_enum_string_helper.h` has the same blob,

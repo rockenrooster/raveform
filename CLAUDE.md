@@ -265,7 +265,7 @@ cannot read its clock): compare passes at the top clock with `--gpu-burn 40`.
 - Only phone numbers count for performance; desktop timing is informational.
 - Git: `Invoke-RfGit` (Git for Windows + schannel). Commit only at working checkpoints, never
   commit `design/` files you did not write. Build output, `captures/` and fetched `third_party/` are ignored. Push (to
-  `origin`, the private GitHub repository `rockenrooster/raveform`) only when the owner asks: every push to `main` builds
+  `origin`, the public GitHub repository `rockenrooster/raveform`) only when the owner asks: every push to `main` builds
   and publishes a release APK (`docs/RELEASE_PIPELINE.md`).
 
 ## PC runs are silent (user rule)

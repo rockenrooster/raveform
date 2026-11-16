@@ -5,7 +5,7 @@ available for download".
 
 ## Where
 
-- The repository: `rockenrooster/raveform` on GitHub, **private**, the remote `origin` of this checkout. Sessions push only when
+- The repository: `rockenrooster/raveform` on GitHub, **public** since 2026-11-15 (below), the remote `origin` of this checkout. Sessions push only when
   the owner asks (CLAUDE.md, Conventions).
 - The workflow: `.github/workflows/release.yml` ("Release APK").
 
@@ -32,8 +32,8 @@ The job (GitHub's `ubuntu-24.04` runner) does what `scripts\build-android.ps1 -C
 ## Downloading
 
 - The newest build is always at `https://github.com/rockenrooster/raveform/releases/latest/download/raveform.apk`; every
-  build is on the repository's Releases page. While the repository is private, the browser must be signed in to GitHub.
-- On a phone: open the link (or the release page) in a browser signed in to GitHub, download, open the file; Android asks once
+  build is on the repository's Releases page. Anyone can download them, without a GitHub account.
+- On a phone: open the link (or the release page) in a browser, download, open the file; Android asks once
   to allow installs from that browser.
 - On this PC: `gh release download -R rockenrooster/raveform -p raveform.apk`, then `adb -s <serial> install -r raveform.apk`
   (the shared-phone rules of CLAUDE.md apply).
@@ -79,13 +79,13 @@ it for a store release.
 
 ## Cost
 
-GitHub's free plan gives a private repository's Actions 2,000 Linux minutes a month. A release build takes about 4 minutes
-(the first, `build-284`: 3 min 39 s), so about 500 builds a month. Release files do not count toward the storage quota.
+GitHub's standard runners cost nothing for a public repository (while it was private: 2,000 Linux minutes a month). A
+release build takes about 4 minutes (the first, `build-284`: 3 min 39 s). Release files count toward no storage quota.
 Documentation-only pushes do not build.
 
-## Making the download public
+## Public
 
-The repository is private, so only accounts with access can download. To let anyone download: make the repository public
-(`gh repo edit rockenrooster/raveform --visibility public --accept-visibility-change-consequences`: the source and its whole
-history become public), or publish the APKs to a second, public repository (the workflow would need a token for it as a
-secret).
+The repository has been public since 2026-11-15 (the owner: "Make it public"): the source, its whole history (the commits'
+author email included) and every release are open to anyone. Checked before the switch: no key, token, password or
+keystore in any commit, by file name and by content over the whole history. The signing secrets stay secret: GitHub never
+shows them, and only pushes to `main` and runs by hand start the workflow, both of which need write access.
