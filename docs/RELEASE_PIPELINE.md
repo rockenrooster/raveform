@@ -20,8 +20,9 @@ The job (GitHub's `ubuntu-24.04` runner) does what `scripts\build-android.ps1 -C
 
 1. JDK 17 (Temurin); the Android SDK's NDK `29.0.14206865`, CMake `3.22.1` and platform 36 (`sdkmanager`).
 2. `scripts/fetch-deps.sh`: the pinned SDL, volk and ENet of `scripts/fetch-deps.ps1`, and the Vulkan headers from Khronos's
-   Vulkan-Headers at the SDK's tag `vulkan-sdk-1.4.363.0` (commit checked): the headers the Vulkan SDK 1.4.363.0 ships, which
-   this PC copies from its SDK.
+   Vulkan-Headers at the SDK's tag `vulkan-sdk-1.4.363.0`, with `vk_enum_string_helper.h` from Vulkan-Utility-Libraries at the
+   same tag (both commits checked): the headers the Vulkan SDK 1.4.363.0 ships, which this PC copies from its SDK (checked
+   2026-11-15: the same files, but for the SDK's CRLF line endings).
 3. `gradlew :app:assembleRelease`: native Release, the libraries stripped, not debuggable, no app arguments.
 4. The release `build-<N>`, N the number of commits on `main` (it only grows), titled "RAVEFORM <versionName> build <N>" and
    marked latest. Its files: `raveform.apk`, `raveform.apk.sha256`, and `raveform-symbols.zip` (the unstripped native

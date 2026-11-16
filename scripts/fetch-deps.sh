@@ -51,10 +51,14 @@ if [ ! -f "$VH/vulkan/vulkan.h" ]; then
     elif [ "$(uname -s)" != Darwin ]; then
         pinned vulkan-headers/source https://github.com/KhronosGroup/Vulkan-Headers.git vulkan-sdk-1.4.363.0 \
             6802bb4733b63ed5efd3adb308a6c885ef180ea1
-        echo "[deps] copying Vulkan headers from Vulkan-Headers"
+        # (and vk_enum_string_helper.h, which the SDK takes from Vulkan-Utility-Libraries at the same tag)
+        pinned vulkan-headers/utility https://github.com/KhronosGroup/Vulkan-Utility-Libraries.git vulkan-sdk-1.4.363.0 \
+            57f01541b3959f2528f769043396e882851a7e75
+        echo "[deps] copying Vulkan headers from Vulkan-Headers and Vulkan-Utility-Libraries"
         mkdir -p "$VH"
         cp -R "$TP/vulkan-headers/source/include/vulkan" "$VH/"
         cp -R "$TP/vulkan-headers/source/include/vk_video" "$VH/"
+        cp "$TP/vulkan-headers/utility/include/vulkan/vk_enum_string_helper.h" "$VH/vulkan/"
     else
         echo "[deps] VULKAN_SDK is not set (or has no include/vulkan): install the Vulkan SDK for macOS 1.4.363.0 with its iOS" >&2
         echo "       component and source its setup-env.sh (docs/IOS.md)" >&2
