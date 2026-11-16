@@ -616,19 +616,28 @@ void Play::titleIdleFrame(UiPointer& ptr) {
     uiActivity_ = false;
     const double now = transNow();
     if (trans_ == Trans::Intro || introPending_) {
-        // screens.md "Title": any input skips the intro (it is eaten): everything not yet on screen arrives inside a beat, and the
-        // word's notes not yet placed are not played.
+        // screens.md "Title": any input ends the intro. The owner (2026-11-16: "the menu buttons are locked until the full
+        // Raveform intro plays"): it ends at once, everything on screen in this frame (the word's notes not yet placed are not
+        // played), and the input is the screen's, not eaten: a tap on PLAY plays, on CO-OP opens it.
         const float b = introBeats();
-        if (input && b < kControlsFrom && introSkipAt_ < 0.0) {
+        if (input && b < kBuildDone) {
             if (introPending_) startIntro();
-            introSkipB_ = std::fmax(introBeats(), -kIntroPointBeats);
-            introSkipAt_ = now;
+            introAt_ = now - static_cast<double>(kBuildDone) * kTicksPerBeat;
+            introSkipAt_ = -1.0;
             notesBase_ = -1.0;
-            ptr.pressed = ptr.released = ptr.down = false;
-            keyPrimary_ = keyBack_ = false;
         }
         titleQuietFrom_ = titleHideLine_ = titleWakeAt_ = -1.0;
         return;
+    }
+    if (input && screen_ == Screen::Title && trans_ == Trans::Home && transBeats(transLine_) >= 0.0f && transBeats(transLine_) < kBuildDone) {
+        // (the same for home's build of the title, after a run: an input completes it, and is the screen's)
+        transLine_ = now - static_cast<double>(kBuildDone) * kTicksPerBeat;
+        notesBase_ = -1.0;
+    }
+    if (input && screen_ == Screen::Title && trans_ == Trans::Fold && !liftRoom_ && transBeats(transTap_) < kFoldTitleAt + 3.5f) {
+        // (and for the title building back from MODES's BACK)
+        transTap_ = now - static_cast<double>(kFoldTitleAt + 3.5f) * kTicksPerBeat;
+        notesBase_ = -1.0;
     }
     if (!(flow_ && screen_ == Screen::Title && trans_ == Trans::None && !session_)) {
         titleQuietFrom_ = titleHideLine_ = titleWakeAt_ = -1.0;  // (not at rest: the count starts when it is)

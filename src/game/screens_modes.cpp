@@ -472,6 +472,14 @@ void Play::openModes(Screen back) {
     RF_LOG("play: MODES from the %s (the lift's beat line %.0f, now %.0f)", liftRoom_ ? "lobby" : "title", liftLine_, now);
 }
 
+void Play::liftComplete() {
+    // (an input in the lift: MODES at rest now; the lift's notes not yet placed are not played)
+    if (trans_ != Trans::Lift || liftBeats() >= kLiftDone) return;
+    liftLine_ = transNow() - static_cast<double>(kLiftDone) * kTicksPerBeat;
+    liftSkipAt_ = -1.0;
+    liftNotes_ = 0xFF;
+}
+
 float Play::liftBeats() const {
     float b = transBeats(liftLine_);
     if (liftSkipAt_ >= 0.0) {

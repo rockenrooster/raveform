@@ -48,7 +48,8 @@ $modes = @('set', 'one', 'headliners', 'blast', 'tracers', 'songline', 'jam')
 if ($Part -eq 'p0') {
     $singles = @($modes | ForEach-Object { "m8_title_pill_$_" }) + @($modes | ForEach-Object { "m8_modes_$_" }) + @('m8_modes_bonus')
     $strips = [ordered]@{ 'm8_t_lift' = 20; 'm8_t_back' = 24; 'm8_t_mode' = 8; 'm8_t_track' = 16; 'm8_t_drop' = 16; 'm8_t_mode_one' = 8;
-                          'm8_t_mode_headliners' = 8; 'm8_t_mode_blast' = 8; 'm8_t_mode_tracers' = 8; 'm8_t_mode_songline' = 8; 'm8_t_mode_jam' = 8 }
+                          'm8_t_mode_headliners' = 8; 'm8_t_mode_blast' = 8; 'm8_t_mode_tracers' = 8; 'm8_t_mode_songline' = 8; 'm8_t_mode_jam' = 8;
+                          'm8_intro_tap' = 8 }
     $rooms = @('m8_modes_room', 'm8_lobby_host', 'm8_lobby_join', 'm8_lobby_versus', 'm8_join_modes')
 } elseif ($Part -eq 'p1') {
     # p1: ONE TRACK (the load-in a strip two sixteenths apart, the name card, the outro's card, the result)

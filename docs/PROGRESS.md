@@ -4,6 +4,18 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-16, a tap during the title's intro works at once
+
+The owner: "It seems the menu buttons are locked until the full Raveform intro plays." As built (`design/screens.md` "Title"), an
+input during the intro skipped it but was eaten, and the controls took taps only from the intro's fourth beat: a tap on PLAY
+started the skip, and only a second tap, once everything had arrived, played. Now any input ends the intro at once (everything on
+screen in that frame, the word's notes not yet placed not played) and the input is the screen's: a tap on PLAY plays, on CO-OP or
+the mode pill opens it (`Play::titleIdleFrame`). The same for the other builds of the title that held the controls: home's after a
+run, and the title building back from MODES's BACK; and MODES's lift (`Play::liftComplete`): an input puts MODES at rest at once and
+is MODES's. The intro with no input plays as before. Picture `m8_intro_tap` (`review-m8.ps1 -Part p0`): the intro, a tap where PLAY
+stands at rest half way through the word: the title whole in that frame and the drop-in started by the same tap. `design/screens.md`
+(the lead's) still says the input is eaten: the owner's word changes it.
+
 ## 2026-11-15/16, the two-hour stress test on five devices
 
 The owner: "stress test the game (2 hours) with connected devices". `scripts\stress-devices.ps1 -RoundMinutes 38 -Rounds 3`

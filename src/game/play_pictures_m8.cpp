@@ -23,7 +23,7 @@ enum class M8 : u8 {
     BlTorrent, BlWave, BlLastCall, BlCut, BlBack, BlCount, BlResult,
     // (M8 part 7: the plan's pictures that were missing)
     JamPads, JamEmpty, SlGold, SlStreak1, SlStreak2, SlStreak3, SlStreak4, SlBend, SlRace4, TrLightsOut, TrTurf4, ModesBonus,
-    TrCut, TrSpin, TrDuet, TrRingBig, TrBoost
+    TrCut, TrSpin, TrDuet, TrRingBig, TrBoost, IntroTap
 };
 struct M8Pic {
     const char* name;  // m8_<name>
@@ -91,6 +91,9 @@ const M8Pic kM8Pics[] = {
     {"tr_boost_time_stretch", M8::TrBoost, 0}, {"tr_boost_freeze_frame", M8::TrBoost, 1}, {"tr_boost_halo", M8::TrBoost, 2},
     {"tr_boost_magnet_storm", M8::TrBoost, 3}, {"tr_boost_black_hole", M8::TrBoost, 4}, {"tr_boost_colossus", M8::TrBoost, 5},
     {"tr_boost_confetti", M8::TrBoost, 6}, {"tr_boost_long", M8::TrBoost, 7}, {"tr_boost_echo", M8::TrBoost, 8},
+    // The owner (2026-11-16: "the menu buttons are locked until the full ... intro plays"): the title's intro, a tap where PLAY
+    // stands at rest half way through the word: the intro ends at once and the tap plays (a strip an eighth apart from the tap).
+    {"intro_tap", M8::IntroTap, 0},
 };
 constexpr u32 kM8Count = sizeof(kM8Pics) / sizeof(kM8Pics[0]);
 constexpr u32 kM8At = 300;  // (the title at rest: as screen_title's)
@@ -136,6 +139,10 @@ bool Play::scriptSetupM8() {
             }
             break;
         case M8::Lift: break;
+        case M8::IntroTap:
+            introPending_ = false;  // (started by the script)
+            stripStride_ = static_cast<u32>(std::lround(1800.0 / std::fmax(w.tempoAt(0.0), 30.0f)));  // (an eighth)
+            break;
         case M8::LoadIn:
         case M8::CardOne:
         case M8::OneOutro:
@@ -378,6 +385,24 @@ bool Play::scriptInputM8(StickInput& in) {
     const M8Pic& pic = kM8Pics[m8Pic_];
     const u32 t = scriptTick_;
     const i64 now = static_cast<i64>(frameNo_);
+    if (pic.kind == M8::IntroTap) {
+        in = trans_ == Trans::None || trans_ == Trans::Intro ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+        if (t == kM8At) {
+            startIntro();
+            m8Last_ = 1;
+        }
+        const Vec2 play{0.5f * ui_.W(), 800.0f * ui_.H() / 1080.0f};  // (PLAY's place at rest)
+        if (m8Last_ == 1 && trans_ == Trans::Intro && introBeats() >= 1.5f) {
+            uiPointer(play, true);
+            m8Last_ = 2;
+            captureFrom_ = now;
+            RF_LOG("play: picture '%s': a tap on PLAY's place at intro beat %.2f", opt_.picture, static_cast<double>(introBeats()));
+        } else if (m8Last_ == 2) {
+            uiPointer(play, false);
+            m8Last_ = 3;
+        }
+        return true;
+    }
     if (pic.kind == M8::ModesBonus) {
         if (captureFrom_ < 0 && t >= 120) captureFrom_ = now + 1;
         return true;

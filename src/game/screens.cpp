@@ -326,11 +326,11 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
     // is on its way out, or not yet in, it takes no taps (Back still cancels the drop-in's wait on the title).
     UiPointer ptr = uiPtr_;
     titleIdleFrame(ptr);  // screens.md "Title": the quiet title leaves; the input that brings it back is eaten here
-    if (trans_ == Trans::Lift && liftBeats() < 2.0f && liftSkipAt_ < 0.0 && (ptr.pressed || keyPrimary_ || keyBack_ || keyNav_)) {
-        // M8 (design/modes/screens.md "Transitions"): any input in the rule's lift skips it to its end within a beat (it is eaten).
-        liftSkipB_ = std::fmax(liftBeats(), 0.0f);
-        liftSkipAt_ = transNow();
-        liftNotes_ = 0xFF;
+    if (trans_ == Trans::Lift && (ptr.pressed || keyPrimary_ || keyBack_ || keyNav_)) {
+        // M8 (design/modes/screens.md "Transitions": any input in the rule's lift skips it). The owner (2026-11-16, the title's
+        // intro: "the menu buttons are locked until the full ... intro plays"): it ends at once, MODES at rest in this frame, and
+        // the input is MODES's (a card, PLAY, the arrows), not eaten.
+        liftComplete();
     }
     if (transInputLocked()) {
         ptr.pressed = ptr.released = ptr.down = false;

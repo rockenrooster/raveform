@@ -778,6 +778,7 @@ private:
     float liftSkipB_ = 0.0f;
     TitleLook liftFrom_;                 // the title as the lift's tap found it
     float liftBeats() const;             // b now (the skip's quickening included)
+    void liftComplete();                 // an input in the lift: MODES at rest at once (the input is MODES's)
     // M8 part 1 (design/modes/one_track.md; game/play_modes.cpp): ONE TRACK's run in the game: the load-in's show and sound, the
     // outro's card, the result and its records, NEXT TRACK.
     void modesEvent(const sim::Event& e);       // (afterTick) KitLand, RunEnd, a fight's start and end
