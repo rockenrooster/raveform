@@ -690,8 +690,9 @@ void Play::screenGameOver(Ui& ui) {
     // M6 (screens.md "A finished run"): a run that finished the set reads SET COMPLETE in gold where RUN OVER stands. M8
     // (design/modes/screens.md "Results"): ONE TRACK reads TRACK COMPLETE in gold when its boss fell.
     const bool one = world_->setup().mode == sim::Mode::OneTrack;
-    const bool won = one ? runCleared_ : runSetComplete_;
-    const char* topWord = won ? (one ? "TRACK COMPLETE" : "SET COMPLETE") : "RUN OVER";
+    const bool acts = world_->setup().mode == sim::Mode::Headliners;
+    const bool won = one || acts ? runCleared_ : runSetComplete_;
+    const char* topWord = won ? (one ? "TRACK COMPLETE" : (acts ? "HEADLINERS COMPLETE" : "SET COMPLETE")) : "RUN OVER";
     if (out > 0.0f) {
         const Vec3 c = won ? gold : palette_->accent;
         streak(topWord, 44.0f * s, 150.0f * s, std::fmax(0.045f * 44.0f * s, 0.55f * s), c, c, c, won ? 1.8f : 1.6f);
@@ -700,6 +701,22 @@ void Play::screenGameOver(Ui& ui) {
     } else {
         ui.text({cx, 150.0f * s}, 44.0f * s, palette_->accent, 1.6f, topWord);
     }
+    if (acts) {
+        // M8 (design/modes/screens.md "Results"): HEADLINERS's headline: the time in gold when all ten fell, else ACT n OF 10.
+        char head[24];
+        const u32 secs = static_cast<u32>(runSeconds_);
+        u32 fell = 0;
+        for (float a : actSecs_) fell += a > 0.0f ? 1u : 0u;
+        if (won) std::snprintf(head, sizeof head, "%u:%02u", secs / 60u, secs % 60u);
+        else std::snprintf(head, sizeof head, "ACT %u OF 10", fell + 1u > 10u ? 10u : fell + 1u);
+        const float cap = (won ? 150.0f : 96.0f) * s;
+        const float wdt = ui.measure(cap, head);
+        if (out <= 0.0f)
+            ui.font().drawField(ui.draw().hud, {cx - 0.5f * wdt, 360.0f * s - cap}, cap, 4.5f * s * cap / (150.0f * s), ui.col(white, 1.6f),
+                                ui.col(won ? gold : white, 1.6f), ui.col(won ? amber : palette_->accent, 1.6f), head);
+        setHudFade(1.0f - out);
+        if (newBest_ && out <= 0.0f) ui.text({cx, 410.0f * s}, 22.0f * s, gold, 1.8f, "NEW BEST");
+    } else
     // The score counts up over one bar.
     {
         const float bars = static_cast<float>(overS_ * (clock_.bpm() / 60.0f) / 4.0f);
@@ -738,7 +755,7 @@ void Play::screenGameOver(Ui& ui) {
     // Four numbers: TIME, TRACK, BEST CHAIN, KILLS.
     {
         const PlayerState& p = world_->player(0);
-        char v[4][24];
+        char v[4][32];
         const u32 secs = static_cast<u32>(runSeconds_);
         std::snprintf(v[0], sizeof v[0], "%u:%02u", secs / 60u, secs % 60u);
         std::snprintf(v[1], sizeof v[1], "%u", runTrackMax_);
@@ -750,6 +767,23 @@ void Play::screenGameOver(Ui& ui) {
         std::snprintf(v[3], sizeof v[3], "%u", p.kills);
         static const char* const kLabels[4] = {"TIME", "TRACK", "BEST CHAIN", "KILLS"};
         static const char* const kOneLabels[4] = {"TIME", "BEST CHAIN", "KILLS", "BOSS"};
+        static const char* const kActLabels[4] = {"BOSSES", "HITS TAKEN", "FASTEST", "SCORE"};
+        if (acts) {
+            // (M8: BOSSES (or TIME when not all fell), HITS TAKEN, FASTEST (a boss's name and its seconds), SCORE)
+            u32 fell = 0, fastest = 10;
+            for (u32 a = 0; a < 10; ++a)
+                if (actSecs_[a] > 0.0f) {
+                    ++fell;
+                    if (fastest == 10 || actSecs_[a] < actSecs_[fastest]) fastest = a;
+                }
+            if (won) std::snprintf(v[0], sizeof v[0], "%u", fell);
+            std::snprintf(v[1], sizeof v[1], "%u", p.hitsTaken);
+            if (fastest < 10) std::snprintf(v[2], sizeof v[2], "%s %.0f S", sim::bossName(sim::bossOfSong(fastest)), static_cast<double>(actSecs_[fastest]));
+            else std::snprintf(v[2], sizeof v[2], "-");
+            char sc[32];
+            groupDigits(sc, sizeof sc, p.score);
+            std::snprintf(v[3], sizeof v[3], "%s", sc);
+        }
         if (one) {
             // (M8, design/modes/screens.md "Results": TIME, BEST CHAIN, KILLS, BOSS: its seconds, or a dash)
             std::snprintf(v[1], sizeof v[1], "%s", v[2]);
@@ -759,8 +793,11 @@ void Play::screenGameOver(Ui& ui) {
         }
         for (u32 k = 0; k < 4; ++k) {
             const float x = cx + (static_cast<float>(k) - 1.5f) * 330.0f * s;
-            ui.text({x, 500.0f * s + sink}, 14.0f * s, palette_->accent, 1.3f, one ? kOneLabels[k] : kLabels[k]);
-            ui.text({x, 556.0f * s + sink}, 40.0f * s, white, 1.5f, v[k]);
+            const char* label = acts ? (k == 0 && !won ? "TIME" : kActLabels[k]) : (one ? kOneLabels[k] : kLabels[k]);
+            ui.text({x, 500.0f * s + sink}, 14.0f * s, palette_->accent, 1.3f, label);
+            // (M8: a long value fits its column: HEADLINERS's score, FASTEST's boss)
+            const float fit = std::fmin(1.0f, 300.0f * s / std::fmax(ui.measure(40.0f * s, v[k]), 1.0f));
+            ui.text({x, 556.0f * s + sink}, 40.0f * s * fit, white, 1.5f, v[k]);
         }
     }
     // M6 (screens.md "What ended it"): ENDED BY in the accent and what took the last cell in white, as the game names it.

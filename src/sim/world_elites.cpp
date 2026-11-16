@@ -60,7 +60,7 @@ void World::eliteBar(const Phrase& ph, double land) {
     // traits.md "How often" (d59062f): from Track 3's first cycle, never in a Break, a boss fight or a mini-boss fight; about once
     // in 16 bars in Track 3 falling evenly to once in 8 by Track 6 (and so on). The budget pays x 4 the species' threat.
     DirectorState& d = director_;
-    if (ph.track < kElFromTrack || ph.section == Section::Break || ph.trackChange || ph.bossDrop || boss_.active) return;
+    if (ph.track < kElFromTrack || ph.section == Section::Break || ph.trackChange || ph.bossDrop || boss_.active || d.actForm) return;  // (M8: none in HEADLINERS)
     const float t = static_cast<float>(ph.track < 6 ? ph.track : 6u);
     const float every = kElPaceBarsT3 + (kElPaceBarsT6 - kElPaceBarsT3) * (t - 3.0f) / 3.0f;
     eliteClock_ += 1.0f / every;

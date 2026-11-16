@@ -73,6 +73,10 @@ struct HudState {
     const char* completeWords = "SET COMPLETE";  // M8: TRACK COMPLETE for ONE TRACK's outro
     float completeBars = 2.0f;                   // ... standing this many bars
     const char* modeWords = nullptr;             // M8: the mode's words under the name card's name (BEAT ITS BOSS)
+    const char* cardSmall = nullptr;             // M8 HEADLINERS: ACT 3 OF 10 in place of TRACK n ...
+    const char* cardName = nullptr;              // ... and the boss's name in place of the Track's
+    const char* completeLine = nullptr;          // M8 HEADLINERS: the time under HEADLINERS COMPLETE in place of the score
+    const char* goalLine = nullptr;              // M8 (design/modes/screens.md "The goal line"): ACT 3 OF 10   4:12
     u8 bossFlashPart = 0xFF;    // ... the part (Kaleidos's pair, a Longwave segment, a Voice; 0xFF the whole bar)
     float dashCharge = 1.0f;
     bool alive = true;

@@ -15,7 +15,7 @@ namespace rf {
 using namespace sim;
 
 namespace {
-enum class M8 : u8 { TitlePill, Modes, Lift, Back, Step, Track, Drop, LoadIn, CardOne, OneOutro, ResultOne };
+enum class M8 : u8 { TitlePill, Modes, Lift, Back, Step, Track, Drop, LoadIn, CardOne, OneOutro, ResultOne, CardAct, ResultActs };
 struct M8Pic {
     const char* name;  // m8_<name>
     M8 kind;
@@ -37,6 +37,8 @@ const M8Pic kM8Pics[] = {
     // first downbeat: 27 upgrades spiralling in), the name card on Track 4 (TRACK 4, AURORA, BEAT ITS BOSS), TRACK COMPLETE in
     // Track 1's outro and the result after it (the bot plays to the boss, hits costing nothing).
     {"loadin", M8::LoadIn, 6}, {"card_one", M8::CardOne, 4}, {"one_outro", M8::OneOutro, 1}, {"result_one", M8::ResultOne, 1},
+    // Part 2 (HEADLINERS): act 1's card (ACT 1 OF 10, KALEIDOS, FIRST LIGHT 110 BPM) and the result after the ten acts.
+    {"card_act", M8::CardAct, 0}, {"result_headliners", M8::ResultActs, 0},
 };
 constexpr u32 kM8Count = sizeof(kM8Pics) / sizeof(kM8Pics[0]);
 constexpr u32 kM8At = 300;  // (the title at rest: as screen_title's)
@@ -85,12 +87,15 @@ bool Play::scriptSetupM8() {
         case M8::LoadIn:
         case M8::CardOne:
         case M8::OneOutro:
-        case M8::ResultOne: {
-            // A ONE TRACK run from its first downbeat (hits cost nothing; the result's picture has the game's screens).
+        case M8::ResultOne:
+        case M8::CardAct:
+        case M8::ResultActs: {
+            // A ONE TRACK (or HEADLINERS) run from its first downbeat (hits cost nothing; the results' pictures have the screens).
+            const bool acts = pic.kind == M8::CardAct || pic.kind == M8::ResultActs;
             RunSetup su;
-            su.mode = Mode::OneTrack;
-            su.track = pic.mode;
-            flow_ = pic.kind == M8::ResultOne;
+            su.mode = acts ? Mode::Headliners : Mode::OneTrack;
+            su.track = acts ? 1 : pic.mode;
+            flow_ = pic.kind == M8::ResultOne || pic.kind == M8::ResultActs;
             screen_ = Screen::Run;
             w.resetRun(opt_.seed, 0.0, 1, 0xF, su);
             w.rules().godMode = true;
@@ -99,6 +104,7 @@ bool Play::scriptSetupM8() {
             runTrackMax_ = su.track;
             if (pic.kind == M8::LoadIn) stripStride_ = static_cast<u32>(std::lround(2.0 * 900.0 / std::fmax(w.tempoAt(0.0), 30.0f)));
             if (pic.kind == M8::OneOutro || pic.kind == M8::ResultOne) scriptFastForwardS_ = 112.0f;  // (into the boss's fight)
+            if (pic.kind == M8::ResultActs) scriptFastForwardS_ = 495.0f;  // (into act 10's fight)
             break;
         }
     }
@@ -111,13 +117,15 @@ bool Play::scriptInputM8(StickInput& in) {
     const M8Pic& pic = kM8Pics[m8Pic_];
     const u32 t = scriptTick_;
     const i64 now = static_cast<i64>(frameNo_);
-    if (pic.kind == M8::LoadIn || pic.kind == M8::CardOne || pic.kind == M8::OneOutro || pic.kind == M8::ResultOne) {
+    if (pic.kind == M8::LoadIn || pic.kind == M8::CardOne || pic.kind == M8::OneOutro || pic.kind == M8::ResultOne || pic.kind == M8::CardAct ||
+        pic.kind == M8::ResultActs) {
         // A ONE TRACK run: the bot plays it.
         in = w.player(0).alive ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
         if (captureFrom_ >= 0 || ffRunning_) return true;
         const double bars = music1_ / kTicksPerBar;
         if (pic.kind == M8::LoadIn && t >= 1) captureFrom_ = now + 1;
-        if (pic.kind == M8::CardOne && bars >= 1.25) captureFrom_ = now + 1;
+        if ((pic.kind == M8::CardOne || pic.kind == M8::CardAct) && bars >= 1.25) captureFrom_ = now + 1;
+        if (pic.kind == M8::ResultActs && screen_ == Screen::GameOver && overS_ > 2.4f) captureFrom_ = now + 1;
         if (pic.kind == M8::OneOutro && trackComplete_ && hudBarsSince(setCompleteT_) >= 2.0f) captureFrom_ = now + 1;
         if (pic.kind == M8::ResultOne && screen_ == Screen::GameOver && runCleared_ && overS_ > 2.4f) captureFrom_ = now + 1;
         if (captureFrom_ >= 0) RF_LOG("play: picture '%s' captures from frame %lld (bar %.2f)", opt_.picture, static_cast<long long>(captureFrom_), bars);

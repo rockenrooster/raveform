@@ -51,7 +51,7 @@ void World::dealKit(u32 p, u32 count, u32 act) {
         k.orb[k.count++] = u;
     }
     // The run's own Trios go on from here (its first is no longer the Split and Double-Time one).
-    trio_[p].opened = k.count;
+    trio_[p].opened += k.count;
     trio_[p].sinceRiff = sinceRiff;
 }
 

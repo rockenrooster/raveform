@@ -836,8 +836,14 @@ void World::killBoss(u8 owner) {
         }
         // The Track ends: its Track-change Break begins on that bar line (M8, ONE TRACK: its outro, and the run's end).
         // (M8 versus, one_track.md: THE SET in versus ends at the set list's last boss, SET COMPLETE, without the encore)
-        if (setup_.mode == Mode::OneTrack || (setup_.versus && d.track >= d.songs)) d.outroBar = endBar;
+        if (setup_.mode == Mode::OneTrack || ((setup_.versus || setup_.mode == Mode::Headliners) && d.track >= d.songs)) d.outroBar = endBar;
         else d.changeBar = endBar;
+        if (setup_.mode == Mode::Headliners && d.track % 2u == 0u && d.track <= 8u) {
+            // headliners.md rule 4: the bosses of acts 2, 4, 6 and 8 drop an Extra Life as they fall, for a player holding fewer than
+            // two (each player's own orb, as the set's).
+            for (u32 p = 0; p < playerCount_; ++p)
+                if (players_[p].present && isLocal(p) && players_[p].extraLives < 2) dropBoost(s.pos, static_cast<u8>(kPickupExtraLife + p));
+        }
     }
     if (role_ == NetRole::Host && netLog_.bossCount < NetLog::kBoss) {
         NetLog::Boss& o = netLog_.boss[netLog_.bossCount++];

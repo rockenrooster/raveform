@@ -188,7 +188,7 @@ void World::arenaBar(const Phrase& ph, u32 bar, double barTick) {
         // by the seed from the Track's list, never the event of the Track before; not in a fight. An event never outlasts its Groove
         // (arena.md, play test 3).
         if (!ph.trackChange && ph.section == Section::Groove && ph.sectionBar == 0 && !fight && arenaEvent_.stage != 1 &&
-            arenaEvent_.kind == kNoEvent) {
+            arenaEvent_.kind == kNoEvent && !director_.actForm) {  // (M8 HEADLINERS: no arena events)
             const ArenaData& a = species_->arena;
             const u32 t = songOfTrack(ph.track, director_.songs) + 1u;
             const bool due = (t == 1 && ph.cycle == 2) || (ph.track >= 2 && ph.cycle == 2) || (ph.track >= 4 && ph.cycle == 1);

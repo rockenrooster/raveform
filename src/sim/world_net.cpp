@@ -232,7 +232,8 @@ void World::applyNetOp(const NetOp& op) {
                 killBoss(op.b);
                 // The host's bar line, not this device's reading of it.
                 if (!mini) {
-                    if (setup_.mode == Mode::OneTrack || (setup_.versus && director_.track >= director_.songs)) director_.outroBar = op.u;  // (M8: the outro)
+                    if (setup_.mode == Mode::OneTrack || ((setup_.versus || setup_.mode == Mode::Headliners) && director_.track >= director_.songs))
+                        director_.outroBar = op.u;  // (M8: the outro)
                     else director_.changeBar = op.u;
                 } else {
                     const u32 natural = miniNaturalEnd();

@@ -514,6 +514,12 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         }
         const float cap = 11.0f * s;
         font.drawField(d.hud, {x0 + bw + 14.0f * s, y + 0.5f * cap}, cap, 0.55f * s, col(white, 1.0f), col(white, 1.0f), col(white, 1.0f), text);
+        if (st.goalLine && !(w.boss().active && !isMiniBoss(w.boss().kind))) {
+            // M8 (design/modes/screens.md "The goal line"): one line 22 px under the phrase bar, cap 14 (not under a boss's bar).
+            const float gc = 14.0f * s;
+            font.drawField(d.hud, {cx - 0.5f * textW(font, gc, st.goalLine), y + 22.0f * s + 11.0f * s}, gc, 0.7f * s, col(accent, 1.4f), col(white, 1.4f),
+                           col(white, 1.4f), st.goalLine);
+        }
     }
     // The pause ring: top right corner, 28 px with two bars.
     {
@@ -683,7 +689,8 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             const float write = clampf(u / kCardWrite, 0.0f, 1.0f);
             const float out = clampf((u - kCardOut) / kCardStreak, 0.0f, 1.0f);
             char small[24];
-            std::snprintf(small, sizeof small, "TRACK %u", ph.track);
+            std::snprintf(small, sizeof small, "%s", st.cardSmall ? st.cardSmall : "");
+            if (!st.cardSmall) std::snprintf(small, sizeof small, "TRACK %u", ph.track);
             // GAME_DESIGN 8 (the loop is where a run ends): the loop's first Track card says so, ENCORE above the name and
             // NO MORE REFILLS under it; once the halo burns down its last line is HALO n (the capacity the burn left; the first
             // card that burns shows both lines), all at the size of the TRACK n line.
@@ -693,7 +700,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             std::snprintf(halo, sizeof halo, "HALO %u", static_cast<u32>(w.player(w.viewPlayer()).cellCap));
             const float under = 28.0f * s + 26.0f * s;  // a small line and its gap
             const float nameTop = 0.62f * H + (encore ? 40.0f * s : 0.0f);  // (the extra line above stays clear of the ship)
-            const char* lines[5] = {small, st.trackName, nullptr, nullptr, nullptr};
+            const char* lines[5] = {small, st.cardName ? st.cardName : st.trackName, nullptr, nullptr, nullptr};
             float caps[5] = {28.0f * s, 110.0f * s, 28.0f * s, 28.0f * s, 28.0f * s};
             float tubes[5] = {1.2f * s, 4.0f * s, 1.2f * s, 1.2f * s, 1.2f * s};
             float tops[5] = {nameTop - caps[0] - 26.0f * s, nameTop, 0.0f, 0.0f, 0.0f};
@@ -748,7 +755,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             }
             // The flare: two arms of white light, riding the writing's front along the name once.
             if (write > 0.0f && write < 1.0f) {
-                const float w0 = textW(font, caps[1], st.trackName);
+                const float w0 = textW(font, caps[1], lines[1]);
                 const Vec2 c{cx - 0.5f * w0 + w0 * write, nameTop + 0.5f * caps[1]};
                 const float arm = 0.9f * caps[1], fl = std::sin(write * kPi);
                 for (float sgn : {-1.0f, 1.0f})
@@ -770,6 +777,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
                        words);
         char num[32];
         groupDigits(num, sizeof num, st.setCompleteScore);
+        if (st.completeLine) std::snprintf(num, sizeof num, "%s", st.completeLine);  // (M8 HEADLINERS: the time)
         const float c2 = 28.0f * s;
         font.drawField(d.hud, {cx - 0.5f * textW(font, c2, num), top + cap + 26.0f * s}, c2, 1.0f * s, col(white, 1.4f * k), col(white, 1.4f * k),
                        col(white, 1.4f * k), num);

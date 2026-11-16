@@ -1085,6 +1085,27 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         }
     }
     if (modeRun()) hs.modeWords = species_->modes.of(w.setup().mode).nameCard;  // M8: BEAT ITS BOSS under the name card
+    if (w.setup().mode == Mode::Headliners) {
+        // M8 (headliners.md "Look"): the act's card (ACT 3 OF 10, the boss's name, the Track and its tempo under it); the goal
+        // line, the run's time running; HEADLINERS COMPLETE with the time.
+        const u32 act = w.phrase().track;
+        std::snprintf(cardSmall_, sizeof cardSmall_, "ACT %u OF 10", act);
+        std::snprintf(cardName_, sizeof cardName_, "%s", bossName(bossOfSong(w.phrase().song)));
+        static char words[48];
+        std::snprintf(words, sizeof words, "%s  %.0f BPM", songName(w.phrase().song), static_cast<double>(w.phrase().trackBpm));
+        hs.cardSmall = cardSmall_;
+        hs.cardName = cardName_;
+        hs.modeWords = words;
+        const u32 secs = static_cast<u32>(runSeconds_);
+        std::snprintf(goalLine_, sizeof goalLine_, "ACT %u OF 10   %u:%02u", act, secs / 60u, secs % 60u);
+        hs.goalLine = goalLine_;
+        if (trackComplete_) {
+            const u32 t = static_cast<u32>(runSeconds_);
+            hs.completeWords = "HEADLINERS COMPLETE";
+            std::snprintf(completeLine_, sizeof completeLine_, "%u:%02u", t / 60u, t % 60u);
+            hs.completeLine = completeLine_;
+        }
+    }
     hs.dashCharge = controller_.dashCharge(coop() ? netHeard_ : clock_.heardNow());
     hs.alive = p.alive;
     hs.retryPending = w.restartPending();

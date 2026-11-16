@@ -125,6 +125,10 @@ struct DirectorState {
     // M8 versus (design/modes/README.md 8, V5 and V7): the leader as of the last bar line (the crown; 0xFF: none, the count level at
     // the top) and the underdog until the next (0xFF: none). The host's (or the solo world's) decision; clients take it.
     u8 crown = 0xFF, underdog = 0xFF;
+    // M8 HEADLINERS (design/modes/headliners.md): the acts' form instead of the cycles: act 1 a Groove and a Build before its boss's
+    // Drop, every later act the set's Track-change Break into its Track, a Build and the Drop (modes.json forms). 0: the set's.
+    u8 actForm = 0;
+    u8 actGroove = 4, actBuild = 4;
 };
 
 // Where bar `bar` of the run sits, given what the director knows now.

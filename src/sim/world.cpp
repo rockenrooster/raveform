@@ -112,6 +112,21 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask, co
             viewPlayer_ = p;
             break;
         }
+    if (setup.mode == Mode::Headliners && species_) {
+        // M8 (headliners.md): the ten bosses back to back from First Light, the acts' form; the kit a run holds as Kaleidos enters;
+        // one Extra Life held at the start.
+        director_.actForm = 1;
+        const ModesData::Forms& f = species_->modes.forms;
+        director_.actGroove = f.headlinersFirstAct.count >= 3 ? static_cast<u8>(f.headlinersFirstAct.s[0].bars) : 4u;
+        director_.actBuild = f.headlinersAct.count >= 2 ? static_cast<u8>(f.headlinersAct.s[f.headlinersAct.count - 2].bars) : 4u;
+        director_.outroBars = species_->modes.oneTrack.outroBars;
+        phrase_ = phraseAt(director_, 0);
+        for (u32 p = 0; p < playerCount_; ++p)
+            if (players_[p].present) {
+                dealKit(p, species_->modes.kit.atBoss[0], 1);
+                players_[p].extraLives = 1;
+            }
+    }
     if (setup.mode == Mode::OneTrack && species_) {
         // M8 (one_track.md): the chosen Track of the set from its first Groove, the set list at ten (nothing of the loop), with
         // each player's kit; its boss's death schedules the outro and the run's end.
@@ -1523,6 +1538,7 @@ u64 World::hash() const {
         val(director_.outroBar);
         val(director_.runEnded);
     }
+    if (director_.actForm) val(director_.actForm);
     if (setup_.versus) {
         val(director_.crown);
         val(director_.underdog);

@@ -68,7 +68,8 @@ void Play::modesEvent(const Event& e) {
         case EventType::BossDeath:
             if (isMiniBoss(static_cast<BossKind>(e.a))) break;
             if (bossFromS_ >= 0.0f) bossSecs_ = runSeconds_ - bossFromS_;
-            if (w.setup().mode == Mode::OneTrack && !trackComplete_) {
+            if (w.setup().mode == Mode::Headliners && w.phrase().track >= 1 && w.phrase().track <= 10) actSecs_[w.phrase().track - 1u] = bossSecs_;
+            if ((w.setup().mode == Mode::OneTrack || (w.setup().mode == Mode::Headliners && w.phrase().track >= 10)) && !trackComplete_) {
                 // one_track.md: the outro: TRACK COMPLETE with the score under it, where the name card stood, for its four bars.
                 trackComplete_ = true;
                 setCompleteT_ = static_cast<float>(tickEnd_ - e.age);
@@ -124,6 +125,7 @@ void Play::modesEvent(const Event& e) {
             }
             break;
         case EventType::Restart:
+            for (float& a : actSecs_) a = 0.0f;
             runCleared_ = trackComplete_ = kitClosed_ = false;
             kitChirps_ = 0;
             bossFromS_ = bossSecs_ = -1.0f;
@@ -200,6 +202,19 @@ void Play::modesEndRun(bool died) {
     finalScore_ = p.score;
     newBest_ = false;
     modeBest_ = 0;
+    if (su.mode == Mode::Headliners && !coop()) {
+        // README.md 9, `headliners`: the acts cleared, then the time (ten in 9:42 beats ten in 10:05, and both beat nine).
+        u32 acts = 0;
+        for (float a : actSecs_) acts += a > 0.0f ? 1u : 0u;
+        const u32 secs = static_cast<u32>(runSeconds_);
+        modeBest_ = records_.headlinersActs;
+        newBest_ = acts > records_.headlinersActs || (acts == records_.headlinersActs && acts > 0 && secs < records_.headlinersSeconds);
+        if (newBest_) {
+            records_.headlinersActs = acts;
+            records_.headlinersSeconds = secs;
+        }
+        if (keep && !su.versus) saveModeRecords(records_);
+    }
     if (su.mode == Mode::OneTrack && su.track >= 1 && su.track <= 10) {
         ModeRecords::One& r = records_.one[su.track - 1u];
         modeBest_ = r.score;

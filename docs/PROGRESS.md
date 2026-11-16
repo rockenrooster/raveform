@@ -110,6 +110,26 @@ Measured: the 5-minute four-bot net soak, versus against team: both pass, census
 error RMS 1.70 wu (team 1.56), p95 2.0 (2.25), max 165 wu (85: a shoved or knocked-out ship's moment); downstream 268 kbps at most
 (264). The set's determinism hashes are unchanged.
 
+### Part 2: HEADLINERS (2026-11-16)
+
+Built (`design/modes/headliners.md`): the acts' form in the director (`DirectorState::actForm`: act 1 a Groove 4 and a Build 4 before
+Kaleidos's Drop, every later act the set's Track-change Break into its Track, a Build 4 and its boss's Drop held; no cycles, no
+mini-boss, no elites or arena events; the Build's fodder at half the Track's crowd); the kit as Kaleidos enters (`kit.atBoss[1]`) and
+the top-up on each act's Break (what a player is short of the next boss's `kit.atBoss`, landed over its first two bars, the act's
+own stream); the fallen boss's bonus Trio on the Break's third bar for its six bars; one Extra Life held at the start and one from the
+bosses of acts 2, 4, 6 and 8; after act 10 the outro and the run's end. The game: the act's card (`ACT 3 OF 10`, the boss's name,
+the Track and its tempo), the goal line (`ACT 3 OF 10   4:12`, not under a boss's bar), `HEADLINERS COMPLETE` with the time, the
+result (the time in gold or `ACT n OF 10`; BOSSES or TIME, HITS TAKEN, FASTEST with the boss's name, SCORE), the `headliners` record
+(acts, then time). `raveform_headless --sim mode --headliners`; pictures `review-m8.ps1 -Part p2`.
+
+Measured (`--sim mode --headliners --seeds 20`): the assist bot and the novice play all ten acts in 20 of 20, the run 6.6 and 7.0
+minutes (the page's 10 to 12). The fights (median seconds, acts 1 to 10), the novice: 35, 11, 10, 16, 6.9, 12, 12, 15, 16, 27;
+the assist bot: 35, 11, 8.6, 14, 5.9, 9.8, 9.8, 15, 14, 25: short of 30 to 60 from act 2 on with the kit as measured, as in ONE
+TRACK (the same question for the owner: the kit's size).
+
+Not done in part 2: versus's damage race (each act to whoever did the boss the most damage, the damage bar under the boss's, `ACT
+3: P2`, the underdog's damage bonus), the bill of ten stars under the act's card, the card's and HEADLINERS COMPLETE's sounds.
+
 Not done in part 1 yet: the podium's arrival on the music (the table counting up, the winner named on the next bar line with its
 bell and confetti) and LOBBY (back to the lobby with the room standing: the session has no way back to its lobby yet); the
 two-phone versus check; the load-in's bed layers (the engine has no bed mask yet: `sound.md`'s `setBedMask`) and the

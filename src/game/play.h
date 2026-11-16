@@ -741,6 +741,8 @@ private:
     void drawVersusWorld(FrameDraw& d, const LookVariant& variant);  // versus: the crown on the leader, BACK IN n where a ship stood
     void screenPodium(Ui& ui);                  // versus: the match's end (design/modes/screens.md "The podium")
     float podiumS_ = 0.0f;                      // seconds the podium has stood
+    float actSecs_[10] = {};                    // M8 HEADLINERS: each act's fight in seconds (0: not fought or not won)
+    char cardSmall_[24] = {}, cardName_[32] = {}, completeLine_[32] = {}, goalLine_[48] = {};
     u8 podiumWinner_ = 0xFF;                    // the winner (0xFF: a draw)
     bool podiumCounted_ = false;                // the room's crown given for this match (the host's)
     bool modeRun() const { return world_->setup().mode != sim::Mode::Set; }

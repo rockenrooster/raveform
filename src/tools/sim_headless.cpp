@@ -1449,6 +1449,66 @@ int runModeOne(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Policy po
     return 0;
 }
 
+// M8 part 2 (design/modes/headliners.md "What to check"): HEADLINERS over seeds, the first run of each: the acts cleared, the
+// run's minutes, each act's fight in seconds (the median over the runs that met it). One RFSIM line.
+int runModeHeadliners(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Policy policy) {
+    auto* world = new (std::nothrow) World;
+    if (!world) return 2;
+    if (seeds > 256) seeds = 256;
+    const char* policyName = policy == Bot::Policy::Novice ? "novice" : (policy == Bot::Policy::Assist ? "assist" : (policy == Bot::Policy::Reckless ? "reckless" : "careful"));
+    static float fight[10][256];
+    u32 fights[10] = {}, met[10] = {}, won[10] = {};
+    u32 allTen = 0;
+    double minutes = 0.0;
+    for (u32 s = 0; s < seeds; ++s) {
+        world->init(&species);
+        SimRunner runner;
+        runner.autoRetry = false;
+        RunSetup su;
+        su.mode = Mode::Headliners;
+        runner.start(world, seed0 + s, Spawner::Mode::Slice, policy, 120.0f, false, su);
+        applyLevers(*world);
+        World& w = *world;
+        u32 t = 0, from = 0, act = 0;
+        bool on = false;
+        for (; t < 40u * 3600u; ++t) {
+            const u32 d0 = runner.deaths();
+            runner.step();
+            const BossState& b = w.boss();
+            const bool fightNow = b.active && !b.dying && !isMiniBoss(b.kind);
+            if (fightNow && !on) {
+                from = t;
+                act = w.phrase().track;
+                if (act >= 1 && act <= 10) ++met[act - 1];
+            }
+            if (!fightNow && on && b.dying && act >= 1 && act <= 10) {
+                fight[act - 1][fights[act - 1]++] = static_cast<float>(t - from) / 60.0f;
+                ++won[act - 1];
+            }
+            on = fightNow;
+            if (runner.deaths() > d0) break;
+            if (w.runEnded()) {
+                ++allTen;
+                break;
+            }
+        }
+        minutes += static_cast<double>(t) / 3600.0;
+    }
+    std::printf("[mode] HEADLINERS, the %s bot, %u seeds: all ten acts in %u; the run %.1f minutes on average\n", policyName, seeds, allTen,
+                minutes / (seeds ? seeds : 1u));
+    std::printf("[mode] act  met  won  fight_s(median)  fight_s(min-max)  kit\n");
+    for (u32 a = 0; a < 10; ++a) {
+        std::sort(fight[a], fight[a] + fights[a]);
+        const u32 n = fights[a];
+        const float median = n ? (n % 2 ? fight[a][n / 2] : 0.5f * (fight[a][n / 2 - 1] + fight[a][n / 2])) : 0.0f;
+        std::printf("[mode] %3u  %3u  %3u  %15.1f  %6.1f-%-6.1f  %u\n", a + 1, met[a], won[a], median, n ? fight[a][0] : 0.0f, n ? fight[a][n - 1] : 0.0f,
+                    species.modes.kit.atBoss[a]);
+    }
+    std::printf("RFSIM {\"test\":\"mode_headliners\",\"policy\":\"%s\",\"seeds\":%u,\"all_ten\":%u}\n", policyName, seeds, allTen);
+    delete world;
+    return 0;
+}
+
 // M8 part 1 (design/modes/README.md 5): the kit's numbers measured: the upgrades (Trios taken) the bot holds as each Track's first
 // bar begins and as its boss enters, the median over the seeds of THE SET's runs (one run each, to its first death or 60
 // minutes). The numbers modes.json's kit.atTrackStart and kit.atBoss take.
@@ -1516,6 +1576,7 @@ int simHeadlessMain(int argc, char** argv) {
     u32 isoRank = 0, isoPart = 0, isoParts = 1;  // --sim isolate
     u32 modeTrack = 0;                              // --sim mode --track N (M8)
     float kitScale = -1.0f;                         // --kit-scale F (M8: the kit's numbers x F, tuning)
+    bool modeHeadliners = false;                    // --sim mode --headliners (M8 part 2)
     const char* isoOnly = nullptr;
     for (int i = 3; i < argc; ++i) {
         const char* a = argv[i];
@@ -1587,6 +1648,8 @@ int simHeadlessMain(int argc, char** argv) {
         } else if (std::strcmp(a, "--parts") == 0 && next) {
             isoParts = static_cast<u32>(std::strtoul(next, nullptr, 10));
             ++i;
+        } else if (std::strcmp(a, "--headliners") == 0) {
+            modeHeadliners = true;
         } else if (std::strcmp(a, "--kit-scale") == 0 && next) {
             kitScale = static_cast<float>(std::atof(next));
             ++i;
@@ -1629,7 +1692,8 @@ int simHeadlessMain(int argc, char** argv) {
                           isoPart, isoParts ? isoParts : 1u);
     } else if (std::strcmp(mode, "mode") == 0) {
         // M8 part 1: ONE TRACK, each Track over seeds (the assist bot unless --policy says otherwise).
-        code = runModeOne(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist, modeTrack);
+        if (modeHeadliners) code = runModeHeadliners(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist);
+        else code = runModeOne(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist, modeTrack);
     } else if (std::strcmp(mode, "kit") == 0) {
         // M8 part 1: the kit's numbers (the assist bot's upgrades by Track in THE SET).
         code = runKitMeasure(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist);

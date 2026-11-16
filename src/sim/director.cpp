@@ -80,6 +80,32 @@ Phrase phraseAt(const DirectorState& d, u32 bar) {
         p.trackBpm = to;
         return p;
     }
+    if (d.actForm) {
+        // M8 HEADLINERS (headliners.md "The run"): an act: act 1's Groove, the Build, the boss's Drop held while it lives.
+        const u32 off = bar >= d.trackBar ? bar - d.trackBar : 0u;
+        const u32 groove = d.track == 1 ? d.actGroove : 0u;
+        p.track = d.track;
+        p.song = songOfTrack(d.track, d.songs);
+        p.cycle = p.cycles = 1;
+        p.trackBpm = p.bpm = bpmOfTrack(d.track, d.songs);
+        if (off < groove) {
+            p.section = Section::Groove;
+            p.sectionBar = static_cast<u16>(off);
+            p.sectionBars = static_cast<u16>(groove);
+        } else if (off - groove < d.actBuild) {
+            p.section = Section::Build;
+            p.sectionBar = static_cast<u16>(off - groove);
+            p.sectionBars = d.actBuild;
+            if (p.buildLastBar()) p.bpm = p.trackBpm * kBuildLastBarSpeed;
+        } else {
+            const u32 in = off - groove - d.actBuild;
+            p.section = Section::Drop;
+            p.bossDrop = true;
+            p.sectionBar = static_cast<u16>(in < 0xFFFFu ? in : 0xFFFFu);
+            p.sectionBars = static_cast<u16>(kSectionBars[0][2]);
+        }
+        return p;
+    }
     const u32 form = formOfTrack(d.track, d.songs);
     const u32* len = kSectionBars[form];
     const u32 cycleBars = len[0] + len[1] + len[2] + len[3];

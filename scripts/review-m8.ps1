@@ -9,7 +9,7 @@
 # Debug (the default) runs with validation; exit 1 on a validation message or a layout warning (two controls, or a control and a
 # line, closer than 24 px).
 param(
-    [ValidateSet('p0', 'p1')][string]$Part = 'p0',
+    [ValidateSet('p0', 'p1', 'p2')][string]$Part = 'p0',
     [ValidateSet('debug', 'dev')][string]$Config = 'debug',
     [string[]]$Only = @(),
     [string]$Out = '',
@@ -45,10 +45,15 @@ if ($Part -eq 'p0') {
     $singles = @($modes | ForEach-Object { "m8_title_pill_$_" }) + @($modes | ForEach-Object { "m8_modes_$_" })
     $strips = [ordered]@{ 'm8_t_lift' = 20; 'm8_t_back' = 24; 'm8_t_mode' = 8; 'm8_t_track' = 16; 'm8_t_drop' = 16 }
     $rooms = @('m8_modes_room', 'm8_lobby_host', 'm8_lobby_join', 'm8_lobby_versus', 'm8_join_modes')
-} else {
+} elseif ($Part -eq 'p1') {
     # p1: ONE TRACK (the load-in a strip two sixteenths apart, the name card, the outro's card, the result)
     $singles = @('m8_card_one', 'm8_one_outro', 'm8_result_one')
     $strips = [ordered]@{ 'm8_loadin' = 16 }
+    $rooms = @()
+} else {
+    # p2: HEADLINERS (act 1's card, the result after the ten acts)
+    $singles = @('m8_card_act', 'm8_result_headliners')
+    $strips = [ordered]@{}
     $rooms = @()
 }
 if ($Only.Count) {

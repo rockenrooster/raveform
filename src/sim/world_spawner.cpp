@@ -414,6 +414,7 @@ void World::spendCrowd(double landTick, const Phrase& ph) {
     const u32 lost = director_.crowdLost;
     director_.crowdLost = 0;
     float target = crowdTarget(c, ph.track, ph.cycle ? ph.cycle : 1u, director_.songs) * crowdScale(c, ph);
+    if (director_.actForm) target *= 0.5f;  // M8 HEADLINERS: the Build's fodder at half the Track's crowd (modes.json headliners)
     if (pen_.up && boss_.active && isMiniBoss(boss_.kind) && c.miniDrop > 0.0f) {
         // minibosses.json common.crowd (the lead, 2026-11-13): in a Pen fight the crowd is penScale of the Drop's (not
         // sectionScale's), never more than penMax bodies, so the lock line and the bounces can be followed.
@@ -602,6 +603,27 @@ void World::directorBar(double barTick, u32 bar) {
     }
     phrase_ = phraseAt(d, bar);
     if (setup_.versus && role_ != NetRole::Client) versusBar(bar);  // M8: the crown and the underdog
+    if (d.actForm && phrase_.trackChange && phrase_.sectionBar == 0 && species_) {
+        // M8 HEADLINERS (headliners.md rule 1): the top-up: whatever a player is short of the kit the next act's boss was tuned
+        // against, landed over the Break's first two bars (the act's own stream).
+        const u32 act = phrase_.track;
+        for (u32 p = 0; p < playerCount_; ++p) {
+            if (!players_[p].present || act < 1 || act > 10) continue;
+            const u32 want = species_->modes.kit.atBoss[act - 1u], held = players_[p].loadout.taken;
+            if (want > held) {
+                dealKit(p, want - held, act);
+                kit_[p].from = tickOfBar(bar);
+            }
+        }
+    }
+    if (d.actForm && phrase_.trackChange && phrase_.sectionBar == 2 && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios)) {
+        // headliners.md: the fallen boss's bonus Trio on the Break's third bar, its ring the clock for the six bars left.
+        for (u32 p = 0; p < playerCount_; ++p) {
+            if (!players_[p].alive || !isLocal(p) || trio_[p].open) continue;
+            trio_[p].queued = 0;
+            openTrio(p, tickOfBar(bar + kTrackChangeBars - 2u));
+        }
+    }
     const Phrase& ph = phrase_;
     bool anyAlive = false;
     for (u32 p = 0; p < playerCount_; ++p) anyAlive = anyAlive || players_[p].alive;
@@ -675,7 +697,7 @@ void World::directorBar(double barTick, u32 bar) {
                     ev.y = pl.pos.y;
                     emit(ev);
                 }
-                if (anyAlive && ph.trackChange && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios)) {
+                if (anyAlive && ph.trackChange && !d.actForm && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios)) {
                     // The boss's Trio (GAME_DESIGN 6.1), the whole Track-change Break its clock. a667116 (the owner: "Remove The
                     // Break's Trio"): a cycle's Break deals none; the Trios are the Shard levels' and the bosses'.
                     // Co-op: each device opens its own players' Trios (loot is instanced; the others hear of it).
