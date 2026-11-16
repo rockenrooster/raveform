@@ -4,6 +4,21 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, Singularity holds what it catches; Kaleidos and Polyrhythm easier
+
+- **Singularity** (the owner: "i'm wondering if it fails to suck in some enemies"). The well's pull (260 wu/s) was added to each
+  body's own motion, so whatever moved hard on its own got out. Measured with the new `--probe-singularity L` (the crowd tool:
+  player 0 carries the Riff at level L; every well's catch followed to the tick before it blows, by family), level 3, 6 runs of
+  30 minutes with `--god`: of the bodies still alive at the blow, within 80 wu of the centre were Drifters 98%, Shoals 88%,
+  Hounds 82%, but Caroms 65%, Moths 60% (20% ended farther than they began: they home to their place round the player), Rams
+  45%, Blinks 0 of 2. Now `pullBodies` (Singularity, Black Hole, Collapse Field) undoes a caught body's own motion of the tick,
+  once a tick whatever the wells (`World::held_`), and the pull alone moves it: every family that lives to the blow ends within
+  80 wu 89-100% of the time, none farther. A Blink's hop is still a jump no well holds. `testSingularityHolds`: a tier-3 Carom
+  heading away (216 wu/s) ends within 40 wu of the centre. The same run's one Shard-pool overflow (114, deep in the loop, god mode)
+  is the review's known low finding.
+- **Kaleidos** x 0.8 health (the owner: "lower the health of the first track boss by 20%"), `kKaleidosHealthTune`.
+- **Polyrhythm** x 0.5 health (the owner: "Polyrhythm needs 50% less health"), `kPolyHealthTune`.
+
 ## 2026-11-15, Longwave's death shatters what is left of it
 
 The owner: "i think it dies without destroying all its tail". Measured with the novice bot (`--sim crowd --seeds 8 --minutes 12

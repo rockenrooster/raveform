@@ -318,14 +318,26 @@ void World::arcFrom(u32 i, u8 owner, u32 jumps, float dmg, u8 style) {
 }
 
 void World::pullBodies(Vec2 at, float r, float speed, float dt) {
-    // Wells, Black Hole, Collapse Field: bodies within r move toward `at` (not past it); on every device.
+    // Wells, Black Hole, Collapse Field: bodies within r move toward `at` (not past it); on every device. A body caught (within r
+    // where it began the tick, or where it is now) has its own motion of the tick undone, once a tick whatever the wells, so the
+    // pull alone moves it (2026-11-15, the owner: "i'm wondering if it fails to suck in some enemies": with the pull added to their
+    // own motion, charging Rams, Caroms, Moths homing to their places round their players and Tethers on their orbits got out;
+    // a Blink's hop is a jump that no well holds).
     Enemies& e = enemies_;
     const float reach = r + kQuerySlackWu;
     grid_.query(at.x - reach, at.y - reach, at.x + reach, at.y + reach, [&](u32 i) {
         if ((e.flags[i] & kFlagDead) || e.frozenUntil[i] > m1_) return;
+        const Vec2 began{e.px[i], e.py[i]};
+        const bool wasIn = lengthSq(at - began) <= r * r;
+        if (!wasIn && lengthSq(at - Vec2{e.x[i], e.y[i]}) > r * r) return;
+        if (wasIn && !held_[i]) {
+            e.x[i] = began.x;
+            e.y[i] = began.y;
+        }
+        held_[i] = 1;
         const Vec2 d = at - Vec2{e.x[i], e.y[i]};
         const float l2 = lengthSq(d);
-        if (l2 > r * r || l2 < 1.0f) return;
+        if (l2 < 1.0f) return;
         const float l = std::sqrt(l2);
         const float step = std::fmin(speed * dt, l);
         e.x[i] += d.x / l * step;

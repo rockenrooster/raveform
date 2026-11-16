@@ -1627,6 +1627,7 @@ private:
     Shards shards_;
     SpatialGrid grid_;
     u8 solid_[kMaxEnemies] = {};
+    u8 held_[kMaxEnemies] = {};  // (2026-11-15) a well has undone the body's own motion this tick (pullBodies); cleared each tick
 
     static constexpr u32 kMaxEvents = 8192;
     Event events_[kMaxEvents];

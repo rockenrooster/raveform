@@ -16,6 +16,7 @@
 //       M5 (GAME_DESIGN 7.6): every fight's first meeting in each run; --armour0 (armour takes nothing, as on
 //       the build the user played), --health id=x,... (a factor on a fight's health), --handover N (the
 //       careful bot plays to Track N with hits costing nothing, then the policy asked for goes on with its build).
+//       --probe-singularity L: player 0 carries Singularity at level L; by family, what each well's pull held.
 //   raveform_headless --sim stress [--seconds 120] [--seed 1]
 //       bench_stress without a window: about 700 enemies and 1,500 enemy bullets around the bot's ship.
 // Each prints a summary and one line tagged RFSIM (JSON).
@@ -302,6 +303,97 @@ float gHealthLever[kBossKinds] = {};
 // --handover N: the careful bot plays (hits costing nothing) until Track N starts, then the policy asked for takes over with
 // the careful bot's build of that moment; only its fights count, and a seed ends once it has met Track N's boss.
 u32 gHandover = 0;
+
+// --probe-singularity L (2026-11-15, the owner: "i'm wondering if it fails to suck in some enemies"): player 0 carries
+// Singularity at level L all run; every well's catch (the bodies inside its pull as it opens) is followed to the tick before it
+// blows, and the table says by family how many it held, how close they came and how many got away.
+u8 gProbeWell = 0;
+struct WellProbe {
+    static constexpr u32 kCap = 256;
+    double from = -1.0, blow = -1.0;  // the well being followed
+    Vec2 at{};
+    u32 n = 0;
+    u32 serial[kCap];
+    u8 family[kCap];
+    float start[kCap], last[kCap];
+    bool alive[kCap];
+    // by family: caught, alive at the blow, ended within 80 wu, ended farther than they began; distances summed
+    u64 caught[16] = {}, held[16] = {}, in80[16] = {}, away[16] = {};
+    double sumStart[16] = {}, sumEnd[16] = {};
+    u32 wells = 0;
+};
+WellProbe gWell;
+
+void probeWell(World& w, const SpeciesTable& species) {
+    if (!gProbeWell) return;
+    PlayerState& pl = w.playerMut(0);
+    if (pl.loadout.riffs[riffIndex(kSingularity)] < gProbeWell) pl.loadout.riffs[riffIndex(kSingularity)] = gProbeWell;
+    WellProbe& g = gWell;
+    const Enemies& e = w.enemies();
+    const float r = tuning::kWellPullWu[gProbeWell < 5 ? gProbeWell : 5];
+    const auto distOf = [&](u32 k, float& d) {
+        for (u32 i = 0; i < e.count; ++i)
+            if (e.serial[i] == g.serial[k] && !(e.flags[i] & kFlagDead)) {
+                d = length(Vec2{e.x[i], e.y[i]} - g.at);
+                return true;
+            }
+        return false;
+    };
+    // The well being followed blew (or the run restarted): its catch is counted.
+    if (g.from >= 0.0 && (w.music() >= g.blow || pl.wellFrom != g.from)) {
+        for (u32 k = 0; k < g.n; ++k) {
+            const u8 f = g.family[k];
+            ++g.caught[f];
+            g.sumStart[f] += g.start[k];
+            if (!g.alive[k]) continue;
+            ++g.held[f];
+            g.sumEnd[f] += g.last[k];
+            if (g.last[k] < 80.0f) ++g.in80[f];
+            if (g.last[k] > g.start[k] + 1.0f) ++g.away[f];
+        }
+        ++g.wells;
+        g.from = -1.0;
+    }
+    // A well opens: its catch is what its pull reaches now.
+    if (g.from < 0.0 && pl.wellFrom >= 0.0 && w.music() >= pl.wellFrom && w.music() < pl.wellBlow) {
+        g.from = pl.wellFrom;
+        g.blow = pl.wellBlow;
+        g.at = pl.wellAt;
+        g.n = 0;
+        for (u32 i = 0; i < e.count && g.n < WellProbe::kCap; ++i) {
+            if ((e.flags[i] & kFlagDead) || e.state[i] == kWarping) continue;
+            const float d = length(Vec2{e.x[i], e.y[i]} - g.at);
+            if (d > r) continue;
+            g.serial[g.n] = e.serial[i];
+            g.family[g.n] = static_cast<u8>(species.get(e.species[i]).family);
+            g.start[g.n] = g.last[g.n] = d;
+            g.alive[g.n] = true;
+            ++g.n;
+        }
+        return;
+    }
+    // While it pulls: where each of its catch is (the last tick before the blow is what counts).
+    if (g.from >= 0.0)
+        for (u32 k = 0; k < g.n; ++k)
+            if (g.alive[k]) g.alive[k] = distOf(k, g.last[k]);
+}
+
+void printWellProbe() {
+    if (!gProbeWell) return;
+    const WellProbe& g = gWell;
+    std::printf("[sim] Singularity level %u (pull %.0f wu): %u wells; by family, the bodies inside a well's pull as it opened and "
+                "where they were the tick before it blew\n",
+                gProbeWell, tuning::kWellPullWu[gProbeWell < 5 ? gProbeWell : 5], g.wells);
+    std::printf("[sim]   family      caught  died first  start(mean)  end(mean)  ended <80 wu  ended farther\n");
+    for (u32 f = 0; f < 16; ++f) {
+        if (!g.caught[f]) continue;
+        const double held = static_cast<double>(g.held[f] ? g.held[f] : 1u);
+        std::printf("[sim]   %-10s %7llu %11llu %12.0f %10.0f %10.0f%% %13.0f%%\n", familyName(static_cast<Family>(f)),
+                    static_cast<unsigned long long>(g.caught[f]), static_cast<unsigned long long>(g.caught[f] - g.held[f]),
+                    g.sumStart[f] / static_cast<double>(g.caught[f]), g.held[f] ? g.sumEnd[f] / held : 0.0, 100.0 * static_cast<double>(g.in80[f]) / held,
+                    100.0 * static_cast<double>(g.away[f]) / held);
+    }
+}
 // --nopace (play test 3's balance pass): the bosses keep no pace, so the novice's own eight-bar damage is measured as it is.
 bool gNoPace = false;
 
@@ -548,9 +640,11 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
         Vec2 lookAhead{}, lean{};
         float zoom = 1.0f;
         const u64 a0 = heapAllocCountThisThread();
+        gWell.from = -1.0;
         for (u32 t = 0; t < ticks; ++t) {
             const u32 d0 = runner.deaths();
             runner.step();
+            probeWell(*world, species);
             const World& w = *world;
             if (!handed && w.phrase().track >= gHandover && w.player(0).alive) {
                 handed = true;
@@ -1188,6 +1282,10 @@ int simHeadlessMain(int argc, char** argv) {
         } else if (std::strcmp(a, "--handover") == 0 && next) {
             gHandover = static_cast<u32>(std::strtoul(next, nullptr, 10));
             ++i;
+        } else if (std::strcmp(a, "--probe-singularity") == 0 && next) {
+            const unsigned long l = std::strtoul(next, nullptr, 10);
+            gProbeWell = static_cast<u8>(l < 1 ? 1 : (l > 5 ? 5 : l));
+            ++i;
         } else if (std::strcmp(a, "--health") == 0 && next) {
             // id=factor[,id=factor...]
             char buf[512];
@@ -1226,6 +1324,7 @@ int simHeadlessMain(int argc, char** argv) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes : 10.0f) * 60.0f, seed, bpm, false, policy);
     } else if (std::strcmp(mode, "crowd") == 0) {
         code = runCrowd(*species, seeds, minutes > 0.0f ? minutes : 30.0f, seed, policy, god, trace);
+        printWellProbe();
     } else if (std::strcmp(mode, "picks") == 0) {
         code = runPicks(*species, seeds, seed);  // M5 part 7: the no-trap table
     } else if (std::strcmp(mode, "stress") == 0) {

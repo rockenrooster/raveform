@@ -160,6 +160,7 @@ void World::tick(const TickInput& in) {
     // and the collisions below query it with slack for the movement since. M5: built before the shots, so a volley's
     // lines (Accent, Beam) can ask it; the bodies a Nova kills below stay in it, skipped as dead.
     maxEnemyR_ = kMaxSpeciesRadius;  // M5 part 5: the queries' reach covers the largest body (a Giant elite)
+    for (u32 i = 0; i < kMaxEnemies; ++i) held_[i] = 0;  // (pullBodies: each body's own motion undone at most once a tick)
     for (u32 i = 0; i < enemies_.count; ++i) {
         solid_[i] = (enemies_.flags[i] & kFlagDead) == 0 && enemies_.state[i] != kWarping;
         if (enemies_.radius[i] > maxEnemyR_) maxEnemyR_ = enemies_.radius[i];

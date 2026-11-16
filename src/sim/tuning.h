@@ -411,7 +411,7 @@ constexpr float kStandingDamage = 1.5f;
 // 60 s, a long one brought to about 50): the factor before x the cut, in brackets; the novice from the fight's Track's start
 // (--handover N), the won first meetings over 20 or 30 seeds (docs/PROGRESS.md, "The owner's play of af4b101", 3).
 // The owner's play of f0624e5: every factor below x tempoHealth(its Track) (the new tempo ladder; the seconds as measured).
-constexpr float kKaleidosHealthTune = 0.605f * tempoHealth(1);  // (1.21 x 0.5) 40 of 40, 55 s
+constexpr float kKaleidosHealthTune = 0.605f * 0.8f * tempoHealth(1);  // (x 0.8: the owner, 2026-11-15, "lower the health of the first track boss by 20%") (1.21 x 0.5) 40 of 40, 55 s
 constexpr float kLongwaveHealthTune = 0.0886f * tempoHealth(2); // (0.1925 x 0.46) --handover 2: 20 of 20, 49 s (at 0.1925: 20 of 20, 88 s; x 0.36: 36 s; the
                                                // length follows its health weakly: x 0.562 58 s, x 0.42 45 s)
 constexpr float kChoirHealthTune = 0.189f * tempoHealth(3);     // (1.26 x 0.15) 29 of 40, 34 met (from Track 3's start, x 0.175: 37 of 40), 34 s
@@ -450,7 +450,7 @@ constexpr float kHorizonHealthTune = 1.089f * tempoHealth(4);  // (8.8 x 0.2475 
                                               // owner's play of af4b101 ("way too much hp, needs like 0.5x"; horizon.md, design 0449eb3): 19 of 20, 53 s
 // Polyrhythm (polyrhythm.md gives no number for these).
 constexpr float kPrLinkBurnHalfWu = 6.0f;   // the burning link: look.md v2.5, 12 wu (part 4: 16)
-constexpr float kPolyHealthTune = 0.4165f * tempoHealth(5);  // (3.4 x 0.1225) --handover 5: POLY_NOVICE; x 0.175 had the assist bot lost there in 3 of 20. Play test 3: x 1 20 of 20 in 16 s; x 2 17, 33 s; x 4 4 of
+constexpr float kPolyHealthTune = 0.4165f * 0.5f * tempoHealth(5);  // (x 0.5: the owner, 2026-11-15, "Polyrhythm needs 50% less health") (3.4 x 0.1225) --handover 5: POLY_NOVICE; x 0.175 had the assist bot lost there in 3 of 20. Play test 3: x 1 20 of 20 in 16 s; x 2 17, 33 s; x 4 4 of
                                             // 20; x 2.6 the assist bot lost 2 of 20 here (its bar: 19 of 20 runs through the ten Tracks).
                                             // 02c28ab ("raise it to about 30 s if the novice wins as often"): as it is: 18 of 20 in 19 s;
                                             // x 1.3: 16 of 20, 21 s; x 1.58: 12 of 20, 25 s (--handover 5, seeds 1-20)

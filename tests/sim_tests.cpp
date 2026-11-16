@@ -1854,6 +1854,34 @@ void testLongwave() {
 // longwave.md "Look", Death (the owner, 2026-11-15: it "dies without destroying all its tail"): the head's death leaves the body
 // where it is; what is left of it shatters tail-first, a segment (LwShatter, b its rank) on each sixteenth line from the first
 // one after the death, then the head breaks (LwBreak) on the next line, all before the boss is gone.
+// Singularity (the owner, 2026-11-15: "i'm wondering if it fails to suck in some enemies"): a body inside a well loses its own
+// motion while the well pulls, so a Carom racing away from it is drawn in like a Drifter (the pull used to be added to its own
+// motion, and Rams, Caroms, Moths and Tethers got out).
+void testSingularityHolds() {
+    g_test = "singularity_holds";
+    World* w = quietWorld();
+    w->rules().godMode = true;
+    double music = 0.0;
+    const Vec2 ship{0.0f, 0.0f};
+    stepWorld(*w, music, ship);
+    w->playerMut(0).loadout.riffs[riffIndex(kSingularity)] = 3;
+    const PlayerState& pl = w->player(0);
+    while (!(pl.wellFrom >= 0.0 && w->music() >= pl.wellFrom) && music < 20.0 * kTicksPerBar) stepWorld(*w, music, ship);
+    CHECK_MSG(pl.wellFrom >= 0.0 && w->music() >= pl.wellFrom, "no well by %.0f", music);
+    const Vec2 at = pl.wellAt;
+    const i32 i = w->spawnEnemy(SpeciesTable::index(Family::Carom, 3, kVariantA), at + Vec2{0.0f, 200.0f}, 0.5f * kPi, w->music());
+    CHECK(i >= 0);
+    const u32 serial = i >= 0 ? w->enemies().serial[i] : 0u;
+    const double blow = pl.wellBlow;
+    while (music + kTicksPerSimTick < blow) stepWorld(*w, music, ship);
+    const Enemies& e = w->enemies();
+    float d = -1.0f;
+    for (u32 k = 0; k < e.count; ++k)
+        if (e.serial[k] == serial && !(e.flags[k] & kFlagDead)) d = length(Vec2{e.x[k], e.y[k]} - at);
+    CHECK_MSG(d >= 0.0f && d < 40.0f, "the Carom ended %.0f wu from the well", d);
+    delete w;
+}
+
 void testLongwaveUnravel() {
     g_test = "longwave_unravel";
     World* w = quietWorld();
@@ -4144,6 +4172,7 @@ int main() {
     testMiddleDrop();
     testLongwave();
     testLongwaveUnravel();
+    testSingularityHolds();
     testChoir();
     testHorizon();
     testBulletsByTrack();
