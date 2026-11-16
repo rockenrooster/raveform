@@ -50,22 +50,25 @@ environment variables `RF_KEYSTORE`, `RF_KEYSTORE_PASSWORD`, `RF_KEY_ALIAS`, `RF
 | `RF_KEY_ALIAS` | the key's alias |
 | `RF_KEY_PASSWORD` | the key's password |
 
-Set them with `gh secret set <NAME> -R rockenrooster/raveform` (it asks for the value), the keystore from its base64 text:
-`[Convert]::ToBase64String([IO.File]::ReadAllBytes('<keystore>')) | gh secret set RF_KEYSTORE_BASE64 -R rockenrooster/raveform`.
+**The owner chose a new release key (2026-11-15).** The owner makes it at this PC with `scripts\release-key.ps1`: keytool
+creates `%USERPROFILE%\.raveform\raveform-release.keystore` (outside the repository; PKCS12, RSA 4096, alias `raveform`, valid
+10,000 days) and asks for its password; the script asks for the password once more, checks that it opens the keystore, sets
+the four secrets through gh's standard input (never on a command line), prints the certificate's SHA-256 (the release notes
+print the same) and starts a release build. `-SecretsOnly` uploads an existing keystore again; `-NoBuild` starts no build.
+Back the keystore and its password up outside this PC: a build signed with any other key cannot update an installed copy,
+and only Play App Signing (once enrolled) can replace a lost upload key.
+
+By hand instead: `gh secret set <NAME> -R rockenrooster/raveform` asks for each value.
 
 **Without them** the APK is signed with a debug key the run makes for itself, a different one every run. Android installs an
 update only when it is signed with the same key as the installed app, so such an APK installs only where RAVEFORM is not
 installed: uninstall first, and the phone's settings and scores go with it. The release notes and the run's summary say which
 key signed each build.
 
-The owner's choice (PLAN: keystores are the owner's):
-
-- **This PC's debug keystore** (`%USERPROFILE%\.android\debug.keystore`; password `android`, alias `androiddebugkey`, key
-  password `android`): GitHub's builds and this PC's builds (`deploy-android.ps1`) then install over each other, and the phones
-  keep their data. Play never takes a debug-signed build.
-- **A new upload key** (RELEASE_CHECKLIST item 1): the key Play will take. This PC's builds are still debug-signed, so on a
-  phone a GitHub build and a deployed build replace each other only through an uninstall, unless the same four variables are
-  set before `build-android.ps1 -Config release`.
+What the choice means (the other was this PC's debug keystore, which Play never takes): this PC's builds
+(`deploy-android.ps1`) stay debug-signed, so on a phone a GitHub build and a deployed build replace each other only through an
+uninstall, which takes the phone's settings and scores. A local release build signs with the release key when the same four
+variables are set (`RF_KEYSTORE` the keystore's path) before `build-android.ps1 -Config release`.
 
 ## Version
 
