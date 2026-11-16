@@ -198,7 +198,7 @@ constexpr float kOrbitalDamage = 3.0f;        // play test 3 (quoted): it cuts w
 constexpr u32 kRingRelightBars[6] = {0, 8, 8, 6, 6, 4};
 constexpr float kRingInvulS = 1.0f;
 constexpr u8 kExtraLifeCells = 2;             // GAME_DESIGN 5 (play test 3, quoted): an Extra Life brings the ship back with two cells
-constexpr u8 kMaxExtraLives = 2;              // GAME_DESIGN 5 (the owner, 2026-11-14): one drops every other Track; a player holds up to two
+constexpr u8 kMaxExtraLives = 2;              // GAME_DESIGN 5 (the owner, 2026-11-15): one drops every Track; a player holds up to two
 constexpr float kPulseRadiusWu = 230.0f;      // Pulse Ring: expands to this ...
 constexpr float kPulseRadiusWide = 290.0f;    // ... (level 3 and up)
 constexpr float kPulseGrowS = 0.25f;          // ... in this long
@@ -446,7 +446,7 @@ constexpr float kSaStepBeats = 1.0f;         // turrets step round to stand even
 // M5 part 4, Event Horizon (horizon.md gives no number for these).
 constexpr float kHzJetLengthWu = 1800.0f;  // the jets reach past the frame's edge at the fight's zoom (0.8)
 constexpr float kHzJetHalfWu = 6.0f;       // look.md v2.5: no lethal beam kills wider than 12 wu (part 4: 22)
-constexpr float kHorizonHealthTune = 1.089f * tempoHealth(4);  // (8.8 x 0.2475 x 0.5) --handover 4 at 2.178: 27 of 40, 75 s (at most 120); halved on the
+constexpr float kHorizonHealthTune = 1.089f * 0.9f * tempoHealth(4);  // (x 0.9: the owner, 2026-11-15, "Ease Cadence, Fata Morgana and Event Horizon by like 10%") (8.8 x 0.2475 x 0.5) --handover 4 at 2.178: 27 of 40, 75 s (at most 120); halved on the
                                               // owner's play of af4b101 ("way too much hp, needs like 0.5x"; horizon.md, design 0449eb3): 19 of 20, 53 s
 // Polyrhythm (polyrhythm.md gives no number for these).
 constexpr float kPrLinkBurnHalfWu = 6.0f;   // the burning link: look.md v2.5, 12 wu (part 4: 16)
@@ -459,11 +459,11 @@ constexpr u8 kBossEntranceCells = 3;       // GAME_DESIGN 5 (1bcc897): "grows ba
 // the player at this speed (chosen; inside the magnet it homes as any Cell).
 constexpr u32 kBossPhaseCells = 1;
 constexpr float kBossPhaseCellDriftWu = 240.0f;
-constexpr float kCadenceHealthTune = 0.919f * tempoHealth(7);  // (2.113 x 0.435) --handover 7: 20 of 20, 52 s (at 2.113: 7 of 10, 115 s)
+constexpr float kCadenceHealthTune = 0.919f * 0.9f * tempoHealth(7);  // (x 0.9: the owner, 2026-11-15, "Ease Cadence, Fata Morgana and Event Horizon by like 10%") (2.113 x 0.435) --handover 7: 20 of 20, 52 s (at 2.113: 7 of 10, 115 s)
 constexpr float kArpHealthTune = 1.435f * tempoHealth(8);    // (1.863 x 0.77) --handover 8: 17 of 20, 53 s (at 1.863: 20 of 30 in 50 s with the bullets by
                                             // Track, then 16 of 20 in 65 s once the fights before it were cut: a novice's build is
                                             // what the shorter fights before paid in Shards)
-constexpr float kMorganaHealthTune = 1.7325f * tempoHealth(9); // (15.4 x 0.1125) --handover 9: 26 of 40, 41 s (the page 90-120)
+constexpr float kMorganaHealthTune = 1.7325f * 0.9f * tempoHealth(9); // (x 0.9: the owner, 2026-11-15, "Ease Cadence, Fata Morgana and Event Horizon by like 10%") (15.4 x 0.1125) --handover 9: 26 of 40, 41 s (the page 90-120)
 constexpr float kMgFanSpreadDeg = 40.0f;    // morgana.md gives no spread for her fan of five (Cadence's 40 degrees)
 constexpr float kMgBulletLife = 4.0f;       // ... nor its life (Cadence's 4 s)
 constexpr float kMgMarginWu = 700.0f;       // the oases keep this far from the arena's walls

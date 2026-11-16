@@ -3351,7 +3351,7 @@ void testMinibosses() {
         delete w;
     }
     // In a run: the first Drop of Track 2 (c2f113a; it was the middle one's) brings one, in place of the mega-wave, and its end
-    // moves the Break; Track 2 has no Extra Life (GAME_DESIGN 5, 2026-11-14: Tracks 1, 3, 5, 7 and 9 only).
+    // moves the Break; its death drops Track 2's Extra Life (GAME_DESIGN 5, the owner 2026-11-15: every Track; it was 1, 3, 5, 7, 9).
     {
         World* w = new (std::nothrow) World;
         w->init(g_species);
@@ -3376,7 +3376,8 @@ void testMinibosses() {
             u32 lives = 0;
             const BoostPickups& bp = w->boostPickups();
             for (u32 i = 0; i < bp.count; ++i) lives += !bp.dead[i] && bp.type[i] == kPickupExtraLife ? 1u : 0u;
-            CHECK_MSG(lives == 0 && w->director().extraLifeTrack != 2, "Extra Life orbs %u", lives);
+            CHECK_MSG(lives + w->player(0).extraLives == 1 && w->director().extraLifeTrack == 2, "Extra Life orbs %u, held %u", lives,
+                      w->player(0).extraLives);
         }
         runTo(*w, music, w->tickOfBar(end) + 5.0, Vec2{});
         CHECK(w->phrase().section == Section::Break && w->phrase().cycle == 1);

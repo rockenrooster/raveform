@@ -1228,7 +1228,7 @@ private:
     // Play test 3 (GAME_DESIGN 6.3 row 1, 5): the Orbitals' guard ring (it breaks on a hit instead of a cell) and the Extra
     // Life (the host drops it; it is taken, and spent on the hit that would end the run).
     bool breakRing(u32 p, Vec2 from);
-    void extraLifeDrop(Vec2 at, bool fromMini = false);  // (2026-11-14: odd Tracks; from Track 3 the mini-boss's death or warp-out)
+    void extraLifeDrop(Vec2 at, bool fromMini = false);  // (2026-11-15: every Track; from Track 2 the mini-boss's death or warp-out)
     void takeExtraLife(u32 p);
     void spendExtraLife(u32 p, Vec2 from);
     void demoRevive(u32 p, Vec2 from);

@@ -486,16 +486,15 @@ bool World::breakRing(u32 p, Vec2 from) {
 }
 
 void World::extraLifeDrop(Vec2 at, bool fromMini) {
-    // GAME_DESIGN 5 (play test 3; c2f113a; the owner, 2026-11-14: "extra life powerup every other track (i'm not seeing one after
-    // the first one)"): in every other Track of the set list (1, 3, 5, 7, 9) an Extra Life drops, an orb for each player who
-    // holds fewer than kMaxExtraLives (co-op: each their own; the host decides): in Track 1 from a kill in the first cycle's
-    // Drop, from Track 3 on from the mini-boss as it dies or warps out. None in the loop. (Until then one dropped in every Track
-    // but only for a player who held none, and a mini-boss that warped out dropped none: one kept unspent stopped every later
-    // drop.)
+    // GAME_DESIGN 5 (play test 3; c2f113a; the owner, 2026-11-15: "An Extra Life every Track instead of every other"; it was every
+    // other Track since 2026-11-14): in every Track of the set list an Extra Life drops, an orb for each player who holds fewer
+    // than kMaxExtraLives (co-op: each their own; the host decides): in Track 1 from a kill in the first cycle's Drop, from Track 2
+    // on from the mini-boss as it dies or warps out. None in the loop. (Before 2026-11-14 one dropped in every Track but only for a
+    // player who held none, and a mini-boss that warped out dropped none: one kept unspent stopped every later drop.)
     if (role_ == NetRole::Client) return;
     const Phrase& ph = phrase_;
-    if (ph.trackChange || inLoop(ph.track, director_.songs) || ph.track % 2u == 0u) return;
-    if (fromMini ? ph.track < 3 : (ph.track != 1 || ph.cycle != 1 || ph.section != Section::Drop)) return;
+    if (ph.trackChange || inLoop(ph.track, director_.songs)) return;
+    if (fromMini ? ph.track < 2 : (ph.track != 1 || ph.cycle != 1 || ph.section != Section::Drop)) return;
     if (director_.extraLifeTrack == ph.track) return;
     director_.extraLifeTrack = ph.track;
     for (u32 p = 0; p < playerCount_; ++p) {

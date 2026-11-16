@@ -4,6 +4,27 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, balance for young players: an Extra Life every Track; Cadence, Fata Morgana and Event Horizon x 0.9
+
+The owner: "This game should be 'easy' and beatable most of the time. (playable by 5-6 year olds)". Measured over 20 runs of
+60 minutes (`--sim crowd --seeds 20 --minutes 60`), before the changes:
+
+| Bot | Finished the ten Tracks on the first run | First death (median) | Deaths an hour | First meetings lost |
+|---|---|---|---|---|
+| Novice (a first week: assist only, 0.25 s late, dashes half the time) | 10 of 20 | 20.1 min | 3.0 | Feedback 4, Event Horizon 2 |
+| Reckless (aims perfectly, never dodges) | 12 of 20 | 21.0 min | 2.5 | Fata Morgana 8 |
+| Child-like (the novice with 0.5 s reactions and no Dash; a temporary build) | 3 of 20 | 6.0 min | 6.0 | Cadence 5 of 18, Fata Morgana 4 of 15, Horizon 3 |
+
+The child-like bot's hits come from bodies (Caroms 1,207, Shoals 714, Drifters 675), not the bosses; Tracks 1-3's bosses were won
+at every first meeting by every bot. The owner chose: an Extra Life every Track (`World::extraLifeDrop`: Track 1 from a kill in
+its first Drop, from Track 2 on from the mini-boss; it was Tracks 1, 3, 5, 7 and 9) and the three bosses' health x 0.9
+(`kHorizonHealthTune`, `kCadenceHealthTune`, `kMorganaHealthTune`). The child-like bot after them: deaths an hour 5.0 (6.0),
+Extra Lives taken 238 (187), Cadence lost 2 of 17 (5 of 18), Fata Morgana 2 of 16 (4 of 15), Event Horizon 5 of 20 (3; its
+fights 64 s, were 86), the first run finished 2 of 20 (3) with the first death at a median 5.8 min (6.0): a run's early deaths,
+to bodies in Tracks 2-3, are what these do not reach (20 runs move a count by about 2). Proposed and not chosen yet: CONTINUE
+from the Track reached after a game over; fewer hits from bodies in Tracks 1-4 (slower Caroms, a longer safe time after a hit,
+5-6 starting cells).
+
 ## 2026-11-15, four-phone co-op runs (the owner: "please do several co-op runs to find any issues")
 
 `scripts\coop-phones.ps1` (new): the first serial hosts a room (`--coop host --coop-start N --bot`), the others join by address,
