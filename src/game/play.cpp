@@ -459,6 +459,7 @@ void Play::runTick(double music0, double music1, bool firstOfFrame) {
     in.bpm = clock_.bpm();
     in.latencyTicks = clock_.latencyTicks();
     in.players[0] = controller_.pose();
+    if (scriptPose1On_ && world_->playerCount() > 1) in.players[1] = scriptPose1_;  // (M8 pictures: a second ship flown by script)
     in.retry = retryRequest_;
     retryRequest_ = false;
     // While the band plays, the shots are the lead rule's heard steps (TECH_SPEC 6.3), each advanced by

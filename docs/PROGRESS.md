@@ -236,9 +236,9 @@ Decided alone:
 - The flow test runs the screens on the simulated clock (a step a frame) and saves nothing; its runs are fast-forwarded to their
   ends with hits costing nothing (the ends are the screens' business here, not the fights').
 
-Not done (what the plan still has that this pass did not reach): the pictures `m8_ring_x8`, `m8_duet`, `m8_cut`, `m8_spin` and the
-nine Boosts' moments on the Stage (the sim suite tests a duet ring, a cut and a spin-out; their pictures need a second ship flown by
-script), part 1's `m8_vs_shove`, `m8_knock` and `m8_podium_draw` (a draw needs two counts level at the end; `m8_podium_4` and
+Not done (what the plan still has that this pass did not reach): `m8_ring_x8` (`m8_tr_ring_big`, the ship circling under LONG, is scripted but closed no ring of x 5 in its 30 s) and the nine
+Boosts' pictures (`m8_tr_boost_*`, scripted, not yet rendered); `m8_tr_cut`, `m8_tr_spin` and `m8_tr_duet` are taken (a second ship
+flown by script, `review-m8.ps1 -Part p4`), part 1's `m8_vs_shove`, `m8_knock` and `m8_podium_draw` (a draw needs two counts level at the end; `m8_podium_4` and
 `m8_vs_hud` are taken: four seats, the host and three headless joiners), a duet ring's two leads (the pop's chord plays), the stab as a triad for a pop of
 x 2 (the band's stab takes the bar's chord or given notes, not its triad: it plays the chord at 0.6); the Spark's pad patch (the
 owner's fallback, by ear); `design/screens.md` taking the built parts of `design/modes/screens.md` (the lead's file). **Nobody has

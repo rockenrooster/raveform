@@ -416,6 +416,11 @@ private:
     u16 m8Pic_ = 0xFFFF;
     u32 m8Last_ = 0;  // (SONGLINE's in-time picture: the gates in time before this frame)
     float m8Bar_ = 0.0f;  // (SONGLINE's bend-back picture: the bar the ship was left behind on)
+    // (M8 part 7's TRACERS pictures: a second ship flown by script, its pose for the next tick; what the pictures wait for: bit 0 a
+    // cut, 1 a spin-out, 2 a pop of x 5 and up)
+    sim::PlayerPose scriptPose1_;
+    bool scriptPose1On_ = false;
+    u32 m8Seen_ = 0;
     u32 placedAt_ = 0;  // (the Longwave strips: when the ship was last put beside the body)
 
     PlayOptions opt_;

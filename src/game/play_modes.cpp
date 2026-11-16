@@ -381,6 +381,7 @@ void Play::modesEvent(const Event& e) {
             break;
         case EventType::RingPop:
             if (e.c >= 5 && e.a == seat_ && markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 6, e.a};  // (the result's white tick)
+            if (opt_.picture[0] && e.c >= 5) m8Seen_ |= 4u;
             // ECHO (the gel): the ring's chord again, at half its level.
             if (e.x2 > 0.5f && bandDrives_ && band_) band_->playRecipe(audio::Recipe::Stab, -1, e.a == seat_ ? 0.5f : 0.3f, 0.0f, -1.0, 0.5f);
             break;
@@ -394,11 +395,13 @@ void Play::modesEvent(const Event& e) {
             }
             break;
         case EventType::Cut:
+            if (opt_.picture[0] && e.a == 0) m8Seen_ |= 1u;  // (pictures: seat 1 flew across seat 0's line)
             // A cut (versus): a crack at the cut, panned to it.
             if (bandDrives_ && band_ && (e.a == seat_ || e.b == seat_))
                 band_->playRecipe(audio::Recipe::Crack, -1, 0.8f, clampf((e.x - w.player(seat_).pos.x) / 900.0f, -1.0f, 1.0f));
             break;
         case EventType::SpinOut:
+            if (opt_.picture[0] && e.a == 0) m8Seen_ |= 2u;
             // Spun out (versus): the Dash's sweep reversed.
             if (bandDrives_ && band_ && e.a == seat_) band_->playRecipe(audio::Recipe::DashReverse, -1, 0.9f);
             if (e.a == seat_) pulse(2);

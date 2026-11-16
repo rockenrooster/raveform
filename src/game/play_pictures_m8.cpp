@@ -22,7 +22,8 @@ enum class M8 : u8 {
     JamRoom1, JamRoom4, JamRoom8, JamShelf, JamDropReady, JamDropResting, JamRoomDrop, PopDraft, PopDrop,
     BlTorrent, BlWave, BlLastCall, BlCut, BlBack, BlCount, BlResult,
     // (M8 part 7: the plan's pictures that were missing)
-    JamPads, JamEmpty, SlGold, SlStreak1, SlStreak2, SlStreak3, SlStreak4, SlBend, SlRace4, TrLightsOut, TrTurf4, ModesBonus
+    JamPads, JamEmpty, SlGold, SlStreak1, SlStreak2, SlStreak3, SlStreak4, SlBend, SlRace4, TrLightsOut, TrTurf4, ModesBonus,
+    TrCut, TrSpin, TrDuet, TrRingBig, TrBoost
 };
 struct M8Pic {
     const char* name;  // m8_<name>
@@ -82,6 +83,14 @@ const M8Pic kM8Pics[] = {
     {"sl_streak_1", M8::SlStreak1, 4}, {"sl_streak_2", M8::SlStreak2, 4}, {"sl_streak_3", M8::SlStreak3, 4}, {"sl_streak_4", M8::SlStreak4, 4},
     {"sl_bend_back", M8::SlBend, 4}, {"sl_race_4", M8::SlRace4, 4}, {"tr_lights_out", M8::TrLightsOut, 3}, {"tr_turf_4", M8::TrTurf4, 3},
     {"modes_bonus", M8::ModesBonus, 4},
+    // TRACERS on Reef with a second ship flown by script: a cut (versus: it flies across the ring-flier's line), a spin-out (versus:
+    // its ring closes round the first ship, which stands), a duet (co-op: the first ship flies a straight line, the second a U across
+    // it twice); a big ring (the first ship circling under LONG, the pop of x 5 and up with its words and the rig's beams); and each of
+    // the nine Boosts of the mode's list on the Stage (`mode` the index into it).
+    {"tr_cut", M8::TrCut, 3}, {"tr_spin", M8::TrSpin, 3}, {"tr_duet", M8::TrDuet, 3}, {"tr_ring_big", M8::TrRingBig, 3},
+    {"tr_boost_time_stretch", M8::TrBoost, 0}, {"tr_boost_freeze_frame", M8::TrBoost, 1}, {"tr_boost_halo", M8::TrBoost, 2},
+    {"tr_boost_magnet_storm", M8::TrBoost, 3}, {"tr_boost_black_hole", M8::TrBoost, 4}, {"tr_boost_colossus", M8::TrBoost, 5},
+    {"tr_boost_confetti", M8::TrBoost, 6}, {"tr_boost_long", M8::TrBoost, 7}, {"tr_boost_echo", M8::TrBoost, 8},
 };
 constexpr u32 kM8Count = sizeof(kM8Pics) / sizeof(kM8Pics[0]);
 constexpr u32 kM8At = 300;  // (the title at rest: as screen_title's)
@@ -259,6 +268,29 @@ bool Play::scriptSetupM8() {
             if (pic.kind == M8::SlBend || pic.kind == M8::SlRace4) scriptFastForwardS_ = 5.0f * barS;
             break;
         }
+        case M8::TrCut:
+        case M8::TrSpin:
+        case M8::TrDuet:
+        case M8::TrRingBig:
+        case M8::TrBoost: {
+            RunSetup su;
+            su.mode = Mode::Tracers;
+            su.track = pic.kind == M8::TrBoost ? 3u : pic.mode;
+            su.versus = pic.kind == M8::TrCut || pic.kind == M8::TrSpin;
+            screen_ = Screen::Run;
+            const bool two = pic.kind == M8::TrCut || pic.kind == M8::TrSpin || pic.kind == M8::TrDuet;
+            w.resetRun(opt_.seed, 0.0, two ? 2u : 1u, 0xF, su);
+            w.rules().godMode = true;
+            bot_.reset(opt_.seed, Bot::Policy::Play);
+            if (pic.kind == M8::TrDuet) w.playerMut(0).pos = w.playerMut(0).prevPos = Vec2{-520.0f, 0.0f};
+            if (pic.kind == M8::TrRingBig) w.playerMut(0).gelUntil[kGelLong] = 1e18;  // (LONG: the line twice as long, a wide ring closes)
+            controller_.reset(w.player(0).pos);
+            marks_[0] = Mark{0.0f, 0, su.track};
+            runTrackMax_ = su.track;
+            scriptFastForwardS_ = pic.kind == M8::TrRingBig ? 40.0f : 20.0f;  // (a crowd in; the big ring's in a Drop's)
+            scriptPose1On_ = two;
+            break;
+        }
         case M8::TrLightsOut:
         case M8::TrTurf4: {
             RunSetup su;
@@ -413,6 +445,70 @@ bool Play::scriptInputM8(StickInput& in) {
         }
         if (pic.kind == M8::SlRace4 && bars >= 7.0) captureFrom_ = now + 1;
         if (captureFrom_ >= 0) RF_LOG("play: picture '%s' captures from frame %lld (bar %.2f)", opt_.picture, static_cast<long long>(captureFrom_), bars);
+        return true;
+    }
+    if (pic.kind >= M8::TrCut && pic.kind <= M8::TrBoost) {
+        // TRACERS: the second ship's path (a pose a tick: its place and its speed, so it lays its line); the first ship as each needs.
+        const float ts = ffRunning_ ? 0.0f : static_cast<float>(t) / 60.0f;
+        Vec2 p1{}, v1{};
+        if (pic.kind == M8::TrCut) {
+            // (sweeping across the middle of the Stage, 450 wu/s at its fastest)
+            p1 = Vec2{600.0f * std::sin(0.75f * ts), 40.0f * std::sin(1.7f * ts)};
+            v1 = Vec2{450.0f * std::cos(0.75f * ts), 68.0f * std::cos(1.7f * ts)};
+        } else if (pic.kind == M8::TrSpin) {
+            // (circling the first ship at 200 wu, 450 wu/s)
+            const Vec2 c = w.player(0).pos;
+            p1 = c + Vec2{std::cos(2.25f * ts), std::sin(2.25f * ts)} * 200.0f;
+            v1 = Vec2{-std::sin(2.25f * ts), std::cos(2.25f * ts)} * 450.0f;
+        } else if (pic.kind == M8::TrDuet) {
+            // (a U from (-150, -250): down across the first ship's line, along under it, up across it again; 450 wu/s from 0.6 s)
+            const float d = std::fmax(0.0f, ts - 0.6f) * 450.0f;
+            if (d < 500.0f) p1 = Vec2{-150.0f, -250.0f + d}, v1 = Vec2{0.0f, d > 0.0f ? 450.0f : 0.0f};
+            else if (d < 800.0f) p1 = Vec2{-150.0f + (d - 500.0f), 250.0f}, v1 = Vec2{450.0f, 0.0f};
+            else p1 = Vec2{150.0f, 250.0f - std::fmin(d - 800.0f, 700.0f)}, v1 = Vec2{0.0f, d - 800.0f < 700.0f ? -450.0f : 0.0f};
+        }
+        scriptPose1_ = PlayerPose{};
+        scriptPose1_.present = true;
+        scriptPose1_.pos = p1;
+        scriptPose1_.vel = v1;
+        scriptPose1_.heading = std::atan2(v1.y, v1.x);
+        scriptPose1_.aim = normalizeOr(v1, Vec2{1.0f, 0.0f});
+        // The first ship: the ring-flier (the cut's line, the Boosts), standing (the spin-out), a straight line (the duet), a circle
+        // of 380 wu round the Stage's centre (the big ring).
+        in = StickInput{};
+        if (pic.kind == M8::TrCut || pic.kind == M8::TrBoost) in = w.player(0).alive ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+        if (pic.kind == M8::TrDuet && !ffRunning_ && t == 0) {
+            // (from the first drawn frame: the first ship at the left, flying right along the middle)
+            w.playerMut(0).pos = w.playerMut(0).prevPos = Vec2{-520.0f, 0.0f};
+            controller_.reset(w.player(0).pos);
+        }
+        if (pic.kind == M8::TrDuet && !ffRunning_ && ts < 2.6f) in.move = Vec2{1.0f, 0.0f};
+        if (pic.kind == M8::TrRingBig) {
+            const Vec2 r = w.player(0).pos;
+            const float l = std::fmax(length(r), 1.0f);
+            const Vec2 tangent{-r.y / l, r.x / l};
+            in.move = normalizeOr(tangent + r * ((380.0f - l) / (l * 120.0f)), tangent);
+        }
+        if (captureFrom_ >= 0 || ffRunning_) return true;
+        if (pic.kind == M8::TrBoost && t == 30) {
+            static const u8 kBoosts[7] = {kTimeStretch, kFreezeFrame, kHalo, kMagnetStorm, kBlackHole, kColossus, kConfetti};
+            if (pic.mode < 7) w.grantBoost(0, kBoosts[pic.mode]);
+            else w.playerMut(0).gelUntil[pic.mode == 7 ? kGelLong : kGelEcho] = music1_ + 4.0 * kTicksPerBar;
+        }
+        if (pic.kind == M8::TrBoost && t >= 120) captureFrom_ = now + 1;
+        if (pic.kind == M8::TrCut && (m8Seen_ & 1u)) captureFrom_ = now;
+        if (pic.kind == M8::TrSpin && (m8Seen_ & 2u)) captureFrom_ = now + 2;
+        if (pic.kind == M8::TrRingBig && (m8Seen_ & 4u)) captureFrom_ = now + 2;
+        if (pic.kind == M8::TrDuet) {
+            for (u32 k = 0; k < World::kRings; ++k) {
+                const TracerRing& r = w.ring(k);
+                if (r.active && r.owner2 != 0xFF) {
+                    captureFrom_ = now + 1;
+                    break;
+                }
+            }
+        }
+        if (captureFrom_ >= 0) RF_LOG("play: picture '%s' captures from frame %lld (tick %u)", opt_.picture, static_cast<long long>(captureFrom_), t);
         return true;
     }
     if (pic.kind == M8::TrLightsOut || pic.kind == M8::TrTurf4) {

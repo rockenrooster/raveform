@@ -83,7 +83,9 @@ if ($Part -eq 'p0') {
 } else {
     # p4: TRACERS on Reef (tracers.md "What to check"): a line half drawn with its hint, a lock, the floor at 60% in four colours,
     # the result; strips: the pop a thirty-second apart from the lock (8), FULL HOUSE a quarter beat apart (16), the count (8)
-    $singles = @('m8_tr_line', 'm8_tr_lock', 'm8_tr_floor4', 'm8_tr_result', 'm8_tr_turf_4')
+    $singles = @('m8_tr_line', 'm8_tr_lock', 'm8_tr_floor4', 'm8_tr_result', 'm8_tr_turf_4', 'm8_tr_cut', 'm8_tr_spin', 'm8_tr_duet', 'm8_tr_ring_big',
+                 'm8_tr_boost_time_stretch', 'm8_tr_boost_freeze_frame', 'm8_tr_boost_halo', 'm8_tr_boost_magnet_storm', 'm8_tr_boost_black_hole',
+                 'm8_tr_boost_colossus', 'm8_tr_boost_confetti', 'm8_tr_boost_long', 'm8_tr_boost_echo')
     $strips = [ordered]@{ 'm8_tr_pop' = 8; 'm8_tr_house' = 16; 'm8_tr_count' = 8; 'm8_tr_lights_out' = 8 }
     $rooms = @()
 }
