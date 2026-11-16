@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "audio/band.h"
@@ -45,6 +46,11 @@ void groupDigits(char* out, size_t cap, u64 v) {
 // The load-in's climbing run (README.md 5: a chirp a landing, one note further up the Track's scale, two octaves, then again from
 // the middle): the minor pentatonic over two octaves.
 constexpr i32 kClimb[11] = {0, 3, 5, 7, 10, 12, 15, 17, 19, 22, 24};
+// FULL BLAST (full_blast.md "Look"): the torrent's Riffs at 0.8 of an orb, each with a ring as it lands (the page gives no size: 220
+// wu, a little over half the load-in's own closing ring), the closing ring to 700 wu; the power back's ring to 600 wu.
+constexpr float kTorrentRiffScale = 0.8f, kRiffRingWu = 220.0f, kTorrentRingWu = 700.0f, kPowerRingWu = 600.0f;
+// The title's eight (screens.md "Title": A3 C4 E4 A4 C5 E5 G5 A5), as HEADLINERS COMPLETE and the podium's fanfare play them.
+constexpr u8 kTitleEight[8] = {57, 60, 64, 69, 72, 76, 79, 81};
 }  // namespace
 
 void Play::modesEvent(const Event& e) {
@@ -60,6 +66,12 @@ void Play::modesEvent(const Event& e) {
                 if (isRiff(e.b)) band_->playSfx(audio::Sfx::Upgrade, 0.45f, rate);
                 else band_->playSfx(audio::Sfx::Shard, 0.9f, rate);
             }
+            if (w.setup().mode == Mode::FullBlast && isRiff(e.b) && !(settings_.reduceFlashing || forcedReduceFlashing_)) {
+                // full_blast.md "Look": the torrent: each Riff's landing drawn larger, its ring appearing as it lands.
+                const u32 q = seat_ < kMaxPlayers ? seat_ : 0u;
+                const float beatS = 60.0f / std::fmax(clock_.bpm(), 30.0f);
+                view_.loadInRing({e.x, e.y}, kRiffRingWu, palettes_->player[q], palettes_->playerLight[q], static_cast<float>(tickEnd_ - e.age), 0.25f * beatS);
+            }
             ++kitChirps_;
             break;
         }
@@ -72,6 +84,17 @@ void Play::modesEvent(const Event& e) {
             if (w.setup().mode == Mode::Headliners && w.phrase().track >= 1 && w.phrase().track <= 10) actSecs_[w.phrase().track - 1u] = bossSecs_;
             if ((w.setup().mode == Mode::OneTrack || (w.setup().mode == Mode::Headliners && w.phrase().track >= 10)) && !trackComplete_) {
                 // one_track.md: the outro: TRACK COMPLETE with the score under it, where the name card stood, for its four bars.
+                if (w.setup().mode == Mode::Headliners && bandDrives_ && band_) {
+                    // sound.md "HEADLINERS": HEADLINERS COMPLETE: the gong; the band's stab on Last Light's home chord at 1.2; the
+                    // title's eight in the lead, a sixteenth apart; the progression held on the home chord through the outro.
+                    const double off = coop() ? netBandOffset_ : clock_.offset();
+                    const double t16 = kTicksPerBeat / 4.0;
+                    const double from = (std::floor(music1_ / t16) + 1.0) * t16;
+                    band_->playRecipe(audio::Recipe::Gong, -1, 0.8f);
+                    band_->playRecipe(audio::Recipe::Stab, -1, 1.2f, 0.0f, from + off);
+                    for (u32 j = 0; j < 8; ++j) band_->leadNoteAt(0, kTitleEight[j], 0.9f, 0.0f, from + off + static_cast<double>(j + 1) * t16);
+                    band_->holdChord(0);
+                }
                 trackComplete_ = true;
                 setCompleteT_ = static_cast<float>(tickEnd_ - e.age);
                 setCompleteScore_ = w.player(seat_).score;
@@ -83,43 +106,64 @@ void Play::modesEvent(const Event& e) {
             if (bandDrives_ && band_ && e.a != 0xFF) band_->playRecipe(audio::Recipe::Bell, 84, 0.6f);
             break;
         case EventType::Knock:
-            if (e.a == seat_) pulse(2);
+            if (e.a != seat_) break;
+            pulse(2);
+            if (bandDrives_ && band_) {
+                // sound.md "Every mode": the knock-out: the hit's own sound, then a saw glide falling an octave over one beat; BACK IN 2
+                // and BACK IN 1 the count-in's tick on their bar lines; coming back an opening sweep ending on the bar line and the
+                // Cell's note. FULL BLAST (the power cut): the Drop's impact on that bar line.
+                const double off = coop() ? netBandOffset_ : clock_.offset();
+                const double back = e.tick;
+                band_->playRecipe(audio::Recipe::SawGlide, -1, 0.55f, 0.0f, -1.0, -12.0f, 1.0f);
+                for (u32 k = 1; k <= 2; ++k)
+                    if (back - static_cast<double>(k) * kTicksPerBar > music1_) band_->sfxAt(audio::Sfx::Tick, back - static_cast<double>(k) * kTicksPerBar + off, 0.6f);
+                band_->playRecipe(audio::Recipe::Sweep, -1, 0.5f, 0.0f, back - kTicksPerBeat + off, 1.0f, 1.0f);
+                band_->leadNoteAt(0, static_cast<u8>(homeNote(5)), 0.85f, 0.0f, back + off);
+                if (w.setup().mode == Mode::FullBlast) band_->playRecipe(audio::Recipe::Impact, -1, 0.9f, 0.0f, back + off);
+            }
+            break;
+        case EventType::KnockBack:
+            if (e.a != seat_ || w.setup().mode != Mode::FullBlast) break;
+            {
+                // full_blast.md "Look": the power back: a ring from where the ship re-forms (90 to 600 wu in half a beat), every icon
+                // of the band row flashing in turn over one beat.
+                const u32 q = seat_ < kMaxPlayers ? seat_ : 0u;
+                const float beatS = 60.0f / std::fmax(clock_.bpm(), 30.0f);
+                powerBackT_ = static_cast<float>(tickEnd_ - e.age);
+                if (!(settings_.reduceFlashing || forcedReduceFlashing_))
+                    view_.loadInRing({e.x, e.y}, kPowerRingWu, palettes_->player[q], palettes_->playerLight[q], powerBackT_, 0.5f * beatS);
+                pulse(2);
+            }
             break;
         case EventType::RunEnd:
             // The outro is over: the result (the Track cleared).
             runCleared_ = true;
             RF_LOG("play: the run ends (Track %u cleared, %.1f s, score %llu)", w.phrase().track, runSeconds_,
                    static_cast<unsigned long long>(w.player(seat_).score));
+            if (w.director().formCount) {
+                // README.md 6 (a timed run's last downbeat): the music bus low-passed at 600 Hz for a beat and opened over the next
+                // (sound.md "Every mode"); FULL BLAST's count, the load-out: the load-in's chirps running down the scale, a sixteenth
+                // each, into the back chord on the bar line.
+                countTick_ = e.tick;
+                if (bandDrives_ && band_) {
+                    band_->lowPassBed(600.0f, 60.0f / std::fmax(clock_.bpm(), 30.0f));
+                    if (w.setup().mode == Mode::FullBlast) {
+                        const double off = coop() ? netBandOffset_ : clock_.offset();
+                        for (u32 j = 0; j < 12; ++j)
+                            band_->playRecipe(audio::Recipe::Chirp, audio::chordNote(10 - static_cast<i32>(j), 5), 0.5f, 0.0f,
+                                              e.tick + off + static_cast<double>(j + 1) * kTicksPerBeat / 4.0);
+                        band_->sfxAt(audio::Sfx::UiBack, e.tick + off + kTicksPerBar, 0.9f);
+                    }
+                }
+            }
             if (flow_ && (screen_ == Screen::Run || (coop() && (screen_ == Screen::Paused || screen_ == Screen::Settings)))) {
-                endRun(false);
-                coopOver_ = coop();
-                screen_ = Screen::GameOver;
-                overS_ = -0.6f;
-                podiumS_ = 0.0f;
-                podiumCounted_ = false;
-                podiumWinner_ = 0xFF;
-                if (w.setup().versus) {
-                    // The winner: the best count; a draw when the top is level.
-                    u64 best = 0;
-                    u32 at = 0;
-                    for (u32 q = 0; q < kMaxPlayers; ++q) {
-                        if (!w.player(q).present) continue;
-                        if (podiumWinner_ == 0xFF || w.versusCount(q) > best) {  // (TRACERS: the tiles in each colour)
-                            best = w.versusCount(q);
-                            podiumWinner_ = static_cast<u8>(q);
-                            at = 1;
-                        } else if (w.versusCount(q) == best) {
-                            ++at;
-                        }
-                    }
-                    if (at != 1) podiumWinner_ = 0xFF;
-                    if (session_ && session_->host() && podiumWinner_ != 0xFF) {
-                        // V8: the room keeps each seat's wins as crowns while it stands (the lobby's message carries them).
-                        const u8 c = session_->crowns(podiumWinner_);
-                        session_->setCrowns(podiumWinner_, static_cast<u8>(c < 255 ? c + 1 : 255));
-                        podiumCounted_ = true;
-                    }
-                    RF_LOG("play: the versus match ends: %s", podiumWinner_ == 0xFF ? "a draw" : "a winner");
+                if (w.director().formCount) {
+                    // screens.md "The count": the bar after the last downbeat counts what was made; the result arrives on the next
+                    // bar line, as game over arrives.
+                    resultPending_ = true;
+                    resultAt_ = e.tick + kTicksPerBar;
+                } else {
+                    modesResult();
                 }
             } else if (!flow_ || opt_.bot) {
                 retryRequest_ = true;  // (a benchmark or the bot: the same Track again)
@@ -243,6 +287,11 @@ void Play::modesEvent(const Event& e) {
         case EventType::Restart:
             std::memset(songMarks_, 0, sizeof songMarks_);
             songCountT_ = -100.0f;
+            resultPending_ = false;
+            countTick_ = -1.0;
+            completeChord_ = false;
+            powerBackT_ = -100.0f;
+            view_.setHaloGone(0);
             for (float& a : actSecs_) a = 0.0f;
             runCleared_ = trackComplete_ = kitClosed_ = false;
             kitChirps_ = 0;
@@ -293,9 +342,22 @@ void Play::modesEvent(const Event& e) {
 }
 
 void Play::modesFrameRun() {
-    // README.md 5: bar 3's downbeat: a ring in the player's colours leaves the ship (90 to 400 wu in half a beat; reduce flashing:
-    // none), the HUD's band row flashes once, the "upgrade taken" chord.
     const World& w = *world_;
+    if (resultPending_ && music1_ >= resultAt_ && (screen_ == Screen::Run || (coop() && (screen_ == Screen::Paused || screen_ == Screen::Settings)))) {
+        resultPending_ = false;
+        modesResult();
+    }
+    // FULL BLAST's power cut (sound.md): the music behind the pause's low-pass while the ship is out, opened over a beat as it returns.
+    const bool cut = flow_ && w.setup().mode == Mode::FullBlast && w.player(seat_).knocked && !w.runEnded();
+    if (cut != powerCutMuffled_) applyPauseMix();
+    // ONE TRACK (sound.md): TRACK COMPLETE: the "upgrade taken" chord an octave up as the card finishes writing (its beat).
+    if (trackComplete_ && !completeChord_ && w.setup().mode == Mode::OneTrack &&
+        static_cast<float>(tickEnd_) >= setCompleteT_ + 60.0f / std::fmax(clock_.bpm(), 30.0f)) {
+        completeChord_ = true;
+        if (bandDrives_ && band_) band_->playSfx(audio::Sfx::Upgrade, 0.9f, 2.0f);
+    }
+    // README.md 5: bar 3's downbeat: a ring in the player's colours leaves the ship (90 to 400 wu in half a beat; reduce flashing:
+    // none), the HUD's band row flashes once, the "upgrade taken" chord. (FULL BLAST's torrent closes with a ring to 700 wu.)
     const World::KitState& k = w.kit(seat_);
     if (kitClosed_ || !k.count || k.landed < k.count) return;
     const ModesData::LoadIn& li = species_->modes.loadIn;
@@ -306,7 +368,8 @@ void Play::modesFrameRun() {
     const float beatS = 60.0f / std::fmax(clock_.bpm(), 30.0f);
     const u32 q = seat_ < kMaxPlayers ? seat_ : 0u;
     if (!(settings_.reduceFlashing || forcedReduceFlashing_))
-        view_.loadInRing(pl.pos, li.closeRingWu[1], palettes_->player[q], palettes_->playerLight[q], static_cast<float>(tickEnd_), li.closeRingBeats * beatS);
+        view_.loadInRing(pl.pos, w.setup().mode == Mode::FullBlast ? kTorrentRingWu : li.closeRingWu[1], palettes_->player[q], palettes_->playerLight[q],
+                         static_cast<float>(tickEnd_), li.closeRingBeats * beatS);
     takenT_ = static_cast<float>(tickEnd_);  // (the band row's flash)
     if (bandDrives_ && band_) band_->playSfx(audio::Sfx::Upgrade, 1.0f, 1.0f);
 }
@@ -430,7 +493,8 @@ void Play::drawLoadIn(FrameDraw& d, const LookVariant& variant) {
         const Vec2 sp = view_.toScreen(at);
         const u8 orb = k.orb[i];
         const i32 icon = isFusionOrb(orb) ? fusionIcons_[fusionOfOrb(orb)] : upgradeIcons_[orb < kUpgradeCount ? orb : 0];
-        const float size = 34.0f * px * li.iconScale * (0.6f + 0.4f * clamp01(u * 3.0f));
+        const float scale = w.setup().mode == Mode::FullBlast && isRiff(orb) ? kTorrentRiffScale : li.iconScale;  // (full_blast.md: 0.8)
+        const float size = 34.0f * px * scale * (0.6f + 0.4f * clamp01(u * 3.0f));
         if (u > 0.05f) {
             // the trail: back along the spiral a little
             const float ab = a0 + 6.2831853f * li.spiralTurns * std::fmax(0.0f, e - 0.15f);
@@ -578,6 +642,196 @@ void Play::modesEndRun(bool died) {
     }
     runEndedBy_[0] = 0;
     if (died) causeName(p.lastHitCause, runEndedBy_, sizeof runEndedBy_);
+}
+
+void Play::modesResult() {
+    // The result on its bar line (or at once for a mode that is not timed): game over's screen with the mode's numbers; a versus match's
+    // podium (the winner the best count, a draw when the top is level; the room's crown to the winner).
+    const World& w = *world_;
+    endRun(false);
+    coopOver_ = coop();
+    screen_ = Screen::GameOver;
+    overS_ = -0.6f;
+    podiumS_ = 0.0f;
+    podiumCounted_ = false;
+    podiumWinner_ = 0xFF;
+    if (w.setup().versus) {
+        u64 best = 0;
+        u32 at = 0;
+        for (u32 q = 0; q < kMaxPlayers; ++q) {
+            if (!w.player(q).present) continue;
+            if (podiumWinner_ == 0xFF || w.versusCount(q) > best) {  // (TRACERS: the tiles in each colour)
+                best = w.versusCount(q);
+                podiumWinner_ = static_cast<u8>(q);
+                at = 1;
+            } else if (w.versusCount(q) == best) {
+                ++at;
+            }
+        }
+        if (at != 1) podiumWinner_ = 0xFF;
+        if (session_ && session_->host() && podiumWinner_ != 0xFF) {
+            // V8: the room keeps each seat's wins as crowns while it stands (the lobby's message carries them).
+            const u8 c = session_->crowns(podiumWinner_);
+            session_->setCrowns(podiumWinner_, static_cast<u8>(c < 255 ? c + 1 : 255));
+            podiumCounted_ = true;
+        }
+        RF_LOG("play: the versus match ends: %s", podiumWinner_ == 0xFF ? "a draw" : "a winner");
+    }
+}
+
+i32 Play::homeNote(i32 octave, i32 semis) const {
+    const World& w = *world_;
+    const u32 t0 = w.director().bonus ? w.director().bonus : (w.setup().track ? w.setup().track : w.phrase().track);
+    const u32 t = t0 >= 1 && t0 <= kModeTracks ? t0 : 1u;
+    const i32 pc = static_cast<i32>(species_->modes.tunes[t - 1u].tonic) % 12;
+    const i32 n = 12 * (octave + 1) + pc + semis;
+    return n < 0 ? 0 : (n > 127 ? 127 : n);
+}
+
+void Play::modesBarPlan(double nextLine, double offset, const Phrase& next) {
+    // design/modes/sound.md: what plays on the coming bar lines (band ticks), planned half a bar ahead; a reversed cymbal or the last
+    // bar's roll, which start before their line, a bar earlier.
+    (void)offset;
+    const World& w = *world_;
+    const RunSetup& su = w.setup();
+    const DirectorState& d = w.director();
+    if (su.mode == Mode::Set || (su.mode == Mode::Jam && !d.formCount)) return;
+    const double bar = kTicksPerBar, beat = kTicksPerBeat;
+    if (d.formCount && !next.ended) {
+        // LAST CALL: two bells, the chord's fifth then its root an octave up, an eighth apart, as it appears.
+        if (next.barsLeft == 8) {
+            band_->playRecipe(audio::Recipe::Bell, audio::chordNote(2, 5, audio::NoteFrom::ChordTone), 0.6f, 0.0f, nextLine);
+            band_->playRecipe(audio::Recipe::Bell, audio::chordNote(4, 5, audio::NoteFrom::ChordTone), 0.6f, 0.0f, nextLine + beat / 2.0);
+        }
+        // The last bar: the Build's snare roll and a riser over its four beats, both ending on the last downbeat, and the impact there.
+        if (next.barsLeft == 1) {
+            band_->playRecipe(audio::Recipe::Roll, -1, 0.7f, 0.0f, nextLine + bar, 4.0f);
+            band_->playRecipe(audio::Recipe::Whoosh, -1, 0.45f, 0.0f, nextLine, 4.0f);
+            band_->playRecipe(audio::Recipe::Impact, -1, 1.0f, 0.0f, nextLine + bar);
+        }
+        if (su.mode == Mode::FullBlast) {
+            // A wave's name: a reversed cymbal of four beats ending on its Drop's downbeat (planned as its Build's last bar begins);
+            // the band's stab on the bar's chord as the name's letters are struck (the card writes over its first beat).
+            if (next.section == Section::Build && next.sectionBar + 1u == next.sectionBars)
+                band_->playRecipe(audio::Recipe::RevCymbal, -1, 0.7f, 0.0f, nextLine + bar, 4.0f);
+            if (next.section == Section::Drop && next.sectionBar == 0 && next.wave) {
+                band_->playRecipe(audio::Recipe::Stab, -1, 1.0f, 0.0f, nextLine + beat / 2.0);
+                pulse(2);  // (sound.md's haptics: heavy for a wave's Drop)
+            }
+        }
+    }
+    if (su.mode == Mode::OneTrack && d.outroBar != kNoBar) {
+        // ONE TRACK (sound.md): the outro's first downbeat a gong on the home chord's root, the progression held on that chord under
+        // the outro's Break; into the result a reversed cymbal of four beats ending on the outro's last bar line.
+        if (next.bar == d.outroBar) {
+            band_->playRecipe(audio::Recipe::Gong, -1, 0.75f, 0.0f, nextLine);
+            band_->holdChord(0);
+        }
+        if (d.outroBars && next.bar + 1u == d.outroBar + d.outroBars) band_->playRecipe(audio::Recipe::RevCymbal, -1, 0.7f, 0.0f, nextLine + bar, 4.0f);
+    }
+    if (su.mode == Mode::Headliners && !next.trackChange && next.track != actCardTrack_ && next.track >= 1) {
+        // HEADLINERS (sound.md): the act's card: the elite's arrival fifth in the new Track's key; then a bell for each act already
+        // won, a sixteenth apart, chordNote(k, 5) for the k-th: the bill read out.
+        actCardTrack_ = next.track;
+        band_->sfxAt(audio::Sfx::Elite, nextLine, 0.8f);
+        for (u32 k = 0; k + 1u < next.track && k < 9; ++k)
+            band_->playRecipe(audio::Recipe::Bell, audio::chordNote(static_cast<i32>(k), 5), 0.55f, 0.0f, nextLine + static_cast<double>(k + 1) * beat / 4.0);
+    }
+}
+
+u32 Play::bandRowItems(const PlayerState& p, u8* out, u32 cap) const {
+    // The HUD's band row in its order (play_hud.cpp): the Riffs as they were taken, then every Fusion, then the Mods held as taken.
+    u32 n = 0;
+    for (u32 pass = 1; pass < 256 && n < cap; ++pass)
+        for (u8 u = kOrbitals; u < kUpgradeCount && n < cap; ++u)
+            if (p.loadout.order[u] == pass) out[n++] = u;
+    for (u8 f = 0; f < kFusionCount && n < cap; ++f)
+        if (p.loadout.fused(f)) out[n++] = static_cast<u8>(kFusionOrb + f);
+    for (u32 pass = 1; pass < 256 && n < cap; ++pass)
+        for (u8 u = 0; u < kModCount && n < cap; ++u)
+            if (p.loadout.order[u] == pass && p.loadout.mods[u]) out[n++] = u;
+    return n;
+}
+
+namespace {
+// FULL BLAST's load-out (design/modes/screens.md "The count"): the band row's icons leave over the bar's first three beats (three or
+// four a sixteenth, as the torrent landed), each flying out of the ship to the frame's edges over a beat; the halo's arcs in the last.
+constexpr double kLoadOutIconsBeats = 3.0;
+}  // namespace
+
+u32 Play::loadOutHaloGone(double music) const {
+    const World& w = *world_;
+    if (countTick_ < 0.0 || w.setup().mode != Mode::FullBlast) return 0;
+    const double from = countTick_ + kLoadOutIconsBeats * kTicksPerBeat;
+    if (music < from) return 0;
+    const u32 cells = w.player(seat_).cells > 8 ? 8u : w.player(seat_).cells;
+    if (!cells) return 0;
+    const u32 n = static_cast<u32>((music - from) / (kTicksPerBeat / static_cast<double>(cells))) + 1u;
+    return n < cells ? n : cells;
+}
+
+u64 Play::rolledScore(u64 score, double music) const {
+    // The count's bar: the score's digits roll, and settle on their value from the left, one after another.
+    if (countTick_ < 0.0 || world_->setup().mode != Mode::FullBlast || music >= countTick_ + kTicksPerBar || music < countTick_) return score;
+    char raw[24];
+    const int n = std::snprintf(raw, sizeof raw, "%llu", static_cast<unsigned long long>(score));
+    if (n <= 1) return score;
+    const double u = (music - countTick_) / kTicksPerBar;
+    const int settled = static_cast<int>(u * static_cast<double>(n + 1));
+    const u32 spin = static_cast<u32>(music / (kTicksPerBeat / 8.0));
+    for (int i = settled; i < n; ++i) {
+        const u32 dgt = static_cast<u32>(raw[i] - '0');
+        const u32 r = (dgt + spin + static_cast<u32>(i) * 3u) % 10u;
+        raw[i] = static_cast<char>('0' + (i == 0 && r == 0 ? 1u : r));
+    }
+    return std::strtoull(raw, nullptr, 10);
+}
+
+void Play::drawLoadOut(FrameDraw& d, const LookVariant& variant, float W, float H) {
+    const World& w = *world_;
+    if (countTick_ < 0.0 || w.setup().mode != Mode::FullBlast) return;
+    const double now = musicPrev_ + (music1_ - musicPrev_) * static_cast<double>(alpha_);
+    if (now < countTick_ || now > countTick_ + kTicksPerBar + kTicksPerBeat) return;
+    const LookCtx ctx{look_, &variant};
+    const PlayerState& pl = w.player(seat_);
+    const Vec2 ship = view_.toScreen(pl.prevPos + (pl.pos - pl.prevPos) * alpha_);
+    const float px = view_.pxPerWu();
+    const float reach = 0.6f * std::sqrt(W * W + H * H);  // (to the frame's edges and past them)
+    u8 items[64];
+    const u32 n = bandRowItems(pl, items, 64);
+    const double span = kLoadOutIconsBeats * kTicksPerBeat;
+    for (u32 i = 0; i < n; ++i) {
+        const double launch = countTick_ + span * static_cast<double>(i) / static_cast<double>(n);
+        const float u = static_cast<float>((now - launch) / kTicksPerBeat);  // 0 leaving .. 1 gone
+        if (u < 0.0f || u > 1.0f) continue;
+        const float a = 2.39996323f * static_cast<float>(i) - 1.5707963f;  // (the golden angle: the circle filled evenly)
+        const float e = u * u;
+        const Vec2 at = ship + Vec2{std::cos(a), std::sin(a)} * (reach * e + 40.0f * px * u);
+        const u8 orb = items[i];
+        const i32 icon = isFusionOrb(orb) ? fusionIcons_[fusionOfOrb(orb)] : upgradeIcons_[orb < kUpgradeCount ? orb : 0];
+        const float size = 34.0f * px * (isRiff(orb) ? kTorrentRiffScale : species_->modes.loadIn.iconScale);
+        icons_.drawHud(d.hud, icon, at, size, 1.4f * (1.0f - 0.6f * u), lookColour, &ctx);
+    }
+    // The halo's arcs last: each leaves as a short arc of light flying outward.
+    const double from = countTick_ + span;
+    const u32 cells = pl.cells > 8 ? 8u : pl.cells;
+    const Vec3 tone = palettes_->player[seat_ < kMaxPlayers ? seat_ : 0];
+    for (u32 c = 0; c < cells; ++c) {
+        const double launch = from + kTicksPerBeat * static_cast<double>(c) / static_cast<double>(cells);
+        const float u = static_cast<float>((now - launch) / kTicksPerBeat);
+        if (u < 0.0f || u > 1.0f) continue;
+        const float mid = 1.5707963f + 6.2831853f * static_cast<float>(c) / static_cast<float>(cells);
+        const float r = (30.0f + 900.0f * u * u) * px;
+        const float half = 0.35f * 6.2831853f / static_cast<float>(cells) * (1.0f - 0.5f * u);
+        const Vec3 col = hudColour(*look_, variant, tone, 1.6f * (1.0f - u));
+        Vec2 prev = ship + Vec2{std::cos(mid - half), -std::sin(mid - half)} * r;
+        for (u32 j = 1; j <= 6; ++j) {
+            const float aa = mid - half + 2.0f * half * static_cast<float>(j) / 6.0f;
+            const Vec2 q = ship + Vec2{std::cos(aa), -std::sin(aa)} * r;
+            d.hud.line(prev, q, 1.4f, col, col, 0);
+            prev = q;
+        }
+    }
 }
 
 void Play::nextTrack() {

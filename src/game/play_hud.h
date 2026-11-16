@@ -77,6 +77,15 @@ struct HudState {
     const char* cardName = nullptr;              // ... and the boss's name in place of the Track's
     const char* completeLine = nullptr;          // M8 HEADLINERS: the time under HEADLINERS COMPLETE in place of the score
     const char* goalLine = nullptr;              // M8 (design/modes/screens.md "The goal line"): ACT 3 OF 10   4:12
+    // M8 (screens.md "The goal line and the run bar"): a timed mode's run bar under the goal line (the director's form, a white dot
+    // for now; blinking on the beat in the last eight bars, LAST CALL under it for two) in the mode's colours.
+    bool runBar = false;
+    Vec3 modeFrom{1.0f, 1.0f, 1.0f}, modeTo{1.0f, 1.0f, 1.0f};
+    // M8 FULL BLAST (full_blast.md "Look"): the band row at this level (the power cut: 0.3); its icons flashing in turn as the power
+    // comes back (0..1 over the beat; < 0 none); the load-out: the first this many of its icons gone (flown out of the ship).
+    float rowLevel = 1.0f;
+    float rowFlash = -1.0f;
+    u32 rowGone = 0;
     // M8 TRACERS (tracers.md "HUD"): the Shard level's bar labelled TRACER 9 BEATS; no Riff slots (the Boost cards a row lower);
     // the gels' cards beside the Boosts' (an upgrade's icon, its name and words, the bars it has left).
     const char* levelLabel = nullptr;

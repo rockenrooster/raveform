@@ -1477,7 +1477,8 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
     if (me.alive) {
         const float heading = in.shipHeading;
         const LookLine& hull = look_->lines.playerHull;
-        const u32 cells = me.cells > 8 ? 8u : me.cells;
+        const u32 cells0 = me.cells > 8 ? 8u : me.cells;
+        const u32 cells = cells0 > haloGone_ ? cells0 - haloGone_ : 0u;  // (M8 FULL BLAST's load-out: the arcs flown out)
         // (2026-11-14, the owner: "it's not clear when you are damaged and when you can be damaged again"): while it cannot be hurt
         // (invulS) the hull blinks on the sixteenths (down to 0.35; reduce flashing: steady at 0.7), its bubble draining round it
         // (drawFeedbackFx); a lost cell turns the hull white for 0.1 s.

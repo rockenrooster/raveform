@@ -974,7 +974,7 @@ void World::hitPlayer(u32 p, Vec2 from, u16 cause, bool bullet) {
     // enemies), grants 1.5 s of invulnerability and halves the Chain.
     --pl.cells;
     pl.invulS = kInvulnerableS;
-    pl.chain = pl.chain / 2 > 1 ? pl.chain / 2 : 1u;  // halved, never below x1
+    if (!chainKept(p)) pl.chain = pl.chain / 2 > 1 ? pl.chain / 2 : 1u;  // halved, never below x1 (M8: not FULL BLAST's underdog's)
     dipS_ = kHitDipS;
     // GAME_DESIGN 8, assist: a lost Shield cell eases the budget 10% (once a cycle).
     if (!director_.hitThisCycle) {

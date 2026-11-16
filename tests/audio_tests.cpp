@@ -527,6 +527,54 @@ void testSparkLead() {
     freeCapture(c);
 }
 
+// M8 (design/modes/sound.md "What the band needs" 3): the progression held on its first chord from the next bar line (ONE TRACK's
+// outro, the result's bed): the Spark's sixteenths in bars 2 and 3 are the home chord's arpeggio; released, bar 5 is its own again.
+void testHoldChord() {
+    Engine e;
+    CHECK(e.init(*g_music, *g_bank, kRate));
+    e.post(cmd(CmdType::SetMode, static_cast<u8>(Mode::Conductor), 3, 0));
+    e.post(cmd(CmdType::SetIntensity, 0, 0, 0, 0.0f));
+    Capture c;
+    const u64 bar = static_cast<u64>(barFrames(3));
+    c.out = static_cast<float*>(std::calloc((bar * 6 + 64) * 2, sizeof(float)));
+    c.events = static_cast<BeatEvent*>(std::calloc(20000, sizeof(BeatEvent)));
+    u64 at = 0;
+    const auto renderTo = [&](u64 to) {
+        for (; at < to; at += 64) {
+            e.render(c.out + at * 2, 64, 2);
+            BeatEvent ev;
+            while (e.popEvent(ev)) c.events[c.eventCount++] = ev;
+        }
+    };
+    e.post(cmd(CmdType::SetSpark, 1, 2));
+    renderTo(bar + bar / 2);
+    e.post(cmd(CmdType::HoldChord, 0, 1));
+    renderTo(bar * 3 + bar / 2);
+    e.post(cmd(CmdType::HoldChord, 0, 0));
+    renderTo(bar * 6);
+    const Track& tr = g_music->tracks[3];
+    u32 held = 0, heldWrong = 0, free = 0, freeWrong = 0;
+    for (u32 i = 0; i < c.eventCount; ++i) {
+        const BeatEvent& ev = c.events[i];
+        if (ev.kind != BeatKind::Lead || ev.b != kSparkLeadPlayer) continue;
+        const u32 b = static_cast<u32>(ev.tick / 384.0);
+        const u32 st = static_cast<u32>(std::fmod(ev.tick, 384.0) / 24.0);
+        if (b == 2 || b == 3) {
+            ++held;
+            if (ev.a != tr.chordAtBar(0).arp[st]) ++heldWrong;
+        } else if (b == 4 || b == 5) {
+            ++free;
+            if (ev.a != tr.chordAtBar(b).arp[st]) ++freeWrong;
+        }
+    }
+    bool differs = false;
+    for (u32 st = 0; st < 16; ++st) differs = differs || tr.chordAtBar(2).arp[st] != tr.chordAtBar(0).arp[st];
+    CHECK_MSG(differs, "Track 4's bar 2 plays another chord than its first");
+    CHECK_MSG(held == 32 && heldWrong == 0, "held: %u notes, %u not the home chord's", held, heldWrong);
+    CHECK_MSG(free == 32 && freeWrong == 0, "released: %u notes, %u not their bar's", free, freeWrong);
+    freeCapture(c);
+}
+
 // M8 part 6 (jam.md "What to check"): every one of the 256 mixer settings on Toybox, a bar each in the Groove with the bed held by the
 // mask: no bar clips, none is louder (RMS) than the Track's own Drop.
 void testJamMixer() {
@@ -2456,6 +2504,7 @@ int main() {
         {"lead at half rate, Nova on the game's beat (M3)", testLeadHalfRateAndNovaTick},
         {"SONGLINE's Spark: its own slot on the beat's eighths, quarters, sixteenths (M8)", testSparkLead},
         {"JAM's mixer: 256 settings on Toybox, none clips, none louder than its Drop (M8)", testJamMixer},
+        {"the progression held on its home chord and released (M8)", testHoldChord},
         {"variant on the bar line", testVariantOnBarLine},
         {"track change through the Break", testTrackChange},
         {"no allocations in any mode", testNoAllocations},

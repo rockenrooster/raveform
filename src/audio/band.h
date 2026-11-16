@@ -162,6 +162,9 @@ public:
     // M8 (5): the bed's layers by JAM's mixer (a bit a layer: KICK, HATS, BASS, CLAP, OPEN HAT, SHAKER, CHORDS, STABS), from the next
     // bar line; -1: by the intensity again.
     void setBedMask(i32 bits);
+    // M8 (3): the progression held on one chord from the next bar line (0: its first, the home chord; ONE TRACK's outro,
+    // HEADLINERS COMPLETE, the result's bed); -1 releases it.
+    void holdChord(i32 index);
     void setPlayers(u8 count);
     void setPlayerTimbre(u8 slot, u8 timbre);
     void setPlayerFire(u8 slot, u8 mode);
@@ -313,6 +316,7 @@ private:
     u8 fireMode_ = 0;
     u8 sparkMode_ = 0;  // M8: what setSpark last sent
     i32 bedMask_ = -1;  // M8: what setBedMask last sent
+    i32 holdChord_ = -1;  // M8: what holdChord last sent
     bool game_ = false;
     float intensity_ = 0.6f;
     bool hold_ = false;

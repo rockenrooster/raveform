@@ -792,6 +792,8 @@ void World::directorBar(double barTick, u32 bar) {
     // screens.md "Transitions (M6)", the drop-in's grace: nothing spawns in a run's first bar (the first formations come in
     // from the frame's edges on the second; spawnFormation keeps them 600 wu off for two bars).
     if (bar < kGraceQuietBars) return;
+    // M8 FULL BLAST (full_blast.md "The run"): nothing hostile in the opening's four bars; the first flood warps in on bar 4.
+    if (setup_.mode == Mode::FullBlast && d.formCount && bar < 3u) return;
     const double land = barTick + kWarpBeats * kTicksPerBeat;
     strayFodder();
     spendCrowd(land, ph);

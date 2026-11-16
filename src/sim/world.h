@@ -1139,6 +1139,10 @@ public:
     };
     const KitState& kit(u32 p) const { return kit_[p < kMaxPlayers ? p : 0]; }
     void knockOut(u32 p, double backTick);  // M8 versus: a ship out until that bar line (a remote ship's from its device's word)
+    // M8 FULL BLAST versus (design/modes/full_blast.md "Versus"): the underdog's help: a hit does not halve its Chain.
+    bool chainKept(u32 p) const {
+        return setup_.versus && setup_.help && setup_.mode == Mode::FullBlast && director_.underdog == p;
+    }
     double kitLandTick(u32 p, u32 k) const;
     bool runEnded() const { return director_.runEnded; }  // M8: ONE TRACK's outro is over
     // M8 TRACERS (design/modes/tracers.md; world_mode_tracers.cpp): each player's tracer, the rings alive, the floor.

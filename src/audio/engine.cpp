@@ -612,7 +612,7 @@ void Engine::applyCommand(const Command& c) {
             if (pendingCount_ < kPendingMax) {
                 // The chord of the bar the enemy lands in (chordBar_ already counts the current bar).
                 const i64 ahead = floorDiv(static_cast<i64>(c.tick), kTicksPerBar) - plan_->tick / kTicksPerBar;
-                const Chord& ch = tr_->chordAtBar(static_cast<u32>(static_cast<i64>(chordBar_) - 1 + (ahead > 0 ? ahead : 0)));
+                const Chord& ch = barChord(static_cast<u32>(static_cast<i64>(chordBar_) - 1 + (ahead > 0 ? ahead : 0)));
                 const i32 id = bank_->sfx(Sfx::Spawn, ch.bass + 12);
                 Pending& q = pending_[pendingCount_++];
                 q = Pending{};
@@ -675,6 +675,7 @@ void Engine::applyCommand(const Command& c) {
             break;
         }
         case CmdType::SetBedMask: bedMask_ = c.b ? static_cast<i16>(c.a) : static_cast<i16>(-1); break;
+        case CmdType::HoldChord: holdChord_ = c.b ? static_cast<i16>(c.a) : static_cast<i16>(-1); break;
         case CmdType::SetSpark:
             sparkFire_ = c.a == 1 || c.a == 3 || c.a == 4 ? c.a : 0;
             if (c.b < static_cast<u8>(Timbre::Count)) sparkTimbre_ = static_cast<Timbre>(c.b);
@@ -706,6 +707,7 @@ void Engine::applyCommand(const Command& c) {
         case CmdType::Reset:
             sparkFire_ = 0;
             bedMask_ = -1;
+            holdChord_ = -1;
             for (u32 i = 0; i < kLeadVoices; ++i) lead_[i].active = false;
             for (u32 i = 0; i < kBassVoices; ++i) bass_[i].active = false;
             for (u32 i = 0; i < kStabVoices; ++i) stab_[i].active = false;
@@ -1471,7 +1473,7 @@ void Engine::planConductorBar(i64 barTick) {
     p.section = section_;
     p.inSection = sectionBar_;
     p.sectionBars = sectionBars_;
-    p.chord = &tr_->chordAtBar(chordBar_);
+    p.chord = &barChord(chordBar_);
     const bool last = !hold_ && sectionBar_ + 1 == sectionBars_;
     const SoundParams& s = *sp_;
 

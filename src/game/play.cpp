@@ -351,7 +351,9 @@ void Play::frame(float realDt) {
     // (M8 SONGLINE, sound.md: the players' slots play no lead there: the Spark is the tune, the gun a soft hat)
     if (bandDrives_)
         band_->setFireMode(world_->setup().mode == Mode::Tracers ? (world_->tracer(world_->viewPlayer()).laying ? 1 : 0)
-                                                                  : (world_->setup().mode == Mode::Songline ? 0 : controller_.pose().fire));
+                                                                  : (world_->setup().mode == Mode::Songline || (trackComplete_ && world_->setup().mode == Mode::OneTrack)
+                                                                         ? 0  // (ONE TRACK's outro: the lead off, sound.md)
+                                                                         : controller_.pose().fire));
     if (bandDrives_) songlineBand();
 
     stats_.ticksLastFrame = 0;
@@ -881,6 +883,18 @@ void Play::conductBand() {
         postedBpm_ = trackBpm(track);
         band_->setForm(audio::Form::Short);
         band_->setPhrase(audio::Section::Groove, 0, kSectionBars[0][0]);
+        band_->holdChord(-1);  // (M8: a held chord, ONE TRACK's outro or HEADLINERS COMPLETE's, ends with its run)
+        actCardTrack_ = 0;
+        if (su.mode == Mode::Headliners) {
+            // (M8 HEADLINERS, sound.md: act 1's card: the elite's arrival fifth; no act won yet to read out)
+            actCardTrack_ = 1;
+            band_->sfxAt(audio::Sfx::Elite, nextLine, 0.8f);
+        } else if (su.mode != Mode::Set) {
+            // M8 (design/modes/sound.md "Every mode"): a mode's name card: an opening sweep of a beat into it, the band's stab on the
+            // home chord at 1.0 as the name lands (the card writes over its first beat).
+            band_->playRecipe(audio::Recipe::Sweep, -1, 0.5f, 0.0f, nextLine - kTicksPerBeat, 1.0f, 1.0f);
+            band_->playRecipe(audio::Recipe::Stab, -1, 1.0f, 0.0f, nextLine + kTicksPerBeat);
+        }
         off();
         overHeld_ = false;
         return;
@@ -936,6 +950,7 @@ void Play::conductBand() {
     } else {
         band_->setBedMask(-1);
     }
+    modesBarPlan(nextLine, offset, next);  // M8: the modes' sounds on their bar lines (design/modes/sound.md)
     if (next.sectionBar == 0)
         RF_LOG("play: band told: run bar %u (band tick %.0f) %s, %u bars, Track %u cycle %u%s", next.bar, nextLine, sectionLabel(next.section),
                next.sectionBars, next.track, next.cycle, next.trackChange ? " (Track change)" : (next.bossDrop ? " (boss)" : ""));
@@ -1051,6 +1066,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         view_.setHudKeepOut(k);
     }
     updatePalette(vi.music);
+    view_.setHaloGone(loadOutHaloGone(vi.music));  // M8 FULL BLAST's load-out: the halo's arcs fly last
     view_.render(d, params, bg, W, H, vi);
 
     HudState hs;
@@ -1111,6 +1127,28 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         }
     }
     if (modeRun()) hs.modeWords = species_->modes.of(w.setup().mode).nameCard;  // M8: BEAT ITS BOSS under the name card
+    if (modeRun() && species_) {
+        // M8 (design/modes/screens.md "The goal line and the run bar"): a timed mode's run bar; LAST CALL in the mode's colours.
+        const ModesData::Info& in = species_->modes.of(w.setup().mode);
+        hs.modeFrom = oklchFull(in.from[0], in.from[1]);
+        hs.modeTo = oklchFull(in.to[0], in.to[1]);
+        hs.runBar = w.director().formCount != 0;
+    }
+    if (w.setup().mode == Mode::FullBlast) {
+        // M8 FULL BLAST (full_blast.md "Look"): the power cut's band row at 0.3; back, its icons flashing in turn over a beat; the
+        // load-out's icons leaving it; the score's digits rolling through the count's bar.
+        const float beatS = 60.0f / std::fmax(vi.bpm, 30.0f);
+        if (p.knocked && !w.runEnded()) hs.rowLevel = 0.3f;
+        const float since = static_cast<float>(vi.time) - powerBackT_;
+        if (since >= 0.0f && since < beatS) hs.rowFlash = since / beatS;
+        if (countTick_ >= 0.0 && vi.music >= countTick_) {
+            u8 items[64];
+            const u32 n = bandRowItems(p, items, 64);
+            const double u = (vi.music - countTick_) / (3.0 * kTicksPerBeat);
+            hs.rowGone = u >= 1.0 ? n : std::min(n, static_cast<u32>(u * static_cast<double>(n)) + 1u);
+        }
+        hs.score = rolledScore(hs.score, vi.music);
+    }
     if (w.setup().mode == Mode::FullBlast) {
         // M8 (full_blast.md "Look", "HUD"): the run's card is the mode's (FULL BLAST over the Track, EVERY POWER IS ON); each Drop's
         // downbeat writes the wave's name where a name card stands; the goal line WAVE 2 OF 4   BARS LEFT 51, LAST CALL in the last
@@ -1121,8 +1159,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         hs.cardSmall = cardSmall_;
         hs.cardName = cardName_;
         if (ph.wave && ph.section == Section::Drop) hs.modeWords = nullptr;
-        if (ph.barsLeft <= 8 && ph.barsLeft > 6) std::snprintf(goalLine_, sizeof goalLine_, "LAST CALL");
-        else std::snprintf(goalLine_, sizeof goalLine_, "WAVE %u OF 4   BARS LEFT %u", ph.wave ? ph.wave : 1u, ph.barsLeft);
+        std::snprintf(goalLine_, sizeof goalLine_, "WAVE %u OF 4   BARS LEFT %u", ph.wave ? ph.wave : 1u, ph.barsLeft);  // (LAST CALL: the run bar's)
         hs.goalLine = goalLine_;
     }
     if (w.setup().mode == Mode::Tracers && species_) {
@@ -1136,8 +1173,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         hs.cardSmall = cardSmall_;
         hs.cardName = cardName_;
         const u32 share = static_cast<u32>(100.0f * static_cast<float>(f.lit) / static_cast<float>(TracerFloor::kTiles) + 0.5f);
-        if (ph.barsLeft <= 8 && ph.barsLeft > 6) std::snprintf(goalLine_, sizeof goalLine_, "LAST CALL");
-        else if (w.setup().versus) std::snprintf(goalLine_, sizeof goalLine_, "FLOOR %u%%", share);
+        if (w.setup().versus) std::snprintf(goalLine_, sizeof goalLine_, "FLOOR %u%%", share);
         else std::snprintf(goalLine_, sizeof goalLine_, "FLOOR %u%%   HOUSE %u", share, static_cast<unsigned>(f.house));
         hs.goalLine = goalLine_;
         static char tracerLine[24];
@@ -1277,8 +1313,9 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         setHudFade(flow_ && trans_ == Trans::Arrive ? clampf(transBeats(transLine_) - 1.0f, 0.0f, 1.0f) : 1.0f);
         drawHud(d, *font_, *look_, variant, *palettes_, *palette_, hs, touch_, W, H, insetMin, insetMax);
         if (modeRun()) drawLoadIn(d, variant);  // M8: the kit's icons spiralling in
+        if (modeRun()) drawLoadOut(d, variant, W, H);  // M8 FULL BLAST: the load-out, the count's bar
         if (w.setup().mode == Mode::Songline) drawSongCount(d, variant, W, H);  // M8 SONGLINE: the count
-        if (w.setup().versus) drawVersusWorld(d, variant);  // M8: the crown, BACK IN n
+        if (w.setup().versus || w.director().formCount) drawVersusWorld(d, variant);  // M8: the crown, BACK IN n (README.md 7: timed modes too)
         setHudFade(1.0f);
     }
     if (flow_) renderScreens(d, params, variant, W, H, insetMin, insetMax);
@@ -1430,7 +1467,13 @@ void Play::applyPauseMix() {
     const float pauseDip = underPause ? 0.45f + 0.55f * lift : 1.0f;
     band_->setGains(settings_.music * settings_.master * pauseDip, settings_.effects * settings_.master);
     const float beatS = 60.0f / std::fmax(clock_.bpm() > 1.0f ? clock_.bpm() : postedBpm_, 30.0f);
-    band_->setMuffle(underPause && lift <= 0.0f, lift > 0.0f && underPause ? beatS * (1.0f - lift) : -1.0f);
+    // M8 FULL BLAST (full_blast.md "Sound"): the power cut: the music behind the same low-pass while the ship is out, opened over one
+    // beat as it returns.
+    const bool cut = flow_ && world_->setup().mode == Mode::FullBlast && world_->player(seat_).knocked && !world_->runEnded();
+    float ramp = lift > 0.0f && underPause ? beatS * (1.0f - lift) : -1.0f;
+    if (!cut && powerCutMuffled_) ramp = beatS;
+    powerCutMuffled_ = cut;
+    band_->setMuffle((underPause && lift <= 0.0f) || cut, ramp);
 }
 
 float Play::countInLift() const {

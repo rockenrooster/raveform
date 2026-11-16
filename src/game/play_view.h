@@ -110,8 +110,11 @@ public:
     void dropRing(Vec2 at, double t);
     // M8 (design/modes/README.md 5): the load-in's closing ring (a shock ring in the player's colours).
     void loadInRing(Vec2 at, float toWu, Vec3 a, Vec3 b, float t, float lifeS) { addShockRings(at, 1, toWu, a, b, t, lifeS); }
+    // M8 FULL BLAST (design/modes/screens.md "The count": the load-out): this many of the halo's arcs have flown out (drawn without).
+    void setHaloGone(u32 n) { haloGone_ = n; }
 
 private:
+    u32 haloGone_ = 0;
     HudKeepOut keepOut_;
     struct Pool;
     struct Ember;

@@ -548,6 +548,33 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             const float gc = 14.0f * s;
             font.drawField(d.hud, {cx - 0.5f * textW(font, gc, st.goalLine), y + 22.0f * s + 11.0f * s}, gc, 0.7f * s, col(accent, 1.4f), col(white, 1.4f),
                            col(white, 1.4f), st.goalLine);
+            const DirectorState& dir = w.director();
+            if (st.runBar && dir.formCount) {
+                // The run bar (screens.md): 14 px under the goal line, 520 px wide, 3 px tall: one segment a section, sized by its
+                // bars, at 0.3 (Drops at 0.6), a white dot for now. In the last eight bars it blinks on the beat, and LAST CALL (cap
+                // 28, the mode's colours) stands under it for two bars.
+                u32 total = 0;
+                for (u32 k = 0; k < dir.formCount; ++k) total += dir.formBars[k];
+                const float ry = y + 22.0f * s + 11.0f * s + gc + 14.0f * s;
+                const bool last = !ph.ended && ph.barsLeft <= 8u;
+                const float blink = last ? 0.45f + 1.1f * st.beat : 1.0f;
+                float rx = x0;
+                for (u32 k = 0; k < dir.formCount && total; ++k) {
+                    const float sw = bw * static_cast<float>(dir.formBars[k]) / static_cast<float>(total);
+                    const bool drop = static_cast<FormKind>(dir.formKind[k]) == FormKind::Drop;
+                    const Vec3 c = col(accent, (drop ? 0.6f : 0.3f) * blink);
+                    d.hud.line({rx + 2.0f * s, ry}, {rx + sw - 2.0f * s, ry}, 1.5f * s, c, c, 0);
+                    rx += sw;
+                }
+                const float u = total ? clampf((static_cast<float>(ph.bar >= dir.trackBar ? ph.bar - dir.trackBar : 0u) + inBar) / static_cast<float>(total), 0.0f, 1.0f) : 0.0f;
+                const Vec2 dot{x0 + bw * u, ry};
+                d.hud.line(dot, dot, 3.5f * s, col(white, 1.8f * blink), col(white, 1.8f * blink), 0);
+                if (last && ph.barsLeft > 6u) {
+                    const float lc = 28.0f * s;
+                    font.drawField(d.hud, {cx - 0.5f * textW(font, lc, "LAST CALL"), ry + 16.0f * s}, lc, 1.2f * s, col(st.modeFrom, 1.6f),
+                                   col(st.modeTo, 1.6f), col(st.modeTo, 1.6f), "LAST CALL");
+                }
+            }
         }
     }
     // The pause ring: top right corner, 28 px with two bars.
@@ -565,6 +592,16 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
     float slotX[kRiffSlots];
     u32 modRows = 1;
     float modRowPitch = 0.0f;
+    // M8 FULL BLAST: the power cut's level, the flash running along the row as the power comes back, the load-out's icons gone.
+    const float rowFade0 = g_hudFade;
+    g_hudFade *= clampf(st.rowLevel, 0.0f, 1.0f);
+    const float rowL = cx - 1.5f * slot - 26.0f * s, rowR = W - 260.0f * s;
+    const auto rowFlashK = [&](float x) {
+        if (st.rowFlash < 0.0f) return 1.0f;
+        const float at = (x - rowL) / std::fmax(rowR - rowL, 1.0f);
+        return 1.0f + 2.0f * clampf(1.0f - std::fabs(at - st.rowFlash) * 7.0f, 0.0f, 1.0f);
+    };
+    u32 rowIndex = 0;
     {
         const float r = 26.0f * s;
         u8 riffOrder[kRiffSlots] = {kNoUpgrade, kNoUpgrade, kNoUpgrade, kNoUpgrade};
@@ -581,7 +618,8 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
                 continue;
             }
             const u8 u = riffOrder[k];
-            if (st.icons) st.icons->drawHud(d.hud, st.upgradeIcons[u], c, r * 0.9f, 1.0f, hudFn, &ctx);
+            if (rowIndex++ < st.rowGone) continue;  // (flown out: the load-out)
+            if (st.icons) st.icons->drawHud(d.hud, st.upgradeIcons[u], c, r * 0.9f, rowFlashK(c.x), hudFn, &ctx);
             d.pools.glow(c, 40.0f * s, player * 0.12f * g_hudFade);
             const u32 lv = me.loadout.level(u);
             for (u32 p = 0; p < kRiffMaxLevel; ++p) {
@@ -610,9 +648,10 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         for (u32 i = 0; i < count && i < perRow * kModRowsMax; ++i) {
             const Vec2 c{x0 + static_cast<float>(i % perRow) * 44.0f * k * s, rowY - static_cast<float>(i / perRow) * modRowPitch};
             const u8 u = items[i];
+            if (rowIndex++ < st.rowGone) continue;  // (flown out: the load-out)
             if (isFusionOrb(u)) {
                 const u8 f = static_cast<u8>(u - kFusionOrb);
-                if (st.icons && st.fusionIcons) st.icons->drawHud(d.hud, st.fusionIcons[f], c, 15.0f * k * s, 1.0f, hudFn, &ctx);
+                if (st.icons && st.fusionIcons) st.icons->drawHud(d.hud, st.fusionIcons[f], c, 15.0f * k * s, rowFlashK(c.x), hudFn, &ctx);
                 const float h = 17.5f * k * s;  // (a gold square just round the icon; neighbours keep a gap)
                 const Vec3 g = col(gold, 1.8f);
                 const Vec2 a{c.x - h, c.y - h}, b{c.x + h, c.y + h};
@@ -623,7 +662,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
                 d.pools.glow(c, 30.0f * k * s, gold * 0.12f * g_hudFade);
                 continue;
             }
-            if (st.icons) st.icons->drawHud(d.hud, st.upgradeIcons[u], c, 15.0f * k * s, 0.9f, hudFn, &ctx);
+            if (st.icons) st.icons->drawHud(d.hud, st.upgradeIcons[u], c, 15.0f * k * s, 0.9f * rowFlashK(c.x), hudFn, &ctx);
             const u32 n = me.loadout.mods[u], cap = std::max<u32>(upgradeInfo(u).cap, n);
             for (u32 p = 0; p < cap; ++p) {
                 const Vec2 q{c.x + (static_cast<float>(p) - 0.5f * static_cast<float>(cap - 1)) * 7.0f * k * s, c.y + 26.0f * k * s};
@@ -632,6 +671,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             }
         }
     }
+    g_hudFade = rowFade0;
     // (the review's fixes, M20: what sits above the band row moves up with the Mods' extra rows)
     const float lift = static_cast<float>(modRows - 1) * modRowPitch;
     // Active Boosts, above the Riff slots (M3 stage C): the icon with one pip per bar left to its right, its

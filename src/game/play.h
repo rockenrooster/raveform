@@ -765,6 +765,29 @@ private:
     bool sparkPad_ = false, sparkSpiral_ = false;
     double lastHat32_ = -1.0;
     void modesEndRun(bool died);                // (endRun) a mode's records instead of the set's table
+    // M8 (design/modes/README.md 6, screens.md "The count"): a timed run counts what was made over the bar after its last downbeat;
+    // its result (or the podium) arrives on the next bar line.
+    bool resultPending_ = false;
+    double resultAt_ = 0.0;                     // run ticks: that bar line
+    double countTick_ = -1.0;                   // run ticks: the last downbeat (the count's bar from it; < 0 none)
+    void modesResult();                         // the result or the podium, now
+    // (conductBand) the modes' sounds on bar lines (sound.md "Every mode", ONE TRACK, HEADLINERS, FULL BLAST), planned half a bar
+    // ahead, or a bar and a half for what starts before its line (a reversed cymbal, the last bar's roll).
+    void modesBarPlan(double nextLine, double offset, const sim::Phrase& next);
+    i32 homeNote(i32 octave, i32 semis = 0) const;  // the run's Track's tonic in a MIDI octave (4: 60..71), plus semitones
+    u32 actCardTrack_ = 0;                      // HEADLINERS: the act whose card was last heard
+    bool completeChord_ = false;                // ONE TRACK: TRACK COMPLETE's chord (an octave up) played
+    // M8 FULL BLAST (full_blast.md "Look", "Sound"): the power cut (the knock-out: the music behind the pause's low-pass, the band row
+    // at 0.3; back: a ring and the row flashing in turn over a beat), and the load-out (the count: the band row's icons out of the
+    // ship a sixteenth at a time, the halo's arcs last, the score's digits rolling to their value).
+    bool powerCutMuffled_ = false;
+    float powerBackT_ = -100.0f;                // view seconds the power came back
+    u32 bandRowItems(const sim::PlayerState& p, u8* out, u32 cap) const;  // the HUD band row's icons in its order (Riffs, Fusions, Mods)
+    void drawLoadOut(FrameDraw& d, const LookVariant& variant, float W, float H);
+    u32 loadOutHaloGone(double music) const;    // the halo's arcs gone by then
+    u64 rolledScore(u64 score, double music) const;  // the HUD's score with its digits rolling through the count's bar
+    void drawFormBar(Ui& ui, float y);          // the result's bar: the form's sections, the waves named, a cross a hit
+    void drawTonightsBand(Ui& ui, float y);     // the result's TONIGHT'S BAND: the four Riffs and the Fusions
     void drawLoadIn(FrameDraw& d, const LookVariant& variant);  // the kit's icons spiralling in
     void nextTrack();                           // NEXT TRACK: the next Track as a new run, its own kit
     void drawVersusWorld(FrameDraw& d, const LookVariant& variant);  // versus: the crown on the leader, BACK IN n where a ship stood

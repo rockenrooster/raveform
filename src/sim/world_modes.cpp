@@ -182,6 +182,7 @@ void World::updateModes() {
         for (u32 i = 0; i < e.count; ++i)
             if (!(e.flags[i] & kFlagDead)) e.flags[i] |= kFlagDead;
         if (boss_.active && isMiniBoss(boss_.kind)) boss_.active = false;
+        for (u32 p = 0; p < playerCount_; ++p) trio_[p].open = false;  // (nothing left to choose: the count, then the result)
         d.outroBar = phrase_.bar;
         d.outroBars = 0;
     }

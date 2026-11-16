@@ -660,6 +660,12 @@ void Band::setSpark(u8 mode, u8 timbre) {
     post({.type = CmdType::SetSpark, .a = mode, .b = timbre});
 }
 
+void Band::holdChord(i32 index) {
+    if (index == holdChord_) return;
+    holdChord_ = index;
+    post({.type = CmdType::HoldChord, .a = static_cast<u8>(index < 0 ? 0 : index), .b = static_cast<u8>(index < 0 ? 0 : 1)});
+}
+
 void Band::setBedMask(i32 bits) {
     if (bits == bedMask_) return;
     bedMask_ = bits;

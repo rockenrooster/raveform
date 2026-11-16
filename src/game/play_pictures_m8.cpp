@@ -19,7 +19,8 @@ enum class M8 : u8 {
     TitlePill, Modes, Lift, Back, Step, Track, Drop, LoadIn, CardOne, OneOutro, ResultOne, CardAct, ResultActs,
     TrLine, TrLock, TrPop, TrFloor4, TrHouse, TrCount, TrResult,
     SlGroove, SlBuild, SlDrop, SlInTime, SlBraid, SlFinale, SlCount, SlResult,
-    JamRoom1, JamRoom4, JamRoom8, JamShelf, JamDropReady, JamDropResting, JamRoomDrop, PopDraft, PopDrop
+    JamRoom1, JamRoom4, JamRoom8, JamShelf, JamDropReady, JamDropResting, JamRoomDrop, PopDraft, PopDrop,
+    BlTorrent, BlWave, BlLastCall, BlCut, BlBack, BlCount, BlResult
 };
 struct M8Pic {
     const char* name;  // m8_<name>
@@ -59,6 +60,13 @@ const M8Pic kM8Pics[] = {
     {"jam_room1", M8::JamRoom1, 12}, {"jam_room4", M8::JamRoom4, 12}, {"jam_room8", M8::JamRoom8, 12}, {"jam_shelf", M8::JamShelf, 12},
     {"jam_drop_ready", M8::JamDropReady, 12}, {"jam_drop_resting", M8::JamDropResting, 12}, {"jam_room_drop", M8::JamRoomDrop, 12},
     {"popoff_draft", M8::PopDraft, 12}, {"popoff_drop", M8::PopDrop, 12},
+    // Part 3 (FULL BLAST on Aurora; full_blast.md "Look"): the torrent as a strip four sixteenths apart from the first downbeat (the
+    // Riffs larger, each with its ring, the closing ring to 700 wu), wave 2's name as a strip a quarter beat apart from its Drop's
+    // downbeat, LAST CALL under the run bar, the power cut (the ship out from bar 31, the band row at 0.3, BACK IN 2) and the power
+    // back as a strip an eighth of a beat apart from bar 33's line, the count (the load-out, a strip two sixteenths apart from the
+    // last downbeat), the result (the nine sections, the waves named, TONIGHT'S BAND).
+    {"bl_torrent", M8::BlTorrent, 4}, {"bl_wave", M8::BlWave, 4}, {"bl_lastcall", M8::BlLastCall, 4}, {"bl_cut", M8::BlCut, 4},
+    {"bl_back", M8::BlBack, 4}, {"bl_count", M8::BlCount, 4}, {"bl_result", M8::BlResult, 4},
 };
 constexpr u32 kM8Count = sizeof(kM8Pics) / sizeof(kM8Pics[0]);
 constexpr u32 kM8At = 300;  // (the title at rest: as screen_title's)
@@ -185,6 +193,37 @@ bool Play::scriptSetupM8() {
             if (pic.kind == M8::PopDrop) scriptFastForwardS_ = 20.0f * barS;
             break;
         }
+        case M8::BlTorrent:
+        case M8::BlWave:
+        case M8::BlLastCall:
+        case M8::BlCut:
+        case M8::BlBack:
+        case M8::BlCount:
+        case M8::BlResult: {
+            // A FULL BLAST run on Aurora from its first downbeat, the assist bot playing (hits cost nothing; the power cut's pictures
+            // knock the ship out themselves).
+            RunSetup su;
+            su.mode = Mode::FullBlast;
+            su.track = pic.mode;
+            flow_ = pic.kind == M8::BlResult;
+            screen_ = Screen::Run;
+            w.resetRun(opt_.seed, 0.0, 1, 0xF, su);
+            w.rules().godMode = true;
+            controller_.reset(w.player(0).pos);
+            bot_.reset(opt_.seed, Bot::Policy::Assist);
+            marks_[0] = Mark{0.0f, 0, su.track};
+            runTrackMax_ = su.track;
+            const float barS = 240.0f / std::fmax(w.tempoAt(0.0), 30.0f);
+            const double sixteenthF = 900.0 / std::fmax(w.tempoAt(0.0), 30.0f);  // (frames at 60 a second)
+            if (pic.kind == M8::BlTorrent) stripStride_ = static_cast<u32>(std::lround(4.0 * sixteenthF));
+            if (pic.kind == M8::BlBack) stripStride_ = static_cast<u32>(std::lround(0.5 * sixteenthF));
+            if (pic.kind == M8::BlCount) stripStride_ = static_cast<u32>(std::lround(2.0 * sixteenthF));
+            if (pic.kind == M8::BlWave) scriptFastForwardS_ = 27.0f * barS;
+            if (pic.kind == M8::BlLastCall) scriptFastForwardS_ = 75.0f * barS;
+            if (pic.kind == M8::BlCut || pic.kind == M8::BlBack) scriptFastForwardS_ = 29.5f * barS;
+            if (pic.kind == M8::BlCount || pic.kind == M8::BlResult) scriptFastForwardS_ = 82.0f * barS;
+            break;
+        }
         case M8::SlGroove:
         case M8::SlBuild:
         case M8::SlDrop:
@@ -224,6 +263,25 @@ bool Play::scriptInputM8(StickInput& in) {
     const M8Pic& pic = kM8Pics[m8Pic_];
     const u32 t = scriptTick_;
     const i64 now = static_cast<i64>(frameNo_);
+    if (pic.kind >= M8::BlTorrent) {
+        // FULL BLAST: the assist bot plays; each picture waits for its moment.
+        in = w.player(0).alive ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+        if (captureFrom_ >= 0 || ffRunning_) return true;
+        const double bars = (music1_ - w.director().startTick) / kTicksPerBar;
+        if ((pic.kind == M8::BlCut || pic.kind == M8::BlBack) && bars >= 30.0 && !w.player(0).knocked && m8Last_ == 0) {
+            w.knockOut(0, w.director().startTick + 32.0 * kTicksPerBar);  // (out from bar 31, back on bar 33's line)
+            m8Last_ = 1;
+        }
+        if (pic.kind == M8::BlTorrent && t >= 1) captureFrom_ = now + 1;
+        if (pic.kind == M8::BlWave && w.phrase().section == Section::Drop && w.phrase().wave == 2) captureFrom_ = now;
+        if (pic.kind == M8::BlLastCall && bars >= 76.3) captureFrom_ = now + 1;
+        if (pic.kind == M8::BlCut && bars >= 30.6) captureFrom_ = now + 1;
+        if (pic.kind == M8::BlBack && m8Last_ && !w.player(0).knocked) captureFrom_ = now;
+        if (pic.kind == M8::BlCount && countTick_ >= 0.0) captureFrom_ = now;
+        if (pic.kind == M8::BlResult && screen_ == Screen::GameOver && overS_ > 2.4f) captureFrom_ = now + 1;
+        if (captureFrom_ >= 0) RF_LOG("play: picture '%s' captures from frame %lld (bar %.2f)", opt_.picture, static_cast<long long>(captureFrom_), bars);
+        return true;
+    }
     if (pic.kind >= M8::JamRoom1) {
         // JAM: the ship stands in the room (the shelf's picture: it holds TOYS, then rests by the shelf); POP-OFF: the bot plays.
         const bool pop = pic.kind == M8::PopDraft || pic.kind == M8::PopDrop;

@@ -453,7 +453,7 @@ bool World::breakRing(u32 p, Vec2 from) {
     ++pl.ringBreaks;
     ++pl.hitsTaken;
     pl.invulS = kRingInvulS;
-    pl.chain = pl.chain / 2 > 1 ? pl.chain / 2 : 1u;
+    if (!chainKept(p)) pl.chain = pl.chain / 2 > 1 ? pl.chain / 2 : 1u;
     dipS_ = kHitDipS;
     const Vec2 c = pl.pos;
     const float r2 = kPanicRadiusWu * kPanicRadiusWu;

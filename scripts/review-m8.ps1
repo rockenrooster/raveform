@@ -5,14 +5,15 @@
 #   p0: m8_title_pill_<mode> (seven), m8_modes_<mode> (seven), m8_modes_room, m8_lobby_host, m8_lobby_join, m8_lobby_versus,
 #       m8_join_modes; strips a quarter beat apart: m8_t_lift (12 frames), m8_t_back (16), m8_t_mode (8), m8_t_track (16),
 #       m8_t_drop (16). (m8_modes_bonus waits for the bonus Tracks: part 4.)
-#   p1: ONE TRACK; p2: HEADLINERS; p4: TRACERS (m8_tr_line, m8_tr_lock, m8_tr_floor4, m8_tr_result; strips m8_tr_pop, m8_tr_house,
+#   p1: ONE TRACK; p2: HEADLINERS; p3: FULL BLAST (m8_bl_lastcall, m8_bl_cut, m8_bl_result; strips m8_bl_torrent, m8_bl_wave,
+#       m8_bl_back, m8_bl_count); p4: TRACERS (m8_tr_line, m8_tr_lock, m8_tr_floor4, m8_tr_result; strips m8_tr_pop, m8_tr_house,
 #       m8_tr_count); p5: SONGLINE on Aurora (m8_sl_groove, m8_sl_build, m8_sl_intime, m8_sl_braid, m8_sl_count, m8_sl_result;
 #       strips m8_sl_drop (a sixteenth apart), m8_sl_finale (a quarter beat apart from bar 47)).
 #   scripts\review-m8.ps1 -Part p0 [-Config debug|dev] [-Only m8_modes_tracers,m8_t_lift] [-Out captures\m8\p0]
 # Debug (the default) runs with validation; exit 1 on a validation message or a layout warning (two controls, or a control and a
 # line, closer than 24 px).
 param(
-    [ValidateSet('p0', 'p1', 'p2', 'p4', 'p5', 'p6')][string]$Part = 'p0',
+    [ValidateSet('p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6')][string]$Part = 'p0',
     [ValidateSet('debug', 'dev')][string]$Config = 'debug',
     [string[]]$Only = @(),
     [string]$Out = '',
@@ -57,6 +58,12 @@ if ($Part -eq 'p0') {
     # p2: HEADLINERS (act 1's card, the result after the ten acts)
     $singles = @('m8_card_act', 'm8_result_headliners')
     $strips = [ordered]@{}
+    $rooms = @()
+} elseif ($Part -eq 'p3') {
+    # p3: FULL BLAST on Aurora (full_blast.md "Look"): LAST CALL under the run bar, the power cut, the result; strips: the torrent four
+    # sixteenths apart (10), wave 2's name a quarter beat apart (8), the power back an eighth of a beat apart (8), the load-out (8)
+    $singles = @('m8_bl_lastcall', 'm8_bl_cut', 'm8_bl_result')
+    $strips = [ordered]@{ 'm8_bl_torrent' = 10; 'm8_bl_wave' = 8; 'm8_bl_back' = 8; 'm8_bl_count' = 8 }
     $rooms = @()
 } elseif ($Part -eq 'p6') {
     # p6: JAM on Toybox (jam.md "What to check"): the room with one layer, four, all eight; a shelf open; DROP ready and resting; the

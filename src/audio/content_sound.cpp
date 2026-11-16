@@ -226,7 +226,7 @@ const Chord& Engine::chordAtTick(double tick) const {
     if (tick < 0.0 || !plan_ || !plan_->chord) return currentChord();
     // chordBar_ already counts the bar being played (as Warp reads it).
     const i64 ahead = static_cast<i64>(tick) / kTicksPerBar - plan_->tick / kTicksPerBar;
-    return tr_->chordAtBar(static_cast<u32>(static_cast<i64>(chordBar_) - 1 + (ahead > 0 ? ahead : 0)));
+    return barChord(static_cast<u32>(static_cast<i64>(chordBar_) - 1 + (ahead > 0 ? ahead : 0)));
 }
 
 i32 Engine::resolveNote(const Command& c, double tick) const {

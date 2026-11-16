@@ -15,6 +15,7 @@
 #include "core/platform.h"
 #include "game/play.h"
 #include "game/play_hud.h"
+#include "game/oklch.h"
 #include <SDL3/SDL_misc.h>
 #if defined(__ANDROID__)
 #include "platform/android/android_glue.h"
@@ -699,6 +700,12 @@ void Play::screenGameOver(Ui& ui) {
     if (out > 0.0f) {
         const Vec3 c = won ? gold : palette_->accent;
         streak(topWord, 44.0f * s, 150.0f * s, std::fmax(0.045f * 44.0f * s, 0.55f * s), c, c, c, won ? 1.8f : 1.6f);
+    } else if (blast) {
+        // (M8, design/modes/screens.md "Results": FULL BLAST's top word in the mode's colours)
+        const sim::ModesData::Info& in = species_->modes.of(sim::Mode::FullBlast);
+        const float cap = 44.0f * s;
+        ui.font().drawField(ui.draw().hud, {cx - 0.5f * ui.measure(cap, topWord), 150.0f * s - cap}, cap, 1.6f * s, ui.col(oklchFull(in.from[0], in.from[1]), 1.8f),
+                            ui.col(oklchFull(in.to[0], in.to[1]), 1.8f), ui.col(oklchFull(in.to[0], in.to[1]), 1.8f), topWord);
     } else if (won) {
         ui.text({cx, 150.0f * s}, 44.0f * s, gold, 1.8f, topWord);
     } else {
@@ -800,7 +807,7 @@ void Play::screenGameOver(Ui& ui) {
             char chain[32];
             groupDigits(chain, sizeof chain, p.bestChain);
             std::snprintf(v[0], sizeof v[0], "X%s", chain);
-            std::snprintf(v[1], sizeof v[1], "%u", p.kills);
+            groupDigits(v[1], sizeof v[1], p.kills);
             std::snprintf(v[2], sizeof v[2], "%u", static_cast<u32>(p.boostsTaken));
             std::snprintf(v[3], sizeof v[3], "%u", p.hitsTaken);
         }
@@ -844,9 +851,11 @@ void Play::screenGameOver(Ui& ui) {
         ui.text({x0, 606.0f * s + sink}, cap, palette_->accent, 1.3f, "ENDED BY", 0.0f);
         ui.text({x0 + wa + gap, 606.0f * s + sink}, cap, white, 1.5f, by, 0.0f);
     }
-    drawSetList(ui, 660.0f * s + sink);
+    if (blast) drawFormBar(ui, 660.0f * s + sink);  // (M8: the run's nine sections, the waves named)
+    else drawSetList(ui, 660.0f * s + sink);
     if (song) drawSongMarks(ui, 660.0f * s + sink);  // (over the bar: the string as it was flown)
     if (tracers) drawFloorSmall(ui, 740.0f * s + sink);  // (in place of YOUR BAND: the floor as it stood at the end)
+    else if (blast) drawTonightsBand(ui, 760.0f * s + sink);  // (M8: TONIGHT'S BAND, the four Riffs and the Fusions)
     else drawBand(ui, 740.0f * s + sink);
     const float right = W - std::fmax(132.0f * s, ui.insetMax().x);
     // M6 (screens.md "Transitions"): RETRY is the drop-in from game over; HOME takes the title's way back. The control tapped
@@ -929,6 +938,66 @@ void Play::drawSetList(Ui& ui, float y) {
             }
         }
     }
+}
+
+void Play::drawFormBar(Ui& ui, float y) {
+    // M8 FULL BLAST (design/modes/full_blast.md "The result"): the run's nine sections in the Track's accent, sized by their bars, the
+    // four Drops tall, each wave's name under its Drop; a cross for each hit (by when it came in the run).
+    const sim::DirectorState& dir = world_->director();
+    const float s = ui.s(), W = ui.W();
+    const float x0 = std::fmax(132.0f * s, ui.insetMin().x), x1 = W - std::fmax(132.0f * s, ui.insetMax().x);
+    u32 total = 0;
+    for (u32 k = 0; k < dir.formCount; ++k) total += dir.formBars[k];
+    if (!total) return;
+    const Vec3 c = palette_->accent;
+    float x = x0;
+    u32 wave = 0;
+    for (u32 k = 0; k < dir.formCount; ++k) {
+        const float w = (x1 - x0) * static_cast<float>(dir.formBars[k]) / static_cast<float>(total);
+        const bool drop = static_cast<sim::FormKind>(dir.formKind[k]) == sim::FormKind::Drop;
+        const float hw = (drop ? 11.0f : 3.5f) * s;
+        ui.draw().hud.line({x + 3.0f * s, y}, {x + w - 3.0f * s, y}, hw, ui.col(c, drop ? 1.5f : 0.7f), ui.col(c, drop ? 1.5f : 0.7f), 0);
+        if (drop) ui.text({x + 0.5f * w, y + 40.0f * s}, 13.0f * s, c, 1.3f, species_->modes.blast.wave[wave++ % 4u].name);
+        x += w;
+    }
+    const float tEnd = std::fmax(runSeconds_, 1.0f);
+    for (u32 k = 0; k < markCount_; ++k) {
+        if (marks_[k].kind != 3) continue;
+        const float hx = x0 + (x1 - x0) * clamp01(marks_[k].t / tEnd);
+        const Vec3 cc = coop() ? ui.col(palettes_->player[marks_[k].a < kMaxPlayers ? marks_[k].a : 0], 1.8f) : ui.col(palettes_->danger, 1.6f);
+        ui.draw().hud.line({hx - 6.0f * s, y - 26.0f * s}, {hx + 6.0f * s, y - 14.0f * s}, 1.0f * s, cc, cc, 0);
+        ui.draw().hud.line({hx + 6.0f * s, y - 26.0f * s}, {hx - 6.0f * s, y - 14.0f * s}, 1.0f * s, cc, cc, 0);
+    }
+}
+
+void Play::drawTonightsBand(Ui& ui, float y) {
+    // M8 FULL BLAST (full_blast.md "The result"): TONIGHT'S BAND: the four Riffs the run dealt and the Fusions they brought.
+    const float s = ui.s();
+    const Vec3 white{1.0f, 1.0f, 1.0f};
+    const float m = std::fmax(132.0f * s, ui.insetMin().x);
+    const PlayerState& p = world_->player(coop() ? seat_ : 0);
+    const UiColour ctx{&ui};
+    u32 n = 0;
+    for (u32 pass = 1; pass < 256 && n < 4; ++pass)
+        for (u8 u = sim::kOrbitals; u < sim::kUpgradeCount && n < 4; ++u)
+            if (p.loadout.order[u] == pass) {
+                icons_.drawHud(ui.draw().hud, upgradeIcons_[u], {m + 40.0f * s + static_cast<float>(n) * 90.0f * s, y + 50.0f * s}, 30.0f * s, 1.2f, uiColourFn, &ctx);
+                ++n;
+            }
+    u32 f = 0;
+    for (u8 k = 0; k < sim::kFusionCount; ++k) {
+        if (!p.loadout.fused(k)) continue;
+        const Vec2 c{m + 40.0f * s + static_cast<float>(n + f) * 90.0f * s + 30.0f * s, y + 50.0f * s};
+        icons_.drawHud(ui.draw().hud, fusionIcons_[k], c, 26.0f * s, 1.2f, uiColourFn, &ctx);
+        const float h = 32.0f * s;
+        const Vec3 g = ui.col(palettes_->player[3], 1.8f);
+        ui.draw().hud.line({c.x - h, c.y - h}, {c.x + h, c.y - h}, 0.9f * s, g, g, 0);
+        ui.draw().hud.line({c.x + h, c.y - h}, {c.x + h, c.y + h}, 0.9f * s, g, g, 0);
+        ui.draw().hud.line({c.x + h, c.y + h}, {c.x - h, c.y + h}, 0.9f * s, g, g, 0);
+        ui.draw().hud.line({c.x - h, c.y + h}, {c.x - h, c.y - h}, 0.9f * s, g, g, 0);
+        ++f;
+    }
+    if (n) ui.text({m, y}, 12.0f * s, white, 0.9f, "TONIGHT'S BAND", 0.0f);
 }
 
 void Play::drawSongMarks(Ui& ui, float y) {

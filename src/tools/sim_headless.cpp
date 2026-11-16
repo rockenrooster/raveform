@@ -1514,11 +1514,14 @@ int runModeHeadliners(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Po
 int runModeBlast(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Policy policy, u32 onlyTrack) {
     auto* world = new (std::nothrow) World;
     if (!world) return 2;
-    const char* policyName = policy == Bot::Policy::Novice ? "novice" : (policy == Bot::Policy::Assist ? "assist" : (policy == Bot::Policy::Reckless ? "reckless" : "careful"));
+    const char* policyName = policy == Bot::Policy::Novice ? "novice"
+                             : policy == Bot::Policy::Assist ? "assist"
+                             : policy == Bot::Policy::Child  ? "child-like"
+                             : (policy == Bot::Policy::Reckless ? "reckless" : "careful");
     std::printf("[mode] FULL BLAST, the %s bot, %u seeds a Track\n", policyName, seeds);
     std::printf("[mode] track  ended  bars  minutes  knockouts(mean,max)  kit  shots_max  overflow\n");
     u32 worst = seeds;
-    for (u32 track = 1; track <= kMaxSongs; ++track) {
+    for (u32 track = 1; track <= kModeTracks; ++track) {  // (the twelve: the bonus Tracks over a borrowed crowd)
         if (onlyTrack && track != onlyTrack) continue;
         u32 ended = 0, kit = 0, koMax = 0, shotsMax = 0;
         double ko = 0.0, minutes = 0.0;
