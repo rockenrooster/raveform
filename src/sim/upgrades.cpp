@@ -38,7 +38,7 @@ const UpgradeInfo kInfo[kUpgradeCount] = {
     {"SHOCKSTEP", "shockstep", 0, false},
     {"AEGIS", "aegis", 3, false},
     {"LAST LIGHT", "last_light", 1, false},
-    {"SLIPSTREAM", "slipstream", 2, false},  // M5 (GAME_DESIGN 6.2, the lead's ruling): +15%, cap 2
+    {"SLIPSTREAM", "slipstream", 1, false},  // the owner, 2026-11-15: "buffed slightly and rank 1 be max rank": +20%, cap 1 (+15%, cap 2)
     {"MAGNET", "magnet", 4, false},
     {"PROSPECTOR", "prospector", 4, false},
     {"NOVA STOCK", "nova_stock", 3, false},
@@ -130,14 +130,16 @@ const char* upgradeWords(u8 u, u32 level) {
     switch (u) {
         case kSplit: return "+1 SHOT LANE";                                  // eb10554: a lane a rank
         case kDoubleTime: return lv <= 1 ? "FIRE RATE X1.5" : "FIRE RATE X2";  // eb10554: two ranks again
-        case kPierce: return "SHOTS PIERCE +2";
+        // (the owner's buffs of 2026-11-15: Pierce +3 and growing, Fork's halves homing, Seeker's shots passing through, Wave's
+        // front, Gravity Rounds' crush, Slipstream +20% at one rank, Prospector 50% a stack, Afterparty the whole Drop)
+        case kPierce: return "SHOTS PIERCE +3";
         case kRicochet: return "SHOTS BOUNCE +2";
-        case kFork: return "SHOTS FORK ON A HIT";  // play test 3: one rank (forking again is Fractal's)
-        case kSeeker: return lv <= 1 ? "SHOTS HOME IN" : (lv == 2 ? "TIGHTER HOMING" : "SHOTS HUNT");
+        case kFork: return "SHOTS FORK, FORKS HOME IN";  // play test 3: one rank (forking again is Fractal's)
+        case kSeeker: return lv <= 1 ? "SHOTS HOME IN, PIERCE 1" : (lv == 2 ? "TIGHTER, PIERCE 2" : "SHOTS HUNT, PIERCE 3");
         case kHeavyStep: return lv <= 1 ? "EVERY 4TH SHOT EXPLODES" : (lv == 2 ? "BIGGER BLASTS" : "HEAVIER BLASTS");
         case kAccent: return lv <= 1 ? "A LANCE EACH BAR" : (lv == 2 ? "TWO LANCES A BAR" : "A LANCE EVERY BEAT");
         case kEcho: return lv <= 1 ? "SHOTS ECHO A BEAT LATER" : "TWO ECHOES";
-        case kWave: return lv <= 1 ? "WAVY SHOTS HIT WIDER" : "WIDER WAVES";
+        case kWave: return lv <= 1 ? "A WAVE ROLLS OUT EACH BEAT" : "WIDER, HEAVIER WAVES";
         case kOvercharge: return "+50% SHOT DAMAGE";
         case kRearGuard: return lv <= 1 ? "ALSO FIRE BACKWARD" : "AND SIDEWAYS";
         case kArc:
@@ -145,19 +147,19 @@ const char* upgradeWords(u8 u, u32 level) {
             return buf;
         case kBurn: return lv <= 1 ? "HITS IGNITE" : (lv == 2 ? "HOTTER FIRE" : "FIERCE FIRE");
         case kShatter: return lv <= 1 ? "KILLS THROW SHRAPNEL" : "MORE SHRAPNEL";
-        case kGravityRounds: return lv <= 1 ? "HITS PULL ENEMIES IN" : "A STRONGER PULL";
+        case kGravityRounds: return lv <= 1 ? "HITS PULL AND CRUSH" : "A STRONGER CRUSH";
         case kExtraCell: return "+1 CELL, ALL REFILLED";
         case kRegen:  // play test 2 (screens.md): CELL REGROWS: 8 BARS, then 4 BARS (16 BARS was the first rank until 2026-11-15)
             std::snprintf(buf, sizeof buf, "CELL REGROWS: %u BARS", regenEveryBars(lv));
             return buf;
         case kAegis: return lv <= 1 ? "A SHIELD BLOCKS BULLETS" : "A WIDER SHIELD";
         case kLastLight: return "WHEN HIT: A FREE NOVA";
-        case kSlipstream: return "+15% SPEED";
+        case kSlipstream: return "+20% SPEED";
         case kMagnet:
             std::snprintf(buf, sizeof buf, "SHARD PULL X%u", lv + 1u);
             return buf;
         case kProspector:
-            std::snprintf(buf, sizeof buf, "+%u%% EXTRA SHARDS", 25u * lv);
+            std::snprintf(buf, sizeof buf, "+%u%% EXTRA SHARDS", 50u * lv);
             return buf;
         case kNovaStock: return "+1 NOVA";
         case kEncore: return "BOOSTS LAST +1 BAR";
@@ -170,7 +172,7 @@ const char* upgradeWords(u8 u, u32 level) {
         case kBarLine: return lv <= 1 ? "A LASER CROSS EACH BAR" : (lv == 2 ? "AND DIAGONALS" : "LONGER LASERS");
         case kCrescendo: return lv <= 1 ? "DAMAGE CLIMBS WHILE UNHIT" : "CLIMBS TWICE AS HIGH";
         case kKickPulse: return lv <= 1 ? "KICK DRUM SHOVES ENEMIES" : "THE SHOVE HURTS";  // (cap 2 since 2026-11-15)
-        case kAfterparty: return "LONGER, FASTER SURGE";
+        case kAfterparty: return lv <= 1 ? "LONGER, FASTER SURGE" : "THE SURGE LASTS ALL DROP";
         case kOrbitals: {
             // screens.md (play test 3): the guard ring; levels 2 and 4 count its shards, 3 and 5 relight it faster.
             const u32 n = orbitalCount(lv);

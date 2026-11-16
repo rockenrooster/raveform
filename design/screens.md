@@ -270,7 +270,7 @@ Effect words (final, 2026-11-12; plain words, no music terms, so a first-time pl
 |---|---|
 | Split | `+1 SHOT LANE` |
 | Double-Time | `FIRE RATE X1.5`, the second rank `FIRE RATE X2` |
-| Pierce | `SHOTS PIERCE +2` |
+| Pierce | `SHOTS PIERCE +3` (2026-11-15) |
 | Ricochet | `SHOTS BOUNCE +2` |
 | Overcharge | `+50% SHOT DAMAGE` |
 | Extra Cell | `+1 CELL, ALL REFILLED` |
@@ -290,21 +290,21 @@ name (`ARC` for Aegis, `SINGULARITY` for the Black Hole). At most 26 characters.
 
 | Mod | Words by stack |
 |---|---|
-| Fork | `SHOTS FORK ON A HIT` |
-| Seeker | `SHOTS HOME IN`, `TIGHTER HOMING`, `SHOTS HUNT` |
+| Fork | `SHOTS FORK, FORKS HOME IN` (2026-11-15) |
+| Seeker | `SHOTS HOME IN, PIERCE 1`, `TIGHTER, PIERCE 2`, `SHOTS HUNT, PIERCE 3` (2026-11-15) |
 | Heavy Step | `EVERY 4TH SHOT EXPLODES`, `BIGGER BLASTS`, `HEAVIER BLASTS` |
 | Accent | `A LANCE EACH BAR`, `TWO LANCES A BAR`, `A LANCE EVERY BEAT` |
 | Echo | `SHOTS ECHO A BEAT LATER`, `TWO ECHOES` |
-| Wave | `WAVY SHOTS HIT WIDER`, `WIDER WAVES` |
+| Wave | `A WAVE ROLLS OUT EACH BEAT`, `WIDER, HEAVIER WAVES` (the rework, 2026-11-15) |
 | Rear Guard | `ALSO FIRE BACKWARD`, `AND SIDEWAYS` |
 | Arc | `KILLS ARC TO 1 MORE`, then the number that stack reaches |
 | Burn | `HITS IGNITE`, `HOTTER FIRE`, `FIERCE FIRE` |
 | Shatter | `KILLS THROW SHRAPNEL`, `MORE SHRAPNEL` |
-| Gravity Rounds | `HITS PULL ENEMIES IN`, `A STRONGER PULL` |
+| Gravity Rounds | `HITS PULL AND CRUSH`, `A STRONGER CRUSH` (2026-11-15) |
 | Aegis | `A SHIELD BLOCKS BULLETS`, `A WIDER SHIELD` |
 | Last Light | `WHEN HIT: A FREE NOVA` |
-| Slipstream | `+15% SPEED` |
-| Prospector | `+25% EXTRA SHARDS`, then `+50%`, `+75%`, `+100%` |
+| Slipstream | `+20% SPEED` (one rank since 2026-11-15) |
+| Prospector | `+50% EXTRA SHARDS`, then `+100%`, `+150%`, `+200%` (2026-11-15) |
 | Nova Stock | `+1 NOVA` |
 | Encore | `BOOSTS LAST +1 BAR` |
 | Lucky Break | `ONE MORE CHOICE` |
@@ -313,7 +313,7 @@ name (`ARC` for Aegis, `SINGULARITY` for the Black Hole). At most 26 characters.
 | Bar Line | `A LASER CROSS EACH BAR`, `AND DIAGONALS`, `LONGER LASERS` |
 | Crescendo | `DAMAGE CLIMBS WHILE UNHIT`, `CLIMBS TWICE AS HIGH` |
 | Kick Pulse | `KICK DRUM SHOVES ENEMIES`, `THE SHOVE HURTS` (two ranks since 2026-11-15) |
-| Afterparty | `LONGER, FASTER SURGE` |
+| Afterparty | `LONGER, FASTER SURGE`, `THE SURGE LASTS ALL DROP` (2026-11-15) |
 
 | Riff | Level 1 | Levels 2 to 5 |
 |---|---|---|

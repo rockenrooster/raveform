@@ -53,9 +53,11 @@ float World::crescendo(u32 p) const {
 }
 
 bool World::afterparty(u32 p) const {
+    // The Surge held kAfterpartyBars past its half of the Drop; at rank 2 the whole Drop, a boss's included (the owner's buff,
+    // 2026-11-15; audio::leadGridIndex keeps the same rule for the band).
     const u32 st = players_[p].loadout.mods[kAfterparty];
     if (!st || phrase_.section != Section::Drop) return false;
-    return phrase_.sectionBar < phrase_.sectionBars / 2 + kAfterpartyBars * st;
+    return st >= 2 || phrase_.sectionBar < phrase_.sectionBars / 2 + kAfterpartyBars;
 }
 
 u32 World::wingmen(u32 p, Vec2* pos, Vec2* dir, float* share, u32 cap) const {
@@ -383,19 +385,19 @@ void World::tagShot(u32 p, u8 extraMods, i32 off2, u32 lanes) {
     const PlayerState& pl = players_[p];
     const Loadout& l = pl.loadout;
     u8 m = extraMods;
-    if (l.mods[kSeeker]) m |= kShotSeek;
-    if (l.mods[kWave]) {
-        s.radius[i] *= kWaveRadius[l.mods[kWave] < 2 ? l.mods[kWave] : 2];
-        if (l.fused(kHelixArray)) {
-            const i32 r2 = off2 < 0 ? -off2 : off2;
-            if (r2 > 0 && lanes > 1u) {
-                const i32 level = (static_cast<i32>(lanes) - 1 - r2) / 2;  // 0 the outer pair, 1 inside it, 2 the next
-                m |= kShotWave;
-                m |= level == 0 ? kShotHelix : (level == 1 ? static_cast<u8>(kShotHelix | kShotHelixIn) : kShotHelixIn);
-                if (off2 < 0) m |= kShotWaveNeg;
-            }
-        } else {
+    if (const u8 st = l.mods[kSeeker]) {
+        // (2026-11-15: a homing shot passes through 1, 2, 3 bodies and hunts the next)
+        m |= kShotSeek;
+        s.pierce[i] = static_cast<u8>(s.pierce[i] + kSeekerPierce[st < 3 ? st : 3]);
+    }
+    // Wave (2026-11-15) leaves the shots straight (its front: updateUpgradesM5); Helix Array's strands are their own.
+    if (l.mods[kWave] && l.fused(kHelixArray)) {
+        const i32 r2 = off2 < 0 ? -off2 : off2;
+        if (r2 > 0 && lanes > 1u) {
+            const i32 level = (static_cast<i32>(lanes) - 1 - r2) / 2;  // 0 the outer pair, 1 inside it, 2 the next
             m |= kShotWave;
+            m |= level == 0 ? kShotHelix : (level == 1 ? static_cast<u8>(kShotHelix | kShotHelixIn) : kShotHelixIn);
+            if (off2 < 0) m |= kShotWaveNeg;
         }
     }
     s.mods[i] = m;
@@ -502,7 +504,8 @@ void World::volleyExtras(u32 p, float advanceS, double stepTick, float base, flo
         }
     }
     const Vec2 d = dirOf(base);
-    if (const u8 st = l.mods[kRearGuard]; st && offBeat(stepTick)) {
+    // Rear Guard fires with every volley (2026-11-15: the off-beats' only until then; the band's counter-melody keeps them).
+    if (const u8 st = l.mods[kRearGuard]) {
         spawnShotRaw(p, pl.pos - d * kMuzzleWu, d * -1.0f, advanceS, damage, kShotPrimary, plain, kShotLifeS, pierce, bounces);
         tagShot(p, 0, 0, 1);
         if (st >= 2) {
@@ -582,6 +585,7 @@ void World::steerShots(float dt) {
         } else if (s.kind[i] == kShotPellet) {
             turn = 8.0f;
         }
+        if ((s.flags[i] & kShotForked) && turn < kForkTurn) turn = kForkTurn;  // (2026-11-15: Fork's halves home in)
         if (turn <= 0.0f) continue;
         const Vec2 at{s.x[i], s.y[i]};
         const i32 t = nearestEnemy(at, reach, -1);
@@ -617,7 +621,10 @@ void World::steerShots(float dt) {
                     }
                 }
             }
-            if (bd < reach * reach * 4.0f && (t < 0 || bd < lengthSq(goal - at))) goal = bp;
+            // A boss part ahead keeps the shot unless a body is about to be hit anyway (kSeekerBossNearWu): the crowd in a fight
+            // drew the homing shots off the boss the aim had chosen (Seeker cost the Choir 7 s with the first Trio's build).
+            const bool bodyNear = t >= 0 && lengthSq(goal - at) < kSeekerBossNearWu * kSeekerBossNearWu;
+            if (bd < reach * reach * 4.0f && !bodyNear) goal = bp;
         }
         if (goal.x == at.x && goal.y == at.y) continue;
         const float h = turnToward(angleOf(Vec2{s.dx[i], s.dy[i]}), angleOf(goal - at), turn * dt * 3.0f);
@@ -688,15 +695,17 @@ void World::shotHitExtras(u32 k, u32 i, Vec2 at, Vec2 dir) {
     if (s.mods[k] & kShotBlast) shotBlast(k, at, static_cast<i32>(i));
     const bool primary = s.kind[k] == kShotPrimary || s.kind[k] == kShotMini;
     if (s.forks[k] > 0 && primary && shotRoom(owner)) {
-        // Fork: on the first hit, two half-damage shots (Fractal: and they fork again).
+        // Fork: on the first hit, two shots (Fractal: and they fork again). The owner's buff of 2026-11-15: with the Mod held
+        // they carry 0.75 of the shot, fly 0.9 of a shot's life and home in (steerShots, kForkTurn); Fractal's alone are halves.
+        const bool mod = l.mods[kFork] != 0;
         const u8 forks = static_cast<u8>(s.forks[k] - 1u);
         const float a = angleOf(dir);
         for (float side : {-1.0f, 1.0f}) {
-            spawnShotRaw(owner, at, dirOf(a + side * kForkDeg * kDeg), 0.0f, s.damage[k] * kForkDamage, kShotPrimary,
-                         static_cast<u8>((s.flags[k] & kShotLaneMask) | kShotForked), kShotLifeS * 0.6f, 0, 0);
+            spawnShotRaw(owner, at, dirOf(a + side * kForkDeg * kDeg), 0.0f, s.damage[k] * (mod ? kForkDamageMod : kForkDamage), kShotPrimary,
+                         static_cast<u8>((s.flags[k] & kShotLaneMask) | kShotForked), kShotLifeS * (mod ? kForkLife : 0.6f), 0, 0);
             if (lastShot_ >= 0) {
                 shots_.forks[lastShot_] = forks;
-                shots_.mods[lastShot_] = static_cast<u8>(s.mods[k] & (kShotSeek | kShotBlast | kShotFever));
+                shots_.mods[lastShot_] = static_cast<u8>((s.mods[k] & (kShotSeek | kShotBlast | kShotFever)) | (mod ? kShotSeek : 0));
                 shots_.lastHit[lastShot_] = e.handle[i];
             }
         }
@@ -704,10 +713,13 @@ void World::shotHitExtras(u32 k, u32 i, Vec2 at, Vec2 dir) {
         emitFx(owner, kFxFork, at, at + dir, forks, kForkDeg, m1_);  // (c: the halves' own forks left; f: their angle)
     }
     if (!primary) return;
-    if (l.mods[kGravityRounds]) {
-        // Gravity Rounds: the hit tugs the bodies near it toward the impact (co-op: on the host, gravityTug).
+    if (const u8 st = l.mods[kGravityRounds]) {
+        // Gravity Rounds: the hit tugs the bodies near it toward the impact (co-op: on the host, gravityTug) and crushes them
+        // (the owner's buff, 2026-11-15: the pull alone drew the crowd onto the ship; this device's own hit, so its own damage).
+        const u8 s2 = st < 2 ? st : 2;
         gravityTug(owner, at, i);
-        emitFx(owner, kFxGravity, at, at, 0, kGravityReachWu[l.mods[kGravityRounds] < 2 ? l.mods[kGravityRounds] : 2], m1_);
+        areaHit(owner, at, kGravityReachWu[s2], kGravityCrush[s2], static_cast<i32>(i), false);
+        emitFx(owner, kFxGravity, at, at, 0, kGravityReachWu[s2], m1_);
     }
     if (const u8 st = l.mods[kBurn]; st && !(e.flags[i] & kFlagDead)) {
         // Burn: the hit sets it alight for two beats (its fire hurts on every beat, by the stacks).
@@ -853,13 +865,13 @@ void World::dashExtras(u32 p, Vec2 from, Vec2 to, bool perfect) {
 }
 
 void World::hitExtras(u32 p) {
-    // The player lost a cell: Crescendo starts again; Last Light fires its free mini-Nova (once a cycle).
+    // The player lost a cell: Crescendo's climb halves (it started again until the owner's buff of 2026-11-15); Last Light
+    // fires its free mini-Nova (at most once in kLastLightBars; once a cycle until then).
     PlayerState& pl = players_[p];
-    pl.cleanBars = 0;
+    pl.cleanBars = static_cast<u16>(pl.cleanBars / 2u);
     if (!pl.loadout.mods[kLastLight] || !pl.alive) return;
-    const u32 cycle = (static_cast<u32>(phrase_.track) << 8) | phrase_.cycle;
-    if (pl.lastLightCycle == cycle) return;
-    pl.lastLightCycle = cycle;
+    if (m1_ - pl.lastLightTick < kLastLightBars * kTicksPerBar) return;
+    pl.lastLightTick = m1_;
     const Vec2 c = pl.pos;
     const float r = kLastLightWu, r2 = r * r;
     for (u32 b = 0; b < bullets_.count; ++b)
@@ -1021,6 +1033,68 @@ void World::updateUpgradesM5(float dt) {
                 pl.kickR = r;
                 emitFx(p, kFxKick, pl.pos, pl.pos, st, r, t);
             });
+        }
+
+        // Wave (the owner's rework, 2026-11-15; its sine paths carried the assist's aimed shots off the boss): on every beat a
+        // front rolls out from the ship along the aim, an arc growing to its reach in kWaveGrowS, hurting each body it passes
+        // once and each part of a boss once a front (seven rays across the arc). Drawn for every player, hurting on its own device.
+        if (const u8 st = l.mods[kWave]) {
+            const u8 s2 = st < 2 ? st : 2;
+            const Vec2 aim = normalizeOr(pl.aim, dirOf(pl.heading));
+            forCrossings(m0_, m1_, kTicksPerBeat, [&](double t, i64) {
+                PulseWave* w = nullptr;
+                for (PulseWave& c : pl.waves)
+                    if (!c.active) {
+                        w = &c;
+                        break;
+                    }
+                if (!w) return;
+                *w = PulseWave{};
+                w->active = true;
+                w->centre = pl.pos;
+                w->dir = aim;
+                w->halfArc = kWaveHalfArcDeg[s2] * kDeg;
+                w->age = tickAgeOf(t);
+                w->reach = kWaveReachWu[s2];
+                w->damage = kWaveDamage[s2];
+                w->lastR = kWaveStartWu;
+                w->level = s2;
+                emitFx(p, kFxWaveFront, pl.pos, pl.pos + aim, s2, w->reach, t);
+            });
+        }
+        for (PulseWave& w : pl.waves) {
+            if (!w.active) continue;
+            w.age += dt;
+            if (w.age <= 0.0f) continue;
+            const float r = kWaveStartWu + (w.reach - kWaveStartWu) * clampf(w.age / kWaveGrowS, 0.0f, 1.0f);
+            const float r0 = w.lastR;
+            const Vec2 c = w.centre;
+            const float a0 = angleOf(w.dir);
+            if (local && r > r0) {
+                const float reach = r + 40.0f;
+                grid_.query(c.x - reach, c.y - reach, c.x + reach, c.y + reach, [&](u32 i) {
+                    if (e.flags[i] & kFlagDead) return;
+                    const Vec2 rel = Vec2{e.x[i], e.y[i]} - c;
+                    const float d = length(rel);
+                    if (d + e.radius[i] <= r0 || d - e.radius[i] > r) return;  // the front did not pass it this tick
+                    if (std::fabs(wrapAngle(angleOf(rel) - a0)) > w.halfArc + (d > 1.0f ? e.radius[i] / d : kPi)) return;
+                    hitEnemy(i, w.damage, owner, Vec2{e.x[i], e.y[i]}, normalizeOr(rel, w.dir));
+                });
+                if (boss_.active && !boss_.dying) {
+                    for (u32 k = 0; k < 7; ++k) {
+                        const Vec2 rd = dirOf(a0 - w.halfArc + 2.0f * w.halfArc * static_cast<float>(k) / 6.0f);
+                        u8 part = 0, pair = 0;
+                        float tt = 0.0f;
+                        if (!bossHitTest(c + rd * r0, c + rd * r, 8.0f, part, pair, tt)) continue;
+                        const u64 bit = 1ull << ((static_cast<u32>(part) * 32u + pair) % 64u);
+                        if (w.bossHit & bit) continue;
+                        w.bossHit |= bit;
+                        damageBoss(part, pair, w.damage, owner, c + rd * (r0 + (r - r0) * tt), rd);
+                    }
+                }
+            }
+            w.lastR = r;
+            if (w.age >= kWaveGrowS) w.active = false;
         }
 
         // Beats: Chain Storm, Carousel, Burn.
@@ -1252,7 +1326,7 @@ void World::updateRiffsM5(float dt) {
         }
 
         // Comet: a boomerang disc thrown along the aim each bar (two at level 3, three at 5), out a beat and back a beat; it
-        // hurts what it touches once an eighth.
+        // hurts what it touches once a sixteenth (the owner's buff, 2026-11-15: an eighth, at 3 damage; now 5).
         if (const u8 L = lv(kComet)) {
             forCrossings(m0_, m1_, kTicksPerBar, [&](double t, i64) {
                 const u32 n = kCometCount[L < 5 ? L : 5];
@@ -1267,7 +1341,7 @@ void World::updateRiffsM5(float dt) {
                 emitFx(p, kFxComet, pl.pos, pl.pos + d, static_cast<u8>(n), 0.0f, t);
             });
             if (local)
-                forCrossings(m0_, m1_, 0.5 * kTicksPerBeat, [&](double, i64) {
+                forCrossings(m0_, m1_, kTicksPerStep, [&](double, i64) {
                     for (u32 k = 0; k < PlayerState::kComets; ++k) {
                         Vec2 at;
                         float r = 0.0f;

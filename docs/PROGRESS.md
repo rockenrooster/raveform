@@ -4,6 +4,36 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, the owner's buffs and Wave's rework (after the table below)
+
+The owner: "buff: Seeker, Fork, Pierce, Burn, Last Light, Rear Guard, Prospector, Afterparty, Crescendo, Comet, Gravity
+Rounds. Wave needs a re-work ... Slipstream can be buffed slightly and rank 1 be max rank"; for Wave the owner chose the wave
+front of three offered. The numbers (`tuning.h`, the old ones in brackets there and in GAME_DESIGN 6.2-6.3):
+
+- **Wave**: the shots fly straight; on every beat a front rolls out along the aim, an arc of 90 degrees to 400 wu in 0.45 s,
+  2 damage to every body it passes and each boss part once a front (seven rays); rank 2 140 degrees, 550 wu, 3. Drawn as a
+  crescent (`play_view_upgrades.cpp`); the band's vibrato stays its sound. Helix Array keeps its strands.
+- Seeker turns 5, 9, 14 rad/s within 420 wu and its shots pass through 1, 2, 3 bodies; in a fight a homing shot keeps to the
+  boss unless a body is within 80 wu (the crowd drew them off). Fork's two carry 0.75 of the shot, home in, fly 0.9 of a life
+  (Fractal's halves stay halves). Pierce +3 a stack and a quarter heavier after each body. Burn 3 beats at 2 a beat a stack,
+  spreading 80 wu. Last Light once in 4 bars, 600 wu. Rear Guard with every volley. Prospector half a Shard a stack (whole
+  ones sure). Afterparty four bars, rank 2 the whole Drop (the band's `leadGridIndex` too). Crescendo +10% a bar, a hit
+  halves it. Comet 5 damage every sixteenth. Gravity Rounds crush 1 then 2 within 130 then 180 wu. Slipstream +20%, one rank.
+
+Each alone at its cap on the base build (Split 1 + Double-Time 1; the novice, 40 seeds; the base alone: 117 bosses won, 10.2
+minutes, the Choir in 88 s):
+
+| | Before | After |
+|---|---|---|
+| Wave | 104 bosses, 9.1 min, the Choir 118 s (24 of 40 won it) | **125, 12.1 min, 37 s (40)** |
+| Gravity Rounds | 111, 8.9 min, 90 s | **120, 13.0 min, 61 s** |
+| Seeker | 114, 11.0 min, 95 s | **120, 11.7 min, 61 s** |
+| Comet, Crescendo, Afterparty (the Choir) | 67, 75, 81 s | **47, 50, 58 s** |
+| Rear Guard | 115, 10.1 min, 83 s | 119, **11.3 min**, 67 s |
+| Fork, Pierce, Burn, Last Light (the Choir) | 73, 76, 79, 84 s | 71, 69, 81, 75 s (small) |
+| Slipstream | 106 bosses (two ranks) | 116 (one rank: about neutral) |
+| Prospector | 116 | 112 (its worth is the Trios it speeds, which this test leaves out) |
+
 ## 2026-11-15, each upgrade alone over whole runs (the owner: "measure each upgrade in isolation")
 
 `scripts\isolate-upgrades.ps1` (`raveform_headless --sim isolate`, 16 processes at once): every Mod and Riff that can be dealt,

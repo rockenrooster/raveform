@@ -801,7 +801,11 @@ void testUpgradeStacking() {
     CHECK(w->player(0).cellCap == 8 && w->player(0).cells == 8 && w->player(0).loadout.mods[kExtraCell] == 4 && kMaxCells == 8);
     CHECK(std::strcmp(upgradeWords(kExtraCell, 4), "+1 CELL, ALL REFILLED") == 0);
     // The numbers per stack and level.
-    CHECK(pierceCount(1) == 2 && ricochetBounces(3) == 6 && onBeatCritMultiplier(1) == 3.0f && onBeatCritMultiplier(3) == 8.0f);
+    CHECK(pierceCount(1) == 3 && ricochetBounces(3) == 6 && onBeatCritMultiplier(1) == 3.0f && onBeatCritMultiplier(3) == 8.0f);
+    // The owner's buffs of 2026-11-15: Slipstream one rank of +20%, Prospector half a Shard a stack, the words.
+    CHECK(upgradeInfo(kSlipstream).cap == 1 && tuning::kSlipstreamPerStack == 0.20f && tuning::kProspectorChance == 0.5f);
+    CHECK(std::strcmp(upgradeWords(kPierce, 1), "SHOTS PIERCE +3") == 0 && std::strcmp(upgradeWords(kSlipstream, 1), "+20% SPEED") == 0 &&
+          std::strcmp(upgradeWords(kProspector, 4), "+200% EXTRA SHARDS") == 0 && std::strcmp(upgradeWords(kWave, 1), "A WAVE ROLLS OUT EACH BEAT") == 0);
     CHECK(orbitalCount(1) == 3 && orbitalCount(5) == 11 && sentinelBurst(1) == 3 && sentinelBurst(4) == 5);
     CHECK(sentinelDrones(2) == 1 && sentinelDrones(3) == 2 && sentinelDrones(5) == 3);
     CHECK(std::strcmp(upgradeWords(kSplit, 1), "+1 SHOT LANE") == 0 && std::strcmp(upgradeWords(kSplit, 4), "+1 SHOT LANE") == 0 &&
@@ -3107,7 +3111,8 @@ void testArena() {
 void testShotStream() {
     g_test = "shot stream";
     const Vec2 ship{0.0f, 0.0f};
-    // Wave: every shot on one curve from the muzzle (y = A sin(2 pi age / beat)), sideways never above 0.6 of forward.
+    // Wave (the owner's rework, 2026-11-15): the shots fly straight, and on every beat a front rolls out along the aim and hurts
+    // what it passes: a body ahead, not one behind the ship.
     {
         World* w = quietWorld();
         w->rules().godMode = true;
@@ -3115,21 +3120,32 @@ void testShotStream() {
         w->grantUpgrade(0, kWave);
         double music = 0.0;
         stepWorld(*w, music, ship);
-        float worst = 0.0f, offCurve = 0.0f;
-        const float wv = kTau / (60.0f / kBpm);
-        u32 seen = 0;
-        for (u32 t = 0; t < 120; ++t) {
+        const u16 drifter = SpeciesTable::index(Family::Drifter, 1, kVariantA);
+        const i32 ahead = w->spawnEnemy(drifter, Vec2{300.0f, 0.0f}, 0.0f, music);
+        const i32 behind = w->spawnEnemy(drifter, Vec2{-300.0f, 0.0f}, 0.0f, music);
+        w->setEnemyHp(static_cast<u32>(ahead), 1000.0f);
+        w->setEnemyHp(static_cast<u32>(behind), 1000.0f);
+        const u32 hAhead = w->enemies().handle[ahead], hBehind = w->enemies().handle[behind];
+        u32 fronts = 0;
+        for (u32 t = 0; t < 70; ++t) {
+            stepWorld(*w, music, ship);
+            for (u32 k = 0; k < w->eventCount(); ++k)
+                fronts += (w->events()[k].type == EventType::Upgrade && w->events()[k].b == kFxWaveFront) ? 1u : 0u;
+        }
+        const i32 a = w->enemyIndex(hAhead), b = w->enemyIndex(hBehind);
+        CHECK_MSG(fronts >= 2 && a >= 0 && b >= 0 && w->enemies().hp[a] <= 1000.0f - tuning::kWaveDamage[2] + 1e-3f && w->enemies().hp[b] == 1000.0f,
+                  "%u fronts; ahead %.1f, behind %.1f", fronts, a >= 0 ? w->enemies().hp[a] : -1.0f, b >= 0 ? w->enemies().hp[b] : -1.0f);
+        u32 wavy = 0, seen = 0;
+        for (u32 t = 0; t < 30; ++t) {
             stepWorld(*w, music, ship, 1);
-            worst = std::fmax(worst, sidewaysWorst(*w));
             const Shots& s = w->shots();
             for (u32 i = 0; i < s.count; ++i) {
-                if (s.dead[i] || !(s.mods[i] & kShotWave)) continue;
-                const float want = 40.0f * std::sin(wv * (s.life0[i] - s.life[i]));
-                offCurve = std::fmax(offCurve, std::fmin(std::fabs(s.y[i] - want), std::fabs(s.y[i] + want)));
+                if (s.dead[i]) continue;
                 ++seen;
+                wavy += (s.mods[i] & kShotWave) ? 1u : 0u;
             }
         }
-        CHECK_MSG(seen > 100 && offCurve < 0.5f && worst <= 0.6f, "%u shots, %.2f wu off the curve, sideways %.2f of forward", seen, offCurve, worst);
+        CHECK_MSG(seen > 10 && wavy == 0, "%u shots, %u on a wave", seen, wavy);
         delete w;
     }
     // Helix Array: the Split lanes ride strands along the aim (no fan), mirrored pairs at 80 and 53 wu (Split at its cap, five
@@ -3947,7 +3963,8 @@ void testUpgradesM5() {
         CHECK(std::fabs(w->crescendo(0) - (1.0f + 2.0f * tuning::kCrescendoStep)) < 1e-4f);
         w->hitNextTick(0);
         stepWorld(*w, music, Vec2{});
-        CHECK(w->crescendo(0) == 1.0f);
+        // (the owner's buff, 2026-11-15: a hit halves the climb: two clean bars down to one)
+        CHECK_MSG(std::fabs(w->crescendo(0) - (1.0f + tuning::kCrescendoStep)) < 1e-4f, "after a hit %.3f", w->crescendo(0));
         delete w;
     }
     {
@@ -4169,7 +4186,7 @@ void testPlayTest3() {
                 CHECK_MSG(pieces == 2, "Shatter 1: %u pieces", pieces);
             delete w;
         }
-        CHECK(tuning::kArcReachWu == 160.0f && tuning::kBurnSpreadWu == 45.0f && tuning::kFreezeChainMax == 12 && tuning::kSupernovaShare == 0.5f);
+        CHECK(tuning::kArcReachWu == 160.0f && tuning::kBurnSpreadWu == 80.0f && tuning::kFreezeChainMax == 12 && tuning::kSupernovaShare == 0.5f);
     }
     {
         // GAME_DESIGN 2: in a fight the assist aims at the boss (Kaleidos: a resting arm or the core).

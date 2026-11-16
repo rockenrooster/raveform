@@ -673,10 +673,13 @@ void World::collide() {
         const bool refract = (s.flags[k] & (kShotPrism | kShotRefracted)) == kShotPrism && s.kind[k] == kShotPrimary &&
                              shotRoom(owner);
         const u32 hitHandle = e.handle[i];
+        // (its damage as it reaches this one: Pierce grows it for the next)
+        const float dmg = s.damage[k];
         if (s.pierce[k] > 0) {
-            // Pierce (GAME_DESIGN 6.2): through this one, on to the next.
+            // Pierce (GAME_DESIGN 6.2): through this one, on to the next, a quarter heavier (the owner's buff, 2026-11-15).
             --s.pierce[k];
             s.lastHit[k] = hitHandle;
+            s.damage[k] *= kPierceGrowth;
         } else if (s.bounces[k] > 0 && s.kind[k] != kShotMini) {
             // Ricochet (play test 1): from the enemy it hit on to the nearest other one within 300 wu; none near: spent.
             const i32 next = ricochetTarget(i, at);
@@ -700,7 +703,6 @@ void World::collide() {
             s.dead[k] = 1;
         }
         const bool crit = (s.flags[k] & kShotCrit) != 0 && s.kind[k] == kShotPrimary;
-        const float dmg = s.damage[k];
         hitShotFlags_ = s.flags[k];  // play test 2: its Impact shows the shot's Prism lane
         hitEnemy(i, dmg, owner, at, dir);
         hitShotFlags_ = 0;
@@ -928,10 +930,13 @@ void World::dropShards(u32 i, u8 killer) {
         if (killer != 0xFF) dropCellFor(p, Vec2{e.x[i], e.y[i]}, e.rng[i]);
         u32 n = players_[p].boost(kMagnetStorm) ? 2u * s.shards : s.shards;
         if (e.state[i] == kFlee) n *= 2u;  // M5: the Alpha's pack, scattering, drops double Shards
-        // M5 part 3: Prospector, a 25% chance a stack of one Shard more for the killer.
-        if (killer == p && players_[p].loadout.mods[kProspector] &&
-            rand01(e.rng[i]) < kProspectorChance * static_cast<float>(players_[p].loadout.mods[kProspector]))
-            ++n;
+        // M5 part 3: Prospector, Shards more for the killer: 0.5 a stack (the owner's buff, 2026-11-15: 0.25, at most one), the
+        // whole part sure and the rest a chance (two stacks: one more every kill; four: two).
+        if (killer == p && players_[p].loadout.mods[kProspector]) {
+            const float more = kProspectorChance * static_cast<float>(players_[p].loadout.mods[kProspector]);
+            const u32 sure = static_cast<u32>(more);
+            n += sure + (rand01(e.rng[i]) < more - static_cast<float>(sure) ? 1u : 0u);
+        }
         // Play test 1: while the Shard pool is crowded a death drops one, and none in its last 64 places (the
         // stronger build's bursts: a Drop's mega-wave, a boss's 200), so the pool never overflows.
         if (shards_.count > kShardsCrowded && n > 1) n = 1;

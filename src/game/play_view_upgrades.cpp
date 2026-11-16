@@ -357,6 +357,29 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
         };
         ring(pq.kickTick, ship, pq.kickR, 0.2f, player);
         ring(pq.shockTick, pq.shockAt, pq.shockR, 0.25f, light);
+
+        // Wave's fronts (the owner's rework, 2026-11-15): each a crescent rolling out along the aim it was sent on, a bright
+        // leading edge and a fainter one a little behind it, both fading as it reaches its reach (World: the same radius).
+        for (const PulseWave& wf : pq.waves) {
+            if (!wf.active || wf.age <= 0.0f) continue;
+            const float u = clampU(wf.age / tuning::kWaveGrowS);
+            const float r = tuning::kWaveStartWu + (wf.reach - tuning::kWaveStartWu) * u;
+            const float a0 = angleOf(wf.dir), fade = (1.0f - u * u) * lvl;
+            const u32 segs = 18;
+            for (u32 edge = 0; edge < 2; ++edge) {
+                const float re = r - static_cast<float>(edge) * 14.0f;
+                if (re <= tuning::kWaveStartWu) continue;
+                const float bright = edge ? 0.5f : 1.0f;
+                for (u32 s = 0; s < segs; ++s) {
+                    const float v0 = static_cast<float>(s) / segs, v1 = static_cast<float>(s + 1) / segs;
+                    // (thinner toward the arc's ends)
+                    const float taper0 = std::sin(kPi * v0), taper1 = std::sin(kPi * v1);
+                    const float b0 = a0 - wf.halfArc + 2.0f * wf.halfArc * v0, b1 = a0 - wf.halfArc + 2.0f * wf.halfArc * v1;
+                    d.scene.line(toScene(wf.centre + dirU(b0) * re), toScene(wf.centre + dirU(b1) * re), (edge ? 1.0f : 1.8f) * refPx_,
+                                 light * (1.6f * bright * fade * (0.3f + 0.7f * taper0)), player * (1.2f * bright * fade * (0.3f + 0.7f * taper1)), 0);
+                }
+            }
+        }
     }
 
     // Lightning (look.md 5, one recipe for Arc, Storm Coil, Chain Storm and Tesla Bloom): three strands of 1.2 px between the

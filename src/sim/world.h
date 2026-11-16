@@ -245,6 +245,7 @@ enum UpgradeFx : u8 {
     kFxEcho,          // a ghost volley: x, y
     kFxBounce,        // Ricochet (Ricochet Fever): a shot bounced: x, y; c = the bounce's number
     kFxRingLit,       // play test 3: the Orbitals' guard ring is whole again (every shard relit): x, y; c = shards
+    kFxWaveFront,     // 2026-11-15: Wave's front rolls out: x, y -> x2, y2 along the aim; c = rank; f = its reach
 };
 enum LanceKind : u8 { kLanceAccent = 0, kLanceLancer, kLanceCannon, kLanceBarLine };
 // M5: BossEnter carries a = the BossKind; BossPair c = the BossKind (a = the part: a pair, a segment, a Voice, a Prince);
@@ -442,7 +443,7 @@ struct BoostPickups {
     u8 type[kCap], dead[kCap], owner[kCap];
 };
 
-// A Pulse Ring Riff's expanding ring.
+// A Pulse Ring Riff's expanding ring; Wave's front (2026-11-15) is the same with an arc about `dir`.
 struct PulseWave {
     bool active = false;
     Vec2 centre;
@@ -451,8 +452,12 @@ struct PulseWave {
     float damage = 0.0f;
     float lastR = 0.0f;   // radius at the end of the last tick
     u8 level = 1;
+    Vec2 dir{1.0f, 0.0f};  // Wave: the aim it rolls along
+    float halfArc = 0.0f;  // Wave: radians to each side of dir (0: a whole ring)
+    u64 bossHit = 0;       // Wave: the boss parts it has hurt (once a front)
 };
 constexpr u32 kPulseWaves = 12;  // play test 1: two rings every eighth at level 5 (every sixteenth under Hyper)
+constexpr u32 kWaveFronts = 4;   // Wave: a front a beat, each about half a second
 
 struct ActiveBoost {
     u8 type = kNoBoost;
@@ -579,6 +584,7 @@ struct PlayerState {
     ActiveBoost boosts[kBoostSlots];
     Vec2 sentinel[kMaxDrones], prevSentinel[kMaxDrones];  // the Sentinel drones (play test 1: up to three)
     PulseWave pulses[kPulseWaves];
+    PulseWave waves[kWaveFronts];  // Wave's fronts (2026-11-15)
     u32 boostsTaken = 0;
     // M4 co-op (GAME_DESIGN 10): down, a beacon, revive.
     bool down = false;         // shattered into a beacon (alive is false); the run goes on
@@ -603,7 +609,7 @@ struct PlayerState {
     static constexpr u32 kEchoes = 32;
     Echo echoes[kEchoes];
     u32 volleys = 0;             // volleys fired (Heavy Step's every fourth)
-    u32 lastLightCycle = 0xFFFFFFFFu;  // Last Light: the cycle it fired in
+    double lastLightTick = -1e18;  // Last Light: when it last fired (at most once in kLastLightBars; once a cycle until 2026-11-15)
     u16 cleanBars = 0;           // Crescendo: bars in a row without a hit
     u32 collectorShards = 0;     // Collector
     struct Mine {

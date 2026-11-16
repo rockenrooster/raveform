@@ -250,20 +250,20 @@ Weapon
 |---|---|---|---|---|
 | 1 | Split | +1 projectile a rank in a tight fan: 2, 3, 4, then 5 lanes (the owner, 2026-11-14: "not such drastic jumps every time"; it was 3 then 5 in two ranks since play test 3, 3-5-7 before). Neighbouring lanes keep the fan's spacing, so the fan widens a lane a rank; an even count straddles the aim line. Seven lanes and more are Prism's to give | 4 | Adds a harmony note to each new lane, one a rank (3rd, 5th, octave, 7th) |
 | 2 | Double-Time | Fire grid 1/16 → 1/16 triplet → 1/32 (the original two ranks again, the owner, 2026-11-14; play test 3 had cut it to one) | 2 | Lead doubles in speed |
-| 3 | Pierce | Shots pass through +2 enemies | 3 | Longer shots, longer note release |
+| 3 | Pierce | Shots pass through +3 enemies, a quarter heavier after each (the owner's buff, 2026-11-15: +2, no growth) | 3 | Longer shots, longer note release |
 | 4 | Ricochet | +2 bounces: off walls and structures, and from each enemy hit to the nearest other enemy within 300 wu | 3 | Pitch-up blip per bounce |
-| 5 | Fork | On first hit, split into 2 half-damage shots (play test 3: one rank; forking again is Fractal's) | 1 | Y-shaped flash |
-| 6 | Seeker | Shots curve toward targets. On a boss only toward a part the shot already flies at (within 35°), its weak point first (2026-11-15: curving to the nearest part, most often armour, made the fights a fifth longer) | 3 | Slight portamento on the lead |
+| 5 | Fork | On first hit, split into 2 shots of 0.75 damage that home in and fly 0.9 of a shot's life (play test 3: one rank; forking again is Fractal's, whose halves keep half damage; 2026-11-15: half damage, straight, 0.6) | 1 | Y-shaped flash |
+| 6 | Seeker | Shots curve toward targets and pass through 1, 2, then 3 bodies, hunting the next (turning 5, 9, 14 rad/s within 420 wu; 2026-11-15: 3, 6, 10 within 320, no pierce). In a fight a homing shot keeps to the boss unless a body is within 80 wu. On a boss only toward a part the shot already flies at (within 35°), its weak point first (2026-11-15: curving to the nearest part, most often armour, made the fights a fifth longer) | 3 | Slight portamento on the lead |
 | 7 | Heavy Step | Every 4th shot is a slow orb that explodes | 3 | Low octave thump |
 | 8 | Accent | The shot on beat 1 is a full-length piercing lance; then beats 1+3; then every beat | 3 | Accented note, white flash line |
 | 9 | Echo | Each shot repeats as a ghost one beat later at half damage; then two echoes | 2 | Delay line on the lead |
-| 10 | Wave | Shots travel in sine paths with a wider hit radius (M5: one wave to a beat of flight, 28 then 40 wu to each side; every shot of the stream on the same curve; look.md v2.5) | 2 | Vibrato |
+| 10 | Wave | **A wave front rolls out on every beat** along the aim: an arc 90° wide growing to 400 wu over 0.45 s, 2 damage to each body it passes and to each boss part once; rank 2: 140°, 550 wu, 3. The shots fly straight (the owner's rework, 2026-11-15: they rode sine paths, 28 then 40 wu to each side, which carried the auto-aim's shots off the boss; Helix Array keeps its own strands) | 2 | Vibrato; a crescent of light |
 | 11 | Overcharge | +50% damage, larger hotter shots: the shot's head changes colour with every stack (look.md section 5, "The build on the shots") | 5 | More drive on the lead |
-| 12 | Rear Guard | Also fire backward on off-beats; then sideways too | 2 | Off-beat counter-melody |
+| 12 | Rear Guard | Also fire backward with every volley; then sideways too (2026-11-15: on the off-beats only) | 2 | Off-beat counter-melody |
 | 13 | Arc | Kills chain lightning to 1 more enemy within 160 wu, then 2, then 3; an arc's own kill arcs no further (play test 3: half of what it was) | 3 | Zap arpeggio |
-| 14 | Burn | Hits ignite for 2 beats; a burning enemy that dies ignites neighbours within 45 wu, once: their fire spreads no further (play test 3: half) | 3 | Crackle layer |
+| 14 | Burn | Hits ignite for 3 beats, 2 damage a beat a stack; a burning enemy that dies ignites neighbours within 80 wu, once: their fire spreads no further (play test 3: half; 2026-11-15: 2 beats, 1, 45 wu) | 3 | Crackle layer |
 | 15 | Shatter | Killed enemies' line segments fly out as damaging shrapnel: 2, 3, then 4 pieces; a piece's kill throws none (play test 3: half) | 3 | Glassy burst |
-| 16 | Gravity Rounds | Hits tug nearby enemies toward the impact | 2 | Grid dimples at each hit |
+| 16 | Gravity Rounds | Hits tug nearby enemies toward the impact and crush them: 1, then 2 damage to every body within 130, then 180 wu (2026-11-15: the pull alone, 110 and 150 wu, drew the crowd onto the ship) | 2 | Grid dimples at each hit |
 
 Defence and movement
 
@@ -273,15 +273,15 @@ Defence and movement
 | 18 | Regen | A cell grows back by itself every 8 bars; then every 4 (the owner, 2026-11-15: "remove the lowest rank", 16 bars). The halo's next arc draws itself as it grows | 2 |
 | 19-21 | ~~Afterimage, Reserve, Shockstep~~ | **Removed** (the owner, 2026-11-15: "just remove the dash mods entirely and buff the base dash"): a player who never dashes, a young one above all, got nothing from them. Reserve's charge and Shockstep's ring are the base Dash's now (section 5); Afterimage's decoy is gone. Never dealt (their numbers are kept so the ones after them do not move) | 0 |
 | 22 | Aegis | A rotating arc blocks bullets from one side; wider per stack | 3 |
-| 23 | Last Light | Taking a hit fires a free mini-Nova, once per cycle | 1 |
-| 24 | Slipstream | +15% speed (M5: +8% four times over was a pick nobody feels, rule 6.6) | 2 |
+| 23 | Last Light | Taking a hit fires a free mini-Nova (600 wu), at most once in 4 bars (2026-11-15: once a cycle, 420 wu) | 1 |
+| 24 | Slipstream | +20% speed, one rank (the owner, 2026-11-15: "buffed slightly and rank 1 be max rank"; +15% a rank, two; M5: +8% four times over was a pick nobody feels, rule 6.6) | 1 |
 
 Economy
 
 | # | Mod | Effect per stack | Cap |
 |---|---|---|---|
 | 25 | Magnet | +100% Shard pull radius (90 wu, then 180, 270, 360, 450) | 4 |
-| 26 | Prospector | 25% chance of an extra Shard per kill | 4 |
+| 26 | Prospector | Half an extra Shard per kill a stack, the whole part sure and the rest a chance: one more every kill at two stacks, two at four (2026-11-15: a 25% chance a stack, at most one) | 4 |
 | 27 | Nova Stock | +1 Nova capacity and gain one | 3 |
 | 28 | Encore | Boosts last one bar longer | 3 |
 | 29 | Lucky Break | Trios offer one more option | 2 |
@@ -294,9 +294,9 @@ Rhythm
 | 31 | On-Beat Crit | Shots on quarter-note beats deal ×3, ×5, ×8, flash, and burst over 80 wu | 3 |
 | 32 | Syncopation | Off-beat shots pierce and deal +50% | 2 |
 | 33 | Bar Line | At each bar start a laser cross flashes through your position; then diagonals; then longer | 3 |
-| 34 | Crescendo | +5% damage per bar without being hit, up to +50%; then +100% | 2 |
+| 34 | Crescendo | +10% damage per bar without being hit, up to +50%; then +100%. A hit halves the climb (2026-11-15: +5%, and a hit ended it) | 2 |
 | 35 | Kick Pulse | Every kick drum emits a knockback ring around you; the second stack makes it hurt (the owner, 2026-11-15: "Limit kick pulse to 2"; a third stack widened the ring). The ring is on the steps of the Track's kick pattern at velocity 5 or more, as its tom is, so in Tracks 7, 9 and 10 it is not on every beat; its push and damage are scaled by 4 / (kicks a bar) so the Mod is worth the same in every Track. None in a Break | 2 |
-| 36 | Afterparty | Surge lasts two bars longer and its fire grid is one step faster | 2 |
+| 36 | Afterparty | Surge lasts four bars longer and its fire grid is one step faster; rank 2: the whole Drop, a boss's included (2026-11-15: two bars a stack) | 2 |
 
 ### 6.3 Riffs (12) — autonomous weapons, each a layer in the mix
 
@@ -311,7 +311,7 @@ Rhythm
 | 7 | Swarm | A volley of homing micro-missiles each bar, staggered as a 1/32 run | Count | Rising arpeggio run |
 | 8 | Singularity | Every 4 bars a gravity well ahead of you pulls for 3 beats, then detonates on beat 1 | Radius, damage | Reverse swell + boom |
 | 9 | Mirror | A ghost wingman mirrored across your aim axis fires your primary at 50% | 60 / 70 / 80 / 100% | Lead doubled an octave up |
-| 10 | Comet | A boomerang disc thrown along your aim each bar | Size, count | Pitch-glide whoosh |
+| 10 | Comet | A boomerang disc thrown along your aim each bar, hurting what it touches every sixteenth for 5 (2026-11-15: every eighth for 3) | Size, count | Pitch-glide whoosh |
 | 11 | Sweeper | A laser arm rotates around you once per 2 bars | Length; second arm | Filtered drone that opens as it sweeps |
 | 12 | Flak | On beats 2 and 4, a radial burst of pellets | Count; pellets explode | Snare accent layer |
 

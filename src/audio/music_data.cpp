@@ -17,8 +17,10 @@ u32 leadGridIndex(const u32 surgeSteps[2], u32 doubleTime, u32 afterparty, Secti
         const u32 half = sectionBars / 2;
         if (sectionBar < half) {
             idx += surgeSteps[sectionBar < sectionBars / 4 ? 0 : 1] + afterparty;
-        } else if (afterparty && sectionBar < half + 2 * afterparty) {
-            idx += surgeSteps[1] + afterparty;  // Afterparty: the Surge's second gear held for two more bars a stack
+        } else if (afterparty && (afterparty >= 2 || sectionBar < half + 4)) {
+            // Afterparty: the Surge's second gear held four bars more, at rank 2 the whole Drop (the owner's buff, 2026-11-15: two
+            // bars a stack; the sim's World::afterparty keeps the same rule)
+            idx += surgeSteps[1] + afterparty;
         }
     }
     return idx > 2 ? 2 : idx;

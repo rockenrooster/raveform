@@ -330,39 +330,53 @@ constexpr float kMothCatchUp = 1.6f;           // a Moth flies to its place on t
 // M5 PART 3: every upgrade (GAME_DESIGN 6.2-6.5 to 6.6's rules). Quoted where the tables give a number; the rest
 // chosen to 6.6's "every pick is felt at once" (docs/PROGRESS.md, M5 part 3, "Numbers chosen").
 // ======================================================================================================
-constexpr float kSlipstreamPerStack = 0.15f;                // 6.2 (quoted; the lead's ruling after part 3): +15% speed, cap 2
-constexpr float kForkDeg = 20.0f, kForkDamage = 0.5f;       // Fork: two half-damage shots (quoted) this far apart
-constexpr float kSeekerTurn[4] = {0.0f, 3.0f, 6.0f, 10.0f}; // rad/s by stack
-constexpr float kSeekerReachWu = 320.0f;
+// The owner's buffs of 2026-11-15 (after `--sim isolate` found them close to nothing; the numbers before in brackets):
+constexpr float kSlipstreamPerStack = 0.20f;                // +20% speed, cap 1 ("buffed slightly and rank 1 be max rank"; +15%, cap 2)
+constexpr float kForkDeg = 20.0f, kForkDamage = 0.5f;       // Fork: two shots this far apart; Fractal's halves at half damage (quoted)
+constexpr float kForkDamageMod = 0.75f;                     // Fork's own two: 0.75 of the shot (0.5), homing (kForkTurn) ...
+constexpr float kForkLife = 0.9f, kForkTurn = 6.0f;         // ... for 0.9 of a shot's life (0.6), turning at 6 rad/s (straight)
+constexpr float kSeekerTurn[4] = {0.0f, 5.0f, 9.0f, 14.0f}; // rad/s by stack (3, 6, 10)
+constexpr float kSeekerReachWu = 420.0f;                    // (320)
+constexpr u8 kSeekerPierce[4] = {0, 1, 2, 3};               // a homing shot passes through this many and hunts the next (none)
+constexpr float kSeekerBossNearWu = 80.0f;                  // in a fight a homing shot keeps to the boss unless a body is this near
 constexpr float kSeekerBossConeCos = 0.819f;  // 2026-11-15: a seeking shot bends only toward a boss part within 35 degrees of its heading
 constexpr float kHeavyOrbSpeed = 0.45f, kHeavyOrbRadius = 3.0f, kHeavyOrbLifeS = 1.6f;  // x the shot's speed, radius
 constexpr float kHeavyBlastWu[4] = {0.0f, 90.0f, 120.0f, 150.0f}, kHeavyBlastDamage[4] = {0.0f, 4.0f, 6.0f, 8.0f};
 constexpr float kAccentDamage = 3.0f, kAccentLengthWu = 1500.0f, kAccentHalfWu = 14.0f;  // x the shot's damage
 constexpr float kEchoDamage = 0.5f;                         // quoted: half damage
-constexpr float kWaveAmpWu[3] = {0.0f, 28.0f, 40.0f}, kWaveRadius[3] = {1.0f, 1.6f, 2.0f};  // (GAME_DESIGN 6.2 row 10: one wave
-                                                            // to a beat of flight, look.md v2.5)
+// Wave (the owner's rework, 2026-11-15: its sine paths carried the assist's aimed shots off the boss): the shots fly straight
+// and on every beat a wave front rolls out from the ship along the aim, hurting what it passes once. By rank: its half-arc
+// (90 then 140 degrees in all), its reach and damage; it grows to its reach in kWaveGrowS from kWaveStartWu.
+constexpr float kWaveHalfArcDeg[3] = {0.0f, 45.0f, 70.0f}, kWaveReachWu[3] = {0.0f, 400.0f, 550.0f}, kWaveDamage[3] = {0.0f, 2.0f, 3.0f};
+constexpr float kWaveGrowS = 0.45f, kWaveStartWu = 30.0f;
+constexpr float kWaveAmpWu[3] = {0.0f, 28.0f, 40.0f};       // (the sine paths before the rework; Helix Array keeps its own)
 constexpr float kHelixAmpWu = 80.0f;                        // GAME_DESIGN 6.5 (quoted): the outer pair 80 wu to each side, the
 constexpr float kHelixWaveBeats = 2.0f;                     // pairs inside at 2/3 and 1/3; one wave to two beats of flight
 constexpr float kArcReachWu = 160.0f, kArcDamage = 2.0f;    // Arc: 1, 2, 3 more within 160 wu (play test 3, quoted: half); an
                                                             // arc's own kill arcs no further
-constexpr float kBurnDamage = 1.0f, kBurnSpreadWu = 45.0f;  // a beat's fire, x the stacks; neighbours within 45 wu caught on a
-                                                            // death, once: their fire spreads no further (play test 3, quoted)
-constexpr double kBurnBeats = 2.0;                          // quoted
+constexpr float kBurnDamage = 2.0f, kBurnSpreadWu = 80.0f;  // a beat's fire, x the stacks; neighbours within 80 wu caught on a
+                                                            // death, once: their fire spreads no further (2026-11-15: 1 and 45)
+constexpr double kBurnBeats = 3.0;                          // (2026-11-15: 2, quoted)
 constexpr u32 kShatterShards[4] = {0, 2, 3, 4};             // play test 3 (quoted): 2, 3, 4 pieces; a piece's kill throws none
 constexpr float kPelletSpeed = 700.0f, kPelletLifeS = 0.3f;
-constexpr float kGravityReachWu[3] = {0.0f, 110.0f, 150.0f}, kGravityPull[3] = {0.0f, 70.0f, 110.0f};  // wu, wu/s
+constexpr float kGravityReachWu[3] = {0.0f, 130.0f, 180.0f}, kGravityPull[3] = {0.0f, 70.0f, 110.0f};  // wu, wu/s (110, 150)
+constexpr float kGravityCrush[3] = {0.0f, 1.0f, 2.0f};     // 2026-11-15: what a hit's pull does to every body in its reach (none)
 constexpr float kAegisArcDeg[4] = {0.0f, 60.0f, 90.0f, 120.0f}, kAegisInWu = 30.0f, kAegisOutWu = 60.0f;
-constexpr float kLastLightWu = 420.0f;                      // Last Light: the mini-Nova's reach (the Nova's front: 1,400)
-constexpr float kProspectorChance = 0.25f;                  // quoted
+constexpr float kLastLightWu = 600.0f;                      // Last Light: the mini-Nova's reach (the Nova's front: 1,400; 420)
+constexpr double kLastLightBars = 4.0;                      // 2026-11-15: at most once in this many bars (once a cycle)
+constexpr float kProspectorChance = 0.5f;                   // an extra Shard a kill a stack, the whole part sure (0.25, quoted)
+constexpr float kPierceGrowth = 1.25f;                      // 2026-11-15: a shot gains this much damage for each body it passes
 constexpr u32 kCollectorEvery[3] = {0, 500, 500};           // quoted (the owner, 2026-11-14: "every 500 shards at rank 1 and
                                                              // capped at rank 1"; 250 then 150 until then)
 constexpr float kSyncopationDamage[3] = {1.0f, 1.5f, 2.0f}; // quoted +50%, then chosen +100%
 constexpr u8 kSyncopationPierce = 2;
 constexpr float kBarLineWu[4] = {0.0f, 900.0f, 900.0f, 1800.0f}, kBarLineHalfWu = 16.0f, kBarLineDamage = 5.0f;
-constexpr float kCrescendoStep = 0.05f, kCrescendoMax[3] = {0.0f, 0.5f, 1.0f};  // quoted
+constexpr float kCrescendoStep = 0.10f, kCrescendoMax[3] = {0.0f, 0.5f, 1.0f};  // the caps quoted (2026-11-15: +5% a bar; a hit now
+                                                                                // halves the climb instead of ending it)
 // Kick Pulse: cap 2 since the owner's "Limit kick pulse to 2" (2026-11-15); the third stack's 240 wu ring is gone.
 constexpr float kKickRingWu[3] = {0.0f, 160.0f, 160.0f}, kKickPush = 380.0f, kKickDamage = 2.0f;
-constexpr u32 kAfterpartyBars = 2;                          // quoted
+constexpr u32 kAfterpartyBars = 4;                          // rank 1; rank 2: the whole Drop, a boss's too (2026-11-15: 2 a rank, quoted;
+                                                            // the band's audio::leadGridIndex keeps the same rule)
 // Riffs 4-12 (by level 1-5).
 constexpr float kLancerDamage = 6.0f, kLancerHalfWu[6] = {0.0f, 10.0f, 16.0f, 16.0f, 22.0f, 22.0f}, kLancerLengthWu = 1600.0f;
 constexpr float kMineBlastWu = 110.0f, kMineDamage = 8.0f;
@@ -372,7 +386,7 @@ constexpr float kMissileSpeed = 900.0f, kMissileDamage = 2.0f, kMissileLifeS = 1
 constexpr float kWellAheadWu = 300.0f, kWellPullWu[6] = {0.0f, 260.0f, 300.0f, 300.0f, 340.0f, 340.0f}, kWellPull = 260.0f;
 constexpr float kWellBlastWu[6] = {0.0f, 200.0f, 230.0f, 230.0f, 260.0f, 260.0f}, kWellDamage[6] = {0.0f, 12.0f, 12.0f, 18.0f, 18.0f, 24.0f};
 constexpr float kMirrorShare[6] = {0.0f, 0.5f, 0.6f, 0.7f, 0.8f, 1.0f}, kWingWu = 90.0f;  // quoted shares
-constexpr float kCometOutWu = 520.0f, kCometRadiusWu = 22.0f, kCometDamage = 3.0f;
+constexpr float kCometOutWu = 520.0f, kCometRadiusWu = 22.0f, kCometDamage = 5.0f;  // (2026-11-15: 3, once an eighth; now a sixteenth)
 constexpr float kCometSize[6] = {0.0f, 1.0f, 1.5f, 1.5f, 2.0f, 2.0f};
 constexpr u32 kCometCount[6] = {0, 1, 1, 2, 2, 3};
 constexpr float kSweeperLengthWu[6] = {0.0f, 240.0f, 300.0f, 300.0f, 360.0f, 360.0f}, kSweeperDamage = 6.0f;  // a pass

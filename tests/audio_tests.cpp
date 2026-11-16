@@ -1497,8 +1497,8 @@ void testModsOnLead() {
         CHECK_MSG(kicks == 2 * kBars && toms == kicks && matched == kicks, "Kick Pulse: %u kicks, %u toms, %u together", kicks, toms, matched);
         delete s;
     }
-    {  // Afterparty: the Surge (the Drop's first half: bars 12-15 of the Short form) holds its second gear two bars longer,
-       // a step faster (1/32 at once).
+    {  // Afterparty: the Surge (the Drop's first half: bars 12-15 of the Short form) holds its second gear four bars longer (the
+       // owner's buff, 2026-11-15: two; here the rest of the Drop), a step faster (1/32 at once).
         const auto grids = [&](const PlayerLoadout& l, u32* out) {
             Session* s = upgradeRun(l, 21, true, Section::Groove, 0.0f, 0, false);
             for (u32 b = 0; b < 21; ++b) out[b] = 0;
@@ -1510,8 +1510,8 @@ void testModsOnLead() {
         grids(PlayerLoadout{}, plain);
         grids(withMod(Mod::Afterparty, 1), party);
         CHECK_MSG(plain[12] == 16 && plain[14] == 12 && plain[16] == 24 && plain[18] == 24, "the Surge: %u %u %u %u", plain[12], plain[14], plain[16], plain[18]);
-        CHECK_MSG(party[12] == 12 && party[14] == 12 && party[16] == 12 && party[17] == 12 && party[18] == 24, "Afterparty: %u %u %u %u %u", party[12],
-                  party[14], party[16], party[17], party[18]);
+        CHECK_MSG(party[12] == 12 && party[14] == 12 && party[16] == 12 && party[19] == 12 && party[20] == 24, "Afterparty: %u %u %u %u %u", party[12],
+                  party[14], party[16], party[19], party[20]);
     }
 }
 
