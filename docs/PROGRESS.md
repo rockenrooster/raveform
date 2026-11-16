@@ -131,6 +131,80 @@ Measured: the 5-minute four-bot net soak, versus against team: both pass, census
 error RMS 1.70 wu (team 1.56), p95 2.0 (2.25), max 165 wu (85: a shoved or knocked-out ship's moment); downstream 268 kbps at most
 (264). The set's determinism hashes are unchanged.
 
+### Part 4: the Stage, TRACERS and the two bonus Tracks (2026-11-16)
+
+Built (`design/modes/tracers.md`, `README.md` 4 and 11): **the Stage** (the walls as the world's state, `World::halfW/halfH`: ships,
+bodies, bouncing shots, spawns and the Dash meet them; a fixed camera at the zoom that fits the Stage and its 40 wu margin; the
+rig; a lattice of its own every 20 wu, allocated with the other, so every other line is a tile's side). **TRACERS**
+(`world_mode_tracers.cpp`): the tracer (laid above 120 wu/s, a point every 16 wu, up to 160, living 8 beats plus one a Shard level to
+16, twice under LONG, four more for the versus underdog; a hit or a knock-out puts it out; a node where each sixteenth fell); a ring
+where the newest piece crosses an older one (the newest six points never count) or within the 36 wu snap, thinned to 48 corners,
+catching every solid body inside (frozen, harmless, in its owner's colour), popping on the next eighth with the bonus table (an elite
+loses a quarter of its health: four rings or a Nova), its tiles lit (a lit tile stays lit); a full house at 813 tiles (the chase on the
+next bar line, the crowd's pop two beats later paying 5,000 x the house x the Chain, the floor dark a bar after it, the next house's
+crowd and budget 15% higher); the floor paying 10 a tile x the Chain at the end; a knock-out costing the oldest quarter of the
+player's own tiles (and back at the Stage's centre). No gun: the band plays the lead while the line is laid. The crowd: contact
+species only (variant A, no Sentries, Tethers or Weavers, nothing that fires), half the Track's target (at most 200 bodies on the
+Stage), half the budget, no dissolving in the Break, elites every eight bars from the second Groove (no Volatile, no Cloaked), a
+Boost orb every six bars from the mode's list with the two gels (LONG, ECHO: every ring pops again a beat later, half as large
+again). **Together**: rings go out as their corners (`Msg::Ring`, protocol `0x5246050F`), every device catching, popping and lighting
+from the same corners; the host decides the houses (a ring of kind 1) and sends its floor every two seconds (`Msg::Floor`, a nibble a
+tile, taken unless older than the client's own last ring); a ring's deaths are its owner's claims, a client's verdicts paying the
+ring's bonus; a teammate's line crossed twice closes a duet ring (both owners, a check of the two colours, twice the bonus, the
+partner paid with its own Chain); in versus a rival crossing your line cuts it (`kPeCut`), a rival inside your ring as it pops is spun
+out (pushed 300 wu, its line out, two beats with none: `kPeSpin`), the tiles are the count (crown, underdog, podium, the turf bar).
+**The view** (`play_view_modes.cpp`): the floor tinted in the lattice by tile, the lit regions' stepped edges, the tracer (deep to white,
+dashed and flickering in its last two beats, node beads), the closing hint, the lock's white flash, caught bodies in the owner's colour
+with a white dot, the pop's shock ring, pool and lattice impulse, `RING X5`, `FULL HOUSE` with `X n`, the tiles' light coming in and
+blinking out, the count's sweep. The HUD (`FLOOR 62%   HOUSE 2`, `LAST CALL`, `TRACER 9 BEATS`, the gels' cards, no Riff slots), the
+result (FLOOR, FULL HOUSES, BEST RING, BEST CHAIN, the floor drawn small, a gold star a house and a white tick a ring of x 5 on the
+run bar; a timed mode's run behind its result at a fifth), the `tracers_<track>` record, the sounds from the band's recipes (a glass
+lock, a woodblock fizzle, the pop's stab larger by the bonus with a tom from x 5 and the sub drop at x 8, the house's tom roll into the
+impact, the gong and the stab). **The bonus Tracks** in the band (`audio::kMaxTracks` 12; Mirrorball and Toybox embedded from
+`design/modes/music/`), calibrated, their palettes exported; FULL BLAST and TRACERS take Tracks 11 and 12 (the music and tempo over
+the borrowed crowd); MODES's strip shows twelve. Tools: `raveform_headless --sim mode --tracers [--track N] [--policy child]
+[--trace]`, `--net soak --mode tracers:3 [--versus]`, `scripts\review-m8.ps1 -Part p4`.
+
+Measured:
+- **The ring-flier** (`--sim mode --tracers --seeds 20`, floor-aware circles): fills a house in 20 of 20 runs on Tracks 1-4, 8 and 11
+  (Mirrorball), 19 of 20 on 5, 6, 7 and 9, 17 of 20 on 10 (the fastest tempo: 1:15 a run); 0.9 to 2.2 houses a run; knock-outs 0 to
+  0.55 a run (at most 2).
+- **The child-like bot** (avoidance half a second late, no Dash): knocked out **2.45 times a run on Mirrorball** (2.35 on Reef's own
+  tempo; at most 5), over the page's bar of 2. Its hits a run: drifters 4.7, caroms 4.2, shoals 2.8. For the lead: the crowd for a
+  five-year-old (the Stage's crowd scale, or no Caroms on the Stage, or the first house's crowd lower) is the lever; nothing changed.
+- **Co-op and versus** (`--net soak --minutes 1.5 --players 4 --mode tracers:3`, and `--versus`): pass; census clean, every predicted
+  kill confirmed, the floors equal at the end, houses 3 / 3; 3 of 119 snapshots set a few tiles right (rings overlapping in flight).
+  THE SET's soak passes as before.
+- **The Moto** (shared; `bench_play`, Track 10's last Drop, four players: hosting three loopback bots, tier low; 15 s from 57 s):
+  899 frames, 0 missed, the panel's P95 one period (16.7 ms): the contract holds; GPU 12.8 / 13.8 / 14.6 ms (p50/p95/max), 179 bodies
+  in view (207 at most), 8,237 capsules a frame.
+- **Mirrorball against the prototype** (`render-audio.ps1 -Only track11_*`): all three sounds and Toybox in club pass, loudness and
+  every band and section within half a dB, onsets exact.
+- Tests: the sim suite's TRACERS tests (a square both ways, a figure of eight, the snap at 36 and not 37, a three-tile fizzle, 48-corner
+  thinning, two worlds alike, no shots or bullets; a duet, a cut, a spin-out); the net suite's ring and floor round trips and
+  refusals; the audio suite at twelve Tracks. **The set's determinism hashes are unchanged.**
+
+Decided alone:
+- **A fizzle keeps the line** (rule 6 does not say): one dry tick a beat at most, and the line flies on, so a wiggle never costs the
+  ring being flown round it (with the cut, the bots closed half as many rings).
+- The hint offers no point of the line just flown (the newest six and as many more as 1.5 x its reach holds).
+- **The tablet's zoom is 0.641**, under the page's floor of 0.75: the whole room wins (at 0.75 the Stage is 1,536 wu across on a
+  16:10 screen, 90 wu short at each side). Its pixels a world unit (1.07) are close to the phone's at 0.784 (1.17).
+- A Track's tonic is its key's (`Track::tonic`): Mirrorball's progression starts on its two chord, so the first chord's bass (which
+  stood in for the tonic and is it in the ten and Toybox) would have put its effects, Shard runs and lead degrees in E.
+- The bonus Tracks stay in `design/modes/music/` (the plan moves them to `design/music/`; `design/tools/bonus_tracks.py` reads them
+  there).
+- The floor's snapshot every two seconds (not only on a census mismatch); a house a client's floor fills waits for the host's.
+- A duet's lines both start again from their ships (the page cuts loose only the pieces used).
+- A knock-out costs a quarter of the player's own tiles rounded down.
+- TRACERS is in release builds from this part (the owner's first play is its gate).
+
+Not done in part 4: the moments (`--mode tracers:10:drop2:hold`: the benchmark ran on a warm-up instead), the pictures the plan lists
+beyond these (`m8_ring_x8`, `m8_lights_out`, `m8_duet`, `m8_turf_4`, `m8_cut`, `m8_spin`, the nine Boosts' moments), the pop's
+stagger over a thirty-second, the edges' glow pools, the rig's beams (x 5 and FULL HOUSE), FULL HOUSE's flash and confetti, the
+sounds' exact notes (the pop's chord by its note count, the count's chirp a column, the gels' own), the HUD's first-run hints, the
+versus count at the end (the sweep's tally side by side), the tablet's and the four-player benchmarks beyond the one above.
+
 ### Part 3: FULL BLAST (2026-11-16)
 
 Built (`design/modes/full_blast.md`): a timed mode's fixed form in the director (`DirectorState::formCount`, `formKind`, `formBars`

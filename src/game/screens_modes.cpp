@@ -125,8 +125,7 @@ u32 Play::tracksAvailable() const {
 
 bool Play::modeBuilt(Mode m) const {
     // (each part of M8 adds its modes)
-    // (TRACERS plays in dev builds while part 4 is under way; a release shows it once its part is done)
-    return m == Mode::Set || m == Mode::OneTrack || m == Mode::Headliners || m == Mode::FullBlast || (m == Mode::Tracers && !kReleaseBuild);
+    return m == Mode::Set || m == Mode::OneTrack || m == Mode::Headliners || m == Mode::FullBlast || m == Mode::Tracers;
 }
 
 bool Play::modeShown(Mode m) const { return !kReleaseBuild || modeBuilt(m); }
