@@ -601,6 +601,7 @@ void World::finishKill(u32 i, u8 killer, u8 kind) {
                     for (u32 k = 0; k < r.caught; ++k)
                         if (r.handle[k] == e.handle[i]) bonus = static_cast<double>(r.bonus);
                 }
+            if (pl.streakTier >= 1) bonus *= 1.5;  // (M8 SONGLINE: the streak's first tier)
             pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * elite * static_cast<double>(pl.chain) * rules_.scoreMultiplier * bonus));
         }
     }

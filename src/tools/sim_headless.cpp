@@ -1652,6 +1652,125 @@ int runModeTracers(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Polic
     return 0;
 }
 
+// M8 part 5 (design/modes/songline.md "What to check"): SONGLINE on each Track: the rider threads at least 90% of its gates; a
+// rider at half speed is found again by the line within four bars every time; the child-like bot threads at least half on Aurora
+// and is knocked out at most twice.
+int runModeSongline(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Policy policy, u32 onlyTrack, bool trace) {
+    auto* world = new (std::nothrow) World;
+    if (!world) return 2;
+    const char* policyName = policy == Bot::Policy::Child ? "child-like" : (policy == Bot::Policy::Slow ? "half-speed" : "rider");
+    std::printf("[mode] SONGLINE, the %s bot, %u seeds a Track\n", policyName, seeds);
+    std::printf("[mode] track  ended  minutes  threaded%%(mean,min)  in_time%%  best_streak  knockouts(mean,max)  lost(times,bars_max)  score(mean)  enemies_max\n");
+    double worstThread = 100.0;
+    u32 worstLostBars = 0, worstKnocks = 0;
+    for (u32 track = 1; track <= kModeTracks; ++track) {
+        if (onlyTrack && track != onlyTrack) continue;
+        u32 ended = 0, koMax = 0, bestStreak = 0, lostTimes = 0, lostBarsMax = 0, enemiesMax = 0;
+        double thread = 0.0, threadMin = 100.0, inTime = 0.0, ko = 0.0, score = 0.0, minutes = 0.0;
+        for (u32 s = 0; s < seeds; ++s) {
+            world->init(&species);
+            SimRunner runner;
+            runner.autoRetry = false;
+            RunSetup su;
+            su.mode = Mode::Songline;
+            su.track = static_cast<u8>(track);
+            runner.start(world, seed0 + s, Spawner::Mode::Slice, policy, 120.0f, false, su);
+            applyLevers(*world);
+            World& w = *world;
+            u32 knocks = 0, t = 0, seedLostBars = 0;
+            double lostFrom = -1.0;
+            for (; t < 8u * 3600u; ++t) {
+                runner.step();
+                for (u32 k = 0; k < w.eventCount(); ++k) {
+                    const Event& ev = w.events()[k];
+                    if (ev.type == EventType::Knock) ++knocks;
+                    if (ev.type == EventType::SparkBack) {
+                        if (ev.a) {
+                            lostFrom = w.music();
+                            ++lostTimes;
+                        } else if (lostFrom >= 0.0) {
+                            const u32 bars = static_cast<u32>(std::ceil((w.music() - lostFrom) / kTicksPerBar));
+                            if (bars > lostBarsMax) lostBarsMax = bars;
+                            if (bars > seedLostBars) seedLostBars = bars;
+                            if (trace) std::printf("[trace] found again after %u bars at bar %u\n", bars, w.phrase().bar);
+                            lostFrom = -1.0;
+                        }
+                    }
+                }
+                if (w.enemies().count > enemiesMax) enemiesMax = w.enemies().count;
+                if (trace && s == 0 && t % 600 == 300) {
+                    // (what the crowd is made of, by family; how far its bodies are from the ship)
+                    u32 fam[kFamilyCount] = {}, far = 0, elites = 0, alive = 0;
+                    const Enemies& e = w.enemies();
+                    for (u32 i = 0; i < e.count; ++i) {
+                        if (e.flags[i] & kFlagDead) continue;
+                        ++alive;
+                        ++fam[static_cast<u32>(species.get(e.species[i]).family)];
+                        if (lengthSq(Vec2{e.x[i], e.y[i]} - w.player(0).pos) > 1400.0f * 1400.0f) ++far;
+                        if (e.traits[i] & kEliteBit) ++elites;
+                    }
+                    std::printf("[trace] bar %2u: %u alive:", w.phrase().bar, alive);
+                    for (u32 k = 0; k < kFamilyCount; ++k)
+                        if (fam[k]) std::printf(" %s %u", familyName(static_cast<Family>(k)), fam[k]);
+                    std::printf("; beyond 1,400 wu %u; elites %u\n", far, elites);
+                }
+                if (trace && s == 0 && t % 30 == 0) {
+                    u32 near160 = 0, near300 = 0, bullets = 0;
+                    std::printf("[trace] alive %u, section %u\n", w.enemies().count, static_cast<u32>(w.phrase().section));
+                    const Enemies& e = w.enemies();
+                    for (u32 i = 0; i < e.count; ++i) {
+                        if (e.flags[i] & kFlagDead) continue;
+                        const float dd = lengthSq(Vec2{e.x[i], e.y[i]} - w.player(0).pos);
+                        near160 += dd < 160.0f * 160.0f ? 1u : 0u;
+                        near300 += dd < 300.0f * 300.0f ? 1u : 0u;
+                    }
+                    for (u32 b = 0; b < w.bullets().count; ++b)
+                        if (!w.bullets().dead[b] && lengthSq(Vec2{w.bullets().x[b], w.bullets().y[b]} - w.player(0).pos) < 300.0f * 300.0f) ++bullets;
+                    std::printf("[trace] t %5.1f s bar %2u: apart %5.0f wu, back %d, near 160/300 %3u/%3u, bullets 300 %3u, speed %4.0f, cells %u, "
+                                "ship (%5.0f, %5.0f) spark (%5.0f, %5.0f) heading %+.2f wall %+.0f\n", t / 60.0,
+                                w.phrase().bar, static_cast<double>(length(w.player(0).pos - w.spark().pos)), w.spark().comeBack ? 1 : 0, near160,
+                                near300, bullets, static_cast<double>(length(w.player(0).vel)), w.player(0).cells, static_cast<double>(w.player(0).pos.x),
+                                static_cast<double>(w.player(0).pos.y), static_cast<double>(w.spark().pos.x), static_cast<double>(w.spark().pos.y),
+                                static_cast<double>(w.spark().heading), static_cast<double>(w.spark().aheadWall[0]));
+                }
+                if (w.runEnded()) {
+                    ++ended;
+                    break;
+                }
+            }
+            if (lostFrom >= 0.0) {
+                const u32 bars = static_cast<u32>(std::ceil((w.music() - lostFrom) / kTicksPerBar));
+                lostBarsMax = std::max(lostBarsMax, bars);
+                seedLostBars = std::max(seedLostBars, bars);
+                if (trace) std::printf("[trace] still lost as the run ends, for %u bars\n", bars);
+            }
+            const double laid = w.gatesLaid(0) ? w.gatesLaid(0) : 1.0;
+            const double pct = 100.0 * w.gatesThreaded(0) / laid;
+            thread += pct;
+            threadMin = std::min(threadMin, pct);
+            inTime += 100.0 * w.gatesInTime(0) / laid;
+            ko += knocks;
+            koMax = std::max(koMax, knocks);
+            bestStreak = std::max<u32>(bestStreak, w.bestStreak(0));
+            score += static_cast<double>(w.player(0).score);
+            minutes += static_cast<double>(t) / 3600.0;
+            if (trace)
+                std::printf("[trace] seed %llu: %u of %u gates, %u in time, best streak %u, %u knock-outs, lost %u bars at most\n",
+                            static_cast<unsigned long long>(seed0 + s), w.gatesThreaded(0), w.gatesLaid(0), w.gatesInTime(0), w.bestStreak(0), knocks,
+                            seedLostBars);
+        }
+        std::printf("[mode] %5u  %3u/%-3u  %7.2f  %6.1f,%-6.1f  %8.1f  %11u  %8.2f,%-4u  %6u,%-4u  %11.0f  %11u\n", track, ended, seeds, minutes / seeds,
+                    thread / seeds, threadMin, inTime / seeds, bestStreak, ko / seeds, koMax, lostTimes, lostBarsMax, score / seeds, enemiesMax);
+        worstThread = std::min(worstThread, threadMin);
+        worstLostBars = std::max(worstLostBars, lostBarsMax);
+        worstKnocks = std::max(worstKnocks, koMax);
+    }
+    std::printf("RFSIM {\"test\":\"mode_songline\",\"policy\":\"%s\",\"seeds\":%u,\"worst_threaded_pct\":%.1f,\"worst_lost_bars\":%u,\"worst_knockouts\":%u}\n", policyName, seeds,
+                worstThread, worstLostBars, worstKnocks);
+    delete world;
+    return 0;
+}
+
 // M8 part 1 (design/modes/README.md 5): the kit's numbers measured: the upgrades (Trios taken) the bot holds as each Track's first
 // bar begins and as its boss enters, the median over the seeds of THE SET's runs (one run each, to its first death or 60
 // minutes). The numbers modes.json's kit.atTrackStart and kit.atBoss take.
@@ -1722,6 +1841,7 @@ int simHeadlessMain(int argc, char** argv) {
     bool modeHeadliners = false;                    // --sim mode --headliners (M8 part 2)
     bool modeBlast = false;                         // --sim mode --blast (M8 part 3)
     bool modeTracers = false;                       // --sim mode --tracers (M8 part 4)
+    bool modeSongline = false;                      // --sim mode --songline (M8 part 5)
     const char* isoOnly = nullptr;
     for (int i = 3; i < argc; ++i) {
         const char* a = argv[i];
@@ -1737,6 +1857,7 @@ int simHeadlessMain(int argc, char** argv) {
                      : std::strcmp(next, "novice") == 0 ? Bot::Policy::Novice
                      : std::strcmp(next, "assist") == 0 ? Bot::Policy::Assist
                      : std::strcmp(next, "child") == 0  ? Bot::Policy::Child
+                     : std::strcmp(next, "slow") == 0   ? Bot::Policy::Slow
                                                         : Bot::Policy::Play;
             policyGiven = true;
             ++i;
@@ -1800,6 +1921,8 @@ int simHeadlessMain(int argc, char** argv) {
             modeBlast = true;
         } else if (std::strcmp(a, "--tracers") == 0) {
             modeTracers = true;
+        } else if (std::strcmp(a, "--songline") == 0) {
+            modeSongline = true;
         } else if (std::strcmp(a, "--kit-scale") == 0 && next) {
             kitScale = static_cast<float>(std::atof(next));
             ++i;
@@ -1845,6 +1968,7 @@ int simHeadlessMain(int argc, char** argv) {
         if (modeHeadliners) code = runModeHeadliners(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist);
         else if (modeBlast) code = runModeBlast(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist, modeTrack);
         else if (modeTracers) code = runModeTracers(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Play, modeTrack, trace);
+        else if (modeSongline) code = runModeSongline(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Play, modeTrack, trace);
         else code = runModeOne(*species, seeds, seed, policyGiven ? policy : Bot::Policy::Assist, modeTrack);
     } else if (std::strcmp(mode, "kit") == 0) {
         // M8 part 1: the kit's numbers (the assist bot's upgrades by Track in THE SET).

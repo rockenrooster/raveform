@@ -157,6 +157,29 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask, co
         stageHalf_ = Vec2{0.5f * species_->modes.stage.widthWu, 0.5f * species_->modes.stage.heightWu};
         resetTracers();
     }
+    if (setup.mode == Mode::Songline && species_) {
+        // M8 (songline.md): 48 bars on the chosen Track (modes.json forms.timed48) in the arena, the Spark playing its tune; the kit of
+        // the Track (a bonus Track: of the Track whose crowd it borrows).
+        const Form& f = species_->modes.forms.timed48;
+        u32 track = setup.track < 1 ? 1u : (setup.track > kModeTracks ? kModeTracks : setup.track);
+        songTrack_ = track;
+        if (track > kMaxSongs) {
+            const ModesData::Bonus& b = species_->modes.bonus[track - kMaxSongs - 1u];
+            director_.bonus = static_cast<u8>(track);
+            director_.bonusBpm = static_cast<float>(b.bpm);
+            track = b.crowdOf;
+        }
+        director_.track = static_cast<u8>(track);
+        director_.formCount = static_cast<u8>(f.count < 12 ? f.count : 12u);
+        for (u32 k = 0; k < director_.formCount; ++k) {
+            director_.formKind[k] = static_cast<u8>(f.s[k].kind);
+            director_.formBars[k] = static_cast<u8>(f.s[k].bars);
+        }
+        phrase_ = phraseAt(director_, 0);
+        resetSongline();
+        for (u32 p = 0; p < playerCount_; ++p)
+            if (players_[p].present) dealKit(p, species_->modes.kit.atTrackStart[track - 1u], 0);
+    }
     if (setup.mode == Mode::Headliners && species_) {
         // M8 (headliners.md): the ten bosses back to back from First Light, the acts' form; the kit a run holds as Kaleidos enters;
         // one Extra Life held at the start.
@@ -220,6 +243,7 @@ void World::tick(const TickInput& in) {
     runSpawner();  // the director first: the phrase this tick plays in (Surge, the Build's last bar)
     if (setup_ != RunSetup{}) updateModes();  // M8: the kit landing, the outro, the run's end, versus
     if (setup_.mode == Mode::Tracers) updateTracers();  // M8: the tracers, the rings, the floor (tracers.md)
+    if (setup_.mode == Mode::Songline) updateSongline();  // M8: the Spark, its line and gates, the streaks (songline.md)
     // The loop's ramps this tick (GAME_DESIGN 8, "The loop is where a run ends"): 1 through Track 3.
     loopSpeed_ = std::fmin(loopRamp(kLoopEnemySpeedRamp, phrase_.track, director_.songs), kLoopEnemySpeedMax);
     loopBulletSpeed_ = std::fmin(loopRamp(kLoopBulletSpeedRamp, phrase_.track, director_.songs), kLoopBulletSpeedMax);
@@ -636,7 +660,7 @@ void World::moveProjectiles(float dt) {
             dist = length(to);
             // M5: Afterparty keeps the Surge's x2 for its player past the Surge.
             const float surge = (afterparty(h.owner[i]) && !phrase_.surge()) ? 2.0f : 1.0f;
-            const float magnet = kShardMagnetWu * rules_.magnetMultiplier * surge *
+            const float magnet = kShardMagnetWu * rules_.magnetMultiplier * surge * (pl.streakTier >= 1 ? 2.0f : 1.0f) *
                                  (1.0f + kMagnetPerStack * static_cast<float>(pl.loadout.mods[kMagnet]));
             home = h.homing[i] || dist < magnet;
         }
@@ -979,7 +1003,8 @@ void World::killEnemy(u32 i, u8 killer) {
             ++pl.kills;
             const float chain = static_cast<float>(pl.chain);
             const float surge = (afterparty(killer) && !phrase_.surge()) ? 2.0f : 1.0f;  // M5: Afterparty's longer Surge
-            pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * (elite ? species_->traits.score : 1.0f) * chain * rules_.scoreMultiplier * surge));
+            const float streak = pl.streakTier >= 1 ? 1.5f : 1.0f;  // (M8 SONGLINE: the streak's first tier)
+            pl.score += static_cast<u64>(std::llround(static_cast<double>(s.score) * (elite ? species_->traits.score : 1.0f) * chain * rules_.scoreMultiplier * surge * streak));
         }
         // A Boost is due (GAME_DESIGN 6.1, director controlled): this kill drops it.
         if (director_.boostDue && spawner_.mode == Spawner::Mode::Slice) {
@@ -1604,6 +1629,30 @@ u64 World::hash() const {
         for (const PlayerState& pl : players_) {
             val(pl.knocked);
             val(pl.backTick);
+        }
+    }
+    if (setup_.mode == Mode::Songline) {
+        // M8 SONGLINE: the Spark, its line, the gates, the streaks (songline.md "Caps and the wire").
+        val(spark_.pos.x);
+        val(spark_.pos.y);
+        val(spark_.step0);
+        val(spark_.comeBack);
+        val(spark_.spiralSign);
+        for (u32 k = 0; k <= 16; ++k) {
+            val(spark_.ahead[k].x);
+            val(spark_.ahead[k].y);
+        }
+        for (const SongGate& g : songGates_)
+            if (g.born >= 0.0) {
+                val(g.pos.x);
+                val(g.pos.y);
+                val(g.step);
+                val(g.threaded);
+                val(g.owner);
+            }
+        for (u32 p = 0; p < kMaxPlayers; ++p) {
+            val(streak_[p]);
+            val(players_[p].streakTier);
         }
     }
     if (setup_.mode == Mode::Tracers) {

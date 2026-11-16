@@ -231,6 +231,128 @@ StickInput Bot::thinkTracers(const World& w, u32 player, const PlayerController&
     return in;
 }
 
+StickInput Bot::thinkSongline(const World& w, u32 player, const PlayerController& controller, StickInput in) {
+    // The rider (songline.md "What to check"): the oldest of its gates still to thread that it can still reach, through its ring;
+    // with none, the Spark's side. Dashes through a body about to touch it; the gun fires by itself (the assist). Slow: half a
+    // ship's speed. Child: its turn from a body half a second late, no Dash.
+    const PlayerState& me = w.player(player);
+    const Vec2 pos = controller.pose().pos;
+    const Enemies& e = w.enemies();
+    const bool child = policy_ == Policy::Child || policy_ == Policy::Novice;
+    in.aimActive = false;
+    in.assist = true;
+    const double now = w.music();
+    const double life = static_cast<double>(w.species().modes.songline.lifeBars) * kTicksPerBar;
+    // Its next three gates, oldest first.
+    i32 next[3] = {-1, -1, -1};
+    double nextBorn[3] = {1e300, 1e300, 1e300};
+    for (u32 k = 0; k < World::kSongGates; ++k) {
+        const SongGate& g = w.songGate(k);
+        if (g.born < 0.0 || g.born > now || g.missed || now - g.born > life - kTicksPerBeat) continue;
+        if (g.string != 0xFF && g.string != player) continue;
+        if ((g.threaded >> player) & 1u) continue;
+        if (w.setup().versus && g.owner != 0xFF) continue;
+        // (one too far behind to reach in the time it has left is let go, and one further behind the Spark than the ship: a rider
+        // keeps up with the tune rather than going back for a note)
+        const double left = life - (now - g.born);
+        const float mySpeed = kPlayerSpeed * (policy_ == Policy::Slow ? 0.5f : 1.0f);
+        if (length(g.pos - pos) > static_cast<float>(left / w.ticksPerSecond()) * mySpeed * 0.9f) continue;
+        if (length(g.pos - w.spark().pos) > length(pos - w.spark().pos) + 40.0f) continue;
+        for (u32 j = 0; j < 3; ++j) {
+            if (g.born >= nextBorn[j]) continue;
+            for (u32 m = 2; m > j; --m) {
+                next[m] = next[m - 1u];
+                nextBorn[m] = nextBorn[m - 1u];
+            }
+            next[j] = static_cast<i32>(k);
+            nextBorn[j] = g.born;
+            break;
+        }
+    }
+    const i32 best = next[0];
+    // The string pulled tight: the straight line to a later gate when it passes through every ring before it, else the edge of the
+    // first ring nearest that line (a ship that flew to each gate's centre would fly a zig-zag longer than the Spark's line).
+    Vec2 goal = best >= 0 ? w.songGate(static_cast<u32>(best)).pos : w.spark().pos + dirOf(w.spark().heading + 1.5707963f) * 40.0f;
+    if (best >= 0) {
+        auto through = [&](Vec2 to, u32 upTo) {
+            for (u32 j = 0; j < upTo; ++j) {
+                const SongGate& g = w.songGate(static_cast<u32>(next[j]));
+                const Vec2 ab = to - pos;
+                const float l2 = lengthSq(ab);
+                const float u = l2 > 1e-6f ? clampf(dot(g.pos - pos, ab) / l2, 0.0f, 1.0f) : 0.0f;
+                const float r = w.gateRadius(g) - 10.0f;
+                if (lengthSq(pos + ab * u - g.pos) > r * r) return false;
+            }
+            return true;
+        };
+        u32 reach = 0;
+        for (u32 j = 1; j < 3 && next[j] >= 0; ++j)
+            if (through(w.songGate(static_cast<u32>(next[j])).pos, j)) reach = j;
+        const SongGate& g0 = w.songGate(static_cast<u32>(best));
+        if (reach > 0) {
+            goal = w.songGate(static_cast<u32>(next[reach])).pos;
+        } else if (next[1] >= 0) {
+            // (the edge of the first ring toward the line on to the second)
+            const Vec2 to = w.songGate(static_cast<u32>(next[1])).pos;
+            const Vec2 ab = to - pos;
+            const float l2 = lengthSq(ab);
+            const float u = l2 > 1e-6f ? clampf(dot(g0.pos - pos, ab) / l2, 0.0f, 1.0f) : 0.0f;
+            const Vec2 off = pos + ab * u - g0.pos;
+            const float r = std::fmax(w.gateRadius(g0) - 12.0f, 4.0f);
+            goal = g0.pos + (lengthSq(off) > 1e-6f ? normalizeOr(off, Vec2{}) * r : Vec2{});
+        } else {
+            const Vec2 off = pos - g0.pos;
+            const float r = std::fmax(w.gateRadius(g0) - 12.0f, 4.0f);
+            if (lengthSq(off) > r * r) goal = g0.pos + normalizeOr(off, Vec2{}) * r;
+        }
+    }
+    Vec2 move = normalizeOr(goal - pos, Vec2{1.0f, 0.0f});
+    float stick = 1.0f;
+    if (best < 0 && length(goal - pos) < 60.0f) stick = length(goal - pos) / 60.0f;  // (beside the Spark: keep its pace)
+    bool danger = false;
+    Vec2 push{};
+    for (u32 i = 0; i < e.count; ++i) {
+        if (e.flags[i] & kFlagDead) continue;
+        const Vec2 d = pos + me.vel * 0.12f - Vec2{e.x[i], e.y[i]};
+        const float dist = length(d);
+        const float reach = e.radius[i] + 36.0f;
+        if (e.state[i] == kWarping) {
+            if (dist < reach + 60.0f && dist > 1e-3f) push = push + d * ((reach + 60.0f - dist) / (dist * (reach + 60.0f)));
+            continue;
+        }
+        // (a rider turns only for a body in its way, or one about to touch it: the tune does not wait for a wide berth)
+        const bool inWay = dot(d, move) < 0.2f * dist;
+        if ((inWay || dist < reach) && dist < reach + 40.0f && dist > 1e-3f) push = push + d * ((reach + 40.0f - dist) / (dist * (reach + 40.0f)));
+        if (dist < reach) danger = true;
+    }
+    if (lengthSq(push) > 1.0f) push = normalizeOr(push, Vec2{});
+    // Bullets too: the set's crowd fires here.
+    const Bullets& bl = w.bullets();
+    for (u32 b = 0; b < bl.count; ++b) {
+        if (bl.dead[b]) continue;
+        const Vec2 d = pos + me.vel * 0.1f - Vec2{bl.x[b], bl.y[b]};
+        if (lengthSq(d) < 34.0f * 34.0f) danger = true;
+    }
+    if (child) {
+        childMove_[childAt_ % kChildDelayTicks] = push;
+        ++childAt_;
+        push = childAt_ >= kChildDelayTicks ? childMove_[childAt_ % kChildDelayTicks] : Vec2{};
+    }
+    if (lengthSq(push) > 1e-6f) move = normalizeOr(move + push * (child ? 1.0f : 0.7f), move);
+    if (policy_ == Policy::Slow) stick = 0.5f;
+    in.move = move * stick;
+    const bool dash = danger && !child && !me.dashing;
+    in.dash = dash && !dashLast_;
+    dashLast_ = dash;
+    u32 near = 0;
+    for (u32 i = 0; i < e.count; ++i)
+        if (!(e.flags[i] & kFlagDead) && e.state[i] != kWarping && lengthSq(Vec2{e.x[i], e.y[i]} - pos) < 160.0f * 160.0f) ++near;
+    const bool nova = !child && me.novas > 0 && !me.novaPending && !me.dashing && ((near >= 6 && me.cells <= 2) || (danger && me.cells <= 1));
+    in.nova = nova && !novaLast_;
+    novaLast_ = nova;
+    return in;
+}
+
 StickInput Bot::think(const World& w, u32 player, const PlayerController& controller, double musicTick) {
     ++ticks_;
     precise_ = false;
@@ -240,6 +362,7 @@ StickInput Bot::think(const World& w, u32 player, const PlayerController& contro
     const PlayerPose& pose = controller.pose();
     if (!me.alive) return in;
     if (w.setup().mode == Mode::Tracers && policy_ != Policy::Stress) return thinkTracers(w, player, controller, in);  // (M8)
+    if (w.setup().mode == Mode::Songline && policy_ != Policy::Stress) return thinkSongline(w, player, controller, in);
     const Vec2 pos = pose.pos;
     const Enemies& e = w.enemies();
     const Bullets& b = w.bullets();

@@ -20,6 +20,49 @@ const char kTrack11Json[] =
 const char kTrack12Json[] =
 #include "modes_track12.json.inc"
     ;
+// (M8 part 5: the set's ten as SONGLINE reads their tunes)
+const char kSong01[] =
+#include "music_track01.json.inc"
+    ;
+const char kSong02[] =
+#include "music_track02.json.inc"
+    ;
+const char kSong03[] =
+#include "music_track03.json.inc"
+    ;
+const char kSong04[] =
+#include "music_track04.json.inc"
+    ;
+const char kSong05[] =
+#include "music_track05.json.inc"
+    ;
+const char kSong06[] =
+#include "music_track06.json.inc"
+    ;
+const char kSong07[] =
+#include "music_track07.json.inc"
+    ;
+const char kSong08[] =
+#include "music_track08.json.inc"
+    ;
+const char kSong09[] =
+#include "music_track09.json.inc"
+    ;
+const char kSong10[] =
+#include "music_track10.json.inc"
+    ;
+struct SongText {
+    const char* text;
+    size_t size;
+    const char* file;
+};
+const SongText kSongs[kModeTracks] = {
+    {kSong01, sizeof kSong01, "design/music/track01.json"},       {kSong02, sizeof kSong02, "design/music/track02.json"},
+    {kSong03, sizeof kSong03, "design/music/track03.json"},       {kSong04, sizeof kSong04, "design/music/track04.json"},
+    {kSong05, sizeof kSong05, "design/music/track05.json"},       {kSong06, sizeof kSong06, "design/music/track06.json"},
+    {kSong07, sizeof kSong07, "design/music/track07.json"},       {kSong08, sizeof kSong08, "design/music/track08.json"},
+    {kSong09, sizeof kSong09, "design/music/track09.json"},       {kSong10, sizeof kSong10, "design/music/track10.json"},
+    {kTrack11Json, sizeof kTrack11Json, "design/modes/music/track11.json"}, {kTrack12Json, sizeof kTrack12Json, "design/modes/music/track12.json"}};
 
 const char* const kModeIds[kModeCount] = {"set", "one", "headliners", "blast", "tracers", "songline", "jam"};
 
@@ -393,6 +436,121 @@ bool ModesData::load() {
             RF_ERR("modes.json: tracers' caps (%u points, %u corners, %u rings, %u x %u tiles) are outside the world's", t.maxPoints, t.maxVertices,
                    t.maxAlive, stage.tilesX, stage.tilesY);
             r.ok = false;
+        }
+    }
+    {
+        // SONGLINE (songline.md; modes.json songline).
+        Songline& g = songline;
+        static const char* const kSec[4] = {"groove", "build", "drop", "break"};
+        for (u32 k = 0; k < 4; ++k) {
+            std::snprintf(p, sizeof p, "songline.spark.speedOfShip.%s", kSec[k]);
+            g.speedOfShip[k] = static_cast<float>(r.num(p));
+            std::snprintf(p, sizeof p, "songline.path.sectionScale.%s", kSec[k]);
+            g.sectionScale[k] = static_cast<float>(r.num(p));
+            char every[16] = {};
+            std::snprintf(p, sizeof p, "songline.gates.every.%s", kSec[k]);
+            r.text(p, every, sizeof every);
+            g.every[k] = std::strcmp(every, "sixteenth") == 0 ? 1 : (std::strcmp(every, "eighth") == 0 ? 2 : (std::strcmp(every, "quarter") == 0 ? 4 : 0));
+            if (!g.every[k]) {
+                RF_ERR("modes.json: songline.gates.every.%s is '%s' (sixteenth, eighth or quarter)", kSec[k], every);
+                r.ok = false;
+            }
+        }
+        g.startAheadWu = static_cast<float>(r.num("songline.spark.startAheadWu"));
+        for (u32 k = 0; k < 2; ++k) {
+            std::snprintf(p, sizeof p, "songline.path.curve.%u.amplitude", k);
+            g.curveAmp[k] = static_cast<float>(r.num(p));
+            std::snprintf(p, sizeof p, "songline.path.curve.%u.periodWu", k);
+            g.curvePeriodWu[k] = static_cast<float>(r.num(p));
+        }
+        g.wallLookAheadWu = static_cast<float>(r.num("songline.path.wallLookAheadWu"));
+        g.wallNearWu = static_cast<float>(r.num("songline.path.wallNearWu"));
+        g.wallTurn = static_cast<float>(r.num("songline.path.wallTurn"));
+        g.maxCurvature = static_cast<float>(r.num("songline.path.maxCurvature"));
+        g.comeBackWu = static_cast<float>(r.num("songline.path.comeBackWu"));
+        g.comeBackTurn = static_cast<float>(r.num("songline.path.comeBackTurn"));
+        g.comeBackSpeed = static_cast<float>(r.num("songline.path.comeBackSpeed"));
+        g.comeBackUntilWu = static_cast<float>(r.num("songline.path.comeBackUntilWu"));
+        g.radiusWu = static_cast<float>(r.num("songline.gates.radiusWu"));
+        g.breakRadiusWu = static_cast<float>(r.num("songline.gates.breakRadiusWu"));
+        g.weaveWuPerSemitone = static_cast<float>(r.num("songline.gates.weaveWuPerSemitone"));
+        g.weaveMaxWu = static_cast<float>(r.num("songline.gates.weaveMaxWu"));
+        g.lifeBars = static_cast<float>(r.num("songline.gates.lifeBars"));
+        g.fadeBeats = static_cast<float>(r.num("songline.gates.fadeBeats"));
+        g.maxAlive = static_cast<u32>(r.num("songline.gates.maxAlive"));
+        g.score = static_cast<float>(r.num("songline.gates.score"));
+        g.breakScore = static_cast<float>(r.num("songline.gates.breakScore"));
+        g.inTimeWu = static_cast<float>(r.num("songline.gates.inTimeWu"));
+        g.inTimeScale = static_cast<float>(r.num("songline.gates.inTimeScale"));
+        g.goldEveryBars = static_cast<u32>(r.num("songline.gates.goldEveryBars"));
+        g.goldRadiusWu = static_cast<float>(r.num("songline.gates.goldRadiusWu"));
+        g.goldScore = static_cast<float>(r.num("songline.gates.goldScore"));
+        for (u32 k = 0; k < 4; ++k) {
+            std::snprintf(p, sizeof p, "songline.streak.tiers.%u", k);
+            g.tiers[k] = static_cast<u16>(r.num(p));
+            std::snprintf(p, sizeof p, "songline.coop.harmonyScaleSteps.%u", k);
+            g.harmonySteps[k] = static_cast<u8>(r.num(p));
+        }
+        g.crowdScale = static_cast<float>(r.num("songline.crowd.scale"));
+        g.threatScale = static_cast<float>(r.num("songline.crowd.threatScale"));
+        g.aheadWu[0] = static_cast<float>(r.num("songline.crowd.aheadWu.0"));
+        g.aheadWu[1] = static_cast<float>(r.num("songline.crowd.aheadWu.1"));
+        g.leanShare = static_cast<float>(r.num("songline.camera.leanShare"));
+        g.leanMaxWu = static_cast<float>(r.num("songline.camera.leanMaxWu"));
+        g.zoom = static_cast<float>(r.num("songline.camera.zoom"));
+        g.withinWu = static_cast<float>(r.num("songline.camera.withinWu"));
+        g.finaleBars = static_cast<u32>(r.num("songline.finale.bars"));
+        g.finaleGates = static_cast<u32>(r.num("songline.finale.gates"));
+        g.finaleRings = static_cast<u32>(r.num("songline.finale.rings"));
+        g.finaleSparks = static_cast<u32>(r.num("songline.finale.sparks"));
+        for (u32 n = 2; n <= 4; ++n)
+            for (u32 k = 0; k < n; ++k) {
+                std::snprintf(p, sizeof p, "songline.coop.offsetsWu.%u.%u", n, k);
+                g.coopOffsets[n - 2][k] = static_cast<float>(r.num(p));
+            }
+        g.braidEveryBars = static_cast<u32>(r.num("songline.coop.braidEveryBars"));
+        if (g.maxAlive < 32 || g.maxAlive > 256 || !g.braidEveryBars || !g.goldEveryBars) {
+            RF_ERR("modes.json: songline's gates (%u alive) or its bars out of range", g.maxAlive);
+            r.ok = false;
+        }
+        // Each Track's tune (its music file): the progression's arpeggios, its scale, its key's tonic.
+        for (u32 t = 0; t < kModeTracks; ++t) {
+            Tune& tn = tunes[t];
+            JsonDoc music;
+            if (!music.parse(kSongs[t].text, kSongs[t].size - 1, kSongs[t].file)) {
+                r.ok = false;
+                continue;
+            }
+            const JsonValue* prog = music.find("progression");
+            const JsonValue* chords = music.find("chords");
+            tn.chords = 0;
+            for (const JsonValue* c = music.firstChild(prog); c && tn.chords < 8; c = music.nextSibling(c)) {
+                const JsonValue* chord = music.member(chords, music.string(c));
+                const JsonValue* arp = chord ? music.member(chord, "arp") : nullptr;
+                u32 k = 0;
+                for (const JsonValue* v = music.firstChild(arp); v && k < 16; v = music.nextSibling(v), ++k) tn.arp[tn.chords][k] = static_cast<u8>(v->number);
+                if (k != 16) {
+                    RF_ERR("modes: %s: a chord of the progression has %u arpeggio notes (16 wanted)", kSongs[t].file, k);
+                    r.ok = false;
+                }
+                ++tn.chords;
+            }
+            float sc[12];
+            tn.scaleCount = static_cast<u8>(music.numbers("scale", sc, 12));
+            for (u32 k = 0; k < tn.scaleCount; ++k) tn.scale[k] = static_cast<i8>(sc[k]);
+            char key[24] = {};
+            tn.tonic = 9;
+            if (music.text("key", key, sizeof key) && key[0] >= 'A' && key[0] <= 'G') {
+                static const i32 kNatural[7] = {9, 11, 0, 2, 4, 5, 7};
+                i32 pc = kNatural[key[0] - 'A'];
+                if (key[1] == '#') pc += 1;
+                if (key[1] == 'b') pc += 11;
+                tn.tonic = static_cast<u8>(pc % 12);
+            }
+            if (!tn.chords || !tn.scaleCount) {
+                RF_ERR("modes: %s: no progression or scale for SONGLINE", kSongs[t].file);
+                r.ok = false;
+            }
         }
     }
     // The timed forms must add up to their modes' lengths (design/modes/README.md 6).

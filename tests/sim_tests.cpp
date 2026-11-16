@@ -4668,6 +4668,130 @@ void testTracersTogether() {
     }
 }
 
+// M8 part 5 (songline.md "What to check"): SONGLINE's line. The ships fly on the Spark (B's 300 wu to its side), the spawner off:
+// the crowd never steers the line.
+void songStep(World& w, double& music, Vec2 pos, Vec2 prev) {
+    TickInput in;
+    const float bpm = w.tempoAt(music);
+    in.music0 = music;
+    in.music1 = music + static_cast<double>(bpm) * kTicksPerBeat / 60.0 * static_cast<double>(kDt);
+    in.bpm = bpm;
+    in.players[0].present = true;
+    in.players[0].pos = pos;
+    in.players[0].vel = (pos - prev) * 60.0f;
+    in.players[0].aim = Vec2{1.0f, 0.0f};
+    w.tick(in);
+    music = in.music1;
+}
+
+float circumRadius(Vec2 a, Vec2 b, Vec2 c) {
+    const float cross = std::fabs((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+    return cross < 1e-4f ? 1e9f : length(b - a) * length(c - b) * length(a - c) / (2.0f * cross);
+}
+
+void testSongline() {
+    g_test = "songline";
+    const ModesData::Songline& d = g_species->modes.songline;
+    CHECK(d.radiusWu == 34.0f && d.maxCurvature == 0.004f && d.finaleBars == 2);
+    auto* a = new (std::nothrow) World;
+    auto* b = new (std::nothrow) World;
+    if (!a || !b) {
+        CHECK(false);
+        return;
+    }
+    static float across[48][16];
+    float worstWall = 1e9f, worstRadius = 1e9f, worstApart = 0.0f;
+    u32 worstWallTrack = 0, worstRadiusTrack = 0, runs = 0, ended = 0, shapeChecks = 0, shapeMisses = 0, laidMin = 100000, laidMax = 0;
+    for (u32 track = 1; track <= kModeTracks; ++track) {
+        for (u64 seed = 1; seed <= 10; ++seed) {
+            World* ws[2] = {a, b};
+            for (World* w : ws) {
+                w->init(g_species);
+                w->spawner().mode = Spawner::Mode::Off;
+                RunSetup su;
+                su.mode = Mode::Songline;
+                su.track = static_cast<u8>(track);
+                w->resetRun(seed, 0.0, 1, 0x1, su);
+            }
+            for (auto& row : across)
+                for (float& v : row) v = 1e9f;
+            double ma = 0.0, mb = 0.0;
+            Vec2 pa = a->player(0).pos, pb = b->player(0).pos;
+            u32 lastStep = ~0u, np = 0;
+            Vec2 pts[3];
+            ++runs;
+            for (u32 t = 0; t < 4u * 3600u && !a->runEnded(); ++t) {
+                const Vec2 qa = a->spark().pos;
+                songStep(*a, ma, qa, pa);
+                pa = qa;
+                const Vec2 qb = b->spark().pos + dirOf(b->spark().heading + 1.5707963f) * 300.0f;
+                songStep(*b, mb, qb, pb);
+                pb = qb;
+                const Vec2 sp = a->spark().pos;
+                const float wall = std::fmin(a->halfW() - std::fabs(sp.x), a->halfH() - std::fabs(sp.y));
+                if (wall < worstWall) {
+                    worstWall = wall;
+                    worstWallTrack = track;
+                }
+                const SongSpark& k = a->spark();
+                if (k.step0 == lastStep) continue;
+                lastStep = k.step0;
+                const u32 bar = k.step0 / 16u;
+                // The turn: three passed points of the line at a time, before the finale's spiral.
+                if (bar + d.finaleBars < 48u) {
+                    pts[0] = pts[1];
+                    pts[1] = pts[2];
+                    pts[2] = k.ahead[0];
+                    if (++np >= 3) {
+                        const float r = circumRadius(pts[0], pts[1], pts[2]);
+                        if (r < worstRadius) {
+                            worstRadius = r;
+                            worstRadiusTrack = track;
+                        }
+                    }
+                }
+                // The two worlds, gate by gate.
+                for (u32 g = 0; g < World::kSongGates; ++g) {
+                    const SongGate& ga = a->songGate(g);
+                    const SongGate& gb = b->songGate(g);
+                    if (ga.born != gb.born || ga.step != gb.step) {
+                        worstApart = 1e9f;
+                        continue;
+                    }
+                    if (ga.born >= 0.0) worstApart = std::fmax(worstApart, length(ga.pos - gb.pos));
+                    // (each gate laid this sixteenth: its place across the line)
+                    if (ga.born >= 0.0 && ga.step == k.step0 && bar < 48u && a->phrase().section != Section::Build)
+                        across[bar][k.step0 % 16u] = dot(ga.pos - k.ahead[0], dirOf(k.aheadHeading[0] + 1.5707963f));
+                }
+            }
+            if (a->runEnded()) ++ended;
+            laidMin = a->gatesLaid(0) < laidMin ? a->gatesLaid(0) : laidMin;
+            laidMax = a->gatesLaid(0) > laidMax ? a->gatesLaid(0) : laidMax;
+            // The same bar of the progression, the same shape.
+            const u32 chords = g_species->modes.tunes[track - 1u].chords;
+            for (u32 b1 = 0; chords && b1 < 48; ++b1)
+                for (u32 b2 = b1 + chords; b2 < 48; b2 += chords)
+                    for (u32 q = 0; q < 16; ++q) {
+                        if (across[b1][q] > 1e8f || across[b2][q] > 1e8f) continue;
+                        ++shapeChecks;
+                        if (std::fabs(across[b1][q] - across[b2][q]) > 0.01f) ++shapeMisses;
+                    }
+        }
+    }
+    CHECK_MSG(ended == runs, "%u of %u runs ended", ended, runs);
+    CHECK_MSG(worstWall >= 400.0f, "the line came within %.0f wu of a wall (Track %u)", static_cast<double>(worstWall), worstWallTrack);
+    CHECK_MSG(worstRadius >= 249.0f, "the line turned on a %.1f wu circle (Track %u)", static_cast<double>(worstRadius), worstRadiusTrack);
+    CHECK_MSG(worstApart <= 0.01f, "two worlds' gates %.4f wu apart", static_cast<double>(worstApart));
+    CHECK_MSG(shapeChecks > 1000 && shapeMisses == 0, "%u of %u gates of a repeated bar out of shape", shapeMisses, shapeChecks);
+    // 512 a player on the 48-bar form at every tempo (songline.md "Numbers").
+    CHECK_MSG(laidMin == 512 && laidMax == 512, "gates laid %u..%u", laidMin, laidMax);
+    std::printf("[sim tests] songline: %u runs, the line at least %.0f wu inside the walls, its tightest turn %.0f wu, %u repeated gates "
+                "in shape, %u gates a run" "\n",
+                runs, static_cast<double>(worstWall), static_cast<double>(worstRadius), shapeChecks, laidMin);
+    delete a;
+    delete b;
+}
+
 int main() {
     g_species = new (std::nothrow) SpeciesTable;
     if (!g_species || !g_species->load()) {
@@ -4719,6 +4843,7 @@ int main() {
     testOneTrack();
     testTracers();
     testTracersTogether();
+    testSongline();
     std::printf("[sim tests] %d checks, %d failures\n", g_checks, g_failures);
     delete g_species;
     return g_failures;

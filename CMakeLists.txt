@@ -373,6 +373,7 @@ add_library(raveform_sim STATIC
   src/sim/modes_data.cpp
   src/sim/world_modes.cpp
   src/sim/world_mode_tracers.cpp
+  src/sim/world_mode_songline.cpp
   ${RF_GEN}/modes.json.inc
   ${RF_GEN}/modes_track11.json.inc
   ${RF_GEN}/modes_track12.json.inc
@@ -383,6 +384,15 @@ add_library(raveform_sim STATIC
   ${RF_GEN}/morgana.json.inc
   ${RF_GEN}/reprise.json.inc
   ${RF_GEN}/music_track01.json.inc
+  ${RF_GEN}/music_track02.json.inc
+  ${RF_GEN}/music_track03.json.inc
+  ${RF_GEN}/music_track04.json.inc
+  ${RF_GEN}/music_track05.json.inc
+  ${RF_GEN}/music_track06.json.inc
+  ${RF_GEN}/music_track07.json.inc
+  ${RF_GEN}/music_track08.json.inc
+  ${RF_GEN}/music_track09.json.inc
+  ${RF_GEN}/music_track10.json.inc
   ${RF_GEN}/species.json.inc
   ${RF_GEN}/kaleidos.json.inc
   ${RF_GEN}/longwave.json.inc

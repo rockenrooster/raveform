@@ -48,7 +48,7 @@ float trioOrbScale(u8 orb) { return isRiff(orb) ? kTrioRiffScale : (isFusionOrb(
 
 double World::leadGrid(u32 p) const {
     const PlayerState& pl = players_[p];
-    u32 idx = static_cast<u32>(pl.loadout.mods[kDoubleTime]) + phrase_.surgeGear();
+    u32 idx = static_cast<u32>(pl.loadout.mods[kDoubleTime]) + phrase_.surgeGear() + (pl.streakTier >= 4 ? 2u : (pl.streakTier >= 2 ? 1u : 0u));  // (M8 SONGLINE)
     // M5: Afterparty, its Surge a step faster a stack, and the second gear held two bars longer a stack (the band's own rule,
     // audio leadGridIndex).
     if (afterparty(p)) idx = (phrase_.surge() ? idx : static_cast<u32>(pl.loadout.mods[kDoubleTime]) + 2u) + pl.loadout.mods[kAfterparty];
@@ -955,6 +955,7 @@ void World::collectShard(u32 p) {
     // the Breaks give none back either (GAME_DESIGN 8, kLoopBreakRefills).
     const bool nova = pl.novas < pl.novaCap && (kLoopBreakRefills || !inLoop(phrase_.track, director_.songs));
     if (nova) ++pl.novas;
+    if (setup_.mode == Mode::Songline && pl.cells < pl.cellCap) ++pl.cells;  // (M8 songline.md rule 13: no Trio; a level gives a cell back too)
     Event ev;
     ev.type = EventType::LevelUp;
     ev.a = static_cast<u8>(p);

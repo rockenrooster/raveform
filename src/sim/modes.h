@@ -100,6 +100,38 @@ struct ModesData {
         float crownWidthWu = 0, crownAboveWu = 0, crownLevel = 0;
         u32 crownSparks = 0;
     } versus;
+    // SONGLINE (songline.md; modes.json songline): the Spark, its line, the gates, the streak, the crowd along the line, the camera,
+    // the finale, co-op's strings. Sections index Groove, Build, Drop, Break.
+    struct Songline {
+        float speedOfShip[4] = {0.8f, 0.9f, 0.95f, 0.58f};
+        float startAheadWu = 300.0f;
+        float curveAmp[2] = {0.0018f, 0.0011f}, curvePeriodWu[2] = {1400.0f, 3700.0f};
+        float sectionScale[4] = {1.0f, 0.3f, 1.0f, 0.6f};
+        float wallLookAheadWu = 600.0f, wallNearWu = 700.0f, wallTurn = 0.003f, maxCurvature = 0.004f;
+        float comeBackWu = 1400.0f, comeBackTurn = 0.002f, comeBackSpeed = 0.8f, comeBackUntilWu = 600.0f;
+        u8 every[4] = {2, 2, 1, 4};  // a gate every so many sixteenths, by section
+        float radiusWu = 34.0f, breakRadiusWu = 60.0f, weaveWuPerSemitone = 7.0f, weaveMaxWu = 56.0f;
+        float lifeBars = 2.0f, fadeBeats = 1.0f;
+        u32 maxAlive = 256;
+        float score = 10.0f, breakScore = 30.0f, inTimeWu = 80.0f, inTimeScale = 2.0f;
+        u32 goldEveryBars = 8;
+        float goldRadiusWu = 60.0f, goldScore = 100.0f;
+        u16 tiers[4] = {16, 32, 64, 128};
+        float crowdScale = 0.7f, threatScale = 0.7f, aheadWu[2] = {600.0f, 1200.0f};
+        float leanShare = 0.3f, leanMaxWu = 320.0f, zoom = 0.85f, withinWu = 1800.0f;
+        u32 finaleBars = 2, finaleGates = 32, finaleRings = 8, finaleSparks = 300;
+        float coopOffsets[3][4] = {{-50.0f, 50.0f}, {-100.0f, 0.0f, 100.0f}, {-150.0f, -50.0f, 50.0f, 150.0f}};  // 2, 3, 4 players
+        u32 braidEveryBars = 4;
+        u8 harmonySteps[4] = {0, 2, 4, 7};
+    } songline;
+    // Each Track's tune as SONGLINE reads it from its music file: the progression's chords' arpeggios a sixteenth a note, the scale
+    // from the key's tonic (the gates' notes and their places; co-op's harmonies). 1-12.
+    struct Tune {
+        u8 chords = 0;
+        u8 arp[8][16] = {};  // midi, by the progression's place
+        i8 scale[12] = {};
+        u8 scaleCount = 0, tonic = 0;
+    } tunes[kModeTracks];
     struct Tracers {  // tracers.md (modes.json tracers)
         float lifeBeats = 8.0f, lifeBeatsPerLevel = 1.0f, lifeBeatsMax = 16.0f, minSpeedWu = 120.0f, pointEveryWu = 16.0f;
         u32 maxPoints = 160, skipNewest = 6;
@@ -158,6 +190,35 @@ struct TracerRing {
     Vec2 centre;
     float radius = 0.0f;  // the farthest corner from the centre (the pop's pool, the words)
     u32 handle[kCaught] = {};
+};
+// SONGLINE's state in the world (songline.md "Caps and the wire"): the Spark with its line a bar ahead (a point a sixteenth), the
+// gates it has laid, each player's streak.
+struct SongSpark {
+    Vec2 pos, prevPos;
+    float heading = 0.0f;
+    u32 step0 = 0;           // the sixteenth (since the run's first bar line) of ahead[0]
+    Vec2 ahead[17];          // the line: where the Spark is on each of the next sixteen sixteenths (ahead[0] the last passed)
+    float aheadHeading[17] = {};
+    double aheadFlown[17] = {};
+    float aheadWall[17] = {};  // the wall rule's turn held at each point (+1 left, -1 right; 0: clear of the walls)
+    float aheadHome[17] = {};  // rule 4's way round held while the lost ship is behind the line (+1 left, -1 right; 0: none)
+    float phase[2] = {};     // the two waves' phases (the run's seed)
+    bool comeBack = false;   // rule 4: bending back to the nearest ship
+    Vec2 comeTo;
+    bool spiral = false;     // the finale's last two bars
+    float spiralSign = 0.0f; // its turn (+1 left, -1 right), toward the arena's centre as it begins (0: not yet)
+};
+struct SongGate {
+    Vec2 pos;
+    double born = -1.0;      // < 0: free
+    u32 step = 0;            // the sixteenth it was laid on
+    u8 note = 0;             // its note (midi, the string's own: co-op's harmonies)
+    u8 kind = 0;             // 0 a gate, 1 the Break's, 2 gold, 3 the finale's
+    u8 string = 0;           // its player's (co-op), 0xFF everyone's (solo's one, versus's one)
+    u8 threaded = 0, inTime = 0;  // a bit a player
+    u8 owner = 0xFF;         // versus: who took it
+    u8 boost = 0xFF;         // gold: its Boost
+    bool missed = false;     // (faded unthreaded: drawn grey)
 };
 // TRACERS on the wire (tracers.md "Caps and the wire"): a ring from its owner's device (kind 0: its corners, its pop's eighth, its
 // owners; ECHO's second pop flagged), the host's house (kind 1: the chase's bar line in `tick`); the host's floor.

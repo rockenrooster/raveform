@@ -241,6 +241,16 @@ enum class EventType : u8 {
     // the cut); a rival's ring popped round this player's ship (a = the player, b = the ring's owner; x, y the push).
     Cut,
     SpinOut,
+    // M8 SONGLINE (design/modes/songline.md): the Spark laid a gate (a = its string, b = its note, c = its kind; x, y; tick = its
+    // sixteenth); a gate threaded (a = player, b = the note, c = 1 in time, f = the gate's kind; x, y); a gate missed (a = player);
+    // the streak's tier changed (a = player, b = the tier, c = 1 up); the line bends back for a lost ship (a = 1 from now, 0 found;
+    // x, y the Spark); the finale's burst and the count (a = player, f = gates threaded, x2 = laid; tick = the last downbeat).
+    GateLay,
+    GateThread,
+    GateMiss,
+    StreakTier,
+    SparkBack,
+    GateCount,
 };
 enum UpgradeFx : u8 {
     kFxFork,          // a shot forked: x, y
@@ -706,11 +716,15 @@ struct PlayerState {
     u32 extraLivesTaken = 0, extraLivesSpent = 0, ringBreaks = 0;
     // M8 TRACERS: a gel held until then (tracers.md rule 15; musical ticks), a versus spin-out's dazzle (no line until then).
     double gelUntil[kGels] = {-1e18, -1e18};
+    // M8 SONGLINE (songline.md rule 9): the streak's tier (0-4): 1 the Shard pull doubled and score x 1.5, 2 the grid a step faster,
+    // 3 Prism, 4 the grid two steps faster and Chorus.
+    u8 streakTier = 0;
     double dazzledUntil = -1e18;
     u16 lastHitCause = kCauseNone;  // M6: what the last hit was (the game over's ENDED BY)
     bool lastHitBullet = false;     // ... and whether it was a bullet (the balance tables)
     bool invulnerable() const { return invulS > 0.0f || novaInvulS > 0.0f || dashing || boost(kColossus); }
     bool boost(u8 b) const {
+        if ((b == kPrism && streakTier >= 3) || (b == kChorus && streakTier >= 4)) return true;  // (M8 SONGLINE: the streak's power)
         for (const ActiveBoost& a : boosts)
             if (a.type == b) return true;
         return false;
@@ -1129,6 +1143,17 @@ public:
     u32 floorDiffTiles() const { return floorDiffTiles_; }
     // M8 versus: what the match counts for player p (TRACERS: the tiles in its colour; else its score).
     u64 versusCount(u32 p) const;
+    // M8 SONGLINE (design/modes/songline.md; world_mode_songline.cpp): the Spark and its line ahead, the gates, the streaks.
+    static constexpr u32 kSongGates = 256;
+    const SongSpark& spark() const { return spark_; }
+    const SongGate& songGate(u32 k) const { return songGates_[k < kSongGates ? k : 0]; }
+    u16 streak(u32 p) const { return streak_[p < kMaxPlayers ? p : 0]; }
+    u16 bestStreak(u32 p) const { return bestStreak_[p < kMaxPlayers ? p : 0]; }
+    u16 gatesLaid(u32 p) const { return gatesLaid_[p < kMaxPlayers ? p : 0]; }
+    u16 gatesThreaded(u32 p) const { return gatesThreaded_[p < kMaxPlayers ? p : 0]; }
+    u16 gatesInTime(u32 p) const { return gatesInTime_[p < kMaxPlayers ? p : 0]; }
+    float gateRadius(const SongGate& g) const;
+    double songStepTick(u32 step) const { return director_.startTick + static_cast<double>(step) * (kTicksPerBeat / 4.0); }
     // A run on the bar line `bar` (musical ticks) with this seed, these seats and this id: every device resets
     // at the same musical position (the co-op start; a RETRY when every player is down).
     void scheduleRun(double bar, u64 seed, u32 players, u16 runId, u8 presentMask = 0xF);
@@ -1723,6 +1748,24 @@ private:
     void applyNetRings();
     void applyNetFloor();
     void crossings(u32 p);  // a local player's newest piece against the others' lines: welds (co-op), cuts (versus)
+    // M8 SONGLINE.
+    SongSpark spark_;
+    SongGate songGates_[kSongGates];
+    u32 songGateNext_ = 0;
+    u16 streak_[kMaxPlayers] = {}, bestStreak_[kMaxPlayers] = {};
+    u32 streakDropBar_[kMaxPlayers] = {};
+    u16 gatesLaid_[kMaxPlayers] = {}, gatesThreaded_[kMaxPlayers] = {}, gatesInTime_[kMaxPlayers] = {};
+    u32 songTrack_ = 1;  // the Track whose tune is played (1-12)
+    void resetSongline();
+    void updateSongline();
+    void sparkPoint(u32 k);                  // ahead[k] from ahead[k - 1] (one sixteenth of the line)
+    void sparkRebuild();                     // the line ahead again from ahead[0] (rule 4's bend begins at once)
+    void layGates(u32 step, Vec2 at, float heading);
+    void threadGates(u32 p);
+    void songMiss(u32 p);
+    void setStreak(u32 p, u16 s);
+    i32 songSection(u32 step) const;         // 0-3 Groove, Build, Drop, Break; -1 laying nothing (the Build's last bar, past the end)
+    void songFormation(u16 species, u32 count, double landTick, bool crowd);  // the crowd along the line ahead (rule 14)
     void spinOut(u32 q, const TracerRing& r);
     void cutLine(u32 p, Vec2 at);  // a line cut where it passes `at`: the part from there back to its tail goes dark
     void resetTracers();

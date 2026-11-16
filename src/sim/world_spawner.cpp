@@ -158,6 +158,10 @@ void World::spawnFormation(u16 speciesIndex, u32 count, Vec2 anchor, double land
 }
 
 void World::spawnShape(u16 speciesIndex, u32 count, double landTick) {
+    if (setup_.mode == Mode::Songline) {
+        songFormation(speciesIndex, count, landTick, false);  // (M8 songline.md rule 14: along the line ahead)
+        return;
+    }
     // GAME_DESIGN 8 names the formations; the first slice uses five: a cluster, a ring around the player,
     // a pincer from both sides, a sweep along one edge of the view and the four corners.
     const Species& s = species_->get(speciesIndex);
@@ -314,6 +318,10 @@ void World::spendBudget(double landTick) {
 }
 
 void World::spawnCrowd(u16 speciesIndex, u32 count, double landTick, Vec2 c, u32 framePlayer) {
+    if (setup_.mode == Mode::Songline) {
+        songFormation(speciesIndex, count, landTick, true);  // (M8 songline.md rule 14: along the line ahead)
+        return;
+    }
     // GAME_DESIGN 8 and species.json firstSlice.crowd.arrive (M3 stage C2): floods along one edge of the
     // frame, floodOutsideWu outside it; rings on an ellipse ringFrameScale x the frame; swarms
     // cornerOutsideWu outside its corners. Formations keep 260 wu from a ship and out of the Trio's ring.
@@ -399,6 +407,15 @@ u32 World::crowdCount(Vec2 c) const {
             if (!(enemies_.flags[i] & kFlagDead)) ++n;
         return n;
     }
+    if (setup_.mode == Mode::Songline) {
+        // (M8 SONGLINE: the crowd lands along the line ahead, out of the frame, and what the line leaves behind dissolves: every body
+        // alive is the frame's)
+        (void)c;
+        u32 n = 0;
+        for (u32 i = 0; i < enemies_.count; ++i)
+            if (!(enemies_.flags[i] & kFlagDead)) ++n;
+        return n;
+    }
     const SpeciesTable::Crowd& cr = species_->crowd;
     const float cx = kFrameHalfWWu * cr.countFrameScale, cy = kFrameHalfHWu * cr.countFrameScale;
     const float sx = kFrameHalfWWu * cr.strayFrameScale, sy = kFrameHalfHWu * cr.strayFrameScale;
@@ -437,6 +454,7 @@ void World::spendCrowd(double landTick, const Phrase& ph) {
         const MiniData& md = species_->minis;
         target = std::fmin(target / c.miniDrop * md.penCrowdScale, md.penCrowdMax);
     }
+    if (setup_.mode == Mode::Songline) target *= species_->modes.songline.crowdScale;  // (M8 songline.md rule 14: 0.7)
     if (setup_.mode == Mode::Tracers) {
         // M8 (tracers.md rule 13, rule 11): half the Track's crowd, 15% more a house, scaled by the players as the set's budget is,
         // never above crowd.max on the Stage.
@@ -540,6 +558,7 @@ void World::megaWave(double landTick) {
     const float base = baseBudget(*species_, next.track, next.cycle, d.songs);
     float wave = kMegaWaveBars * base * kDropScaleStart * d.assist * coopBudgetScale() * loopRamp(kLoopThreatRamp, next.track, d.songs);
     if (setup_.mode == Mode::Tracers) wave *= species_->modes.tracers.threatScale * tracersCrowdScale() / species_->modes.tracers.crowdScale;
+    if (setup_.mode == Mode::Songline) wave *= species_->modes.songline.threatScale;
     for (u32 formations = 0; formations < 16 && wave > 0.0f; ++formations) {
         if (enemies_.count >= aliveCap()) return;
         const i32 sp = pickSpecies(2);  // threats (the crowd brings the Drop's fodder)
@@ -761,7 +780,8 @@ void World::directorBar(double barTick, u32 bar) {
     // Play test 2 (GAME_DESIGN 6.1): Regen counts the bar; a banked Shard level opens its Trio on this bar line. Each device
     // its own players'.
     regenBar();
-    if (anyAlive && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios) && setup_.mode != Mode::Tracers) openLevelTrios(bar);  // (M8 TRACERS: no Trio; a level lengthens the tracer)
+    if (anyAlive && (spawner_.mode == Spawner::Mode::Slice || spawner_.trios) && setup_.mode != Mode::Tracers && setup_.mode != Mode::Songline)
+        openLevelTrios(bar);  // (M8 TRACERS: no Trio, a level lengthens the tracer; SONGLINE: a level gives a Nova and a cell)
     // M5 part 5: the arena's structures and events (the host places and starts them; every device keeps them).
     if (anyAlive) arenaBar(ph, bar, barTick);
     // M4: a client follows the host's phrase; the host's director alone spawns.
@@ -782,6 +802,7 @@ void World::directorBar(double barTick, u32 bar) {
     d.budgetPerBar = ph.bossDrop || miniFight ? 0.0f
                                  : base * sectionScale(ph) * d.assist * coopBudgetScale() * kThreatBudgetScale * loopRamp(kLoopThreatRamp, ph.track, d.songs);
     if (setup_.mode == Mode::Tracers) d.budgetPerBar *= species_->modes.tracers.threatScale * tracersCrowdScale() / species_->modes.tracers.crowdScale;  // (M8: half the hunters', 15% more a house)
+    if (setup_.mode == Mode::Songline) d.budgetPerBar *= species_->modes.songline.threatScale;  // (M8 SONGLINE: 0.7)
     if (d.budgetPerBar <= 0.0f) return;
     d.bank = std::fmin(d.bank + d.budgetPerBar, d.budgetPerBar * kBankBars);
     eliteBar(ph, land);  // M5 part 5: an elite first, when one is due (traits.md)

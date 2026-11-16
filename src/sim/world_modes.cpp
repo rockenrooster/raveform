@@ -147,6 +147,7 @@ void World::updateModes() {
             pl.invulS = static_cast<float>(kTicksPerBar) / ticksPerSecond();
             pl.vel = Vec2{};
             if (stage_) pl.pos = pl.prevPos = Vec2{};  // (README.md 7: on the Stage, back at its centre)
+            if (setup_.mode == Mode::Songline) pl.pos = pl.prevPos = spark_.pos + dirOf(spark_.heading + 1.5707963f) * 80.0f;  // (beside the Spark)
             panicPulse(p);
             Event ev;
             ev.type = EventType::KnockBack;
@@ -163,6 +164,20 @@ void World::updateModes() {
     DirectorState& d = director_;
     if (d.formCount && !d.runEnded && phrase_.ended) {
         if (setup_.mode == Mode::Tracers) tracersEnd();  // (tracers.md rule 12: the floor pays)
+        if (setup_.mode == Mode::Songline)
+            for (u32 p = 0; p < playerCount_; ++p) {
+                // (songline.md: the last downbeat: the Spark bursts and the gates are counted)
+                if (!players_[p].present) continue;
+                Event ev;
+                ev.type = EventType::GateCount;
+                ev.a = static_cast<u8>(p);
+                ev.f = static_cast<float>(gatesThreaded_[p]);
+                ev.x2 = static_cast<float>(gatesLaid_[p]);
+                ev.x = spark_.pos.x;
+                ev.y = spark_.pos.y;
+                ev.tick = tickOfBar(phrase_.bar);
+                emit(ev);
+            }
         Enemies& e = enemies_;
         for (u32 i = 0; i < e.count; ++i)
             if (!(e.flags[i] & kFlagDead)) e.flags[i] |= kFlagDead;
@@ -197,6 +212,7 @@ void World::knockOut(u32 p, double backTick) {
         breakTracer(p);
         tracersKnock(p);  // (tracers.md rule 17: the lights)
     }
+    if (setup_.mode == Mode::Songline) setStreak(p, 0);  // (songline.md rule 15: it costs the streak)
     Event ev;
     ev.type = EventType::Knock;
     ev.a = static_cast<u8>(p);

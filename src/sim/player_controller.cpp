@@ -61,6 +61,8 @@ void PlayerController::update(const StickInput& in, float dt, double musicTick, 
     if (!state.alive) {
         takeShoves(state, musicTick, p, false);
         if (state.knocked && world.onStage()) p.pos = Vec2{};  // (M8 README.md 7: on the Stage a knocked out ship comes back at its centre)
+        if (state.knocked && world.setup().mode == Mode::Songline)  // (SONGLINE: beside the Spark)
+            p.pos = world.spark().pos + dirOf(world.spark().heading + 1.5707963f) * 80.0f;
         p.vel = Vec2{};
         p.fire = 0;
         p.dashing = false;
