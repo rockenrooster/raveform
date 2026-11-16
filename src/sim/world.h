@@ -1108,6 +1108,9 @@ public:
     u32 bestRing(u32 p) const { return bestRing_[p < kMaxPlayers ? p : 0]; }
     // The place a tracer would close on from the ship (the hint, tracers.md rule 5): false when nothing is within hintWu.
     bool closingHint(u32 p, Vec2& at, float& dist) const;
+    // Pictures and tests: the floor set as given (an owner a tile, TracerFloor::kDark for none); `house`: a full house on the next
+    // bar line, as if the floor had just filled.
+    void scriptFloor(const u8* owners, bool house);
     // A run on the bar line `bar` (musical ticks) with this seed, these seats and this id: every device resets
     // at the same musical position (the co-op start; a RETRY when every player is down).
     void scheduleRun(double bar, u64 seed, u32 players, u16 runId, u8 presentMask = 0xF);

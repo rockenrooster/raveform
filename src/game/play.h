@@ -208,7 +208,13 @@ private:
     void screenSettings(Ui& ui);
     void screenCredits(Ui& ui);  // M7 (screens.md "Credits (M7)"): game/screens_credits.cpp
     void drawSetList(Ui& ui, float y);  // the game over's set list (solo and co-op)
-    void drawBand(Ui& ui, float y);     // the game over's "YOUR BAND"
+    void drawBand(Ui& ui, float y);
+    void drawFloorSmall(Ui& ui, float y);  // M8 TRACERS (screens.md "Results"): the floor as it stood at the end, 8 px a tile
+    // M8 TRACERS: the result's numbers and the floor, kept as the run ended.
+    u8 resultFloor_[sim::TracerFloor::kTiles] = {};
+    float resultFloorShare_ = 0.0f;
+    u16 resultHouses_ = 0, resultBestRing_ = 0;
+    bool m8FloorSet_ = false;  // (the TRACERS pictures' floor, set once)     // the game over's "YOUR BAND"
     // play.cpp: the flow.
     void startRun();
     void restartRun();

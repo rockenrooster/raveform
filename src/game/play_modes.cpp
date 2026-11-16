@@ -148,6 +148,7 @@ void Play::modesEvent(const Event& e) {
             }
             break;
         case EventType::House:
+            if (e.b == 1 && markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 5, 0};  // (the result's gold star)
             if (!bandDrives_ || !band_) break;
             if (e.b == 0) {
                 const double pop = e.tick + 2.0 * kTicksPerBeat + (coop() ? netBandOffset_ : clock_.offset());
@@ -157,6 +158,9 @@ void Play::modesEvent(const Event& e) {
                 band_->playRecipe(audio::Recipe::Stab, -1, 1.1f, 0.0f, pop, 2.0f);
                 pulse(2);
             }
+            break;
+        case EventType::RingPop:
+            if (e.c >= 5 && e.a == seat_ && markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 6, e.a};  // (the result's white tick)
             break;
         case EventType::FloorCount:
             // The count: the "upgrade taken" chord as the sweep reaches the far wall (the chirps a column are the engine's part to
@@ -248,6 +252,43 @@ void Play::modesEndRun(bool died) {
             r.second = p.bestChain;
         }
         if (keep && !su.versus) saveModeRecords(records_);
+    }
+    if (su.mode == Mode::Tracers) {
+        // tracers.md "Numbers", `tracers_<track>`: the best score and its full houses (co-op: the team's). The result's numbers and
+        // the floor as the run ended (screens.md "Results").
+        const TracerFloor& f = w.tracerFloor();
+        std::memcpy(resultFloor_, f.owner, sizeof resultFloor_);
+        u32 mine = 0;
+        for (u8 o : f.owner) mine += (o == seat_ || (!w.setup().versus && o != TracerFloor::kDark)) ? 1u : 0u;
+        resultFloorShare_ = static_cast<float>(mine) / static_cast<float>(TracerFloor::kTiles);
+        resultHouses_ = f.houses;
+        resultBestRing_ = static_cast<u16>(w.bestRing(seat_));
+        if (su.track >= 1 && su.track <= ModeRecords::kTracks) {
+            if (coop()) {
+                ModeRecords::Team& t = records_.team[static_cast<u32>(Mode::Tracers)][su.track - 1u];
+                u64 team = 0;
+                u8 players = 0;
+                for (u32 q = 0; q < kMaxPlayers; ++q)
+                    if (w.player(q).present) {
+                        team += w.player(q).score;
+                        ++players;
+                    }
+                modeBest_ = t.score;
+                if (!su.versus && team > t.score) {
+                    t.score = team;
+                    t.players = players;
+                }
+            } else {
+                ModeRecords::Timed& r = records_.tracers[su.track - 1u];
+                modeBest_ = r.score;
+                newBest_ = p.score > 0 && p.score > r.score;
+                if (newBest_) {
+                    r.score = p.score;
+                    r.second = f.houses;
+                }
+            }
+            if (keep && !su.versus) saveModeRecords(records_);
+        }
     }
     if (su.mode == Mode::Headliners && !coop()) {
         // README.md 9, `headliners`: the acts cleared, then the time (ten in 9:42 beats ten in 10:05, and both beat nine).

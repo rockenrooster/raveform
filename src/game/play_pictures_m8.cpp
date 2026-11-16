@@ -15,7 +15,10 @@ namespace rf {
 using namespace sim;
 
 namespace {
-enum class M8 : u8 { TitlePill, Modes, Lift, Back, Step, Track, Drop, LoadIn, CardOne, OneOutro, ResultOne, CardAct, ResultActs };
+enum class M8 : u8 {
+    TitlePill, Modes, Lift, Back, Step, Track, Drop, LoadIn, CardOne, OneOutro, ResultOne, CardAct, ResultActs,
+    TrLine, TrLock, TrPop, TrFloor4, TrHouse, TrCount, TrResult
+};
 struct M8Pic {
     const char* name;  // m8_<name>
     M8 kind;
@@ -39,6 +42,11 @@ const M8Pic kM8Pics[] = {
     {"loadin", M8::LoadIn, 6}, {"card_one", M8::CardOne, 4}, {"one_outro", M8::OneOutro, 1}, {"result_one", M8::ResultOne, 1},
     // Part 2 (HEADLINERS): act 1's card (ACT 1 OF 10, KALEIDOS, FIRST LIGHT 110 BPM) and the result after the ten acts.
     {"card_act", M8::CardAct, 0}, {"result_headliners", M8::ResultActs, 0},
+    // Part 4 (TRACERS on Reef, the ring-flier flying; tracers.md "What to check"): a line half drawn with its hint, a ring just
+    // locked round a pack, the pop as a strip a thirty-second apart from the lock, the floor at 60% in four colours, FULL HOUSE as a
+    // strip a quarter beat apart from its bar line, the count at the end (a strip), the result.
+    {"tr_line", M8::TrLine, 3}, {"tr_lock", M8::TrLock, 3}, {"tr_pop", M8::TrPop, 3}, {"tr_floor4", M8::TrFloor4, 3},
+    {"tr_house", M8::TrHouse, 3}, {"tr_count", M8::TrCount, 3}, {"tr_result", M8::TrResult, 3},
 };
 constexpr u32 kM8Count = sizeof(kM8Pics) / sizeof(kM8Pics[0]);
 constexpr u32 kM8At = 300;  // (the title at rest: as screen_title's)
@@ -107,6 +115,33 @@ bool Play::scriptSetupM8() {
             if (pic.kind == M8::ResultActs) scriptFastForwardS_ = 495.0f;  // (into act 10's fight)
             break;
         }
+        case M8::TrLine:
+        case M8::TrLock:
+        case M8::TrPop:
+        case M8::TrFloor4:
+        case M8::TrHouse:
+        case M8::TrCount:
+        case M8::TrResult: {
+            // A TRACERS run on Reef from its first downbeat, the ring-flier flying (hits cost nothing); the floor's pictures with four
+            // seats (the other three stand) and a floor set as the picture needs it.
+            RunSetup su;
+            su.mode = Mode::Tracers;
+            su.track = pic.mode;
+            flow_ = pic.kind == M8::TrResult;
+            screen_ = Screen::Run;
+            const u32 seats = pic.kind == M8::TrFloor4 ? 4u : 1u;
+            w.resetRun(opt_.seed, 0.0, seats, 0xF, su);
+            w.rules().godMode = true;
+            controller_.reset(w.player(0).pos);
+            bot_.reset(opt_.seed, Bot::Policy::Play);
+            marks_[0] = Mark{0.0f, 0, su.track};
+            runTrackMax_ = su.track;
+            if (pic.kind == M8::TrPop) stripStride_ = static_cast<u32>(std::lround(0.125 * 3600.0 / std::fmax(w.tempoAt(0.0), 30.0f)));  // (a 32nd)
+            if (pic.kind == M8::TrLine || pic.kind == M8::TrLock || pic.kind == M8::TrPop) scriptFastForwardS_ = 20.0f;  // (a crowd in)
+            if (pic.kind == M8::TrFloor4 || pic.kind == M8::TrHouse) scriptFastForwardS_ = 20.0f;
+            if (pic.kind == M8::TrCount || pic.kind == M8::TrResult) scriptFastForwardS_ = 90.0f;  // (into the last bars)
+            break;
+        }
     }
     return true;
 }
@@ -117,6 +152,52 @@ bool Play::scriptInputM8(StickInput& in) {
     const M8Pic& pic = kM8Pics[m8Pic_];
     const u32 t = scriptTick_;
     const i64 now = static_cast<i64>(frameNo_);
+    if (pic.kind >= M8::TrLine) {
+        // TRACERS: the ring-flier flies; each picture waits for its moment.
+        in = w.player(0).alive ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+        if (captureFrom_ >= 0 || ffRunning_) return true;
+        if (pic.kind == M8::TrFloor4 || pic.kind == M8::TrHouse) {
+            if (!m8FloorSet_) {
+                // The floor at 60% in four colours (a quarter of the room's ellipse each), or (the house) all but a hole by the ship.
+                static u8 owners[TracerFloor::kTiles];
+                for (u32 tl = 0; tl < TracerFloor::kTiles; ++tl) {
+                    const Vec2 c = w.tileCentre(tl);
+                    const float ex = c.x / w.halfW(), ey = c.y / w.halfH();
+                    if (pic.kind == M8::TrFloor4) {
+                        const u8 q = static_cast<u8>((c.x < 0.0f ? 0u : 1u) + (c.y < 0.0f ? 0u : 2u));
+                        owners[tl] = ex * ex + ey * ey < 0.87f * 0.87f ? q : TracerFloor::kDark;
+                    } else {
+                        owners[tl] = 0;
+                    }
+                }
+                w.scriptFloor(owners, pic.kind == M8::TrHouse);
+                m8FloorSet_ = true;
+            }
+            if (pic.kind == M8::TrFloor4 && t >= 60) captureFrom_ = now + 1;
+            if (pic.kind == M8::TrHouse && w.tracerFloor().chaseTick < 0.0 && w.tracerFloor().popTick >= 0.0) captureFrom_ = now;  // (the chase's bar line)
+        }
+        if (pic.kind == M8::TrLine) {
+            Vec2 at{};
+            float dist = 0.0f;
+            if (w.tracer(0).count > 60 && w.closingHint(0, at, dist) && dist > w.species().modes.tracers.snapWu + 20.0f) captureFrom_ = now + 1;
+        }
+        if (pic.kind == M8::TrLock || pic.kind == M8::TrPop) {
+            for (u32 k = 0; k < World::kRings; ++k) {
+                const TracerRing& r = w.ring(k);
+                if (r.active && !r.popped && r.caught >= 8 && r.lockTick >= music1_ - 4.0) {
+                    captureFrom_ = now + 1;
+                    break;
+                }
+            }
+        }
+        if (pic.kind == M8::TrCount && w.phrase().barsLeft <= 1 && music1_ >= w.tickOfBar(w.phrase().bar)) {
+            const double end = w.tickOfBar(static_cast<u32>(w.species().modes.forms.timed48.bars()));
+            if (music1_ >= end) captureFrom_ = now + 1;
+        }
+        if (pic.kind == M8::TrResult && screen_ == Screen::GameOver && overS_ > 2.4f) captureFrom_ = now + 1;
+        if (captureFrom_ >= 0) RF_LOG("play: picture '%s' captures from frame %lld (bar %.2f)", opt_.picture, static_cast<long long>(captureFrom_), music1_ / kTicksPerBar);
+        return true;
+    }
     if (pic.kind == M8::LoadIn || pic.kind == M8::CardOne || pic.kind == M8::OneOutro || pic.kind == M8::ResultOne || pic.kind == M8::CardAct ||
         pic.kind == M8::ResultActs) {
         // A ONE TRACK run: the bot plays it.

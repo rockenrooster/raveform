@@ -151,7 +151,10 @@ bool World::closingHint(u32 p, Vec2& at, float& dist) const {
     const Vec2 ship = players_[p].pos;
     float best = d.hintWu * d.hintWu;
     bool found = false;
-    for (u32 k = 0; k + d.skipNewest < t.count; ++k) {
+    // (not the line just flown: the newest six points and as many more as the hint's reach and half again holds, so a curve's own
+    // last stretch is never offered as a place to close)
+    const u32 skip = d.skipNewest + static_cast<u32>(std::ceil(1.5f * d.hintWu / d.pointEveryWu));
+    for (u32 k = 0; k + skip < t.count; ++k) {
         const float dd = lengthSq(t.at(k) - ship);
         if (dd <= best) {
             best = dd;
@@ -456,6 +459,18 @@ void World::houseStep() {
         ev.tick = at;
         emit(ev);
     }
+}
+
+void World::scriptFloor(const u8* owners, bool house) {
+    TracerFloor& f = floor_;
+    f.lit = 0;
+    f.serial = 0;
+    for (u32 tl = 0; tl < TracerFloor::kTiles; ++tl) {
+        f.owner[tl] = owners[tl];
+        f.order[tl] = owners[tl] == TracerFloor::kDark ? 0 : ++f.serial;
+        if (owners[tl] != TracerFloor::kDark) ++f.lit;
+    }
+    if (house) f.chaseTick = tickOfBar(barOf(m1_ + 1.0) + 1u);
 }
 
 void World::tracersEnd() {

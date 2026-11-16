@@ -363,7 +363,7 @@ void Play::renderScreens(FrameDraw& d, FrameParams& params, const LookVariant& v
             break;
         case Screen::GameOver:
             // screens.md: in co-op the run behind the game over is dimmed to a fifth, as in the pause.
-            params.exposurePump *= transExposure(coop() ? 0.2f : 0.45f);
+            params.exposurePump *= transExposure(coop() || world_->director().formCount ? 0.2f : 0.45f);  // (M8: a timed mode's result: README.md 6)
             if (coop()) {
                 setHudFade(trans_ == Trans::Wait || trans_ == Trans::Home ? 1.0f - gameOverOut() : 1.0f);  // (M6: a co-op RETRY's wait, HOME)
                 if (world_->setup().versus && runCleared_) screenPodium(ui_);  // M8: a versus match's end
@@ -692,8 +692,9 @@ void Play::screenGameOver(Ui& ui) {
     const bool one = world_->setup().mode == sim::Mode::OneTrack;
     const bool acts = world_->setup().mode == sim::Mode::Headliners;
     const bool blast = world_->setup().mode == sim::Mode::FullBlast;
-    const bool won = one || acts || blast ? runCleared_ : runSetComplete_;
-    const char* topWord = blast ? "FULL BLAST" : (won ? (one ? "TRACK COMPLETE" : (acts ? "HEADLINERS COMPLETE" : "SET COMPLETE")) : "RUN OVER");
+    const bool tracers = world_->setup().mode == sim::Mode::Tracers;
+    const bool won = one || acts || blast || tracers ? runCleared_ : runSetComplete_;
+    const char* topWord = blast ? "FULL BLAST" : (tracers ? "TRACERS" : (won ? (one ? "TRACK COMPLETE" : (acts ? "HEADLINERS COMPLETE" : "SET COMPLETE")) : "RUN OVER"));
     if (out > 0.0f) {
         const Vec3 c = won ? gold : palette_->accent;
         streak(topWord, 44.0f * s, 150.0f * s, std::fmax(0.045f * 44.0f * s, 0.55f * s), c, c, c, won ? 1.8f : 1.6f);
@@ -770,6 +771,16 @@ void Play::screenGameOver(Ui& ui) {
         static const char* const kOneLabels[4] = {"TIME", "BEST CHAIN", "KILLS", "BOSS"};
         static const char* const kActLabels[4] = {"BOSSES", "HITS TAKEN", "FASTEST", "SCORE"};
         static const char* const kBlastLabels[4] = {"BEST CHAIN", "KILLS", "BOOSTS", "HITS TAKEN"};
+        static const char* const kTracersLabels[4] = {"FLOOR", "FULL HOUSES", "BEST RING", "BEST CHAIN"};
+        if (tracers) {
+            // (M8, design/modes/tracers.md "The result": FLOOR (its share at the end), FULL HOUSES, BEST RING (the most caught), BEST CHAIN)
+            std::snprintf(v[0], sizeof v[0], "%.0f%%", static_cast<double>(100.0f * resultFloorShare_));
+            std::snprintf(v[1], sizeof v[1], "%u", static_cast<unsigned>(resultHouses_));
+            std::snprintf(v[2], sizeof v[2], "%u", static_cast<unsigned>(resultBestRing_));
+            char chain[32];
+            groupDigits(chain, sizeof chain, p.bestChain);
+            std::snprintf(v[3], sizeof v[3], "X%s", chain);
+        }
         if (blast) {
             // (M8, design/modes/screens.md "Results": FULL BLAST's BEST CHAIN, KILLS, BOOSTS, HITS TAKEN)
             char chain[32];
@@ -804,7 +815,7 @@ void Play::screenGameOver(Ui& ui) {
         }
         for (u32 k = 0; k < 4; ++k) {
             const float x = cx + (static_cast<float>(k) - 1.5f) * 330.0f * s;
-            const char* label = blast ? kBlastLabels[k] : (acts ? (k == 0 && !won ? "TIME" : kActLabels[k]) : (one ? kOneLabels[k] : kLabels[k]));
+            const char* label = tracers ? kTracersLabels[k] : (blast ? kBlastLabels[k] : (acts ? (k == 0 && !won ? "TIME" : kActLabels[k]) : (one ? kOneLabels[k] : kLabels[k])));
             ui.text({x, 500.0f * s + sink}, 14.0f * s, palette_->accent, 1.3f, label);
             // (M8: a long value fits its column: HEADLINERS's score, FASTEST's boss)
             const float fit = std::fmin(1.0f, 300.0f * s / std::fmax(ui.measure(40.0f * s, v[k]), 1.0f));
@@ -820,7 +831,8 @@ void Play::screenGameOver(Ui& ui) {
         ui.text({x0 + wa + gap, 606.0f * s + sink}, cap, white, 1.5f, by, 0.0f);
     }
     drawSetList(ui, 660.0f * s + sink);
-    drawBand(ui, 740.0f * s + sink);
+    if (tracers) drawFloorSmall(ui, 740.0f * s + sink);  // (in place of YOUR BAND: the floor as it stood at the end)
+    else drawBand(ui, 740.0f * s + sink);
     const float right = W - std::fmax(132.0f * s, ui.insetMax().x);
     // M6 (screens.md "Transitions"): RETRY is the drop-in from game over; HOME takes the title's way back. The control tapped
     // keeps its pressed look until the screen has gone; HOME's tap greys RETRY.
@@ -885,6 +897,15 @@ void Play::drawSetList(Ui& ui, float y) {
                 }
             } else if (mk.kind == 2) {
                 ui.draw().hud.line({x, y - 14.0f * s}, {x, y - 4.0f * s}, 1.1f * s, ui.col(gold, 1.8f), ui.col(gold, 1.8f), 0);
+            } else if (mk.kind == 5) {
+                // M8 TRACERS: a gold star where a house came down.
+                for (u32 a = 0; a < 4; ++a) {
+                    const Vec2 dv = polarV(kTwoPi * static_cast<float>(a) / 8.0f, 12.0f * s);
+                    ui.draw().hud.line(Vec2{x, y - 22.0f * s} - dv, Vec2{x, y - 22.0f * s} + dv, 0.9f * s, ui.col(gold, 2.0f), ui.col(gold, 2.0f), 0);
+                }
+            } else if (mk.kind == 6) {
+                // ... and a white tick for each ring of x 5 and more.
+                ui.draw().hud.line({x, y - 14.0f * s}, {x, y - 4.0f * s}, 1.0f * s, ui.col(white, 1.6f), ui.col(white, 1.6f), 0);
             } else if (mk.kind == 3) {
                 // M4 stage B (screens.md): in co-op each player's crosses are in their colour.
                 const Vec3 c = coop() ? ui.col(palettes_->player[mk.a < kMaxPlayers ? mk.a : 0], 1.8f) : ui.col(palettes_->danger, 1.6f);
@@ -916,6 +937,32 @@ void Play::drawBand(Ui& ui, float y) {
             icons_.drawHud(ui.draw().hud, upgradeIcons_[list[k]], c, 30.0f * s, 1.0f, uiColourFn, &ctx);
         }
         if (n) ui.text({m, y}, 12.0f * s, white, 0.8f, "YOUR BAND", 0.0f);
+    }
+}
+
+void Play::drawFloorSmall(Ui& ui, float y) {
+    // M8 TRACERS (tracers.md "The result"): the floor as it stood at the end, 43 x 21 squares of 8 px in the owners' colours (a
+    // dark tile an outline at a fifth), under FLOOR.
+    const float s = ui.s();
+    const float m = std::fmax(132.0f * s, ui.insetMin().x);
+    const Vec3 white{1.0f, 1.0f, 1.0f};
+    const float px = 8.0f * s, gap = 1.5f * s;
+    ui.text({m, y}, 12.0f * s, white, 0.8f, "THE FLOOR", 0.0f);
+    const float x0 = m, y0 = y + 20.0f * s;
+    for (u32 t = 0; t < sim::TracerFloor::kTiles; ++t) {
+        const u32 x = t % sim::TracerFloor::kTilesX, yy = t / sim::TracerFloor::kTilesX;
+        const u8 o = resultFloor_[t];
+        const Vec2 a{x0 + static_cast<float>(x) * px + gap, y0 + static_cast<float>(yy) * px + gap};
+        const Vec2 b{a.x + px - 2.0f * gap, a.y + px - 2.0f * gap};
+        if (o == sim::TracerFloor::kDark) {
+            const Vec3 c = ui.col(white, 0.12f);
+            ui.draw().hud.line(a, {b.x, a.y}, 0.4f * s, c, c, 0);
+            ui.draw().hud.line({a.x, b.y}, b, 0.4f * s, c, c, 0);
+            continue;
+        }
+        const Vec3 c = ui.col(o < kMaxPlayers ? palettes_->player[o] : white, 1.2f);
+        const float h = 0.5f * (b.y - a.y);
+        ui.draw().hud.line({a.x, a.y + h}, {b.x, a.y + h}, h, c, c, kFlatStart | kFlatEnd);
     }
 }
 
