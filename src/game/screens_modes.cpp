@@ -119,8 +119,8 @@ void cardOutline(Ui& ui, Vec2 a, Vec2 b, float r, float hw, Vec3 c0, Vec3 c1, fl
 // ---------------------------------------------------------------------------------------------- the modes' facts
 
 u32 Play::tracksAvailable() const {
-    // The two bonus Tracks come with part 4 (MODES_PLAN 2.9); until then the strips stop at the set's ten.
-    return 10u;
+    // The set's ten and, since part 4, the two bonus Tracks (MODES_PLAN 2.9; 11 Mirrorball, 12 Toybox).
+    return kModeTracks;
 }
 
 bool Play::modeBuilt(Mode m) const {

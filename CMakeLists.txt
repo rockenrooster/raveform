@@ -177,6 +177,18 @@ foreach(data patches variants conductor track01 track02 track03 track04 track05 
     VERBATIM)
   list(APPEND RF_AUDIO_GENERATED ${RF_GEN}/music_${data}.json.inc)
 endforeach()
+# M8 part 4: the two bonus Tracks (design/modes/README.md 11), embedded where the lead keeps them (design/tools/bonus_tracks.py
+# reads them there): 11 Mirrorball, 12 Toybox.
+foreach(data track11 track12)
+  add_custom_command(OUTPUT ${RF_GEN}/music_${data}.json.inc
+    COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/design/modes/music/${data}.json -DOUT=${RF_GEN}/music_${data}.json.inc
+            -P ${RF_ROOT}/cmake/EmbedText.cmake
+    DEPENDS ${RF_ROOT}/design/modes/music/${data}.json ${RF_ROOT}/cmake/EmbedText.cmake
+    COMMENT "embed modes/music/${data}.json"
+    JOB_POOL rf_jobs
+    VERBATIM)
+  list(APPEND RF_AUDIO_GENERATED ${RF_GEN}/music_${data}.json.inc)
+endforeach()
 add_custom_command(OUTPUT ${RF_GEN}/audio_loudness_calibration.json.inc
   COMMAND ${CMAKE_COMMAND} -DIN=${RF_ROOT}/src/audio/loudness_calibration.json
           -DOUT=${RF_GEN}/audio_loudness_calibration.json.inc -P ${RF_ROOT}/cmake/EmbedText.cmake

@@ -346,7 +346,7 @@ void Engine::applyParams() {
     // M5: the key the A-minor effects move to: the Track's root (the first chord's bass) within -6..+5 semitones of A,
     // major where the scale has no minor third.
     {
-        const i32 root = tr_->progressionCount ? tr_->chords[tr_->progression[0]].bass % 12 : 9;
+        const i32 root = tr_->tonic;  // (M8 part 4: the key's tonic, which the first chord's bass had stood in for)
         i32 shift = ((root - 9) % 12 + 12) % 12;
         if (shift > 5) shift -= 12;
         keyRate_ = static_cast<float>(std::exp2(shift / 12.0));
@@ -1870,7 +1870,7 @@ float Engine::leadNoteMidi(u8 degree) const {
     // The Track's root in the lead's register: the tonic at or below the bar's first arpeggio note.
     const Track& t = *tr_;
     const Chord& ch = plan_ && plan_->chord ? *plan_->chord : t.chordAtBar(0);
-    const i32 tonic = t.chords[t.progression[0]].bass % 12;
+    const i32 tonic = t.tonic;
     const i32 top = ch.arp[0];
     const i32 root = top - (((top - tonic) % 12) + 12) % 12;
     static constexpr i32 kDegree[5] = {0, 7, 12, -12, 24};
@@ -1946,7 +1946,7 @@ void Engine::leadStep(i64 tick, i64 inBar) {
             // Harmony: Split stacks, Prism, On-Beat Crit (conductor.json mods / boosts).
             const auto degreeAbove = [&](u8 base, u32 degrees) -> float {
                 const u32 n = t.scaleCount ? t.scaleCount : 7;
-                const i32 tonic = t.chords[t.progression[0]].bass % 12;
+                const i32 tonic = t.tonic;
                 const i32 pc = ((base - tonic) % 12 + 12) % 12;
                 u32 idx = 0;
                 for (u32 d = 0; d < n; ++d)

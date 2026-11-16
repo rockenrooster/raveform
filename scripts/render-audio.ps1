@@ -21,6 +21,8 @@ $ref = Join-Path $out 'ref'
 New-Item -ItemType Directory -Force $out, $eng, $ref | Out-Null
 # M5: the set list is every design\music\trackNN.json (ten since 2026-11-12).
 $tracks = @(Get-ChildItem (Join-Path $RF_ROOT 'design\music') -Filter 'track??.json' | Sort-Object Name | ForEach-Object { $_.BaseName })
+# M8 part 4: and the two bonus Tracks (design\modes\music: 11 Mirrorball, 12 Toybox)
+$tracks += @(Get-ChildItem (Join-Path $RF_ROOT 'design\modes\music') -Filter 'track??.json' | Sort-Object Name | ForEach-Object { $_.BaseName })
 $sounds = @('club', 'arcade', 'velvet')
 $haveFfmpeg = [bool](Get-Command ffmpeg -ErrorAction SilentlyContinue)
 

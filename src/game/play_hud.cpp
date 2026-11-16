@@ -489,7 +489,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
 
     // Track and tempo: top centre, cap 12, accent.
     const Phrase& ph = w.phrase();
-    std::snprintf(text, sizeof text, "TRACK %u  %s  %.0f BPM", ph.track, st.trackName, st.bpm);
+    std::snprintf(text, sizeof text, "TRACK %u  %s  %.0f BPM", st.world && st.world->director().bonus ? st.world->director().bonus : ph.track, st.trackName, st.bpm);  // (M8: a bonus Track by its own number)
     {
         const float cap = 12.0f * s;
         font.drawField(d.hud, {cx - 0.5f * textW(font, cap, text), top + 34.0f * s}, cap, 0.6f * s, col(accent, 1.2f), col(accent, 1.2f),

@@ -1178,7 +1178,9 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers, 
         bool minorThird = tr.scaleCount == 0;
         for (u32 i = 0; i < tr.scaleCount; ++i) minorThird = minorThird || tr.scale[i] == 3;
         const u8* penta = minorThird ? kMinorPenta : kMajorPenta;
-        const u8 tonic = static_cast<u8>(tr.chords[tr.progression[0]].bass + 36);
+        // (the key's tonic at or below the first chord's bass, three octaves up: the bass itself in the ten and in Toybox)
+        const i32 bass = tr.chords[tr.progression[0]].bass;
+        const u8 tonic = static_cast<u8>(bass - (((bass - static_cast<i32>(tr.tonic)) % 12) + 12) % 12 + 36);
         for (u32 i = 0; i < 10; ++i) shardScale_[t][i] = static_cast<u8>(tonic + 12 * (i / 5) + penta[i % 5]);
     }
 

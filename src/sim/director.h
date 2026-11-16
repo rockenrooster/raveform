@@ -136,6 +136,10 @@ struct DirectorState {
     u8 formCount = 0;
     u8 formKind[12] = {};  // sim::FormKind
     u8 formBars[12] = {};
+    // M8 part 4 (design/modes/README.md 11): a bonus Track (11 Mirrorball, 12 Toybox; 0 none) in a timed mode: its music (song
+    // bonus - 1) at its tempo over the crowd of the set Track it borrows (`track`, modes.json bonusTracks[].crowdOf).
+    u8 bonus = 0;
+    float bonusBpm = 0.0f;
 };
 
 // Where bar `bar` of the run sits, given what the director knows now.

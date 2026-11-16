@@ -24,10 +24,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import audio_metrics as am  # noqa: E402
 
 MUSIC = os.path.join(ROOT, "design", "music")
+BONUS = os.path.join(ROOT, "design", "modes", "music")  # M8 part 4: the bonus Tracks, where the lead keeps them
 
 
 def load(name):
-    with open(os.path.join(MUSIC, name), encoding="utf-8") as f:
+    path = os.path.join(MUSIC, name)
+    if not os.path.exists(path):
+        path = os.path.join(BONUS, name)
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -71,7 +75,7 @@ def main():
     out_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "captures", "m2", "ref")
     os.makedirs(out_dir, exist_ok=True)
     # M5: every Track of the set list (design/music/trackNN.json).
-    every = sorted(os.path.splitext(f)[0] for f in os.listdir(MUSIC) if f.startswith("track") and f.endswith(".json"))
+    every = sorted(os.path.splitext(f)[0] for d in (MUSIC, BONUS) for f in os.listdir(d) if f.startswith("track") and f.endswith(".json"))
     tracks = [sys.argv[2]] if len(sys.argv) > 2 else every
     variants = [sys.argv[3]] if len(sys.argv) > 3 else ["club", "arcade", "velvet"]
     for t in tracks:

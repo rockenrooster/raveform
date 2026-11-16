@@ -594,22 +594,24 @@ void testNoAllocations() {
 
 void testMusicData() {
     const MusicData& m = *g_music;
-    CHECK(m.trackCount == 10);
+    CHECK(m.trackCount == 12);
     CHECK(m.variantCount == 3);
     // M5: the set list, 110 to 155 BPM in steps of five (the owner's play of f0624e5; 120 to 174 in sixes until then); each
-    // Track by id and by number; every Track x variant calibrated; each arrangement the same 24 staged bars.
+    // Track by id and by number; every Track x variant calibrated; each arrangement the same 24 staged bars. M8 part 4: the two
+    // bonus Tracks after them (11 Mirrorball at 122, 12 Toybox at 100: design/modes/README.md 11).
     for (u32 t = 0; t < m.trackCount; ++t) {
         char id[16], num[4];
         std::snprintf(id, sizeof id, "track%02u", t + 1);
         std::snprintf(num, sizeof num, "%u", t + 1);
         CHECK_MSG(std::strcmp(m.tracks[t].id, id) == 0 && m.trackIndex(id) == static_cast<i32>(t) && m.trackIndex(num) == static_cast<i32>(t),
                   "Track %u is '%s'", t + 1, m.tracks[t].id);
-        CHECK_MSG(m.tracks[t].bpm == 110.0f + 5.0f * static_cast<float>(t), "%s at %.1f BPM", id, m.tracks[t].bpm);
+        const float bpm = t < 10 ? 110.0f + 5.0f * static_cast<float>(t) : (t == 10 ? 122.0f : 100.0f);
+        CHECK_MSG(m.tracks[t].bpm == bpm, "%s at %.1f BPM", id, m.tracks[t].bpm);
         CHECK_MSG(m.tracks[t].arrangementBars == 24 && m.tracks[t].progressionCount == 4, "%s: arrangement %u bars", id,
                   m.tracks[t].arrangementBars);
         for (u32 v = 0; v < m.variantCount; ++v) CHECK_MSG(m.calibration.have[t][v], "%s/%s not calibrated", id, m.variants[v].id);
     }
-    CHECK(m.trackIndex("11") == -1 && m.trackIndex("track11") == -1);
+    CHECK(m.trackIndex("13") == -1 && m.trackIndex("track13") == -1);
     // The overrides the later Tracks carry: duck (Afterglow's pad, Arcadia's bass), the half-time / broken / two-step
     // kicks, Mirage's C over B flat, Last Light's long room.
     const i32 club = m.variantIndex("club"), velvet = m.variantIndex("velvet");
@@ -943,7 +945,7 @@ void testFullBandEveryTrack() {
 void testShardScales() {
     for (u32 t = 0; t < g_music->trackCount; ++t) {
         const Track& tr = g_music->tracks[t];
-        const i32 tonic = tr.chords[tr.progression[0]].bass % 12;
+        const i32 tonic = tr.tonic;
         const u8* sc = g_bank->shardScale(t);
         u32 outside = 0;
         for (u32 i = 0; i < 10; ++i) {
@@ -960,7 +962,13 @@ void testShardScales() {
 // M5 (the lead's rule: effects are part of the music): the effects written in A minor move to each Track's root and take
 // their major third on Afterglow, Arcadia and Mirage; the Elite's fifth only moves.
 void testEffectsInKey() {
-    const double wantShift[10] = {0, -4, 5, -5, -2, 3, 4, -2, 1, 0};
+    const double wantShift[12] = {0, -4, 5, -5, -2, 3, 4, -2, 1, 0, 5, 3};  // (M8 part 4: Mirrorball in D major, Toybox in C major)
+    // (and every Track's tonic is its key's: the ten and Toybox start on it; Mirrorball on its two chord)
+    for (u32 t = 0; t < g_music->trackCount; ++t) {
+        const Track& tr = g_music->tracks[t];
+        const bool firstIsTonic = tr.chords[tr.progression[0]].bass % 12 == tr.tonic;
+        CHECK_MSG(firstIsTonic == (t != 10), "%s: tonic %u, first chord's bass %u", tr.id, tr.tonic, tr.chords[tr.progression[0]].bass % 12u);
+    }
     for (u32 t = 0; t < g_music->trackCount; ++t) {
         Engine e;
         CHECK(e.init(*g_music, *g_bank, kRate));
@@ -968,7 +976,7 @@ void testEffectsInKey() {
         for (Sfx s : {Sfx::Boost, Sfx::Upgrade, Sfx::GameOver, Sfx::Elite}) e.post(cmd(CmdType::Sfx, static_cast<u8>(s), 0, 0, 1.0f));
         Capture c;
         runEngine(e, c, 4800, 480);
-        const bool major = t == 6 || t == 7 || t == 8;
+        const bool major = t == 6 || t == 7 || t == 8 || t == 10 || t == 11;
         u32 seen = 0, wrong = 0;
         for (u32 i = 0; i < c.eventCount; ++i) {
             const BeatEvent& ev = c.events[i];
@@ -1151,7 +1159,7 @@ u32 countKind(const Session& s, BeatKind k, u32 fromBar = 0) {
 float scaleStepT(const Track& t, float base, i32 degrees) {
     const i32 n = static_cast<i32>(t.scaleCount);
     const i32 b = static_cast<i32>(std::lround(base));
-    const i32 tonic = t.chords[t.progression[0]].bass % 12;
+    const i32 tonic = t.tonic;
     const i32 pc = ((b - tonic) % 12 + 12) % 12;
     i32 idx = 0;
     for (i32 d = 0; d < n; ++d)
@@ -2183,17 +2191,18 @@ void testKillFamily() {
     delete s;
 }
 
-// All ten palettes load, one for each Track of the set list (design/palettes.json "track").
+// All twelve palettes load, one for each Track (design/palettes.json "track"; M8 part 4: the bonus Tracks' two).
 void testPalettes() {
     auto* p = new Palettes;
     CHECK(loadPalettes(*p));
-    CHECK_MSG(p->count == 10, "%u palettes", p->count);
+    CHECK_MSG(p->count == 12, "%u palettes", p->count);
     for (u32 t = 1; t <= g_music->trackCount; ++t) {
         u32 found = 0;
         for (u32 i = 0; i < p->count; ++i) found += p->list[i].track == t;
         CHECK_MSG(found == 1, "Track %u has %u palettes", t, found);
     }
     CHECK(p->find("lastlight") && p->find("lastlight")->track == 10 && p->find("afterglow") && p->find("mirage"));
+    CHECK(p->find("mirrorball") && p->find("mirrorball")->track == 11 && p->find("toybox") && p->find("toybox")->track == 12);
     delete p;
 }
 

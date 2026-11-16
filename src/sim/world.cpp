@@ -118,7 +118,14 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask, co
         // M8 (full_blast.md): 84 bars on the chosen Track, one opening and four waves (modes.json forms.blast), every power on from
         // the first bar (the torrent), nothing ending the run (the power cut).
         const Form& f = species_->modes.forms.blast;
-        const u32 track = setup.track < 1 ? 1u : (setup.track > kMaxSongs ? kMaxSongs : setup.track);
+        u32 track = setup.track < 1 ? 1u : (setup.track > kModeTracks ? kModeTracks : setup.track);
+        if (track > kMaxSongs) {
+            // (a bonus Track: its music at its tempo over the crowd of the set Track it borrows; README.md 11)
+            const ModesData::Bonus& b = species_->modes.bonus[track - kMaxSongs - 1u];
+            director_.bonus = static_cast<u8>(track);
+            director_.bonusBpm = static_cast<float>(b.bpm);
+            track = b.crowdOf;
+        }
         director_.track = static_cast<u8>(track);
         director_.formCount = static_cast<u8>(f.count < 12 ? f.count : 12u);
         for (u32 k = 0; k < director_.formCount; ++k) {
@@ -132,7 +139,13 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask, co
     if (setup.mode == Mode::Tracers && species_) {
         // M8 (tracers.md): 48 bars on the chosen Track (modes.json forms.timed48) on the Stage; no gun, no kit, four cells.
         const Form& f = species_->modes.forms.timed48;
-        const u32 track = setup.track < 1 ? 1u : (setup.track > kMaxSongs ? kMaxSongs : setup.track);
+        u32 track = setup.track < 1 ? 1u : (setup.track > kModeTracks ? kModeTracks : setup.track);
+        if (track > kMaxSongs) {
+            const ModesData::Bonus& b = species_->modes.bonus[track - kMaxSongs - 1u];
+            director_.bonus = static_cast<u8>(track);
+            director_.bonusBpm = static_cast<float>(b.bpm);
+            track = b.crowdOf;
+        }
         director_.track = static_cast<u8>(track);
         director_.formCount = static_cast<u8>(f.count < 12 ? f.count : 12u);
         for (u32 k = 0; k < director_.formCount; ++k) {
@@ -1574,6 +1587,10 @@ u64 World::hash() const {
         val(director_.runEnded);
     }
     if (director_.actForm) val(director_.actForm);
+    if (director_.bonus) {
+        val(director_.bonus);
+        val(director_.bonusBpm);
+    }
     if (director_.formCount) {
         val(director_.formCount);
         for (const PlayerState& pl : players_) {

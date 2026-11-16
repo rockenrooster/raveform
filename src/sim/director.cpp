@@ -31,6 +31,9 @@ const char* songName(u32 song) {
     // GAME_DESIGN 4.2 (quoted): the ten Tracks of the set list.
     static const char* const kNames[kMaxSongs] = {"FIRST LIGHT", "SOLAR WIND", "REEF",     "AURORA", "FURNACE",
                                                   "ZENITH",      "AFTERGLOW",  "ARCADIA",  "MIRAGE", "LAST LIGHT"};
+    // (M8 part 4: the bonus Tracks' songs after them, design/modes/README.md 11)
+    if (song == kMaxSongs) return "MIRRORBALL";
+    if (song == kMaxSongs + 1u) return "TOYBOX";
     return kNames[song % kMaxSongs];
 }
 
@@ -101,9 +104,9 @@ Phrase phraseAt(const DirectorState& d, u32 bar) {
         }
         const FormKind fk = static_cast<FormKind>(d.formKind[k]);
         p.track = d.track;
-        p.song = songOfTrack(d.track, d.songs);
+        p.song = d.bonus ? static_cast<u8>(d.bonus - 1u) : songOfTrack(d.track, d.songs);  // (M8 part 4: a bonus Track's own music)
         p.cycle = p.cycles = 2;
-        p.trackBpm = p.bpm = bpmOfTrack(d.track, d.songs);
+        p.trackBpm = p.bpm = d.bonus ? d.bonusBpm : bpmOfTrack(d.track, d.songs);
         p.section = fk == FormKind::Build ? Section::Build
                     : (fk == FormKind::Drop || fk == FormKind::BossDrop) ? Section::Drop
                     : (fk == FormKind::Break || fk == FormKind::TrackChange) ? Section::Break

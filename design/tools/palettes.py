@@ -111,6 +111,21 @@ PALETTES = [
          accent=dict(L=0.92, h=90, cf=0.9),
          enemies=[dict(L=0.70, h=290, cf=0.97), dict(L=0.74, h=325, cf=0.95), dict(L=0.72, h=250, cf=0.97),
                   dict(L=0.86, h=165, cf=0.95), dict(L=0.90, h=85, cf=0.95)]),
+    # (M8 part 4: the two bonus Tracks' palettes, as design/modes/README.md 11 writes them)
+    # Mirrorball (bonus Track 11): a night club. Silver on midnight; the colours are the lights' own.
+    dict(id="mirrorball", name="Mirrorball", track=11,
+         bg0=dict(L=0.08, h=275, c=0.030), bg1=dict(L=0.17, h=290, c=0.060),
+         grid=dict(L=0.50, h=285, c=0.045), gridHot=dict(L=0.95, h=285, c=0.035),
+         accent=dict(L=0.96, h=280, c=0.03),
+         enemies=[dict(L=0.84, h=150, cf=0.97), dict(L=0.68, h=258, cf=0.97), dict(L=0.72, h=318, cf=0.95),
+                  dict(L=0.80, h=55, cf=0.95), dict(L=0.86, h=172, cf=0.95)]),
+    # Toybox (bonus Track 12): crayons on a dark blanket. Softer than Arcadia's primaries: pastel, cf under 0.8.
+    dict(id="toybox", name="Toybox", track=12,
+         bg0=dict(L=0.11, h=275, c=0.035), bg1=dict(L=0.20, h=250, c=0.060),
+         grid=dict(L=0.48, h=265, c=0.080), gridHot=dict(L=0.92, h=265, c=0.050),
+         accent=dict(L=0.90, h=160, cf=0.60),
+         enemies=[dict(L=0.82, h=245, cf=0.75), dict(L=0.80, h=55, cf=0.80), dict(L=0.86, h=170, cf=0.70),
+                  dict(L=0.84, h=150, cf=0.75), dict(L=0.76, h=295, cf=0.75)]),
 ]
 
 MIN_HUE_GAP_DANGER = 30.0

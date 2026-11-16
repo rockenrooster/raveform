@@ -68,6 +68,13 @@ const char kTrack09Json[] =
 const char kTrack10Json[] =
 #include "music_track10.json.inc"
     ;
+// M8 part 4: the bonus Tracks (design/modes/music/; design/modes/README.md 11).
+const char kTrack11Json[] =
+#include "music_track11.json.inc"
+    ;
+const char kTrack12Json[] =
+#include "music_track12.json.inc"
+    ;
 const char kCalibrationJson[] =
 #include "audio_loudness_calibration.json.inc"
     ;
@@ -79,7 +86,7 @@ struct TrackSource {
 const TrackSource kTrackSources[] = {
     {kTrack01Json, "track01.json"}, {kTrack02Json, "track02.json"}, {kTrack03Json, "track03.json"}, {kTrack04Json, "track04.json"},
     {kTrack05Json, "track05.json"}, {kTrack06Json, "track06.json"}, {kTrack07Json, "track07.json"}, {kTrack08Json, "track08.json"},
-    {kTrack09Json, "track09.json"}, {kTrack10Json, "track10.json"}};
+    {kTrack09Json, "track09.json"}, {kTrack10Json, "track10.json"}, {kTrack11Json, "track11.json"}, {kTrack12Json, "track12.json"}};
 static_assert(sizeof kTrackSources / sizeof kTrackSources[0] <= kMaxTracks, "more Tracks embedded than MusicData holds");
 
 u64 fnv1a(u64 h, const char* s, size_t n) {
@@ -360,6 +367,17 @@ bool loadTrack(const char* text, const char* file, Track& t, ParamTable& overrid
     float scale[12];
     t.scaleCount = doc.numbers("scale", scale, 12);
     for (u32 i = 0; i < t.scaleCount; ++i) t.scale[i] = static_cast<i8>(scale[i]);
+    i32 keyTonic = -1;
+    {
+        char key[24] = {};
+        if (doc.text("key", key, sizeof key) && key[0] >= 'A' && key[0] <= 'G') {
+            static const i32 kNatural[7] = {9, 11, 0, 2, 4, 5, 7};  // A B C D E F G
+            keyTonic = kNatural[key[0] - 'A'];
+            if (key[1] == '#') keyTonic += 1;
+            if (key[1] == 'b') keyTonic += 11;
+            keyTonic %= 12;
+        }
+    }
 
     // Chords.
     const JsonValue* chords = doc.find("chords");
@@ -391,6 +409,7 @@ bool loadTrack(const char* text, const char* file, Track& t, ParamTable& overrid
         if (!hit) fail("progression names an unknown chord");
     }
     if (!t.progressionCount) fail("empty progression");
+    t.tonic = static_cast<u8>(keyTonic >= 0 ? keyTonic : (t.progressionCount ? t.chords[t.progression[0]].bass % 12 : 9));
 
     // Patterns: '.' rest, digits are velocity ninths.
     const JsonValue* pats = doc.find("patterns");

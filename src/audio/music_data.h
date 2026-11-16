@@ -14,7 +14,7 @@ namespace rf::audio {
 using i16 = std::int16_t;
 
 // M5: the set list is ten Tracks (design/music/README.md). Every table sized by the Track count holds this many.
-constexpr u32 kMaxTracks = 10;
+constexpr u32 kMaxTracks = 12;  // the set's ten and the two bonus Tracks (M8 part 4: 11 Mirrorball, 12 Toybox)
 constexpr u32 kMaxVariants = 4;
 
 enum class Section : u8 { Groove, Build, Drop, Break, Count };
@@ -117,6 +117,10 @@ struct Track {
     float bpm = 120.0f;
     i8 scale[12] = {};
     u32 scaleCount = 0;
+    // The key's tonic (a pitch class, from "key": "D major"): what the scale counts from, the effects move to and the Shard runs
+    // climb from. M8 part 4: Mirrorball's progression starts on its two chord (Em9 in D major), so the first chord's bass, which
+    // stood in for the tonic and is the tonic in the ten and in Toybox, is not.
+    u8 tonic = 9;
     Chord chords[8];
     u32 chordCount = 0;
     u8 progression[16] = {};  // chord indices

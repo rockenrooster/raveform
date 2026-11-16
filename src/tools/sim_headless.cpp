@@ -1572,7 +1572,7 @@ int runModeTracers(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Polic
     std::printf("[mode] TRACERS, the %s bot, %u seeds a Track\n", policyName, seeds);
     std::printf("[mode] track  ended  minutes  housed  houses(mean,min)  floor%%  rings/min  fizzles  best_ring  x5+  knockouts(mean,max)  score(mean)  enemies_max  overflow\n");
     u32 worstHouses = 1000, worstKnocks = 0;
-    for (u32 track = 1; track <= kMaxSongs; ++track) {
+    for (u32 track = 1; track <= kModeTracks; ++track) {  // (the set's ten and the bonus Tracks)
         if (onlyTrack && track != onlyTrack) continue;
         u32 ended = 0, minHouses = 1000, koMax = 0, bestRing = 0, overflow = 0, enemiesMax = 0, housed = 0;
         u32 hitsBy[kFamilyCount + 1] = {};  // (the last: anything else)

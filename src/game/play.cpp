@@ -863,10 +863,11 @@ void Play::conductBand() {
     if (restartHere) {
         // A new run on that line: Track 1 at its tempo, Short form, its first Groove (M8: ONE TRACK's Track, at its own tempo).
         const RunSetup& su = w.nextSetup();
-        const u32 track = su.mode == Mode::OneTrack ? su.track : 1u;
+        // (M8: a mode that takes a Track starts on it, a bonus Track on its own music at its tempo)
+        const u32 track = species_->modes.of(su.mode).takesTrack && su.track >= 1 ? su.track : 1u;
         band_->setHold(false);
-        band_->changeTrack(track - 1u, bpmOfTrack(track, w.setList()), true);
-        postedBpm_ = bpmOfTrack(track, w.setList());
+        band_->changeTrack(track - 1u, trackBpm(track), true);
+        postedBpm_ = trackBpm(track);
         band_->setForm(audio::Form::Short);
         band_->setPhrase(audio::Section::Groove, 0, kSectionBars[0][0]);
         off();
@@ -1092,7 +1093,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         // downbeat writes the wave's name where a name card stands; the goal line WAVE 2 OF 4   BARS LEFT 51, LAST CALL in the last
         // eight bars.
         const Phrase& ph = w.phrase();
-        std::snprintf(cardSmall_, sizeof cardSmall_, "TRACK %u  %s", ph.track, songName(ph.song));
+        std::snprintf(cardSmall_, sizeof cardSmall_, "TRACK %u  %s", w.director().bonus ? w.director().bonus : ph.track, songName(ph.song));
         std::snprintf(cardName_, sizeof cardName_, "%s", ph.wave && ph.section == Section::Drop ? species_->modes.blast.wave[(ph.wave - 1u) % 4u].name : "FULL BLAST");
         hs.cardSmall = cardSmall_;
         hs.cardName = cardName_;
@@ -1107,7 +1108,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         const Phrase& ph = w.phrase();
         const TracerFloor& f = w.tracerFloor();
         const u32 me = w.viewPlayer();
-        std::snprintf(cardSmall_, sizeof cardSmall_, "TRACK %u  %s", ph.track, songName(ph.song));
+        std::snprintf(cardSmall_, sizeof cardSmall_, "TRACK %u  %s", w.director().bonus ? w.director().bonus : ph.track, songName(ph.song));
         std::snprintf(cardName_, sizeof cardName_, "TRACERS");
         hs.cardSmall = cardSmall_;
         hs.cardName = cardName_;

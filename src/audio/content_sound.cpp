@@ -194,7 +194,7 @@ float Engine::scaleStep(float base, i32 degrees) const {
     const Track& t = *tr_;
     const i32 n = t.scaleCount ? static_cast<i32>(t.scaleCount) : 7;
     const i32 b = static_cast<i32>(std::lround(base));
-    const i32 tonic = t.chords[t.progression[0]].bass % 12;
+    const i32 tonic = t.tonic;
     const i32 pc = ((b - tonic) % 12 + 12) % 12;
     i32 idx = 0;
     for (i32 d = 0; d < n; ++d)
@@ -981,7 +981,7 @@ void Engine::flushCues(i64 tickIn) {
                 case Cue::RicochetBounce: {  // a blip a scale step above the last for each bounce (two under Ricochet Fever)
                     const u32 steps = static_cast<u32>(value > 1.0f ? value : 1.0f) * (playerBoost(p, Boost::RicochetFever) ? 2u : 1u);
                     const u32 sc = tr_->scaleCount ? tr_->scaleCount : 7;
-                    const i32 tonic = tr_->chords[tr_->progression[0]].bass % 12;
+                    const i32 tonic = tr_->tonic;
                     const i32 pc = ((playerLastNote(p) - tonic) % 12 + 12) % 12;
                     u32 idx = 0;
                     for (u32 d = 0; d < sc; ++d)
