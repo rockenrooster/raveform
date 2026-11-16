@@ -145,6 +145,12 @@ private:
     Band band_;               // the band (src/audio/band.h); inactive unless a scenario or --band asks
     AudioScene audioScene_;   // --scenario audio_test | sync
     bool openAudio();         // the band when it plays, else the M0 test tone
+    // 2026-11-16 (the low end): a frame of the first launch's loading screen while the band bakes its one-shots
+    // (BandDefaults::waiting): the RAVEFORM word over a line that fills with the bake.
+    static void loadingTrampoline(void* self, float done);
+    void loadingFrame(float done);
+    u64 loadingStartNs_ = 0;
+    float loadingShown_ = 0.0f;
     // M2 audio end
     VectorFont font_;
     DevOverlay overlay_;

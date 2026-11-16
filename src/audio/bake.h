@@ -62,6 +62,9 @@ public:
     u32 count() const { return count_; }
     u64 bytes() const { return bytes_; }
     double bakeSeconds() const { return bakeSeconds_; }
+    // 2026-11-16 (the low end): how far bake() has gone, 0..1, by its sections' shares of the time on a Cortex-A53. Safe to
+    // read on another thread while bake() runs (the first launch's loading screen).
+    float bakeShare() const;
 
     // Lookups (cheap, audio-thread safe: read-only after bake). M5: a later Track's kit baked behind the game is empty (no
     // sound) until it is there.
@@ -101,6 +104,7 @@ private:
     u32 count_ = 0;
     u64 bytes_ = 0;
     double bakeSeconds_ = 0.0;
+    std::atomic<u32> bakeStep_{0};  // bake()'s sections finished (bakeShare)
     DrumKit kits_[MusicData::kMaxTracks][MusicData::kMaxVariants];
     std::atomic<bool> kitReady_[MusicData::kMaxTracks] = {};  // M5: baked (the audio thread may play it)
     i32 clap_ = -1, snare_ = -1, shaker_ = -1, pulse_ = -1, impact_ = -1;

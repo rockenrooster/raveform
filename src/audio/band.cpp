@@ -128,7 +128,26 @@ bool Band::init(const AudioArgs& args, const BandDefaults& defaults, AudioDevice
             // away), then cached.
             i32 first = args.track[0] ? music_->trackIndex(args.track) : -1;
             if (first < 0) first = bench && !game_ && defaults.benchTrack > 0 ? static_cast<i32>(defaults.benchTrack) - 1 : 0;
-            if (!bank_->bake(*music_, rate_, true, static_cast<u32>(first < static_cast<i32>(music_->trackCount) ? first : 0))) return false;
+            const u32 firstTrack = static_cast<u32>(first < static_cast<i32>(music_->trackCount) ? first : 0);
+            if (defaults.waiting) {
+                // 2026-11-16: on a worker, the app drawing its loading screen meanwhile (BandDefaults::waiting).
+                std::atomic<bool> baked{false};
+                bool bakedOk = false;
+                std::thread worker([&] {
+                    bakedOk = bank_->bake(*music_, rate_, true, firstTrack);
+                    baked.store(true, std::memory_order_release);
+                });
+                u32 frames = 0;
+                while (!baked.load(std::memory_order_acquire)) {
+                    defaults.waiting(defaults.waitingUser, bank_->bakeShare());
+                    ++frames;
+                }
+                worker.join();
+                if (!bakedOk) return false;
+                RF_LOG("audio: the loading screen drew %u frames while the one-shots were baked", frames);
+            } else if (!bank_->bake(*music_, rate_, true, firstTrack)) {
+                return false;
+            }
             std::snprintf(cachePath_, sizeof cachePath_, "%s", cache);
             cacheKey_ = key;
             bakeThread_ = std::thread([this] {

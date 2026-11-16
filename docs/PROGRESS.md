@@ -4,6 +4,22 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-16, the first launch shows a loading screen, not a black one
+
+The owner, after build 340's first launch on the Fire 7: the screen stayed black for about 13 s. With no cache the band bakes
+its one-shots before the first frame (`Band::init`: 460 sounds, 1.7 s on the Moto, 12.8 s on the Fire's Cortex-A53s; the later
+Tracks' kits and risers already came behind the game). Now, when the app gives `BandDefaults::waiting`, that bake runs on a
+worker and the game thread draws `App::loadingFrame` about once a refresh: the RAVEFORM word in the title's colours (white
+through the palette accent, in the scene, so it blooms), a 600 px line under it filling with the bake (`SampleBank::bakeShare`:
+its six sections weighted by their time on the Fire, the fill eased, never backwards) and a playhead pulsing at 120 BPM, and
+`TUNING UP`; Track 1's palette and background, fading in over half a second. Events are pumped (the lifecycle watch runs); with
+no surface (in the background) it waits a frame.
+
+Measured: on the Fire (dev build, first launch) 851 frames drawn over the 14.2 s bake (it took 12.8 s with the game thread idle),
+then the notice; on this PC 57 frames over 0.9 s. The baked cache is byte-identical to the one baked before the change
+(SHA-256 compared), and the cache's later starts are unchanged (0.1 s on the Fire). `scripts\test.ps1` passes. Picture:
+`captures\fire\loading_screen_fire.png`. The loading screen is not in `design/screens.md` (the lead's file).
+
 ## 2026-11-16, the low end: an Amazon Fire 7 (2022)
 
 The owner added a low-end tablet over wireless debugging: "see if anything can be done for optimization". It is an Amazon Fire 7

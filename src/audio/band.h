@@ -80,6 +80,11 @@ struct BandDefaults {
     u32 benchTrack = 0;         // bench_*: this Track (1-based; the palette's), 0 = the first
     bool game = false;          // M3: the game (play, bench_play, bench_stress): conductor mode, held in Groove,
                                 // the game sets fire, intensity and the effects
+    // 2026-11-16 (the low end): with no cache the one-shots are baked before the band can play (1.7 s on the Moto, 13 s on a
+    // Fire 7). Given this, the bake runs on a worker and init() calls it about once a frame with the share done, so the app
+    // draws instead of showing a black screen; without it init() bakes on the calling thread.
+    void (*waiting)(void* user, float done) = nullptr;
+    void* waitingUser = nullptr;
 };
 
 class Band final : public audio::CommandSink {

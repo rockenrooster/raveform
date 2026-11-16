@@ -270,6 +270,8 @@ bool App::init() {
     bandDefaults.pictures = pictureRun;
     bandDefaults.benchTrack = palette_->track;
     bandDefaults.game = gameScenario;
+    bandDefaults.waiting = &App::loadingTrampoline;  // the first launch's bake: a loading screen, not a black one
+    bandDefaults.waitingUser = this;
     if (!band_.init(args_.audio, bandDefaults, &audio_)) return false;
     if (std::strcmp(args_.scenario, "audio_test") == 0 || std::strcmp(args_.scenario, "sync") == 0) {
         audioScene_.init(std::strcmp(args_.scenario, "sync") == 0 ? AudioScene::Kind::Sync : AudioScene::Kind::AudioTest, band_,
@@ -1748,6 +1750,68 @@ void App::reportBench() {
 }
 
 // M2 audio begin
+void App::loadingTrampoline(void* self, float done) { static_cast<App*>(self)->loadingFrame(done); }
+
+void App::loadingFrame(float done) {
+    SDL_PumpEvents();  // the event watch keeps the lifecycle (a trip to the background drops the surface: no frame then)
+    FrameDraw draw;
+    if (!renderer_.beginFrame(draw)) {
+        SDL_Delay(16);
+        return;
+    }
+    const u64 now = nowNs();
+    if (!loadingStartNs_) loadingStartNs_ = now;
+    const float t = static_cast<float>(nsToSec(now - loadingStartNs_));
+    const VkExtent2D logical = renderer_.swapchain().logical;
+    const float w = static_cast<float>(logical.width), h = static_cast<float>(logical.height), s = h / 1080.0f;
+    const Palette* pal = palette_;  // the run starts on Track 1: its palette (First Light, Ultraviolet)
+    for (u32 i = 0; i < palettes_.count; ++i)
+        if (palettes_.list[i].track == 1) pal = &palettes_.list[i];
+    const Vec3 white{1.0f, 1.0f, 1.0f};
+    const Vec3 accent = pal->accent;
+    // Fades in over half a second (a fast bake shows a flicker of it at most).
+    const float in = clampf(t / 0.5f, 0.0f, 1.0f);
+
+    // The word, the title's colours: white at the top through the accent to the baseline, in the scene so it blooms.
+    const char* word = "RAVEFORM";
+    const float cap = 96.0f * s;
+    const float wordW = font_.measure(TextStyle{cap}, word);
+    font_.drawField(draw.scene, Vec2{0.5f * (w - wordW), 0.5f * h - cap - 34.0f * s}, cap, 3.2f * s, white * (1.4f * in),
+                    mix(white, accent, 0.5f) * (1.3f * in), accent * (1.6f * in), word);
+
+    // The line fills with the bake (eased, never backwards); a playhead at its end pulses on a 120 BPM beat.
+    loadingShown_ += (clampf(done, 0.0f, 1.0f) - loadingShown_) * 0.12f;
+    const float lineW = 600.0f * s, y = 0.5f * h + 46.0f * s, x0 = 0.5f * (w - lineW), head = x0 + lineW * loadingShown_;
+    draw.scene.line(Vec2{x0, y}, Vec2{x0 + lineW, y}, 1.0f * s, white * (0.10f * in), white * (0.10f * in), 0);
+    if (head > x0 + 0.5f) draw.scene.line(Vec2{x0, y}, Vec2{head, y}, 1.6f * s, accent * (0.5f * in), accent * (1.7f * in), 0);
+    const float beat = std::fmod(t * 2.0f, 1.0f);  // 120 BPM
+    const float pulse = std::exp(-beat * 5.0f);
+    draw.scene.line(Vec2{head, y}, Vec2{head, y}, (3.5f + 3.0f * pulse) * s, white * ((1.4f + 1.6f * pulse) * in),
+                    white * ((1.4f + 1.6f * pulse) * in), kDisc);
+
+    TextStyle caption;
+    caption.capHeight = 18.0f * s;
+    caption.intensity = 0.75f * in;
+    const char* tuning = "TUNING UP";
+    font_.draw(draw.scene, Vec2{0.5f * (w - font_.measure(caption, tuning)), y + 36.0f * s}, caption, tuning);
+
+    Background bg;
+    bg.edge = pal->bg0 * look_.bgLevel;
+    bg.centre = pal->bg1 * look_.bgLevel;
+    bg.cx = look_.bgCentre[0];
+    bg.cy = look_.bgCentre[1];
+    bg.radius = look_.bgRadius;
+    bg.power = look_.bgPower;
+    renderer_.setBackground(bg);
+    FrameParams params;
+    params.look = variant_;
+    params.bloom = args_.bloom;
+    params.vignette = true;
+    params.accent = accent;
+    params.dtSeconds = 1.0f / 60.0f;
+    renderer_.endFrame(draw, params, false);
+}
+
 bool App::openAudio() {
     audio_.setMuted(args_.audio.silent);  // --silent: the PC's runs make no sound (zeroed at the device)
     if (band_.active()) return audio_.open(Band::render, &band_);

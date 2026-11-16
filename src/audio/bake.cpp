@@ -1075,8 +1075,17 @@ i32 SampleBank::inhale(u32 track, u32 steps32) const {
     return inhale_[track][steps32];
 }
 
+float SampleBank::bakeShare() const {
+    // Each section's share of the bake on a Fire 7's Cortex-A53 (kits and drums 2.9 s, swells and risers 4.0, pitched effects
+    // 1.4, the other effects 1.3, recipes 1.7, inhales 1.4), summed: the share done once that many sections have finished.
+    static constexpr float kDone[7] = {0.0f, 0.23f, 0.54f, 0.65f, 0.76f, 0.89f, 1.0f};
+    const u32 s = bakeStep_.load(std::memory_order_relaxed);
+    return kDone[s < 6 ? s : 6];
+}
+
 bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers, u32 firstTrack) {
     release();
+    bakeStep_.store(0, std::memory_order_relaxed);
     const auto t0 = std::chrono::steady_clock::now();
     const double sr = sampleRate;
     u32 n = 0;
@@ -1095,6 +1104,7 @@ bool SampleBank::bake(const MusicData& music, u32 sampleRate, bool deferRisers, 
         const auto now = std::chrono::steady_clock::now();
         sectionMs[k] += std::chrono::duration<double, std::milli>(now - lap).count();
         lap = now;
+        bakeStep_.store(k + 1, std::memory_order_relaxed);
     };
     for (auto& k : kitReady_) k.store(true, std::memory_order_relaxed);
     for (u32 t = 0; t < music.trackCount; ++t) {
