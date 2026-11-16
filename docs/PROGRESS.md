@@ -131,6 +131,118 @@ Measured: the 5-minute four-bot net soak, versus against team: both pass, census
 error RMS 1.70 wu (team 1.56), p95 2.0 (2.25), max 165 wu (85: a shoved or knocked-out ship's moment); downstream 268 kbps at most
 (264). The set's determinism hashes are unchanged.
 
+### Part 7, the parts' open items (2026-11-16)
+
+The owner's `/goal finish the plan`: every part's "Not done" list worked through, the plan's exits measured. Commits 464cb30 to the
+last of the day.
+
+Built:
+- **The moments** (MODES_PLAN 2.10, `--mode <id>:<track>:<moment>[:hold]`): `dropN` / `waveN` (a timed form's Nth Drop; held, the
+  section counts on in its last half and the run never ends), `actN` (HEADLINERS's act N, its boss's fight; held, the boss keeps its
+  health), JAM's `drop` (DROP on the first bar; held, the Drop never ends and the room's DROP and Track pads wait) and `all` (every
+  layer on, the mixer locked). Solo, the fast-forward runs to the moment; **a networked host** (`--host --loopback-bots`) sends it in
+  the run's setup (`RunSetup::moment`, the setup's flags bits 2-7: protocol `0x52460512`), so every world of the room starts at that
+  section, held, with no fast-forward. `--coop-mode <id>:<track>:dropN[:vs]` does the same for a room's runs (tests).
+- **A timed run's count**: the result (or the podium) now arrives on the bar line after the count's bar (README.md 6; it came at
+  the last downbeat and hid the count in the game, the pictures having shown it without the flow). **The run bar** under the goal
+  line (the form's sections at 0.3, Drops 0.6, a white dot; blinking on the beat in the last eight bars, `LAST CALL` under it in the
+  mode's colours for two).
+- **The band** holds the progression on one chord (`Band::holdChord`, sound.md "What the band needs" 3; the audio suite's test).
+  **sound.md "Every mode"**: the name card's opening sweep and stab, LAST CALL's two bells, the last bar's roll, riser and impact, the
+  last downbeat's low-pass, the knock-out's falling glide, BACK IN's ticks, the come-back's sweep and Cell note, the load-in's bed (kick
+  and hats, a layer every four landings); ONE TRACK's outro (the gong, the home chord held, the lead off, TRACK COMPLETE's chord an
+  octave up, the reversed cymbal into the result); HEADLINERS's act card (the elite's fifth, a bell a fallen act) and HEADLINERS
+  COMPLETE (gong, stab at 1.2, the title's eight); the haptics table.
+- **FULL BLAST**: the torrent (the Riffs at 0.8 with their rings, the 700 wu ring), nothing hostile in the opening's first three bars,
+  each wave's reversed cymbal and stab, **the power cut** (the music behind the pause's low-pass, the band row at 0.3, `BACK IN n`;
+  back: a ring 90 to 600 wu, the row flashing in turn, the Drop's impact), **the load-out** (the band row's icons out of the ship a
+  sixteenth at a time, the halo's arcs last, the score's digits rolling, the chirps down into the back chord), the result's nine
+  sections with the waves named, `TONIGHT'S BAND`, the top word in the mode's colours, versus's underdog Chain not halved by a hit.
+- **The podium on the music** and **LOBBY** (`Session::backToLobby`: every device back in the room's lobby with its seats, crowns
+  and mode; `--coop-back-lobby` taps it after a rematch).
+- **HEADLINERS**: the bill (ten stars under the act's card); **versus's damage race** (each act to its boss's most damage as the host
+  counts it, arena operations 11 and 15; the race bar under the boss's; `ACT n: Pn` with its bell and lead; the underdog's +20% an act
+  behind; a tie on acts to the bill's damage leader).
+- **TRACERS**: a pop's bodies staggered from the line inward over a thirty-second, the edges' glow, the rig's beams (x 5 and up, FULL
+  HOUSE's chase), FULL HOUSE's flash and confetti, the pop's sound by its bonus, ECHO's chord, the floor going dark, the lights going
+  out, a cut, a spin-out, the count's chirp a column, the three first-run hints.
+- **SONGLINE**: the gold gate's Boost icon, a step down's ring shattering outward, the underdog's wider ring, another player's gates in
+  its own voice. **JAM**: the mixer pads' live signal lines, the walls swelling on the kick, the background breathing with BASS, the
+  dancers standing still with the kick off, SOUND naming the next sound, the shelves named (`WEAPONS 1 OF 3`, `RIFFS 2 OF 2`), EMPTY's
+  icons flying back to the pads, a hold's two rising notes, the pause's `LEAVE` (a full control). **A versus match's count** side by
+  side in the players' colours (POP-OFF's chirps by tens).
+- **Every way in and out**: `--flow-test` (`game/play_flow_m8.cpp`) drives the game's own screens by taps on their controls (found by
+  label where the screen drew them) and the pause key, mode after mode; `scripts\flow-m8.ps1 -Part solo|room|all` adds the room's ways
+  (two processes a room on this PC).
+
+Measured:
+- **Every way in and out** (`scripts\flow-m8.ps1`): solo, 52 checks and no failure (the seven modes: the title's PLAY, MODES's PLAY with
+  the row stepped to the mode and a Track chosen, the pause's RESTART and QUIT RUN (JAM's LEAVE), the result's RETRY, ONE TRACK's NEXT
+  TRACK, the result's HOME; HEADLINERS's runs played to the tenth act's fall, 456 and 542 s); the rooms, two processes each, every one
+  passing: TRACERS, SONGLINE, FULL BLAST and POP-OFF in VERSUS (START, the match to its podium, REMATCH, the second podium, LOBBY: both
+  peers back in the lobby), TRACERS and FULL BLAST in TEAM (START, the run's end, the host's RETRY, the second end).
+- **MODES_PLAN 7's benchmark matrix with the moments held** (the Moto, shared, tier low, 60 s; the panel's grade, Swappy's statistics):
+
+  | Moment | Frames, missed | GPU p50 / p95 / max (ms) | Notes |
+  |---|---|---|---|
+  | FULL BLAST, wave 4 held (`blast:10:wave4:hold`, warm-up 3 s) | 3,594, 0 | 13.34 / 14.55 / 16.05 | 619 bodies (913 at most), 450 shots alive, none capped; main thread p99 7.8 ms |
+  | The same hosting three bots (warm-up 12 s) | 3,589, 0 (5 late on the CPU side, 0.14%) | 12.63 / 14.38 / 15.90 | 1,313 bodies at most, 554 shots; main thread p99 10.6 ms: the contract holds, no fallback needed |
+  | TRACERS, the last Drop held, four players | 3,594, 0 | 13.09 / 13.96 / 15.24 | 200 bodies (the Stage's cap) |
+  | SONGLINE, the last Drop held, four players | 3,594, 0 | 13.37 / 14.47 / 15.38 | 619 bodies at most |
+  | JAM, the Drop held, `--loadout max` | 3,594, 0 | 13.56 / 14.44 / 15.23 | (a first try lost its Drop to the wanderer's Track pad: now a held Drop keeps its form) |
+  | TRACERS, four players, on a tablet (1920 x 1200) | 3,628, 0 | 13.99 / 14.48 / 16.17 | the Stage at the tablet's zoom |
+
+  No heap allocation in any measured window.
+- **HEADLINERS's race** (MODES_PLAN part 2's exit: `--net soak --minutes 9 --players 2 --mode headliners --versus --policies
+  play,assist`, three seeds each way; acts won by the aiming bot against the assist bot, every peer counting the same): help on 8-2,
+  6-4, 3-7 (17 to 13); help off 6-4, 3-7, 7-3 (16 to 14). The two bots are close; the help moved one act in thirty. Every run reached
+  act 10, census clean.
+- **FULL BLAST's runs on all twelve Tracks** (`--sim mode --blast`): every run ends on its 84th bar, no pool refused anything; the
+  child-like bot on Track 10, five seeds: no knock-out (the bar: three).
+- **The soaks**: FULL BLAST in co-op and versus with four players (3 minutes), TRACERS, SONGLINE and JAM in versus (1.5 minutes),
+  JAM's room (2 minutes): pass, census 0 mismatches. The unit suites: sim 6,201 checks, net 129,669, audio 2,822 (the held chord's test
+  new), no failure. **THE SET's determinism hashes are unchanged** (careful `f8d9e8972c671db2`, careless `6d9e281fa6d95425`).
+- **Pictures** (`review-m8.ps1`, `review-m4b.ps1`): `m8_bl_*` (part 3: the torrent, the waves, LAST CALL, the power cut and back, the
+  load-out, the result), `m8_card_act3`, `m8_podium_table`, `m8_podium`, `m8_lobby_back`, `m8_race`, `m8_act_won`, `m8_modes_bonus`,
+  `m8_jam_pad_states`, `m8_jam_empty`, `m8_sl_gold_gate`, `m8_sl_streak_1..4`, `m8_sl_bend_back`, `m8_sl_race_4`, `m8_tr_lights_out`,
+  `m8_tr_turf_4`, the strips onto each new card `m8_t_mode_<mode>`: no layout warning (rendered with the dev build; the Debug build's validation not rerun for these).
+- **Part 1's two-phone check** (`coop-phones.ps1 -Serials moto,moto2 -HostArgs '--coop-mode one:3:vs --coop-back-lobby'`, the bots
+  playing both seats, `captures\m8\phones\085215_m8_part1_vs\`): ONE TRACK on Reef in VERSUS, two matches (TRACK COMPLETE at 79 and
+  84 s, the podium on both phones each time), the host's REMATCH between them, LOBBY after the second: both phones back in the room's
+  lobby with its crowns `1 1 0 0` (each seat won one). The rankings each phone logged on its bar lines: the same on 96 of the 99 bar
+  lines both logged; the three that differ are early bars of a run with the two scores a few points apart (a phone counts the other's
+  score as it last heard it). The crown and the underdog (the host's word) the same on every one of the 99 within a bar (79 on the
+  very bar line).
+- **The sanitizers** again over the changed code (`sanitize.ps1 -Only tests,modes`: the four unit suites, determinism, a bot's run of
+  each mode and four of their rooms): all clean.
+
+Decided alone:
+- **A timed run's result waits for its count**: one bar after the last downbeat, on the bar line, as the page says; the run behind
+  goes on (its bodies popped, the ship still flying) through the count.
+- **LAST CALL** is the run bar's (under it, two bars, the mode's colours), as screens.md has it, not the goal line's (which keeps its
+  count).
+- FULL BLAST: the torrent's Riff rings go to 220 wu and the power back's to 600 (the page names the 600 and the closing 700 only);
+  the Trios close at a timed run's end (nothing left to choose in the count); the opening's quiet is its first three bars.
+- The podium's table is 1,320 px wide (at 840 the names and the counts overlapped); a seat named for itself (`P1`) is named once.
+- HEADLINERS's race: an act nobody hurt goes to nobody; the clients' race bars take the host's shares once a beat; a tie on acts at
+  the end goes to the bill's damage leader when it shares the top; the underdog's bonus is weighed on the shooter's own device (its
+  claims carry it, as armour's share does).
+- TRACERS: a pop's bodies leave at the pop and their kill flashes follow by up to a thirty-second (outermost first).
+- JAM: the shelves' names are WEAPONS (shelves 1-3), RHYTHM (4), UTILITY (5), RIFFS (6-7), BOOSTS (1-3) (the page names two); the
+  dancers stand still with the kick off (their timers run on); a held Drop (the benchmark's moment) refuses DROP and the Track pads.
+- **A networked moment starts the run at its section** (the ones before skipped) rather than fast-forwarding the host alone; its
+  crowd fills during a 12 s warm-up (the plan's 3 s is for the solo fast-forward, which arrives with the crowd).
+- `--coop-back-lobby` taps LOBBY after a rematch, so one room shows START, REMATCH and LOBBY.
+- The flow test runs the screens on the simulated clock (a step a frame) and saves nothing; its runs are fast-forwarded to their
+  ends with hits costing nothing (the ends are the screens' business here, not the fights').
+
+Not done (what the plan still has that this pass did not reach): the pictures `m8_ring_x8`, `m8_duet`, `m8_cut`, `m8_spin` and the
+nine Boosts' moments on the Stage (the sim suite tests a duet ring, a cut and a spin-out; their pictures need a second ship flown by
+script), part 1's `m8_vs_*` and `m8_podium_2/4/draw` names (the podium's pictures here are two-seat POP-OFF), a duet ring's two leads (the pop's chord plays), the stab as a triad for a pop of
+x 2 (the band's stab takes the bar's chord or given notes, not its triad: it plays the chord at 0.6); the Spark's pad patch (the
+owner's fallback, by ear); `design/screens.md` taking the built parts of `design/modes/screens.md` (the lead's file). **Nobody has
+played the modes by hand**: the owner's play is the gate the plan gives each part.
+
 ### Part 7: the whole (2026-11-16)
 
 Done: the cards' dev-only line gone (every mode built: the release build shows all seven, TEAM / VERSUS in the room's MODES);
@@ -170,6 +282,7 @@ Not done in part 7: every way into and out of each mode driven by hand on a devi
 MODES, RETRY, REMATCH, NEXT TRACK, the room, the pause's RESTART; the four-phone rooms and the pictures cover the room's and the
 result's), the transitions' strips for the new modes' cards (part 0's strips cover the frame), a haptics pass beyond the pulses each
 part added. **M8 is built: the line-up's seven modes, co-op and versus in each, in release builds.**
+Since done (part 7, the parts' open items, above): every way in and out, driven (`--flow-test`, `scripts\flow-m8.ps1`); the haptics of sound.md; the strips onto each new card (`m8_t_mode_<mode>`). Still: nobody has played the modes by hand.
 
 ### Part 6: JAM and POP-OFF (2026-11-16)
 
@@ -228,6 +341,7 @@ Not done in part 6: the moments (`--mode jam:12:drop:hold`), the pads' live sign
 background's breathing with the bass, `EMPTY`'s flight of icons back to the pads, the Trio-style two rising notes while DROP fills,
 the dancers standing still with the kick off (they move as always), the SOUND pad's name of the next sound, the shelf's
 label naming its kind (`WEAPONS 1 OF 3`: here `SHELF 2 OF 7`), POP-OFF's side-by-side count.
+Since done (part 7's open items): all of it; the moment's JAM Drop, held, is benchmarked on the Moto.
 
 ### Part 5: SONGLINE (2026-11-16)
 
@@ -302,6 +416,7 @@ Not done in part 5: the moments (`--mode songline:10:drop2:hold`: the benchmark 
 these eight (`m8_streak_<1..4>`, `m8_gold_gate`, `m8_race_4`, `m8_bend_back`), the streak's ring shattering outward on a miss (a
 spark burst stands in), the gold gate's Boost icon (a glow stands in), the underdog's wider ring drawn round the ship, the versus
 count side by side, a remote player's gate notes in its voice on this device, the Spark's pad patch as the owner's fallback.
+Since done (part 7's open items): the moments (held, four players: benchmarked), `m8_streak_<1..4>` as `m8_sl_streak_<1..4>`, `m8_gold_gate`, `m8_race_4`, `m8_bend_back`, the ring shattering, the gold gate's icon, the underdog's ring, the versus count, remote gate notes. Still: the Spark's pad patch (the owner's fallback, by ear).
 
 ### Part 4: the Stage, TRACERS and the two bonus Tracks (2026-11-16)
 
@@ -376,6 +491,7 @@ beyond these (`m8_ring_x8`, `m8_lights_out`, `m8_duet`, `m8_turf_4`, `m8_cut`, `
 stagger over a thirty-second, the edges' glow pools, the rig's beams (x 5 and FULL HOUSE), FULL HOUSE's flash and confetti, the
 sounds' exact notes (the pop's chord by its note count, the count's chirp a column, the gels' own), the HUD's first-run hints, the
 versus count at the end (the sweep's tally side by side), the tablet's and the four-player benchmarks beyond the one above.
+Since done (part 7's open items): the moments (held, four players, the Moto and a tablet), `m8_lights_out`, `m8_turf_4`, the pop's stagger, the edges' glow, the rig's beams, FULL HOUSE's flash and confetti, the sounds by the bonus, ECHO, the lights, the cut and the spin, the count's chirps, the three hints, the versus count. Still: `m8_ring_x8`, `m8_duet`, `m8_cut`, `m8_spin` and the nine Boosts' pictures (the sim suite tests a duet, a cut and a spin-out), the duet ring's two leads.
 
 ### Part 3: FULL BLAST (2026-11-16)
 
@@ -396,6 +512,7 @@ Measured (`--sim mode --blast --seeds 3`, the assist bot): every Track's run end
 Not done in part 3: the torrent's look beyond the load-in (the Riffs drawn larger, the 700 wu ring), the power cut's look and sound,
 the wave names' sound, LAST CALL's run bar, the count (the load-out), the result's nine-section bar and TONIGHT'S BAND, the Moto
 benchmarks (wave 4 held, solo and hosting three bots), versus's underdog rule (a hit does not halve its Chain).
+Since done (part 7's open items): all of it (the benchmarks held for 60 s, solo and hosting three bots).
 
 ### Part 2: HEADLINERS (2026-11-16)
 
@@ -416,15 +533,18 @@ TRACK (the same question for the owner: the kit's size).
 
 Not done in part 2: versus's damage race (each act to whoever did the boss the most damage, the damage bar under the boss's, `ACT
 3: P2`, the underdog's damage bonus), the bill of ten stars under the act's card, the card's and HEADLINERS COMPLETE's sounds.
+Since done (part 7's open items): all of it; the exit's race measured (the aiming bot against the assist bot, help on and off).
 
 Not done in part 1 yet: the podium's arrival on the music (the table counting up, the winner named on the next bar line with its
 bell and confetti) and LOBBY (back to the lobby with the room standing: the session has no way back to its lobby yet); the
 two-phone versus check; the load-in's bed layers (the engine has no bed mask yet: `sound.md`'s `setBedMask`) and the
 outro's held chord and reversed cymbal (the band plays a Break under it).
+Since done (part 7's open items): the podium on the music, LOBBY, the load-in's bed, the outro's held chord and reversed cymbal; the two-phone check (part 7's open items, above).
 
 Not done in part 0: `m8_modes_bonus` (the bonus Tracks come with part 4: the strips stop at ten chips; TRACERS's and JAM's homes
 fall back to Zenith and Arcadia); the crowns' picture (nobody wins a match until versus, part 1); the built parts of
 `design/modes/screens.md` are not moved into `design/screens.md` (`design/` is the lead's).
+Since done (part 7's open items): `m8_modes_bonus`; the crowns in the lobby (`m8_lobby_back`). Still: `design/screens.md` (the lead's file) does not take the built parts of `design/modes/screens.md`.
 
 ## 2026-11-15, a crowded Shard field merges (no free Magnet Storm)
 
