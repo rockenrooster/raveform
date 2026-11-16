@@ -411,7 +411,9 @@ void applyLevers(World& w) {
 // stack of Overcharge: kills a minute in Track 3's second Groove, and seconds to kill the Choir from its start (no crowd). Each
 // should be worth 0.6 to 1.5 of Overcharge in what it is made for (here: the better of the two). And the Downbeat Cannon: its
 // two ingredients at their caps, with and without the Fusion.
-int runPicks(const SpeciesTable& species, u32 seeds, u64 seed0) {
+// --policy assist (2026-11-15, the owner's "playable by 5-6 year olds"): the same table for a player who only lets the auto-aim
+// assist fire (the careful bot's movement), so each pick's worth is the one a young player gets.
+int runPicks(const SpeciesTable& species, u32 seeds, u64 seed0, Bot::Policy policy) {
     auto* world = new (std::nothrow) World;
     if (!world) return 2;
     struct Res {
@@ -420,7 +422,7 @@ int runPicks(const SpeciesTable& species, u32 seeds, u64 seed0) {
     };
     const auto setup = [&](SimRunner& runner, u64 seed, const u8* ups, u32 nUps, u8 fusions, bool fight) {
         world->init(&species);
-        runner.start(world, seed, fight ? Spawner::Mode::Off : Spawner::Mode::Slice, Bot::Policy::Play, 120.0f, true);
+        runner.start(world, seed, fight ? Spawner::Mode::Off : Spawner::Mode::Slice, policy, 120.0f, true);
         World& w = *world;
         w.rules().frozenLoadout = true;
         w.rules().noPace = true;
@@ -482,8 +484,9 @@ int runPicks(const SpeciesTable& species, u32 seeds, u64 seed0) {
     const Res base = measure(refUps, 2, 0);
     const Res oc = measure(ups, withRef(kOvercharge, 1), 0);
     const Res sp = measure(ups, withRef(kSplit, 1), 0);
-    std::printf("[picks] reference (Split 1, Double-Time 1): %.0f kills a minute, the Choir in %.1f s (%u of %u); + Overcharge: %.0f, %.1f s; + Split: %.0f, %.1f s\n",
-                base.kpm, base.secs, base.won, base.runs, oc.kpm, oc.secs, sp.kpm, sp.secs);
+    std::printf("[picks] reference (Split 1, Double-Time 1; the %s bot): %.0f kills a minute, the Choir in %.1f s (%u of %u); + Overcharge: %.0f, %.1f s; + Split: %.0f, %.1f s\n",
+                policy == Bot::Policy::Assist ? "assist" : (policy == Bot::Policy::Novice ? "novice" : "careful"), base.kpm, base.secs, base.won, base.runs,
+                oc.kpm, oc.secs, sp.kpm, sp.secs);
     std::printf("[picks]   (each pick's gain over the reference: in kills a minute against a stack of Split's, in the Choir's seconds against a stack\n"
                 "[picks]    of Overcharge's; the better of the two; band 0.60-1.50, ea472ab)\n");
     u32 outside = 0;
@@ -1326,7 +1329,7 @@ int simHeadlessMain(int argc, char** argv) {
         code = runCrowd(*species, seeds, minutes > 0.0f ? minutes : 30.0f, seed, policy, god, trace);
         printWellProbe();
     } else if (std::strcmp(mode, "picks") == 0) {
-        code = runPicks(*species, seeds, seed);  // M5 part 7: the no-trap table
+        code = runPicks(*species, seeds, seed, policy);  // M5 part 7: the no-trap table (--policy assist: auto-aim only)
     } else if (std::strcmp(mode, "stress") == 0) {
         code = runSoak(*species, seconds > 0.0f ? seconds : (minutes > 0.0f ? minutes * 60.0f : 120.0f), seed, bpm, true, policy);
     } else {

@@ -4,6 +4,35 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, the upgrades for a young player (the owner: "lets look at the upgrades next")
+
+`--sim picks --policy assist` (new): the no-trap table for a player who lets the auto-aim fire (the careful bot's feet). Both
+tables on 8 seeds; the boss figure (seconds to kill the Choir alone, against an Overcharge stack's gain) is the one to read: the
+crowd figure is noise for the assist (a stack of Split measured 1,488 to 1,169 kills a minute) and good to +-0.5 at best for the
+careful bot.
+
+| On the Choir (gain / Overcharge's) | Careful (aims) | Assist (auto-aim) |
+|---|---|---|
+| Reference, Split 1 + Double-Time 1 | 22.2 s | 29.2 s |
+| Split | 1.00 | 0.99 |
+| Double-Time (its 2nd rank) | 0.57 | **0.06** |
+| On-Beat Crit, Crescendo, Heavy Step | 0.49, 0.59, 0.85 | 0.73, 0.77, 0.65 |
+| Seeker | **-0.35** | **-0.42** |
+| Orbitals | **-0.49** | **-0.84** |
+| Afterparty (the Surge, so not in this fight) | 0 (crowd 1.33) | 0.03 |
+| Downbeat Cannon | 1.45 | 1.42 |
+
+- **Double-Time's second rank gives the auto-aim nothing.** The assist fires every other step of the grid and always on the
+  off-beat's (H3), so 1/16 is 2 shots a beat, 1/16 triplet 4 and 1/32 also 4. The same flat top takes the Drop's second Surge
+  gear and Afterparty from an auto-aim player. Rule in three places: `World::spawnShots`, `Band::computeShots`, the engine's lead.
+- **Seeker steers into armour on a boss**: `steerShots` curves a shot to the nearest part that can be hurt at all, usually a
+  silent hood or a closed pillar (a quarter), not the weak point the shot was aimed at.
+- **Orbitals** lengthen the Choir for both bots; not traced (no damage path slows a boss: likely the bots' feet, the ring taking
+  bullets off them).
+- **Not offered by the numbers**: Afterimage, Reserve and Shockstep do nothing for a player who never dashes (the child-like
+  bot); Nova Stock and Last Light are worth more than they look with Auto Nova on (every stocked Nova is a saved last cell);
+  Crescendo resets on every hit, so a young player rarely has it.
+
 ## 2026-11-15, the Hive's darts on co-op clients
 
 The default seed's clean loopback soak had failed by a hair (on-screen enemy error 12.10 wu RMS against 12), nearly all of it the
