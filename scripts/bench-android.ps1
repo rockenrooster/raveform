@@ -343,7 +343,7 @@ for ($attempt = 1; $attempt -le $Attempts -and -not $result; ++$attempt) {
     $launched = Get-Date
     $appPid = Start-RfApp -Serial $Serial -AppArgs $runArgs
     if (-not $appPid) { throw "RAVEFORM did not start on $Serial" }
-    $loadFile = Join-Path $env:TEMP ("rf-load-{0}-{1}.txt" -f $Serial, $stamp)
+    $loadFile = Join-Path $env:TEMP ("rf-load-{0}-{1}.txt" -f (Get-RfDeviceId $Serial), $stamp)
     $sampler = if ($NoLoad) { $null } else { Start-RfSampler -AppPid $appPid -MaxSeconds ([int]($Warmup + $Seconds + 60)) -OutFile $loadFile }
 
     # What the panel scans out at, read during the warm-up (dumpsys display is not free).
@@ -395,7 +395,7 @@ for ($attempt = 1; $attempt -le $Attempts -and -not $result; ++$attempt) {
         Start-Sleep -Seconds 20
         continue
     }
-    $parsed | Add-Member -NotePropertyName serial -NotePropertyValue $Serial
+    $parsed | Add-Member -NotePropertyName serial -NotePropertyValue (Get-RfDeviceId $Serial)
     $parsed | Add-Member -NotePropertyName attempt -NotePropertyValue $attempt
     $parsed | Add-Member -NotePropertyName app_args -NotePropertyValue $runArgs
     $parsed | Add-Member -NotePropertyName heat_before -NotePropertyValue $before
@@ -415,7 +415,7 @@ if (-not $result) { throw "no valid benchmark on $Serial after $Attempts attempt
 
 $dir = Join-Path $RF_ROOT 'captures\bench'
 New-Item -ItemType Directory -Force $dir | Out-Null
-$file = Join-Path $dir ("{0}-{1}-{2}.json" -f $Serial, $Scenario, $stamp)
+$file = Join-Path $dir ("{0}-{1}-{2}.json" -f (Get-RfDeviceId $Serial), $Scenario, $stamp)
 $result | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 $file
 if (-not $NoLoad -and (Test-Path $loadFile)) {
     Move-Item -Force $loadFile ([IO.Path]::ChangeExtension($file, '.load.txt'))

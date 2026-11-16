@@ -91,7 +91,13 @@ The version is `CMakeLists.txt`'s project VERSION (and `android/app/build.gradle
 `generated/build_stamp.h` (`cmake/build_stamp.cmake`: version, commit, date) and the title screen shows it bottom right.
 
 Desktop exit codes: 0 ok, 1 init failed, 2 bad arguments, 3 validation messages, 4 benchmark aborted,
-5 screenshot failed, 6 `--flow-test` found a way in or out that failed (M8 part 7). Device serials: Moto `ZY22BXMJG3`, OnePlus 12R `a0e622a5`, Galaxy Tab `R5GL362BEHX`.
+5 screenshot failed, 6 `--flow-test` found a way in or out that failed (M8 part 7). Device serials (`$RF_DEVICES` in `env.ps1`): Moto `ZY22BXMJG3` (`moto`), a second Moto `ZY22BZ8BDZ`
+(`moto2`), OnePlus 12R `a0e622a5` (`op12r`), Amazon Fire 7 (2022) `GN41WE04450600BJ` (`fire`, over Wi-Fi: below the Moto, the low
+end), three Galaxy Tab A11+ `R5GL362BEHX`, `R5GL362AKGK`, `R5GL362AGPA` (`tablet`: the first attached; `tablet2`,
+`tablet3` the last two by name). `Resolve-RfSerial` takes a
+name or serial to the adb serial: USB first, else wireless debugging (an `ip:port` transport matched by `ro.serialno`, or
+found by `adb mdns services` and connected; the OnePlus is on Wi-Fi: no cable here carries its data). Lock files, captures
+and results are named by the hardware serial (`Get-RfDeviceId`), never by `ip:port`.
 
 ## App arguments (desktop argv; Android: the `args` string intent extra)
 

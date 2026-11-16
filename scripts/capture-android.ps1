@@ -21,7 +21,7 @@ Assert-RfDevice $Serial
 $dir = Join-Path $RF_ROOT 'captures'
 New-Item -ItemType Directory -Force $dir | Out-Null
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-if (-not $Out) { $Out = Join-Path $dir ("{0}-{1}{2}.png" -f $Serial, $stamp, $(if ($InApp) { '-inapp' } else { '' })) }
+if (-not $Out) { $Out = Join-Path $dir ("{0}-{1}{2}.png" -f (Get-RfDeviceId $Serial), $stamp, $(if ($InApp) { '-inapp' } else { '' })) }
 
 if ($InApp) {
     $name = 'rf_inapp.png'

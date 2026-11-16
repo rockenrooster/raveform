@@ -105,17 +105,61 @@ function Invoke-RfAdb {
     & $RF_ADB -s $Serial @Rest
 }
 
-# Known test devices (docs/PLAN.md section 3.2).
+# Known test devices (docs/PLAN.md section 3.2): a name and the hardware serials (ro.serialno) it may be;
+# the first one attached wins.
 $RF_DEVICES = @{
-    moto   = 'ZY22BXMJG3'     # Motorola One 5G Ace, 60 Hz, the performance floor
-    tablet = 'R5GL362BEHX'    # Galaxy Tab A11+, 90 Hz
-    op12r  = 'a0e622a5'       # OnePlus 12R, 120 Hz
+    moto   = @('ZY22BXMJG3')                    # Motorola One 5G Ace, 60 Hz, the performance floor
+    moto2  = @('ZY22BZ8BDZ')                    # a second Motorola One 5G Ace
+    tablet = @('R5GL362BEHX', 'R5GL362AKGK', 'R5GL362AGPA')  # Galaxy Tab A11+ (SM-X230), 90 Hz: any of the three
+    tablet2 = @('R5GL362AKGK')                  # the second and third Galaxy Tab A11+, by name
+    tablet3 = @('R5GL362AGPA')
+    op12r  = @('a0e622a5')                      # OnePlus 12R, 120 Hz (often over Wi-Fi: wireless debugging)
+    fire   = @('GN41WE04450600BJ')              # Amazon Fire 7 (2022, KFQUWI): MT8168, 4x Cortex-A53, Mali-G52 MC1,
+                                                # 1024x600 at 60 Hz, 2 GB, Fire OS 8; over Wi-Fi. Below the Moto: the low end
 }
 
+# The adb serial to use for a device name or hardware serial: attached over USB first, else over Wi-Fi
+# (wireless debugging), where adb names it ip:port or adb-<serial>-xxxx._adb-tls-connect._tcp. A Wi-Fi
+# transport is matched by its ro.serialno; one not connected yet is found by mDNS and connected. An
+# ip:port given directly is returned as is. Nothing found: the first serial (Assert-RfDevice then fails).
 function Resolve-RfSerial {
     param([string]$NameOrSerial)
-    if ($RF_DEVICES.ContainsKey($NameOrSerial)) { return $RF_DEVICES[$NameOrSerial] }
-    return $NameOrSerial
+    if ($NameOrSerial -match ':') { return $NameOrSerial }
+    $wanted = @(if ($RF_DEVICES.ContainsKey($NameOrSerial)) { $RF_DEVICES[$NameOrSerial] } else { $NameOrSerial })
+    $attached = @(& $RF_ADB devices 2>$null | Select-Object -Skip 1 |
+        Where-Object { $_ -match '^(\S+)\s+device$' } | ForEach-Object { ($_ -split '\s+')[0] })
+    foreach ($w in $wanted) { if ($attached -contains $w) { return $w } }
+    $wifi = @($attached | Where-Object { $_ -match '[:]|_adb-tls-connect' })
+    foreach ($w in $wanted) {
+        foreach ($t in $wifi) { if ((Get-RfDeviceId $t) -eq $w) { return $t } }
+    }
+    $mdns = @(& $RF_ADB mdns services 2>$null)
+    foreach ($w in $wanted) {
+        $hit = $mdns | Where-Object { $_ -match "^adb-$([regex]::Escape($w))-\S*\s+_adb-tls-connect\._tcp\s+(\S+)" } |
+            Select-Object -First 1
+        if ($hit -and $hit -match '_adb-tls-connect\._tcp\s+(\S+)') {
+            $addr = $Matches[1]
+            & $RF_ADB connect $addr 2>&1 | Out-Null
+            if ((& $RF_ADB -s $addr get-state 2>$null) -eq 'device') {
+                Write-Host "[device] $w over Wi-Fi at $addr"
+                return $addr
+            }
+        }
+    }
+    return $wanted[0]
+}
+
+# The hardware serial (ro.serialno) behind an adb serial: the name for lock files, captures and results,
+# so a phone has one lock whether it is on USB or Wi-Fi (an ip:port also cannot be a Windows file name).
+$RF_DEVICE_IDS = @{}
+function Get-RfDeviceId {
+    param([Parameter(Mandatory)][string]$Serial)
+    if ($Serial -notmatch '[:]|_adb-tls-connect') { return $Serial }
+    if (-not $RF_DEVICE_IDS.ContainsKey($Serial)) {
+        $id = "$(& $RF_ADB -s $Serial shell getprop ro.serialno 2>$null)".Trim()
+        $RF_DEVICE_IDS[$Serial] = if ($id) { $id } else { $Serial -replace '[^\w.-]', '_' }
+    }
+    return $RF_DEVICE_IDS[$Serial]
 }
 
 # Fails early when the device is not attached (adb waits forever otherwise).

@@ -21,7 +21,7 @@ $Serial = Resolve-RfSerial $Serial
 Assert-RfDevice $Serial
 
 $lockDir = 'D:\Stuff\DevFolder\Android_Games\Raveform\captures\locks'
-$lock = Join-Path $lockDir "$Serial.lock"
+$lock = Join-Path $lockDir "$(Get-RfDeviceId $Serial).lock"
 if (Test-Path $lock) {
     $age = ((Get-Date) - (Get-Item $lock).LastWriteTime).TotalMinutes
     $owner = (Get-Content $lock -Raw).Trim()

@@ -55,7 +55,7 @@ $stuck = @($log -match 'did not release the surface').Count
 $problems = @($log -match 'FATAL|SIGSEGV|SIGABRT|VK_ERROR|\[vulkan| E RAVEFORM')
 $crashes = @(((& $RF_ADB -s $Serial logcat -d -b crash) -match [regex]::Escape($RF_APP_ID)) -match "\b$appPid\b")
 
-$shot = Join-Path $RF_ROOT ("captures\{0}-lifecycle-{1}.png" -f $Serial, (Get-Date -Format 'yyyyMMdd-HHmmss'))
+$shot = Join-Path $RF_ROOT ("captures\{0}-lifecycle-{1}.png" -f (Get-RfDeviceId $Serial), (Get-Date -Format 'yyyyMMdd-HHmmss'))
 if ((Get-RfForegroundPackage $Serial) -eq $RF_APP_ID) {
     & "$PSScriptRoot\capture-android.ps1" -Serial $Serial -Out $shot -Small | Out-Null
 }

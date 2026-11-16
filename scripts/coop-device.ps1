@@ -39,7 +39,7 @@ $Serial = Resolve-RfSerial $Serial
 Assert-RfDevice $Serial
 $OutFull = [IO.Path]::GetFullPath((Join-Path (Get-Location) $Out))
 New-Item -ItemType Directory -Force $OutFull | Out-Null
-$lock = Join-Path $(if ($LockRoot) { $LockRoot } else { $RF_ROOT }) "captures\locks\$Serial.lock"
+$lock = Join-Path $(if ($LockRoot) { $LockRoot } else { $RF_ROOT }) "captures\locks\$(Get-RfDeviceId $Serial).lock"
 $stamp = Get-Date -Format 'HHmmss'
 # The PC peers run a private copy of the headless tool, so the build can go on while a run lasts.
 $headless = Join-Path $env:TEMP "rf-coop-$stamp-raveform_headless.exe"
