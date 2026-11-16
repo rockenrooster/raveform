@@ -280,9 +280,17 @@ counts level at the end cannot be scripted between two processes), `m8_podium_4`
 owner's on the chord's root, its partner's on the third, from the mode's tune data: `Play::barChordNotes`); a pop of x 2 as the
 chord's triad alone (`Recipe::Stab` with p2 = 1, the engine's chord tones). The flow test also ran on a tablet (below).
 
-Not done: the Spark's pad patch (the owner's fallback if the bell is not enough, by ear); `design/screens.md` taking the built
-parts of `design/modes/screens.md` (the lead's file). **Nobody has played the modes by hand**: the owner's play is the gate the
-plan gives each part.
+`design/screens.md` took the built parts in part 7's closing pass (7d02e5e: its dated section "Modes (M8, built 2026-11-16)"
+names them and points at `design/modes/screens.md`, the lead's file, as their spec, with PROGRESS's "M8" for what each left
+undone). The Spark's pad patch is not a part to build: `design/modes/sound.md` ("SONGLINE", the Spark) gives it only if the
+owner's ear says the bell is not enough (the engine's `sparkTimbre_` holds the voice; the pad's patch would be a fifth lead timbre).
+
+**The gate the plan gives each part is the owner's play, and nobody has played the modes by hand yet.** What to try in each (the
+plan's own questions, `docs/MODES_PLAN.md` part by part): MODES, do the menus feel like the game (the rule's lift, the cards, a
+Track heard as it is tapped); ONE TRACK, one Track as a game of its own, and the first versus match in a room; FULL BLAST, is three
+minutes of everything fun or tiring (the waves' pacing is the lever); TRACERS, is drawing a ring satisfying in the first ten
+seconds; SONGLINE, does it feel like flying with the tune (the Spark's speed and the gates' size are the levers; the bell or the
+pad); JAM, hand it to the youngest player in the house and watch, and Toybox by ear.
 
 ### Part 7: the whole (2026-11-16)
 
@@ -457,7 +465,7 @@ Not done in part 5: the moments (`--mode songline:10:drop2:hold`: the benchmark 
 these eight (`m8_streak_<1..4>`, `m8_gold_gate`, `m8_race_4`, `m8_bend_back`), the streak's ring shattering outward on a miss (a
 spark burst stands in), the gold gate's Boost icon (a glow stands in), the underdog's wider ring drawn round the ship, the versus
 count side by side, a remote player's gate notes in its voice on this device, the Spark's pad patch as the owner's fallback.
-Since done (part 7's open items): the moments (held, four players: benchmarked), `m8_streak_<1..4>` as `m8_sl_streak_<1..4>`, `m8_gold_gate`, `m8_race_4`, `m8_bend_back`, the ring shattering, the gold gate's icon, the underdog's ring, the versus count, remote gate notes. Still: the Spark's pad patch (the owner's fallback, by ear).
+Since done (part 7's open items): the moments (held, four players: benchmarked), `m8_streak_<1..4>` as `m8_sl_streak_<1..4>`, `m8_gold_gate`, `m8_race_4`, `m8_bend_back`, the ring shattering, the gold gate's icon, the underdog's ring, the versus count, remote gate notes. The Spark's pad patch waits on the owner's ear (sound.md gives it only if the bell is not enough).
 
 ### Part 4: the Stage, TRACERS and the two bonus Tracks (2026-11-16)
 
