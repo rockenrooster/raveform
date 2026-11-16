@@ -534,19 +534,19 @@ void World::moveProjectiles(float dt) {
     // are gone (GAME_DESIGN 5). Play test 1: while more than kShardsCrowded are out (the stronger build kills several
     // times as fast) the pool must make room for the next kills. Until the owner's play of f0624e5 a loose Shard then
     // lasted one bar, so every Shard older than that went out at once ("if too many shards are on screen it glitches out
-    // and they timeout ... and disappear"); now one older than a bar flies to its player instead, as under Magnet Storm,
-    // and is collected (GAME_DESIGN 5: a Shard is never lost to the crowd).
+    // and they timeout ... and disappear"); then one older than a bar flew to its player, as under Magnet Storm (GAME_DESIGN 5:
+    // a Shard is never lost to the crowd); since 2026-11-15 they merge.
+    // 2026-11-15 (the owner: that was "a free magnet storm"): the crowded field's old Shards merge with their neighbours instead
+    // (mergeCrowdedShards), worth all of them and still to be collected.
     Shards& h = shards_;
     const double lifeTicks = kShardLifeBars * kTicksPerBar;
-    const bool crowded = h.count > kShardsCrowded;
-    const double crowdedTicks = kShardCrowdedBars * kTicksPerBar;
+    mergeCrowdedShards();
     const float drag = std::exp(-kShardDrag * dt);
     for (u32 i = 0; i < h.count; ++i) {
         h.px[i] = h.x[i];
         h.py[i] = h.y[i];
         if (h.dead[i]) continue;
         const PlayerState& pl = players_[h.owner[i]];
-        if (crowded && !h.homing[i] && !h.holder[i] && pl.alive && m1_ - h.born[i] > crowdedTicks) h.homing[i] = 1;
         if (m1_ - h.born[i] > lifeTicks && !(h.homing[i] && pl.alive)) {  // (one on its way in is not lost)
             h.dead[i] = 1;
             continue;
@@ -766,16 +766,18 @@ void World::collide() {
         const float dx = h.x[i] - pl.pos.x, dy = h.y[i] - pl.pos.y;
         if (dx * dx + dy * dy > kShardPickupWu * kShardPickupWu) continue;
         h.dead[i] = 1;
-        ++pl.chain;  // GAME_DESIGN 5: each Shard collected adds +1 to that player's Chain
+        // GAME_DESIGN 5: each Shard collected adds +1 to that player's Chain (a merged one: all it is worth, 2026-11-15)
+        const u32 worth = h.value[i] ? h.value[i] : 1u;
+        pl.chain += worth;
         if (pl.chain > pl.bestChain) pl.bestChain = pl.chain;
-        ++pl.pickups;
+        pl.pickups += worth;
         Event ev;
         ev.type = EventType::Pickup;
         ev.a = h.owner[i];
         ev.x = h.x[i];
         ev.y = h.y[i];
         emit(ev);
-        collectShard(h.owner[i]);  // play test 2: the Shard level meter
+        for (u32 k = 0; k < worth; ++k) collectShard(h.owner[i]);  // play test 2: the Shard level meter
     }
 }
 
@@ -937,14 +939,19 @@ void World::dropShards(u32 i, u8 killer) {
             const u32 sure = static_cast<u32>(more);
             n += sure + (rand01(e.rng[i]) < more - static_cast<float>(sure) ? 1u : 0u);
         }
-        // Play test 1: while the Shard pool is crowded a death drops one, and none in its last 64 places (the
-        // stronger build's bursts: a Drop's mega-wave, a boss's 200), so the pool never overflows.
-        if (shards_.count > kShardsCrowded && n > 1) n = 1;
+        // Play test 1: while the Shard pool is crowded a death drops one Shard (2026-11-15: worth all of its own; it was one and
+        // the rest lost), and none in its last 64 places (the stronger build's bursts: a Drop's mega-wave, a boss's 200), so the
+        // pool never overflows.
+        u16 each = 1;
+        if (shards_.count > kShardsCrowded && n > 1) {
+            each = static_cast<u16>(n < 0xFFFFu ? n : 0xFFFFu);
+            n = 1;
+        }
         if (shards_.count + kShardsReserve >= Shards::kCap) n = 0;
         for (u32 k = 0; k < n; ++k) {
             const float a = randRange(e.rng[i], 0.0f, kTau);
             const float v = randRange(e.rng[i], kShardBurstLo, kShardBurstHi);
-            spawnShard(Vec2{e.x[i], e.y[i]}, dirOf(a) * v, static_cast<u8>(p));
+            spawnShard(Vec2{e.x[i], e.y[i]}, dirOf(a) * v, static_cast<u8>(p), each);
         }
     }
 }
@@ -1071,7 +1078,7 @@ bool World::spawnBullet(Vec2 pos, Vec2 vel, float advanceS, float lifeS) {
     return true;
 }
 
-bool World::spawnShard(Vec2 pos, Vec2 vel, u8 owner) {
+bool World::spawnShard(Vec2 pos, Vec2 vel, u8 owner, u16 value) {
     Shards& h = shards_;
     if (h.count >= Shards::kCap) {
         ++counters_.shardsDropped;
@@ -1087,7 +1094,41 @@ bool World::spawnShard(Vec2 pos, Vec2 vel, u8 owner) {
     h.homing[i] = 0;
     h.dead[i] = 0;
     h.holder[i] = 0;
+    h.value[i] = value ? value : 1;
     return true;
+}
+
+void World::mergeCrowdedShards() {
+    // 2026-11-15 (the owner: the crowded field's old Shards flying in were "a free magnet storm"): above kShardsCrowded the loose
+    // Shards older than kShardCrowdedBars merge with their neighbours of the same player (within kShardMergeWu: a cell of that
+    // size), one Shard worth them all left where the first of them lies, still to be collected. Nothing is lost and nothing
+    // flies in by itself; the merged Shard lives as long as the youngest it took in. In index order (deterministic).
+    Shards& h = shards_;
+    if (h.count <= kShardsCrowded) return;
+    constexpr u32 kSlots = 4096;  // (open addressing on the stack; a key: the player and the cell)
+    u32 key[kSlots], keeper[kSlots];
+    for (u32& k : key) k = 0xFFFFFFFFu;
+    const double old = kShardCrowdedBars * kTicksPerBar;
+    u32 merged = 0;
+    for (u32 i = 0; i < h.count; ++i) {
+        if (h.dead[i] || h.homing[i] || h.holder[i] || m1_ - h.born[i] <= old) continue;
+        const i32 cx = static_cast<i32>(std::floor(h.x[i] / kShardMergeWu)) & 0xFFF, cy = static_cast<i32>(std::floor(h.y[i] / kShardMergeWu)) & 0xFFF;
+        const u32 k = (static_cast<u32>(h.owner[i]) << 24) | (static_cast<u32>(cx) << 12) | static_cast<u32>(cy);
+        u32 slot = (k * 2654435761u) >> 20;  // (12 bits)
+        while (key[slot] != 0xFFFFFFFFu && key[slot] != k) slot = (slot + 1) & (kSlots - 1);
+        if (key[slot] == 0xFFFFFFFFu) {
+            key[slot] = k;
+            keeper[slot] = i;
+            continue;
+        }
+        const u32 j = keeper[slot];
+        const u32 sum = static_cast<u32>(h.value[j]) + h.value[i];
+        h.value[j] = static_cast<u16>(sum < 0xFFFFu ? sum : 0xFFFFu);
+        if (h.born[i] > h.born[j]) h.born[j] = h.born[i];
+        h.dead[i] = 1;
+        ++merged;
+    }
+    counters_.shardsMerged += merged;
 }
 
 void World::removeEnemyAt(u32 i) {
@@ -1221,6 +1262,7 @@ void World::compact() {
         h.homing[i] = h.homing[l];
         h.dead[i] = h.dead[l];
         h.holder[i] = h.holder[l];
+        h.value[i] = h.value[l];
     }
 }
 
@@ -1372,6 +1414,7 @@ u64 World::hash() const {
     mix(sh.vy, sh.count * sizeof(float));
     mix(sh.born, sh.count * sizeof(double));
     mix(sh.homing, sh.count);
+    mix(sh.value, sh.count * sizeof(u16));
     for (u32 p = 0; p < kMaxPlayers; ++p) {
         const PlayerState& pl = players_[p];
         val(pl.alive);

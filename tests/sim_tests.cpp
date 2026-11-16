@@ -901,6 +901,41 @@ void testUpgradeStacking() {
     delete o;
 }
 
+void testShardCrowd() {
+    g_test = "shard crowd";
+    // 2026-11-15 (the owner: the crowded field's old Shards flying in were "a free magnet storm"): above kShardsCrowded the loose
+    // Shards older than a bar merge with their neighbours instead; nothing is lost and nothing flies in.
+    World* w = quietWorld();
+    double music = 0.0;
+    stepWorld(*w, music, Vec2{});
+    const u32 n = tuning::kShardsCrowded + 300;
+    for (u32 k = 0; k < n; ++k)
+        w->spawnShard(Vec2{1500.0f + 20.0f * static_cast<float>(k % 40), -400.0f + 20.0f * static_cast<float>(k / 40)}, Vec2{}, 0);
+    const u32 chain0 = w->player(0).chain;
+    while (music < 1.5 * kTicksPerBar) stepWorld(*w, music, Vec2{});
+    const Shards& s = w->shards();
+    u32 worth = 0, homing = 0, live = 0;
+    for (u32 i = 0; i < s.count; ++i) {
+        if (s.dead[i]) continue;
+        ++live;
+        worth += s.value[i];
+        homing += s.homing[i] ? 1u : 0u;
+    }
+    CHECK_MSG(worth == n && live < tuning::kShardsCrowded && homing == 0 && w->player(0).chain == chain0,
+              "%u Shards worth %u of %u, %u homing, the Chain %u (was %u)", live, worth, n, homing, w->player(0).chain, chain0);
+    // Collected, a merged Shard is worth all of it: the Chain climbs by its value.
+    u32 biggest = 0;
+    Vec2 at{};
+    for (u32 i = 0; i < s.count; ++i)
+        if (!s.dead[i] && s.value[i] > biggest) {
+            biggest = s.value[i];
+            at = Vec2{s.x[i], s.y[i]};
+        }
+    stepWorld(*w, music, at);
+    CHECK_MSG(biggest > 1 && w->player(0).chain >= chain0 + biggest, "the biggest worth %u, the Chain %u", biggest, w->player(0).chain);
+    delete w;
+}
+
 void testDash() {
     g_test = "dash";
     // The owner, 2026-11-15 ("just remove the dash mods entirely and buff the base dash"): Afterimage, Reserve and Shockstep are
@@ -4240,6 +4275,7 @@ int main() {
     testTrioRules();
     testUpgradeStacking();
     testDash();
+    testShardCrowd();
     testPlayTest1();
     testAutoNova();
     testBoss();

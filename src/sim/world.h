@@ -509,6 +509,7 @@ struct Shards {
     u8 owner[kCap];     // loot is instanced per player (GAME_DESIGN 10)
     u8 homing[kCap], dead[kCap];
     u32 holder[kCap];   // M5 part 5: a Magnetic elite holding it (its handle; 0 none): it orbits that body
+    u16 value[kCap];    // the Shards it is worth (2026-11-15: a crowded field's are merged, never sent to their player)
 };
 
 // M5 part 5 (design/arena.md): a structure, or an event's body, standing in the world. Kinds: StructKind, then the events'
@@ -702,6 +703,7 @@ struct Rules {
 
 struct WorldCounters {
     u32 enemiesDropped = 0, bulletsDropped = 0, shotsDropped = 0, shardsDropped = 0, eventsDropped = 0;
+    u32 shardsMerged = 0;  // 2026-11-15: a crowded field's Shards merged into a neighbour (World::mergeCrowdedShards)
     u32 kills = 0, deaths = 0, spawned = 0, restarts = 0;
     u32 shotsCapped = 0;  // play test 1: shots a player's hard cap held back (the soft cap's rules should keep it 0)
     u32 bulletsBoss = 0, bulletsAll = 0;  // M5 part 7 (diagnostics): enemy bullets spawned by the fights and by everything
@@ -1095,7 +1097,7 @@ public:
     // (R4); landTick <= music() makes it solid at once. Returns the dense index or -1 when full.
     i32 spawnEnemy(u16 species, Vec2 pos, float heading, double landTick);
     bool spawnBullet(Vec2 pos, Vec2 vel, float advanceS, float lifeS = 0.0f);  // 0: an enemy bullet's life
-    bool spawnShard(Vec2 pos, Vec2 vel, u8 owner);
+    bool spawnShard(Vec2 pos, Vec2 vel, u8 owner, u16 value = 1);
     void setEnemyHp(u32 i, float hp) { enemies_.hp[i] = hp; }
     void hitEnemyNow(u32 i, float dmg, u8 owner, Vec2 dir = Vec2{1.0f, 0.0f}) { hitEnemy(i, dmg, owner, Vec2{enemies_.x[i], enemies_.y[i]}, dir); }  // (tests)
     // Tests (M5): a Hound C's shield would shed a shot travelling along `dir`; turn an enemy's family value b (the shield).
@@ -1173,6 +1175,7 @@ private:
     void emit(const Event& e);
     void removeEnemyAt(u32 i);
     void dropShards(u32 i, u8 owner);
+    void mergeCrowdedShards();  // 2026-11-15: a crowded field's old Shards merge with their neighbours (never fly in)
     // world_enemies.cpp
     void landEnemy(u32 i);  // becomes solid: the family's motion starts
     void updateEnemies(float dt);

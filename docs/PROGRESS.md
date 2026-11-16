@@ -4,6 +4,17 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, a crowded Shard field merges (no free Magnet Storm)
+
+The owner: "Shards come to me even without a magnet storm power up ... That's a free magnet storm can we fix that?" Above
+kShardsCrowded (1,536 out) the loose Shards older than a bar flew to their player. Now they merge (`World::mergeCrowdedShards`):
+each player's in the same 60 wu cell become one Shard worth them all (`Shards::value`), where the first of them lies, living as
+long as the youngest, to be collected by hand; a death in a crowded field drops one Shard worth all of its own (it dropped one
+and the rest were lost). Collected, a Shard adds its worth to the Chain, the pickups and the level meter. The owner: "the value
+of the shard should be reflected by color and size": bigger by a third a doubling (to 2.6x), golder to 8 and then towards white,
+pulsing from 4 (`play_view.cpp`). Test `shard crowd`: 1,836 Shards far from the ship a bar and a half on: worth all 1,836 in
+fewer than 1,536, none homing, the Chain unmoved; the biggest collected adds its worth.
+
 ## 2026-11-15, the owner's buffs and Wave's rework (after the table below)
 
 The owner: "buff: Seeker, Fork, Pierce, Burn, Last Light, Rear Guard, Prospector, Afterparty, Crescendo, Comet, Gravity

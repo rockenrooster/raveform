@@ -188,6 +188,10 @@ constexpr u32 kMaxShotsPerStep = 25;          // Split's 5 lanes x Prism 5 (eb10
 constexpr u32 kShardsCrowded = 1536;
 constexpr double kShardCrowdedBars = 1.0;
 constexpr u32 kShardsReserve = 64;
+// 2026-11-15 (the owner: the crowded field's Shards flying in were "a free magnet storm"): above kShardsCrowded a loose Shard older
+// than kShardCrowdedBars merges with the others of its player in the same kShardMergeWu cell (one Shard worth them all), and a
+// death drops one Shard worth all of its own.
+constexpr float kShardMergeWu = 60.0f;
 
 // ---- Riffs (GAME_DESIGN 6.3) ----
 // Play test 1: Orbitals 3, 5, 7, 9, 11 shards that also destroy the enemy bullets they touch (play test 3: a guard ring); Pulse Ring on every

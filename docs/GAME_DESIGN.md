@@ -165,8 +165,12 @@ below it. Every enemy death drops **Shards** for each player separately
 (1–5 by tier, 20 for elites, 200 for bosses); each Shard collected adds +1 to that player's Chain.
 Shards drift toward a player within 90 wu and fade after four bars. **A Shard is never lost to the
 crowd** (the owner, 2026-11-14: "if too many shards are on screen it glitches out and they timeout or
-something and dissapear"): while more than 1,536 are out, one older than a bar flies to its player as
-under Magnet Storm and is collected; until then it went out, all of them at once. Losing a Shield cell halves the
+something and dissapear"): while more than 1,536 are out, the loose ones older than a bar **merge** with
+their player's others within 60 wu into one Shard worth them all, left where it lies to be collected, and
+a death drops one Shard worth all of its own. A Shard's worth shows: bigger and golder as it grows (2: a
+third bigger, 8: twice the size and gold, more: towards white, with a slow pulse). (The owner, 2026-11-15:
+until then the old ones flew to their player, "a free magnet storm"; before 2026-11-14 they went out, all
+of them at once.) Losing a Shield cell halves the
 Chain. Nothing else decays it. The Chain has no cap: with the crowd it climbs by hundreds a minute
 and a long run scores in the billions. That is intended (big numbers are part of the show, and one
 hit costs half of it), so the score is a 64-bit number and both score and Chain are shown with

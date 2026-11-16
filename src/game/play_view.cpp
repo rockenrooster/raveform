@@ -1609,14 +1609,24 @@ void PlayView::render(FrameDraw& d, FrameParams& params, Background& bg, float W
             if (s.dead[i]) continue;
             const Vec2 p = lerp2(Vec2{s.px[i], s.py[i]}, Vec2{s.x[i], s.y[i]}, a);
             if (!visible(p, 30.0f) || !shown(kMuteShard)) continue;
-            // Loose Shards fade over their last bar (one flying in is whole: a crowded field sends its old ones in, world.cpp).
+            // Loose Shards fade over their last bar (one flying in is whole).
             const float left = static_cast<float>((s.born[i] + lifeTicks - in.music) / kTicksPerBar);
             const float fade = s.homing[i] ? 1.0f : clampf(left, 0.0f, 1.0f);
-            const float i0 = sl.intensity * swarm * fade;
-            glyph(d.glyphs, gShard_, false, p, static_cast<float>(i) * 0.7f + 4.0f * t, 0.0f, shardScale, i0, 0.5f * sl.width,
-                  kGlyphFlat, shardColour, shardColour);
+            // A merged Shard (a crowded field's, or a kill's in one: world.cpp, 2026-11-15; the owner: "the value of the shard
+            // should be reflected by color and size") is bigger and golder with what it is worth: 2 a third bigger and a third of
+            // the way to gold, 8 about twice the size and gold, the most 2.6 times and gold to white; a slow pulse from 4 up.
+            const u32 worth = s.value[i] ? s.value[i] : 1u;
+            const float lv = worth > 1u ? std::log2(static_cast<float>(worth)) : 0.0f;  // 1 -> 0, 2 -> 1, 8 -> 3, 64 -> 6
+            const float size = std::fmin(1.0f + 0.33f * lv, 2.6f);
+            const float toGold = std::fmin(lv / 3.0f, 1.0f), toWhite = clampf((lv - 3.0f) / 4.0f, 0.0f, 0.6f);
+            const Vec3 colour = mix(mix(shardColour, palettes_->player[3], toGold), W1, toWhite);
+            const float pulse = worth >= 4u ? 1.0f + 0.25f * std::sin(t * 6.0f + static_cast<float>(i)) : 1.0f;
+            const float i0 = sl.intensity * swarm * fade * (1.0f + 0.15f * lv) * pulse;
+            glyph(d.glyphs, gShard_, false, p, static_cast<float>(i) * 0.7f + 4.0f * t, 0.0f, shardScale * size, i0, 0.5f * sl.width * (1.0f + 0.3f * lv),
+                  kGlyphFlat, colour, colour);
             if (tier_.bulletSparkles)
-                d.sparkles.glow(toScene(p), look_->soft.shard.radius[0] * refPx_, palettes_->pickup * (look_->soft.shard.intensity[0] * swarm * fade));
+                d.sparkles.glow(toScene(p), look_->soft.shard.radius[0] * refPx_ * size,
+                                mix(palettes_->pickup, palettes_->player[3], toGold) * (look_->soft.shard.intensity[0] * swarm * fade * (1.0f + 0.25f * lv)));
             const Vec2 v{s.vx[i], s.vy[i]};
             const float sp = length(v);
             if (sp > 480.0f) {
