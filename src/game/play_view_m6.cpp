@@ -48,6 +48,21 @@ void PlayView::drawCadence(FrameDraw& d, const ViewInput& in) {
         const Vec3 col = palette_->grid * ((0.9f + 1.6f * lit) * entrance);
         d.scene.line(toScene(p[k]), toScene(p[n]), 0.6f * refPx_, col, col, 0);
     }
+    // The review's fixes (H9, 2026-11-15; cadence.md, the Modulation): a turn is announced a bar ahead; over that bar each pillar's
+    // sweep, a quarter turn the other way round the square's centre, is a dashed tell (see-through, as every tell: telegraphLine,
+    // look.md 5), rising over its last beat.
+    if (!s.dying && s.cd.turnWarn >= 0.0 && t < s.cd.turnWarn) {
+        const Vec2 centre = s.prevPos + (s.pos - s.prevPos) * in.alpha;
+        const float R = 0.5f * C.squareSide * 1.41421356f;
+        const u32 dashes = static_cast<u32>(std::fmax(4.0f, 0.5f * kPi * R / 60.0f));
+        for (u32 k = 0; k < 4; ++k) {
+            const float a0 = s.cd.rot - 0.75f * kPi + 0.5f * kPi * static_cast<float>(k);
+            for (u32 j = 0; j < dashes; ++j) {
+                const float u0 = static_cast<float>(j) / static_cast<float>(dashes), u1 = (static_cast<float>(j) + 0.5f) / static_cast<float>(dashes);
+                telegraphLine(d, centre + dirv(a0 - 0.5f * kPi * u0) * R, centre + dirv(a0 - 0.5f * kPi * u1) * R, s.cd.turnWarn);
+            }
+        }
+    }
     for (u32 k = 0; k < 4; ++k) {
         // The death: the four burst in the song's order on the last bar's beats.
         float level = entrance;

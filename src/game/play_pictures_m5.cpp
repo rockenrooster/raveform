@@ -31,6 +31,7 @@ enum class Moment : u8 {
     HzLanes, HzStarved, HzFed, HzWave, HzJetsShown, HzJets,     // Event Horizon (M5 part 4)
     PrOne, PrRings, PrBurnShown, PrBurn, PrSolo,                // Polyrhythm
     FbEchoes, FbOpen, FbTwo, FbHowl,                            // Feedback
+    FbTape, FbNull, CdTurn,                                     // the review's fixes (H5, H9): a Nova on the tape, a Null's tell, Cadence's turn
     MqCourt, MqOpen, BmNest, BmExposed, BsDraw, BsFire, BsDazed, SaClock,  // mini-bosses batch 2
     CdFans,                                                     // Cadence (M5 part 6): the fans of beat 3 in the air
     ApBlocks, ApLoad, ApMove,                                   // Arpeggiator: blocks in the lanes, the shutter open, a side change shown
@@ -107,6 +108,11 @@ const Pic kPics[] = {
     {"fb_howl", "feedback", 2, Moment::FbHowl, false},
     {"fb_death", "feedback", 1, Moment::Death, false},
     {"fb_strip", "feedback", 0, Moment::FbEchoes, true},
+    // The review's fixes (2026-11-15, H5): a pressed Nova on the tape before it comes back; the Null's dashed tell closing on its
+    // place (and, as a strip, a beat of it into the Null's growth).
+    {"fb_tape", "feedback", 0, Moment::FbTape, false},
+    {"fb_null", "feedback", 0, Moment::FbNull, false},
+    {"fb_null_strip", "feedback", 0, Moment::FbNull, true},
     {"mq_court", "moth_queen", 0, Moment::MqCourt, false},
     {"mq_open", "moth_queen", 0, Moment::MqOpen, false},
     {"mq_half", "moth_queen", 1, Moment::MqCourt, false},
@@ -131,6 +137,10 @@ const Pic kPics[] = {
     {"cd_inversion", "cadence", 2, Moment::CdFans, false},
     {"cd_death", "cadence", 1, Moment::Death, false},
     {"cd_strip", "cadence", 0, Moment::CdFans, true},
+    // The review's fixes (2026-11-15, H9): the Modulation's turn announced: the pillars' dashed sweeps over the bar before it, and
+    // as a strip, the end of that bar into the turn.
+    {"cd_turn", "cadence", 1, Moment::CdTurn, false},
+    {"cd_turn_strip", "cadence", 1, Moment::CdTurn, true},
     {"ap_quarters", "arpeggiator", 0, Moment::ApBlocks, false},
     {"ap_load", "arpeggiator", 0, Moment::ApLoad, false},
     {"ap_eighths", "arpeggiator", 1, Moment::ApBlocks, false},
@@ -762,6 +772,13 @@ bool Play::scriptInputM5(StickInput& in) {
             in.move = Vec2{0.0f, 1.0f};
         }
     }
+    // (the review's fixes, H5: the Nulls' pictures: the ship presses a Nova every five seconds of the fight, with one in stock)
+    if ((kPics[m5Pic_].moment == Moment::FbTape || kPics[m5Pic_].moment == Moment::FbNull) && w.boss().active && !w.boss().dying &&
+        w.music() > w.boss().fightTick + 2.0 * kTicksPerBar && scriptTick_ % 300u == 0u) {
+        PlayerState& pl = w.playerMut(0);
+        if (pl.novas == 0) pl.novas = 1;
+        in.nova = true;
+    }
     // No Trio over the moment: an open one takes its first orb, and no level opens another.
     w.closeTrioNow(0);
     w.playerMut(0).levelsBanked = 0;
@@ -897,6 +914,23 @@ bool Play::scriptInputM5(StickInput& in) {
             case Moment::FbOpen: go = b.fb.active && b.fb.open >= 0.999f && music > b.fightTick + 2.0 * kTicksPerBar && inBar > 0.3 * kTicksPerBar; break;
             case Moment::FbTwo: go = (b.fb.active & 0x3u) == 0x3u && music > fightPhaseAt_ + 2.0 * kTicksPerBar; break;
             case Moment::FbHowl: go = b.fb.phase == 2 && music > fightPhaseAt_ + 3.0 * kTicksPerBar && inBar > 0.5 * kTicksPerBar; break;
+            case Moment::FbTape: {
+                const FeedbackTape::Lane& l = w.tape().lanes[0];
+                for (u32 k = 0; k < l.novaCount; ++k) {
+                    // (its star on the Loop, as the view places it, in the frame)
+                    const double when = l.novas[k] + w.feedbackDelay(0);
+                    const double step = std::fmod(std::floor(when / kTicksPerStep), 16.0);
+                    const float a = -0.5f * kPi + kTau * static_cast<float>((step + 0.5) / 16.0);
+                    const Vec2 mark = b.pos + Vec2{std::cos(a), std::sin(a)} * b.fb.loopR;
+                    go = go || (when > music + 0.15 * kTicksPerBar && when < music + 0.8 * kTicksPerBar && seen(mark));
+                }
+                break;
+            }
+            case Moment::FbNull:
+                for (const FeedbackTape::Null& n : w.tape().nulls)
+                    go = go || (music < n.tick && music > n.tick - (pic.strip ? 0.6 : 0.5) * kTicksPerBeat && seen(n.at));
+                break;
+            case Moment::CdTurn: go = b.cd.turnWarn >= 0.0 && music > b.cd.turnWarn - (pic.strip ? 0.6 * kTicksPerBeat : 0.5 * kTicksPerBar) && seen(b.pos); break;
             // Mini-bosses batch 2.
             case Moment::MqCourt: go = m.ringTick >= 0.0 && music - m.ringTick > 1.3 * kTicksPerBar && music - m.ringTick < 1.5 * kTicksPerBar && seen(m.ringAt); break;
             case Moment::MqOpen: go = w.mothOpen(music) && inBar > (pic.strip ? 0.0 : 0.3 * kTicksPerBar) && seen(b.body[0]); break;

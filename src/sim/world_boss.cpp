@@ -145,9 +145,7 @@ float World::bossHealthScale(BossKind kind) const {
         const u32 t = firstPass < 2 ? 2u : (firstPass > last ? last : firstPass);
         float h = md.healthByTrack[t];
         if (inLoop(tr, director_.songs)) h *= std::pow(md.loopFactor, static_cast<float>(tr - director_.songs));
-        const MiniData::Entry* e = md.find(kind);
-        const u32 mk = static_cast<u32>(kind) - static_cast<u32>(BossKind::AlphaHound);
-        return scale * h * (e ? e->healthFactor : 1.0f) * (mk < 12 ? kMiniHealthTune[mk] : 1.0f) * rules_.healthLever[static_cast<u32>(kind)];
+        return scale * h * miniHealthFactor(kind) * rules_.healthLever[static_cast<u32>(kind)];
     }
     // A boss's own health is for its home Track's build; elsewhere (the loop) it follows the build's growth since, and
     // the loop's ramp. GAME_DESIGN 8 (play test 1, second pass): the first boss of a run, Track 1's, is the teacher.
@@ -167,6 +165,45 @@ float World::bossHealthScale(BossKind kind) const {
     if (kind == BossKind::Reprise) scale *= kRepriseHealthTune;
     scale *= rules_.healthLever[static_cast<u32>(kind)];  // (measurements only)
     return scale;
+}
+
+float World::miniHealthFactor(BossKind kind) const {
+    // minibosses.json's healthFactor for the kind, x its tune (tuning.h kMiniHealthTune: the novice's wins, and the Track's tempo).
+    const MiniData::Entry* e = species_->minis.find(kind);
+    const u32 mk = static_cast<u32>(kind) - static_cast<u32>(BossKind::AlphaHound);
+    return (e ? e->healthFactor : 1.0f) * (mk < 12 ? kMiniHealthTune[mk] : 1.0f);
+}
+
+float World::trackMiniFactor(u32 track) const {
+    // The review's fixes (H7, 2026-11-15; arena.md "the mini-boss health of that Track ... times the fraction given"): the health
+    // a mini-boss of the Track has as the game gives it, for the arena's bodies: the mean factor over the mini-bosses that Track
+    // can bring (World::pickMini's lists: Track 8 counts Deep Well and both of Track 7's pair; Tracks 9 and 10 and the loop, all
+    // twelve). Track 1 brings none: Track 2's.
+    const u32 tr = track < 2 ? 2u : track;
+    const u32 song = inLoop(tr, director_.songs) ? 0xFFu : songOfTrack(tr, director_.songs);
+    BossKind cand[12];
+    u32 n = 0;
+    switch (song) {
+        case 1: cand[n++] = BossKind::AlphaHound; cand[n++] = BossKind::Hive; break;
+        case 2: cand[n++] = BossKind::BatteringRam; cand[n++] = BossKind::CaromKing; break;
+        case 3: cand[n++] = BossKind::MothQueen; cand[n++] = BossKind::BroodMother; break;
+        case 4: cand[n++] = BossKind::BlinkStar; cand[n++] = BossKind::SentryArray; break;
+        case 5: cand[n++] = BossKind::MirrorMimic; break;
+        case 6: cand[n++] = BossKind::TwinTether; cand[n++] = BossKind::WeaverPrime; break;
+        case 7: cand[n++] = BossKind::DeepWell; cand[n++] = BossKind::TwinTether; cand[n++] = BossKind::WeaverPrime; break;
+        case 0:  // (as pickMini: First Light's song outside the loop draws from batch 1)
+            cand[n++] = BossKind::AlphaHound;
+            cand[n++] = BossKind::Hive;
+            cand[n++] = BossKind::BatteringRam;
+            cand[n++] = BossKind::CaromKing;
+            break;
+        default:
+            for (u32 k = static_cast<u32>(BossKind::AlphaHound); k <= static_cast<u32>(BossKind::DeepWell) && n < 12; ++k) cand[n++] = static_cast<BossKind>(k);
+            break;
+    }
+    float sum = 0.0f;
+    for (u32 k = 0; k < n; ++k) sum += miniHealthFactor(cand[k]);
+    return n ? sum / static_cast<float>(n) : 1.0f;
 }
 
 void World::spawnBossNow(double enterTick, Vec2 pos, BossKind kind, Vec2 penAt) {
@@ -644,12 +681,14 @@ void World::bossNova(u32 p) {
     BossState& s = boss_;
     const PlayerState& pl = players_[p];
     if (!isLocal(p) || !bossOn()) return;
+    // The review's fixes (H4, 2026-11-15): a Nova is for the crowd: a boss takes 0.33 of its blast, a mini-boss 0.66 (tuning.h).
+    const float blast = kBossNovaDamage * (isMiniBoss(s.kind) ? kMiniNovaScale : kBossNovaScale);
     const float reach = s.kind == BossKind::Kaleidos ? 270.0f : 0.0f;
     if (s.kind == BossKind::Kaleidos) {
         if (std::fabs(s.pos.x - pl.pos.x) > kNovaViewHalfW + reach || std::fabs(s.pos.y - pl.pos.y) > kNovaViewHalfH + reach) return;
         for (u8 k = 0; k < 3; ++k)
-            if (s.alive & (1u << k)) damageBossFinal(2, k, kBossNovaDamage, static_cast<u8>(p), s.pos, Vec2{1.0f, 0.0f}, -1.0f);
-        if (s.active && !s.dying && pairsIn(s.alive) != 3) damageBossFinal(3, 0, kBossNovaDamage, static_cast<u8>(p), s.pos, Vec2{1.0f, 0.0f}, -1.0f);
+            if (s.alive & (1u << k)) damageBossFinal(2, k, blast, static_cast<u8>(p), s.pos, Vec2{1.0f, 0.0f}, -1.0f);
+        if (s.active && !s.dying && pairsIn(s.alive) != 3) damageBossFinal(3, 0, blast, static_cast<u8>(p), s.pos, Vec2{1.0f, 0.0f}, -1.0f);
         return;
     }
     BossPart parts[kBossBodies + 4];
@@ -665,7 +704,7 @@ void World::bossNova(u32 p) {
         float scale = bossDamageScale(q.part, q.index, m1_, normalizeOr(q.pos - pl.pos, Vec2{1.0f, 0.0f}));
         if (rules_.armourNothing && scale < 1.0f) scale = 0.0f;
         if (scale <= 0.0f) continue;
-        damageBossFinal(q.part, q.index, kBossNovaDamage * kBossNovaShareM5 * std::fmin(scale, 1.0f), static_cast<u8>(p), q.pos, Vec2{1.0f, 0.0f}, -1.0f);
+        damageBossFinal(q.part, q.index, blast * kBossNovaShareM5 * std::fmin(scale, 1.0f), static_cast<u8>(p), q.pos, Vec2{1.0f, 0.0f}, -1.0f);
     }
 }
 
@@ -1125,7 +1164,7 @@ bool World::bossBeamsHit(Vec2 at, Vec2& from) const {
 }
 
 void World::bossHitPlayer(u32 p, Vec2 from, bool beam) {
-    if (haloBlocks(p, from)) return;
+    if (sheltered(p) || haloBlocks(p, from)) return;  // (the review's fixes, H8, 2026-11-15: a sheltered ship takes no hit, none counted)
     ++boss_.hitsTaken;
     ++(beam ? boss_.hitsBeam : boss_.hitsBody);
     hitPlayer(p, from, static_cast<u16>(kCauseBossBase + static_cast<u32>(boss_.kind)));

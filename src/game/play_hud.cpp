@@ -1,5 +1,6 @@
 #include "game/play_hud.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -24,6 +25,11 @@ constexpr float kButtonMinMm = 9.0f;         // GAME_DESIGN 2: buttons at least 
 constexpr float kPressedGrow = 1.1f;         // GAME_DESIGN 2: a pressed button is slightly larger
 constexpr float kDeadZone = 0.08f;           // GAME_DESIGN 2
 constexpr u32 kDashes = 20;
+constexpr float kBossTextRimPx = 2.0f;       // the review's fixes (M16, 2026-11-15): the boss bar's words' dark rim, px past the stroke
+// The review's fixes (M20, 2026-11-15): the Mods' row, wrapped: its icons at 0.85, rows this far apart (x 0.85), up to four rows.
+constexpr float kModWrapScale = 0.85f;
+constexpr float kModRowPitch = 50.0f;
+constexpr u32 kModRowsMax = 4;
 constexpr float kDashDuty = 0.55f;
 
 Vec2 dir(float a) { return {std::cos(a), std::sin(a)}; }
@@ -105,7 +111,7 @@ Vec3 hudColour(const Look& look, const LookVariant& variant, Vec3 c, float inten
 void TouchControls::layout(float w, float h, Vec2 insetMin, Vec2 insetMax, float pxPerMm) {
     w_ = w;
     h_ = h;
-    s_ = h / 1080.0f * g_hudScale;  // (M6: the UI scale, the touch controls too)
+    s_ = layoutScale(w, h) * g_hudScale;  // (M6: the UI scale, the touch controls too; the review's fixes, H2: the width too)
     pxPerMm *= g_hudScale;
     stickR_ = kStickRadius * s_;
     float novaR = kNovaRadius * s_, dashR = kDashRadius * s_;
@@ -252,7 +258,7 @@ void TouchControls::draw(CapsuleBatch& hud, GlowBatch& pools, const VectorFont& 
 void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookVariant& variant, const Palettes& palettes,
              const Palette& palette, const HudState& st, const TouchControls& touch, float W, float H, Vec2 insetMin,
              Vec2 insetMax) {
-    const float s = H / 1080.0f * g_hudScale;  // (M6: the UI scale)
+    const float s = layoutScale(W, H) * g_hudScale;  // (M6: the UI scale; the review's fixes, H2: the width too)
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const Vec3 player = palettes.player[0];
     const Vec3 gold = palettes.player[3];       // P4 gold (the Chain's field: white -> gold -> amber)
@@ -319,17 +325,20 @@ void drawHud(FrameDraw& d, const VectorFont& font, const Look& look, const LookV
         }
     }
     // Nova stock: top right, one four-point star per Nova, lit in the player colour. 2026-11-15: the Nova a Shard level gives
-    // (the newest star) swells and flashes gold as it lights, fading over 0.9 s (half in reduce-flashing).
+    // (the newest star) swells and flashes gold as it lights, fading over 0.9 s (half in reduce-flashing). The review's fixes (H2,
+    // 2026-11-15): the row closes up (and its stars shrink once they would touch) so it never meets "DROP IN n" (novaStarPitch).
+    const float pitch = novaStarPitch(W, s, mr, st.novaCap);
+    const float sr = std::fmin(1.0f, pitch / (36.0f * s));
     for (u32 k = 0; k < st.novaCap; ++k) {
-        const Vec2 c{W - mr - 150.0f * s - static_cast<float>(k) * 50.0f * s, top + 62.0f * s};
+        const Vec2 c{W - mr - 150.0f * s - static_cast<float>(k) * pitch, top + 62.0f * s};
         const bool lit = k < st.novas;
         const float gain = (lit && k + 1 == st.novas) ? st.novaFlash * (st.reduceFlashing ? 0.5f : 1.0f) : 0.0f;
         if (lit) {
-            star4(d.hud, c, (16.0f + 12.0f * gain) * s, (0.9f + 0.6f * gain) * s, col(mix(white, gold, gain), 2.0f + 1.5f * gain),
+            star4(d.hud, c, (16.0f * sr + 12.0f * gain) * s, (0.9f + 0.6f * gain) * s, col(mix(white, gold, gain), 2.0f + 1.5f * gain),
                   col(mix(player, gold, gain), 2.0f + gain));
-            d.pools.glow(c, (26.0f + 30.0f * gain) * s, mix(player * 0.25f, gold * 0.45f, gain) * g_hudFade);
+            d.pools.glow(c, (26.0f * sr + 30.0f * gain) * s, mix(player * 0.25f, gold * 0.45f, gain) * g_hudFade);
         } else {
-            star4(d.hud, c, 16.0f * s, 0.9f * s, col(white, 0.3f), col(white, 0.3f));
+            star4(d.hud, c, 16.0f * sr * s, 0.9f * s, col(white, 0.3f), col(white, 0.3f));
         }
     }
     // Play test 3 (screens.md "Extra Life (HUD)"): a held Extra Life is a small gold ship outline to the right of the Nova stock
@@ -387,8 +396,17 @@ const char* bossHint(sim::BossKind k) {
     }
 }
 
+float novaStarPitch(float W, float s, float mr, u32 cap) {
+    // The review's fixes (H2, 2026-11-15): the Nova stock's stars (up to seven) never meet the phrase bar's label ("DROP IN n" at
+    // cap 11, ten letters at most, 14 px after the 520 px bar): from the first star (W - mr - 150 s) leftward the pitch is 50 px, or
+    // less, so the last star (16 px) keeps 24 px clear of the label's end.
+    if (cap < 2) return 50.0f * s;
+    const float first = W - mr - 150.0f * s, limit = 0.5f * W + (260.0f + 14.0f + 110.0f + 24.0f + 16.0f) * s;
+    return std::fmin(50.0f * s, std::fmax(0.0f, first - limit) / static_cast<float>(cap - 1));
+}
+
 Vec2 pauseButtonCentre(float W, float H, Vec2 insetMin, Vec2 insetMax, float& radius) {
-    const float s = H / 1080.0f * g_hudScale;  // (M6: the UI scale)
+    const float s = layoutScale(W, H) * g_hudScale;  // (M6: the UI scale; the review's fixes, H2: the width too)
     radius = 28.0f * s;
     return Vec2{W - std::fmax(kMargin * s, insetMax.x) + 40.0f * s, insetMin.y + 52.0f * s};
 }
@@ -418,7 +436,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
                 const Palette& palette, const HudState& st, float W, float H, Vec2 insetMin, Vec2 insetMax) {
     using namespace sim;
     const World& w = *st.world;
-    const float s = H / 1080.0f * g_hudScale;  // (M6: the UI scale)
+    const float s = layoutScale(W, H) * g_hudScale;  // (M6: the UI scale; the review's fixes, H2: the width too)
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const Vec3 player = palettes.player[0];
     const Vec3 gold = palettes.player[3];
@@ -493,6 +511,8 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
     const float rowY = H - bottom - 64.0f * s;
     const float slot = 104.0f * s;
     float slotX[kRiffSlots];
+    u32 modRows = 1;
+    float modRowPitch = 0.0f;
     {
         const float r = 26.0f * s;
         u8 riffOrder[kRiffSlots] = {kNoUpgrade, kNoUpgrade, kNoUpgrade, kNoUpgrade};
@@ -518,23 +538,50 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
                 else circle(d.hud, q, 3.0f * s, 0.5f * s, col(white, 0.3f), 8);
             }
         }
-        // Mods: small icons with their stacks, to the right.
-        float mx = cx + 2.0f * slot + 30.0f * s;
-        for (u32 pass = 1; pass < 256; ++pass) {
-            for (u8 u = 0; u < kModCount; ++u) {
-                if (me.loadout.order[u] != pass) continue;
-                const Vec2 c{mx, rowY};
-                if (st.icons) st.icons->drawHud(d.hud, st.upgradeIcons[u], c, 15.0f * s, 0.9f, hudFn, &ctx);
-                const u32 n = me.loadout.mods[u];
-                for (u32 p = 0; p < n; ++p) {
-                    const Vec2 q{c.x + (static_cast<float>(p) - 0.5f * static_cast<float>(n - 1)) * 7.0f * s, c.y + 26.0f * s};
-                    d.hud.line(q, q, 2.0f * s, col(white, 1.3f), col(white, 1.3f), 0);
-                }
-                mx += 44.0f * s;
+        // Mods: small icons with their stacks, to the right. The review's fixes (M20, 2026-11-15): the HUD shows the whole build.
+        // (a) Every Fusion taken heads the row: its icon in a gold frame. (b) Every Mod held is shown: when one row cannot hold
+        // them the row wraps onto a second above the first (a third, a fourth if needed), every icon at 0.85; the Boosts' words
+        // above move up with it. (c) A Mod's pips show its cap: the stacks held filled, the rest empty outlines.
+        u8 items[kFusionCount + kModCount];  // a Fusion as kFusionOrb + f, a Mod as itself
+        u32 count = 0;
+        for (u8 f = 0; f < kFusionCount; ++f)
+            if (me.loadout.fused(f)) items[count++] = static_cast<u8>(kFusionOrb + f);
+        for (u32 pass = 1; pass < 256 && count < kFusionCount + kModCount; ++pass)
+            for (u8 u = 0; u < kModCount && count < kFusionCount + kModCount; ++u)
+                if (me.loadout.order[u] == pass && me.loadout.mods[u]) items[count++] = u;
+        const float x0 = cx + 2.0f * slot + 30.0f * s, xEnd = W - 260.0f * s;
+        const u32 one = static_cast<u32>(std::fmax(0.0f, (xEnd - x0) / (44.0f * s))) + 1u;
+        const float k = count > one ? kModWrapScale : 1.0f;
+        const u32 perRow = static_cast<u32>(std::fmax(0.0f, (xEnd - x0) / (44.0f * k * s))) + 1u;
+        modRows = count > 0 ? std::min((count + perRow - 1) / perRow, kModRowsMax) : 1u;
+        modRowPitch = kModRowPitch * k * s;
+        for (u32 i = 0; i < count && i < perRow * kModRowsMax; ++i) {
+            const Vec2 c{x0 + static_cast<float>(i % perRow) * 44.0f * k * s, rowY - static_cast<float>(i / perRow) * modRowPitch};
+            const u8 u = items[i];
+            if (isFusionOrb(u)) {
+                const u8 f = static_cast<u8>(u - kFusionOrb);
+                if (st.icons && st.fusionIcons) st.icons->drawHud(d.hud, st.fusionIcons[f], c, 15.0f * k * s, 1.0f, hudFn, &ctx);
+                const float h = 17.5f * k * s;  // (a gold square just round the icon; neighbours keep a gap)
+                const Vec3 g = col(gold, 1.8f);
+                const Vec2 a{c.x - h, c.y - h}, b{c.x + h, c.y + h};
+                d.hud.line(a, {b.x, a.y}, 0.9f * s, g, g, 0);
+                d.hud.line({b.x, a.y}, b, 0.9f * s, g, g, 0);
+                d.hud.line(b, {a.x, b.y}, 0.9f * s, g, g, 0);
+                d.hud.line({a.x, b.y}, a, 0.9f * s, g, g, 0);
+                d.pools.glow(c, 30.0f * k * s, gold * 0.12f * g_hudFade);
+                continue;
             }
-            if (mx > W - 260.0f * s) break;
+            if (st.icons) st.icons->drawHud(d.hud, st.upgradeIcons[u], c, 15.0f * k * s, 0.9f, hudFn, &ctx);
+            const u32 n = me.loadout.mods[u], cap = std::max<u32>(upgradeInfo(u).cap, n);
+            for (u32 p = 0; p < cap; ++p) {
+                const Vec2 q{c.x + (static_cast<float>(p) - 0.5f * static_cast<float>(cap - 1)) * 7.0f * k * s, c.y + 26.0f * k * s};
+                if (p < n) d.hud.line(q, q, 2.0f * k * s, col(white, 1.3f), col(white, 1.3f), 0);
+                else circle(d.hud, q, 2.0f * k * s, 0.45f * s, col(white, 0.35f), 8);
+            }
         }
     }
+    // (the review's fixes, M20: what sits above the band row moves up with the Mods' extra rows)
+    const float lift = static_cast<float>(modRows - 1) * modRowPitch;
     // Active Boosts, above the Riff slots (M3 stage C): the icon with one pip per bar left to its right, its
     // name under it, never across it (gold, cap 11 wu = 16.5 px, 6 wu = 9 px under the frame) and, through the
     // two bars after it was taken, its effect words (screens.md) under the name.
@@ -572,7 +619,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
             const ActiveBoost& b = me.boosts[k];
             if (b.type == kNoBoost) continue;
             const BoostInfo& bi = boostInfo(b.type);
-            const float x = left0 + 0.5f * width[k], y = rowY - 116.0f * s;
+            const float x = left0 + 0.5f * width[k], y = rowY - 116.0f * s - lift;
             left0 += width[k] + 48.0f * s;
             if (st.icons) st.icons->drawHud(d.hud, st.boostIcons[b.type], {x, y}, 15.0f * s, 1.0f, hudFn, &ctx);
             const float cap = 16.5f * s, top = y + (15.0f + 9.0f) * s;
@@ -729,14 +776,19 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         }
         // The health bar under the phrase bar with its name; a mini-boss's half the height (minibosses.md).
         const float y = top + 96.0f * s, bw = 300.0f * s, x0 = cx - 0.5f * bw;
-        const float cap = 11.0f * s;
-        font.drawField(d.hud, {x0 - textW(font, cap, name) - 16.0f * s, y + 0.5f * cap}, cap, 0.55f * s, col(gold, 1.4f), col(gold, 1.4f),
-                       col(gold, 1.4f), name);
+        // The review's fixes (M16, 2026-11-15; the owner: "make slightly bigger"): the name and its hint line at 14 px (were 11),
+        // each on the priority layer's dark rim (as the first-run hints' world text) so they read over a fight's bright lines.
+        const float cap = 14.0f * s;
+        const auto rimmed = [&](Vec2 at, float c, float hw, Vec3 k, const char* t) {
+            font.drawField(d.threatRims, at, c, hw + kBossTextRimPx * s, Vec3{}, Vec3{}, Vec3{}, t);
+            font.drawField(d.hud, at, c, hw, k, k, k, t);
+        };
+        rimmed({x0 - textW(font, cap, name) - 16.0f * s, y + 0.5f * cap}, cap, 0.7f * s, col(gold, 1.4f), name);
         // screens.md "Boss hint": under the name, the HUD's small size, white at 0.8 (ends under the name's end).
         if (st.bossHint && st.bossHintLevel > 0.01f) {
-            const float hc = 11.0f * s;
-            font.drawField(d.hud, {x0 - textW(font, hc, st.bossHint) - 16.0f * s, y + 0.5f * cap + cap + 12.0f * s}, hc, 0.55f * s,
-                           col(white, 0.8f * st.bossHintLevel), col(white, 0.8f * st.bossHintLevel), col(white, 0.8f * st.bossHintLevel), st.bossHint);
+            const float hc = 14.0f * s;
+            rimmed({x0 - textW(font, hc, st.bossHint) - 16.0f * s, y + 0.5f * cap + cap + 12.0f * s}, hc, 0.7f * s, col(white, 0.8f * st.bossHintLevel),
+                   st.bossHint);
         }
         float hp = boss.coreHp, max = boss.coreMax;
         const u32 parts = boss.kind == BossKind::Longwave ? w.species().longwave.segments
@@ -797,7 +849,7 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         // Play test 2 (the lead's review): while an active Boost's label shows above the Riff slots, the hint sits above it.
         bool boostShown = false;
         for (const ActiveBoost& b : me.boosts) boostShown = boostShown || b.type != kNoBoost;
-        const float y = boostShown ? rowY - (116.0f + 15.0f + 20.0f) * s - cap : H - bottom - 150.0f * s;
+        const float y = boostShown ? rowY - (116.0f + 15.0f + 20.0f) * s - cap - lift : H - bottom - 150.0f * s;
         font.drawField(d.hud, {cx - 0.5f * textW(font, cap, hint), y}, cap, 0.7f * s, col(white, 0.7f), col(white, 0.7f), col(white, 0.7f), hint);
     }
 }

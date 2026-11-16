@@ -275,7 +275,9 @@ void World::feedbackRecord(u32 shot0) {
     }
     for (u32 k = 0; k < eventCount_; ++k) {
         const Event& ev = events_[k];
-        if (ev.type != EventType::NovaBlast || ev.a >= playerCount_) continue;
+        // The review's fixes (H5, 2026-11-15): only a Nova the player pressed goes on the tape (Auto Nova's, an Extra Life's,
+        // Black Hole's and Last Light's do not: the hit that fired one is not fed back to the player as a Null).
+        if (ev.type != EventType::NovaBlast || ev.a >= playerCount_ || !ev.b) continue;
         FeedbackTape::Lane& l = tape_.lanes[ev.a];
         l.novas[l.novaHead] = ev.tick > 0.0 ? ev.tick : m1_;
         l.novaHead = (l.novaHead + 1) % FeedbackTape::kNovas;
@@ -355,14 +357,18 @@ void World::updateFeedback(float dt) {
             }
             if (playing) f.playing = static_cast<u8>(f.playing | (1u << slot));
             else ++silentN;
-            // Its Novas come back as Nulls.
+            // Its Novas come back as Nulls. The review's fixes (H5, 2026-11-15): each is announced a beat before it grows: its
+            // place is fixed then (where the Echo stands), the view draws a dashed tell closing on it over the beat, and the tell's
+            // tick sounds (FbNull with f = 1); the burst (FbNull) is sent with it for the growth's tick.
             for (u32 k = 0; k < l.novaCount; ++k) {
                 const double when = l.novas[k] + D;
-                if (when <= m0_ || when > m1_) continue;
+                const double tell = when - kTicksPerBeat;
+                if (tell <= m0_ || tell > m1_) continue;
                 FeedbackTape::Null& n = tape_.nulls[tape_.nullHead];
                 n.tick = when;
                 n.at = at;
                 tape_.nullHead = (tape_.nullHead + 1) % FeedbackTape::kNulls;
+                emitCue(BossCue::FbNull, tell, static_cast<u8>(p), 1.0f, at);
                 emitCue(BossCue::FbNull, when, static_cast<u8>(p), 0.0f, at);
             }
         }

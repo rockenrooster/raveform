@@ -567,6 +567,8 @@ struct PlayerState {
     float invulS = 0.0f;       // after a hit (1.5 s)
     float novaInvulS = 0.0f;   // from a Nova press until shortly after its blast
     bool novaPending = false;
+    bool novaPressed = false;    // the review's fixes (H5, 2026-11-15): the pending Nova was pressed (not Auto Nova's, an Extra
+                                 // Life's, Black Hole's): only those go on Feedback's tape
     double novaBlastTick = 0.0;
     float novaFrontAge = -1.0f;  // seconds since the blast while its front still clears (< 0: none)
     Vec2 novaAt;
@@ -1155,8 +1157,9 @@ public:
 private:
     // world.cpp
     void applyPlayers(const TickInput& in);
-    bool pressNova(u32 p, bool free = false);  // R6: invulnerable at once, the blast on the next beat (false: none to spend;
-                                               // free: an Extra Life's, from no stock)
+    bool pressNova(u32 p, bool free = false, bool pressed = false);  // R6: invulnerable at once, the blast on the next beat
+                                               // (false: none to spend; free: an Extra Life's, from no stock; pressed: the
+                                               // player's own press, the one Feedback records)
     void spawnShots(const TickInput& in);
     void fireShot(u32 p, float advanceS, double stepTick);
     void updateNovas();
@@ -1339,6 +1342,10 @@ private:
     void killBoss(u8 owner);
     // M5 part 1 (world_boss.cpp): what every fight shares.
     float bossHealthScale(BossKind kind) const;
+    // The review's fixes (H7, 2026-11-15): a mini-boss's own health factor (minibosses.json healthFactor x kMiniHealthTune), and
+    // the mean of it over the mini-bosses Track `track` can bring (World::trackScale: the arena's bodies).
+    float miniHealthFactor(BossKind kind) const;
+    float trackMiniFactor(u32 track) const;
     float bossBulletDensity() const;
     void bossNova(u32 p);
     void bossHitPlayer(u32 p, Vec2 from, bool beam = false);

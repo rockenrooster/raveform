@@ -180,8 +180,9 @@ const FightSound kRows[] = {
      nullptr, SoundPlay::Custom, rc(Recipe::PadVoice), false, 0.5f, 4, 0.5f},
     {BossCue::CdFan, "cadence.md", "each firing pillar's fan is a tom on its own chord's root, on one and three", nullptr, SoundPlay::Custom, rc(Recipe::Tom),
      false, 0.5f, 0, 0, NoteRule::None, 0, 0.0f, 0.0f, 0.0f, 3},
+    // (the review's fixes, H9, 2026-11-15: sent a bar ahead, it swells over that bar, the warning bar, into the turn's bar line)
     {BossCue::CdTurn, "cadence.md", "the turn of the square is a reversed cymbal into the bar line", nullptr, SoundPlay::Recipe, rc(Recipe::RevCymbal), false,
-     0.6f, 1, 0},
+     0.6f, 4, 0},
     {BossCue::CdInversion, "cadence.md", "Inversion is the music bus high-passed at 800 Hz for one bar", nullptr, SoundPlay::Custom, 0, false, 1.0f, 800, 4},
     {BossCue::CdBurst, "cadence.md", "death: the four chords in turn (the stab at 1.2 on each pillar's burst), then the tonic with the gong on the "
                                      "bar line after them",
@@ -738,6 +739,12 @@ void playFightCue(audio::CommandSink& band, FightVoices& voices, const sim::Even
         case SoundPlay::Sfx: {
             // A Carom Prince's bounce: quieter (the page: an octave up).
             const float g = r.cue == BossCue::CkBounce && e.b ? 0.35f : r.gain;
+            // The review's fixes (H5, 2026-11-15): a Null's warning a beat before it grows (FbNull with f = 1) is the telegraph
+            // tick, as every tell's; the burst stays on the growth.
+            if (r.cue == BossCue::FbNull && e.f > 0.5f) {
+                sfxAt(band, Sfx::Tick, tick, 0.6f, pan);
+                break;
+            }
             sfxAt(band, static_cast<Sfx>(r.id), tick, g, pan);
             break;
         }

@@ -425,7 +425,9 @@ void Band::computeShots(i64 nowNs, i64 displayLeadNs) {
         const i64 heardAt = nowNs + displayLeadNs - static_cast<i64>(age * 1e9);
         const u8 held = fireAt(heardAt - static_cast<i64>(capNs));
         if (!held) continue;
-        if (held == 2 && ((s * grid % kTicksPerBar) / grid) % 2 != 0) continue;  // M3: half-rate grid (as the lead)
+        // M3: the assist's half-rate grid (as the lead); never the off-beat's step (the review's fixes, H3, 2026-11-15: the sim's
+        // World::spawnShots and the engine's lead skip the same steps).
+        if (held == 2 && ((s * grid % kTicksPerBar) / grid) % 2 != 0 && (s * grid) % kPpq != kPpq / 2) continue;
         if (view_.shotCount >= countOf(shots_)) break;
         LeadShot& shot = shots_[view_.shotCount++];
         shot.player = 0;
@@ -745,10 +747,10 @@ u32 Band::scope(float* out, u32 n) const {
 
 void Band::setGains(float music, float effects) { post({.type = CmdType::SetGains, .x = music, .y = effects}); }
 
-void Band::setMuffle(bool on) {
+void Band::setMuffle(bool on, float rampS) {
     if (on == muffled_) return;
     muffled_ = on;
-    post({.type = CmdType::SetMuffle, .x = on ? kPauseLowpassHz : 0.0f, .y = kPauseLowpassRampS});
+    post({.type = CmdType::SetMuffle, .x = on ? kPauseLowpassHz : 0.0f, .y = rampS > 0.0f ? rampS : kPauseLowpassRampS});
 }
 
 void Band::setIntensity(float v) {

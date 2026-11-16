@@ -23,6 +23,10 @@ float clamp01(float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
 // look.md §5 (the owner's red-line pass, 2026-11-14): a lethal band (Feedback's Howl, a Null's front) is drawn by its edges, each a
 // lethal line this wide with its glow.
 constexpr float kBandEdgeWu = 4.0f;
+// The review's fixes (H5, 2026-11-15; chosen): a Null's tell starts this far out and closes on the Echo's size over its beat; a
+// recorded Nova's star on Feedback's tape has arms this long.
+constexpr float kNullTellWu = 360.0f;
+constexpr float kTapeNovaWu = 14.0f;
 }  // namespace
 
 // ---------------------------------------------------------------------------------------------- Event Horizon
@@ -539,8 +543,25 @@ void PlayView::drawFeedback(FrameDraw& d, const ViewInput& in) {
             const double D = w.feedbackDelay(0);
             for (u32 p = 0; p < kMaxPlayers; ++p) {
                 const FeedbackTape::Lane& l = tape.lanes[p];
-                if (!l.shotCount || !w.player(p).present) continue;
+                if ((!l.shotCount && !l.novaCount) || !w.player(p).present) continue;
                 const float lane = R + F.loopBand * (-0.35f + 0.7f * (static_cast<float>(p) + 0.5f) / static_cast<float>(kMaxPlayers));
+                // The review's fixes (H5, 2026-11-15; feedback.md: the tape is "the next bar of echo, drawn before it happens"): a
+                // recorded Nova is on the tape too, a small four-point star at its step in the player's colour with a white core,
+                // until it comes back as a Null.
+                for (u32 k = 0; k < l.novaCount; ++k) {
+                    const double when = l.novas[k] + D;
+                    if (when < t || when > t + bar) continue;
+                    const double step = std::floor(when / kTicksPerStep);
+                    const float a = ang(std::fmod(step, static_cast<double>(F.loopSteps)) / F.loopSteps + 0.5 / F.loopSteps);
+                    const Vec2 m = c + dirv(a) * lane;
+                    if (!visible(m, 40.0f)) continue;
+                    const Vec3 col = palettes_->player[p];
+                    for (u32 j = 0; j < 4; ++j) {
+                        const Vec2 arm = dirv(a + 0.25f * kPi + 0.5f * kPi * static_cast<float>(j)) * kTapeNovaWu;
+                        d.scene.line(toScene(m), toScene(m + arm), hw * 1.4f, W1 * 2.4f, col * 2.0f, 0);
+                    }
+                    d.sparkles.glow(toScene(m), 10.0f * refPx_, col * 1.6f);
+                }
                 double lastStep = -1.0;
                 for (u32 k = 0; k < l.shotCount; ++k) {
                     const FeedbackTape::Shot& r = l.shots[(l.shotHead + FeedbackTape::kShots - 1 - k) % FeedbackTape::kShots];
@@ -669,8 +690,21 @@ void PlayView::drawFeedback(FrameDraw& d, const ViewInput& in) {
         for (u32 arm = 0; arm < r.arms; ++arm)
             lethalBeam(d, r.at, r.at + dirv(r.armAngle[arm]) * r.armLen, kBandEdgeWu);
     }
-    // ---- The Nulls: a danger ring the size of the Nova it echoes.
+    // ---- The Nulls: a danger ring the size of the Nova it echoes. The review's fixes (H5, 2026-11-15): a beat before it grows
+    // its place is fixed and announced: a dashed tell closing on it over the beat (see-through, as every tell: telegraphLine,
+    // look.md 5), from kNullTellWu to the Echo's own size.
     for (const FeedbackTape::Null& n : tape.nulls) {
+        const double tell = n.tick - kTicksPerBeat;
+        if (t >= tell && t < n.tick && visible(n.at, kNullTellWu + 40.0f)) {
+            const float u = clamp01(static_cast<float>((t - tell) / kTicksPerBeat));
+            const float rr = F.echoRadius + (kNullTellWu - F.echoRadius) * (1.0f - u * u);
+            const u32 dashes = static_cast<u32>(clampf(kTau * rr / 60.0f, 8.0f, 48.0f));
+            const float span = kTau / static_cast<float>(dashes);
+            for (u32 j = 0; j < dashes; ++j) {
+                const float a0 = span * static_cast<float>(j);
+                telegraphLine(d, n.at + dirv(a0) * rr, n.at + dirv(a0 + 0.5f * span) * rr, n.tick);
+            }
+        }
         const float r = w.feedbackNullRadius(n, t);
         if (r <= 0.0f) continue;
         const u32 segs = 72;

@@ -39,12 +39,15 @@ float bodyRadius(const ArenaData& a, u8 kind) {
 
 float World::trackScale() const {
     // arena.md: the mini-boss health of that Track (minibosses.json healthByTrack; Track 1 uses 300), x 1.25 a Track of the
-    // loop as the mini-bosses', x (1 + 0.5 per extra player) (a decision: the page is silent on co-op health here).
+    // loop as the mini-bosses', x (1 + 0.5 per extra player) (a decision: the page is silent on co-op health here). The review's
+    // fixes (H7, 2026-11-15): "the mini-boss health of that Track" as the game gives it: x the mean factor of the mini-bosses the
+    // Track can bring (World::trackMiniFactor; Track 1, which brings none, Track 2's on its 300).
     const MiniData& md = species_->minis;
     const u32 tr = phrase_.track < 1 ? 1u : phrase_.track;
     const u32 first = tr < director_.songs ? tr : director_.songs;
     float h = first <= 1 ? kArTrack1Scale : md.healthByTrack[first > md.healthTracks ? md.healthTracks : first];
     if (inLoop(tr, director_.songs)) h *= std::pow(md.loopFactor, static_cast<float>(tr - director_.songs));
+    h *= trackMiniFactor(tr);
     return h * (1.0f + kCoopBossHealthPerPlayer * static_cast<float>(presentCount() - 1));
 }
 

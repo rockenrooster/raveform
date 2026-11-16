@@ -610,6 +610,7 @@ struct CadenceState {
     float rot = 0.0f;          // the square's turn (the Modulation turns it a quarter the other way every fourth bar line)
     float rotFrom = 0.0f, rotTo = 0.0f;
     double turnTick = -1.0;    // a turn began (it takes a beat)
+    double turnWarn = -1.0;    // the review's fixes (H9, 2026-11-15): the bar line of the turn announced a bar ahead (-1: none)
     u8 phase = 0;              // 0 Progression, 1 Modulation, 2 Inversion
 };
 

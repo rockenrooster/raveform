@@ -424,6 +424,7 @@ private:
     IconSet icons_;
     i32 upgradeIcons_[sim::kUpgradeCount] = {};
     i32 boostIcons_[sim::kBoostCount] = {};
+    i32 fusionIcons_[sim::kFusionCount] = {};  // (the review's fixes, M20, 2026-11-15: the HUD shows the Fusions taken)
     bool flow_ = false;
     Screen screen_ = Screen::Run, settingsBack_ = Screen::Title;
     u8 settingsTab_ = 0;
@@ -491,7 +492,17 @@ private:
     float hitMomentT_ = -100.0f;
     i32 forcedHint_ = -1;  // pictures: m6_hint_<k> shows hint k
     void hintsTick(ViewInput& vi);
-    void pulse(int kind);  // M6: a haptic pulse (0 light, 1 medium, 2 heavy) at the HAPTICS setting
+    void pulse(int kind, bool ui = false);  // M6: a haptic pulse (0 light, 1 medium, 2 heavy) at the HAPTICS setting; ui: a control
+                                            // tapped (felt on the title too)
+    u64 pulseAtNs_ = 0;  // the review's fixes (M45, 2026-11-15): the last pulse (one in 80 ms at most) and its kind
+    int pulseKind_ = 0;
+    // The review's fixes (2026-11-15, "The 3-2-1 has no tick sound"): the co-op count-in whose ticks were sent (its resume song),
+    // and the pause's mix lift over the count-in's first beat as last sent (0 under the pause, 1 lifted).
+    double countInTicked_ = -1.0;
+    float countInLiftSent_ = 0.0f;
+    float countInLift() const;
+    void countInFrame();
+    void applyPauseMix();
     float bossHitT_ = -100.0f;  // play test 3 (GAME_DESIGN 7.6): the last hit on a boss's weak point (its bar's segment flashes)
     u8 bossHitPart_ = 0xFF;     // ... the part it hit (Kaleidos's pair, a Longwave segment, a Voice; 0xFF the whole)
     // M5 (GAME_DESIGN 7.6, screens.md "Boss hint"): this device's player's shots on the boss, bar by bar of the fight.

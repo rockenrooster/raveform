@@ -282,6 +282,11 @@ constexpr float kBossCoreScore = 2000.0f;     // score for the core (x Chain)
 constexpr u32 kBossPairShards = 20;           // Shards a pair drops (an elite's, GAME_DESIGN 5)
 constexpr u32 kBossShards = 200;              // GAME_DESIGN 5 (quoted): 200 for bosses
 constexpr float kBossNovaDamage = 60.0f;      // a Nova's blast: to each pair, and the core when open
+// The review's fixes (H4, 2026-11-15; the owner: "nova is meant for regular enemies, so should scale lower for bosses and mini
+// bosses, 0.33x and 0.66x"): every Nova's blast (pressed, Auto Nova's, Black Hole's, the Extra Life's) on a boss's parts and core
+// is its damage times these (World::bossNova); enemies and the arena's bodies take it whole.
+constexpr float kBossNovaScale = 0.33f;
+constexpr float kMiniNovaScale = 0.66f;
 constexpr float kBossArmInner = 78.0f;        // the arms' hit shape: from the first facet's inner point ...
 constexpr float kBossArmOuter = 274.0f;       // ... to past the tip star
 constexpr float kBossEnterWu = 500.0f;        // kaleidos.md (quoted): enters 500 wu from the nearest player

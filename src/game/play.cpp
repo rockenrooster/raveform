@@ -34,6 +34,11 @@ constexpr float kIntensityStep = 0.02f;   // the band hears a new intensity when
 // line (a boss death or a retry in the first half of a bar takes the next line), before its write head
 // reaches the line (latency is far below half a bar).
 constexpr double kPlanAtBar = 0.55;
+// The review's fixes (2026-11-15; chosen): haptic pulses at most one in 80 ms (a heavier one replaces a lighter one within it); a
+// teammate's going down is the hit sound at this gain (panned); the 3-2-1's tick on each ring's beat at this gain.
+constexpr u64 kPulseGapNs = 80000000ull;
+constexpr float kTeammateDownGain = 0.45f;
+constexpr float kCountInTickGain = 0.8f;
 
 bool is(const char* a, const char* b) { return std::strcmp(a, b) == 0; }
 Vec2 deadZone(Vec2 v, float dz) {
@@ -112,6 +117,7 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
     if (!icons_.load()) return false;
     for (u8 u = 0; u < kUpgradeCount; ++u) upgradeIcons_[u] = icons_.find(upgradeInfo(u).icon);
     for (u8 b = 0; b < kBoostCount; ++b) boostIcons_[b] = icons_.find(boostInfo(b).icon);
+    for (u8 f = 0; f < kFusionCount; ++f) fusionIcons_[f] = icons_.find(fusionInfo(f).icon);
     view_.setIcons(&icons_, upgradeIcons_, boostIcons_);
     view_.setFont(&font);
     // The screens around the run: interactive play only (benchmarks, pictures and --bot are the run alone; M4
@@ -263,6 +269,7 @@ void Play::buildInput(StickInput& in) {
 void Play::frame(float realDt) {
     ++frameNo_;
     transitionFrame();  // M6 (screens.md "Transitions")
+    countInFrame();     // the review's fixes (2026-11-15): the 3-2-1's ticks in co-op, the pause's mix lifting over its first beat
     if (coop()) {
         netFrame(realDt);  // M4: the run on the host's song (game/play_net.cpp)
         return;
@@ -485,6 +492,7 @@ void Play::afterTick() {
                 // The bot taps retry (also in the bot_ pictures, C2: the real careful bot's run goes on).
                 if (opt_.bot || opt_.kind != PlayOptions::Kind::Play || std::strncmp(opt_.picture, "bot_", 4) == 0) retryRequest_ = true;
                 if (bandDrives_) band_->playSfx(audio::Sfx::GameOver);
+                if (!coop() && e.a == seat_) pulse(2);  // the review's fixes (M45, 2026-11-15): the ship lost (a heavy pulse)
                 RF_LOG("play: %s (Track %u, bar %u, score %llu)", coop() ? "every ship is down: the run is over" : "the ship is lost",
                        w.phrase().track, w.phrase().bar, static_cast<unsigned long long>(w.player(seat_).score));
                 if (flow_ && (screen_ == Screen::Run || (coop() && (screen_ == Screen::Paused || screen_ == Screen::Settings)))) {
@@ -576,6 +584,7 @@ void Play::afterTick() {
                 if (markCount_ < kMarks) marks_[markCount_++] = Mark{runSeconds_, 3, e.a};
                 if (e.a == seat_) hitMomentT_ = static_cast<float>(tickEnd_ - e.age);  // (M6: the hint's moment)
                 if (e.a == seat_ && e.c == 1) pulse(1);  // M6: the guard ring breaking (a medium pulse)
+                if (e.a == seat_ && e.c == 0) pulse(1);  // the review's fixes (M45, 2026-11-15; GAME_DESIGN 11.5): a cell lost (medium)
                 if (bandDrives_ && e.a == seat_) {
                     band_->playSfx(audio::Sfx::Hit);
                     upgradeCues_.add(e, 0.0f, 0.0);  // M5: Crescendo falls back
@@ -586,8 +595,29 @@ void Play::afterTick() {
                 const PlayerState& me = w.player(seat_);
                 const bool hole = me.holeFrom >= 0.0 && me.holeBlow == e.tick;
                 if (bandDrives_ && e.a == seat_ && !hole) band_->nova(e.tick + (coop() ? netBandOffset_ : clock_.offset()));
+                // The review's fixes (M45, 2026-11-15; GAME_DESIGN 11.5 "heavy on Nova"): this player's Nova, pressed or Auto Nova's
+                // (c 0; a free one, an Extra Life's or Black Hole's own, has its own moment).
+                if (e.a == seat_ && e.c == 0) pulse(2);
                 break;
             }
+            case EventType::Down:
+                // The review's fixes (M46, 2026-11-15): this device's ship going down (co-op) is heard and felt as the hit it is: the
+                // hit sound, the PlayerHit cue (Crescendo falls back) and a heavy pulse; a teammate's, a quieter hit panned to where
+                // it happened.
+                if (e.a == seat_) {
+                    pulse(2);
+                    if (bandDrives_) {
+                        band_->playSfx(audio::Sfx::Hit);
+                        Event x = e;
+                        x.type = EventType::Hit;
+                        x.c = 0;
+                        upgradeCues_.add(x, 0.0f, 0.0);
+                    }
+                } else if (bandDrives_) {
+                    const float pan = clampf((e.x - w.player(seat_).pos.x) / 900.0f, -1.0f, 1.0f) * 0.7f;
+                    band_->sfxAt(audio::Sfx::Hit, (std::floor(band_->view().heardTick / kTicksPerStep) + 1.0) * kTicksPerStep, kTeammateDownGain, pan);
+                }
+                break;
             case EventType::Upgrade:
                 // M5 part 3: the upgrades' cues (game/upgrade_sounds.cpp), this device's player's.
                 if (bandDrives_ && e.a == seat_)
@@ -596,6 +626,7 @@ void Play::afterTick() {
                 break;
             case EventType::Dash:
                 if (bandDrives_ && e.a == seat_) band_->playSfx(e.b ? audio::Sfx::PerfectDash : audio::Sfx::Dash);
+                if (e.a == seat_ && e.b) pulse(1);  // the review's fixes (M45, 2026-11-15; GAME_DESIGN 11.5): a Perfect Dash (medium)
                 break;
             case EventType::TrioUnlock:
                 // Play test 1 (screens.md): the orbs light on the Break's third beat with a chime (a bell two octaves
@@ -932,9 +963,10 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     hintsTick(vi);  // M6: the first-run hints
     {
         // The HUD's blocks this frame: edge chevrons slide 20 px clear of them (screens.md "In the run").
-        const float s = H / 1080.0f * hudScale();  // (M6: the UI scale)
+        const float s = layoutScale(W, H) * hudScale();  // (M6: the UI scale; the review's fixes, H2: the width too)
         const float m = std::fmax(132.0f * s, insetMin.x), mr = std::fmax(132.0f * s, insetMax.x), top = insetMin.y;
         HudKeepOut k;
+        k.band = top + 150.0f * s;  // (the review's fixes, M11: the top band, for the Trio's words)
         const bool runHud = !flow_ || screen_ == Screen::Run || screen_ == Screen::Paused;
         if (runHud) {
             const PlayerState& me = w.player(seat_);
@@ -959,7 +991,7 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
             k.b[k.count++] = {0.5f * W + 380.0f * s, top + 70.0f * s};
             // The Nova stock and the Dash bar under it.
             const float novas = static_cast<float>(me.novaCap > 0 ? me.novaCap - 1 : 0);
-            k.a[k.count] = {W - mr - 150.0f * s - 50.0f * s * novas - 16.0f * s, 0.0f};
+            k.a[k.count] = {W - mr - 150.0f * s - novaStarPitch(W, s, mr, me.novaCap) * novas - 16.0f * s, 0.0f};
             k.b[k.count++] = {W - mr - 40.0f * s, top + 122.0f * s};
             // The pause ring.
             float r = 0.0f;
@@ -1023,12 +1055,14 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
     hs.beat = view_.beat();
     // The run's HUD: in the run (and under pause); the screens draw their own.
     const bool runHud = !flow_ || screen_ == Screen::Run || screen_ == Screen::Paused;
-    hs.showTouch = touch_.used() && runHud && p.alive;
+    // (the review's fixes, H2, 2026-11-15: not under the pause, where they lay under RESUME, RESTART and SETTINGS)
+    hs.showTouch = touch_.used() && runHud && p.alive && !(flow_ && screen_ == Screen::Paused);
     hs.world = &w;
     hs.music = vi.music;
     hs.icons = &icons_;
     hs.upgradeIcons = upgradeIcons_;
     hs.boostIcons = boostIcons_;
+    hs.fusionIcons = fusionIcons_;
     hs.trackName = songName(w.phrase().song);
     hs.bpm = vi.bpm;
     hs.runHud = runHud;
@@ -1177,13 +1211,57 @@ void Play::applySettings() {
     world_->rules().autoNova = settings_.autoNova;  // play test 1, second pass: this device's ship
     if (band_ && band_->active()) {
         if (band_->variant() != settings_.variant) band_->setVariant(settings_.variant);
-        // The music under pause (and its settings): dipped and behind the low-pass, until the count-in ends.
-        const bool underPause = underPauseMenu();
-        const float pauseDip = underPause ? 0.45f : 1.0f;
-        band_->setGains(settings_.music * settings_.master * pauseDip, settings_.effects * settings_.master);
-        band_->setMuffle(underPause);
+        applyPauseMix();
         band_->setHaptics(settings_.haptics > 0);
         band_->setHapticStrong(settings_.haptics == 2);  // M3 stage C: SOFT and STRONG differ
+    }
+}
+
+void Play::applyPauseMix() {
+    // The music under pause (and its settings): dipped and behind the low-pass, until the count-in. The review's fixes (2026-11-15):
+    // the dip and the low-pass lift over the count-in's first beat (countInLift), so the player counts in with the music.
+    if (!band_ || !band_->active()) return;
+    const bool underPause = underPauseMenu();
+    const float lift = underPause ? countInLift() : 1.0f;
+    countInLiftSent_ = underPause ? lift : 0.0f;
+    const float pauseDip = underPause ? 0.45f + 0.55f * lift : 1.0f;
+    band_->setGains(settings_.music * settings_.master * pauseDip, settings_.effects * settings_.master);
+    const float beatS = 60.0f / std::fmax(clock_.bpm() > 1.0f ? clock_.bpm() : postedBpm_, 30.0f);
+    band_->setMuffle(underPause && lift <= 0.0f, lift > 0.0f && underPause ? beatS * (1.0f - lift) : -1.0f);
+}
+
+float Play::countInLift() const {
+    // How far the count-in is through its first ring's beat (0 before it or with none; 1 from its end).
+    if (!flow_ || !underPauseMenu()) return 0.0f;
+    if (coop()) {
+        const net::Session* se = session_;
+        if (!se || !se->resuming()) return 0.0f;
+        const double first = se->resumeSong() - kCountInBeats * kTicksPerBeat;
+        return clampf(static_cast<float>((se->songAt(se->hostNow()) - first) / kTicksPerBeat), 0.0f, 1.0f);
+    }
+    if (!countIn_ || realign_ || countInEnd_ > 1e17) return 0.0f;
+    const double first = countInEnd_ - kCountInBeats * kTicksPerBeat;
+    return clampf(static_cast<float>((countInNow() - first) / kTicksPerBeat), 0.0f, 1.0f);
+}
+
+void Play::countInFrame() {
+    // The review's fixes (2026-11-15; the owner: "The 3-2-1 has no tick sound. fix"): co-op's shared count-in sends its three ticks,
+    // one on each ring's beat as the band hears it (solo's go with beginCountIn); the pause's mix lifts over the first beat.
+    if (!flow_ || !band_ || !band_->active()) return;
+    if (coop() && session_ && bandDrives_ && coopRunShown_ && !coopOver_) {
+        const net::Session& s = *session_;
+        if (s.resuming() && s.songValid() && s.resumeSong() != countInTicked_) {
+            countInTicked_ = s.resumeSong();
+            const double now = s.songAt(s.hostNow());
+            for (u32 k = 0; k < static_cast<u32>(kCountInBeats); ++k) {
+                const double at = s.resumeSong() - (kCountInBeats - static_cast<double>(k)) * kTicksPerBeat;
+                if (at > now) band_->sfxAt(audio::Sfx::Tick, at - s.runOffset() + netBandOffset_, kCountInTickGain);
+            }
+        }
+    }
+    if (underPauseMenu()) {
+        const float lift = countInLift();
+        if (std::fabs(lift - countInLiftSent_) >= 0.02f || (lift >= 1.0f && countInLiftSent_ < 1.0f)) applyPauseMix();
     }
 }
 
@@ -1258,6 +1336,11 @@ void Play::beginCountIn() {
         resumeOffset_ = clock_.offset();
     }
     if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+    // The review's fixes (2026-11-15; the owner: "The 3-2-1 has no tick sound. fix"): a tick on each of the three rings' beats, as
+    // the band hears them (the pause screen's count-in; not a realign's after a fast-forward or the sync screen).
+    if (bandDrives_ && band_ && band_->view().running && flow_ && screen_ == Screen::Paused)
+        for (u32 k = 0; k < static_cast<u32>(kCountInBeats); ++k)
+            band_->sfxAt(audio::Sfx::Tick, countInEnd_ - (kCountInBeats - static_cast<double>(k)) * kTicksPerBeat, kCountInTickGain);
 }
 
 void Play::endRun(bool died) {
@@ -1748,10 +1831,17 @@ void Play::hintsTick(ViewInput& vi) {
         return;
     }
 }
-void Play::pulse(int kind) {
+void Play::pulse(int kind, bool ui) {
     // M6: a haptic pulse for what M5 added (the ring breaking, an Extra Life spent, a boss's death, a mini-boss's arrival),
-    // at the HAPTICS setting's strength; never for a weak point's hit (it would buzz all fight).
+    // at the HAPTICS setting's strength; never for a weak point's hit (it would buzz all fight). The review's fixes (M45, M48,
+    // 2026-11-15): never for a picture or a benchmark (the run alone: no screens), nor for the title's demo (a control tapped on
+    // the title, `ui`, still is); at most one in 80 ms, a heavier one replacing a lighter one within that time.
+    if (!flow_ || opt_.picture[0] || opt_.fixedStep || (!ui && attract())) return;
     if (!bandDrives_ || !band_ || !band_->haptics() || settings_.haptics == 0) return;
+    const u64 now = nowNs();
+    if (pulseAtNs_ && now - pulseAtNs_ < kPulseGapNs && kind <= pulseKind_) return;
+    pulseAtNs_ = now;
+    pulseKind_ = kind;
     platformHaptic(kind >= 2 ? HapticKind::Heavy : (kind == 1 ? HapticKind::Medium : HapticKind::Light), settings_.haptics == 2);
 }
 }  // namespace rf

@@ -35,6 +35,9 @@ const M6Pic kM6Pics[] = {
     {"ended_by", M6::EndedBy, 0, nullptr},     {"set_complete", M6::SetCard, 0, nullptr},
     {"set_complete_over", M6::SetOver, 0, nullptr}, {"title_star", M6::TitleStar, 0, nullptr},
     {"uiscale_90", M6::UiScale, 0, nullptr},   {"uiscale_130", M6::UiScale, 3, nullptr},
+    // The review's fixes (H2, 2026-11-15): the HUD with its widest top row (seven Novas, two Extra Lives) and the touch controls, at
+    // 100% and 130% (arg: the scale's index, + 8: full).
+    {"uiscale_100_full", M6::UiScale, 9, nullptr}, {"uiscale_130_full", M6::UiScale, 11, nullptr},
     {"mini_stays", M6::MiniStays, 0, "alpha_hound"},
     {"flash_longwave", M6::Flash, 0, "longwave"}, {"flash_choir", M6::Flash, 0, "choir"}, {"flash_alpha", M6::Flash, 0, "alpha_hound"},
     // M7 (screens.md "Credits (M7)"): the credits screen at its top, and scrolled into the licences.
@@ -161,9 +164,14 @@ bool Play::scriptSetupM6() {
         case M6::UiScale:
             w.spawner().mode = Spawner::Mode::Slice;
             scriptFastForwardS_ = 8.0f;
-            settings_.uiScale = pic.arg;
+            settings_.uiScale = static_cast<u8>(pic.arg & 7u);
             applySettings();
             touch_.markUsed();
+            if (pic.arg & 8u) {
+                PlayerState& pl = w.playerMut(0);
+                pl.novaCap = pl.novas = kNovaCapacityMax;
+                pl.extraLives = 2;
+            }
             break;
         case M6::Credits:
             flow_ = true;
@@ -389,7 +397,7 @@ bool Play::scriptInputM6(StickInput& in) {
         }
         case M6::Credits:
             in = bot_.think(w, 0, controller_, clock_.heardNow());
-            if (pic.arg == 1) creditsScroll_ = 1400.0f * (layoutH_ > 0.0f ? layoutH_ / 1080.0f : 1.0f);  // (into the licences)
+            if (pic.arg == 1) creditsScroll_ = 1400.0f * (layoutH_ > 0.0f ? layoutScale(layoutW_, layoutH_) : 1.0f);  // (into the licences)
             if (captureFrom_ < 0 && t == kM6At) captureFrom_ = now;
             return true;
         case M6::TitleStar:
@@ -422,7 +430,7 @@ bool Play::scriptInputM6(StickInput& in) {
         case M6::TitleIdle: {
             in = bot_.think(w, 0, controller_, clock_.heardNow());
             attractInput(in);  // (the title's demo, as in the game)
-            const Vec2 play{0.5f * layoutW_, 759.0f * layoutH_ / 1080.0f};  // (PLAY's centre, screenTitle)
+            const Vec2 play{0.5f * layoutW_, 759.0f * layoutScale(layoutW_, layoutH_)};  // (PLAY's centre, screenTitle)
             if (captureFrom_ < 0 && titleHideLine_ >= 0.0 && titleWakeAt_ < 0.0) {
                 const double beat = 3600.0 / std::fmax(w.tempoAt(music1_), 30.0f);  // frames a beat
                 const double toLine = (titleHideLine_ - music1_) / static_cast<double>(w.ticksPerSecond()) * 60.0;

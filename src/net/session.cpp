@@ -1604,6 +1604,7 @@ void Session::collectLocalEvents() {
         switch (e.type) {
             case EventType::NovaPress:
                 m.kind = kPeNova;
+                m.b = e.b;  // (the review's fixes, H5, 2026-11-15: 1 the player pressed it, so Feedback's tape records it)
                 m.tick = e.tick;
                 break;
             case EventType::Dash:

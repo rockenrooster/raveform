@@ -387,6 +387,7 @@ bool parseMessage(Msg type, Reader& r, PacketSink* sink) {
                 case kPeHalo: bMax = 3; break;
                 case kPeWell: bMax = sim::kRiffMaxLevel; break;
                 case kPeDash:
+                case kPeNova:  // (the review's fixes, H5, 2026-11-15: 1 the player pressed it, for Feedback's tape)
                 case kPeRevive: bMax = 1; break;
                 default: bMax = 0; break;
             }

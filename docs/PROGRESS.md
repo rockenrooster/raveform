@@ -4,6 +4,86 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, the review's fixes (batch 1)
+
+The owner chose fixes from `docs/REVIEW_2026-11-15.md`; the lead's brief, item by item.
+
+- **Screens fit every shape** (H2, M11 for the Trio). One layout scale, `layoutScale(W, H) = min(H / 1080, W / 2222)`
+  (`play_hud.h`), wherever a layout scale is made: `Ui::begin`, `drawHud`, `drawRunHud`, `pauseButtonCentre`,
+  `TouchControls::layout`, the HUD keep-out (`Play::render`), `AudioScene::layout` (the sync screen) and the pictures that tap
+  PLAY or scroll the credits. 2400x1080 is unchanged (W / 2222 > 1 there). Top-anchored rows stay at the top and bottom-anchored
+  ones at the bottom, so a 4:3 screen has room between them. Then what still collided: a long room name in the join list is cut
+  short with `...` 36 px before the seat count; the game over's score (solo, and the co-op team's) scales down to fit inside the
+  margins (with room for NEW BEST's star), by the final score's width so it does not shrink as it counts; the Nova stock's pitch
+  closes up, and its stars shrink once they would touch, so seven never meet `DROP IN n` (`novaStarPitch`, also the chevrons'
+  keep-out); the touch controls are not drawn under the pause; CONTROLS' `EVERY HINT WILL SHOW AGAIN` sits 24 px under RESET
+  HINTS (it was 12: the layout rule's only warning, at every shape). Checked in Debug at 2400x1080, 1920x1200, 1920x1080 and
+  1600x1200 (`captures\fix1\screens_<shape>`, `coop_<shape>`, `sync`): notice, title, SOUND, CONTROLS, LOOK, credits, pause,
+  game over and ENDED BY, the HUD with the touch controls at 100% and 130%, the co-op notice, join (empty, list, code, address),
+  lobby (2 and 4 seats), the co-op pause, game over (host and client), the co-op HUD and the sync screen: nothing off screen or
+  overlapping, no `ui:` layout warning, 0 validation messages in 92 Debug runs. `review-m3b.ps1` and `review-m4b.ps1` take
+  `-Res` (m3b now prints `ui:` layout warnings too); new
+  pictures `m6_uiscale_100_full`, `m6_uiscale_130_full` (seven Novas, two Extra Lives, the touch controls).
+- **Syncopation and Rear Guard on the assist** (H3). The assist's half-rate grid never skips the off-beat's step (tick % 96 ==
+  48), in the sim (`World::spawnShots`), the band (`Band::computeShots`) and the engine's lead: one rule. At Double-Time 1 (the
+  16-tick grid) the assist fires 16 shots a bar, 4 of them on the off-beat (a new check in the sim's lead rule test); grids 24
+  and 12 and Hyper's already had the off-beat on an even step.
+- **Nova against bosses** (H4): every Nova's blast (pressed, Auto Nova's, Black Hole's, the Extra Life's: all reach
+  `World::bossNova`) is x 0.33 on a boss and x 0.66 on a mini-boss (`kBossNovaScale`, `kMiniNovaScale`, `tuning.h`). Enemies and
+  the arena's bodies take it whole.
+- **Feedback and Novas** (H5). (a) Only Novas the player pressed go on the tape: `PlayerState::novaPressed` (`pressNova`'s new
+  `pressed`; false for Auto Nova's, an Extra Life's and Black Hole's; Last Light was never a Nova event), carried by the NovaPress
+  and NovaBlast events (`b`) and to teammates by the Nova player event (`MsgPlayerEvent::b`, which the parser now accepts as 0-1:
+  it refused any `b` on a Nova, so the first build of this dropped every client's Nova: 333 census mismatches in the clean soak).
+  (b) Each Null is announced a beat before it grows: its place fixed then (where the Echo stands), a dashed see-through tell
+  closing on it from 360 wu to the Echo's size over the beat (`telegraphLine`), and the telegraph tick (FbNull with f = 1; the
+  burst stays on the growth). (c) A recorded Nova is a small four-point star on the tape at its step, in the player's colour with
+  a white core, until it comes back. Pictures `m5_fb_tape`, `m5_fb_null`, `m5_fb_null_strip` (the ship presses a Nova every five
+  seconds of the fight).
+- **Co-op SYNC** (H6): drawn disabled in co-op, opening nothing; solo unchanged. While the shared count-in runs, a device in
+  SETTINGS (saved, as DONE does) or CREDITS opened from the pause is brought back to the pause screen, so it sees the 3-2-1.
+- **The arena's bodies' health** (H7): `World::trackScale` is now the Track's mini-boss health as the game gives it: the page's
+  number (Track 1: 300) x the mean `healthFactor x kMiniHealthTune` over the mini-bosses that Track can bring
+  (`World::trackMiniFactor`, pickMini's lists: Track 8 counts Deep Well and both of Track 7's pair; Tracks 9, 10 and the loop all
+  twelve; Track 1 takes Track 2's). Measured with `--sim crowd --seeds 10 --minutes 20 --policy assist` (the crowd tool now prints
+  each kind's broken of placed and its mean health). Before: Vault 9 of 67 broken (13%, mean health 1,374), Rift 21 of 109
+  (19%, 1,219), Vault Drop 0 of 21 (0%, 2,221), Comet 1 of 40 (2%, 512), carriers 4 of 69 (6%, 1,251). After: Vault 22 of 60
+  (37%, 292), Rift 31 of 100 (31%, 269), Vault Drop 3 of 22 (14%, 470), Comet 5 of 40 (12%, 118), carriers 4 of 54 (7%, 333).
+  (Both builds already had the assist, Nova and shelter fixes.) Both runs exit 1 only for Shards dropped by the full Shard pool:
+  3 before, 24 after (two seeds; more bodies broken, more Shards), the review's low finding, not touched here.
+- **Shelter** (H8): `World::hitPlayer` turns every hit away while `sheltered(p)`, so the meteor, the Storm Cell, a Volatile
+  blast and any later source respect it; `bossHitPlayer` checks it before counting a boss hit, and `haloBlocks` spends no Halo
+  hit on a sheltered ship.
+- **Cadence's turn** (H9): announced a bar ahead (`CadenceState::turnWarn`), on the bar line before the song comes back to I:
+  CdTurn is sent then for the turn's bar line (its reversed cymbal now four beats long, `pending_sounds.cpp`: it swells over the
+  warning bar and ends on the turn), and the view draws each pillar's quarter-turn sweep as a dashed see-through arc over that
+  bar, rising over its last beat. An announced turn happens even if the phase changes within that bar; none is unannounced.
+  Pictures `m5_cd_turn`, `m5_cd_turn_strip`.
+- **Haptics** (M45): medium on this device's player losing a cell and on a Perfect Dash; heavy on its Nova (pressed or Auto
+  Nova's; a free one has its own moment) and on its death (solo) or going down (co-op). `Play::pulse` never fires for a picture,
+  a benchmark (the run alone) or the title's demo (a control tapped on the title still does: `pulse(kind, ui)`), and at most once
+  in 80 ms, a heavier one replacing a lighter one within that time.
+- **Co-op, your ship going down** (M46): the hit sound, the PlayerHit cue (Crescendo falls back) and the heavy pulse; a
+  teammate's going down is the hit sound at 0.45, panned by where it happened, on the next sixteenth.
+- **The boss hint line** (M16): the boss's name and its hint line in the boss bar at 14 px (were 11), each on the priority
+  layer's dark rim (`threatRims`, 2 px past the stroke) as the first-run hints' world text is.
+- **The HUD shows the build** (M20): every Fusion taken heads the Mod row, its icon in a gold frame; every Mod held is shown:
+  when one row cannot hold them it wraps onto rows above (up to four), every icon at 0.85 then, and the Boosts' labels and the
+  Trio hint above them move up with the extra rows; a Mod's pips show its cap (held filled, the rest empty outlines). With
+  `--loadout max` (3 Fusions, 36 Mods): two full rows and one icon more at 2400x1080, three rows at 1920x1200.
+- **The Trio's top orb's words** (M11): a top orb whose block would reach into the HUD's top band (`HudKeepOut::band`: the
+  Track bar and the boss bar, 150 px at 1080) has its words beside it, on its right, as the side orbs.
+- **The recipe line** (M26): shown only when the other half is held or can still be taken (`Loadout::canTake`: a Riff not held,
+  with four Riffs held, cannot).
+- **The 3-2-1 ticks**: the telegraph tick on each of the three rings' beats as the band hears them (solo: sent by
+  `beginCountIn` on the pause screen; co-op: `Play::countInFrame` once the shared count-in's resume is known, on the band's
+  timeline), and the pause's dip and low-pass lift over the count-in's first beat (`countInLift`, `applyPauseMix`;
+  `Band::setMuffle` takes a ramp), so the player counts in with the music.
+- Desktop Debug and dev build; `scripts\test.ps1` passes (audio 2,724 checks, sim 6,120, net 131,368, save 60; determinism;
+  the four loopback soaks, 0 census mismatches); `scripts\sanitize.ps1` (tests, the 3-minute bot run, the fights in Tracks
+  4, 7 and 10, the 3-minute net soak): no report. Not heard (PC runs are silent) and not tried on a phone or the tablet:
+  the 3-2-1 ticks and the lift, the Null and turn sounds, the haptics.
+
 ## 2026-11-15, Fusions shown; a Nova a Shard level; the count-in 3-2-1
 
 The owner, on the Fusion findings below: "They come too late. Its fine, no change needed" (the pace stays); "The game never

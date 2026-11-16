@@ -504,6 +504,12 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
     u32 fuseKind[kFusionCount] = {};
     // M5 part 5: elites, the arena's events and its bodies broken.
     u64 elites = 0, eliteKills = 0, events[kEventKinds] = {}, broken = 0, pylonsTuned = 0, splits = 0, bombs = 0;
+    // The review's fixes (H7, 2026-11-15): the bodies with health by kind (Vault, Rift, the Vault Drop's gold Vault, the Comet, a
+    // Convoy's carrier): how many stood, how many were broken, their mean health as placed.
+    u64 bodyPlaced[16] = {}, bodyBroken[16] = {};
+    double bodyHp[16] = {};
+    static double slotPlaced[World::kArenaBodies];
+    static u8 slotKind[World::kArenaBodies];
     double t3Capped = 0.0;
     const SpeciesTable::Crowd& cr = species.crowd;
     const float hw = tuning::kFrameHalfWWu, hh = tuning::kFrameHalfHWu;
@@ -611,13 +617,31 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 }
             }
             if (p.alive) paceTicks[(ph.track < 4 ? ph.track : 4u) - 1] += 1.0;
+            if (t == 0)
+                for (u32 k = 0; k < World::kArenaBodies; ++k) {
+                    slotPlaced[k] = -1.0;
+                    slotKind[k] = 0xFF;
+                }
+            for (u32 k = 0; k < World::kArenaBodies; ++k) {
+                const ArenaBody& b = w.arenaBodies()[k];
+                if (!b.alive || (b.placed == slotPlaced[k] && b.kind == slotKind[k])) continue;
+                slotPlaced[k] = b.placed;
+                slotKind[k] = b.kind;
+                if (b.hpMax > 0.0f && b.kind < 16) {
+                    ++bodyPlaced[b.kind];
+                    bodyHp[b.kind] += static_cast<double>(b.hpMax);
+                }
+            }
             for (u32 k = 0; k < w.eventCount(); ++k) {
                 const Event& ev = w.events()[k];
                 if (ev.type == EventType::BossCue) {
                     const BossCue cue = static_cast<BossCue>(ev.a);
                     if (cue == BossCue::ElArrive) ++elites;
                     if (cue == BossCue::EvAnnounce && ev.b < kEventKinds) ++events[ev.b];
-                    if (cue == BossCue::VaBreak || cue == BossCue::CoBreak || (cue == BossCue::RiClose && ev.b != 0)) ++broken;
+                    if (cue == BossCue::VaBreak || cue == BossCue::CoBreak || (cue == BossCue::RiClose && ev.b != 0)) {
+                        ++broken;
+                        if (ev.b < 16) ++bodyBroken[ev.b];
+                    }
                     if (cue == BossCue::PyTuned) ++pylonsTuned;
                     if (cue == BossCue::ElSplit) ++splits;
                     if (cue == BossCue::ElBurst) ++bombs;
@@ -973,6 +997,19 @@ int runCrowd(const SpeciesTable& species, u32 seeds, float minutes, u64 seed0, B
                 static_cast<unsigned long long>(bombs), static_cast<unsigned long long>(broken), static_cast<unsigned long long>(pylonsTuned));
     for (u32 k = 0; k < kEventKinds; ++k) std::printf(" %s %llu", eventId(static_cast<EventKind>(k)), static_cast<unsigned long long>(events[k]));
     std::printf("\n");
+    {
+        // (the review's fixes, H7, 2026-11-15) the bodies with health: broken of placed, and their mean health
+        std::printf("[sim]   bodies broken of placed (mean health):");
+        const u8 kinds[5] = {static_cast<u8>(StructKind::Vault), static_cast<u8>(StructKind::Rift), kBodyGoldVault, kBodyComet, kBodyCarrier};
+        static const char* const kNames[5] = {"Vault", "Rift", "Vault Drop", "Comet", "carrier"};
+        for (u32 k = 0; k < 5; ++k) {
+            const u8 b = kinds[k];
+            std::printf(" %s %llu of %llu (%.0f%%, %.0f);", kNames[k], static_cast<unsigned long long>(bodyBroken[b]), static_cast<unsigned long long>(bodyPlaced[b]),
+                        bodyPlaced[b] ? 100.0 * static_cast<double>(bodyBroken[b]) / static_cast<double>(bodyPlaced[b]) : 0.0,
+                        bodyPlaced[b] ? bodyHp[b] / static_cast<double>(bodyPlaced[b]) : 0.0);
+        }
+        std::printf("\n");
+    }
     // M5 part 1: every fight by its kind (seconds to kill by the Track it came in).
     std::printf("[sim]   fights (kind: fought, won, lost, warped out, hits taken a fight [bullets / bodies / beams], cells as it began / of; seconds to kill by Track):\n");
     for (u32 k = 0; k < kBossKinds; ++k) {

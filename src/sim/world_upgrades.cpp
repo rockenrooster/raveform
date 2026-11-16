@@ -848,6 +848,8 @@ void World::activateBoost(u32 p, u8 type) {
 }
 
 bool World::haloBlocks(u32 p, Vec2 from) {
+    // (the review's fixes, H8, 2026-11-15: a sheltered ship's Halo keeps its hits; hitPlayer turns the hit away)
+    if (sheltered(p)) return false;
     PlayerState& pl = players_[p];
     for (ActiveBoost& a : pl.boosts) {
         if (a.type != kHalo || a.hits == 0) continue;

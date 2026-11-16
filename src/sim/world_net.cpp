@@ -287,7 +287,8 @@ void World::applyPlayerOp(const NetOp& op) {
             pl.novaBlastTick = op.tick;  // the owner's beat
             {
                 const Vec2 at{op.x, op.y};
-                blackHoleNova(p, op.tick, &at);  // M5: Black Hole's singularity pulls here too (where and when its owner's does)
+                const bool hole = blackHoleNova(p, op.tick, &at);  // M5: Black Hole's singularity pulls here too (where and when its owner's does)
+                pl.novaPressed = op.b != 0 && !hole;  // (the review's fixes, H5: the owner's press, for Feedback's tape)
             }
             pl.novaInvulS = 1e9f;
             ++pl.novasUsed;

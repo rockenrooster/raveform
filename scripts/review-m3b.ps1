@@ -31,6 +31,7 @@ param(
     [string]$Out = 'captures\m3b',
     [ValidateSet('debug', 'dev')][string]$Config = 'debug',
     [string[]]$Only = @(),
+    [string]$Res = '2400x1080',  # the window (the review's fixes, 2026-11-15: the screens at other shapes)
     [switch]$Sound,  # let the app be heard (default: --silent, the PC's runs are silent)
     [switch]$Watch  # show the windows (default: --offscreen, the PC's test runs stay off screen)
 )
@@ -42,11 +43,13 @@ if (-not (Test-Path $exe)) { throw "missing $exe - build first" }
 function Invoke-Shot([string]$Png, [string]$AppArgs) {
     $log = [IO.Path]::ChangeExtension($Png, '.log')
     $full = [IO.Path]::GetFullPath($Png)
-    $argv = @($AppArgs -split '\s+' | Where-Object { $_ }) + @('--res', '2400x1080', '--no-overlay', '--screenshot', $full) + @(if ($Sound) { @() } else { @('--silent') }) + @(if ($Watch) { @() } else { @('--offscreen') })
+    $argv = @($AppArgs -split '\s+' | Where-Object { $_ }) + @('--res', $Res, '--no-overlay', '--screenshot', $full) + @(if ($Sound) { @() } else { @('--silent') }) + @(if ($Watch) { @() } else { @('--offscreen') })
     & $exe @argv *> $log
     if ($LASTEXITCODE -ne 0) { throw "run failed ($LASTEXITCODE) for $Png; see $log" }
     $v = Select-String -Path $log -Pattern 'validation messages: (\d+)' | Select-Object -Last 1
     if ($v -and $v.Matches[0].Groups[1].Value -ne '0') { throw "validation messages in $log" }
+    # (the review's fixes, 2026-11-15: a screen's controls closer than 24 px are reported, as review-m4b does)
+    Select-String -Path $log -Pattern 'ui: ' | ForEach-Object { Write-Host "  [layout] $($_.Line.Trim())" }
 }
 
 $sheet = 'import sys; from PIL import Image; fs=[Image.open(p).convert("RGB") for p in sys.argv[2:]]; w,h=fs[0].width//2,fs[0].height//2; ' +
@@ -60,7 +63,7 @@ $singles = @('screen_notice', 'screen_title', 'screen_settings_sound', 'screen_s
              'pt2_overcharge_3', 'pt2_overcharge_4', 'pt2_overcharge_5', 'loop_encore', 'loop_burn',
              'pt3_ring_broken', 'pt3_ring_relight', 'pt3_life_orb', 'pt3_life_use', 'pt3_vault') +
            @(0..10 | ForEach-Object { "m6_hint_$_" }) +
-           @('m6_ended_by', 'm6_set_complete', 'm6_set_complete_over', 'm6_title_star', 'm6_uiscale_90', 'm6_uiscale_130', 'm6_mini_stays',
+           @('m6_ended_by', 'm6_set_complete', 'm6_set_complete_over', 'm6_title_star', 'm6_uiscale_90', 'm6_uiscale_130', 'm6_uiscale_100_full', 'm6_uiscale_130_full', 'm6_mini_stays',
              'm6_flash_longwave', 'm6_flash_choir', 'm6_flash_alpha', 'm6_credits', 'm6_credits_licences')
 $strips = @('trio_take', 'boss_pair_death', 'boss_death', 'boss_hit', 'm6_lw_entrance', 'm6_lw_lunge', 'm6_lw_close', 'm6_drop_title', 'm6_drop_retry', 'm6_home', 'm6_pause_restart', 'm6_pause_quit', 'm6_hz_wave', 'm6_hz_touch')
 if ($Only.Count) {

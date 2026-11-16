@@ -178,14 +178,30 @@ void Play::screenCoopJoin(Ui& ui) {
         net::roomCodeEncode(b.code, code);
         const float tx = a.x + 40.0f * s, base = c.y + 13.0f * s;
         const float cw = ui.text({tx, base}, 26.0f * s, gold, can ? 1.5f : 0.5f, code, 0.0f);
-        ui.text({tx + cw + 48.0f * s, base}, 26.0f * s, white, li, b.name[0] ? b.name : "HOST", 0.0f);
         char seats[24];
         std::snprintf(seats, sizeof seats, "%u/%u", b.players, b.seats);
         const char* tag = !b.compatible ? "OTHER VERSION" : (running ? "PLAYING" : (full ? "FULL" : ""));
         const float sw = ui.measure(26.0f * s, seats);
         float tagW = 0.0f;
         if (tag[0]) tagW = ui.text({bb.x - 40.0f * s, base}, 20.0f * s, white, 0.6f, tag, 1.0f) + 36.0f * s;
-        ui.text({bb.x - 40.0f * s - tagW - sw, base}, 26.0f * s, white, li, seats, 0.0f);
+        const float seatsX = bb.x - 40.0f * s - tagW - sw;
+        ui.text({seatsX, base}, 26.0f * s, white, li, seats, 0.0f);
+        // The review's fixes (H2, 2026-11-15): a long room name never runs into the seat count: it is cut short with "..." to end
+        // 36 px before it.
+        {
+            const float nx = tx + cw + 48.0f * s, room = seatsX - 36.0f * s - nx;
+            char name[sizeof b.name + 4];
+            std::snprintf(name, sizeof name, "%s", b.name[0] ? b.name : "HOST");
+            if (ui.measure(26.0f * s, name) > room) {
+                size_t len = std::strlen(name);
+                while (len > 0) {
+                    --len;
+                    std::snprintf(name + len, sizeof name - len, "...");
+                    if (ui.measure(26.0f * s, name) <= room) break;
+                }
+            }
+            ui.text({nx, base}, 26.0f * s, white, li, name, 0.0f);
+        }
         if (tapped) {
             if (band_) band_->playSfx(audio::Sfx::UiConfirm);
             coopJoinBy_ = 0;
@@ -529,11 +545,15 @@ void Play::screenGameOverCoop(Ui& ui) {
         const float bars = overS_ * (static_cast<float>(w.bpm()) / 60.0f) / 4.0f;
         const float u = bars < 0.0f ? 0.0f : (bars > 1.0f ? 1.0f : bars);
         const u64 shownScore = static_cast<u64>(static_cast<double>(team) * (1.0 - (1.0 - u) * (1.0 - u)));
-        char num[32];
+        char num[32], last[32];
         thousands(num, sizeof num, shownScore);
-        const float cap = 120.0f * s;
+        thousands(last, sizeof last, team);
+        // (the review's fixes, H2, 2026-11-15: the team's score fits inside the side margins, scaled down when wider)
+        const float room = W - 2.0f * std::fmax(132.0f * s, std::fmax(ui.insetMin().x, ui.insetMax().x));
+        const float fit = std::fmin(1.0f, room / std::fmax(ui.measure(120.0f * s, last), 1.0f));
+        const float cap = 120.0f * s * fit;
         const float wd = ui.measure(cap, num);
-        ui.font().drawField(ui.draw().hud, {cx - 0.5f * wd, 300.0f * s - cap}, cap, 4.0f * s, ui.col(white, 1.6f), ui.col(gold, 1.6f), ui.col(amber, 1.6f), num);
+        ui.font().drawField(ui.draw().hud, {cx - 0.5f * wd, 300.0f * s - cap}, cap, 4.0f * s * fit, ui.col(white, 1.6f), ui.col(gold, 1.6f), ui.col(amber, 1.6f), num);
     }
     // The line under the score: TEAM, then TIME and TRACK with their values (labels in the accent, values white).
     {

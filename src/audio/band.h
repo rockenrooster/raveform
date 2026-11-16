@@ -182,8 +182,9 @@ public:
     // recipes.low_pass_bed: the music bus low-passed at `hz` for `seconds` ("stunned", "dazed", "open"), then open again.
     void lowPassBed(float hz, float seconds);
     void setHostOnly(bool on);                    // the SOUND setting "music from host only" (a co-op client)
-    // M3 stage C (screens.md pause): the music behind a low-pass of about 600 Hz, ramped over 150 ms.
-    void setMuffle(bool on);
+    // M3 stage C (screens.md pause): the music behind a low-pass of about 600 Hz, ramped over 150 ms (rampS > 0: over that many
+    // seconds; the review's fixes, 2026-11-15: the count-in lifts it over its first beat).
+    void setMuffle(bool on, float rampS = -1.0f);
     // The master bus, for pictures of the music (title waveform, sound cards): the latest n values, one
     // per 128 frames (signed peak), oldest first; and a decaying peak level (0..1).
     u32 scope(float* out, u32 n) const;

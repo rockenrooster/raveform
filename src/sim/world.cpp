@@ -272,7 +272,7 @@ void World::applyPlayers(const TickInput& in) {
         pl.heading = ps.heading;
         pl.fire = ps.fire;
         pl.dashing = ps.dashing;
-        if (ps.novaPressed) pressNova(p);
+        if (ps.novaPressed) pressNova(p, false, true);
         if (ps.dashStarted) {
             ++pl.dashes;
             if (ps.perfectDash) ++pl.perfectDashes;
@@ -293,7 +293,7 @@ void World::applyPlayers(const TickInput& in) {
     }
 }
 
-bool World::pressNova(u32 p, bool free) {
+bool World::pressNova(u32 p, bool free, bool pressed) {
     PlayerState& pl = players_[p];
     if (!rules_.novas || (pl.novas == 0 && !free) || pl.novaPending) return false;
     // R6: invulnerable at once; the blast lands on the next beat. The band plays the inhale from the press and the
@@ -307,11 +307,16 @@ bool World::pressNova(u32 p, bool free) {
     pl.novaPending = true;
     const double earliest = m1_ + static_cast<double>(latencyTicks_) + 6.0;
     pl.novaBlastTick = std::ceil(earliest / kTicksPerBeat) * kTicksPerBeat;
-    blackHoleNova(p);  // M5: Black Hole makes it a three-beat singularity (its blast later)
+    const bool hole = blackHoleNova(p);  // M5: Black Hole makes it a three-beat singularity (its blast later)
+    // The review's fixes (H5, 2026-11-15): Feedback's tape records only the Novas the player pressed (Auto Nova's, an Extra
+    // Life's and Black Hole's are not recorded); a teammate's flag travels with its Nova event (Session: MsgPlayerEvent b).
+    pl.novaPressed = pressed && !hole;
     pl.novaInvulS = 1e9f;
     Event ev;
     ev.type = EventType::NovaPress;
     ev.a = static_cast<u8>(p);
+    ev.b = pl.novaPressed ? 1 : 0;
+    ev.c = free ? 1 : 0;  // (the review's fixes, M45: a free Nova, an Extra Life's or Black Hole's own: the view's haptic skips it)
     ev.x = pl.pos.x;
     ev.y = pl.pos.y;
     ev.tick = pl.novaBlastTick;
@@ -332,9 +337,11 @@ void World::spawnShots(const TickInput& in) {
         } else if (pl.fire) {
             // The same rule on the sim's own clock: a volley on every grid step crossed while fire is held
             // (1/16, moved along by Double-Time, the Surge's gear and Hyper), every other step on the
-            // assist's half-rate grid; each advanced by the time since its step.
+            // assist's half-rate grid; each advanced by the time since its step. The review's fixes (H3, 2026-11-15): the
+            // assist never skips the step on the off-beat (the "and" of the beat, Syncopation's and Rear Guard's), an odd step
+            // on Double-Time 1's 16-tick grid; the band (Band::computeShots) and the engine's lead keep the same rule.
             forCrossings(m0_, m1_, leadGrid(p), [&](double t, i64 k) {
-                if (pl.fire == 2 && (k & 1) != 0) return;
+                if (pl.fire == 2 && (k & 1) != 0 && std::fmod(t, kTicksPerBeat) != 0.5 * kTicksPerBeat) return;
                 fireShot(p, tickAgeOf(t), t);
             });
         }
@@ -403,6 +410,7 @@ void World::updateNovas() {
             Event ev;
             ev.type = EventType::NovaBlast;
             ev.a = static_cast<u8>(p);
+            ev.b = pl.novaPressed ? 1 : 0;  // (the review's fixes, H5: a pressed Nova, the one Feedback's tape records)
             ev.x = pl.pos.x;
             ev.y = pl.pos.y;
             ev.age = pl.novaFrontAge;
@@ -766,6 +774,9 @@ void World::collide() {
 }
 
 void World::hitPlayer(u32 p, Vec2 from, u16 cause, bool bullet) {
+    // The review's fixes (H8, 2026-11-15; GAME_DESIGN 6.1 "a ship inside an orb's ring cannot be hurt"): checked once here, where
+    // every hit is taken, so a meteor, the Storm Cell, a Volatile blast and every source to come respect it.
+    if (sheltered(p)) return;
     PlayerState& pl = players_[p];
     pl.lastHitCause = cause;  // M6: what took the cell (the game over's ENDED BY)
     pl.lastHitBullet = bullet;
@@ -1362,6 +1373,7 @@ u64 World::hash() const {
         val(pl.invulS);
         val(pl.novaInvulS);
         val(pl.novaPending);
+        val(pl.novaPressed);
         val(pl.novaBlastTick);
         val(pl.novaFrontAge);
         val(pl.chain);

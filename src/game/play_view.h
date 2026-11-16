@@ -59,6 +59,8 @@ struct HudKeepOut {
     static constexpr u32 kMax = 6;
     Vec2 a[kMax], b[kMax];
     u32 count = 0;
+    float band = 0.0f;  // the review's fixes (M11, 2026-11-15): the HUD's top band's bottom (the Track bar and the boss bar under
+                        // it, 150 px down at 1080): the Trio's top orb keeps its words below it
 };
 
 struct ViewStats {

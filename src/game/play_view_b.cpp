@@ -614,10 +614,13 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             } else if (u < kUpgradeCount) {
                 // The owner, 2026-11-15 ("The game never shows which upgrades combine"): an ingredient of a Fusion not yet taken
                 // names its partner, the partner's rank of its max, and the Fusion: `+ WAVE 1/2 = HELIX ARRAY`.
+                // The review's fixes (M26, 2026-11-15): only when the other half is held or can still be taken (a Riff not held
+                // with every Riff slot full cannot: Loadout::canTake).
                 for (u8 f = 0; f < kFusionCount; ++f) {
                     const FusionInfo& fi = fusionInfo(f);
                     if (me.loadout.fused(f) || (fi.a != u && fi.b != u)) continue;
                     const u8 other = fi.a == u ? fi.b : fi.a;
+                    if (!me.loadout.level(other) && !me.loadout.canTake(other)) continue;
                     std::snprintf(recipe, sizeof recipe, "+ %s %u/%u = %s", upgradeInfo(other).name, me.loadout.level(other),
                                   static_cast<u32>(upgradeInfo(other).cap), fi.name);
                     break;
@@ -641,7 +644,10 @@ void PlayView::drawStageB(FrameDraw& d, const ViewInput& in, float W, float H) {
             const Vec2 outDir = normalizeOr(p - c, Vec2{0.0f, -1.0f});
             const float gap = (ringWu + 14.0f) * pxPerWu_;
             float tx = sp.x, blockTop = 0.0f, align = 0.5f;  // align: 0 left-aligned at tx, 1 right-aligned, 0.5 centred
-            if (!trioFusion && outDir.y < -0.7f) {
+            // The review's fixes (M11, 2026-11-15): a top orb whose block would reach into the HUD's top band (the Track bar, the
+            // boss bar: HudKeepOut::band, 150 px down at 1080) has its words beside it, on its right, as the side orbs.
+            const float hudBand = keepOut_.band > 0.0f ? keepOut_.band : 150.0f * refPx_;
+            if (!trioFusion && outDir.y < -0.7f && sp.y - gap - blockH >= hudBand) {
                 blockTop = sp.y - gap - blockH;  // above (with a Fusion on offer the top is its: every other orb's words beside)
             } else {
                 const bool leftSide = !fusionOrb && outDir.x < -0.05f;  // (the bottom orb's to its right)

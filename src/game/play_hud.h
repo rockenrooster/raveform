@@ -83,6 +83,7 @@ struct HudState {
     const IconSet* icons = nullptr;
     const i32* upgradeIcons = nullptr;
     const i32* boostIcons = nullptr;
+    const i32* fusionIcons = nullptr;  // (the review's fixes, M20, 2026-11-15)
     const char* trackName = "";
     float bpm = 120.0f;
     Vec2 takenFrom;              // where the orb just taken was on screen
@@ -106,11 +107,21 @@ struct HudState {
 // The boss hint line (screens.md "Boss hint (HUD, M5)"); nullptr for a fight without one.
 const char* bossHint(sim::BossKind k);
 
+// The review's fixes (H2, 2026-11-15): the Nova stock's star pitch (50 px, closed up so the row never meets "DROP IN n"); s the
+// HUD's scale, mr its right margin.
+float novaStarPitch(float W, float s, float mr, u32 cap);
 // The pause ring's centre and radius (top right corner, look.md 6), for its touch target.
 Vec2 pauseButtonCentre(float W, float H, Vec2 insetMin, Vec2 insetMax, float& radius);
 // M6 (SETTINGS, LOOK): the UI scale of HUD text and touch controls (0.9, 1, 1.15, 1.3); re-lay the touch controls after it.
 void setHudScale(float scale);
 float hudScale();
+// The review's fixes (H2, 2026-11-15): the screens and the HUD are laid out in 2400 x 1080 reference px on a 2,222-wide canvas round
+// the centre; one scale fits both the height and that width, min(H / 1080, W / 2222), wherever a layout scale is made (the 20:9
+// phone, 2400 x 1080, keeps 1: pixel-identical). A wider screen than 20:9 keeps the height's.
+inline float layoutScale(float W, float H) {
+    const float sh = H / 1080.0f, sw = W / 2222.0f;
+    return sw < sh ? sw : sh;
+}
 
 // Tone maps a linear colour x intensity with the look's curve (look.md §3), for the HUD batch.
 Vec3 hudColour(const Look& look, const LookVariant& variant, Vec3 c, float intensity);

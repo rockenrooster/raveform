@@ -159,7 +159,7 @@ void Play::dropInTap(Screen from) {
     }
     if ((from == Screen::Title || from == Screen::Paused) && !coop()) transGod(true);
     if (band_) band_->playSfx(audio::Sfx::UiConfirm);
-    pulse(0);
+    pulse(0, true);
     transitionAudio();
     RF_LOG("play: the drop-in: tapped at %.0f, the run's first bar line %.0f (%.1f beats)", transTap_, transLine_,
            (transLine_ - transTap_) / kTicksPerBeat);
@@ -215,7 +215,7 @@ void Play::homeTap() {
         transLine_ = -1.0;
         homeFrom_ = *palette_;
         if (band_) band_->playSfx(audio::Sfx::UiBack);
-        pulse(0);
+        pulse(0, true);
         const double bpm = band_ && band_->view().bpm > 1.0 ? static_cast<double>(band_->view().bpm) : 120.0;
         bandFilter(kHomeLowpassHz, static_cast<float>(60.0 / bpm));
         return;
@@ -234,7 +234,7 @@ void Play::homeTap() {
     world_->requestRestartAt(transLine_);
     applySettings();
     if (band_) band_->playSfx(audio::Sfx::UiBack);
-    pulse(0);
+    pulse(0, true);
     wordNotes(transLine_ + kWordFrom * kTicksPerBeat, kWordStep * kTicksPerBeat);  // (screens.md "Transitions": the word played as it builds)
     if (bandDrives_ && band_ && band_->active() && band_->view().running) {
         const double bpm = band_->view().bpm > 1.0 ? static_cast<double>(band_->view().bpm) : 120.0;

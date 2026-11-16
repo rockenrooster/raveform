@@ -318,6 +318,26 @@ void testLeadRule() {
         shots += countEvents(*w, EventType::Shot);
     }
     CHECK_MSG(shots == 8, "%u shots in a bar at half rate", shots);
+    // The review's fixes (H3, 2026-11-15): the assist never skips the off-beat's step (Syncopation's and Rear Guard's). At Double-Time
+    // 1 (the 16-tick grid: 24 steps a bar) it fires the 12 even steps and the 4 off-beats, which are odd steps there.
+    {
+        World* d = quietWorld();
+        d->grantUpgrade(0, kDoubleTime);
+        double m = 1.0;
+        u32 all = 0, off = 0;
+        for (u32 t = 0; t < 120; ++t) {
+            stepWorld(*d, m, Vec2{}, 2);
+            for (u32 i = 0; i < d->eventCount(); ++i) {
+                const Event& e = d->events()[i];
+                if (e.type != EventType::Shot) continue;
+                ++all;
+                const double step = std::floor((m - static_cast<double>(e.age) * 192.0) / 16.0 + 0.5) * 16.0;
+                off += std::fabs(std::fmod(step, 96.0) - 48.0) < 0.5 ? 1u : 0u;
+            }
+        }
+        CHECK_MSG(d->leadGrid(0) == 16.0 && all == 16 && off == 4, "assist at Double-Time 1: %u shots in a bar, %u on the off-beat", all, off);
+        delete d;
+    }
     // Each shot is advanced by the time since its step: positions differ from the muzzle by speed x age.
     stepWorld(*w, music, Vec2{}, 0);
     bool advanced = true;
@@ -2888,7 +2908,10 @@ void testArena() {
         double music = 0.0;
         stepWorld(*w, music, ship);
         const i32 s = w->placeStructureNow(StructKind::Vault, Vec2{300.0f, 0.0f}, 0.0f);
-        CHECK(s >= 0 && std::fabs(w->arenaBodies()[s].hp - 300.0f * 0.33f) < 1e-2f);  // Track 1's trackScale is 300
+        // Track 1's trackScale is 300 x Track 2's mini-bosses' mean health factor (the review's fixes, H7, 2026-11-15: the Track's
+        // mini-boss health as the game gives it; it was the page's raw 300)
+        CHECK(s >= 0 && std::fabs(w->arenaBodies()[s].hp - w->trackScale() * 0.33f) < 1e-2f);
+        CHECK(w->trackScale() > 10.0f && w->trackScale() < 300.0f);
         u32 fired = 0;
         w->arenaBodyMut(static_cast<u32>(s)).hp = 20.0f;  // (the base stream does about 8 a second)
         for (u32 k = 0; k < 600 && w->arenaBodies()[s].alive; ++k) {

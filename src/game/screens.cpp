@@ -59,7 +59,7 @@ void Ui::begin(FrameDraw& d, const VectorFont& font, const Look& look, const Loo
     variant_ = &variant;
     W_ = W;
     H_ = H;
-    s_ = H / 1080.0f;
+    s_ = layoutScale(W, H);  // (the review's fixes, H2, 2026-11-15: the height and the width)
     insetMin_ = insetMin;
     insetMax_ = insetMax;
     p_ = p;
@@ -617,10 +617,16 @@ void Play::screenGameOver(Ui& ui) {
         const u64 shown = static_cast<u64>(static_cast<double>(finalScore_) * (1.0 - (1.0 - u) * (1.0 - u)));
         char num[32];
         groupDigits(num, sizeof num, shown);
-        const float cap = 150.0f * s;
+        // The review's fixes (H2, 2026-11-15): the score fits the width: inside the side margins with room for NEW BEST's star
+        // (100 px) on each side, scaled down when wider (the final score's width, so it does not shrink as it counts up).
+        char last[32];
+        groupDigits(last, sizeof last, finalScore_);
+        const float room = W - 2.0f * std::fmax(132.0f * s, std::fmax(ui.insetMin().x, ui.insetMax().x)) - 2.0f * 100.0f * s;
+        const float fit = std::fmin(1.0f, room / std::fmax(ui.measure(150.0f * s, last), 1.0f));
+        const float cap = 150.0f * s * fit;
         const float w = ui.measure(cap, num);
-        if (out > 0.0f) streak(num, cap, 360.0f * s, 4.5f * s, white, gold, amber, 1.6f);
-        else ui.font().drawField(ui.draw().hud, {cx - 0.5f * w, 360.0f * s - cap}, cap, 4.5f * s, ui.col(white, 1.6f), ui.col(gold, 1.6f), ui.col(amber, 1.6f), num);
+        if (out > 0.0f) streak(num, cap, 360.0f * s, 4.5f * s * fit, white, gold, amber, 1.6f);
+        else ui.font().drawField(ui.draw().hud, {cx - 0.5f * w, 360.0f * s - cap}, cap, 4.5f * s * fit, ui.col(white, 1.6f), ui.col(gold, 1.6f), ui.col(amber, 1.6f), num);
         setHudFade(1.0f - out);
         if (newBest_ && u >= 1.0f) {
             const Vec2 f{cx + 0.5f * w + 40.0f * s, 230.0f * s};
@@ -834,7 +840,9 @@ void Play::screenSettings(Ui& ui) {
         }
         // SYNC (bottom left, the offset under it in gold), HAPTICS (bottom centre), DONE (bottom right).
         const float m = std::fmax(132.0f * s, ui.insetMin().x);
-        if (ui.pill(80, {m + 180.0f * s, H - 140.0f * s}, {360.0f * s, 100.0f * s}, "SYNC", 30.0f * s, false)) syncRequest_ = true;
+        // (the review's fixes, H6, 2026-11-15: in a co-op run SYNC is drawn disabled and opens nothing: the sync screen stops the
+        // game's frame, and with it the room's network, and restarts the band's song)
+        if (ui.pill(80, {m + 180.0f * s, H - 140.0f * s}, {360.0f * s, 100.0f * s}, "SYNC", 30.0f * s, false, !coop())) syncRequest_ = true;
         char off[32];
         std::snprintf(off, sizeof off, band_ && band_->syncOffsetTouched() ? "%+.0f MS" : "AUTOMATIC", band_ ? band_->syncOffsetMs() : 0.0f);
         ui.text({m + 180.0f * s, H - 50.0f * s}, 14.0f * s, palettes_->player[3], 1.3f, off);
@@ -882,7 +890,8 @@ void Play::screenSettings(Ui& ui) {
             settings_.hintsSeen = 0;
             changed = true;
         }
-        if (!settings_.hintsSeen) ui.text({cx, 950.0f * s}, 13.0f * s, white, 0.7f, "EVERY HINT WILL SHOW AGAIN");
+        // (the review's fixes, H2, 2026-11-15: 24 px under RESET HINTS, as the layout rule asks; it was 12)
+        if (!settings_.hintsSeen) ui.text({cx, 962.0f * s}, 13.0f * s, white, 0.7f, "EVERY HINT WILL SHOW AGAIN");
     } else {
         static const char* const kFx[5] = {"AUTO", "LOW", "MEDIUM", "HIGH", "ULTRA"};
         static const char* const kHz[4] = {"AUTO", "60", "90", "120"};

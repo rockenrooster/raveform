@@ -107,15 +107,22 @@ void World::updateCadence(float dt) {
     for (u32 k = 0; k < 4; ++k) s.body[1 + k] = cadencePillar(k, m1_);
     if (m1_ < s.fightTick) return;
     // Bar lines: the bar's chord sounds; in the Modulation, every fourth bar line (as the song comes back to I) the square
-    // turns a quarter the other way over a beat.
+    // turns a quarter the other way over a beat. The review's fixes (H9, 2026-11-15): the turn is announced a bar ahead, on the
+    // bar line before (where the song plays IV): its reversed cymbal is sent then and ends on the turn, and the view draws each
+    // pillar's sweep as a dashed tell over that bar. An announced turn happens even if the phase has changed since (the warning
+    // is kept); a turn is never made unannounced.
     forCrossings(m0_, m1_, kTicksPerBar, [&](double t, i64) {
         const u32 chord = cadenceChord(t + 1.0);
         emitCue(BossCue::CdChord, t, static_cast<u8>(chord), 0.0f, cadencePillar(chord, t));
-        if (c.phase == 1 && chord == 0) {
+        if (c.turnWarn >= 0.0 && std::fabs(c.turnWarn - t) < 0.5) {
             c.rotFrom = c.rot;
             c.rotTo = c.rot - 0.5f * kPi;
             c.turnTick = t;
-            emitCue(BossCue::CdTurn, t, 0, 0.0f, c.centre);
+            c.turnWarn = -1.0;
+        }
+        if (c.phase == 1 && c.turnWarn < 0.0 && cadenceChord(t + kTicksPerBar + 1.0) == 0) {
+            c.turnWarn = t + kTicksPerBar;
+            emitCue(BossCue::CdTurn, c.turnWarn, 0, 0.0f, c.centre);
         }
     });
     // Beats 1 and 3 (the half-time kick and snare).

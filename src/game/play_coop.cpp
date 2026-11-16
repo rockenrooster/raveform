@@ -329,6 +329,14 @@ void Play::coopFlow() {
             for (bool& k : keys_) k = false;
             applySettings();
         }
+        // The review's fixes (H6, 2026-11-15; screens.md "Nobody is dropped into a fight without the count"): while the shared
+        // count-in runs, a device in SETTINGS or CREDITS opened from the pause is brought back to the pause screen (its settings
+        // saved, as DONE does), so it sees the 3-2-1.
+        if (s.resuming() && screen_ != Screen::Paused && underPauseMenu()) {
+            if (screen_ == Screen::Settings) saveSettings(settings_);
+            screen_ = Screen::Paused;
+            applySettings();
+        }
         if (!held && underPauseMenu()) {
             screen_ = Screen::Run;
             applySettings();

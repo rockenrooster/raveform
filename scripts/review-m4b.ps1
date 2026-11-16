@@ -25,6 +25,7 @@ param(
     [ValidateSet('debug', 'dev')][string]$Config = 'debug',
     [string[]]$Only = @(),
     [int]$TimeoutS = 180,
+    [string]$Res = '2400x1080',  # the shot's window (the review's fixes, 2026-11-15: the screens at other shapes)
     [switch]$Watch  # show the windows (default: --offscreen and a hidden console, the PC's test runs stay off screen)
 )
 . "$PSScriptRoot\env.ps1"
@@ -34,7 +35,7 @@ $exe = Join-Path $RF_ROOT "build\desktop-$Config\raveform.exe"
 $headless = Join-Path $RF_ROOT 'build\desktop-dev\raveform_headless.exe'
 if (-not (Test-Path $exe)) { throw "missing $exe - build first" }
 
-$big = '--res 2400x1080 --no-overlay'
+$big = "--res $Res --no-overlay"
 $small = '--res 1280x576 --no-overlay'
 $bots = '--coop-start 2 --bot'
 # Each run: role -> arguments (host first; a client and headless joiners start after it). The `shot` role's arguments

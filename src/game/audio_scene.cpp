@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdio>
 
+#include "game/play_hud.h"  // (layoutScale)
+
 namespace rf {
 
 using namespace audio;
@@ -84,7 +86,7 @@ void AudioScene::init(Kind kind, Band& band, const VectorFont& font, const Palet
 void AudioScene::layout(float w, float h, Vec2 insetMin, Vec2 insetMax) {
     w_ = w;
     h_ = h;
-    s_ = h / 1080.0f;
+    s_ = layoutScale(w, h);  // (the review's fixes, H2, 2026-11-15: the height and the width)
     const float s = s_;
     const float cx = w * 0.5f;
     const Vec3 player = palettes_->player[0];
