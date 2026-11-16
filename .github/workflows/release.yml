@@ -1,0 +1,151 @@
+# The release APK on GitHub (docs/RELEASE_PIPELINE.md). Every push to main (and a run by hand) builds the release variant as
+# scripts/build-android.ps1 -Config release does on Windows (native Release, stripped, not debuggable, no app arguments) and
+# publishes it as a GitHub release: tag build-<commit count>, the APK as raveform.apk (so releases/latest/download/raveform.apk
+# is always the newest build), its SHA-256, and the unstripped native libraries for reading a crash report. A run on another
+# branch keeps the APK with the run for a week instead.
+name: Release APK
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'design/previews/**'
+  workflow_dispatch:
+
+# One build at a time per branch; a newer push replaces a waiting or running one (its commit is in the newer build).
+concurrency:
+  group: release-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write  # (the release and its tag)
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RF_NDK: '29.0.14206865'  # android/app/build.gradle's ndkVersion
+      RF_CMAKE: '3.22.1'       # and its externalNativeBuild CMake version
+    steps:
+      - name: Check out (the whole history; the commit count is the build number)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Android SDK packages (the NDK, CMake, platform 36)
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --install "ndk;$RF_NDK" "cmake;$RF_CMAKE" "platforms;android-36" > /dev/null
+          test -x "$ANDROID_HOME/ndk/$RF_NDK/shader-tools/linux-x86_64/glslc"
+
+      - name: Third-party sources (scripts/fetch-deps.sh, the pinned tags)
+        run: bash scripts/fetch-deps.sh
+
+      - name: Build the release APK
+        working-directory: android
+        env:
+          RF_KEYSTORE_BASE64: ${{ secrets.RF_KEYSTORE_BASE64 }}
+          RF_KEYSTORE_PASSWORD: ${{ secrets.RF_KEYSTORE_PASSWORD }}
+          RF_KEY_ALIAS: ${{ secrets.RF_KEY_ALIAS }}
+          RF_KEY_PASSWORD: ${{ secrets.RF_KEY_PASSWORD }}
+        run: |
+          trap 'rm -f "$RUNNER_TEMP/release.keystore"' EXIT
+          if [ -n "$RF_KEYSTORE_BASE64" ]; then
+            printf '%s' "$RF_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            export RF_KEYSTORE="$RUNNER_TEMP/release.keystore"
+            echo "RF_SIGNED=secrets" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No signing secrets: the APK is signed with a debug key made by this run (docs/RELEASE_PIPELINE.md)"
+            echo "RF_SIGNED=run" >> "$GITHUB_ENV"
+          fi
+          unset RF_KEYSTORE_BASE64
+          bash ./gradlew --no-daemon --console=plain :app:assembleRelease
+
+      - name: Package (the APK, its SHA-256, the symbols) and write the notes
+        id: pkg
+        run: |
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          count=$(git rev-list --count HEAD)
+          short=$(git rev-parse --short=7 HEAD)
+          version=$(sed -n "s/^ *versionName '\([^']*\)'.*/\1/p" android/app/build.gradle)
+          tag="build-$count"
+          mkdir -p out
+          cp "$apk" out/raveform.apk
+          (cd out && sha256sum raveform.apk > raveform.apk.sha256)
+          libmain=$(find android/app/build/intermediates/merged_native_libs/release -name libmain.so | head -n 1)
+          test -n "$libmain"
+          zip -q -j out/raveform-symbols.zip "$(dirname "$libmain")"/*.so
+          python3 -I -B scripts/apk_size.py out/raveform.apk
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+          certs=$("$bt/apksigner" verify --print-certs out/raveform.apk)
+          dn=$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate DN: //p')
+          digest=$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          if [ "$RF_SIGNED" = secrets ]; then
+            signing="Signed with the key in the repository's signing secrets."
+          else
+            signing="Signed with a debug key made for this run (no signing secrets are set): it installs only where RAVEFORM is not installed, so uninstall any earlier build first (its settings and scores go with it)."
+          fi
+          prev=$(git tag --list 'build-*' --sort=-version:refname | grep -vx "$tag" | head -n 1 || true)
+          {
+            echo "RAVEFORM $version, build $count: commit \`$short\`, built $(date -u '+%Y-%m-%d %H:%M') UTC."
+            echo
+            echo "**Install:** on the phone, download \`raveform.apk\` and open it (Android asks once to allow installs from the browser). Android 10 or later, 64-bit ARM, Vulkan 1.1."
+            echo
+            echo "**Signing:** $signing Certificate: $dn, SHA-256 \`$digest\`."
+            echo
+            if [ -n "$prev" ] && git merge-base --is-ancestor "$prev" HEAD; then
+              echo "**Changes since $prev:**"
+              git log --no-merges --format='- %s (%h)' -n 40 "$prev..HEAD"
+            else
+              echo "**Latest changes:**"
+              git log --no-merges --format='- %s (%h)' -n 15
+            fi
+            echo
+            echo "\`raveform-symbols.zip\`: the unstripped native libraries of this build, for reading a crash report (ndk-stack)."
+          } > "$RUNNER_TEMP/notes.md"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "title=RAVEFORM $version build $count" >> "$GITHUB_OUTPUT"
+          {
+            echo "### RAVEFORM $version build $count ($short)"
+            echo "APK: $(stat -c %s out/raveform.apk) bytes. $signing"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the release (main only)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.pkg.outputs.tag }}
+          TITLE: ${{ steps.pkg.outputs.title }}
+        run: |
+          assets=(out/raveform.apk out/raveform.apk.sha256 out/raveform-symbols.zip)
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md" --latest
+          else
+            gh release create "$TAG" "${assets[@]}" --target "$GITHUB_SHA" --title "$TITLE" \
+              --notes-file "$RUNNER_TEMP/notes.md" --latest
+          fi
+          echo "Download: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/latest/download/raveform.apk" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the APK with the run (not main)
+        if: github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: raveform-${{ steps.pkg.outputs.tag }}
+          path: out/raveform.apk
+          retention-days: 7

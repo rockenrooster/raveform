@@ -11,7 +11,7 @@ licence. Update this file with every new dependency or asset (PLAN §6). The in-
 | SDL | 3.4.20 (tag `release-3.4.20`, commit `f00dc919ca35`) | https://github.com/libsdl-org/SDL (`scripts/fetch-deps.ps1`) | zlib | Static in the desktop exe; `libSDL3.so` in the APK; SDL's Java glue (`android-project/app/src/main/java`, used unmodified as a Gradle source set) |
 | volk | tag `vulkan-sdk-1.4.363.0` (commit `54fc0d7a7288`) | https://github.com/zeux/volk (`scripts/fetch-deps.ps1`) | MIT | Compiled into both builds |
 | ENet | 1.3.18 (tag `v1.3.18`, commit `2662c0de09e3`) | https://github.com/lsalzman/enet (`scripts/fetch-deps.ps1`) | MIT | Compiled into both builds (M4 co-op; unmodified, its socket and clock calls routed to `src/net/wire.cpp` by a forced include) |
-| Vulkan-Headers | 1.4.363 (copied from the local Vulkan SDK 1.4.363.0) | https://github.com/KhronosGroup/Vulkan-Headers | Apache-2.0 OR MIT | Headers only |
+| Vulkan-Headers | 1.4.363 (copied from the local Vulkan SDK 1.4.363.0; the GitHub release workflow, which has no SDK: the repository's tag `vulkan-sdk-1.4.363.0`, commit `6802bb4733b6`, by `scripts/fetch-deps.sh`) | https://github.com/KhronosGroup/Vulkan-Headers | Apache-2.0 OR MIT | Headers only |
 | Oboe | 1.11.0 (`com.google.oboe:oboe:1.11.0`, prefab AAR) | Google Maven; https://github.com/google/oboe | Apache-2.0 | `liboboe.so` in the APK |
 | Android Frame Pacing (Swappy) | 2.1.3 (`androidx.games:games-frame-pacing:2.1.3`, prefab AAR, module `swappy_static`) | Google Maven; Android Game Development Kit | Apache-2.0 | Statically linked into `libmain.so` |
 | LLVM libc++ (NDK r29 `libc++_shared.so`) | NDK 29.0.14206865 | Android NDK | Apache-2.0 WITH LLVM-exception | `libc++_shared.so` in the APK (required by Oboe's prefab package) |

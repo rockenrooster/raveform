@@ -2,6 +2,11 @@ plugins {
     id 'com.android.application'
 }
 
+// Release signing (docs/RELEASE_PIPELINE.md): the key in the keystore file RF_KEYSTORE names, with RF_KEYSTORE_PASSWORD,
+// RF_KEY_ALIAS and RF_KEY_PASSWORD, as the GitHub release workflow sets them from the repository's secrets. Without RF_KEYSTORE
+// the release is signed with the debug key, as before.
+def rfKeystore = providers.environmentVariable('RF_KEYSTORE').orNull
+
 // Native code is the root CMake tree; SDL's Java glue comes straight from the pinned SDL checkout.
 android {
     namespace 'dev.raveform.game'
@@ -22,6 +27,17 @@ android {
                 // Oboe's prefab package is a shared library built against c++_shared.
                 arguments '-DANDROID_STL=c++_shared'
                 abiFilters 'arm64-v8a'
+            }
+        }
+    }
+
+    signingConfigs {
+        if (rfKeystore) {
+            release {
+                storeFile file(rfKeystore)
+                storePassword providers.environmentVariable('RF_KEYSTORE_PASSWORD').orNull
+                keyAlias providers.environmentVariable('RF_KEY_ALIAS').orNull
+                keyPassword providers.environmentVariable('RF_KEY_PASSWORD').orNull
             }
         }
     }
@@ -48,11 +64,12 @@ android {
         }
         // M7 (release preparation): native Release, not debuggable, no app arguments (RaveformActivity), the native
         // libraries stripped (scripts/build-android.ps1 -Config release keeps the unstripped ones beside the APK). Signed with
-        // the debug key only: the release key and the store's signing are the owner's.
+        // the key RF_KEYSTORE names when it is set (above), else the debug key: the release key and the store's signing are the
+        // owner's.
         release {
             debuggable false
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig rfKeystore ? signingConfigs.release : signingConfigs.debug
             externalNativeBuild {
                 cmake {
                     arguments '-DCMAKE_BUILD_TYPE=Release'

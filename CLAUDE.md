@@ -18,6 +18,7 @@ Read `docs/PLAN.md` first (locked decisions, performance contract, milestones, w
 | Desktop 60 s validation + timing run | `scripts\run-desktop.ps1 -AppArgs '--scenario bench_idle --seconds 60'` |
 | Desktop lifecycle test (surface release/restore + resizes) | `scripts\run-desktop.ps1 -AppArgs '--scenario lifecycle_test --cycles 20'` |
 | Build APK (`dev` = native RelWithDebInfo, debuggable, debug-signed; `debug` = native Debug; `release` (M7) = native Release, stripped (the unstripped libraries beside it as `app-release-symbols.zip`), not debuggable, no app arguments, debug-signed, its size by part printed; `-Bundle` also the App Bundle; `-Offline` = no network) | `scripts\build-android.ps1 [-Config dev\|debug\|release] [-Bundle] [-Offline] [-Clean]` |
+| The release APK on GitHub (`.github/workflows/release.yml`, `docs/RELEASE_PIPELINE.md`): each push to `main` builds the release variant on GitHub's Linux runner and publishes it as release `build-<commit count>` (`raveform.apk`, its SHA-256, `raveform-symbols.zip`); by hand, watch, download | `gh workflow run release.yml -R rockenrooster/raveform`, `gh run watch -R rockenrooster/raveform`, `gh release download -R rockenrooster/raveform -p raveform.apk` |
 | Build, install, launch on one device | `scripts\deploy-android.ps1 -Serial <serial\|moto\|op12r\|tablet> [-NoBuild] [-NoLaunch] [-AppArgs '--tone']` |
 | Benchmark on a device (saves `captures\bench\*.json` + `*.load.txt`; 5 s warm-up; samples the phone's CPU load) | `scripts\bench-android.ps1 -Serial <serial> -Scenario bench_idle [-Seconds 60] [-Warmup 5] [-AppArgs '--tone'] [-Deploy] [-NoLoad] [-SfLatency]` |
 | Screenshot of the panel (adb screencap; RAVEFORM must be in front) | `scripts\capture-android.ps1 -Serial <serial> [-Small]` |
@@ -262,8 +263,10 @@ cannot read its clock): compare passes at the top clock with `--gpu-burn 40`.
   carries a hash of it and of `kDspVersion` (bump it when the DSP changes a render's loudness).
 - Python prototypes run as libraries with `python -I -B` and never write under `design/`.
 - Only phone numbers count for performance; desktop timing is informational.
-- Git: `Invoke-RfGit` (Git for Windows + schannel). Commit only at working checkpoints, never push, never
-  commit `design/` files you did not write. Build output, `captures/` and fetched `third_party/` are ignored.
+- Git: `Invoke-RfGit` (Git for Windows + schannel). Commit only at working checkpoints, never
+  commit `design/` files you did not write. Build output, `captures/` and fetched `third_party/` are ignored. Push (to
+  `origin`, the private GitHub repository `rockenrooster/raveform`) only when the owner asks: every push to `main` builds
+  and publishes a release APK (`docs/RELEASE_PIPELINE.md`).
 
 ## PC runs are silent (user rule)
 
