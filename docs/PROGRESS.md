@@ -4,6 +4,33 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-15, four-phone co-op runs (the owner: "please do several co-op runs to find any issues")
+
+`scripts\coop-phones.ps1` (new): the first serial hosts a room (`--coop host --coop-start N --bot`), the others join by address,
+room code or the list of rooms heard (`--bot`); a lock per device, the foreground checked, our APK deployed first; optional HOME
+and back on one device, a force-stop of one app, and per-seat arguments (`--coop-pause-at`, `--coop-quit-at`, `--coop-down-at`);
+every device's log read every 30 s (the OnePlus's log buffer rolled over within a run) and scanned (`captures\coop4\<run>\`).
+Devices on the PC's hotspot (192.168.137.x): the Moto `ZY22BXMJG3` and a second Moto `ZY22BZ8BDZ` (both on wireless adb), the
+Galaxy Tab `R5GL362AKGK` (SM-X230, Android 16) and the OnePlus 12R `a0e622a5` (its GitHub build replaced by the dev build, as the
+owner allowed). Four runs of 3.5-4 minutes, four seats, every seat's bot playing, commit 3a1e49a's dev APK:
+
+| Run | Host | Join | Also | Result |
+|---|---|---|---|---|
+| 1 | Moto | address | — | to Track 3; Kaleidos, Alpha Hound, Longwave fell at the same run second on all four |
+| 2 | OnePlus | the room list | the Tab away 11 s (HOME, back) | each joiner heard the room in 1.5 s; the room paused for all and resumed |
+| 3 | Tab | room code | the host's shared pause at 60 s; a seat leaves at 120 s | the pause held (4.8 s of wall time over the run time); "seat 1 left the run" on all three, the run went on |
+| 4 | Moto 2 | address | a ship downed at 60 s; the OnePlus's app killed at 103 s; the host quits at 160 s | revived (alive 1011 then 0111); the killed seat dropped 4.5 s later; the clients ended "the host is gone" 1.5 s after the host left |
+
+No crash, no census mismatch (0 of 48-118 on every client), no unknown ids or late spawns, kills confirmed (none undone), rtt
+22-37 ms, loss 0-0.6%, the band within 0.2-0.8 ms RMS of the room's song (1-2 re-seeks), on-screen corrections 0.2-4.5 wu RMS.
+Noted, not changed:
+- **The host's load in a four-seat Track 2**: 1,000-1,200 enemies alive (the co-op budget, x 2.8 at four players, as GAME_DESIGN
+  asks); on the Moto host 2.1% of frames ran two or more ticks and the longest frame was 41-50 ms (the OnePlus host 43 ms). The
+  Moto host sends up to 720 kbit/s (about 2,800 corrections a second with 456 enemies), each client takes about 240 kbit/s.
+- One audio underrun on a Moto client at its run's start (its buffer raised to 720 frames).
+- The OnePlus's panel ran at 60 Hz: the game voted 120 Hz and a system or user setting overruled it.
+- The shared pause (`--coop-pause-at`, `coopPause`) writes no log line; the run time against the wall time shows it.
+
 ## 2026-11-15, the updater: an UPDATE pill on the title when GitHub has a newer build
 
 The owner: "a small button in the main menu that shows if an update is available, and tapping it goes to the github".
