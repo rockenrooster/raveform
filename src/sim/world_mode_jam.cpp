@@ -75,6 +75,8 @@ void World::jamDecide(u8 pad) {
     const u32 bar = into > 0.5 * kTicksPerBar ? here + 2u : here + 1u;
     const double at = tickOfBar(bar);
     u8 kind = kRoomMixer, value = 0;
+    // (a held Drop, the moment jam:<track>:drop:hold, keeps the room's form: DROP and the Track pads wait)
+    if (director_.jamDropHold && (pad == ModesData::Jam::kPadDrop || pad >= ModesData::Jam::kPadTrack0)) return;
     if (pad < ModesData::Jam::kMixer) {
         if (jam_.mixerLocked) return;
         kind = kRoomMixer;

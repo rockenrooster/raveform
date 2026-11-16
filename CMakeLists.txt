@@ -541,6 +541,7 @@ target_sources(raveform_core PRIVATE
   src/game/play_pictures_m5.cpp
   src/game/play_pictures_m6.cpp
   src/game/play_pictures_m8.cpp
+  src/game/play_flow_m8.cpp
   src/game/play_modes.cpp
   src/game/play_transitions.cpp
   src/game/play_view.cpp

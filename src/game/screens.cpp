@@ -105,6 +105,15 @@ void Ui::end() {
     checkLayout();
 }
 
+bool Ui::findControl(const char* label, Vec2& centre) const {
+    for (u32 k = 0; k < boxCount_; ++k)
+        if (boxes_[k].control && std::strcmp(boxes_[k].label, label) == 0) {
+            centre = (boxes_[k].a + boxes_[k].b) * 0.5f;
+            return true;
+        }
+    return false;
+}
+
 void Ui::keep(Vec2 a, Vec2 b, bool control, const char* label) {
     if (quiet_ || boxCount_ >= kBoxes) return;
     Box& k = boxes_[boxCount_++];
@@ -613,7 +622,8 @@ void Play::screenPause(Ui& ui) {
         return;
     }
     if (askQuit_ || askRestart_) {
-        ui.text({cx, 560.0f * s}, 24.0f * s, white, 1.3f, askQuit_ ? "QUIT THIS RUN?" : "RESTART THIS RUN?");
+        const bool jamRoom = world_->setup().mode == sim::Mode::Jam && !world_->setup().versus;
+        ui.text({cx, 560.0f * s}, 24.0f * s, white, 1.3f, askQuit_ ? (jamRoom ? "LEAVE THE ROOM?" : "QUIT THIS RUN?") : "RESTART THIS RUN?");
         if (ui.pill(30, {cx - 200.0f * s, 700.0f * s}, {320.0f * s, 100.0f * s}, "YES", 30.0f * s, false)) {
             const bool quit = askQuit_;
             askQuit_ = askRestart_ = false;
@@ -632,7 +642,11 @@ void Play::screenPause(Ui& ui) {
     if (ui.pill(20, {cx, 600.0f * s}, {600.0f * s, 130.0f * s}, "RESUME", 52.0f * s, true) || keyPrimary_ || keyBack_) beginCountIn();
     if (ui.pill(21, {cx - 340.0f * s, 780.0f * s}, {320.0f * s, 100.0f * s}, "RESTART", 30.0f * s, false)) askRestart_ = true;
     if (ui.pill(22, {cx + 340.0f * s, 780.0f * s}, {320.0f * s, 100.0f * s}, "SETTINGS", 30.0f * s, false)) openSettings(Screen::Paused);
-    if (ui.pill(23, {cx, 920.0f * s}, {280.0f * s, 80.0f * s}, "QUIT RUN", 24.0f * s, false, true, false, Vec3{0.6f, 0.6f, 0.6f})) askQuit_ = true;
+    // (M8, design/modes/screens.md "The pause": in JAM it reads LEAVE, a full control: leaving is the way out of a room with no end)
+    const bool jamRoom = world_->setup().mode == sim::Mode::Jam && !world_->setup().versus;
+    if (jamRoom ? ui.pill(23, {cx, 920.0f * s}, {280.0f * s, 80.0f * s}, "LEAVE", 24.0f * s, false)
+                : ui.pill(23, {cx, 920.0f * s}, {280.0f * s, 80.0f * s}, "QUIT RUN", 24.0f * s, false, true, false, Vec3{0.6f, 0.6f, 0.6f}))
+        askQuit_ = true;
     keyPrimary_ = keyBack_ = false;
 }
 

@@ -285,10 +285,10 @@ void Play::modesEvent(const Event& e) {
         case EventType::JamEmpty:
             // EMPTY: the back chord and a closing sweep; everything the ship held flies back to the TOYS and BOOSTS pads.
             if (e.a == seat_) {
-                std::memcpy(emptyItems_, jamItems_, sizeof emptyItems_);
-                emptyItemCount_ = jamItemCount_;
-                std::memcpy(emptyBoosts_, jamBoosts_, sizeof emptyBoosts_);
-                emptyBoostCount_ = jamBoostCount_;
+                std::memcpy(emptyItems_, jamPrevItems_, sizeof emptyItems_);
+                emptyItemCount_ = jamPrevItemCount_;
+                std::memcpy(emptyBoosts_, jamPrevBoosts_, sizeof emptyBoosts_);
+                emptyBoostCount_ = jamPrevBoostCount_;
                 emptyT_ = static_cast<float>(tickEnd_ - e.age);
                 emptyFrom_ = Vec2{e.x, e.y};
             }
@@ -434,6 +434,10 @@ void Play::modesFrameRun() {
     if (w.setup().mode == Mode::Jam && !w.setup().versus) {
         // JAM: the band row as it stands (EMPTY's flight takes it from here), the hold's two rising notes (the Trio's hold: the
         // player's lead on the root as a hold begins, the fifth half way; the confirm chord is the pad's own on its closing).
+        std::memcpy(jamPrevItems_, jamItems_, sizeof jamPrevItems_);
+        std::memcpy(jamPrevBoosts_, jamBoosts_, sizeof jamPrevBoosts_);
+        jamPrevItemCount_ = jamItemCount_;
+        jamPrevBoostCount_ = jamBoostCount_;
         jamItemCount_ = bandRowItems(w.player(seat_), jamItems_, 64);
         jamBoostCount_ = 0;
         for (u32 k = 0; k < kBoostSlots && jamBoostCount_ < 4; ++k)
@@ -768,6 +772,7 @@ void Play::modesResult() {
     podiumCounted_ = false;
     podiumWinner_ = 0xFF;
     if (w.setup().versus) {
+        ++matchesEnded_;
         u64 best = 0;
         u32 at = 0;
         for (u32 q = 0; q < kMaxPlayers; ++q) {
@@ -1279,7 +1284,7 @@ void Play::screenPodium(Ui& ui) {
         }
         if (!host) ui.text({cx, 1052.0f * s + rise}, 14.0f * s, white, 0.8f, "WAITING FOR HOST", 0.5f);
         // LOBBY (the host's): back to the lobby, the room standing, to change the mode.
-        const bool lobbyAuto = opt_.coopBackLobby && host && podiumS_ > barS + 1.5f * beatS + 2.0f;
+        const bool lobbyAuto = opt_.coopBackLobby && host && matchesEnded_ >= 2 && podiumS_ > barS + 1.5f * beatS + 2.0f;  // (after a REMATCH)
         if (host && ((ui.pill(45, {W - 412.0f * s, 950.0f * s + rise}, {330.0f * s, 90.0f * s}, "LOBBY", 28.0f * s, false, tCtl >= 1.0f) && tCtl >= 1.0f) || lobbyAuto) &&
             trans_ == Trans::None) {
             opt_.coopBackLobby = false;

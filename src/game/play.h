@@ -55,6 +55,7 @@ struct PlayOptions {
     char picture[32] = {};      // --picture <name>: a scripted scene for the review strips
     float pxPerMm = 0.0f;       // touch control sizes (0: scale with the screen height)
     bool autoplay = false;      // --autoplay: the screens as in play, the bot playing each run (taps start and retry)
+    bool flowTest = false;      // --flow-test (M8 part 7): every mode in and out by every way a run has on its own (game/play_flow_m8.cpp)
     i32 uiScale = -1;           // --ui-scale (M8 part 7): the HUD's size for this run
     float recklessAfter = 0.0f; // --reckless-after S
     // M8 (docs/MODES_PLAN.md 2.10): the run's mode from the command line (sim::parseModeArg), versus, the room's mode.
@@ -290,6 +291,21 @@ private:
     bool coopHitOnce_ = false;  // --coop-down-at: the first of its two hits has been asked for
     u8 presentLogged_ = 0;      // the seats present in the run as last logged (a teammate leaving is logged)
     bool coopShotReady_ = false, coopDowned_ = false, coopPaused_ = false, coopResumed_ = false;
+    // M8 part 7, --flow-test (game/play_flow_m8.cpp): the screens driven by taps on their controls, mode after mode.
+    void flowFrame();
+    bool flowTap(const char* label);
+    void flowCheck(bool ok, const char* what);
+    bool flowRunAs(sim::Mode m, u8 track) const;
+    void flowEndRun();
+    Vec2 flowTapAt_;
+    u32 flowTapPhase_ = 0, flowMode_ = 0, flowChecks_ = 0, flowFails_ = 0;
+    u8 flowStep_ = 0, flowSub_ = 0;
+    u16 flowRunId_ = 0;
+    float flowWaitS_ = 0.0f;
+    bool flowDone_ = false;
+public:
+    bool flowFailed() const { return opt_.flowTest && flowDone_ && flowFails_ > 0; }
+private:
     // The band's view of the co-op mix (what was last posted; slot 0 is this device's player).
     u8 bandPlayers_ = 1;
     u8 bandTimbre_[sim::kMaxPlayers] = {0, 0xFF, 0xFF, 0xFF};
@@ -399,6 +415,7 @@ private:
     float hudBarsSince(float t) const;
     u16 m8Pic_ = 0xFFFF;
     u32 m8Last_ = 0;  // (SONGLINE's in-time picture: the gates in time before this frame)
+    float m8Bar_ = 0.0f;  // (SONGLINE's bend-back picture: the bar the ship was left behind on)
     u32 placedAt_ = 0;  // (the Longwave strips: when the ship was last put beside the body)
 
     PlayOptions opt_;
@@ -793,6 +810,8 @@ private:
     u32 jamItemCount_ = 0, emptyItemCount_ = 0;
     u8 jamBoosts_[4] = {}, emptyBoosts_[4] = {};
     u32 jamBoostCount_ = 0, emptyBoostCount_ = 0;
+    u8 jamPrevItems_[64] = {}, jamPrevBoosts_[4] = {};  // (the tick before: EMPTY's event comes after this tick's snapshot)
+    u32 jamPrevItemCount_ = 0, jamPrevBoostCount_ = 0;
     float emptyT_ = -100.0f;
     Vec2 emptyFrom_;
     u32 holdNotes_ = 0;        // the hold's notes played (0, 1 the root, 2 the fifth too)
@@ -814,6 +833,7 @@ private:
     float podiumRowY_[sim::kMaxPlayers] = {};   // the table's rows as they slide into their places (reference px)
     bool podiumCrowned_ = false;                // the crown has landed (its haptic pulse)
     bool backFromRun_ = false;                  // the room came back to its lobby from a run (LOBBY; pictures)
+    u32 matchesEnded_ = 0;                      // versus matches ended in this room (--coop-back-lobby: LOBBY after the second)
     void podiumSounds(double base);             // the table's ticks, the crown's bell and the fanfare, from the podium's bar line
     float actSecs_[10] = {};                    // M8 HEADLINERS: each act's fight in seconds (0: not fought or not won)
     char cardSmall_[24] = {}, cardName_[32] = {}, completeLine_[32] = {}, goalLine_[48] = {};

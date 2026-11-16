@@ -46,7 +46,7 @@ $sheet = 'import sys; from PIL import Image; fs=[Image.open(p).convert("RGB") fo
 
 $modes = @('set', 'one', 'headliners', 'blast', 'tracers', 'songline', 'jam')
 if ($Part -eq 'p0') {
-    $singles = @($modes | ForEach-Object { "m8_title_pill_$_" }) + @($modes | ForEach-Object { "m8_modes_$_" })
+    $singles = @($modes | ForEach-Object { "m8_title_pill_$_" }) + @($modes | ForEach-Object { "m8_modes_$_" }) + @('m8_modes_bonus')
     $strips = [ordered]@{ 'm8_t_lift' = 20; 'm8_t_back' = 24; 'm8_t_mode' = 8; 'm8_t_track' = 16; 'm8_t_drop' = 16 }
     $rooms = @('m8_modes_room', 'm8_lobby_host', 'm8_lobby_join', 'm8_lobby_versus', 'm8_join_modes')
 } elseif ($Part -eq 'p1') {
@@ -68,21 +68,22 @@ if ($Part -eq 'p0') {
 } elseif ($Part -eq 'p6') {
     # p6: JAM on Toybox (jam.md "What to check"): the room with one layer, four, all eight; a shelf open; DROP ready and resting; the
     # room's Drop; POP-OFF's draft and its Drop
-    $singles = @('m8_jam_room1', 'm8_jam_room4', 'm8_jam_room8', 'm8_jam_shelf', 'm8_jam_drop_ready', 'm8_jam_drop_resting',
+    $singles = @('m8_jam_room1', 'm8_jam_room4', 'm8_jam_room8', 'm8_jam_pad_states', 'm8_jam_shelf', 'm8_jam_drop_ready', 'm8_jam_drop_resting',
                  'm8_jam_room_drop', 'm8_popoff_draft', 'm8_popoff_drop')
-    $strips = [ordered]@{}
+    $strips = [ordered]@{ 'm8_jam_empty' = 8 }
     $rooms = @()
 } elseif ($Part -eq 'p5') {
     # p5: SONGLINE on Aurora (songline.md "What to check"): a Groove's string with the guide, a Build's runway, a gate threaded in
     # time, four players' braid, the count, the result; strips: a Drop's tube a sixteenth apart (8), the finale a quarter beat apart (8)
-    $singles = @('m8_sl_groove', 'm8_sl_build', 'm8_sl_intime', 'm8_sl_braid', 'm8_sl_count', 'm8_sl_result')
+    $singles = @('m8_sl_groove', 'm8_sl_build', 'm8_sl_intime', 'm8_sl_braid', 'm8_sl_count', 'm8_sl_result', 'm8_sl_gold_gate', 'm8_sl_streak_1',
+                 'm8_sl_streak_2', 'm8_sl_streak_3', 'm8_sl_streak_4', 'm8_sl_bend_back', 'm8_sl_race_4')
     $strips = [ordered]@{ 'm8_sl_drop' = 8; 'm8_sl_finale' = 8 }
     $rooms = @()
 } else {
     # p4: TRACERS on Reef (tracers.md "What to check"): a line half drawn with its hint, a lock, the floor at 60% in four colours,
     # the result; strips: the pop a thirty-second apart from the lock (8), FULL HOUSE a quarter beat apart (16), the count (8)
-    $singles = @('m8_tr_line', 'm8_tr_lock', 'm8_tr_floor4', 'm8_tr_result')
-    $strips = [ordered]@{ 'm8_tr_pop' = 8; 'm8_tr_house' = 16; 'm8_tr_count' = 8 }
+    $singles = @('m8_tr_line', 'm8_tr_lock', 'm8_tr_floor4', 'm8_tr_result', 'm8_tr_turf_4')
+    $strips = [ordered]@{ 'm8_tr_pop' = 8; 'm8_tr_house' = 16; 'm8_tr_count' = 8; 'm8_tr_lights_out' = 8 }
     $rooms = @()
 }
 if ($Only.Count) {

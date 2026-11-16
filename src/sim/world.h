@@ -1162,6 +1162,7 @@ public:
     // Pictures and tests: the floor set as given (an owner a tile, TracerFloor::kDark for none); `house`: a full house on the next
     // bar line, as if the floor had just filled.
     void scriptFloor(const u8* owners, bool house);
+    void scriptStreak(u32 p, u16 s) { setStreak(p, s); }  // (pictures: a SONGLINE streak at a tier)
     // M8 TRACERS co-op (tracers.md "Caps and the wire"): a ring or the host's house from the network (applied on the next tick in
     // arrival order: false, the queue is full); the host's floor (taken unless it predates a ring this device's players locked);
     // the host's snapshot of it; what each seat has locked; how alike the floors were (tiles that differed at each snapshot).

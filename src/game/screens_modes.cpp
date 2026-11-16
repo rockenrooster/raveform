@@ -1143,13 +1143,32 @@ void Play::applyModeArgs() {
             text[len - 3] = 0;
         }
         RunSetup su;
-        if (!parseModeArg(text, su, nullptr, 0) || !modeBuilt(su.mode)) {
+        char moment[24] = {};
+        if (!parseModeArg(text, su, moment, sizeof moment) || !modeBuilt(su.mode)) {
             RF_ERR("play: --coop-mode '%s': no such mode built (set, one, ...; :<track>; :vs)", opt_.coopMode);
             modeArgsOk_ = false;
             return;
         }
         su.versus = vs || opt_.versus;
         su.help = !opt_.noHelp;
+        if (moment[0]) {
+            // (tests: the room's runs start at a timed form's Nth Drop, dropN or waveN, so they come to their ends soon: the room's
+            // flow through its result or podium, REMATCH and LOBBY; RunSetup::moment, as a networked benchmark's)
+            const ModesData::Forms& fs = species_->modes.forms;
+            const Form* f = su.mode == Mode::FullBlast ? &fs.blast
+                            : (su.mode == Mode::Tracers || su.mode == Mode::Songline) ? &fs.timed48
+                            : (su.mode == Mode::Jam && su.versus) ? &fs.popOff : nullptr;
+            const char* digits = std::strncmp(moment, "drop", 4) == 0 || std::strncmp(moment, "wave", 4) == 0 ? moment + 4 : nullptr;
+            const u32 want = digits ? static_cast<u32>(std::atoi(digits)) : 0u;
+            u32 drops = 0;
+            for (u32 k = 0; f && k < f->count && want; ++k)
+                if (f->s[k].kind == FormKind::Drop && ++drops == want) su.moment = static_cast<u8>(k + 1u);
+            if (!su.moment) {
+                RF_ERR("play: --coop-mode '%s': no moment '%s' in that mode's form (dropN, waveN)", opt_.coopMode, moment);
+                modeArgsOk_ = false;
+                return;
+            }
+        }
         roomSetup_ = su;
     }
 }

@@ -317,7 +317,7 @@ void Play::coopFlow() {
     // M8 (design/modes/screens.md "The podium": LOBBY): the host took the room back to its lobby: every device's run ends there,
     // the room standing, and its next run starts from it as the first did.
     if (coopRunShown_ && s.state() == net::SessionState::Lobby) {
-        RF_LOG("net: the room is back in its lobby (seats, crowns and mode kept)");
+        RF_LOG("net: the room is back in its lobby (seats, crowns and mode kept): crowns %u %u %u %u", s.crowns(0), s.crowns(1), s.crowns(2), s.crowns(3));
         coopRunShown_ = coopOver_ = false;
         netRunStarted_ = false;
         resultPending_ = false;
@@ -373,7 +373,7 @@ void Play::coopFlow() {
         if (s.state() == net::SessionState::Lobby && seated >= opt_.coopStart && s.canStart() && !backFromRun_) s.requestStart();  // (not again after LOBBY)
         // (M8 versus: a REMATCH once the podium has stood its two bars and four seconds; never with --coop-back-lobby)
         const float podiumWait = 2.0f * 240.0f / std::fmax(static_cast<float>(world_->bpm()), 30.0f) + 4.0f;
-        if (coopOver_ && overS_ > (world_->setup().versus ? podiumWait : 3.0f) && !opt_.coopBackLobby) s.requestRetry();
+        if (coopOver_ && overS_ > (world_->setup().versus ? podiumWait : 3.0f) && !(opt_.coopBackLobby && matchesEnded_ >= 2)) s.requestRetry();
     }
     coopTestStep();
 }

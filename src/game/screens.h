@@ -60,6 +60,8 @@ public:
     // over it with nothing held (a mouse's hover: never on a touch screen, where the pointer stays where the finger lifted).
     bool button(u32 id, Vec2 a, Vec2 b, const char* label, bool& pressed, bool& over);
     bool hover(Vec2 a, Vec2 b) const;
+    // M8 part 7 (--flow-test): the centre of the control drawn last frame with this label (false: none was).
+    bool findControl(const char* label, Vec2& centre) const;
 
     // M4 stage B (screens.md, "Rules for every screen"): controls never touch: at least 24 px between any two, and
     // between a control and a line of text. Every control and every line drawn between begin() and end() is kept

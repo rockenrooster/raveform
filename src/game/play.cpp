@@ -125,6 +125,12 @@ bool Play::init(const PlayOptions& opt, const Look& look, const Palettes& palett
     // stage A: co-op from the command line has no screens either). M4 stage B: --coop drives the screens (with --bot,
     // the bot plays each run).
     flow_ = opt.kind == PlayOptions::Kind::Play && (!opt.bot || opt.autoplay || opt.coopAuto) && !picture && !opt.fixedStep && !opt.net;
+    if (opt.flowTest && flow_) {
+        // M8 part 7 (--flow-test): the screens as in play, the bot playing each run, on the simulated clock (a step a frame), and
+        // nothing saved (settings, hints, records stay as the player left them).
+        opt_.autoplay = true;
+        opt_.fixedStep = true;
+    }
     if (flow_) {
         loadSettings(settings_);
         loadHighScores(scores_);
@@ -277,6 +283,10 @@ void Play::buildInput(StickInput& in) {
 
 void Play::frame(float realDt) {
     ++frameNo_;
+    if (opt_.flowTest && !ffRunning_) {
+        if (screen_ == Screen::Notice) screen_ = Screen::Title;  // (the first launch's notice is not the test's)
+        flowFrame();  // M8 part 7: --flow-test
+    }
     transitionFrame();  // M6 (screens.md "Transitions")
     countInFrame();     // the review's fixes (2026-11-15): the 3-2-1's ticks in co-op, the pause's mix lifting over its first beat
     if (coop()) {
@@ -538,6 +548,7 @@ void Play::afterTick() {
                 else if (trans_ == Trans::Home) homeArrives(e.tick);
                 if (coopFlowActive_ && coopOver_) {
                     // M4 stage B: the host's RETRY: the next run, everyone's screens back to it.
+                    RF_LOG("net: the run starts again (the host's %s): run %u", w.setup().versus ? "REMATCH" : "RETRY", static_cast<unsigned>(w.runId()));
                     coopOver_ = false;
                     if (screen_ == Screen::GameOver) screen_ = Screen::Run;
                     applySettings();

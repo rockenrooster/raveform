@@ -356,6 +356,7 @@ bool App::init() {
         po.coopPauseAt = args_.coopPauseAt;
         po.coopQuitAt = args_.coopQuitAt;
         po.coopBackLobby = args_.coopBackLobby;
+        po.flowTest = args_.flowTest;
         if (args_.netsim[0] && !net::parseNetSim(args_.netsim, po.netsim)) {
             RF_ERR("bad --netsim '%s'", args_.netsim);
             return false;
@@ -917,7 +918,10 @@ void App::frame(u64 loopStartNs) {
         if (args_.mute & kMuteSparkles) draw.sparkles.clear();
         if (args_.mute & kMutePools) draw.pools.clear();
         renderer_.setBackground(background_);
-        if (play_.pictureDone()) quit_ = true;
+        if (play_.pictureDone()) {
+            quit_ = true;
+            if (play_.flowFailed() && exitCode_ == 0) exitCode_ = 6;  // (M8 part 7: --flow-test found a way in or out that failed)
+        }
         // M3 stage B: the settings screen's requests.
         if (play_.takeSyncRequest()) {
             audioScene_.init(AudioScene::Kind::Sync, band_, font_, palettes_, *palette_, look_);

@@ -20,7 +20,9 @@ enum class M8 : u8 {
     TrLine, TrLock, TrPop, TrFloor4, TrHouse, TrCount, TrResult,
     SlGroove, SlBuild, SlDrop, SlInTime, SlBraid, SlFinale, SlCount, SlResult,
     JamRoom1, JamRoom4, JamRoom8, JamShelf, JamDropReady, JamDropResting, JamRoomDrop, PopDraft, PopDrop,
-    BlTorrent, BlWave, BlLastCall, BlCut, BlBack, BlCount, BlResult
+    BlTorrent, BlWave, BlLastCall, BlCut, BlBack, BlCount, BlResult,
+    // (M8 part 7: the plan's pictures that were missing)
+    JamPads, JamEmpty, SlGold, SlStreak1, SlStreak2, SlStreak3, SlStreak4, SlBend, SlRace4, TrLightsOut, TrTurf4, ModesBonus
 };
 struct M8Pic {
     const char* name;  // m8_<name>
@@ -69,6 +71,14 @@ const M8Pic kM8Pics[] = {
     // last downbeat), the result (the nine sections, the waves named, TONIGHT'S BAND).
     {"bl_torrent", M8::BlTorrent, 4}, {"bl_wave", M8::BlWave, 4}, {"bl_lastcall", M8::BlLastCall, 4}, {"bl_cut", M8::BlCut, 4},
     {"bl_back", M8::BlBack, 4}, {"bl_count", M8::BlCount, 4}, {"bl_result", M8::BlResult, 4},
+    // Part 7 (the plan's list, section 7): JAM's pad states (three layers on, a fourth waiting for its bar line, the ship holding TOYS)
+    // and EMPTY's flight back to the pads (a strip a sixteenth apart); SONGLINE's gold gate ahead, the streak's four tiers on the ship,
+    // the line bending back for a ship left 1,500 wu behind, the race with four seats; TRACERS's lights going out (a strip an eighth
+    // apart from the knock-out) and the turf of four seats; MODES on a bonus Track (TRACERS on Mirrorball, the strip's twelve chips).
+    {"jam_pad_states", M8::JamPads, 12}, {"jam_empty", M8::JamEmpty, 12}, {"sl_gold_gate", M8::SlGold, 4},
+    {"sl_streak_1", M8::SlStreak1, 4}, {"sl_streak_2", M8::SlStreak2, 4}, {"sl_streak_3", M8::SlStreak3, 4}, {"sl_streak_4", M8::SlStreak4, 4},
+    {"sl_bend_back", M8::SlBend, 4}, {"sl_race_4", M8::SlRace4, 4}, {"tr_lights_out", M8::TrLightsOut, 3}, {"tr_turf_4", M8::TrTurf4, 3},
+    {"modes_bonus", M8::ModesBonus, 4},
 };
 constexpr u32 kM8Count = sizeof(kM8Pics) / sizeof(kM8Pics[0]);
 constexpr u32 kM8At = 300;  // (the title at rest: as screen_title's)
@@ -203,6 +213,66 @@ bool Play::scriptSetupM8() {
             if (pic.kind == M8::PopDrop) scriptFastForwardS_ = 20.0f * barS;
             break;
         }
+        case M8::ModesBonus:
+            modesPictureSetup(Mode::Tracers, false);
+            modesChooseTrack(11);
+            break;
+        case M8::JamPads:
+        case M8::JamEmpty: {
+            RunSetup su;
+            su.mode = Mode::Jam;
+            su.track = pic.mode;
+            screen_ = Screen::Run;
+            w.resetRun(opt_.seed, 0.0, 1, 0xF, su);
+            w.rules().godMode = true;
+            controller_.reset(w.player(0).pos);
+            marks_[0] = Mark{0.0f, 0, su.track};
+            runTrackMax_ = su.track;
+            w.jamAsk(0, 1);
+            w.jamAsk(0, 2);
+            if (pic.kind == M8::JamEmpty) stripStride_ = static_cast<u32>(std::lround(900.0 / std::fmax(w.tempoAt(0.0), 30.0f)));  // (a 16th)
+            break;
+        }
+        case M8::SlGold:
+        case M8::SlStreak1:
+        case M8::SlStreak2:
+        case M8::SlStreak3:
+        case M8::SlStreak4:
+        case M8::SlBend:
+        case M8::SlRace4: {
+            RunSetup su;
+            su.mode = Mode::Songline;
+            su.track = pic.mode;
+            su.versus = pic.kind == M8::SlRace4;
+            screen_ = Screen::Run;
+            w.resetRun(opt_.seed, 0.0, pic.kind == M8::SlRace4 ? 4u : 1u, 0xF, su);
+            w.rules().godMode = true;
+            controller_.reset(w.player(0).pos);
+            bot_.reset(opt_.seed, Bot::Policy::Play);
+            marks_[0] = Mark{0.0f, 0, su.track};
+            runTrackMax_ = su.track;
+            const float barS = 240.0f / std::fmax(w.tempoAt(0.0), 30.0f);
+            if (pic.kind == M8::SlGold) scriptFastForwardS_ = 6.0f * barS;
+            if (pic.kind == M8::SlBend || pic.kind == M8::SlRace4) scriptFastForwardS_ = 5.0f * barS;
+            break;
+        }
+        case M8::TrLightsOut:
+        case M8::TrTurf4: {
+            RunSetup su;
+            su.mode = Mode::Tracers;
+            su.track = pic.mode;
+            su.versus = pic.kind == M8::TrTurf4;
+            screen_ = Screen::Run;
+            w.resetRun(opt_.seed, 0.0, pic.kind == M8::TrTurf4 ? 4u : 1u, 0xF, su);
+            w.rules().godMode = true;
+            controller_.reset(w.player(0).pos);
+            bot_.reset(opt_.seed, Bot::Policy::Play);
+            marks_[0] = Mark{0.0f, 0, su.track};
+            runTrackMax_ = su.track;
+            scriptFastForwardS_ = 20.0f;
+            if (pic.kind == M8::TrLightsOut) stripStride_ = static_cast<u32>(std::lround(1800.0 / std::fmax(w.tempoAt(0.0), 30.0f)));  // (an 8th)
+            break;
+        }
         case M8::BlTorrent:
         case M8::BlWave:
         case M8::BlLastCall:
@@ -273,7 +343,107 @@ bool Play::scriptInputM8(StickInput& in) {
     const M8Pic& pic = kM8Pics[m8Pic_];
     const u32 t = scriptTick_;
     const i64 now = static_cast<i64>(frameNo_);
-    if (pic.kind >= M8::BlTorrent) {
+    if (pic.kind == M8::ModesBonus) {
+        if (captureFrom_ < 0 && t >= 120) captureFrom_ = now + 1;
+        return true;
+    }
+    if (pic.kind == M8::JamPads || pic.kind == M8::JamEmpty) {
+        // JAM: the ship flies to TOYS and stays (the pad states: a fourth layer asked for on bar 3, waiting for its bar line); EMPTY: a
+        // few toys taken, then EMPTY on bar 2.
+        in = StickInput{};
+        const double bars = (music1_ - w.director().startTick) / kTicksPerBar;
+        if (pic.kind == M8::JamPads) {
+            const Vec2 to = w.species().modes.jam.pad[ModesData::Jam::kPadToys].at - w.player(0).pos;
+            const float l = length(to);
+            if (l > 8.0f) in.move = to * (1.0f / l) * (l < 60.0f ? 0.5f : 1.0f);
+            const float held = w.jam().hold[0][ModesData::Jam::kPadToys] / std::fmax(w.species().modes.jam.pad[ModesData::Jam::kPadToys].holdBeats, 0.1f);
+            if (held > 0.15f && m8Last_ == 0) {
+                w.jamAsk(0, 3);  // (a fourth layer asked for as the hold fills: NEXT BAR until its bar line)
+                m8Last_ = 1;
+            }
+            if (captureFrom_ < 0 && m8Last_ && held > 0.45f) captureFrom_ = now + 1;
+        } else {
+            if (t == 30) {
+                static const u8 kToys[] = {kSplit, kDoubleTime, kPierce, kOrbitals, kSwarm, kMirror};
+                for (u8 u : kToys) w.jamTake(0, u);
+            }
+            if (bars >= 1.5) {
+                // (EMPTY as a player presses it: the ship flies onto its pad and stays its two beats)
+                const Vec2 to = w.species().modes.jam.pad[ModesData::Jam::kPadEmpty].at - w.player(0).pos;
+                const float l = length(to);
+                if (l > 8.0f) in.move = to * (1.0f / l) * (l < 60.0f ? 0.5f : 1.0f);
+            }
+            if (captureFrom_ < 0 && emptyT_ >= 0.0f) captureFrom_ = now;
+        }
+        return true;
+    }
+    if (pic.kind >= M8::SlGold && pic.kind <= M8::SlRace4) {
+        in = w.player(0).alive && !(pic.kind == M8::SlBend && m8Last_) ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+        if (captureFrom_ >= 0 || ffRunning_) return true;
+        const double bars = (music1_ - w.director().startTick) / kTicksPerBar;
+        if (pic.kind >= M8::SlStreak1 && pic.kind <= M8::SlStreak4) {
+            const u32 tier = static_cast<u32>(pic.kind) - static_cast<u32>(M8::SlStreak1);
+            if (t == 30) w.scriptStreak(0, static_cast<u16>(w.species().modes.songline.tiers[tier]));
+            if (t >= 60 && bars >= 2.0) captureFrom_ = now + 1;
+        }
+        if (pic.kind == M8::SlGold) {
+            for (u32 k = 0; k < World::kSongGates; ++k) {
+                const SongGate& g = w.songGate(k);
+                if (g.born < 0.0 || g.kind != 2 || g.missed || g.threaded) continue;
+                if (lengthSq(g.pos - w.player(0).pos) < 450.0f * 450.0f) {
+                    captureFrom_ = now + 1;
+                    break;
+                }
+            }
+        }
+        if (pic.kind == M8::SlBend) {
+            if (m8Last_ == 0) {
+                PlayerState& pl = w.playerMut(0);
+                const Vec2 back = w.spark().pos - dirOf(w.spark().heading) * 1500.0f;
+                pl.pos = pl.prevPos = Vec2{clampf(back.x, -w.halfW() + 200.0f, w.halfW() - 200.0f), clampf(back.y, -w.halfH() + 200.0f, w.halfH() - 200.0f)};
+                controller_.reset(pl.pos);
+                m8Last_ = 1;
+                m8Bar_ = static_cast<float>(bars);
+            } else if (bars >= static_cast<double>(m8Bar_) + 2.5) {
+                captureFrom_ = now + 1;
+            }
+        }
+        if (pic.kind == M8::SlRace4 && bars >= 7.0) captureFrom_ = now + 1;
+        if (captureFrom_ >= 0) RF_LOG("play: picture '%s' captures from frame %lld (bar %.2f)", opt_.picture, static_cast<long long>(captureFrom_), bars);
+        return true;
+    }
+    if (pic.kind == M8::TrLightsOut || pic.kind == M8::TrTurf4) {
+        in = w.player(0).alive ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
+        if (captureFrom_ >= 0 || ffRunning_) return true;
+        if (!m8FloorSet_) {
+            // The floor: TURF four colours (a quarter of the room's ellipse each); the lights' a 60% floor of the player's own.
+            static u8 owners[TracerFloor::kTiles];
+            for (u32 tl = 0; tl < TracerFloor::kTiles; ++tl) {
+                const Vec2 c = w.tileCentre(tl);
+                const float ex = c.x / w.halfW(), ey = c.y / w.halfH();
+                const u8 q = pic.kind == M8::TrTurf4 ? static_cast<u8>((c.x < 0.0f ? 0u : 1u) + (c.y < 0.0f ? 0u : 2u)) : static_cast<u8>(0u);
+                owners[tl] = ex * ex + ey * ey < 0.87f * 0.87f ? q : TracerFloor::kDark;
+            }
+            w.scriptFloor(owners, false);
+            m8FloorSet_ = true;
+        }
+        if (pic.kind == M8::TrTurf4 && t >= 60) captureFrom_ = now + 1;
+        if (pic.kind == M8::TrLightsOut && t >= 60 && m8Last_ == 0) {
+            // (a hit with no cell left inside the next tick: the knock-out as play has it, and the lights with it)
+            w.rules().godMode = false;
+            w.playerMut(0).cells = 0;
+            w.playerMut(0).invulS = 0.0f;
+            w.hitNextTick(0);
+            m8Last_ = 1;
+        }
+        if (pic.kind == M8::TrLightsOut && m8Last_ == 1 && w.player(0).knocked) {
+            w.rules().godMode = true;
+            m8Last_ = 2;
+            captureFrom_ = now;
+        }
+        return true;
+    }
+    if (pic.kind >= M8::BlTorrent && pic.kind <= M8::BlResult) {
         // FULL BLAST: the assist bot plays; each picture waits for its moment.
         in = w.player(0).alive ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
         if (captureFrom_ >= 0 || ffRunning_) return true;
