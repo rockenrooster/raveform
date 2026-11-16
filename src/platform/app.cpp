@@ -355,6 +355,7 @@ bool App::init() {
         po.coopDownAt = args_.coopDownAt;
         po.coopPauseAt = args_.coopPauseAt;
         po.coopQuitAt = args_.coopQuitAt;
+        po.coopBackLobby = args_.coopBackLobby;
         if (args_.netsim[0] && !net::parseNetSim(args_.netsim, po.netsim)) {
             RF_ERR("bad --netsim '%s'", args_.netsim);
             return false;

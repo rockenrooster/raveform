@@ -273,6 +273,9 @@ enum class EventType : u8 {
     JamShelf,
     JamTake,
     JamEmpty,
+    // M8 HEADLINERS versus (design/modes/headliners.md "Versus: the damage race"): an act went to a player (a = the player, 0xFF none;
+    // b = the act).
+    ActWon,
 };
 enum UpgradeFx : u8 {
     kFxFork,          // a shot forked: x, y
@@ -1171,6 +1174,13 @@ public:
     u32 floorDiffTiles() const { return floorDiffTiles_; }
     // M8 versus: what the match counts for player p (TRACERS: the tiles in its colour; else its score).
     u64 versusCount(u32 p) const;
+    // M8 HEADLINERS versus (headliners.md "Versus: the damage race"): a boss goes to the player who did it the most damage (after
+    // armour and the pace, as the host counts it; its shares reach the clients once a beat); the acts won; the bill's damage leader
+    // (the tie on acts at the end); the underdog's damage, 20% more an act it trails by, up to double (the help).
+    u8 actsWon(u32 p) const { return actsWon_[p < kMaxPlayers ? p : 0]; }
+    float actShare(u32 p) const;
+    u8 billLeader() const { return billLeader_; }
+    float actBonus(u8 owner) const;
     // M8 SONGLINE (design/modes/songline.md; world_mode_songline.cpp): the Spark and its line ahead, the gates, the streaks.
     static constexpr u32 kSongGates = 256;
     const SongSpark& spark() const { return spark_; }
@@ -1790,6 +1800,12 @@ private:
     u32 streakDropBar_[kMaxPlayers] = {};
     u16 gatesLaid_[kMaxPlayers] = {}, gatesThreaded_[kMaxPlayers] = {}, gatesInTime_[kMaxPlayers] = {};
     u16 songTaken_[kMaxPlayers] = {};  // versus: the gates the host gave each player (one in time counts two)
+    // M8 HEADLINERS versus: this act's damage by player and the bill's (the host's and a solo world's), the shares the host sent (a
+    // client's), the acts won, the bill's leader.
+    float actDmg_[kMaxPlayers] = {}, billDmg_[kMaxPlayers] = {}, actShareNet_[kMaxPlayers] = {};
+    u8 actsWon_[kMaxPlayers] = {};
+    u8 billLeader_ = 0xFF;
+    void actWon(u8 p, u8 act, u8 leader);
 public:
     // M8 JAM (design/modes/jam.md; world_mode_jam.cpp): the room's mixer and sound, DROP's rest, each player's pads and shelf.
     struct JamState {

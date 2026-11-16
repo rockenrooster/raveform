@@ -105,7 +105,43 @@ double World::kitLandTick(u32 p, u32 i) const {
     return k.from + sixteenth * static_cast<double>(slot);
 }
 
+float World::actShare(u32 p) const {
+    if (p >= kMaxPlayers) return 0.0f;
+    if (role_ == NetRole::Client) return actShareNet_[p];
+    float total = 0.0f;
+    for (float d : actDmg_) total += d;
+    return total > 0.0f ? actDmg_[p] / total : 0.0f;
+}
+
+float World::actBonus(u8 owner) const {
+    // headliners.md "Versus": the underdog does 20% more damage for each act it trails the leader by, up to double (the help).
+    if (!setup_.versus || !setup_.help || setup_.mode != Mode::Headliners || owner >= kMaxPlayers) return 1.0f;
+    u8 lead = 0;
+    for (u8 a : actsWon_) lead = a > lead ? a : lead;
+    const float trail = static_cast<float>(lead - actsWon_[owner]);
+    return std::fmin(1.0f + 0.2f * trail, 2.0f);
+}
+
+void World::actWon(u8 p, u8 act, u8 leader) {
+    if (p < kMaxPlayers && actsWon_[p] < 255) ++actsWon_[p];
+    billLeader_ = leader;
+    for (u32 q = 0; q < kMaxPlayers; ++q) actDmg_[q] = actShareNet_[q] = 0.0f;
+    Event ev;
+    ev.type = EventType::ActWon;
+    ev.a = p;
+    ev.b = act;
+    emit(ev);
+}
+
 void World::updateModes() {
+    // M8 HEADLINERS versus: the host's shares of the act's damage to the clients once a beat (their race bars).
+    if (setup_.versus && setup_.mode == Mode::Headliners && role_ == NetRole::Host && boss_.active && !boss_.dying && !isMiniBoss(boss_.kind))
+        forCrossings(m0_, m1_, kTicksPerBeat, [&](double, i64) {
+            float total = 0.0f;
+            for (float d : actDmg_) total += d;
+            if (total <= 0.0f) return;
+            logArena(15, 0, 0, Vec2{actDmg_[0] / total, actDmg_[1] / total}, Vec2{actDmg_[2] / total, actDmg_[3] / total}, m1_);
+        });
     // The kit: each upgrade applied as it lands on its ship (the view's icon and sparks, the band's chirp: KitLand).
     for (u32 p = 0; p < playerCount_; ++p) {
         KitState& k = kit_[p];

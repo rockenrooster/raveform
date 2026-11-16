@@ -16,7 +16,7 @@ using namespace sim;
 
 namespace {
 enum class M8 : u8 {
-    TitlePill, Modes, Lift, Back, Step, Track, Drop, LoadIn, CardOne, OneOutro, ResultOne, CardAct, ResultActs,
+    TitlePill, Modes, Lift, Back, Step, Track, Drop, LoadIn, CardOne, OneOutro, ResultOne, CardAct, ResultActs, CardAct3,
     TrLine, TrLock, TrPop, TrFloor4, TrHouse, TrCount, TrResult,
     SlGroove, SlBuild, SlDrop, SlInTime, SlBraid, SlFinale, SlCount, SlResult,
     JamRoom1, JamRoom4, JamRoom8, JamShelf, JamDropReady, JamDropResting, JamRoomDrop, PopDraft, PopDrop,
@@ -45,6 +45,8 @@ const M8Pic kM8Pics[] = {
     {"loadin", M8::LoadIn, 6}, {"card_one", M8::CardOne, 4}, {"one_outro", M8::OneOutro, 1}, {"result_one", M8::ResultOne, 1},
     // Part 2 (HEADLINERS): act 1's card (ACT 1 OF 10, KALEIDOS, FIRST LIGHT 110 BPM) and the result after the ten acts.
     {"card_act", M8::CardAct, 0}, {"result_headliners", M8::ResultActs, 0},
+    // (and act 3's card with its bill: two fallen stars in their Tracks' accents, this act's flaring; the bot plays to it)
+    {"card_act3", M8::CardAct3, 0},
     // Part 4 (TRACERS on Reef, the ring-flier flying; tracers.md "What to check"): a line half drawn with its hint, a ring just
     // locked round a pack, the pop as a strip a thirty-second apart from the lock, the floor at 60% in four colours, FULL HOUSE as a
     // strip a quarter beat apart from its bar line, the count at the end (a strip), the result.
@@ -117,9 +119,10 @@ bool Play::scriptSetupM8() {
         case M8::OneOutro:
         case M8::ResultOne:
         case M8::CardAct:
+        case M8::CardAct3:
         case M8::ResultActs: {
             // A ONE TRACK (or HEADLINERS) run from its first downbeat (hits cost nothing; the results' pictures have the screens).
-            const bool acts = pic.kind == M8::CardAct || pic.kind == M8::ResultActs;
+            const bool acts = pic.kind == M8::CardAct || pic.kind == M8::ResultActs || pic.kind == M8::CardAct3;
             RunSetup su;
             su.mode = acts ? Mode::Headliners : Mode::OneTrack;
             su.track = acts ? 1 : pic.mode;
@@ -133,6 +136,13 @@ bool Play::scriptSetupM8() {
             if (pic.kind == M8::LoadIn) stripStride_ = static_cast<u32>(std::lround(2.0 * 900.0 / std::fmax(w.tempoAt(0.0), 30.0f)));
             if (pic.kind == M8::OneOutro || pic.kind == M8::ResultOne) scriptFastForwardS_ = 112.0f;  // (into the boss's fight)
             if (pic.kind == M8::ResultActs) scriptFastForwardS_ = 495.0f;  // (into act 10's fight)
+            if (pic.kind == M8::CardAct3) {
+                // (the fast-forward runs to act 3's second bar: a moment of its own, play.h's momentKind_ 5)
+                momentKind_ = 5;
+                momentN_ = 3;
+                momentJump_ = true;
+                scriptFastForwardS_ = 900.0f;
+            }
             break;
         }
         case M8::TrLine:
@@ -373,13 +383,16 @@ bool Play::scriptInputM8(StickInput& in) {
         return true;
     }
     if (pic.kind == M8::LoadIn || pic.kind == M8::CardOne || pic.kind == M8::OneOutro || pic.kind == M8::ResultOne || pic.kind == M8::CardAct ||
-        pic.kind == M8::ResultActs) {
+        pic.kind == M8::ResultActs || pic.kind == M8::CardAct3) {
         // A ONE TRACK run: the bot plays it.
         in = w.player(0).alive ? bot_.think(w, 0, controller_, clock_.heardNow()) : StickInput{};
         if (captureFrom_ >= 0 || ffRunning_) return true;
         const double bars = music1_ / kTicksPerBar;
         if (pic.kind == M8::LoadIn && t >= 1) captureFrom_ = now + 1;
         if ((pic.kind == M8::CardOne || pic.kind == M8::CardAct) && bars >= 1.25) captureFrom_ = now + 1;
+        if (pic.kind == M8::CardAct3 && w.phrase().track == 3 && !w.phrase().trackChange && w.director().trackBar != kNoBar &&
+            music1_ >= w.tickOfBar(w.director().trackBar) + 1.25 * kTicksPerBar)
+            captureFrom_ = now + 1;
         if (pic.kind == M8::ResultActs && screen_ == Screen::GameOver && overS_ > 2.4f) captureFrom_ = now + 1;
         if (pic.kind == M8::OneOutro && trackComplete_ && hudBarsSince(setCompleteT_) >= 2.0f) captureFrom_ = now + 1;
         if (pic.kind == M8::ResultOne && screen_ == Screen::GameOver && runCleared_ && overS_ > 2.4f) captureFrom_ = now + 1;

@@ -379,6 +379,7 @@ u64 World::versusCount(u32 p) const {
         return n;
     }
     if (setup_.mode == Mode::Songline) return songTaken_[p < kMaxPlayers ? p : 0];  // (songline.md: gates taken, one in time two)
+    if (setup_.mode == Mode::Headliners) return actsWon_[p < kMaxPlayers ? p : 0];   // (headliners.md: acts won)
     // (JAM's POP-OFF: the pops, the score as JAM keeps it: a pop one, an elite five)
     return players_[p < kMaxPlayers ? p : 0].score;
 }

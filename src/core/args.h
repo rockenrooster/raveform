@@ -117,6 +117,7 @@ struct AppArgs {
     float coopDownAt = -1.0f;  // --coop-down-at S: this device's ship goes down S s into the run (tests, pictures)
     float coopPauseAt = -1.0f; // --coop-pause-at S: this device pauses for everyone S s into the run, resumes 3 s later
     float coopQuitAt = -1.0f;  // --coop-quit-at S: this device leaves the room S s into the run (the host: the run ends for all)
+    bool coopBackLobby = false;  // --coop-back-lobby (M8): the host taps the podium's LOBBY (tests, pictures)
     // M4 end
     // M2 audio begin
     AudioArgs audio;           // --band, --track, --sound, ... (audio/audio_args.h)

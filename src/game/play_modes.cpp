@@ -101,6 +101,17 @@ void Play::modesEvent(const Event& e) {
                 RF_LOG("play: TRACK COMPLETE (Track %u, run %.1f s, the boss in %.1f s)", w.phrase().track, runSeconds_, bossSecs_);
             }
             break;
+        case EventType::ActWon:
+            // M8 HEADLINERS versus (sound.md): ACT 3: P2: a bell on the home chord's root two octaves up, and that player's lead on the root.
+            actWonT_ = static_cast<float>(tickEnd_ - e.age);
+            actWonSeat_ = e.a;
+            actWonAct_ = e.b;
+            RF_LOG("play: act %u goes to %s%u", static_cast<unsigned>(e.b), e.a < kMaxPlayers ? "P" : "nobody ", e.a < kMaxPlayers ? e.a + 1u : 0u);
+            if (bandDrives_ && band_ && e.a < kMaxPlayers) {
+                band_->playRecipe(audio::Recipe::Bell, audio::chordNote(0, 6, audio::NoteFrom::ChordTone), 0.8f);
+                band_->leadNote(bandSlot(e.a), 0, 0.9f, 0.0f);
+            }
+            break;
         case EventType::Crown:
             // V5: the crown changes hands on a bar line, with a bell.
             if (bandDrives_ && band_ && e.a != 0xFF) band_->playRecipe(audio::Recipe::Bell, 84, 0.6f);
@@ -285,6 +296,8 @@ void Play::modesEvent(const Event& e) {
             }
             break;
         case EventType::Restart:
+            actWonSeat_ = 0xFF;
+            actWonT_ = -100.0f;
             std::memset(songMarks_, 0, sizeof songMarks_);
             songCountT_ = -100.0f;
             resultPending_ = false;
@@ -669,6 +682,8 @@ void Play::modesResult() {
             }
         }
         if (at != 1) podiumWinner_ = 0xFF;
+        if (at > 1 && w.setup().mode == Mode::Headliners && w.billLeader() < kMaxPlayers && w.versusCount(w.billLeader()) == best)
+            podiumWinner_ = w.billLeader();  // (headliners.md: level on acts, the most damage over the whole bill)
         if (session_ && session_->host() && podiumWinner_ != 0xFF) {
             // V8: the room keeps each seat's wins as crowns while it stands (the lobby's message carries them).
             const u8 c = session_->crowns(podiumWinner_);
@@ -676,6 +691,12 @@ void Play::modesResult() {
             podiumCounted_ = true;
         }
         RF_LOG("play: the versus match ends: %s", podiumWinner_ == 0xFF ? "a draw" : "a winner");
+        // The podium arrives on this bar line: the table in seat order, its sounds placed from it.
+        podiumCrowned_ = false;
+        u32 k = 0;
+        for (u32 q = 0; q < kMaxPlayers; ++q)
+            if (w.player(q).present) podiumRowY_[q] = 700.0f + 46.0f * static_cast<float>(k++);
+        podiumSounds(std::round(music1_ / kTicksPerBar) * kTicksPerBar + (coop() ? netBandOffset_ : clock_.offset()));
     }
 }
 
@@ -737,6 +758,21 @@ void Play::modesBarPlan(double nextLine, double offset, const Phrase& next) {
         for (u32 k = 0; k + 1u < next.track && k < 9; ++k)
             band_->playRecipe(audio::Recipe::Bell, audio::chordNote(static_cast<i32>(k), 5), 0.55f, 0.0f, nextLine + static_cast<double>(k + 1) * beat / 4.0);
     }
+}
+
+i32 Play::loadInBedMask(double line) const {
+    // design/modes/sound.md "Every mode": the bed during the load-in: kick and hats at the start, one more bed layer every four
+    // landings, the full Groove on bar 3 (the mask holds from a bar line, so a layer joins on the bar line after its landings).
+    const World& w = *world_;
+    const RunSetup& su = w.setup();
+    if (su.mode != Mode::OneTrack && su.mode != Mode::FullBlast) return -1;
+    const World::KitState& k = w.kit(seat_);
+    const ModesData::LoadIn& li = species_->modes.loadIn;
+    if (!k.count || line >= k.from + static_cast<double>(li.bars) * kTicksPerBar - 1.0) return -1;
+    u32 landed = 0;
+    while (landed < k.count && w.kitLandTick(seat_, landed) <= line + 1.0) ++landed;
+    const u32 layers = 2u + landed / (li.bedLayerEvery ? li.bedLayerEvery : 4u);
+    return layers >= 8u ? 0xFF : static_cast<i32>((1u << layers) - 1u);
 }
 
 u32 Play::bandRowItems(const PlayerState& p, u8* out, u32 cap) const {
@@ -905,77 +941,216 @@ void Play::drawVersusWorld(FrameDraw& d, const LookVariant& variant) {
 }
 
 void Play::screenPodium(Ui& ui) {
-    // design/modes/screens.md "The podium": WINNER (A DRAW when level at the top), the winner's ring with their ship and the crown,
-    // their name and count, the table (every player best first: place, name, count, best Chain, crowns in this room), the host's
-    // REMATCH (the same match on a new seed: the drop-in on every device; the others WAITING FOR HOST), LEAVE for everyone.
-    const float s = ui.s(), W = ui.W(), H = ui.H(), cx = 0.5f * W;
+    // design/modes/screens.md "The podium", arriving on the music: on its bar line the table writes itself in seat order, each row's
+    // count climbing over the bar a sixteenth at a time (a tick a step) and the rows sliding into their places as the counts pass;
+    // on the next bar line the winner is named (their row flashes and rises to the ring, the ring draws itself, the ship arrives in
+    // it, the crown drops onto it over the beat and lands with a bell, WINNER struck, a clamped flash, confetti in their colour, the
+    // lattice ringing once); a beat later the controls rise: the host's REMATCH and LOBBY, everyone's LEAVE. A draw: both rings
+    // side by side, no crown. Reduce flashing: no flash; the confetti stays.
+    const float s = ui.s(), W = ui.W(), cx = 0.5f * W;
     const Vec3 white{1.0f, 1.0f, 1.0f};
     const World& w = *world_;
     podiumS_ += frameDt_;
-    const float in = clamp01(podiumS_ / 0.6f);
+    const float beatS = 60.0f / std::fmax(static_cast<float>(w.bpm()), 30.0f), barS = 4.0f * beatS;
+    const float tTable = clamp01(podiumS_ / barS);
+    const float tWin = (podiumS_ - barS) / beatS;  // < 0 before the winner's bar line; 0..1 its beat
+    const float tCtl = clamp01((podiumS_ - barS - beatS) / (0.5f * beatS));
+    const bool rf = settings_.reduceFlashing || forcedReduceFlashing_;
     const u8 win = podiumWinner_;
-    ui.text({cx, 104.0f * s}, 44.0f * s, palette_->accent, 1.6f * in, win == 0xFF ? "A DRAW" : "WINNER");
-    if (win != 0xFF) {
-        const Vec3 pc = palettes_->player[win], pl = palettes_->playerLight[win];
-        const Vec2 c{cx, 330.0f * s};
-        ui.draw().pools.glow(c, 500.0f * s, pc * (0.06f * in * hudFade()));
-        ui.dot(c, 140.0f * s, pc, 0.07f * in);
-        ui.ring(c, 150.0f * s, 1.4f * s, pc, 2.0f * in, 72);
-        drawTitleShip(ui, c, -1.5707963f + 0.3f * podiumS_, 3.0f, in, false);
-        // the crown over the ring, 120 px wide, the pickup's white-gold at 2.0
-        const Vec3 wg = ui.col(mix(palettes_->pickup, white, 0.35f), 2.0f * in);
-        const float hw = 60.0f * s, h = 52.0f * s, by = c.y - 150.0f * s - 18.0f * s;
-        const Vec2 pts[7] = {{cx - hw, by}, {cx - hw, by - h}, {cx - 0.5f * hw, by - 0.5f * h}, {cx, by - 1.3f * h},
-                             {cx + 0.5f * hw, by - 0.5f * h}, {cx + hw, by - h}, {cx + hw, by}};
+    const sim::Mode mode = w.setup().mode;
+    // The count and its word (TILES, GATES, ACTS, POPS; a score has none).
+    char word[12] = {};
+    {
+        const char* c = species_ ? species_->modes.of(mode).counts : "";
+        u32 k = 0;
+        if (std::strcmp(c, "score") != 0)
+            for (; c[k] && k + 1 < sizeof word; ++k) word[k] = static_cast<char>(c[k] >= 'a' && c[k] <= 'z' ? c[k] - 32 : c[k]);
+        word[k] = 0;
+    }
+    // WINNER (A DRAW): struck on the winner's bar line, its letters written over the beat.
+    if (tWin >= 0.0f) {
+        const char* top = win == 0xFF ? "A DRAW" : "WINNER";
+        const u32 n = static_cast<u32>(std::strlen(top));
+        const float cap = 44.0f * s, x0 = cx - 0.5f * ui.measure(cap, top);
+        char pre[12];
+        for (u32 i = 0; i < n; ++i) {
+            const float on = clamp01((clamp01(tWin) * static_cast<float>(n + 2) - static_cast<float>(i)) * 0.5f);
+            if (on <= 0.0f || top[i] == ' ') continue;
+            std::memcpy(pre, top, i);
+            pre[i] = 0;
+            const char one[2] = {top[i], 0};
+            const float x = x0 + (i ? ui.measure(cap, pre) : 0.0f);
+            ui.font().drawField(ui.draw().hud, {x, 104.0f * s - cap}, cap, 1.6f * s, ui.col(palette_->accent, 1.6f * on), ui.col(palette_->accent, 1.6f * on),
+                                ui.col(palette_->accent, 1.6f * on), one);
+        }
+    }
+    // The rings: the winner's, or a draw's two side by side; each draws itself over the winner's beat.
+    const auto ringAt = [&](Vec2 c, u8 q, float u, bool crown) {
+        const Vec3 pc = palettes_->player[q < kMaxPlayers ? q : 0];
+        ui.draw().pools.glow(c, 500.0f * s, pc * (0.06f * u * hudFade()));
+        ui.dot(c, 140.0f * s, pc, 0.07f * u);
+        const u32 segs = static_cast<u32>(72.0f * u);
+        for (u32 j = 0; j < segs; ++j) {
+            const float a0 = -1.5707963f + 6.2831853f * static_cast<float>(j) / 72.0f, a1 = -1.5707963f + 6.2831853f * static_cast<float>(j + 1) / 72.0f;
+            const Vec3 rc = ui.col(pc, 2.0f);
+            ui.draw().hud.line(c + Vec2{std::cos(a0), std::sin(a0)} * (150.0f * s), c + Vec2{std::cos(a1), std::sin(a1)} * (150.0f * s), 1.4f * s, rc, rc, 0);
+        }
+        // the ship arrives in it, at three times the seat's size, turning slowly
+        drawTitleShip(ui, c, -1.5707963f + 0.3f * podiumS_, 3.0f * (0.4f + 0.6f * u), u, false, q);
+        if (!crown) return;
+        // the crown drops onto it from above over the beat (120 px wide, the pickup's white-gold at 2.0)
+        const float drop = 1.0f - u;
+        const Vec3 wg = ui.col(mix(palettes_->pickup, white, 0.35f), 2.0f * clamp01(u * 3.0f));
+        const float hw = 60.0f * s, h = 52.0f * s, by = c.y - 150.0f * s - 8.0f * s - 260.0f * s * drop * drop;
+        const Vec2 pts[7] = {{c.x - hw, by}, {c.x - hw, by - h}, {c.x - 0.5f * hw, by - 0.5f * h}, {c.x, by - 1.3f * h},
+                             {c.x + 0.5f * hw, by - 0.5f * h}, {c.x + hw, by - h}, {c.x + hw, by}};
         for (u32 j = 0; j + 1 < 7; ++j) ui.draw().hud.line(pts[j], pts[j + 1], 1.4f * s, wg, wg, 0);
         ui.draw().hud.line(pts[6], pts[0], 1.4f * s, wg, wg, 0);
-        (void)pl;
-        char name[32];
-        const char* given = session_ ? session_->seatName(win) : "";
-        std::snprintf(name, sizeof name, "P%u%s%s", win + 1u, given[0] ? "  " : "", given);
-        ui.text({cx, 540.0f * s}, 34.0f * s, pc, 1.6f * in, name);
-        char num[32];
-        groupDigits(num, sizeof num, w.player(win).score);
-        ui.font().drawField(ui.draw().hud, {cx - 0.5f * ui.measure(60.0f * s, num), 620.0f * s - 60.0f * s}, 60.0f * s, 2.4f * s, ui.col(white, 1.6f * in),
-                            ui.col(white, 1.6f * in), ui.col(pc, 1.6f * in), num);
-    }
-    // The table, best first.
-    u8 order[kMaxPlayers];
+    };
+    // The order the table settles in (best first; seat order at the start), the counts as they climb.
+    u8 seats[kMaxPlayers];
     u32 n = 0;
     for (u32 q = 0; q < kMaxPlayers; ++q)
-        if (w.player(q).present) {
-            u32 at = n++;
-            while (at > 0 && w.player(order[at - 1]).score < w.player(q).score) {
-                order[at] = order[at - 1];
-                --at;
-            }
-            order[at] = static_cast<u8>(q);
+        if (w.player(q).present) seats[n++] = static_cast<u8>(q);
+    const float step = std::floor(tTable * 16.0f) / 16.0f;  // (a tick a step: sixteen over the bar)
+    u64 shown[kMaxPlayers] = {};
+    for (u32 k = 0; k < n; ++k) shown[seats[k]] = static_cast<u64>(static_cast<double>(w.versusCount(seats[k])) * static_cast<double>(step));
+    u8 order[kMaxPlayers];
+    for (u32 k = 0; k < n; ++k) {
+        u32 at = k;
+        while (at > 0 && shown[order[at - 1]] < shown[seats[k]]) {
+            order[at] = order[at - 1];
+            --at;
         }
+        order[at] = seats[k];
+    }
+    if (podiumS_ <= frameDt_ + 1e-4f)
+        for (u32 k = 0; k < n; ++k) podiumRowY_[seats[k]] = 700.0f + 46.0f * static_cast<float>(k);  // (seat order to begin with)
+    const float slide = 1.0f - std::exp(-frameDt_ * 12.0f);
     for (u32 k = 0; k < n; ++k) {
         const u8 q = order[k];
-        const float y = (700.0f + 46.0f * static_cast<float>(k)) * s;
+        podiumRowY_[q] += (700.0f + 46.0f * static_cast<float>(k) - podiumRowY_[q]) * slide;
+    }
+    const float tableIn = clamp01(podiumS_ / (0.5f * beatS));
+    for (u32 k = 0; k < n; ++k) {
+        const u8 q = order[k];
+        const float y = podiumRowY_[q] * s;
         const Vec3 pc = palettes_->player[q];
+        // the winner's row flashes as it is named
+        const float flash = q == win && tWin >= 0.0f && tWin < 0.25f ? 1.0f + 2.0f * (1.0f - tWin / 0.25f) : 1.0f;
         char left[48], right[64], num[32], chain[32];
-        std::snprintf(left, sizeof left, "%u  P%u%s", k + 1u, q + 1u, q == seat_ ? " (YOU)" : "");
-        groupDigits(num, sizeof num, w.player(q).score);
+        char seatLabel[8];
+        std::snprintf(seatLabel, sizeof seatLabel, "P%u", q + 1u);
+        const char* given0 = session_ ? session_->seatName(q) : "";
+        const char* given = std::strcmp(given0, seatLabel) == 0 ? "" : given0;  // (a seat named for itself once)
+        std::snprintf(left, sizeof left, "%u  P%u%s%s%s", k + 1u, q + 1u, given[0] ? "  " : "", given, q == seat_ ? " (YOU)" : "");
+        groupDigits(num, sizeof num, shown[q]);
         groupDigits(chain, sizeof chain, w.player(q).bestChain);
         const u8 crowns = session_ ? session_->crowns(q) : 0;
-        std::snprintf(right, sizeof right, "%s   X%s   %u CROWN%s", num, chain, crowns, crowns == 1 ? "" : "S");
-        ui.text({cx - 420.0f * s, y}, 22.0f * s, pc, 1.4f * in, left, 0.0f);
-        ui.text({cx + 420.0f * s, y}, 22.0f * s, pc, 1.4f * in, right, 1.0f);
+        std::snprintf(right, sizeof right, "%s%s%s   X%s   %u CROWN%s", num, word[0] ? " " : "", word, chain, crowns, crowns == 1 ? "" : "S");
+        ui.text({cx - 660.0f * s, y}, 22.0f * s, pc, 1.4f * tableIn * flash, left, 0.0f);
+        ui.text({cx + 660.0f * s, y}, 22.0f * s, pc, 1.4f * tableIn * flash, right, 1.0f);
+    }
+    if (tWin >= 0.0f) {
+        const float u = clamp01(tWin);
+        const float e = 1.0f - (1.0f - u) * (1.0f - u);
+        if (win != 0xFF) {
+            const Vec2 c{cx, 330.0f * s};
+            ringAt(c, win, e, true);
+            // the winner's row rises to the ring: their name and count, under it
+            const Vec3 pc = palettes_->player[win];
+            const float rowY = podiumRowY_[win] * s;
+            char name[32], seatLabel[8];
+            std::snprintf(seatLabel, sizeof seatLabel, "P%u", win + 1u);
+            const char* given0 = session_ ? session_->seatName(win) : "";
+            const char* given = std::strcmp(given0, seatLabel) == 0 ? "" : given0;
+            std::snprintf(name, sizeof name, "P%u%s%s", win + 1u, given[0] ? "  " : "", given);
+            ui.text({cx, rowY + (540.0f * s - rowY) * e}, 34.0f * s, pc, 1.6f * e, name);
+            char num[32], line[48];
+            groupDigits(num, sizeof num, w.versusCount(win));
+            std::snprintf(line, sizeof line, "%s%s%s", num, word[0] ? " " : "", word);
+            const float cap = 60.0f * s;
+            ui.font().drawField(ui.draw().hud, {cx - 0.5f * ui.measure(cap, line), 620.0f * s - cap}, cap, 2.4f * s, ui.col(white, 1.6f * e),
+                                ui.col(white, 1.6f * e), ui.col(pc, 1.6f * e), line);
+            if (!rf && tWin < 120.0f / 1000.0f / beatS) ui.draw().pools.glow(c, 1000.0f * s, pc * (0.3f * hudFade()));  // (the clamped flash, 120 ms)
+            // Confetti in the winner's colour (the Drop's recipe): flecks thrown up from the ring, falling and turning.
+            const float age = podiumS_ - barS;
+            for (u32 j = 0; j < 90 && age < 3.0f; ++j) {
+                const u32 hsh = (j + 1u) * 2654435761u;
+                const float r0 = static_cast<float>(hsh & 1023u) / 1023.0f, r1 = static_cast<float>((hsh >> 10) & 1023u) / 1023.0f;
+                const float r2 = static_cast<float>((hsh >> 20) & 1023u) / 1023.0f;
+                const float a = -1.5707963f + (r0 - 0.5f) * 2.6f;
+                const float v = (500.0f + 700.0f * r1) * s;
+                const Vec2 p = c + Vec2{std::cos(a) * v * age, std::sin(a) * v * age + 0.5f * 900.0f * s * age * age};
+                const float spin = 6.0f * age + 6.2831853f * r2;
+                const Vec2 d = Vec2{std::cos(spin), std::sin(spin)} * (7.0f * s);
+                const Vec3 fc = ui.col(j % 3 == 0 ? white : (j % 3 == 1 ? pc : palettes_->playerLight[win]), 1.8f * clamp01(1.0f - age / 3.0f));
+                ui.draw().hud.line(p - d, p + d, 1.6f * s, fc, fc, 0);
+            }
+        } else {
+            // A draw: both rings side by side, 300 px apart, no crown (the two best).
+            if (n >= 2) {
+                ringAt({cx - 300.0f * s, 330.0f * s}, order[0], e, false);
+                ringAt({cx + 300.0f * s, 330.0f * s}, order[1], e, false);
+            }
+        }
+        if (tWin >= 1.0f && !podiumCrowned_) {
+            podiumCrowned_ = true;
+            if (win != 0xFF) pulse(2);  // (sound.md's haptics: heavy for the winner's crown)
+            if (win != 0xFF && !rf) view_.dropRing(w.player(seat_).pos, tickEnd_);  // (the lattice ringing once)
+        }
     }
     const bool host = session_ && session_->host();
-    // (the device check, 2026-11-16: the pill 120 tall at 950, so WAITING FOR HOST keeps the 24 px rule under it)
-    if (ui.pill(43, {cx, 950.0f * s}, {600.0f * s, 120.0f * s}, "REMATCH", 52.0f * s, true, host && in >= 1.0f) || (keyPrimary_ && host)) {
-        session_->requestRetry();
-        if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+    const float rise = (1.0f - tCtl) * 14.0f * s;
+    if (tCtl > 0.0f) {
+        setHudFade(tCtl);
+        // (the device check, 2026-11-16: the pill 120 tall at 950, so WAITING FOR HOST keeps the 24 px rule under it)
+        if (ui.pill(43, {cx, 950.0f * s + rise}, {600.0f * s, 120.0f * s}, "REMATCH", 52.0f * s, true, host && tCtl >= 1.0f) || (keyPrimary_ && host && tCtl >= 1.0f)) {
+            session_->requestRetry();
+            if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+        }
+        if (!host) ui.text({cx, 1052.0f * s + rise}, 14.0f * s, white, 0.8f, "WAITING FOR HOST", 0.5f);
+        // LOBBY (the host's): back to the lobby, the room standing, to change the mode.
+        const bool lobbyAuto = opt_.coopBackLobby && host && podiumS_ > barS + 1.5f * beatS + 2.0f;
+        if (host && ((ui.pill(45, {W - 412.0f * s, 950.0f * s + rise}, {330.0f * s, 90.0f * s}, "LOBBY", 28.0f * s, false, tCtl >= 1.0f) && tCtl >= 1.0f) || lobbyAuto) &&
+            trans_ == Trans::None) {
+            opt_.coopBackLobby = false;
+            if (band_) band_->playSfx(audio::Sfx::UiBack);
+            session_->backToLobby();
+            RF_LOG("net: LOBBY: the room goes back to its lobby");
+        }
+        if ((ui.pill(44, {282.0f * s, 950.0f * s + rise}, {300.0f * s, 90.0f * s}, "LEAVE", 28.0f * s, false, true, trans_ == Trans::Home) || keyBack_) &&
+            trans_ == Trans::None)
+            homeTap();
+        setHudFade(1.0f);
     }
-    if (!host) ui.text({cx, 1052.0f * s}, 14.0f * s, white, 0.8f, "WAITING FOR HOST", 0.5f);
-    if ((ui.pill(44, {282.0f * s, 950.0f * s}, {300.0f * s, 90.0f * s}, "LEAVE", 28.0f * s, false, true, trans_ == Trans::Home) || keyBack_) &&
-        trans_ == Trans::None)
-        homeTap();
     keyPrimary_ = keyBack_ = false;
-    (void)H;
+}
+
+void Play::podiumSounds(double base) {
+    // design/modes/sound.md "The screens": the table: a tick for each step of each row's count, each row at its player's pitch (the
+    // home chord's root, third, fifth and octave by seat); the winner named: the crown's landing (a bell on the home chord's root two
+    // octaves up, an impact at half level), then the fanfare: the winner's lead playing the title's eight a sixteenth apart over the
+    // band's stab on the home chord at 1.2. A draw: the stab alone. `base`: the podium's bar line (band ticks).
+    if (!bandDrives_ || !band_) return;
+    const World& w = *world_;
+    const double t16 = kTicksPerBeat / 4.0;
+    static constexpr i32 kSeatTone[kMaxPlayers] = {0, 1, 2, 4};
+    for (u32 q = 0; q < kMaxPlayers; ++q) {
+        if (!w.player(q).present) continue;
+        for (u32 j = 1; j <= 16; ++j)
+            band_->playRecipe(audio::Recipe::Tick, audio::chordNote(kSeatTone[q], 6, audio::NoteFrom::ChordTone), 0.22f, 0.0f, base + static_cast<double>(j - 1) * t16);
+    }
+    const double named = base + kTicksPerBar;
+    if (podiumWinner_ == 0xFF) {
+        band_->playRecipe(audio::Recipe::Stab, -1, 1.0f, 0.0f, named);
+        return;
+    }
+    const double lands = named + kTicksPerBeat;
+    band_->playRecipe(audio::Recipe::Bell, audio::chordNote(0, 6, audio::NoteFrom::ChordTone), 0.8f, 0.0f, lands);
+    band_->playRecipe(audio::Recipe::Impact, -1, 0.5f, 0.0f, lands);
+    band_->playRecipe(audio::Recipe::Stab, -1, 1.2f, 0.0f, lands);
+    for (u32 j = 0; j < 8; ++j) band_->leadNoteAt(bandSlot(podiumWinner_), kTitleEight[j], 0.9f, 0.0f, lands + static_cast<double>(j) * t16);
 }
 
 }  // namespace rf

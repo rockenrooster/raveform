@@ -884,6 +884,8 @@ void Play::conductBand() {
         band_->setForm(audio::Form::Short);
         band_->setPhrase(audio::Section::Groove, 0, kSectionBars[0][0]);
         band_->holdChord(-1);  // (M8: a held chord, ONE TRACK's outro or HEADLINERS COMPLETE's, ends with its run)
+        // (M8, sound.md "Every mode": the bed during the load-in: kick and hats as the run starts)
+        band_->setBedMask(su.mode == Mode::OneTrack || su.mode == Mode::FullBlast ? 3 : -1);
         actCardTrack_ = 0;
         if (su.mode == Mode::Headliners) {
             // (M8 HEADLINERS, sound.md: act 1's card: the elite's arrival fifth; no act won yet to read out)
@@ -948,7 +950,7 @@ void Play::conductBand() {
         const u32 sound = (static_cast<u32>(settings_.variant) + step) % 3u;  // (SOUND steps on from the player's own sound)
         if (band_->variant() != sound) band_->setVariant(sound);
     } else {
-        band_->setBedMask(-1);
+        band_->setBedMask(loadInBedMask(nextLine - offset));  // (M8: the load-in's bed, a layer more every four landings)
     }
     modesBarPlan(nextLine, offset, next);  // M8: the modes' sounds on their bar lines (design/modes/sound.md)
     if (next.sectionBar == 0)
@@ -1249,6 +1251,25 @@ void Play::render(FrameDraw& d, FrameParams& params, Background& bg, const LookV
         const u32 secs = static_cast<u32>(runSeconds_);
         std::snprintf(goalLine_, sizeof goalLine_, "ACT %u OF 10   %u:%02u", act, secs / 60u, secs % 60u);
         hs.goalLine = goalLine_;
+        // The bill (headliners.md "Look"): this act and the fallen ones in their Tracks' accents.
+        hs.billAct = act >= 1 && act <= 10 ? act : 0u;
+        for (u32 k = 0; k < 10; ++k) {
+            const u32 want = songOfTrack(k + 1u, w.setList()) + 1u;  // (the Track's song's palette, as the set list's)
+            hs.billAccent[k] = palettes_->list[0].accent;
+            for (u32 i = 0; i < palettes_->count; ++i)
+                if (palettes_->list[i].track == want) hs.billAccent[k] = palettes_->list[i].accent;
+        }
+        if (w.setup().versus) {
+            // Versus: the race bar under the boss's; ACT 3: P2 for two bars.
+            hs.raceBar = true;
+            for (u32 q = 0; q < kMaxPlayers; ++q) hs.raceShare[q] = w.player(q).present ? w.actShare(q) : 0.0f;
+            if (actWonSeat_ < kMaxPlayers) {
+                std::snprintf(actWonLine_, sizeof actWonLine_, "ACT %u: P%u", static_cast<unsigned>(actWonAct_), actWonSeat_ + 1u);
+                hs.actWon = actWonLine_;
+                hs.actWonColour = palettes_->player[actWonSeat_];
+                hs.actWonBars = static_cast<float>((vi.time - static_cast<double>(actWonT_)) * static_cast<double>(vi.bpm) / 240.0);
+            }
+        }
         if (trackComplete_) {
             const u32 t = static_cast<u32>(runSeconds_);
             hs.completeWords = "HEADLINERS COMPLETE";

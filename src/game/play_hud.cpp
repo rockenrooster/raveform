@@ -846,6 +846,23 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
                     }
                 }
             }
+            if (st.billAct) {
+                // M8 HEADLINERS (headliners.md "Look"): the bill: ten four-point stars 44 px apart under the card: the fallen acts' in
+                // their Tracks' accents, this act's white and flaring on the beat, the rest outlines at 0.3.
+                const float by = below + 18.0f * s, k = level * (1.0f - out) * clampf(write * 2.0f, 0.0f, 1.0f);
+                for (u32 a = 1; a <= 10; ++a) {
+                    const Vec2 c{cx + (static_cast<float>(a) - 5.5f) * 44.0f * s, by};
+                    const bool fallen = a < st.billAct, now = a == st.billAct;
+                    const float r = (now ? 14.0f + 5.0f * st.beat : 11.0f) * s;
+                    const Vec3 sc = fallen ? col(st.billAccent[a - 1], 1.6f * k) : (now ? col(white, (1.6f + 1.4f * st.beat) * k) : col(white, 0.3f * k));
+                    const float hw = (fallen || now ? 1.1f : 0.5f) * s;
+                    d.hud.line({c.x - r, c.y}, {c.x + r, c.y}, hw, sc, sc, 0);
+                    d.hud.line({c.x, c.y - r}, {c.x, c.y + r}, hw, sc, sc, 0);
+                    const float q = 0.32f * r;
+                    d.hud.line({c.x - q, c.y - q}, {c.x + q, c.y + q}, 0.7f * hw, sc, sc, 0);
+                    d.hud.line({c.x + q, c.y - q}, {c.x - q, c.y + q}, 0.7f * hw, sc, sc, 0);
+                }
+            }
             // The flare: two arms of white light, riding the writing's front along the name once.
             if (write > 0.0f && write < 1.0f) {
                 const float w0 = textW(font, caps[1], lines[1]);
@@ -874,6 +891,14 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         const float c2 = 28.0f * s;
         font.drawField(d.hud, {cx - 0.5f * textW(font, c2, num), top + cap + 26.0f * s}, c2, 1.0f * s, col(white, 1.4f * k), col(white, 1.4f * k),
                        col(white, 1.4f * k), num);
+    }
+    if (st.actWon && st.actWonBars >= 0.0f && st.actWonBars < 2.0f) {
+        // M8 HEADLINERS versus: ACT 3: P2 in the winner's colour where the act's card stands, for two bars.
+        const float u = st.actWonBars;
+        const float k = clampf(u * 6.0f, 0.0f, 1.0f) * clampf((2.0f - u) * 4.0f, 0.0f, 1.0f) * kCardLevel;
+        const float cap = 90.0f * s;
+        font.drawField(d.hud, {cx - 0.5f * textW(font, cap, st.actWon), 0.62f * H}, cap, 3.2f * s, col(white, 1.6f * k), col(st.actWonColour, 1.8f * k),
+                       col(st.actWonColour, 1.8f * k), st.actWon);
     }
     // The boss: its name card for two bars at the entrance, then a bar under the phrase bar.
     const BossState& boss = w.boss();
@@ -929,6 +954,21 @@ void drawRunHud(FrameDraw& d, const VectorFont& font, const Look& look, const Lo
         }
         const float f = max > 0.0f ? clampf(hp / max, 0.0f, 1.0f) : 0.0f;
         const float thick = mini ? 1.0f : 2.0f;
+        if (st.raceBar && !mini) {
+            // M8 HEADLINERS versus (headliners.md "Versus"): the race: a second bar as wide, 6 px, filling from the left in the players'
+            // colours by their shares of the boss's damage so far, the leader's part brightest.
+            u32 lead = 0;
+            for (u32 q = 1; q < 4; ++q)
+                if (st.raceShare[q] > st.raceShare[lead]) lead = q;
+            float rx = x0;
+            for (u32 q = 0; q < 4; ++q) {
+                const float wq = bw * clampf(st.raceShare[q], 0.0f, 1.0f);
+                if (wq < 0.5f) continue;
+                const Vec3 rc = col(palettes.player[q], q == lead ? 1.9f : 0.8f);
+                d.hud.line({rx, y + 12.0f * s}, {rx + wq, y + 12.0f * s}, 3.0f * s, rc, rc, 0);
+                rx += wq;
+            }
+        }
         d.hud.line({x0, y}, {x0 + bw, y}, 0.5f * thick * s, col(white, 0.18f), col(white, 0.18f), 0);
         if (f > 0.0f) d.hud.line({x0, y}, {x0 + bw * f, y}, thick * s, col(gold, 1.8f), col(amber, 1.8f), 0);
         // Play test 3 (GAME_DESIGN 7.6): a weak point's hit flashes its segment of the bar white (the whole bar: the last 40 px of

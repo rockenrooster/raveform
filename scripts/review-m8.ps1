@@ -56,7 +56,7 @@ if ($Part -eq 'p0') {
     $rooms = @()
 } elseif ($Part -eq 'p2') {
     # p2: HEADLINERS (act 1's card, the result after the ten acts)
-    $singles = @('m8_card_act', 'm8_result_headliners')
+    $singles = @('m8_card_act', 'm8_card_act3', 'm8_result_headliners')
     $strips = [ordered]@{}
     $rooms = @()
 } elseif ($Part -eq 'p3') {

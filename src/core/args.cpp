@@ -258,6 +258,8 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
         } else if (is("--coop-down-at") && next) {
             ok = parseFloat(next, a.coopDownAt) && a.coopDownAt >= 0.0f;
             usedNext = true;
+        } else if (is("--coop-back-lobby")) {
+            a.coopBackLobby = true;
         } else if (is("--coop-quit-at") && next) {
             ok = parseFloat(next, a.coopQuitAt) && a.coopQuitAt >= 0.0f;
             usedNext = true;

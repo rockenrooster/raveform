@@ -314,6 +314,20 @@ void Play::coopFlow() {
         openCoop();  // back to the join screen, the message on it (screens.md: the join screen's message line)
         return;
     }
+    // M8 (design/modes/screens.md "The podium": LOBBY): the host took the room back to its lobby: every device's run ends there,
+    // the room standing, and its next run starts from it as the first did.
+    if (coopRunShown_ && s.state() == net::SessionState::Lobby) {
+        RF_LOG("net: the room is back in its lobby (seats, crowns and mode kept)");
+        coopRunShown_ = coopOver_ = false;
+        netRunStarted_ = false;
+        resultPending_ = false;
+        backFromRun_ = true;
+        coopAutoT_ = 0.0f;
+        screen_ = Screen::CoopLobby;
+        trans_ = Trans::None;
+        if (band_) band_->playSfx(audio::Sfx::UiBack);
+        return;
+    }
     // The run began (the lobby gives way); a new one after all were down (the host's RETRY) comes as a Restart.
     if (netRunStarted_ && !coopRunShown_) {
         coopRunShown_ = true;
@@ -356,8 +370,10 @@ void Play::coopFlow() {
     if (opt_.coopStart && s.host()) {
         u32 seated = 0;
         for (u32 k = 0; k < kMaxPlayers; ++k) seated += (s.lobbySeats() >> k) & 1u;
-        if (s.state() == net::SessionState::Lobby && seated >= opt_.coopStart && s.canStart()) s.requestStart();
-        if (coopOver_ && overS_ > 3.0f) s.requestRetry();
+        if (s.state() == net::SessionState::Lobby && seated >= opt_.coopStart && s.canStart() && !backFromRun_) s.requestStart();  // (not again after LOBBY)
+        // (M8 versus: a REMATCH once the podium has stood its two bars and four seconds; never with --coop-back-lobby)
+        const float podiumWait = 2.0f * 240.0f / std::fmax(static_cast<float>(world_->bpm()), 30.0f) + 4.0f;
+        if (coopOver_ && overS_ > (world_->setup().versus ? podiumWait : 3.0f) && !opt_.coopBackLobby) s.requestRetry();
     }
     coopTestStep();
 }
@@ -538,6 +554,20 @@ void Play::coopTestStep() {
         if (left < 2.0 * kTicksPerBeat) coopShotReady_ = true;
     }
     if ((is("over") || is("over_client")) && screen_ == Screen::GameOver && overS_ > 2.6f) coopShotReady_ = true;
+    {
+        // M8: the podium (its table counting, half way through its first bar; and at rest, its controls up) and the lobby after LOBBY.
+        const float barS = 240.0f / std::fmax(static_cast<float>(w.bpm()), 30.0f);
+        const bool podium = screen_ == Screen::GameOver && w.setup().versus && runCleared_;
+        if (is("podium_table") && podium && podiumS_ > 0.55f * barS) coopShotReady_ = true;
+        if (is("podium") && podium && podiumS_ > 1.6f * barS) coopShotReady_ = true;
+        if (is("lobby_back") && backFromRun_ && screen_ == Screen::CoopLobby && coopAutoT_ > 1.5f) coopShotReady_ = true;
+        // HEADLINERS versus: the race bar eight seconds into a fight from act 2 on; ACT n: Pn half a bar after it came.
+        const sim::BossState& b = w.boss();
+        if (is("race") && w.setup().mode == sim::Mode::Headliners && w.phrase().track >= 2 && b.active && !b.dying && !sim::isMiniBoss(b.kind) &&
+            netRunStarted_ && w.music() > b.fightTick + 8.0 * w.ticksPerSecond())
+            coopShotReady_ = true;
+        if (is("act_won") && actWonSeat_ < kMaxPlayers && static_cast<float>(tickEnd_) - actWonT_ > 0.5f * barS) coopShotReady_ = true;
+    }
     if (is("hud") && netRunStarted_ && runSeconds_ > 30.0f) coopShotReady_ = true;
 }
 

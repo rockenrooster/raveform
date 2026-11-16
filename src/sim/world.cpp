@@ -231,6 +231,11 @@ void World::resetRun(u64 seed, double startTick, u32 players, u8 presentMask, co
                 dealKit(p, species_->modes.kit.atBoss[0], 1);
                 players_[p].extraLives = 1;
             }
+        for (u32 p = 0; p < kMaxPlayers; ++p) {  // (versus: the damage race from nothing)
+            actDmg_[p] = billDmg_[p] = actShareNet_[p] = 0.0f;
+            actsWon_[p] = 0;
+        }
+        billLeader_ = 0xFF;
     }
     if (setup.mode == Mode::OneTrack && species_) {
         // M8 (one_track.md): the chosen Track of the set from its first Groove, the set list at ten (nothing of the loop), with

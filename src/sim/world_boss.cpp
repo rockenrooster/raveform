@@ -561,6 +561,7 @@ void World::damageBoss(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2 dir)
         return;
     }
     ++s.hits;
+    dmg *= actBonus(owner);  // (M8 HEADLINERS versus: the underdog's damage)
     // Polyrhythm's corners and bodies are armour on their rotor (they stop shots and take its armour's share).
     u8 dpart = part;
     float scale = 0.0f;
@@ -645,6 +646,10 @@ void World::damageBossFinal(u8 part, u8 pair, float dmg, u8 owner, Vec2 at, Vec2
             if (owner < kMaxPlayers && players_[owner].fire == 1) s.paceAimed[owner] += dmg;
         }
         dmg /= s.pace > 0.0f ? s.pace : 1.0f;
+        if (setup_.versus && setup_.mode == Mode::Headliners && owner < kMaxPlayers && !client) {
+            actDmg_[owner] += dmg;  // (M8: the damage race, as the host counts it)
+            billDmg_[owner] += dmg;
+        }
     }
     if (isMiniBoss(s.kind)) {
         s.mini.lastHurt = m1_;                                   // (Regenerating: quiet beats)
@@ -784,6 +789,27 @@ void World::killBoss(u8 owner) {
         pl.score += static_cast<u64>(std::llround(static_cast<double>(worth) * pl.chain * rules_.scoreMultiplier));
     }
     ++counters_.kills;
+    if (setup_.versus && setup_.mode == Mode::Headliners && !mini && role_ != NetRole::Client) {
+        // M8 HEADLINERS versus: the act goes to the player who did its boss the most damage (none if nobody hurt it); the bill's leader
+        // travels with it (the tie on acts at the end).
+        u8 win = 0xFF, lead = 0xFF;
+        float best = 0.0f, bill = 0.0f;
+        for (u32 p = 0; p < playerCount_; ++p) {
+            if (!players_[p].present) continue;
+            if (actDmg_[p] > best) {
+                best = actDmg_[p];
+                win = static_cast<u8>(p);
+            }
+            if (billDmg_[p] > bill) {
+                bill = billDmg_[p];
+                lead = static_cast<u8>(p);
+            }
+        }
+        const u8 act = static_cast<u8>(phrase_.track);
+        const u8 sent = win < kMaxPlayers ? win : static_cast<u8>(kMaxPlayers);  // (an arena operation's a stays under 32: none is 4)
+        logArena(11, sent, act, Vec2{}, Vec2{}, m1_, lead);
+        actWon(sent, act, lead);
+    }
     DirectorState& d = director_;
     // The end: the first bar line at least half a bar away (the band, which hears of it now, can still start the
     // next section on that line): the Track-change Break after a boss, the Break after a mini-boss's held Drop.

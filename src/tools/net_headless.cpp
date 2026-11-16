@@ -233,6 +233,10 @@ bool flag(int argc, char** argv, const char* name) {
 // --remote-poses interp|predict: where every peer of this process takes a remote player for a tick (net/session.h).
 RemotePoses g_remotePoses = SessionConfig{}.remotePoses;
 bool g_versus = false;  // M8: --versus (a versus run, the host's setup)
+bool g_noHelp = false;  // M8: --no-help (versus without the underdog's help)
+// M8 (MODES_PLAN part 2's exit: an aiming bot against an assist bot): --policies a,b,c,d, each seat's bot (play, assist, novice,
+// reckless, child, slow; the rest play).
+sim::Bot::Policy g_policies[kMaxPlayers] = {sim::Bot::Policy::Play, sim::Bot::Policy::Play, sim::Bot::Policy::Play, sim::Bot::Policy::Play};
 sim::RunSetup g_setup;  // M8: --mode <id>[:<track>] (the host's run)
 // --fight <id>: the soak starts in that fight's home Track and measures from the fight on, for --minutes.
 bool g_fightOn = false;
@@ -330,6 +334,8 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
         c.session.seed = seed;
         c.session.setup = g_setup;
         c.session.setup.versus = g_versus;
+        if (g_noHelp) c.session.setup.help = false;
+        c.policy = g_policies[k];
         c.botSeed = seed * 31 + k;
         c.clockOffsetUs = kOffsets[k];
         c.clockPpm = kPpm[k];
@@ -1000,6 +1006,17 @@ int runSoak(const SpeciesTable& species, float minutes, u32 players, const NetSi
                         hw.ringsLocked(2), hw.ringsLocked(3), cw.tracerFloor().houses, hw.tracerFloor().houses);
         }
     }
+    if (hw.setup().mode == sim::Mode::Headliners && hw.setup().versus) {
+        // M8 HEADLINERS versus (headliners.md "Versus: the damage race"): the acts won by seat as every device counts them, the bill's
+        // leader, each seat's bot, the help.
+        for (u32 k = 0; k < players; ++k) {
+            if (off(k)) continue;
+            const World& cw = peers[k].world();
+            std::printf("[net]   HEADLINERS versus peer %u: acts won %u %u %u %u (host %u %u %u %u), the bill's leader P%u, act %u reached; help %s\n", k,
+                        cw.actsWon(0), cw.actsWon(1), cw.actsWon(2), cw.actsWon(3), hw.actsWon(0), hw.actsWon(1), hw.actsWon(2), hw.actsWon(3),
+                        cw.billLeader() < kMaxPlayers ? cw.billLeader() + 1u : 0u, cw.phrase().track, hw.setup().help ? "on" : "off");
+        }
+    }
     if (hw.setup().mode == sim::Mode::Songline) {
         // M8 SONGLINE (songline.md "Caps and the wire"): each device's own gates, the chords (co-op), the gates taken as every device
         // counts them (versus: the host's word), the line's corrections from the host.
@@ -1364,6 +1381,22 @@ int netHeadlessMain(int argc, char** argv) {
         if ((v = arg(argc, argv, "--away-for"))) g_awayForS = static_cast<float>(std::atof(v));
         if ((v = arg(argc, argv, "--away-seat"))) g_awaySeat = static_cast<u32>(std::atoi(v));
         g_versus = flag(argc, argv, "--versus");
+        g_noHelp = flag(argc, argv, "--no-help");
+        if ((v = arg(argc, argv, "--policies"))) {
+            u32 k = 0;
+            for (const char* p = v; *p && k < kMaxPlayers; ++k) {
+                const char* e = std::strchr(p, ',');
+                const size_t n = e ? static_cast<size_t>(e - p) : std::strlen(p);
+                const auto is = [&](const char* name) { return std::strlen(name) == n && std::strncmp(p, name, n) == 0; };
+                g_policies[k] = is("assist")     ? sim::Bot::Policy::Assist
+                                : is("novice")   ? sim::Bot::Policy::Novice
+                                : is("reckless") ? sim::Bot::Policy::Reckless
+                                : is("child")    ? sim::Bot::Policy::Child
+                                : is("slow")     ? sim::Bot::Policy::Slow
+                                                 : sim::Bot::Policy::Play;
+                p = e ? e + 1 : p + n;
+            }
+        }
         if ((v = arg(argc, argv, "--mode")) && !sim::parseModeArg(v, g_setup)) {
             std::printf("[net] --mode: unknown mode or Track %s" "\n", v);
             return 2;

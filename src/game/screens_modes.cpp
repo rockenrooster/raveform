@@ -1144,6 +1144,7 @@ bool Play::momentReached() const {
         case 2: return ph.track == momentN_ && w.boss().active && !w.boss().dying && w.music() >= w.boss().fightTick + kTicksPerBar;
         case 3: return ph.section == Section::Drop && ph.sectionBar >= 1;
         case 4: return w.jamLayersOn() == 8;
+        case 5: return ph.track == momentN_ && !ph.trackChange && w.director().trackBar != kNoBar && w.music() >= w.tickOfBar(w.director().trackBar) + kTicksPerBar;
         default: return true;
     }
 }

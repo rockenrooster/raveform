@@ -258,6 +258,9 @@ public:
     bool canStart() const;
     bool requestStart();  // host: the run starts on a bar line for everyone
     void requestRetry();  // host: after all were down, a new run for everyone on the next bar line
+    // M8 (design/modes/screens.md "The podium": LOBBY): host: the run is over for everyone and the room goes back to its lobby,
+    // standing (its seats, names, crowns and mode); the lobby message's state tells the clients. The next run starts from it.
+    void backToLobby();
     bool synced() const { return host() || clock_.samples() >= ClockSync::kSamples; }
     // M4 stage B (GAME_DESIGN 10: the shared bed is identical on every device): the bed's intensity for a run bar,
     // decided by the host half a bar ahead and posted by every device to its band for that bar.

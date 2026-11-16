@@ -1139,6 +1139,13 @@ void Session::requestRetry() {
     world_->requestRestart();
 }
 
+void Session::backToLobby() {
+    if (!host() || state_ != SessionState::Running) return;
+    state_ = SessionState::Lobby;
+    pauseAt_ = resumeAt_ = -1.0;
+    lobbyDirty_ = true;
+}
+
 void Session::onReady(u8 ready) {
     if (!host() || from_ < 1) return;
     const u8 bit = static_cast<u8>(1u << from_);
@@ -1178,6 +1185,11 @@ void Session::onLobby(const MsgLobby& m) {
     for (u32 s = 0; s < kMaxPlayers; ++s) std::memcpy(names_[s], m.names[s], sizeof names_[s]);
     roomSetup_ = m.setup;  // M8
     for (u32 s = 0; s < kMaxPlayers; ++s) crowns_[s] = m.crowns[s];
+    // M8 (LOBBY): the host took the room back to its lobby (its messages come in order: one sent before a run started says so first)
+    if (state_ == SessionState::Running && m.state == 0) {
+        state_ = SessionState::Lobby;
+        pauseAt_ = resumeAt_ = -1.0;
+    }
 }
 
 void Session::requestPause(bool on) {

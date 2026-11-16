@@ -86,6 +86,16 @@ struct HudState {
     float rowLevel = 1.0f;
     float rowFlash = -1.0f;
     u32 rowGone = 0;
+    // M8 HEADLINERS (headliners.md "Look", "Versus"): the bill under the act's card (this act 1..10; 0 none; the fallen acts' stars in
+    // their Tracks' accents); versus: the race bar under the boss's (each player's share of its damage, the leader's brightest) and
+    // ACT 3: P2 where the act's card stands for two bars.
+    u32 billAct = 0;
+    Vec3 billAccent[10];
+    bool raceBar = false;
+    float raceShare[4] = {};
+    const char* actWon = nullptr;
+    Vec3 actWonColour{1.0f, 1.0f, 1.0f};
+    float actWonBars = -1.0f;
     // M8 TRACERS (tracers.md "HUD"): the Shard level's bar labelled TRACER 9 BEATS; no Riff slots (the Boost cards a row lower);
     // the gels' cards beside the Boosts' (an upgrade's icon, its name and words, the bars it has left).
     const char* levelLabel = nullptr;

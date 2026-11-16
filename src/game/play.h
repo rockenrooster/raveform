@@ -85,6 +85,7 @@ struct PlayOptions {
     float coopDownAt = -1.0f;   // --coop-down-at S: this device's ship is downed S seconds into the run (tests, pictures)
     float coopPauseAt = -1.0f;  // --coop-pause-at S: this device pauses for everyone S s into the run, resumes 3 s later
     float coopQuitAt = -1.0f;   // --coop-quit-at S: this device leaves the room S s into the run (tests, pictures, device runs)
+    bool coopBackLobby = false; // --coop-back-lobby (M8): the host taps the podium's LOBBY two seconds after its controls rise
 };
 
 class Play {
@@ -374,7 +375,8 @@ private:
     bool scriptEventsM5();
     bool fightJump_ = false, fightPhaseDone_ = false, dropJump_ = false;
     // M8 moments (MODES_PLAN 2.10: `--mode <id>:<track>:<moment>[:hold]`): 1 a timed form's Drop (dropN, waveN), 2 HEADLINERS's act
-    // (actN), 3 JAM's DROP, 4 JAM's every layer; N; the moment held; the fast-forward running to it.
+    // (actN), 3 JAM's DROP, 4 JAM's every layer, 5 HEADLINERS's act N's second bar (pictures: its card); N; the moment held; the
+    // fast-forward running to it.
     u8 momentKind_ = 0, momentN_ = 0;
     bool momentHold_ = false, momentJump_ = false;
     bool momentReached() const;
@@ -665,7 +667,7 @@ private:
     float transExposure(float screenLevel) const;
     bool transInputLocked() const;
     void drawArrive(Ui& ui);  // the drop-in's downbeat beat: the point bursts (flash, eight rays), the ship draws itself there
-    void drawTitleShip(Ui& ui, Vec2 c, float angle, float scale, float level, bool ring);
+    void drawTitleShip(Ui& ui, Vec2 c, float angle, float scale, float level, bool ring, u32 seat = 0xFF);  // (M8: a seat's colours: the podium)
     float gameOverOut() const;  // how far the game-over screen has left (0..1: home, RETRY's wait)
 
     // ---- M8 (docs/MODES_PLAN.md, design/modes/screens.md; game/screens_modes.cpp): the title's mode pill, MODES, the room's mode,
@@ -775,7 +777,11 @@ private:
     // ahead, or a bar and a half for what starts before its line (a reversed cymbal, the last bar's roll).
     void modesBarPlan(double nextLine, double offset, const sim::Phrase& next);
     i32 homeNote(i32 octave, i32 semis = 0) const;  // the run's Track's tonic in a MIDI octave (4: 60..71), plus semitones
+    i32 loadInBedMask(double line) const;       // the bed's layers during the load-in from that bar line (-1: by the intensity)
     u32 actCardTrack_ = 0;                      // HEADLINERS: the act whose card was last heard
+    float actWonT_ = -100.0f;                   // HEADLINERS versus: ACT 3: P2 (view seconds it came), the winner and the act
+    u8 actWonSeat_ = 0xFF, actWonAct_ = 0;
+    char actWonLine_[24] = {};
     bool completeChord_ = false;                // ONE TRACK: TRACK COMPLETE's chord (an octave up) played
     // M8 FULL BLAST (full_blast.md "Look", "Sound"): the power cut (the knock-out: the music behind the pause's low-pass, the band row
     // at 0.3; back: a ring and the row flashing in turn over a beat), and the load-out (the count: the band row's icons out of the
@@ -793,6 +799,10 @@ private:
     void drawVersusWorld(FrameDraw& d, const LookVariant& variant);  // versus: the crown on the leader, BACK IN n where a ship stood
     void screenPodium(Ui& ui);                  // versus: the match's end (design/modes/screens.md "The podium")
     float podiumS_ = 0.0f;                      // seconds the podium has stood
+    float podiumRowY_[sim::kMaxPlayers] = {};   // the table's rows as they slide into their places (reference px)
+    bool podiumCrowned_ = false;                // the crown has landed (its haptic pulse)
+    bool backFromRun_ = false;                  // the room came back to its lobby from a run (LOBBY; pictures)
+    void podiumSounds(double base);             // the table's ticks, the crown's bell and the fanfare, from the podium's bar line
     float actSecs_[10] = {};                    // M8 HEADLINERS: each act's fight in seconds (0: not fought or not won)
     char cardSmall_[24] = {}, cardName_[32] = {}, completeLine_[32] = {}, goalLine_[48] = {};
     u8 podiumWinner_ = 0xFF;                    // the winner (0xFF: a draw)

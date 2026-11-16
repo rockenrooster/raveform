@@ -724,18 +724,18 @@ float Play::gameOverOut() const {
     return 0.0f;
 }
 
-void Play::drawTitleShip(Ui& ui, Vec2 c, float angle, float scale, float level, bool ring) {
+void Play::drawTitleShip(Ui& ui, Vec2 c, float angle, float scale, float level, bool ring, u32 seat) {
     const float s = ui.s() * scale;
     const float a = angle;
     const Vec2 nose = c + polarV(a, 26.0f * s), l = c + polarV(a + 2.5f, 22.0f * s), r = c + polarV(a - 2.5f, 22.0f * s),
                tail = c + polarV(a + kTwoPi * 0.5f, 8.0f * s);
-    const Vec3 pc = ui.col(palettes_->player[seat_ < kMaxPlayers ? seat_ : 0], 1.8f * level),
-               lc = ui.col(palettes_->playerLight[seat_ < kMaxPlayers ? seat_ : 0], 1.6f * level);
+    const u32 q = seat < kMaxPlayers ? seat : (seat_ < kMaxPlayers ? seat_ : 0u);
+    const Vec3 pc = ui.col(palettes_->player[q], 1.8f * level), lc = ui.col(palettes_->playerLight[q], 1.6f * level);
     ui.draw().hud.line(nose, l, 1.2f * s, pc, pc, 0);
     ui.draw().hud.line(l, tail, 1.2f * s, pc, pc, 0);
     ui.draw().hud.line(tail, r, 1.2f * s, lc, lc, 0);
     ui.draw().hud.line(r, nose, 1.2f * s, lc, lc, 0);
-    if (ring) ui.ring(c, 40.0f * s, 0.6f * ui.s(), palettes_->player[seat_ < kMaxPlayers ? seat_ : 0], 0.7f * level);
+    if (ring) ui.ring(c, 40.0f * s, 0.6f * ui.s(), palettes_->player[q], 0.7f * level);
 }
 
 void Play::drawArrive(Ui& ui) {
