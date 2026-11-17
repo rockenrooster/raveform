@@ -77,6 +77,10 @@ const char* upgradeWords(u8 u, u32 level);
 // What each stack or level gives (GAME_DESIGN 6.2, 6.3 as raised after play test 1, 2026-11-12: every pick is felt
 // at once). The world, the view and the effect words read these.
 inline u32 splitLanes(u32 stacks) { return 1u + stacks; }             // 1, 2, 3, 4, 5 lanes (eb10554: a lane a rank, cap 4)
+// Overcharge's look and sound step (look.md 5 "The build on the shots": the shot head's colour, sparks, the flash; the lead's
+// drive) for its stacks: four stacks since 2026-11-16 (the owner: "4 with the same max stats"), the top one looks and sounds
+// as the old fifth did; 1-3 as before.
+inline u32 overchargeLook(u32 stacks) { return stacks >= 4u ? 5u : stacks; }
 inline u32 pierceCount(u32 stacks) { return 3u * stacks; }            // enemies a shot passes through (2 a stack until 2026-11-15)
 inline u32 ricochetBounces(u32 stacks) { return 2u * stacks; }        // off walls, and on to the nearest other enemy
 inline float onBeatCritMultiplier(u32 stacks) {                      // x3, x5, x8 on the beat

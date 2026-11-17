@@ -47,8 +47,6 @@ float hashF(u32 n) {  // 0..1 from an integer: the same body keeps the same flam
 const Vec3 kFlameRoot{1.0f, 0.86f, 0.52f}, kFlameMid{1.0f, 0.42f, 0.08f}, kFlameTip{0.85f, 0.12f, 0.02f};
 const Vec2 kUp{0.0f, -1.0f};  // the screen's up in the world (y grows down the screen)
 
-enum FlashKind : u8 { kFlCrit = 1, kFlBlock, kFlZap, kFlImplode, kFlCrater, kFlRing, kFlStar };
-
 // Chosen (the owner's "more visual feedback", 2026-11-14; look.md §5 "Feedback").
 constexpr float kCritFlashWu = 46.0f, kCritFlashS = 0.22f, kCritPoolWu = 70.0f;
 constexpr u32 kCrescTicks = 10;

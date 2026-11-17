@@ -4,6 +4,46 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-16, Wave's crest; Extra Cell, Magnet and Overcharge re-ranked; Prism's glow
+
+The owner, on Wave: "rank 1 arc width needs to be 70", and from this session's list: "a real crest: a white-hot leading edge
+fading into your colour, a soft wider band behind it, and a slight shimmer along it; ripples the background grid as it passes; a
+spark and flash on each enemy it hits; stack 2 gets a second crest just behind the first; a soft swell on the beat each time a
+wave goes out". Then, of the second crest: "go to one ring for the wave instead of 2. too much visual".
+- **The arc.** Rank 1 is 70° wide (`tuning::kWaveHalfArcDeg` 35°; it was 90°); rank 2 stays 140°, 550 wu, 3 damage.
+- **The crest** (`PlayView::drawWaveFront`, play_view_upgrades.cpp; the front drawn at the frame's radius, between ticks): three
+  overlapping arcs graded from a white-hot edge (cooling as it travels) through the light colour to the colour, a soft band of
+  pooled glow 16 wu behind it, a +-25% shimmer running along it and three glints riding it (no shimmer or glints with reduce
+  flashing). One crest at either rank (the second, tried first, was dropped).
+- **The lattice** takes impulses along the crest as it passes (a 34 wu Gaussian every 45 wu of arc, 55 a 60 Hz frame, scaled by the
+  frame's time), out then back: about a medium kill's ripple; 26 hardly showed.
+- **Hits.** The view finds the bodies the front reaches each frame (as `World` does on the owner's device, so every player's front
+  shows them on every device) and throws six sparks on along the front's way, a soft flash, and a little star for the first ten a
+  front. The world's own `Impact` sparks still come on the owner's device.
+- **The swell** (`Engine::upgradeStep`, content_sound.cpp `kWaveSwell` 0.2): the last half beat of the Track's half-bar reverse swell
+  runs into every beat while anyone holds Wave, the beat a front goes out on (`UpgradeSound::WaveSwell`); no level given, so two
+  thirds of the Lancer's charge.
+The owner, on three upgrades: "these should be 3 with the same max stats: EXTRA CELL, MAGNET; make this one 4 with the same max
+stats: OVERCHARGE".
+- **Extra Cell** three ranks adding 1, 1 and 2 cells (8 at the cap, as four ranks of one gave; `tuning::kExtraCellAdds`; the third's
+  words `+2 CELLS, ALL REFILLED`). **Magnet** three stacks of +133% (x2.3, x3.7, x5; `SHARD PULL X2.3` ...). **Overcharge** four
+  stacks of +62.5% damage and +18.75% radius (x3.5 and x1.75 at the cap, as five of +50% and +15%; `+62.5% SHOT DAMAGE`); its head's
+  colour, sparks and flash and the lead's drive (`overchargeLook`, sim/upgrades.h; `bandLoadout`) take the fourth stack as the old
+  fifth, 1-3 as before. GAME_DESIGN 6.2's rows say so; the determinism hashes did not move (the bot's runs never take them in time).
+The owner: "Prism needs more glow and color pop", then "prism doesn't need the line trails" and "still a very faint trail on prism".
+- Each lane's streak has a pooled glow of its colour hugging it: two Gaussians of sigma 0.25 of its length, half and 0.85 of the
+  way back from the head, at 0.2 (play_view_shots.cpp), an absolute level, not the shot's 2.2. The afterglow (look.json, its knee
+  0.9 on the scene and the pools blurred to sigma 6 ref px) prints whatever clears the knee as a beaded line behind a moving shot;
+  the streak and the head's sparkle already come to about 0.65 at the head, so nothing is added there. A brighter halo at the head,
+  a wider under-line in the scene, then a halo of 0.12 and the glow a third of the way back each printed the line (`--mute
+  afterglow` and `--mute pools` each took it away: the pools reach the afterglow's source too). Measured against the same frame
+  with `--mute afterglow`: nothing along the lanes (0 of 255 everywhere past the muzzle), the muzzle's flash as any shot's.
+  look.md 5's Prism paragraph (0.6 of the shot level, 1.3 of its width, white only in its front 15%) is unchanged; the glow is the
+  owner's addition.
+
+Pictures: `captures\wave2\wave_sheet.png` (every third frame of the rank 2 strip `--picture m5_up_wave --strip 27`),
+`wave_zoom.png`; `captures\prism2\boost_prism.png`, `prism_zoom.png`. Not seen on a phone.
+
 ## 2026-11-16, a first launch: the tier probe behind the loading screen; the title's demo ship fades with its run
 
 The owner, on a very first launch (build 341): "tons of garbage on screen like its in the middle of a mid game fight before the game

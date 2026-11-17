@@ -165,9 +165,14 @@ constexpr float kDealCellsNew = 3.0f;
 // within 300 wu), Overcharge +50%, Magnet +100% of the base radius, On-Beat Crit x3 / x5 / x8 with a burst over 80
 // wu (all quoted; sim/upgrades.h has the per-stack numbers).
 constexpr float kSplitFanDeg = 5.0f;          // Split: neighbouring lanes 5 degrees apart, centred on the aim (2 or 4: astride it)
-constexpr float kOverchargePerStack = 0.50f;  // GAME_DESIGN 6.2 (quoted): +50% damage
-constexpr float kOverchargeRadius = 0.15f;    // and +15% shot radius per stack (look only)
-constexpr float kMagnetPerStack = 1.00f;      // GAME_DESIGN 6.2 (quoted): +100% of the base pull radius
+// The owner, 2026-11-16 ("these should be 3 with the same max stats: EXTRA CELL, MAGNET; make this one 4 with the same max
+// stats: OVERCHARGE"): Overcharge four stacks of +62.5% damage and +18.75% radius (x3.5 and x1.75 at the cap, as five of
+// +50% and +15% were), Magnet three of +133% (x5 at the cap, as four of +100%), Extra Cell three ranks adding 1, 1 and 2 cells
+// (the four of four ranks of one).
+constexpr float kOverchargePerStack = 0.625f;    // GAME_DESIGN 6.2: +62.5% damage (was +50% over five stacks)
+constexpr float kOverchargeRadius = 0.1875f;     // and +18.75% shot radius per stack (look only; was +15%)
+constexpr float kMagnetPerStack = 4.0f / 3.0f;   // GAME_DESIGN 6.2: +133% of the base pull radius (was +100% over four stacks)
+constexpr u8 kExtraCellAdds[4] = {0, 1, 1, 2};   // the cells Extra Cell's rank adds (rank 3: two)
 constexpr float kRicochetSeekWu = 300.0f;     // GAME_DESIGN 6.2 (quoted): a hit bounces on to the nearest enemy this near
 constexpr float kCritBurstWu = 80.0f;         // GAME_DESIGN 6.2 (quoted): a beat shot's hit bursts this wide ...
 constexpr float kCritBurstShare = 0.5f;       // ... dealing this share of the shot's damage to the others in it (chosen)
@@ -350,8 +355,9 @@ constexpr float kAccentDamage = 3.0f, kAccentLengthWu = 1500.0f, kAccentHalfWu =
 constexpr float kEchoDamage = 0.5f;                         // quoted: half damage
 // Wave (the owner's rework, 2026-11-15: its sine paths carried the assist's aimed shots off the boss): the shots fly straight
 // and on every beat a wave front rolls out from the ship along the aim, hurting what it passes once. By rank: its half-arc
-// (90 then 140 degrees in all), its reach and damage; it grows to its reach in kWaveGrowS from kWaveStartWu.
-constexpr float kWaveHalfArcDeg[3] = {0.0f, 45.0f, 70.0f}, kWaveReachWu[3] = {0.0f, 400.0f, 550.0f}, kWaveDamage[3] = {0.0f, 2.0f, 3.0f};
+// (70 then 140 degrees in all; rank 1 was 90 until the owner's word of 2026-11-16), its reach and damage; it grows to its reach in
+// kWaveGrowS from kWaveStartWu.
+constexpr float kWaveHalfArcDeg[3] = {0.0f, 35.0f, 70.0f}, kWaveReachWu[3] = {0.0f, 400.0f, 550.0f}, kWaveDamage[3] = {0.0f, 2.0f, 3.0f};
 constexpr float kWaveGrowS = 0.45f, kWaveStartWu = 30.0f;
 constexpr float kWaveAmpWu[3] = {0.0f, 28.0f, 40.0f};       // (the sine paths before the rework; Helix Array keeps its own)
 constexpr float kHelixAmpWu = 80.0f;                        // GAME_DESIGN 6.5 (quoted): the outer pair 80 wu to each side, the

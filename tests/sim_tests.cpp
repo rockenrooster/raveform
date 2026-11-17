@@ -791,7 +791,7 @@ void testUpgradeStacking() {
     CHECK(w->player(0).cells == 4 && w->player(0).cellCap == 4 && w->player(0).novas == 3 && w->player(0).novaCap == 4);
     CHECK(kDashRechargeBeats == 2.0);
     // Caps: Split stacks to 4, a lane a rank (2, 3, 4, 5 lanes; eb10554), Double-Time to 2 again; Extra Cell raises the capacity
-    // and refills every cell, four times (play test 2: eight cells).
+    // and refills every cell, three times since 2026-11-16, the third by two (play test 2: eight cells).
     for (u32 k = 0; k < 6; ++k) w->grantUpgrade(0, kSplit);
     CHECK(w->player(0).loadout.mods[kSplit] == 4 && splitLanes(1) == 2 && splitLanes(3) == 4 && splitLanes(4) == 5 &&
           upgradeInfo(kDoubleTime).cap == 2 && upgradeInfo(kFork).cap == 1);
@@ -799,8 +799,13 @@ void testUpgradeStacking() {
     w->grantUpgrade(0, kExtraCell);
     CHECK_MSG(w->player(0).cellCap == 5 && w->player(0).cells == 5, "cells %u of %u", w->player(0).cells, w->player(0).cellCap);
     for (u32 k = 0; k < 6; ++k) w->grantUpgrade(0, kExtraCell);
-    CHECK(w->player(0).cellCap == 8 && w->player(0).cells == 8 && w->player(0).loadout.mods[kExtraCell] == 4 && kMaxCells == 8);
-    CHECK(std::strcmp(upgradeWords(kExtraCell, 4), "+1 CELL, ALL REFILLED") == 0);
+    CHECK(w->player(0).cellCap == 8 && w->player(0).cells == 8 && w->player(0).loadout.mods[kExtraCell] == 3 && kMaxCells == 8);
+    CHECK(upgradeInfo(kExtraCell).cap == 3 && upgradeInfo(kMagnet).cap == 3 && upgradeInfo(kOvercharge).cap == 4);
+    CHECK(std::strcmp(upgradeWords(kExtraCell, 2), "+1 CELL, ALL REFILLED") == 0 && std::strcmp(upgradeWords(kExtraCell, 3), "+2 CELLS, ALL REFILLED") == 0);
+    // ... the same top ranks as before (the owner, 2026-11-16): Overcharge x3.5 damage and x1.75 radius, Magnet x5.
+    CHECK(std::fabs(1.0f + 4.0f * tuning::kOverchargePerStack - 3.5f) < 1e-5f && std::fabs(1.0f + 4.0f * tuning::kOverchargeRadius - 1.75f) < 1e-5f &&
+          std::fabs(1.0f + 3.0f * tuning::kMagnetPerStack - 5.0f) < 1e-5f && overchargeLook(4) == 5 && overchargeLook(3) == 3);
+    CHECK(std::strcmp(upgradeWords(kOvercharge, 1), "+62.5% SHOT DAMAGE") == 0 && std::strcmp(upgradeWords(kMagnet, 3), "SHARD PULL X5") == 0);
     // The numbers per stack and level.
     CHECK(pierceCount(1) == 3 && ricochetBounces(3) == 6 && onBeatCritMultiplier(1) == 3.0f && onBeatCritMultiplier(3) == 8.0f);
     // The owner's buffs of 2026-11-15: Slipstream one rank of +20%, Prospector half a Shard a stack, the words.
@@ -810,7 +815,7 @@ void testUpgradeStacking() {
     CHECK(orbitalCount(1) == 3 && orbitalCount(5) == 11 && sentinelBurst(1) == 3 && sentinelBurst(4) == 5);
     CHECK(sentinelDrones(2) == 1 && sentinelDrones(3) == 2 && sentinelDrones(5) == 3);
     CHECK(std::strcmp(upgradeWords(kSplit, 1), "+1 SHOT LANE") == 0 && std::strcmp(upgradeWords(kSplit, 4), "+1 SHOT LANE") == 0 &&
-          std::strcmp(upgradeWords(kMagnet, 2), "SHARD PULL X3") == 0);
+          std::strcmp(upgradeWords(kMagnet, 2), "SHARD PULL X3.7") == 0);
     CHECK(std::strcmp(upgradeWords(kDoubleTime, 1), "FIRE RATE X1.5") == 0 && std::strcmp(upgradeWords(kDoubleTime, 2), "FIRE RATE X2") == 0);
     CHECK(std::strcmp(upgradeWords(kOnBeatCrit, 2), "BEAT SHOTS X5") == 0 && std::strcmp(upgradeWords(kOrbitals, 2), "LEVEL 2: FIVE SHARDS") == 0 &&
           std::strcmp(upgradeWords(kOrbitals, 1), "NEW RIFF: A GUARD RING") == 0 && std::strcmp(upgradeWords(kOrbitals, 3), "LEVEL 3: RELIGHTS FASTER") == 0);
@@ -880,7 +885,7 @@ void testUpgradeStacking() {
         kills += countEvents(*q, EventType::Kill);
     }
     CHECK_MSG(kills == 2, "pierce kills %u", kills);
-    // Overcharge: +50% damage a stack; On-Beat Crit triples shots on the beat.
+    // Overcharge: +62.5% damage a stack (+50% until 2026-11-16); On-Beat Crit triples shots on the beat.
     World* o = quietWorld();
     double mo = 0.0;
     stepWorld(*o, mo, Vec2{});
@@ -891,8 +896,8 @@ void testUpgradeStacking() {
         stepWorld(*o, mo, Vec2{}, 1);
         for (u32 k = 0; k < o->shots().count; ++k) {
             const float dmg = o->shots().damage[k];
-            if (std::fabs(dmg - 4.5f) < 1e-4f) sawCrit = true;
-            if (std::fabs(dmg - 1.5f) < 1e-4f) sawPlain = true;
+            if (std::fabs(dmg - 3.0f * 1.625f) < 1e-4f) sawCrit = true;
+            if (std::fabs(dmg - 1.625f) < 1e-4f) sawPlain = true;
         }
     }
     CHECK(sawCrit && sawPlain);

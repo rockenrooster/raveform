@@ -66,7 +66,7 @@ enum class UpgradeSound : u8 {
     LancerChord, LancerCharge, MineLaid, MineBlast, SwarmBell, SingularitySwell, SingularityBoom, CometOut, CometBack,
     FlakSnare, FlakClap, CannonOne, CollapseSwell, MurmurationTrill, TeslaZap, HaloGlass, BarLineZap, ModStab, ChainStormZap,
     CarouselTom, KickPulseTom, FreezeGlass, StandingWave, HeavyStepBass, ColossusBass,
-    MirrorNote, QuartetNote, ChorusNote, FractalNote, SyncBlip, RearGuardNote, Count
+    MirrorNote, QuartetNote, ChorusNote, FractalNote, SyncBlip, RearGuardNote, WaveSwell, Count
 };
 
 // M5 (tests): a lead voice as the engine holds it (Engine::leadVoices).

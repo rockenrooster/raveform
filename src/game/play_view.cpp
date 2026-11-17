@@ -544,7 +544,7 @@ void PlayView::onEvents(const World& w, double tickEnd) {
                 // Overcharge 5 the impact flash doubles.
                 u32 over = 0;
                 if (e.b < kMaxPlayers) {
-                    over = w.player(e.b).loadout.mods[kOvercharge] > 5 ? 5u : w.player(e.b).loadout.mods[kOvercharge];
+                    over = overchargeLook(w.player(e.b).loadout.mods[kOvercharge]);
                     if (e.c >= 1 && e.c <= 5 && e.b == me) {
                         r.a = laneColour_[e.c - 1];
                         r.b = white();
@@ -565,7 +565,7 @@ void PlayView::onEvents(const World& w, double tickEnd) {
             case EventType::Shot: {
                 // Muzzle flash (GAME_DESIGN 11.1, lead notes). Play test 2 (look.md 5): in the head's colour by Overcharge; a
                 // spark flies off every second shot at 3 stacks, every shot at 4 and 5.
-                const u32 over = w.player(owner).loadout.mods[kOvercharge] > 5 ? 5u : w.player(owner).loadout.mods[kOvercharge];
+                const u32 over = overchargeLook(w.player(owner).loadout.mods[kOvercharge]);
                 const Vec3 flash = over == 0 ? mix(player, white(), 0.5f) : mix(overHead_[over], white(), 0.35f);
                 addPool(at, kMuzzleFlashRefPx, kMuzzleFlashRefPx, flash, kMuzzleFlash * (mine ? 1.0f : 0.6f), 0.0f, kMuzzleFlashS, false, 1,
                         true, false, t);

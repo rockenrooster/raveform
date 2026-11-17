@@ -277,8 +277,10 @@ void World::applyUpgrade(u32 p, u8 u) {
     }
     if (u == kExtraCell) {
         // GAME_DESIGN 6.2 (play test 1): +1 Shield cell capacity and every cell refilled; in the loop inside the capacity the
-        // burn has left (GAME_DESIGN 8).
-        if (pl.cellCap < kMaxCells && pl.cellCap < pl.burnCap) ++pl.cellCap;
+        // burn has left (GAME_DESIGN 8). Since 2026-11-16 three ranks, the third adding two (tuning.h kExtraCellAdds).
+        const u8 rank = l.mods[kExtraCell];
+        for (u32 k = 0; k < kExtraCellAdds[rank < 3 ? rank : 3]; ++k)
+            if (pl.cellCap < kMaxCells && pl.cellCap < pl.burnCap) ++pl.cellCap;
         pl.cells = pl.cellCap;
     }
 }

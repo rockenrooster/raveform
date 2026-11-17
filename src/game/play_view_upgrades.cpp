@@ -21,6 +21,7 @@ Vec2 dirU(float a) { return {std::cos(a), std::sin(a)}; }
 Vec2 perpU(Vec2 v) { return {-v.y, v.x}; }
 float clampU(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
 float wrapPi(float a) { return std::remainder(a, 6.28318530718f); }  // (-pi, pi]
+float fractU(float x) { return x - std::floor(x); }
 const Vec3 kIce{0.55f, 0.85f, 1.0f};  // (Burn's fire: play_view_feedback.cpp burnFlames)
 constexpr float kBoltS = 0.09f;       // look.md 5: a zap's 90 ms
 // The owner, 2026-11-14 ("just a more visible lightning zap, like brighter glow or something on the zap"): Storm Coil's and Chain
@@ -45,6 +46,28 @@ constexpr float kBeatPeakS = 2.0f / 60.0f, kBeatFallS = 0.110f;  // look.md 5 (a
 // the core's bloom widened the Beam Boost's haze, so 1.2).
 constexpr float kHeldCoreSwing = 0.2f;
 constexpr float kBeamSwingS = 0.045f;  // (chosen, 2026-11-14) the drawn Beam swings to a new aim with this time constant
+// Wave's crest (the owner, 2026-11-16: "a real crest: a white-hot leading edge fading into your colour, a soft wider band behind
+// it, and a slight shimmer along it"; "ripples the background grid as it passes"; "a spark and flash on each enemy it hits";
+// "stack 2 gets a second crest just behind the first", dropped the same day: "go to one ring for the wave instead of 2. too
+// much visual"). Chosen numbers: three arcs to the crest,
+// a band of pooled glow 16 wu behind the last crest, a shimmer of +-25% running along it and three glints riding it. The three
+// arcs overlap (1.8 and 4.2 wu back, each wider than the last): one crest graded from white to the colour, not three rings.
+constexpr float kWaveSegWu = 28.0f;                                             // the arcs' pieces (10 to 40 an arc)
+constexpr float kWaveEdgePx = 1.15f, kWaveEdge = 2.7f;                          // the white-hot edge: half width, light (bloomed)
+constexpr float kWaveBodyBackWu = 1.8f, kWaveBodyPx = 1.7f, kWaveBody = 1.3f;   // the light colour just behind it
+constexpr float kWaveTailBackWu = 4.2f, kWaveTailPx = 2.4f, kWaveTail = 0.7f;   // then the colour
+constexpr float kWaveBandBackWu = 16.0f, kWaveBandSigmaWu = 9.0f, kWaveBand = 0.12f;
+constexpr float kWaveShimmer = 0.25f;                                            // none with reduce flashing
+constexpr u32 kWaveGlints = 3;
+constexpr float kWaveGlintPx = 7.0f, kWaveGlint = 0.9f;
+// The lattice: impulses along the crest 12 wu behind it, a 34 wu Gaussian every 45 wu of arc, this strong in a 60 Hz frame
+// (scaled by the frame's time: a node feels about four frames of them as the crest passes, out then back: about a medium
+// kill's; 26 hardly showed).
+constexpr float kWaveRippleBackWu = 12.0f, kWaveRippleWu = 34.0f, kWaveRippleStepWu = 45.0f, kWaveRipple = 55.0f;
+// A body the front reaches: six sparks thrown on along the front's way, a soft flash, and a little star (the first ten a front).
+constexpr u16 kWaveHitSparks = 6;
+constexpr u32 kWaveStarCap = 10;
+constexpr float kWaveStarWu = 18.0f, kWaveStarS = 0.14f;
 }  // namespace
 
 void PlayView::drawBeam(FrameDraw& d, Vec2 from, Vec2 dir, float len, float w, float corePx, Vec3 noseCol, Vec3 farCol, Vec3 glowCol,
@@ -358,28 +381,9 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
         ring(pq.kickTick, ship, pq.kickR, 0.2f, player);
         ring(pq.shockTick, pq.shockAt, pq.shockR, 0.25f, light);
 
-        // Wave's fronts (the owner's rework, 2026-11-15): each a crescent rolling out along the aim it was sent on, a bright
-        // leading edge and a fainter one a little behind it, both fading as it reaches its reach (World: the same radius).
-        for (const PulseWave& wf : pq.waves) {
-            if (!wf.active || wf.age <= 0.0f) continue;
-            const float u = clampU(wf.age / tuning::kWaveGrowS);
-            const float r = tuning::kWaveStartWu + (wf.reach - tuning::kWaveStartWu) * u;
-            const float a0 = angleOf(wf.dir), fade = (1.0f - u * u) * lvl;
-            const u32 segs = 18;
-            for (u32 edge = 0; edge < 2; ++edge) {
-                const float re = r - static_cast<float>(edge) * 14.0f;
-                if (re <= tuning::kWaveStartWu) continue;
-                const float bright = edge ? 0.5f : 1.0f;
-                for (u32 s = 0; s < segs; ++s) {
-                    const float v0 = static_cast<float>(s) / segs, v1 = static_cast<float>(s + 1) / segs;
-                    // (thinner toward the arc's ends)
-                    const float taper0 = std::sin(kPi * v0), taper1 = std::sin(kPi * v1);
-                    const float b0 = a0 - wf.halfArc + 2.0f * wf.halfArc * v0, b1 = a0 - wf.halfArc + 2.0f * wf.halfArc * v1;
-                    d.scene.line(toScene(wf.centre + dirU(b0) * re), toScene(wf.centre + dirU(b1) * re), (edge ? 1.0f : 1.8f) * refPx_,
-                                 light * (1.6f * bright * fade * (0.3f + 0.7f * taper0)), player * (1.2f * bright * fade * (0.3f + 0.7f * taper1)), 0);
-                }
-            }
-        }
+        // Wave's fronts (the owner's rework, 2026-11-15; its crest, 2026-11-16): drawWaveFront.
+        for (u32 k = 0; k < kWaveFronts; ++k)
+            if (pq.waves[k].active) drawWaveFront(d, in, q, k, pq.waves[k], lvl);
     }
 
     // Lightning (look.md 5, one recipe for Arc, Storm Coil, Chain Storm and Tesla Bloom): three strands of 1.2 px between the
@@ -446,6 +450,129 @@ void PlayView::drawUpgrades(FrameDraw& d, const ViewInput& in) {
         if (ice) glyph(d.glyphs, gRing32_, false, p, 0.0f, 0.0f, e.radius[i] * 1.5f, 1.4f, 0.5f, kGlyphFlat, kIce, W1);
         if (fire) burnFlames(d, in, i, p);  // (2026-11-14: flames, embers and a warm glow; play_view_feedback.cpp)
     }
+}
+
+// Wave's front (the owner's rework, 2026-11-15, and its crest, 2026-11-16): an arc rolling out along the aim it was sent on, at
+// the world's radius (the frame's, between the last tick's and this one's, as the ships are). The crest: a white-hot leading
+// edge cooling as it travels, falling back into the owner's light colour and then its colour, a soft band of the colour behind,
+// a shimmer running along it and glints riding it; rank 2 a second crest just behind the first. It ripples the lattice as it
+// passes, and each body it reaches throws sparks on along its way and flashes (a little star for the first ten a front).
+void PlayView::drawWaveFront(FrameDraw& d, const ViewInput& in, u32 q, u32 slot, const PulseWave& wf, float lvl) {
+    const World& w = *in.world;
+    const float t = static_cast<float>(in.time);
+    const float age = wf.age - (1.0f - in.alpha) / static_cast<float>(w.ticksPerSecond());
+    if (age <= 0.0f) return;
+    const float u = clampU(age / tuning::kWaveGrowS);
+    const float r = tuning::kWaveStartWu + (wf.reach - tuning::kWaveStartWu) * u;
+    const float a0 = angleOf(wf.dir);
+    const Vec3 W1 = whiteU() * lvl;
+    const Vec3 player = palettes_->player[q] * lvl, light = palettes_->playerLight[q] * lvl;
+    const float fade = (1.0f - u * u) * (reduceFlashing_ ? 0.75f : 1.0f);
+    const float heat = reduceFlashing_ ? 0.45f : 1.0f - 0.4f * u;  // the edge's white, cooling as it travels
+    const float shimmer = reduceFlashing_ ? 0.0f : kWaveShimmer;
+    const auto at = [&](float rad, float v) { return wf.centre + dirU(a0 - wf.halfArc + 2.0f * wf.halfArc * v) * rad; };
+    const auto taperAt = [](float v) { return 0.25f + 0.75f * std::sqrt(std::fmax(std::sin(kPi * v), 0.0f)); };  // dimmer ends
+    const auto shimmerAt = [&](float v) { return 1.0f + shimmer * std::sin(v * 31.0f + t * 19.0f) * std::sin(v * 7.0f - t * 13.0f); };
+
+    // The crest (one at either rank: the owner, 2026-11-16, of rank 2's second crest: "go to one ring ... too much visual").
+    float lastCrest = -1.0f;
+    {
+        const float rc = r;
+        if (rc <= tuning::kWaveStartWu) return;
+        lastCrest = rc;
+        const float kc = fade;
+        const u32 segs = std::clamp(static_cast<u32>(2.0f * wf.halfArc * rc / kWaveSegWu), 10u, 40u);
+        const float rb = rc - kWaveBodyBackWu, rt = rc - kWaveTailBackWu;
+        for (u32 s = 0; s < segs; ++s) {
+            const float v0 = static_cast<float>(s) / static_cast<float>(segs), v1 = static_cast<float>(s + 1) / static_cast<float>(segs);
+            const Vec2 p0 = at(rc, v0), p1 = at(rc, v1);
+            if (!visible((p0 + p1) * 0.5f, kWaveSegWu + kWaveTailBackWu)) continue;
+            const float t0 = taperAt(v0), t1 = taperAt(v1);
+            const float k0 = kc * t0 * shimmerAt(v0), k1 = kc * t1 * shimmerAt(v1);
+            d.scene.line(toScene(p0), toScene(p1), kWaveEdgePx * refPx_, mix(light, W1, heat * t0) * (kWaveEdge * k0), mix(light, W1, heat * t1) * (kWaveEdge * k1), 0);
+            d.scene.line(toScene(at(rb, v0)), toScene(at(rb, v1)), kWaveBodyPx * refPx_, light * (kWaveBody * k0), light * (kWaveBody * k1), 0);
+            d.scene.line(toScene(at(rt, v0)), toScene(at(rt, v1)), kWaveTailPx * refPx_, player * (kWaveTail * k0), player * (kWaveTail * k1), 0);
+        }
+    }
+
+    // The soft band behind the last crest: pooled Gaussians a sigma wide, two sigmas apart, an even strip along the arc (as
+    // lethalBeam's glow).
+    if (const float rb = lastCrest - kWaveBandBackWu; lastCrest > 0.0f && rb > 0.5f * tuning::kWaveStartWu) {
+        const float sigma = kWaveBandSigmaWu, len = 2.0f * wf.halfArc * rb;
+        const u32 n = std::max(3u, static_cast<u32>(std::lround(len / (2.0f * sigma))));
+        const float stepWu = len / static_cast<float>(n);
+        const float radius = sigma * look_->glowRadiusOverSigma;
+        GlowBatch& soft = radius * pxPerWu_ < 16.0f * refPx_ ? d.sparkles : d.pools;
+        const float c0 = kWaveBand * fade * stepWu / (sigma * 2.5066283f);
+        const Vec3 tone = mix(player, light, 0.3f);
+        for (u32 k = 0; k < n; ++k) {
+            const float v = (static_cast<float>(k) + 0.5f) / static_cast<float>(n);
+            const Vec2 p = at(rb, v);
+            if (visible(p, radius)) soft.glow(toScene(p), radius * pxPerWu_, tone * (c0 * taperAt(v)));
+        }
+    }
+    if (lastCrest <= 0.0f) return;
+
+    // Glints riding the leading edge, alternately one way and the other.
+    if (!reduceFlashing_) {
+        for (u32 g = 0; g < kWaveGlints; ++g) {
+            const float speed = (1.3f + 0.4f * static_cast<float>(g)) * ((g & 1u) ? -1.0f : 1.0f);
+            const float v = fractU(0.17f + 0.381f * static_cast<float>(g) + t * speed);
+            const Vec2 p = at(r, v);
+            if (visible(p, 20.0f)) d.sparkles.glow(toScene(p), kWaveGlintPx * refPx_, mix(light, W1, 0.6f) * (kWaveGlint * fade * taperAt(v)));
+        }
+    }
+
+    // The lattice, rippled along the crest as it passes (each frame's push scaled by its time: the same at any frame rate).
+    if (const float push = kWaveRipple * fade * lvl * std::fmin(std::fmax(in.dt, 0.0f) * w.timeScale() * 60.0f, 3.0f); push > 0.0f) {
+        const float rr = r - kWaveRippleBackWu;
+        const u32 n = std::max(2u, static_cast<u32>(2.0f * wf.halfArc * rr / kWaveRippleStepWu) + 1u);
+        for (u32 k = 0; k < n; ++k) {
+            const float v = (static_cast<float>(k) + 0.5f) / static_cast<float>(n);
+            const Vec2 p = at(rr, v);
+            if (visible(p, 3.0f * kWaveRippleWu)) lat_->impulse(p, push * taperAt(v), kWaveRippleWu);
+        }
+    }
+
+    // The bodies the front reached since the last frame (as World finds them on the owner's device: inside the arc, the front
+    // passing the body's edge): sparks thrown on along the front's way, a soft flash, a little star.
+    float& seen = waveSeenR_[q][slot];
+    if (age < waveSeenAge_[q][slot] || wf.centre.x != waveSeenAt_[q][slot].x || wf.centre.y != waveSeenAt_[q][slot].y) {
+        seen = tuning::kWaveStartWu;  // a new front in this slot
+        waveFlashes_[q][slot] = 0;
+    }
+    waveSeenAge_[q][slot] = age;
+    waveSeenAt_[q][slot] = wf.centre;
+    if (r <= seen) return;
+    const Enemies& e = w.enemies();
+    const LookSoftLight& fl = look_->soft.killFlashSmall;
+    const float flashK = (reduceFlashing_ ? 0.3f : 0.6f) * lvl;
+    for (u32 i = 0; i < e.count; ++i) {
+        if (e.flags[i] & kFlagDead) continue;
+        const Vec2 p{e.x[i], e.y[i]};
+        const Vec2 rel = p - wf.centre;
+        const float dd = dot(rel, rel), hi = r + e.radius[i], lo = seen - e.radius[i];
+        if (dd > hi * hi || (lo > 0.0f && dd <= lo * lo)) continue;
+        const float dist = std::sqrt(dd);
+        if (std::fabs(wrapPi(angleOf(rel) - a0)) > wf.halfArc + (dist > 1.0f ? e.radius[i] / dist : kPi)) continue;
+        if (!visible(p, 40.0f)) continue;
+        SparkReq sr{};
+        sr.at = p;
+        sr.dir = normalizeOr(rel, wf.dir);
+        sr.count = kWaveHitSparks;
+        sr.kind = 3;
+        sr.a = light;
+        sr.b = W1;
+        sr.t0 = t;
+        sparkRequest(sr);
+        addPool(p, fl.radius[0] * 0.6f, fl.radius[0] * 0.6f, mix(light, W1, 0.5f), fl.intensity[0] * flashK, fl.intensity[1], fl.lifeS, false,
+                fl.squaredFade ? 1 : 0, true, true, t);
+        if (!reduceFlashing_ && waveFlashes_[q][slot] < kWaveStarCap) {
+            ++waveFlashes_[q][slot];
+            addFlash(kFlZap, p, kWaveStarWu, kWaveStarS, mix(light, W1, 0.4f), t, rng_.range(0.0f, kPi));
+        }
+    }
+    seen = r;
 }
 
 void PlayView::drawHazards(FrameDraw& d, const ViewInput& in) {

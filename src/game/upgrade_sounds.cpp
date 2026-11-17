@@ -17,6 +17,8 @@ static_assert(sim::kModCount == audio::kModCount && sim::kRiffCount == audio::kR
 audio::PlayerLoadout bandLoadout(const PlayerState& pl) {
     audio::PlayerLoadout o;
     std::memcpy(o.mods, pl.loadout.mods, sizeof o.mods);
+    // Overcharge's four stacks (2026-11-16) drive the lead as the old five did at the top (sim/upgrades.h overchargeLook).
+    o.mods[kOvercharge] = static_cast<u8>(overchargeLook(pl.loadout.mods[kOvercharge]));
     std::memcpy(o.riffs, pl.loadout.riffs, sizeof o.riffs);
     for (const ActiveBoost& a : pl.boosts)
         if (a.type < kBoostCount) o.boosts = static_cast<u16>(o.boosts | (1u << a.type));

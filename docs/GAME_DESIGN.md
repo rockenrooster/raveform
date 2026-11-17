@@ -266,8 +266,8 @@ Weapon
 | 7 | Heavy Step | Every 4th shot is a slow orb that explodes | 3 | Low octave thump |
 | 8 | Accent | The shot on beat 1 is a full-length piercing lance; then beats 1+3; then every beat | 3 | Accented note, white flash line |
 | 9 | Echo | Each shot repeats as a ghost one beat later at half damage; then two echoes | 2 | Delay line on the lead |
-| 10 | Wave | **A wave front rolls out on every beat** along the aim: an arc 90° wide growing to 400 wu over 0.45 s, 2 damage to each body it passes and to each boss part once; rank 2: 140°, 550 wu, 3. The shots fly straight (the owner's rework, 2026-11-15: they rode sine paths, 28 then 40 wu to each side, which carried the auto-aim's shots off the boss; Helix Array keeps its own strands) | 2 | Vibrato; a crescent of light |
-| 11 | Overcharge | +50% damage, larger hotter shots: the shot's head changes colour with every stack (look.md section 5, "The build on the shots") | 5 | More drive on the lead |
+| 10 | Wave | **A wave front rolls out on every beat** along the aim: an arc 70° wide growing to 400 wu over 0.45 s, 2 damage to each body it passes and to each boss part once; rank 2: 140°, 550 wu, 3. The shots fly straight (the owner's rework, 2026-11-15: they rode sine paths, 28 then 40 wu to each side, which carried the auto-aim's shots off the boss; Helix Array keeps its own strands; rank 1 was 90° wide until the owner's word of 2026-11-16). The front is one crest at either rank: a white-hot leading edge falling back into the player's colour, a soft wider band behind it and a shimmer along it; it ripples the lattice as it passes and each body it reaches sparks and flashes (the owner, 2026-11-16) | 2 | Vibrato; a soft swell into each beat a front goes out on |
+| 11 | Overcharge | +62.5% damage, larger hotter shots: the shot's head changes colour with every stack, the fourth as the old fifth (look.md section 5, "The build on the shots"; the owner, 2026-11-16: "4 with the same max stats", it was +50% over five stacks) | 4 | More drive on the lead |
 | 12 | Rear Guard | Also fire backward with every volley; then sideways too (2026-11-15: on the off-beats only) | 2 | Off-beat counter-melody |
 | 13 | Arc | Kills chain lightning to 1 more enemy within 160 wu, then 2, then 3; an arc's own kill arcs no further (play test 3: half of what it was) | 3 | Zap arpeggio |
 | 14 | Burn | Hits ignite for 3 beats, 2 damage a beat a stack; a burning enemy that dies ignites neighbours within 80 wu, once: their fire spreads no further (play test 3: half; 2026-11-15: 2 beats, 1, 45 wu) | 3 | Crackle layer |
@@ -278,7 +278,7 @@ Defence and movement
 
 | # | Mod | Effect per stack | Cap |
 |---|---|---|---|
-| 17 | Extra Cell | +1 Shield cell capacity and refill every cell (up to 8 cells) | 4 |
+| 17 | Extra Cell | +1 Shield cell capacity and refill every cell, the third rank +2 (up to 8 cells; the owner, 2026-11-16: "3 with the same max stats", it was +1 over four ranks) | 3 |
 | 18 | Regen | A cell grows back by itself every 8 bars; then every 4 (the owner, 2026-11-15: "remove the lowest rank", 16 bars). The halo's next arc draws itself as it grows | 2 |
 | 19-21 | ~~Afterimage, Reserve, Shockstep~~ | **Removed** (the owner, 2026-11-15: "just remove the dash mods entirely and buff the base dash"): a player who never dashes, a young one above all, got nothing from them. Reserve's charge and Shockstep's ring are the base Dash's now (section 5); Afterimage's decoy is gone. Never dealt (their numbers are kept so the ones after them do not move) | 0 |
 | 22 | Aegis | A rotating arc blocks bullets from one side; wider per stack | 3 |
@@ -289,7 +289,7 @@ Economy
 
 | # | Mod | Effect per stack | Cap |
 |---|---|---|---|
-| 25 | Magnet | +100% Shard pull radius (90 wu, then 180, 270, 360, 450) | 4 |
+| 25 | Magnet | +133% Shard pull radius (90 wu, then 210, 330, 450; the owner, 2026-11-16: "3 with the same max stats", it was +100% over four stacks) | 3 |
 | 26 | Prospector | Half an extra Shard per kill a stack, the whole part sure and the rest a chance: one more every kill at two stacks, two at four (2026-11-15: a 25% chance a stack, at most one) | 4 |
 | 27 | Nova Stock | +1 Nova capacity and gain one | 3 |
 | 28 | Encore | Boosts last one bar longer | 3 |

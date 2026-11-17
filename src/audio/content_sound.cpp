@@ -89,6 +89,10 @@ constexpr float kCannonStab = 1.2f, kCannonImpact = 0.5f;  // fusions.downbeat_c
 constexpr float kMurmuration = 0.25f;        // fusions.murmuration (as written: the trill at 0.25, of the bell's own level)
 constexpr float kQuartet = 0.4f;             // fusions.quartet (as written)
 constexpr float kCollapseSwell = 0.5f;       // fusions.collapse_field: no level given (the Singularity's swell level)
+// Wave (the owner's word, 2026-11-16: "a soft swell on the beat each time a wave goes out"): the last half beat of the Track's
+// half-bar reverse swell (its rise from 0.4 to full) runs into every beat while anyone holds it, the beat the sim sends a front
+// out on; soft: two thirds of the Lancer's charge (conductor.json riffs.lancer, 0.3). No level given.
+constexpr float kWaveSwell = 0.2f;
 constexpr float kSyncBlip = 0.3f;            // mods.syncopation's blip: no level given (Ricochet's blip, 0.3 of the lead)
 constexpr float kSyncBlipLength = 0.3f;      // ... and as short (0.3 of the lead's length)
 constexpr float kHeavyTailS = 0.15f;         // mods.heavy_step: the bass note's voice rings this long past its gate
@@ -1198,6 +1202,20 @@ void Engine::upgradeStep(i64 tick, i64 inBar) {
         if (zap > 0.0f) {
             recipeShot(Recipe::Zap, chordTone(ch, 0, 5), recipeGain(Recipe::Zap) * zap, 0.0f, f, Bus::Pulse);
             upgradeEvent(UpgradeSound::BarLineZap, f, tk, recipeGain(Recipe::Zap) * zap, chordTone(ch, 0, 5));
+        }
+    }
+    // Wave (2026-11-16): a soft reverse swell over the half beat before each beat, ending on it as the front goes out.
+    if (inBar % kPpq == kPpq / 2) {
+        float wave = 0.0f;
+        for (u32 i = 0; i < playerCount_; ++i)
+            if (players_[i].mod[ix(Mod::Wave)] && !(hostOnly_ && i != localPlayer_)) wave = std::fmax(wave, playerLevel(i));
+        const i32 id = bank_->swellHalfBar(track_);
+        if (wave > 0.0f && id >= 0) {
+            const double have = bank_->sample(id).frames;
+            const double want = static_cast<double>(frameOf(tk + static_cast<double>(kPpq / 2)) - f);
+            const float g = s.mix.swell * kWaveSwell * wave;
+            playSample(id, Bus::Fx, f, g, 0.0f, 1.0f, want < have ? have - want : 0.0);
+            upgradeEvent(UpgradeSound::WaveSwell, f, tk, g, static_cast<double>(kPpq / 2));
         }
     }
     if (p.riffsOn) {

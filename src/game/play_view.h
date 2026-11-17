@@ -254,6 +254,14 @@ private:
     double tellNow_ = 0.0;  // the frame's musical position, for the tells' rise (telegraphLine)
     float beamAngle_[sim::kMaxPlayers] = {};  // each player's drawn Beam, swinging to its aim (drawUpgrades)
     bool beamDrawn_[sim::kMaxPlayers] = {};
+    // Wave's crest (the owner, 2026-11-16; play_view_upgrades.cpp): a front drawn, the lattice rippled along it, and the bodies it
+    // has reached this frame sparking and flashing (every player's front, on every device: the view finds them, as the world
+    // does on the owner's). Per player and front slot: how far the front had come (wu) at what age, from where, and its flashes.
+    void drawWaveFront(FrameDraw& d, const ViewInput& in, u32 q, u32 slot, const sim::PulseWave& wf, float lvl);
+    float waveSeenR_[sim::kMaxPlayers][sim::kWaveFronts] = {};
+    float waveSeenAge_[sim::kMaxPlayers][sim::kWaveFronts] = {};
+    Vec2 waveSeenAt_[sim::kMaxPlayers][sim::kWaveFronts] = {};
+    u8 waveFlashes_[sim::kMaxPlayers][sim::kWaveFronts] = {};
     // Edge indicator (look.md §6, M3 stage C): a chevron inside the screen edge pointing at world, on a dark
     // disc, in the threat layer; oss: the larger double chevron, scaled by swell.
     // tip: 1 a small ring at its tip (a downed teammate, M4), 2 a plus (a Cell while its player is on the last cell, play
@@ -291,6 +299,7 @@ private:
     void burnFlames(FrameDraw& d, const ViewInput& in, u32 i, Vec2 p);
     u32 feedbackWells(const ViewInput& in, LatticeWell* out, u32 cap) const;  // the lattice's wells this frame
     float crescendoLevel(const sim::World& w, u32 q) const;                    // 0..1 of Crescendo's cap
+    enum FlashKind : u8 { kFlCrit = 1, kFlBlock, kFlZap, kFlImplode, kFlCrater, kFlRing, kFlStar };  // (drawFeedbackFx draws them)
     struct Flash {
         Vec2 at;
         float t = -100.0f, size = 0.0f, rot = 0.0f, life = 0.2f;

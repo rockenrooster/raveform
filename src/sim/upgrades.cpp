@@ -1,5 +1,6 @@
 #include "sim/upgrades.h"
 
+#include <cmath>
 #include <cstdio>
 
 #include "sim/tuning.h"
@@ -10,7 +11,8 @@ using namespace tuning;
 
 namespace {
 // GAME_DESIGN 6.2 / 6.3 (names, caps; play test 2: Extra Cell 4, Regen 3; play test 3: Fork 1; the owner, 2026-11-14, eb10554:
-// Split 4, a lane a rank, and Double-Time 2 again); icons from design/icons.json. In the tables' order.
+// Split 4, a lane a rank, and Double-Time 2 again; the owner, 2026-11-16: Extra Cell and Magnet 3, Overcharge 4, each with the
+// same top rank as before: tuning.h); icons from design/icons.json. In the tables' order.
 const UpgradeInfo kInfo[kUpgradeCount] = {
     {"SPLIT", "split", 4, true},
     {"DOUBLE-TIME", "double_time", 2, true},
@@ -22,13 +24,13 @@ const UpgradeInfo kInfo[kUpgradeCount] = {
     {"ACCENT", "accent", 3, true},
     {"ECHO", "echo", 2, true},
     {"WAVE", "wave", 2, true},
-    {"OVERCHARGE", "overcharge", 5, true},
+    {"OVERCHARGE", "overcharge", 4, true},
     {"REAR GUARD", "rear_guard", 2, true},
     {"ARC", "arc", 3, true},
     {"BURN", "burn", 3, true},
     {"SHATTER", "shatter", 3, true},
     {"GRAVITY ROUNDS", "gravity_rounds", 2, true},
-    {"EXTRA CELL", "extra_cell", 4, false},
+    {"EXTRA CELL", "extra_cell", 3, false},
     {"REGEN", "regen", 2, false},  // (the owner, 2026-11-15: "buff the regen upgrade, like remove the lowest rank": 8, then 4 bars)
     // Retired (the owner, 2026-11-15: "just remove the dash mods entirely and buff the base dash"): a cap of 0 is never dealt;
     // the slots keep the numbers of the upgrades after them (the wire, the band's Mods, the icons). Reserve's charge and
@@ -39,7 +41,7 @@ const UpgradeInfo kInfo[kUpgradeCount] = {
     {"AEGIS", "aegis", 3, false},
     {"LAST LIGHT", "last_light", 1, false},
     {"SLIPSTREAM", "slipstream", 1, false},  // the owner, 2026-11-15: "buffed slightly and rank 1 be max rank": +20%, cap 1 (+15%, cap 2)
-    {"MAGNET", "magnet", 4, false},
+    {"MAGNET", "magnet", 3, false},
     {"PROSPECTOR", "prospector", 4, false},
     {"NOVA STOCK", "nova_stock", 3, false},
     {"ENCORE", "encore", 3, false},
@@ -140,7 +142,9 @@ const char* upgradeWords(u8 u, u32 level) {
         case kAccent: return lv <= 1 ? "A LANCE EACH BAR" : (lv == 2 ? "TWO LANCES A BAR" : "A LANCE EVERY BEAT");
         case kEcho: return lv <= 1 ? "SHOTS ECHO A BEAT LATER" : "TWO ECHOES";
         case kWave: return lv <= 1 ? "A WAVE ROLLS OUT EACH BEAT" : "WIDER, HEAVIER WAVES";
-        case kOvercharge: return "+50% SHOT DAMAGE";
+        case kOvercharge:  // (+62.5% a stack since 2026-11-16: four stacks reach the old five's)
+            std::snprintf(buf, sizeof buf, "+%g%% SHOT DAMAGE", static_cast<double>(kOverchargePerStack * 100.0f));
+            return buf;
         case kRearGuard: return lv <= 1 ? "ALSO FIRE BACKWARD" : "AND SIDEWAYS";
         case kArc:
             std::snprintf(buf, sizeof buf, "KILLS ARC TO %u MORE", lv);  // play test 3: 1, 2, 3
@@ -148,16 +152,20 @@ const char* upgradeWords(u8 u, u32 level) {
         case kBurn: return lv <= 1 ? "HITS IGNITE" : (lv == 2 ? "HOTTER FIRE" : "FIERCE FIRE");
         case kShatter: return lv <= 1 ? "KILLS THROW SHRAPNEL" : "MORE SHRAPNEL";
         case kGravityRounds: return lv <= 1 ? "HITS PULL AND CRUSH" : "A STRONGER CRUSH";
-        case kExtraCell: return "+1 CELL, ALL REFILLED";
+        case kExtraCell: return kExtraCellAdds[lv < 3 ? lv : 3] > 1 ? "+2 CELLS, ALL REFILLED" : "+1 CELL, ALL REFILLED";
         case kRegen:  // play test 2 (screens.md): CELL REGROWS: 8 BARS, then 4 BARS (16 BARS was the first rank until 2026-11-15)
             std::snprintf(buf, sizeof buf, "CELL REGROWS: %u BARS", regenEveryBars(lv));
             return buf;
         case kAegis: return lv <= 1 ? "A SHIELD BLOCKS BULLETS" : "A WIDER SHIELD";
         case kLastLight: return "WHEN HIT: A FREE NOVA";
         case kSlipstream: return "+20% SPEED";
-        case kMagnet:
-            std::snprintf(buf, sizeof buf, "SHARD PULL X%u", lv + 1u);
+        case kMagnet: {
+            // (x2.3, x3.7, x5 since 2026-11-16: three ranks to the old fourth's pull)
+            const float m = 1.0f + kMagnetPerStack * static_cast<float>(lv);
+            if (std::fabs(m - std::round(m)) < 0.05f) std::snprintf(buf, sizeof buf, "SHARD PULL X%d", static_cast<int>(std::lround(m)));
+            else std::snprintf(buf, sizeof buf, "SHARD PULL X%.1f", static_cast<double>(m));
             return buf;
+        }
         case kProspector:
             std::snprintf(buf, sizeof buf, "+%u%% EXTRA SHARDS", 50u * lv);
             return buf;
