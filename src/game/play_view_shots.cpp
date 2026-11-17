@@ -28,14 +28,16 @@ constexpr float kOverWidth[6] = {1.0f, 1.15f, 1.3f, 1.45f, 1.6f, 1.8f};      // 
 constexpr float kOverLength = 0.08f;                                         // look.md 5 (quoted): +8% length a stack
 constexpr float kPrismWhite = 0.15f, kPrismLevel = 0.6f, kPrismWidth = 1.3f;  // look.md 5 (quoted)
 // The owner, 2026-11-16 ("Prism needs more glow and color pop"; then "prism doesn't need the line trails", "still a very faint
-// trail on prism"): round each lane's streak a glow of its colour hugging it, two pooled Gaussians of sigma 0.25 of its length
-// half and 0.85 of the way back from the head, at an absolute level (not the shot's 2.2). The afterglow (look.json, its knee 0.9
-// on the scene and the pools blurred to sigma 6 ref px) prints whatever clears the knee as a beaded line behind a moving shot:
-// the streak and the head's sparkle come to about 0.65 there, so nothing more is added at the head (a halo there, and the glow
-// a third of the way back, cleared it) and the glow behind it stays under the rest. It also stays well under the level the tone
-// map bleaches (look.md 5), so where the glows sum the lane keeps its colour.
-constexpr float kPrismGlowSigmaLengths = 0.25f, kPrismGlow = 0.2f;
-constexpr float kPrismGlowBack[2] = {0.5f, 0.85f};
+// trail on prism", "put the glow back on the head, and tune the glow to be half as much"): round each lane's head a soft halo
+// (22 ref px, 0.06) and along its streak a glow of its colour hugging it (two pooled Gaussians of sigma 0.25 of its length, a
+// third and two thirds of the way back from the head, 0.125 each): half the levels that left a faint trail, at absolute levels
+// (not the shot's 2.2). The afterglow (look.json, its knee 0.9 on the scene and the pools blurred to sigma 6 ref px) prints
+// whatever clears the knee as a beaded line behind a moving shot; the streak and the head's sparkle come to about 0.65 at the
+// head, so the glow there stays small. It also stays well under the level the tone map bleaches (look.md 5), so where the glows
+// sum the lane keeps its colour.
+constexpr float kPrismGlowSigmaLengths = 0.25f, kPrismGlow = 0.125f;
+constexpr float kPrismGlowBack[2] = {0.33f, 0.67f};
+constexpr float kPrismHaloRefPx = 22.0f, kPrismHalo = 0.06f;
 constexpr float kCritStarWu[4] = {0.0f, 16.0f, 22.0f, 28.0f};               // look.md 5: the star by stack (10, 14, 18 until 2026-11-14)
 // Chosen (the look bible gives the idea, not the numbers): Overcharge 3's gold rim is this much wider than its white head;
 // 5's white core this much narrower than its violet one, its afterglow this many streak lengths behind at this level; a
@@ -119,10 +121,11 @@ void PlayView::drawShots(FrameDraw& d, const ViewInput& in, float a) {
             const Vec3 lane = forked ? laneColour_[sh.forks[i] > 0 ? 3 : 4] : laneColour_[shotLane(sh.flags[i]) + 2];
             const float pv = lvl * kPrismLevel, pw = wv * kPrismWidth;
             const Vec2 cut = head - dirv * (len * kPrismWhite);
-            // (2026-11-16: the pooled glow behind the head, then the streak)
+            // (2026-11-16: the pooled glow and the head's halo, then the streak)
             const float glowPx = std::fmax(len * kPrismGlowSigmaLengths * look_->glowRadiusOverSigma * pxPerWu_, look_->poolMinRadiusRefPx * refPx_);
             const float gl = in.runLight * ghost;  // (absolute: see kPrismGlow)
             for (const float back : kPrismGlowBack) d.pools.glow(toScene(head - dirv * (back * len)), glowPx, lane * (kPrismGlow * gl));
+            d.pools.glow(toScene(head), kPrismHaloRefPx * refPx_, lane * (kPrismHalo * gl));
             d.scene.line(toScene(tail), toScene(cut), pw, lane * pv, lane * pv, 0);
             d.scene.line(toScene(cut), toScene(head), pw, lane * pv, W1 * pv, 0);
             d.sparkles.glow(toScene(head), headR, lane * (headI * kPrismLevel));

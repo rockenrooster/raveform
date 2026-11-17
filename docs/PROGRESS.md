@@ -30,14 +30,16 @@ stats: OVERCHARGE".
   stacks of +62.5% damage and +18.75% radius (x3.5 and x1.75 at the cap, as five of +50% and +15%; `+62.5% SHOT DAMAGE`); its head's
   colour, sparks and flash and the lead's drive (`overchargeLook`, sim/upgrades.h; `bandLoadout`) take the fourth stack as the old
   fifth, 1-3 as before. GAME_DESIGN 6.2's rows say so; the determinism hashes did not move (the bot's runs never take them in time).
-The owner: "Prism needs more glow and color pop", then "prism doesn't need the line trails" and "still a very faint trail on prism".
-- Each lane's streak has a pooled glow of its colour hugging it: two Gaussians of sigma 0.25 of its length, half and 0.85 of the
-  way back from the head, at 0.2 (play_view_shots.cpp), an absolute level, not the shot's 2.2. The afterglow (look.json, its knee
-  0.9 on the scene and the pools blurred to sigma 6 ref px) prints whatever clears the knee as a beaded line behind a moving shot;
-  the streak and the head's sparkle already come to about 0.65 at the head, so nothing is added there. A brighter halo at the head,
-  a wider under-line in the scene, then a halo of 0.12 and the glow a third of the way back each printed the line (`--mute
-  afterglow` and `--mute pools` each took it away: the pools reach the afterglow's source too). Measured against the same frame
-  with `--mute afterglow`: nothing along the lanes (0 of 255 everywhere past the muzzle), the muzzle's flash as any shot's.
+The owner: "Prism needs more glow and color pop", then "prism doesn't need the line trails", "still a very faint trail on prism"
+and "put the glow back on the head, and tune the glow to be half as much".
+- Each lane's head has a soft halo (22 ref px, 0.06) and its streak a pooled glow of its colour hugging it: two Gaussians of sigma
+  0.25 of its length, a third and two thirds of the way back from the head, at 0.125 (play_view_shots.cpp): absolute levels, not
+  the shot's 2.2. The afterglow (look.json, its knee 0.9 on the scene and the pools blurred to sigma 6 ref px) prints whatever
+  clears the knee as a beaded line behind a moving shot; the streak and the head's sparkle already come to about 0.65 at the head.
+  A brighter halo at the head, a wider under-line in the scene, then the halo at 0.12 with the glow at 0.25 each printed the line
+  (`--mute afterglow` and `--mute pools` each took it away: the pools reach the afterglow's source too); half of the last is the
+  glow now. Measured against the same frame with `--mute afterglow`: at most 4 of 255 along the lanes past the muzzle (3 pixels
+  over 3), the muzzle's flash as any shot's.
   look.md 5's Prism paragraph (0.6 of the shot level, 1.3 of its width, white only in its front 15%) is unchanged; the glow is the
   owner's addition.
 
