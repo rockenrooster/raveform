@@ -54,6 +54,7 @@ public class RaveformActivity extends SDLActivity {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         hideSystemBars();
+        ApkUpdater.cleanup(this);  // (the in-app updater's last download)
     }
 
     @Override

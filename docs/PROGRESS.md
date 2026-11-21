@@ -15,8 +15,8 @@ docs/RELEASE_PIPELINE.md "The updater", "Version". The builds before it have ver
 installed from the browser once.
 
 Built: the desktop, and a release-config APK with `RF_BUILD_NUMBER=300` (versionCode 300, `REQUEST_INSTALL_PACKAGES` in it).
-Not yet run on a phone: the OnePlus 12R holds the GitHub release (build-344, the release key, installed over its copy at the
-owner's word), which a debug-signed test build cannot replace without wiping it; the whole path needs two releases with it.
+Build 345 was the first release with it (installed on the OnePlus 12R by adb over build 344, versionCode 345, its data kept);
+build 346 (the start clears the last attempt's download, `ApkUpdater.cleanup`) is the first one it can update to.
 
 ## 2026-11-16, Wave's crest; Extra Cell, Magnet and Overcharge re-ranked; Prism's glow
 

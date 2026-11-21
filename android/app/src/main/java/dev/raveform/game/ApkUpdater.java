@@ -95,6 +95,13 @@ public final class ApkUpdater {
         }, "apk-updater").start();
     }
 
+    /** The app's start: the last attempt's download goes (installed or not, a release is about 8 MB in the cache). */
+    static void cleanup(Context c) {
+        if (busy) return;
+        File[] old = new File(c.getCacheDir(), "updates").listFiles();
+        if (old != null) for (File f : old) f.delete();
+    }
+
     /** Also called by ApkInstallReceiver when the installer gives up. */
     static void failed(String reason) {
         MAIN.post(() -> {
