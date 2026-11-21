@@ -16,7 +16,16 @@ installed from the browser once.
 
 Built: the desktop, and a release-config APK with `RF_BUILD_NUMBER=300` (versionCode 300, `REQUEST_INSTALL_PACKAGES` in it).
 Build 345 was the first release with it (installed on the OnePlus 12R by adb over build 344, versionCode 345, its data kept);
-build 346 (the start clears the last attempt's download, `ApkUpdater.cleanup`) is the first one it can update to.
+build 346 (the start clears the last attempt's download, `ApkUpdater.cleanup`) is the first one it can update to. **Seen
+working:** the owner tapped the 12R's pill and build 346 went in through the app (`dumpsys package`: versionCode 346,
+installer and initiating package `dev.raveform.game`, the APK's SHA-256 the release's).
+
+The same day, at the owner's word ("push release to all wifi adb devices"), build 346 went onto the other Wi-Fi devices: the
+tablet `R5GL362BEHX` over its release build (its data kept); the tablet `R5GL362AGPA` and a second Fire 7 `GN41WE044297000Q`
+held debug-signed dev builds, so their `settings.txt`, `highscores.txt`, `tier.txt` (and `audio_sync.txt`) were copied to
+`captures\device_backup\<serial>_20261121_112426\` (run-as) and the app was uninstalled and the release installed (the release
+is not debuggable: the backup cannot be put back by adb). Every device now holds 346 with the release key: a dev build from
+this PC needs an uninstall again (CLAUDE.md "Shared test devices": deploy before every run).
 
 ## 2026-11-16, Wave's crest; Extra Cell, Magnet and Overcharge re-ranked; Prism's glow
 
