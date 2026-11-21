@@ -346,6 +346,34 @@ public class RaveformActivity extends SDLActivity {
     /** The latest release's build number, for the title's update button. */
     static native void nativeUpdateFound(int build);
 
+    /**
+     * The title's update button (2026-11-21, the in-app updater, called from native code): ApkUpdater downloads the latest
+     * release's APK, checks it and opens Android's own update dialog (the first time Android's "Install unknown apps" page
+     * instead: allow, come back, tap again). The download's progress goes to the button; a failure is a toast with its reason.
+     */
+    static void startUpdate() {
+        final Activity a = (Activity) SDLActivity.getContext();
+        if (a == null) {
+            return;
+        }
+        a.runOnUiThread(() -> ApkUpdater.downloadAndInstall(a, "rockenrooster/raveform", "raveform.apk", new ApkUpdater.Listener() {
+            @Override
+            public void onProgress(float fraction) {
+                nativeUpdateProgress(fraction);
+            }
+
+            @Override
+            public void onFailed(String reason) {
+                Log.w(TAG, "update: not installed: " + reason);
+                nativeUpdateProgress(-1.0f);
+                android.widget.Toast.makeText(a, "Update not installed: " + reason, android.widget.Toast.LENGTH_LONG).show();
+            }
+        }));
+    }
+
+    /** The update's download, 0..1 (below 0: none running), for the title's update button. */
+    static native void nativeUpdateProgress(float fraction);
+
     /** Blocks until the render thread has destroyed its Vulkan surface (or the timeout passes). */
     static native boolean nativeWaitSurfaceReleased(int timeoutMs);
 

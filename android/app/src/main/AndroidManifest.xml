@@ -25,6 +25,8 @@
     <!-- M4 stage B: Android 17 asks the user before an app that targets it talks to the local network (RaveformActivity
          localNetworkState / requestLocalNetwork, the game's notice first). Inert while targetSdk is 36. -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <!-- The in-app updater (ApkUpdater): the release APK handed to Android's installer, which asks the user. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- appCategory="game" keeps orientation locks on Android 16 large screens (TECH_SPEC 3.1). -->
     <application
@@ -55,6 +57,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The installer's answers to the in-app updater (its confirmation dialog, or why it stopped). -->
+        <receiver android:name=".ApkInstallReceiver" android:exported="false" />
     </application>
 
 </manifest>

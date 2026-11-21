@@ -34,6 +34,10 @@ void requestLocalNetwork();
 // thread of its own (JNI: the title's first frame only); latestBuild() is that number once it came, else 0.
 void checkForUpdate();
 int latestBuild();
+// The in-app updater (2026-11-21): the title's update button starts RaveformActivity.startUpdate (ApkUpdater: download, check,
+// Android's update dialog); updatePercent() is its download's progress, 0-100, or -1 while none runs.
+void startUpdate();
+int updatePercent();
 
 }  // namespace rf::android
 

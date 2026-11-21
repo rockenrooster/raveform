@@ -17,6 +17,7 @@ std::condition_variable g_surfaceReleased;
 bool g_surfaceInUse = false;
 jobject g_activity = nullptr;
 std::atomic<int> g_latestBuild{0};  // (the updater: set on RaveformActivity's thread, read by the title)
+std::atomic<int> g_updatePercent{-1};  // (the in-app updater's download: set on Android's main thread, read by the title)
 }  // namespace
 
 jobject activityRef() {
@@ -96,7 +97,18 @@ void checkForUpdate() {
 
 int latestBuild() { return g_latestBuild.load(std::memory_order_relaxed); }
 
+void startUpdate() {
+    callActivity("startUpdate", "()V", [&](JNIEnv* env, jclass cls, jmethodID m) { env->CallStaticVoidMethod(cls, m); });
+}
+
+int updatePercent() { return g_updatePercent.load(std::memory_order_relaxed); }
+
 }  // namespace rf::android
+
+// RaveformActivity.nativeUpdateProgress(float): the in-app update's download, 0..1, below 0 when none runs (a failure).
+extern "C" JNIEXPORT void JNICALL Java_dev_raveform_game_RaveformActivity_nativeUpdateProgress(JNIEnv*, jclass, jfloat fraction) {
+    rf::android::g_updatePercent.store(fraction < 0.0f ? -1 : static_cast<int>(fraction * 100.0f), std::memory_order_relaxed);
+}
 
 // RaveformActivity.nativeUpdateFound(int): the latest GitHub release's build number, from its update thread.
 extern "C" JNIEXPORT void JNICALL Java_dev_raveform_game_RaveformActivity_nativeUpdateFound(JNIEnv*, jclass, jint build) {

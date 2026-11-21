@@ -85,17 +85,25 @@ The owner: "a small button in the main menu that shows if an update is available
   an address), takes the number from `tag_name`, and hands it to native code (`nativeUpdateFound`). Nothing is sent but the
   request; no answer (offline, rate-limited) means no button.
 - While that number is higher than the build's own, the title shows a gold `UPDATE: BUILD <n>` pill over the note
-  (design/screens.md "Title"); tapping it opens the latest release's page in the browser (`SDL_OpenURL`), where the APK is.
+  (design/screens.md "Title"). Since 2026-11-21 (the owner, through the Trueform session: Trueform's in-app updater) tapping it
+  updates in the app (`android::startUpdate`, `RaveformActivity.startUpdate`, `ApkUpdater`, `ApkInstallReceiver`): the latest
+  release's `raveform.apk` downloads into the app's cache (the pill counts `DOWNLOADING n%`, then `INSTALLING BUILD n`), is
+  checked (its size, the `.sha256` asset, the package name, a higher `versionCode`, the same signing key) and goes into a
+  `PackageInstaller` session, and Android's own "update this app?" dialog asks. The first time Android opens "Install unknown
+  apps" for RAVEFORM instead (`REQUEST_INSTALL_PACKAGES`): allow, come back, tap again. A failure is a toast with its reason.
+  Desktop builds still open the release page.
 - The picture `--picture screen_title_update` shows the pill as if GitHub had build 999 (desktop builds never ask).
 - A build for the Play store must not have it (Play's policy: an app updates only through Play): build it without
-  `RF_BUILD_NUMBER` (RELEASE_CHECKLIST).
+  `RF_BUILD_NUMBER` (RELEASE_CHECKLIST), and without `REQUEST_INSTALL_PACKAGES` in the manifest (Play restricts it).
 
 ## Version
 
 `versionName` is `android/app/build.gradle`'s (kept equal to `CMakeLists.txt`'s project VERSION); the title screen shows it
-with the build's commit and date. `versionCode` stays 1 on every build: Android refuses an install with a lower versionCode
-than the installed one, and the shared phones get builds of different commits from this PC's sessions and from GitHub. Raise
-it for a store release.
+with the build's commit and date. `versionCode` is the build number on GitHub's builds (2026-11-21, for the in-app updater:
+Android takes an update only with a higher versionCode, and the updater refuses one that is not newer) and 1 on a local build.
+The two never meet on a phone: GitHub's are signed with the release key, the local ones with the debug key, and a phone holds
+one or the other (switching is an uninstall). The builds installed before build 345 have versionCode 1: the first release with
+the updater is installed from the browser once, the later ones update in the app.
 
 ## Cost
 

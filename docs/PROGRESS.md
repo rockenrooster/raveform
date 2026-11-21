@@ -4,6 +4,20 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-21, the in-app updater
+
+The owner, through the Trueform session (its `docs/in-app-updater.md`): Trueform's in-app updater in RAVEFORM. The title's
+`UPDATE: BUILD <n>` pill now downloads the latest release's `raveform.apk` in the app (`DOWNLOADING n%`, then `INSTALLING BUILD
+n`), checks it (size, the `.sha256` asset, package, a higher versionCode, the same signing key) and opens Android's own update
+dialog (`ApkUpdater`, `ApkInstallReceiver`, `RaveformActivity.startUpdate`, `android::startUpdate` / `updatePercent`); the first
+time, Android's "Install unknown apps" page instead. `versionCode` is the build number on GitHub's builds (1 locally):
+docs/RELEASE_PIPELINE.md "The updater", "Version". The builds before it have versionCode 1, so the first release with it is
+installed from the browser once.
+
+Built: the desktop, and a release-config APK with `RF_BUILD_NUMBER=300` (versionCode 300, `REQUEST_INSTALL_PACKAGES` in it).
+Not yet run on a phone: the OnePlus 12R holds the GitHub release (build-344, the release key, installed over its copy at the
+owner's word), which a debug-signed test build cannot replace without wiping it; the whole path needs two releases with it.
+
 ## 2026-11-16, Wave's crest; Extra Cell, Magnet and Overcharge re-ranked; Prism's glow
 
 The owner, on Wave: "rank 1 arc width needs to be 70", and from this session's list: "a real crest: a white-hot leading edge

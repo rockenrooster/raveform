@@ -621,17 +621,30 @@ void Play::drawTitleControls(Ui& ui, const TitleLook& tl, bool taps) {
         // under the note, the version, the build's commit and its date and minute (src/core/build_info).
         ui.text({W - std::fmax(132.0f * s, ui.insetMax().x), H - 30.0f * s + sink}, 11.0f * s, white, 0.4f, buildStampLine(), 1.0f);
         // The updater (screens.md "Title", Update): over the note, a gold pill while GitHub has a newer release than this build;
-        // tapping it opens the release's page in the browser.
+        // tapping it (2026-11-21, the in-app updater) downloads the release in the app, the pill counting the download, and opens
+        // Android's update dialog (elsewhere: the release's page in the browser).
         if (const u32 newer = updateBuild()) {
+#if defined(__ANDROID__)
+            const int pct = android::updatePercent();
+#else
+            const int pct = -1;
+#endif
             char label[40];
-            std::snprintf(label, sizeof label, "UPDATE: BUILD %u", newer);
+            if (pct >= 100) std::snprintf(label, sizeof label, "INSTALLING BUILD %u", newer);
+            else if (pct >= 0) std::snprintf(label, sizeof label, "DOWNLOADING %d%%", pct);
+            else std::snprintf(label, sizeof label, "UPDATE: BUILD %u", newer);
             const float uw = std::fmax(340.0f * s, ui.measure(22.0f * s, label) + 80.0f * s), uh = 72.0f * s;
             const float right = W - std::fmax(132.0f * s, ui.insetMax().x);
             if (ui.pill(13, {right - 0.5f * uw, H - 128.0f * s + sink}, {uw, uh}, label, 22.0f * s, false, true, false, palettes_->player[3]) &&
                 tl.sideTaps && taps) {
                 if (band_) band_->playSfx(audio::Sfx::UiConfirm);
+#if defined(__ANDROID__)
+                RF_LOG("title: update to build %u: downloading it", newer);
+                android::startUpdate();
+#else
                 RF_LOG("title: update to build %u: opening the release page", newer);
                 SDL_OpenURL("https://github.com/rockenrooster/raveform/releases/latest");
+#endif
             }
         }
     }
