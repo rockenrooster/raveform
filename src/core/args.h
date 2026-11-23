@@ -103,6 +103,7 @@ struct AppArgs {
     u32 loopbackBots = 0;      // --loopback-bots N: N bot clients in this process on the loopback network (host)
     bool netOverlay = false;   // --net-overlay: open on the overlay's network page
     u32 netCaptureBar = 0;     // --net-capture-bar B: with --screenshot, the picture as the run reaches bar B, then quit
+    bool netCaptureRun = false;  // --net-capture-run: B counts the run's own bars (a --coop room's run starts mid-song)
                                // (every peer at the same musical moment)
     i32 netViewSeat = -1;      // --net-view-seat N: the camera on seat N's ship (pictures of one place on every peer)
     // M4 stage B: the co-op screens driven from the command line (tests, pictures, device runs).
@@ -110,6 +111,7 @@ struct AppArgs {
     char coopTarget[48] = {};  //   the room code, the address, or "list" (the first room heard) to join at once
     u32 coopStart = 0;         // --coop-start [N]: the host starts once N players (default 2) are seated and ready, and
                                //   goes again 3 s after all are down
+    float coopAfter = 0.0f;    // --coop-after S (with --coop): S s of a solo run first (PLAY, then QUIT RUN), then the co-op step
     char coopName[16] = {};    // --coop-name NAME: the name on the seat
     u8 coopPermission = 0;     // --coop-permission-screen [refused]: show the local network's screen (pictures); 2: as refused
     bool coopDemoRooms = false;  // --coop-demo-rooms: the join list also shows three made-up rooms (the layout's picture)

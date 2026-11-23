@@ -238,6 +238,12 @@ bool parseArgs(int argc, char** argv, AppArgs& a) {
                 a.coopStart = static_cast<u32>(next[0] - '0');
                 usedNext = true;
             }
+        } else if (is("--net-capture-run")) {
+            a.netCaptureRun = true;
+        } else if (is("--coop-after") && next) {
+            a.coopAfter = static_cast<float>(std::atof(next));
+            ok = a.coopAfter > 0.0f;
+            usedNext = true;
         } else if (is("--coop-name") && next) {
             ok = copyString(a.coopName, sizeof a.coopName, next);
             usedNext = true;

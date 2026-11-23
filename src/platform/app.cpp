@@ -349,6 +349,7 @@ bool App::init() {
         po.coopAuto = args_.coop;
         std::snprintf(po.coopTarget, sizeof po.coopTarget, "%s", args_.coopTarget);
         po.coopStart = args_.coopStart;
+        po.coopAfter = args_.coopAfter;
         std::snprintf(po.coopName, sizeof po.coopName, "%s", args_.coopName);
         po.coopPermissionScreen = args_.coopPermission;
         po.coopDemoRooms = args_.coopDemoRooms;
@@ -993,7 +994,8 @@ void App::frame(u64 loopStartNs) {
     bool capture = screenshotRequested_ || (args_.screenshot[0] && args_.frames && frames_ + 1 >= firstShot);
     if (content_ == Content::Play && playPicture_) capture = screenshotRequested_ || (args_.screenshot[0] && play_.captureNow());  // M3
     if (content_ == Content::Play && args_.netCaptureBar && play_.coop() && !netShotDone_ &&
-        play_.runMusic() >= static_cast<double>(args_.netCaptureBar) * 384.0) {
+        (args_.netCaptureRun ? play_.world().phrase().bar >= args_.netCaptureBar
+                             : play_.runMusic() >= static_cast<double>(args_.netCaptureBar) * 384.0)) {
         // M4: every peer takes its picture as its run reaches the bar (the same musical moment on each).
         capture = true;
         netShotDone_ = true;

@@ -4264,6 +4264,36 @@ void testPlayTest3() {
 
 // M8 part 0 (docs/MODES_PLAN.md 2.1, 2.2, 2.10): modes.json as read, the forms walked (the timed ones and a test form with a held
 // section), --mode's grammar, and the run's setup in the world's state (the set's own state and hash untouched).
+// 2026-11-23 (the owner: "missing bullets on a client ... when i played single player for a bit and then joined as a client"): a
+// world whose music has run far past the clock of its next run (a client's own song against the host's: Play::joinRoom keeps the
+// device's) starts that run on the bar line by that clock, and its music goes on from there, beats and all.
+void testRunOnAnotherClock() {
+    World* w = quietWorld();
+    double m = 0.0;
+    for (u32 t = 0; t < 1200; ++t) stepWorld(*w, m, Vec2{});  // this device's song, well past the host's
+    const double stale = w->music();
+    const double bar = 2.0 * kTicksPerBar;  // the host's run: its bar line on the host's song
+    CHECK(stale > bar + 4.0 * kTicksPerBar);
+    w->scheduleRun(bar, 11, 1, static_cast<u16>(w->runId() + 1), 1);
+    const auto tickAt = [&](double music) {
+        TickInput in;
+        in.music0 = music - kTicksPerSimTick;
+        in.music1 = music;
+        in.bpm = kBpm;
+        in.players[0].present = true;
+        w->tick(in);
+    };
+    tickAt(bar - 10.0);
+    CHECK_MSG(!w->restarted(), "the run began before its bar line (music %.0f, the bar %.0f)", w->music(), bar);
+    tickAt(bar + 4.0);
+    CHECK_MSG(w->restarted() && std::fabs(w->music() - (bar + 4.0)) < 1e-6 && w->phrase().bar == 0,
+              "the run's music %.1f (want %.1f), bar %u", w->music(), bar + 4.0, w->phrase().bar);
+    for (double music = bar + 4.0 + kTicksPerSimTick; music < bar + kTicksPerBar + 8.0; music += kTicksPerSimTick) tickAt(music);
+    CHECK_MSG(w->phrase().bar == 1 && std::fabs(w->music() - (bar + kTicksPerBar + 8.0)) < kTicksPerSimTick, "a bar on: bar %u, music %.1f",
+              w->phrase().bar, w->music());
+    delete w;
+}
+
 void testModes() {
     g_test = "modes";
     const ModesData& md = g_species->modes;
@@ -4909,6 +4939,7 @@ int main() {
     testNova();
     testSpecies();
     testDeterminismShort();
+    testRunOnAnotherClock();
     testNoAllocations();
     testDirectorCycle();
     testCrowd();

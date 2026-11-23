@@ -869,6 +869,7 @@ public:
 
     u64 tickCount() const { return tick_; }
     double music() const { return m1_; }
+    bool restarted() const { return restarted_; }  // this tick began a new run
     float bpm() const { return bpm_; }
     float ticksPerSecond() const { return bpm_ * static_cast<float>(kTicksPerBeat) / 60.0f; }
     u64 seed() const { return seed_; }

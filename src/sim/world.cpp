@@ -276,13 +276,21 @@ void World::tick(const TickInput& in) {
     const double prev = m1_;
     double next = in.music1 > prev ? in.music1 : prev;
     restarted_ = false;
-    if (restartPending_ && next >= restartAt_) {
+    // A new run begins on its bar line by the clock it is given (in.music1), and its music goes on from there. The clamp above
+    // keeps one run's music from going back; it must not carry into the next run, which can be on another clock: a co-op
+    // client's run is on the host's song, while the world it starts from (the lobby's, Play::joinRoom) stood on this device's own,
+    // which counts from the app's launch (2026-11-23, the owner: "missing bullets on a client ... when i played single player for
+    // a bit and then joined as a client"; 2026-11-14: "bullets on p2 and p3 are not rendering", gone after a relaunch). A client
+    // whose app had been open longer than the host's began its run at once with the old music, ahead by the difference, and held
+    // it until the host's song caught up: no beat, so no volley, and every spawn late (coop-after-solo.ps1: 18 bars after 40 s
+    // of solo play).
+    if (restartPending_ && in.music1 >= restartAt_) {
         // RETRY: the new run begins on this bar line (the poses of this tick still describe the old run, so
         // they are not applied; the controllers restart from the world's start positions). Solo: the seed
         // after this one; co-op: the host's seed and seats (scheduleRun).
         const double bar = restartAt_;
-        const RunSetup next = restartSetup_;  // (M8: RETRY and REMATCH keep the run's setup; the title, MODES and START set it)
-        resetRun(restartSeed_, bar, restartPlayers_, restartMask_, next);
+        const RunSetup setup = restartSetup_;  // (M8: RETRY and REMATCH keep the run's setup; the title, MODES and START set it)
+        resetRun(restartSeed_, bar, restartPlayers_, restartMask_, setup);
         runId_ = nextRunId_;
         restarted_ = true;
         ++counters_.restarts;
@@ -290,6 +298,7 @@ void World::tick(const TickInput& in) {
         ev.type = EventType::Restart;
         ev.tick = bar;
         emit(ev);
+        next = in.music1;
     }
     m0_ = m1_;
     m1_ = next;

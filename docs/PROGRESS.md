@@ -4,6 +4,27 @@ The network engineer's follow-up to M4 (the Moto-hosted error's cause and fix, t
 moving Shoals, remote players predicted on direct links, the tools) is in `docs/PROGRESS_m4_net.md` (merged into main with
 M5 part 4; protocol `0x52460505` holds both). The sound engineer's M5 work is in `docs/PROGRESS_m5_audio.md` (merged 6121b37).
 
+## 2026-11-23, a co-op client's run began on its own song: no bullets until the host's caught up
+
+The owner: "missing bullets on a client. seems that it goes away only on a fresh launch of the game after being killed. it happened
+when i played single player for a bit and then joined as a client afterwards" (and 2026-11-14: "bullets on p2 and p3 are not
+rendering", then "killed and relaunched on the 3 devices and it's fixed", not reproduced then with fresh processes).
+- **The cause.** `World::tick` keeps a run's music from going back (`next = max(music1, m1_)`), and the restart's bar line was met
+  by that clamped value. A client's lobby world stands on the device's own song (`Play::joinRoom`: `resetRun(..., music1_)`), which
+  counts from the app's launch; its run then follows the host's song. A client whose app had been open longer than the host's
+  began the run at once with its old music, ahead by the difference, and held it there until the host's song caught up: no beat,
+  so no volley, and every spawn applied late. After a long solo session that is the whole session; a relaunch starts the song at 0.
+- **The fix** (`World::tick`): the restart waits for the clock it is given to reach the bar line (`in.music1 >= restartAt_`), and
+  the new run's music starts from it. One place: every run begins there (solo RETRY and HOME, a room's START and RETRY, leaving a
+  room). Test `testRunOnAnotherClock` (sim suite): fails on the old code (the run began 7 bars early, the music held at 3840),
+  passes now.
+- **Seen on this PC** (`scripts\coop-after-solo.ps1`: a host and a client, the client first playing 40 s of a solo run, then
+  joining from the room list; `--coop-after S`, and `--net-capture-run` for a picture at the run's own bar): before, the client's
+  run began at bar 18 with 578 late spawns and fired nothing for 18 bars; now it begins at bar 0 with the host, 0 late spawns,
+  its enemy bullets alive and fired bar by bar with the host's through Kaleidos. This PC has no audio device at the moment
+  (`No default audio device available`): with a band that never plays the host publishes no song, so the script runs both with
+  `--no-audio` (the simulated song). Not yet seen on phones.
+
 ## 2026-11-21, the in-app updater
 
 The owner, through the Trueform session (its `docs/in-app-updater.md`): Trueform's in-app updater in RAVEFORM. The title's

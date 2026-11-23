@@ -386,6 +386,23 @@ void Play::coopAutoStep() {
         screen_ = Screen::Title;  // (the notice is not saved as seen)
         return;
     }
+    // --coop-after S (tests; the owner, 2026-11-23: "missing bullets on a client ... when i played single player for a bit and then
+    // joined as a client afterwards"): S seconds of a solo run first (PLAY), QUIT RUN to the title, then the step below.
+    if (opt_.coopAfter > 0.0f && coopAfterStage_ < 3) {
+        if (coopAfterStage_ == 0 && screen_ == Screen::Title && trans_ == Trans::None) {
+            RF_LOG("play: --coop-after: a solo run first");
+            startRun();
+            coopAfterStage_ = 1;
+        } else if (coopAfterStage_ == 1 && screen_ == Screen::Run && runSeconds_ >= opt_.coopAfter) {
+            RF_LOG("play: --coop-after: %.0f s of the solo run: QUIT RUN", static_cast<double>(runSeconds_));
+            pauseRun();
+            homeTap();
+            coopAfterStage_ = 2;
+        } else if (coopAfterStage_ == 2 && screen_ == Screen::Title && trans_ == Trans::None) {
+            coopAfterStage_ = 3;
+        }
+        if (coopAfterStage_ < 3) return;
+    }
     if (screen_ == Screen::Title && !session_) {
         if (opt_.coopAuto == 1 && !opt_.coopPermissionScreen) {
             hostRoom();

@@ -77,6 +77,7 @@ struct PlayOptions {
     char coopTarget[48] = {};   //   the room code, the address or "list" (the first room heard) to join
     u32 coopStart = 0;          // --coop-start [N]: the host starts once N are seated and ready, and goes again 3 s
                                 //   after all are down
+    float coopAfter = 0.0f;     // --coop-after S: S s of a solo run first, then the --coop step (coopAutoStep)
     char coopName[16] = {};     // --coop-name: the name shown on the seat
     u8 coopPermissionScreen = 0;  // --coop-permission-screen [refused]: show the local-network rationale (pictures; 2 as refused)
     bool coopDemoRooms = false;   // --coop-demo-rooms: three made-up rooms join the list (the join screen's layout picture)
@@ -287,6 +288,7 @@ private:
     FightVoices fightVoices_;           // M5: the held voices a fight started (the Choir's pads)
     UpgradeCues upgradeCues_;           // M5 part 3: the upgrades' cues this frame (game/upgrade_sounds.cpp)
     bool coopAutoDone_ = false;
+    u8 coopAfterStage_ = 0;  // --coop-after: 0 on the title, 1 the solo run, 2 going home, 3 the co-op step
     float coopAutoT_ = 0.0f, coopShotT_ = 0.0f;
     float beaconDownS_ = 0.0f;  // --coop-shot beacon: how long a teammate has been down (its shatter gone after a second)
     float shotWaitS_ = 0.0f;    // --coop-shot pause_menu: how long the pause has held
